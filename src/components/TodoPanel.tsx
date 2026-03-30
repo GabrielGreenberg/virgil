@@ -1,0 +1,267 @@
+"use client";
+
+import { useState, useRef, useEffect, useCallback } from "react";
+import type { TodoItem } from "@/lib/types";
+
+interface TodoPanelProps {
+  items: TodoItem[];
+  onAdd: (text: string) => void;
+  onToggle: (id: string) => void;
+  onUpdate: (id: string, text: string) => void;
+  onUpdateNotes: (id: string, notes: string) => void;
+  onDelete: (id: string) => void;
+  onArchiveDone: () => void;
+}
+
+function TodoRow({
+  item,
+  index,
+  onToggle,
+  onUpdate,
+  onUpdateNotes,
+  onDelete,
+}: {
+  item: TodoItem;
+  index: number;
+  onToggle: (id: string) => void;
+  onUpdate: (id: string, text: string) => void;
+  onUpdateNotes: (id: string, notes: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(item.text);
+  const [notes, setNotes] = useState(item.notes);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const notesRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  useEffect(() => {
+    if (expanded && item.notes === "" && notesRef.current) {
+      notesRef.current.focus();
+    }
+  }, [expanded, item.notes]);
+
+  const commitEdit = () => {
+    if (editText.trim()) onUpdate(item.id, editText.trim());
+    setEditing(false);
+  };
+
+  const commitNotes = useCallback(() => {
+    if (notes !== item.notes) onUpdateNotes(item.id, notes);
+  }, [notes, item.notes, item.id, onUpdateNotes]);
+
+  return (
+    <div className={`group border-b border-[var(--border-light)] ${item.done ? "bg-stone-50/50" : ""}`}>
+      <div className="flex items-start gap-2 px-4 py-2.5">
+        {/* Number */}
+        <span className={`text-xs mt-0.5 w-4 text-right shrink-0 tabular-nums ${item.done ? "text-stone-300" : "text-stone-500"}`}>
+          {index + 1}.
+        </span>
+
+        {/* Checkbox */}
+        <button
+          onClick={() => onToggle(item.id)}
+          className="mt-0.5 shrink-0"
+        >
+          {item.done ? (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
+              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+            </svg>
+          )}
+        </button>
+
+        {/* Text + expand arrow */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start gap-1">
+            {/* Wedge arrow for notes */}
+            <button
+              onClick={() => setExpanded(!expanded)}
+              className="mt-1 p-0 text-[var(--muted-light)] hover:text-[var(--muted)] transition-colors shrink-0"
+              title={expanded ? "Collapse notes" : "Expand notes"}
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 12 12"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={`transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+              >
+                <path d="M4.5 2l4 4-4 4" />
+              </svg>
+            </button>
+
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                onBlur={commitEdit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitEdit();
+                  if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
+                }}
+                className="flex-1 text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+              />
+            ) : (
+              <span
+                className={`flex-1 text-sm leading-relaxed cursor-pointer ${
+                  item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
+                }`}
+                onDoubleClick={() => { setEditText(item.text); setEditing(true); }}
+              >
+                {item.text}
+              </span>
+            )}
+          </div>
+
+          {/* Notes (expanded) */}
+          {expanded && (
+            <div className="ml-3 mt-2 mb-1">
+              <textarea
+                ref={notesRef}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                onBlur={commitNotes}
+                placeholder="Add notes..."
+                className="w-full bg-stone-50 border border-[var(--border-light)] rounded px-2.5 py-2 text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 resize-none leading-relaxed"
+                rows={3}
+              />
+            </div>
+          )}
+
+          {/* Notes indicator when collapsed */}
+          {!expanded && item.notes && (
+            <div className="ml-3 mt-0.5 text-[10px] text-[var(--muted-light)] truncate">
+              {item.notes.slice(0, 60)}{item.notes.length > 60 ? "..." : ""}
+            </div>
+          )}
+        </div>
+
+        {/* Delete */}
+        <button
+          onClick={() => onDelete(item.id)}
+          className="opacity-0 group-hover:opacity-40 hover:!opacity-100 text-red-400 hover:text-red-500 transition-opacity p-1 mt-0.5 shrink-0"
+          title="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function TodoPanel({
+  items,
+  onAdd,
+  onToggle,
+  onUpdate,
+  onUpdateNotes,
+  onDelete,
+  onArchiveDone,
+}: TodoPanelProps) {
+  const [newText, setNewText] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleAdd = () => {
+    if (newText.trim()) {
+      onAdd(newText.trim());
+      setNewText("");
+      inputRef.current?.focus();
+    }
+  };
+
+  const pending = items.filter((i) => !i.done);
+  const done = items.filter((i) => i.done);
+
+  return (
+    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-stone-700">
+          Todo List
+          {pending.length > 0 && (
+            <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
+              ({pending.length})
+            </span>
+          )}
+        </h3>
+      </div>
+
+      {/* Add input */}
+      <div className="px-4 py-2.5 border-b border-[var(--border-light)]">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
+            placeholder="Add a task..."
+            className="flex-1 text-sm bg-transparent border-none outline-none text-stone-800 placeholder:text-stone-400"
+          />
+          <button
+            onClick={handleAdd}
+            disabled={!newText.trim()}
+            className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-colors disabled:opacity-30"
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      {/* Items — single list preserving order */}
+      <div className="flex-1 overflow-y-auto">
+        {items.length === 0 && (
+          <div className="p-6 text-center text-[var(--muted)] text-sm">
+            No tasks yet.
+          </div>
+        )}
+
+        {items.map((item, i) => (
+          <TodoRow
+            key={item.id}
+            item={item}
+            index={i}
+            onToggle={onToggle}
+            onUpdate={onUpdate}
+            onUpdateNotes={onUpdateNotes}
+            onDelete={onDelete}
+          />
+        ))}
+      </div>
+
+      {/* Archive bar at bottom */}
+      {done.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-[var(--border)] flex items-center justify-between bg-stone-50/50">
+          <span className="text-xs text-stone-400">
+            {done.length} completed
+          </span>
+          <button
+            onClick={onArchiveDone}
+            className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-stone-700 hover:bg-stone-100 transition-colors flex items-center gap-1.5"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 8v13H3V8" />
+              <path d="M1 3h22v5H1z" />
+              <path d="M10 12h4" />
+            </svg>
+            Archive
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

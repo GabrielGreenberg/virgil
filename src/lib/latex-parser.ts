@@ -1,0 +1,568 @@
+import { JSONContent } from "@tiptap/react";
+
+interface ParseContext {
+  pos: number;
+  src: string;
+}
+
+function stripPreamble(latex: string): string {
+  const beginDoc = latex.indexOf("\\begin{document}");
+  const endDoc = latex.indexOf("\\end{document}");
+  if (beginDoc !== -1) {
+    const start = beginDoc + "\\begin{document}".length;
+    const end = endDoc !== -1 ? endDoc : latex.length;
+    return latex.slice(start, end).trim();
+  }
+  return latex.trim();
+}
+
+function parseInlineContent(text: string): JSONContent[] {
+  const nodes: JSONContent[] = [];
+  let i = 0;
+  let buffer = "";
+
+  const flush = () => {
+    if (buffer) {
+      nodes.push({ type: "text", text: unescapeLatex(buffer) });
+      buffer = "";
+    }
+  };
+
+  while (i < text.length) {
+    // Inline math: $...$
+    if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
+      flush();
+      const end = text.indexOf("$", i + 1);
+      if (end !== -1) {
+        nodes.push({
+          type: "inlineMath",
+          attrs: { latex: text.slice(i + 1, end) },
+        });
+        i = end + 1;
+        continue;
+      }
+    }
+
+    // LaTeX commands for marks
+    if (text[i] === "\\") {
+      const rest = text.slice(i);
+
+      // \textbf{...}
+      const boldMatch = rest.match(/^\\textbf\{/);
+      if (boldMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\textbf".length);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [...(n.marks || []), { type: "bold" }],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \emph{...}
+      const emphMatch = rest.match(/^\\emph\{/);
+      if (emphMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\emph".length);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [...(n.marks || []), { type: "italic" }],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \underline{...}
+      const ulMatch = rest.match(/^\\underline\{/);
+      if (ulMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\underline".length);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [...(n.marks || []), { type: "underline" }],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \textit{...}
+      const textitMatch = rest.match(/^\\textit\{/);
+      if (textitMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\textit".length);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [...(n.marks || []), { type: "italic" }],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \texttt{...}
+      const ttMatch = rest.match(/^\\texttt\{/);
+      if (ttMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\texttt".length);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [...(n.marks || []), { type: "code" }],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \footnote{...}
+      const fnMatch = rest.match(/^\\footnote\{/);
+      if (fnMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\footnote".length);
+        if (inner !== null) {
+          nodes.push({
+            type: "footnote",
+            attrs: { content: inner.content, number: 0, footnoteId: crypto.randomUUID() },
+          });
+          i = inner.end;
+          continue;
+        }
+      }
+
+      // \archivemarker{id}{preview}
+      const amMatch = rest.match(/^\\archivemarker\{/);
+      if (amMatch) {
+        flush();
+        const idArg = extractBraced(text, i + "\\archivemarker".length);
+        if (idArg !== null) {
+          const previewArg = extractBraced(text, idArg.end);
+          if (previewArg !== null) {
+            nodes.push({
+              type: "archiveMarker",
+              attrs: { archiveId: idArg.content, preview: previewArg.content.replace(/\\(\{|\}|\\)/g, "$1") },
+            });
+            i = previewArg.end;
+            continue;
+          }
+        }
+      }
+
+      // Natbib citation commands: \cite, \citet, \citep, \citealt, \citealp, \citeauthor, \citeyear, \citeyearpar
+      // Also Capitalized variants (\Citet, etc.) and starred variants (\citet*, etc.)
+      const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|cite)(\*?)/);
+      if (citeMatch) {
+        flush();
+        let pos = i + citeMatch[0].length;
+        let fullCmd = citeMatch[0];
+
+        // Consume optional [...] arguments (up to 2)
+        for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
+          const closeBracket = text.indexOf("]", pos);
+          if (closeBracket !== -1) {
+            fullCmd += text.slice(pos, closeBracket + 1);
+            pos = closeBracket + 1;
+          } else {
+            break;
+          }
+        }
+
+        // Consume required {keys} argument
+        if (pos < text.length && text[pos] === "{") {
+          const inner = extractBraced(text, pos);
+          if (inner !== null) {
+            fullCmd += "{" + inner.content + "}";
+            nodes.push({
+              type: "citation",
+              attrs: {
+                citationId: crypto.randomUUID(),
+                command: fullCmd,
+                displayText: "",
+              },
+            });
+            i = inner.end;
+            continue;
+          }
+        }
+
+        // If no braced arg, treat as unknown text (will be raw)
+        buffer += fullCmd;
+        i = pos;
+        continue;
+      }
+
+      // Common text commands
+      const textCmdMatch = rest.match(/^\\(ldots|dots|LaTeX|TeX)\b/);
+      if (textCmdMatch) {
+        const cmd = textCmdMatch[1];
+        if (cmd === "ldots" || cmd === "dots") buffer += "\u2026";
+        else if (cmd === "LaTeX") buffer += "LaTeX";
+        else if (cmd === "TeX") buffer += "TeX";
+        i += textCmdMatch[0].length;
+        continue;
+      }
+
+      // Escaped special chars
+      const escMatch = rest.match(
+        /^\\(textbackslash\{\}|textasciitilde\{\}|textasciicircum\{\}|[&%$#_{}])/
+      );
+      if (escMatch) {
+        const ch = escMatch[1];
+        if (ch === "textbackslash{}") buffer += "\\";
+        else if (ch === "textasciitilde{}") buffer += "~";
+        else if (ch === "textasciicircum{}") buffer += "^";
+        else buffer += ch;
+        i += escMatch[0].length;
+        continue;
+      }
+
+      // \\  -> hard break
+      if (rest.startsWith("\\\\")) {
+        flush();
+        nodes.push({ type: "hardBreak" });
+        i += 2;
+        // skip optional newline
+        if (i < text.length && text[i] === "\n") i++;
+        continue;
+      }
+
+      // Unknown \command{...} or \command[...]{...} — preserve raw
+      const unknownCmd = rest.match(/^\\([a-zA-Z@]+)/);
+      if (unknownCmd) {
+        buffer += "\\" + unknownCmd[1];
+        i += unknownCmd[0].length;
+        // Consume optional starred
+        if (i < text.length && text[i] === "*") {
+          buffer += "*";
+          i++;
+        }
+        // Consume optional [...] args
+        while (i < text.length && text[i] === "[") {
+          const closeBracket = text.indexOf("]", i);
+          if (closeBracket !== -1) {
+            buffer += text.slice(i, closeBracket + 1);
+            i = closeBracket + 1;
+          } else {
+            break;
+          }
+        }
+        // Consume {braced} args (up to 2)
+        let braceCount = 0;
+        while (i < text.length && text[i] === "{" && braceCount < 2) {
+          const inner = extractBraced(text, i);
+          if (inner) {
+            buffer += "{" + inner.content + "}";
+            i = inner.end;
+            braceCount++;
+          } else {
+            break;
+          }
+        }
+        continue;
+      }
+
+      // Lone backslash (shouldn't normally happen) — preserve it
+      buffer += "\\";
+      i++;
+      continue;
+    }
+
+    buffer += text[i];
+    i++;
+  }
+
+  flush();
+  return nodes;
+}
+
+function extractBraced(
+  text: string,
+  startOfBrace: number
+): { content: string; end: number } | null {
+  if (text[startOfBrace] !== "{") return null;
+  let depth = 1;
+  let i = startOfBrace + 1;
+  while (i < text.length && depth > 0) {
+    if (text[i] === "{" && text[i - 1] !== "\\") depth++;
+    if (text[i] === "}" && text[i - 1] !== "\\") depth--;
+    i++;
+  }
+  if (depth !== 0) return null;
+  return { content: text.slice(startOfBrace + 1, i - 1), end: i };
+}
+
+function unescapeLatex(text: string): string {
+  return text;
+}
+
+export function parseLatex(latex: string): JSONContent {
+  const body = stripPreamble(latex);
+  const doc: JSONContent = { type: "doc", content: [] };
+
+  if (!body) {
+    doc.content = [{ type: "paragraph" }];
+    return doc;
+  }
+
+  const ctx: ParseContext = { pos: 0, src: body };
+  parseBody(ctx, doc);
+
+  if (!doc.content || doc.content.length === 0) {
+    doc.content = [{ type: "paragraph" }];
+  }
+
+  // Number footnotes sequentially
+  numberFootnotes(doc);
+
+  return doc;
+}
+
+function numberFootnotes(node: JSONContent): void {
+  let counter = 1;
+  function walk(n: JSONContent) {
+    if (n.type === "footnote") {
+      n.attrs = { ...n.attrs, number: counter++ };
+    }
+    if (n.content) {
+      for (const child of n.content) {
+        walk(child);
+      }
+    }
+  }
+  walk(node);
+}
+
+function parseBody(ctx: ParseContext, parent: JSONContent): void {
+  if (!parent.content) parent.content = [];
+
+  while (ctx.pos < ctx.src.length) {
+    skipWhitespace(ctx);
+    if (ctx.pos >= ctx.src.length) break;
+
+    const rest = ctx.src.slice(ctx.pos);
+
+    // \section{...}
+    const sectionMatch = rest.match(/^\\(section|subsection|subsubsection)\{/);
+    if (sectionMatch) {
+      const level =
+        sectionMatch[1] === "section"
+          ? 1
+          : sectionMatch[1] === "subsection"
+            ? 2
+            : 3;
+      ctx.pos += sectionMatch[0].length - 1; // position at {
+      const inner = extractBraced(ctx.src, ctx.pos);
+      if (inner) {
+        parent.content.push({
+          type: "heading",
+          attrs: { level },
+          content: parseInlineContent(inner.content),
+        });
+        ctx.pos = inner.end;
+        continue;
+      }
+    }
+
+    // Display math \[...\]
+    if (rest.startsWith("\\[")) {
+      const endMath = ctx.src.indexOf("\\]", ctx.pos + 2);
+      if (endMath !== -1) {
+        parent.content.push({
+          type: "displayMath",
+          attrs: { latex: ctx.src.slice(ctx.pos + 2, endMath).trim() },
+        });
+        ctx.pos = endMath + 2;
+        continue;
+      }
+    }
+
+    // \begin{...}
+    const beginMatch = rest.match(/^\\begin\{(\w+)\}/);
+    if (beginMatch) {
+      const env = beginMatch[1];
+      ctx.pos += beginMatch[0].length;
+      const envEnd = ctx.src.indexOf(`\\end{${env}}`, ctx.pos);
+      const envContent =
+        envEnd !== -1
+          ? ctx.src.slice(ctx.pos, envEnd)
+          : ctx.src.slice(ctx.pos);
+      ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
+
+      switch (env) {
+        case "verbatim":
+          parent.content.push({
+            type: "codeBlock",
+            content: [{ type: "text", text: envContent.trim() }],
+          });
+          break;
+        case "quote":
+          {
+            const quoteDoc: JSONContent = { type: "blockquote", content: [] };
+            const quoteCtx: ParseContext = { pos: 0, src: envContent.trim() };
+            parseBody(quoteCtx, quoteDoc);
+            parent.content.push(quoteDoc);
+          }
+          break;
+        case "itemize":
+          parent.content.push(parseList(envContent, "bulletList"));
+          break;
+        case "enumerate":
+          parent.content.push(parseList(envContent, "orderedList"));
+          break;
+        default:
+          // Unknown environment — preserve as paragraph
+          parent.content.push({
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: `\\begin{${env}}${envContent}\\end{${env}}`,
+              },
+            ],
+          });
+      }
+      continue;
+    }
+
+    // % comment line
+    if (rest.startsWith("%")) {
+      const eol = ctx.src.indexOf("\n", ctx.pos);
+      const commentText = eol !== -1
+        ? ctx.src.slice(ctx.pos + 1, eol).trim()
+        : ctx.src.slice(ctx.pos + 1).trim();
+      ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
+      parent.content.push({
+        type: "latexComment",
+        attrs: { text: commentText },
+      });
+      continue;
+    }
+
+    // \hrulefill
+    if (rest.startsWith("\\hrulefill")) {
+      parent.content.push({ type: "horizontalRule" });
+      ctx.pos += "\\hrulefill".length;
+      continue;
+    }
+
+    // \archivemarker{id}{preview} — handle at block level to avoid
+    // readParagraph breaking on escaped backslashes inside the preview
+    if (rest.startsWith("\\archivemarker{")) {
+      const idArg = extractBraced(ctx.src, ctx.pos + "\\archivemarker".length);
+      if (idArg !== null) {
+        const previewArg = extractBraced(ctx.src, idArg.end);
+        if (previewArg !== null) {
+          parent.content.push({
+            type: "paragraph",
+            content: [{
+              type: "archiveMarker",
+              attrs: {
+                archiveId: idArg.content,
+                preview: previewArg.content.replace(/\\(\{|\}|\\)/g, "$1"),
+              },
+            }],
+          });
+          ctx.pos = previewArg.end;
+          continue;
+        }
+      }
+    }
+
+    // Regular paragraph — read until double newline or a command
+    const para = readParagraph(ctx);
+    if (para) {
+      const content = parseInlineContent(para);
+      if (content.length > 0) {
+        parent.content.push({ type: "paragraph", content });
+      }
+    }
+  }
+}
+
+function parseList(content: string, type: string): JSONContent {
+  const items: JSONContent[] = [];
+  const itemRegex = /\\item\s*/g;
+  let match;
+  const positions: number[] = [];
+
+  while ((match = itemRegex.exec(content)) !== null) {
+    positions.push(match.index + match[0].length);
+  }
+
+  for (let i = 0; i < positions.length; i++) {
+    const start = positions[i];
+    const end = i + 1 < positions.length ? positions[i + 1] - 6 : content.length; // approximate
+    const itemText = content.slice(start, end).trim();
+    const itemContent = parseInlineContent(itemText);
+    items.push({
+      type: "listItem",
+      content: [{ type: "paragraph", content: itemContent }],
+    });
+  }
+
+  return { type, content: items };
+}
+
+function skipWhitespace(ctx: ParseContext): void {
+  while (ctx.pos < ctx.src.length && /\s/.test(ctx.src[ctx.pos])) {
+    ctx.pos++;
+  }
+}
+
+function readParagraph(ctx: ParseContext): string {
+  let result = "";
+  while (ctx.pos < ctx.src.length) {
+    // Double newline ends paragraph
+    if (ctx.src[ctx.pos] === "\n" && ctx.pos + 1 < ctx.src.length && ctx.src[ctx.pos + 1] === "\n") {
+      ctx.pos += 2;
+      break;
+    }
+
+    // Break at % comment lines (only if at start of line)
+    if (ctx.src[ctx.pos] === "%" && result.trim()) {
+      // Check if this is at start of a line
+      const prevChar = ctx.pos > 0 ? ctx.src[ctx.pos - 1] : "\n";
+      if (prevChar === "\n") {
+        break;
+      }
+    }
+
+    // Check if next non-space char is a block-level command
+    if (ctx.src[ctx.pos] === "\\" && result.trim()) {
+      const rest = ctx.src.slice(ctx.pos);
+      if (
+        /^\\(section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par)\b/.test(
+          rest
+        )
+      ) {
+        break;
+      }
+    }
+
+    result += ctx.src[ctx.pos];
+    ctx.pos++;
+  }
+  return result.trim();
+}

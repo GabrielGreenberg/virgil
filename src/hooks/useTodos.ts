@@ -1,0 +1,114 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { v4 as uuid } from "uuid";
+import type { TodoState, TodoItem } from "@/lib/types";
+
+const EMPTY: TodoState = { items: [] };
+
+export function useTodos(docId: string | null) {
+  const [state, setState] = useState<TodoState>(EMPTY);
+  const docIdRef = useRef(docId);
+
+  useEffect(() => {
+    docIdRef.current = docId;
+    if (!docId) { setState(EMPTY); return; }
+    fetch(`/api/todos?docId=${docId}`)
+      .then((r) => r.json())
+      .then((data: TodoState) => {
+        if (docIdRef.current === docId && data.items) setState(data);
+      })
+      .catch(() => {});
+  }, [docId]);
+
+  const persist = useCallback(async (s: TodoState) => {
+    const id = docIdRef.current;
+    if (!id) return;
+    try {
+      await fetch(`/api/todos?docId=${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(s),
+      });
+    } catch (err) {
+      console.error("Failed to save todos:", err);
+    }
+  }, []);
+
+  const addItem = useCallback((text: string) => {
+    const item: TodoItem = {
+      id: uuid(),
+      text,
+      notes: "",
+      done: false,
+      createdAt: new Date().toISOString(),
+    };
+    setState((prev) => {
+      const next = { items: [...prev.items, item] };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const toggleItem = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { items: prev.items.map((i) => i.id === id ? { ...i, done: !i.done } : i) };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const updateItem = useCallback((id: string, text: string) => {
+    setState((prev) => {
+      const next = { items: prev.items.map((i) => i.id === id ? { ...i, text } : i) };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const updateNotes = useCallback((id: string, notes: string) => {
+    setState((prev) => {
+      const next = { items: prev.items.map((i) => i.id === id ? { ...i, notes } : i) };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const deleteItem = useCallback((id: string) => {
+    setState((prev) => {
+      const next = { items: prev.items.filter((i) => i.id !== id) };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const reorder = useCallback((fromIndex: number, toIndex: number) => {
+    setState((prev) => {
+      const items = [...prev.items];
+      const [moved] = items.splice(fromIndex, 1);
+      items.splice(toIndex, 0, moved);
+      const next = { items };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const archiveDone = useCallback(() => {
+    setState((prev) => {
+      const next = { items: prev.items.filter((i) => !i.done) };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  return {
+    items: state.items,
+    addItem,
+    toggleItem,
+    updateItem,
+    updateNotes,
+    deleteItem,
+    reorder,
+    archiveDone,
+  };
+}
