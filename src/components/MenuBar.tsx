@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Editor } from "@tiptap/react";
 
 interface MenuBarProps {
@@ -35,7 +36,7 @@ function Btn({
   );
 }
 
-export default function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote }: MenuBarProps) {
   if (!editor) return null;
 
   return (
@@ -195,3 +196,5 @@ export default function MenuBar({ editor, onAddComment, onArchive, onCreateFootn
     </div>
   );
 }
+
+export default memo(MenuBar);

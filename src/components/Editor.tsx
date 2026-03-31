@@ -2,12 +2,14 @@
 
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { Heading } from "@tiptap/extension-heading";
+import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler } from "@/lib/tiptap-extensions";
 import MenuBar from "./MenuBar";
 
 interface EditorProps {
@@ -93,11 +95,142 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
 
+  const HeadingWithLabel = Heading.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        label: { default: null },
+      };
+    },
+    renderHTML({ HTMLAttributes, node }) {
+      const level = node.attrs.level as number;
+      return [`h${level}`, mergeAttributes(HTMLAttributes), 0];
+    },
+    addNodeView() {
+      return ({ node, getPos, editor: nodeEditor }) => {
+        const TYPE_NAMES = ["Section", "Subsection", "Subsubsection"];
+        let currentNode = node;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "heading-wrapper";
+
+        const h = document.createElement(`h${node.attrs.level}`) as HTMLHeadingElement;
+        wrapper.appendChild(h);
+
+        const annot = document.createElement("div");
+        annot.className = "heading-annotation";
+        annot.contentEditable = "false";
+        wrapper.appendChild(annot);
+
+        function getTypeName(n: typeof node) {
+          return TYPE_NAMES[Math.min((n.attrs.level as number) - 1, 2)];
+        }
+
+        function renderAnnot() {
+          const typeName = getTypeName(currentNode);
+          const label = currentNode.attrs.label as string | null;
+          annot.innerHTML = "";
+          const span = document.createElement("span");
+          span.textContent = label ? `${typeName}  ·  label:${label}` : typeName;
+          annot.appendChild(span);
+        }
+
+        renderAnnot();
+
+        // Phase 1: prevent browser default on mousedown so the contenteditable
+        // doesn't receive focus (which would let PM steal it back later).
+        annot.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        // Phase 2: on click (after mouseup), create the input and focus it.
+        // By this point PM's mouseup handler has already run harmlessly
+        // (since mousedown was prevented, PM never set up a MouseDown tracker).
+        annot.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (annot.querySelector("input")) return;
+
+          annot.innerHTML = "";
+          const typeName = getTypeName(currentNode);
+          const prefix = document.createElement("span");
+          prefix.textContent = `${typeName}  ·  label:`;
+          annot.appendChild(prefix);
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "heading-label-input";
+          input.value = (currentNode.attrs.label as string) || "";
+          input.placeholder = "label key";
+          annot.appendChild(input);
+
+          // Stop mousedown on the input itself from reaching PM
+          input.addEventListener("mousedown", (ev) => ev.stopPropagation());
+
+          let committed = false;
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const newLabel = input.value.trim() || null;
+            const p = typeof getPos === "function" ? getPos() : null;
+            if (p != null) {
+              nodeEditor.chain().setNodeSelection(p).updateAttributes("heading", { label: newLabel }).run();
+              nodeEditor.commands.focus();
+            }
+            renderAnnot();
+          };
+
+          input.addEventListener("keydown", (ev) => {
+            if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+            if (ev.key === "Escape") { ev.preventDefault(); committed = true; renderAnnot(); }
+          });
+          // Arm blur-to-commit after a delay so PM's async focus
+          // recovery doesn't immediately destroy the input.
+          let armed = false;
+          input.addEventListener("blur", () => { if (armed) commit(); });
+          setTimeout(() => { armed = true; }, 200);
+
+          // Focus the input. If PM steals focus within 200ms, we
+          // refocus. This handles PM's selectionchange observer.
+          input.focus();
+          input.select();
+          const refocusId = setInterval(() => {
+            if (document.activeElement !== input && annot.contains(input)) {
+              input.focus();
+              input.select();
+            }
+          }, 30);
+          setTimeout(() => clearInterval(refocusId), 250);
+        });
+
+        return {
+          dom: wrapper,
+          contentDOM: h,
+          // Tell ProseMirror to ignore all events originating from the annotation
+          // area so it cannot steal focus from our label input.
+          stopEvent(event) {
+            return annot === event.target || annot.contains(event.target as Node);
+          },
+          update(updatedNode) {
+            if (updatedNode.type.name !== "heading") return false;
+            if (updatedNode.attrs.level !== currentNode.attrs.level) return false;
+            currentNode = updatedNode;
+            // Don't overwrite annot if an input is active
+            if (!annot.querySelector("input")) renderAnnot();
+            return true;
+          },
+        };
+      };
+    },
+  }).configure({ levels: [1, 2, 3] });
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
+        heading: false,
       }),
+      HeadingWithLabel,
       Placeholder.configure({
         placeholder: "Start writing...",
       }),
@@ -112,6 +245,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       ArchiveMarker,
       Citation,
       LatexCommandMark,
+      LabelHandler,
     ],
     content: initialContent,
     editorProps: {

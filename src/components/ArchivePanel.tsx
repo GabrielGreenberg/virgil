@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, memo } from "react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 
@@ -16,7 +16,7 @@ interface ArchivePanelProps {
   anchoredIds?: Set<string>;
 }
 
-export default function ArchivePanel({
+function ArchivePanel({
   snippets,
   selectedId,
   onSelect,
@@ -225,3 +225,5 @@ export default function ArchivePanel({
     </div>
   );
 }
+
+export default memo(ArchivePanel);

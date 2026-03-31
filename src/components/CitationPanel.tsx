@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 
 interface CitationPanelProps {
@@ -40,7 +40,7 @@ const BIB_PACKAGES = [
   { value: "natbib", label: "natbib" },
 ];
 
-export default function CitationPanel({
+function CitationPanel({
   citations,
   bibEntries,
   citationStyle,
@@ -437,3 +437,5 @@ export default function CitationPanel({
     </div>
   );
 }
+
+export default memo(CitationPanel);

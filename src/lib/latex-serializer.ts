@@ -66,10 +66,12 @@ function serializeNode(node: JSONContent): string {
 
     case "heading": {
       const level = (node.attrs?.level as number) || 1;
+      const label = node.attrs?.label as string | null;
       const inner = (node.content || []).map(serializeInline).join("");
       const commands = ["\\section", "\\subsection", "\\subsubsection"];
       const cmd = commands[Math.min(level - 1, 2)];
-      return `${cmd}{${inner}}\n\n`;
+      const labelStr = label ? `\n\\label{${label}}` : "";
+      return `${cmd}{${inner}}${labelStr}\n\n`;
     }
 
     case "codeBlock": {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 
 interface HeadingItem {
@@ -147,7 +147,7 @@ function OutlineNode({
   );
 }
 
-export default function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const headings = useMemo(() => extractHeadings(content), [content]);
@@ -217,3 +217,5 @@ export default function OutlinePanel({ content, onScrollTo }: OutlinePanelProps)
     </div>
   );
 }
+
+export default memo(OutlinePanel);

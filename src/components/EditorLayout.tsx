@@ -492,6 +492,7 @@ export default function EditorLayout() {
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
+  const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
@@ -591,7 +592,11 @@ export default function EditorLayout() {
   }, [editingTabId]);
 
   const handleUpdate = useCallback(
-    (doc: JSONContent) => { setLatestDoc(doc); onUpdate(doc); },
+    (doc: JSONContent) => {
+      onUpdate(doc);
+      if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
+      latestDocTimerRef.current = setTimeout(() => setLatestDoc(doc), 300);
+    },
     [onUpdate]
   );
 

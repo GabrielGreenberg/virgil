@@ -156,22 +156,12 @@ export default function ArchiveConnectors({
     });
     window.addEventListener("resize", scheduleCompute);
 
-    // Recompute when editor content or selection changes
-    if (editor) {
-      editor.on("update", scheduleCompute);
-      editor.on("selectionUpdate", scheduleCompute);
-    }
-
     return () => {
       cancelAnimationFrame(rafRef.current);
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
       window.removeEventListener("resize", scheduleCompute);
-      if (editor) {
-        editor.off("update", scheduleCompute);
-        editor.off("selectionUpdate", scheduleCompute);
-      }
     };
-  }, [compute, scheduleCompute, editor, mainRef]);
+  }, [compute, scheduleCompute, mainRef]);
 
   if (connectors.length === 0) return null;
 

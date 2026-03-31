@@ -410,12 +410,20 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       ctx.pos += sectionMatch[0].length - 1; // position at {
       const inner = extractBraced(ctx.src, ctx.pos);
       if (inner) {
+        ctx.pos = inner.end;
+        // Check for optional \label{...} immediately after (whitespace allowed)
+        const afterHeading = ctx.src.slice(ctx.pos);
+        const labelMatch = afterHeading.match(/^[ \t]*\n?[ \t]*\\label\{([^}]*)\}/);
+        let label: string | null = null;
+        if (labelMatch) {
+          label = labelMatch[1];
+          ctx.pos += labelMatch[0].length;
+        }
         parent.content.push({
           type: "heading",
-          attrs: { level },
+          attrs: { level, label },
           content: parseInlineContent(inner.content),
         });
-        ctx.pos = inner.end;
         continue;
       }
     }

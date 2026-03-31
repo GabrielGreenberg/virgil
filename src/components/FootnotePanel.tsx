@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, memo } from "react";
 import type { FootnoteInfo } from "./Editor";
 
 interface FootnotePanelProps {
@@ -12,7 +12,7 @@ interface FootnotePanelProps {
   onScrollToMarker: (id: string) => void;
 }
 
-export default function FootnotePanel({
+function FootnotePanel({
   footnotes,
   selectedId,
   onSelect,
@@ -219,3 +219,5 @@ export default function FootnotePanel({
     </div>
   );
 }
+
+export default memo(FootnotePanel);
