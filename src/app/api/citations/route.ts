@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { readJsonFile, writeJsonFile, getMetaPath } from "@/lib/storage";
 import type { CitationsState } from "@/lib/types";
 
-const DEFAULT: CitationsState = { citations: [], bibPath: "", citationStyle: "apa" };
+const DEFAULT: CitationsState = { citations: [], bibPath: "", citationStyle: "apa", bibPackage: "biblatex" };
 
 function getDocId(request: Request): string | null {
   return new URL(request.url).searchParams.get("docId");

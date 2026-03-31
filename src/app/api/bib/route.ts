@@ -51,6 +51,22 @@ async function resolveBibFilename(docId: string): Promise<string> {
   return "references.bib";
 }
 
+/** Detect bib package from tex preamble and command usage */
+async function detectBibPackage(docId: string): Promise<string> {
+  try {
+    const texPath = await getTexPath(docId);
+    const tex = await readTextFile(texPath, "");
+    // Explicit package declaration
+    if (/\\usepackage(\[.*?\])?\{biblatex\}/.test(tex)) return "biblatex";
+    if (/\\usepackage(\[.*?\])?\{natbib\}/.test(tex)) return "natbib";
+    // Infer from command usage: biblatex-specific commands
+    if (/\\(textcite|parencite|autocite|footcite|textcites|parencites|cites)\b/.test(tex)) return "biblatex";
+    // Infer from natbib-specific commands
+    if (/\\(citet|citep|citealt|citealp|citeyearpar)\b/.test(tex)) return "natbib";
+  } catch { /* fall through */ }
+  return "natbib";
+}
+
 export async function GET(request: Request) {
   try {
     const docId = getDocId(request);
@@ -58,7 +74,8 @@ export async function GET(request: Request) {
     const bibFilename = await resolveBibFilename(docId);
     const bibPath = await getSiblingPath(docId, bibFilename);
     const bibText = await readTextFile(bibPath, "");
-    return NextResponse.json({ bibText });
+    const detectedPackage = await detectBibPackage(docId);
+    return NextResponse.json({ bibText, detectedPackage });
   } catch (error) {
     console.error("Error loading bib:", error);
     return NextResponse.json({ error: "Failed" }, { status: 500 });

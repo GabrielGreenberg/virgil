@@ -13,6 +13,7 @@ import ArchivePanel from "./ArchivePanel";
 import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "./FootnotePanel";
 import FootnoteConnectors from "./FootnoteConnectors";
+import CitationConnectors from "./CitationConnectors";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
@@ -458,11 +459,13 @@ export default function EditorLayout() {
     citations,
     bibPath,
     citationStyle,
+    bibPackage,
     bibEntries,
     addCitation,
     updateCitation,
     deleteCitation,
     setStyle: setCitationStyle,
+    setBibPackage,
     updateBibEntry,
     getDisplayText: getCitationDisplayText,
     getFormattedBib,
@@ -498,12 +501,27 @@ export default function EditorLayout() {
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
 
   // Derive citation order from editor state
-  const citationOrder = useMemo(() => {
-    return editorRef.current?.getCitationOrder() ?? [];
+  // Debounced citation order and editor citations (avoid recomputing on every keystroke)
+  const [citationOrder, setCitationOrder] = useState<string[]>([]);
+  const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[] }>>([]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCitationOrder(editorRef.current?.getCitationOrder() ?? []);
+      const cits = editorRef.current?.getCitations() ?? [];
+      setAllEditorCitations(
+        cits.map((c) => {
+          const keyMatch = c.command.match(/\{([^}]+)\}/);
+          const keys = keyMatch ? keyMatch[1].split(",").map((k: string) => k.trim()) : [];
+          return { citationId: c.citationId, command: c.command, keys };
+        })
+      );
+    }, 500);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, editorInstance]);
 
-  // Update citation display text when bib entries change
+  // Update citation display text when bib entries or style changes
   useEffect(() => {
     if (!editorInstance || bibEntries.length === 0) return;
     const cits = editorRef.current?.getCitations() ?? [];
@@ -513,7 +531,8 @@ export default function EditorLayout() {
         editorRef.current?.updateCitationDisplay(c.citationId, display);
       }
     }
-  }, [bibEntries, editorInstance, getCitationDisplayText, latestDoc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bibEntries, editorInstance, getCitationDisplayText]);
 
   // Sync citation nodes from editor into citations state on load.
   // Editor is source of truth (IDs are regenerated each parse).
@@ -741,6 +760,11 @@ export default function EditorLayout() {
         } else {
           if (p.activeRight !== "references") setActiveRight("references");
         }
+        // Scroll the panel entry into view
+        requestAnimationFrame(() => {
+          const entry = document.querySelector(`[data-citation-entry="${detail.citationId}"]`);
+          entry?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
       }
     };
     window.addEventListener("virgil-citation-click", handler);
@@ -872,6 +896,8 @@ export default function EditorLayout() {
     activeLeft === "archive" ? "left" : activeRight === "archive" ? "right" : null;
   const footnotePanelSide: "left" | "right" | null =
     activeLeft === "footnotes" ? "left" : activeRight === "footnotes" ? "right" : null;
+  const citationPanelSide: "left" | "right" | null =
+    activeLeft === "references" ? "left" : activeRight === "references" ? "right" : null;
 
   // Render a panel by its ID
   function renderPanel(panelId: PanelId, side: Side) {
@@ -991,6 +1017,7 @@ export default function EditorLayout() {
             citations={citations}
             bibEntries={bibEntries}
             citationStyle={citationStyle}
+            bibPackage={bibPackage}
             bibPath={bibPath}
             selectedId={selectedCitationId}
             citationOrder={citationOrder}
@@ -1000,6 +1027,7 @@ export default function EditorLayout() {
             onDeleteCitation={deleteCitation}
             onUpdateBibEntry={updateBibEntry}
             onSetStyle={setCitationStyle}
+            onSetBibPackage={setBibPackage}
             getDisplayText={getCitationDisplayText}
             getFormattedBib={getFormattedBib}
             pendingCreate={pendingCitationCreate}
@@ -1011,6 +1039,7 @@ export default function EditorLayout() {
               editorRef.current?.insertCitation(cmd, citId, display);
             }}
             onClearPendingCreate={() => setPendingCitationCreate(null)}
+            allEditorCitations={allEditorCitations}
           />
         </ResizablePanel>
       );
@@ -1158,6 +1187,15 @@ export default function EditorLayout() {
             editor={editorInstance}
             selectedId={selectedFootnoteId}
             panelSide={footnotePanelSide}
+            mainRef={mainAreaRef}
+          />
+        )}
+        {/* Citation connector lines */}
+        {citationPanelSide && selectedCitationId && (
+          <CitationConnectors
+            editor={editorInstance}
+            selectedId={selectedCitationId}
+            panelSide={citationPanelSide}
             mainRef={mainAreaRef}
           />
         )}

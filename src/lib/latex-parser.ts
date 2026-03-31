@@ -170,13 +170,15 @@ function parseInlineContent(text: string): JSONContent[] {
         }
       }
 
-      // Natbib citation commands: \cite, \citet, \citep, \citealt, \citealp, \citeauthor, \citeyear, \citeyearpar
-      // Also Capitalized variants (\Citet, etc.) and starred variants (\citet*, etc.)
-      const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|cite)(\*?)/);
+      // Citation commands: natbib (\cite, \citet, \citep, etc.) and biblatex (\textcite, \parencite, \cites, etc.)
+      // Longer names must come first to avoid partial matches
+      const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite)(\*?)/);
       if (citeMatch) {
         flush();
         let pos = i + citeMatch[0].length;
         let fullCmd = citeMatch[0];
+        const cmdLower = citeMatch[1].toLowerCase();
+        const isMultiCite = cmdLower.endsWith("s") && ["cites", "textcites", "parencites", "autocites", "footcites"].includes(cmdLower);
 
         // Consume optional [...] arguments (up to 2)
         for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
@@ -189,11 +191,20 @@ function parseInlineContent(text: string): JSONContent[] {
           }
         }
 
-        // Consume required {keys} argument
-        if (pos < text.length && text[pos] === "{") {
-          const inner = extractBraced(text, pos);
-          if (inner !== null) {
-            fullCmd += "{" + inner.content + "}";
+        if (isMultiCite) {
+          // Biblatex multi-cite: \cites{key1}{key2}{key3} — consume all consecutive {key} groups
+          let found = false;
+          while (pos < text.length && text[pos] === "{") {
+            const inner = extractBraced(text, pos);
+            if (inner !== null) {
+              fullCmd += "{" + inner.content + "}";
+              pos = inner.end;
+              found = true;
+            } else {
+              break;
+            }
+          }
+          if (found) {
             nodes.push({
               type: "citation",
               attrs: {
@@ -202,8 +213,26 @@ function parseInlineContent(text: string): JSONContent[] {
                 displayText: "",
               },
             });
-            i = inner.end;
+            i = pos;
             continue;
+          }
+        } else {
+          // Single {keys} argument (natbib comma-separated or biblatex single key)
+          if (pos < text.length && text[pos] === "{") {
+            const inner = extractBraced(text, pos);
+            if (inner !== null) {
+              fullCmd += "{" + inner.content + "}";
+              nodes.push({
+                type: "citation",
+                attrs: {
+                  citationId: crypto.randomUUID(),
+                  command: fullCmd,
+                  displayText: "",
+                },
+              });
+              i = inner.end;
+              continue;
+            }
           }
         }
 
@@ -248,21 +277,22 @@ function parseInlineContent(text: string): JSONContent[] {
         continue;
       }
 
-      // Unknown \command{...} or \command[...]{...} — preserve raw
+      // Unknown \command{...} or \command[...]{...} — render as grey monospace
       const unknownCmd = rest.match(/^\\([a-zA-Z@]+)/);
       if (unknownCmd) {
-        buffer += "\\" + unknownCmd[1];
+        flush();
+        let cmdText = "\\" + unknownCmd[1];
         i += unknownCmd[0].length;
         // Consume optional starred
         if (i < text.length && text[i] === "*") {
-          buffer += "*";
+          cmdText += "*";
           i++;
         }
         // Consume optional [...] args
         while (i < text.length && text[i] === "[") {
           const closeBracket = text.indexOf("]", i);
           if (closeBracket !== -1) {
-            buffer += text.slice(i, closeBracket + 1);
+            cmdText += text.slice(i, closeBracket + 1);
             i = closeBracket + 1;
           } else {
             break;
@@ -273,13 +303,18 @@ function parseInlineContent(text: string): JSONContent[] {
         while (i < text.length && text[i] === "{" && braceCount < 2) {
           const inner = extractBraced(text, i);
           if (inner) {
-            buffer += "{" + inner.content + "}";
+            cmdText += "{" + inner.content + "}";
             i = inner.end;
             braceCount++;
           } else {
             break;
           }
         }
+        nodes.push({
+          type: "text",
+          text: cmdText,
+          marks: [{ type: "latexCommand" }],
+        });
         continue;
       }
 
@@ -398,10 +433,11 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       }
     }
 
-    // \begin{...}
-    const beginMatch = rest.match(/^\\begin\{(\w+)\}/);
+    // \begin{...}[optional]
+    const beginMatch = rest.match(/^\\begin\{(\w+)\}(\[[^\]]*\])?/);
     if (beginMatch) {
       const env = beginMatch[1];
+      const optArg = beginMatch[2] || "";
       ctx.pos += beginMatch[0].length;
       const envEnd = ctx.src.indexOf(`\\end{${env}}`, ctx.pos);
       const envContent =
@@ -432,13 +468,14 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           parent.content.push(parseList(envContent, "orderedList"));
           break;
         default:
-          // Unknown environment — preserve as paragraph
+          // Unknown environment — preserve as grey monospace paragraph
           parent.content.push({
             type: "paragraph",
             content: [
               {
                 type: "text",
-                text: `\\begin{${env}}${envContent}\\end{${env}}`,
+                text: `\\begin{${env}}${optArg}${envContent}\\end{${env}}`,
+                marks: [{ type: "latexCommand" }],
               },
             ],
           });

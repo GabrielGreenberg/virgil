@@ -1,5 +1,5 @@
-import { Node, mergeAttributes } from "@tiptap/react";
-import { InputRule } from "@tiptap/core";
+import { Node, Mark, mergeAttributes } from "@tiptap/react";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
@@ -179,6 +179,27 @@ function editableAtomView({
 
 // --- Inline Math ---
 
+// --- LaTeX Command mark (grey monospace for unhandled commands) ---
+
+export const LatexCommandMark = Mark.create({
+  name: "latexCommand",
+
+  parseHTML() {
+    return [{ tag: 'span[data-latex-cmd]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-latex-cmd": "",
+        class: "latex-cmd",
+      }),
+      0,
+    ];
+  },
+});
+
 export const InlineMath = Node.create({
   name: "inlineMath",
   group: "inline",
@@ -206,14 +227,35 @@ export const InlineMath = Node.create({
     ];
   },
 
-  addInputRules() {
+  addProseMirrorPlugins() {
+    const nodeType = this.type;
     return [
-      new InputRule({
-        find: /\$([^$]+)\$$/,
-        handler: ({ state, range, match }) => {
-          const latex = match[1];
-          const { tr } = state;
-          tr.replaceWith(range.from, range.to, this.type.create({ latex }));
+      new Plugin({
+        key: new PluginKey("inlineMathInput"),
+        props: {
+          handleTextInput(view, from, _to, text) {
+            if (text !== "$") return false;
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(
+              Math.max(0, $from.parentOffset - 200),
+              $from.parentOffset,
+              undefined,
+              "\ufffc"
+            );
+            // Match $...$ where the closing $ is what the user just typed
+            const match = textBefore.match(/\$([^$]+)$/);
+            if (!match) return false;
+            const latex = match[1];
+            const start = from - match[0].length;
+            const tr = state.tr.replaceWith(
+              start,
+              from,
+              nodeType.create({ latex })
+            );
+            view.dispatch(tr);
+            return true;
+          },
         },
       }),
     ];
@@ -262,14 +304,36 @@ export const DisplayMath = Node.create({
     ];
   },
 
-  addInputRules() {
+  addProseMirrorPlugins() {
+    const nodeType = this.type;
     return [
-      new InputRule({
-        find: /\$\$([^$]+)\$\$$/,
-        handler: ({ state, range, match }) => {
-          const latex = match[1];
-          const { tr } = state;
-          tr.replaceWith(range.from, range.to, this.type.create({ latex }));
+      new Plugin({
+        key: new PluginKey("displayMathInput"),
+        props: {
+          handleTextInput(view, from, _to, text) {
+            if (text !== "$") return false;
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(
+              Math.max(0, $from.parentOffset - 500),
+              $from.parentOffset,
+              undefined,
+              "\ufffc"
+            );
+            // Match $$...$$  where the last $ is what the user typed, preceded by another $
+            // So textBefore must end with $$...$$  (3 $s: opening $$, content, closing $ already typed)
+            const match = textBefore.match(/\$\$([^$]+)\$$/);
+            if (!match) return false;
+            const latex = match[1];
+            const start = from - match[0].length;
+            const tr = state.tr.replaceWith(
+              start,
+              from,
+              nodeType.create({ latex })
+            );
+            view.dispatch(tr);
+            return true;
+          },
         },
       }),
     ];
@@ -321,24 +385,50 @@ export const Footnote = Node.create({
     ];
   },
 
-  addInputRules() {
+  addProseMirrorPlugins() {
+    const nodeType = this.type;
     return [
-      new InputRule({
-        find: /\\footnote\{([^}]*)\}$/,
-        handler: ({ state, range, match }) => {
-          const content = match[1];
-          const footnoteId = crypto.randomUUID();
-          const { tr } = state;
-          // Insert the footnote node
-          tr.replaceWith(range.from, range.to, this.type.create({ content, footnoteId, number: 0 }));
-          // Renumber all footnotes in a follow-up step
-          let counter = 1;
-          tr.doc.descendants((node, pos) => {
-            if (node.type.name === "footnote") {
-              tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: counter++ });
-            }
+      new Plugin({
+        key: new PluginKey("footnoteInput"),
+        props: {
+          handleTextInput(view, from, _to, text) {
+            if (text !== "}") return false;
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(
+              Math.max(0, $from.parentOffset - 200),
+              $from.parentOffset,
+              undefined,
+              "\ufffc"
+            ) + text;
+            const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
+            if (!match) return false;
+            const content = match[1];
+            const footnoteId = crypto.randomUUID();
+            const start = from + 1 - match[0].length;
+            const tr = state.tr.replaceWith(
+              start,
+              from + 1,
+              nodeType.create({ content, footnoteId, number: 0 })
+            );
+            // Insert the typed "}" into the document first so replaceWith range is valid
+            // Actually we already accounted for it — replaceWith from start to from+1 covers the "}" we're inserting
+            // But we need to handle this: from is pre-insert, so we replace start..from and consume the text
+            const trFixed = state.tr.replaceWith(
+              start,
+              from,
+              nodeType.create({ content, footnoteId, number: 0 })
+            );
+            let counter = 1;
+            trFixed.doc.descendants((node, pos) => {
+              if (node.type.name === "footnote") {
+                trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: counter++ });
+              }
+              return true;
+            });
+            view.dispatch(trFixed);
             return true;
-          });
+          },
         },
       }),
     ];
@@ -460,16 +550,30 @@ export const LatexComment = Node.create({
     ];
   },
 
-  addInputRules() {
+  addProseMirrorPlugins() {
+    const nodeType = this.type;
     return [
-      new InputRule({
-        find: /^%(.*)$/,
-        handler: ({ state, range, match }) => {
-          const text = (match[1] || "").replace(/^ /, "");
-          const { tr } = state;
-          tr.replaceWith(range.from, range.to, this.type.create({ text }));
-          // Signal the newly created node view to auto-focus
-          _pendingAutoFocusComment = true;
+      new Plugin({
+        key: new PluginKey("latexCommentInput"),
+        props: {
+          handleTextInput(view, from, _to, text) {
+            // Only trigger on "%" or " " after "%"
+            if (text !== "%" && text !== " ") return false;
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+            const combined = textBefore + text;
+            if (!combined.match(/^% ?$/)) return false;
+
+            const blockStart = $from.start();
+            const blockEnd = $from.end();
+            const fullText = state.doc.textBetween(blockStart, blockEnd, "", "");
+            const commentText = (fullText.startsWith("%") ? fullText : text + fullText.slice($from.parentOffset)).replace(/^% ?/, "");
+            const tr = state.tr.replaceWith(blockStart - 1, blockEnd + 1, nodeType.create({ text: commentText }));
+            view.dispatch(tr);
+            _pendingAutoFocusComment = !commentText;
+            return true;
+          },
         },
       }),
     ];
@@ -566,13 +670,13 @@ export const ArchiveMarker = Node.create({
 
 // --- Citation (inline atom, rendered with lemon-yellow highlight + left bar) ---
 
-// Natbib command names we recognise (lowercase forms; parser also handles Capitalised)
-const CITE_CMDS = "Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|cite";
+// Citation command names: natbib + biblatex (longer names first to avoid partial match)
+const CITE_CMDS = "Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite";
 const CITE_RE_FULL = new RegExp(
-  `\\\\(C?(?:${CITE_CMDS}))(\\*?)(?:\\[([^\\]]*)\\])?(?:\\[([^\\]]*)\\])?\{([^}]+)\}$`
+  `\\\\(${CITE_CMDS})(\\*?)(?:\\[([^\\]]*)\\])?(?:\\[([^\\]]*)\\])?(\\{[^}]+\\}(?:\\{[^}]+\\})*)$`
 );
 const CITE_RE_BARE = new RegExp(
-  `\\\\(C?(?:${CITE_CMDS}))(\\*?)$`
+  `\\\\(${CITE_CMDS})(\\*?)$`
 );
 
 // Flag: when a bare \cite is typed, signal the panel to open
@@ -613,41 +717,65 @@ export const Citation = Node.create({
     ];
   },
 
-  addInputRules() {
+  addProseMirrorPlugins() {
+    const nodeType = this.type;
     return [
-      // Full citation command: \citep{key} or \citet*[see][ch.2]{key1,key2}
-      new InputRule({
-        find: CITE_RE_FULL,
-        handler: ({ state, range, match }) => {
-          const command = match[0];
-          const { tr } = state;
-          tr.replaceWith(
-            range.from,
-            range.to,
-            this.type.create({
-              citationId: crypto.randomUUID(),
-              command,
-              displayText: "", // computed at render time by the NodeView
-            })
-          );
-        },
-      }),
+      new Plugin({
+        key: new PluginKey("citationInput"),
+        props: {
+          handleTextInput(view, from, to, text) {
+            // Only check on characters that could complete a citation pattern
+            if (text !== "}" && text !== " " && text !== "\n") return false;
 
-      // Bare citation command: \cite or \citep* (no brace) — trigger panel
-      new InputRule({
-        find: CITE_RE_BARE,
-        handler: ({ state, range, match }) => {
-          const partial = match[0]; // e.g. "\citep"
-          _pendingCitationCreate = partial;
-          const { tr } = state;
-          tr.delete(range.from, range.to);
-          setTimeout(() => {
-            window.dispatchEvent(
-              new CustomEvent("virgil-citation-create", {
-                detail: { partial },
-              })
-            );
-          }, 0);
+            const { state } = view;
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(
+              Math.max(0, $from.parentOffset - 120),
+              $from.parentOffset,
+              undefined,
+              "\ufffc"
+            ) + text;
+
+            if (text === "}") {
+              // Full citation command ending with }
+              const match = textBefore.match(CITE_RE_FULL);
+              if (match) {
+                const command = match[0];
+                const start = from + text.length - command.length;
+                const tr = state.tr.replaceWith(
+                  start,
+                  from + text.length,
+                  nodeType.create({
+                    citationId: crypto.randomUUID(),
+                    command,
+                    displayText: "",
+                  })
+                );
+                view.dispatch(tr);
+                return true;
+              }
+            } else {
+              // Bare citation command followed by space/enter
+              const beforeSpace = textBefore.slice(0, -1);
+              const match = beforeSpace.match(CITE_RE_BARE);
+              if (match) {
+                const partial = match[0];
+                _pendingCitationCreate = partial;
+                const start = from - partial.length;
+                const tr = state.tr.delete(start, from);
+                view.dispatch(tr);
+                setTimeout(() => {
+                  window.dispatchEvent(
+                    new CustomEvent("virgil-citation-create", {
+                      detail: { partial },
+                    })
+                  );
+                }, 0);
+                return true;
+              }
+            }
+            return false;
+          },
         },
       }),
     ];
@@ -660,20 +788,9 @@ export const Citation = Node.create({
       dom.dataset.type = "citation";
       dom.dataset.citationId = node.attrs.citationId || "";
       dom.contentEditable = "false";
+      dom.textContent = node.attrs.displayText || node.attrs.command || "";
 
-      // Left bar
-      const bar = document.createElement("span");
-      bar.className = "citation-node-bar";
-      dom.appendChild(bar);
-
-      // Display text
-      const text = document.createElement("span");
-      text.className = "citation-node-text";
-      text.textContent = node.attrs.displayText || node.attrs.command || "";
-      dom.appendChild(text);
-
-      // Click bar or text → open panel
-      const handleClick = (e: Event) => {
+      dom.addEventListener("click", (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
         window.dispatchEvent(
@@ -681,16 +798,14 @@ export const Citation = Node.create({
             detail: { citationId: node.attrs.citationId },
           })
         );
-      };
-      bar.addEventListener("click", handleClick);
-      text.addEventListener("click", handleClick);
+      });
 
       return {
         dom,
         update(updatedNode: any) {
           if (updatedNode.type.name !== "citation") return false;
           dom.dataset.citationId = updatedNode.attrs.citationId || "";
-          text.textContent =
+          dom.textContent =
             updatedNode.attrs.displayText || updatedNode.attrs.command || "";
           return true;
         },

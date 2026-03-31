@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 
 interface CitationPanelProps {
   citations: CitationRef[];
   bibEntries: BibEntry[];
   citationStyle: string;
+  bibPackage: string;
   bibPath: string;
   selectedId: string | null;
   citationOrder: string[];
@@ -16,6 +17,7 @@ interface CitationPanelProps {
   onDeleteCitation: (id: string) => void;
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onSetStyle: (style: string) => void;
+  onSetBibPackage: (pkg: string) => void;
   getDisplayText: (command: string) => string;
   getFormattedBib: (entry: BibEntry) => string;
   // New citation creation
@@ -23,6 +25,8 @@ interface CitationPanelProps {
   onCreateCitation: (command: string) => string; // returns citationId
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
+  // All citation nodes from editor, for occurrence counting
+  allEditorCitations?: Array<{ citationId: string; command: string; keys: string[] }>;
 }
 
 const STYLES = [
@@ -31,10 +35,16 @@ const STYLES = [
   { value: "harvard1", label: "Harvard" },
 ];
 
+const BIB_PACKAGES = [
+  { value: "biblatex", label: "biblatex" },
+  { value: "natbib", label: "natbib" },
+];
+
 export default function CitationPanel({
   citations,
   bibEntries,
   citationStyle,
+  bibPackage,
   bibPath,
   selectedId,
   citationOrder,
@@ -44,12 +54,14 @@ export default function CitationPanel({
   onDeleteCitation,
   onUpdateBibEntry,
   onSetStyle,
+  onSetBibPackage,
   getDisplayText,
   getFormattedBib,
   pendingCreate,
   onCreateCitation,
   onInsertCitation,
   onClearPendingCreate,
+  allEditorCitations = [],
 }: CitationPanelProps) {
   const [expandedBib, setExpandedBib] = useState<Set<string>>(new Set());
   const [editingCmd, setEditingCmd] = useState<string | null>(null);
@@ -59,6 +71,8 @@ export default function CitationPanel({
   const [showBibWarning, setShowBibWarning] = useState(false);
   const [newCiteCmd, setNewCiteCmd] = useState("");
   const newCiteRef = useRef<HTMLInputElement>(null);
+  // Track which occurrence is active per bib key (for 1/n cycling)
+  const [keyOccurrenceIdx, setKeyOccurrenceIdx] = useState<Record<string, number>>({});
 
   // When a pending create comes in, open the new-cite form
   useEffect(() => {
@@ -79,6 +93,48 @@ export default function CitationPanel({
   });
 
   const bibMap = new Map(bibEntries.map((e) => [e.key, e]));
+
+  // Build a map of bib key → all citation IDs that reference it (in document order)
+  const keyToCitationIds = useCallback(() => {
+    const map: Record<string, string[]> = {};
+    for (const cit of allEditorCitations) {
+      for (const key of cit.keys) {
+        if (!map[key]) map[key] = [];
+        map[key].push(cit.citationId);
+      }
+    }
+    return map;
+  }, [allEditorCitations]);
+
+  // Sync occurrence index when selectedId changes (e.g. from clicking in-text)
+  useEffect(() => {
+    if (!selectedId) return;
+    const occMap = keyToCitationIds();
+    for (const [key, ids] of Object.entries(occMap)) {
+      const idx = ids.indexOf(selectedId);
+      if (idx >= 0) {
+        setKeyOccurrenceIdx((prev) => ({ ...prev, [key]: idx }));
+      }
+    }
+  }, [selectedId, keyToCitationIds]);
+
+  const cycleOccurrence = useCallback((key: string, delta: number) => {
+    const ids = keyToCitationIds()[key] || [];
+    if (ids.length <= 1) return;
+    const cur = keyOccurrenceIdx[key] || 0;
+    const next = (cur + delta + ids.length) % ids.length;
+    const targetId = ids[next];
+    setKeyOccurrenceIdx((prev) => ({ ...prev, [key]: next }));
+    if (targetId) {
+      onSelect(targetId);
+      onScrollToMarker(targetId);
+      // Scroll panel entry into view too
+      requestAnimationFrame(() => {
+        const entry = document.querySelector(`[data-citation-entry="${targetId}"]`);
+        entry?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      });
+    }
+  }, [keyToCitationIds, keyOccurrenceIdx, onScrollToMarker, onSelect]);
 
   const toggleBibExpand = (key: string) => {
     setExpandedBib((prev) => {
@@ -141,15 +197,26 @@ export default function CitationPanel({
           <h3 className="text-sm font-semibold text-stone-700">
             Reference Notes ({citations.length})
           </h3>
-          <select
-            value={citationStyle}
-            onChange={(e) => onSetStyle(e.target.value)}
-            className="text-xs border border-stone-300 rounded px-1.5 py-0.5 bg-white text-stone-600"
-          >
-            {STYLES.map((s) => (
-              <option key={s.value} value={s.value}>{s.label}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-1.5">
+            <select
+              value={bibPackage}
+              onChange={(e) => onSetBibPackage(e.target.value)}
+              className="text-xs border border-stone-300 rounded px-1.5 py-0.5 bg-white text-stone-600"
+            >
+              {BIB_PACKAGES.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+            <select
+              value={citationStyle}
+              onChange={(e) => onSetStyle(e.target.value)}
+              className="text-xs border border-stone-300 rounded px-1.5 py-0.5 bg-white text-stone-600"
+            >
+              {STYLES.map((s) => (
+                <option key={s.value} value={s.value}>{s.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
         {bibPath && (
           <div className="text-xs text-stone-400 truncate" title={bibPath}>
@@ -201,11 +268,13 @@ export default function CitationPanel({
         {orderedCitations.map((cit) => {
           const isSelected = selectedId === cit.id;
           const displayText = getDisplayText(cit.command);
-          const entries = cit.keys.map((k) => bibMap.get(k)).filter(Boolean) as BibEntry[];
+          const bibEntriesForCit = cit.keys.map((k) => bibMap.get(k)).filter(Boolean) as BibEntry[];
+          const occMap = keyToCitationIds();
 
           return (
             <div
               key={cit.id}
+              data-citation-entry={cit.id}
               className={`border-b border-[var(--border)] cursor-pointer transition-colors ${
                 isSelected ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-stone-50"
               }`}
@@ -215,9 +284,38 @@ export default function CitationPanel({
               }}
             >
               <div className="px-4 py-2.5">
-                {/* Layer 1: WYSIWYG display */}
-                <div className="citation-display-line text-sm mb-1.5">
-                  {displayText}
+                {/* Layer 1: WYSIWYG display + occurrence counter */}
+                <div className="flex items-center gap-2 mb-1.5">
+                  <div className="citation-display-line text-sm flex-1">
+                    {displayText}
+                  </div>
+                  {/* Show 1/n counter if any key is cited multiple times */}
+                  {cit.keys.some((k) => (occMap[k]?.length || 0) > 1) && (
+                    <div className="flex items-center gap-0.5 text-xs text-stone-400 shrink-0">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cit.keys.forEach((k) => cycleOccurrence(k, -1)); }}
+                        className="hover:text-stone-600 px-0.5"
+                        title="Previous occurrence"
+                      >
+                        ▲
+                      </button>
+                      <span className="font-mono">
+                        {(() => {
+                          const k = cit.keys[0];
+                          const ids = occMap[k] || [];
+                          const idx = keyOccurrenceIdx[k] ?? ids.indexOf(cit.id);
+                          return `${idx + 1}/${ids.length}`;
+                        })()}
+                      </span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); cit.keys.forEach((k) => cycleOccurrence(k, 1)); }}
+                        className="hover:text-stone-600 px-0.5"
+                        title="Next occurrence"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Layer 2: LaTeX command */}
@@ -248,7 +346,7 @@ export default function CitationPanel({
                 )}
 
                 {/* Layer 3: BibTeX entries */}
-                {entries.map((entry) => (
+                {bibEntriesForCit.map((entry) => (
                   <div key={entry.key} className="mb-1.5">
                     <div
                       className="flex items-center gap-1 text-xs text-stone-400 cursor-pointer hover:text-stone-600"
@@ -324,7 +422,7 @@ export default function CitationPanel({
                 ))}
 
                 {/* Layer 4: Formatted bibliography */}
-                {entries.map((entry) => (
+                {bibEntriesForCit.map((entry) => (
                   <div
                     key={entry.key + "-bib"}
                     className="text-xs text-stone-600 leading-relaxed bib-formatted"

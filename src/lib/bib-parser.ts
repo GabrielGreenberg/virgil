@@ -109,11 +109,11 @@ export function serializeBibFile(entries: BibEntry[]): string {
 }
 
 // ---------------------------------------------------------------------------
-// Natbib command parsing
+// Citation command parsing (natbib + biblatex)
 // ---------------------------------------------------------------------------
 
 export interface ParsedCiteCommand {
-  type: string; // "cite", "citet", "citep", "citealt", "citealp", "citeauthor", "citeyear", "citeyearpar"
+  type: string; // normalized: "cite", "citet"/"textcite", "citep"/"parencite", "citealt", "citealp", "citeauthor", "citeyear", "citeyearpar", "autocite", "footcite", "cites", "textcites", "parencites"
   starred: boolean;
   capitalized: boolean;
   keys: string[];
@@ -121,14 +121,27 @@ export interface ParsedCiteCommand {
   postnote?: string;
 }
 
+// Natbib regex: \cite, \citet, \citep, etc. with optional [pre][post]{keys}
+const NATBIB_RE = /^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|cite)(\*?)(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]+)\}$/;
+
+// Biblatex single-key commands: \textcite{key}, \parencite[pre][post]{key}, \autocite{key}, etc.
+const BIBLATEX_SINGLE_RE = /^\\(Textcites?|Parencites?|Autocites?|Footcites?|Cites?|textcites?|parencites?|autocites?|footcites?|cites?|citeauthor|citeyear|Citeauthor|Citeyear)(\*?)(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?(\{[^}]*\}(?:\{[^}]*\})*)$/;
+
 /**
- * Parse a natbib command string into its components.
- * E.g. "\\citep*[see][ch.2]{jones1990,smith2001}"
+ * Parse a citation command string (natbib or biblatex) into its components.
  */
+export function parseCiteCommand(command: string): ParsedCiteCommand | null {
+  // Try natbib first
+  const natbib = parseNatbibCommand(command);
+  if (natbib) return natbib;
+
+  // Try biblatex
+  return parseBiblatexCommand(command);
+}
+
+/** Parse a natbib command string */
 export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
-  const m = command.match(
-    /^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|cite)(\*?)(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]+)\}$/
-  );
+  const m = command.match(NATBIB_RE);
   if (!m) return null;
 
   let cmdName = m[1];
@@ -136,8 +149,6 @@ export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
   const capitalized = cmdName[0] === "C";
   if (capitalized) cmdName = cmdName[0].toLowerCase() + cmdName.slice(1);
 
-  // With two optional args: first is prenote, second is postnote
-  // With one optional arg: it's postnote
   let prenote: string | undefined;
   let postnote: string | undefined;
   if (m[4] !== undefined) {
@@ -148,6 +159,31 @@ export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
   }
 
   const keys = m[5].split(",").map((k) => k.trim());
+  return { type: cmdName, starred, capitalized, keys, prenote, postnote };
+}
+
+/** Parse a biblatex command string */
+export function parseBiblatexCommand(command: string): ParsedCiteCommand | null {
+  const m = command.match(BIBLATEX_SINGLE_RE);
+  if (!m) return null;
+
+  let cmdName = m[1];
+  const starred = m[2] === "*";
+  const capitalized = cmdName[0] >= "A" && cmdName[0] <= "Z";
+  if (capitalized) cmdName = cmdName[0].toLowerCase() + cmdName.slice(1);
+
+  let prenote: string | undefined;
+  let postnote: string | undefined;
+  if (m[4] !== undefined) {
+    prenote = m[3];
+    postnote = m[4];
+  } else if (m[3] !== undefined) {
+    postnote = m[3];
+  }
+
+  // Extract all keys from potentially multiple {key} groups
+  const keysStr = m[5];
+  const keys = [...keysStr.matchAll(/\{([^}]*)\}/g)].map((km) => km[1].trim());
 
   return { type: cmdName, starred, capitalized, keys, prenote, postnote };
 }
@@ -157,14 +193,15 @@ export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Generate the WYSIWYG inline display text for a natbib command.
+ * Generate the WYSIWYG inline display text for a citation command.
  * This is what appears in the editor body.
  */
 export function formatInlineCitation(
   command: string,
-  bibEntries: BibEntry[]
+  bibEntries: BibEntry[],
+  bibPackage: string = "natbib"
 ): string {
-  const parsed = parseNatbibCommand(command);
+  const parsed = parseCiteCommand(command);
   if (!parsed) return command; // fallback: show raw command
 
   const entryMap = new Map(bibEntries.map((e) => [e.key, e]));
@@ -204,9 +241,34 @@ export function formatInlineCitation(
   // Build parts for each key
   const entries = keys.map((k) => entryMap.get(k));
 
+  // starred (*) = full author list (no "et al." truncation)
+
   switch (type) {
+    case "cite": {
+      if (bibPackage === "biblatex") {
+        // biblatex authoryear: \cite = "Author Year", \cite* = "Year"
+        const parts = entries.map((e, i) => {
+          if (starred) return getYear(e);
+          const a = formatAuthor(e, false, capitalized && i === 0);
+          return `${a} ${getYear(e)}`;
+        });
+        const inner = parts.join("; ");
+        const pre = prenote ? prenote + " " : "";
+        const post = postnote ? ", " + postnote : "";
+        return `${pre}${inner}${post}`;
+      }
+      // natbib: \cite = same as \citet: Author (Year)
+      const parts = entries.map((e, i) => {
+        const a = formatAuthor(e, starred, capitalized && i === 0);
+        const y = getYear(e);
+        const yPart = postnote ? `${y}, ${postnote}` : y;
+        return `${a} (${i === 0 && prenote ? prenote + " " : ""}${yPart})`;
+      });
+      return parts.join("; ");
+    }
+
     case "citet": {
-      // Jones et al. (1990); Smith (2001)
+      // Author (Year)
       const parts = entries.map((e, i) => {
         const a = formatAuthor(e, starred, capitalized && i === 0);
         const y = getYear(e);
@@ -217,7 +279,7 @@ export function formatInlineCitation(
     }
 
     case "citep": {
-      // (Jones et al., 1990; Smith, 2001)
+      // (Author, Year)
       const parts = entries.map((e, i) => {
         const a = formatAuthor(e, starred, capitalized && i === 0);
         const y = getYear(e);
@@ -230,7 +292,7 @@ export function formatInlineCitation(
     }
 
     case "citealt": {
-      // Jones et al. 1990
+      // Author Year — no parens, no comma
       const parts = entries.map((e, i) => {
         const a = formatAuthor(e, starred, capitalized && i === 0);
         return `${a} ${getYear(e)}`;
@@ -239,7 +301,7 @@ export function formatInlineCitation(
     }
 
     case "citealp": {
-      // Jones et al., 1990
+      // Author, Year — no parens
       const parts = entries.map((e, i) => {
         const a = formatAuthor(e, starred, capitalized && i === 0);
         return `${a}, ${getYear(e)}`;
@@ -251,6 +313,7 @@ export function formatInlineCitation(
     }
 
     case "citeauthor": {
+      // Author only
       const parts = entries.map((e, i) =>
         formatAuthor(e, starred, capitalized && i === 0)
       );
@@ -265,14 +328,60 @@ export function formatInlineCitation(
       return "(" + entries.map(getYear).join("; ") + ")";
     }
 
-    case "cite": {
-      // \cite behaves like \citet in author-year mode
+    // --- Biblatex commands ---
+
+    case "textcite":
+    case "textcites": {
+      // Like \citet: Author (Year)
       const parts = entries.map((e, i) => {
         const a = formatAuthor(e, starred, capitalized && i === 0);
         const y = getYear(e);
         return `${a} (${y})`;
       });
       return parts.join("; ");
+    }
+
+    case "parencite":
+    case "parencites": {
+      // Like \citep: (Author, Year)
+      const parts = entries.map((e, i) => {
+        const a = formatAuthor(e, starred, capitalized && i === 0);
+        return `${a}, ${getYear(e)}`;
+      });
+      const inner = parts.join("; ");
+      const pre = prenote ? prenote + " " : "";
+      const post = postnote ? ", " + postnote : "";
+      return `(${pre}${inner}${post})`;
+    }
+
+    case "cites": {
+      // biblatex \cites = multiple \cite: Author Year; Author Year
+      const parts = entries.map((e, i) => {
+        if (starred) return getYear(e);
+        const a = formatAuthor(e, false, capitalized && i === 0);
+        return `${a} ${getYear(e)}`;
+      });
+      return parts.join("; ");
+    }
+
+    case "autocite":
+    case "autocites": {
+      // In authoryear style, \autocite = \parencite
+      const parts = entries.map((e, i) => {
+        const a = formatAuthor(e, starred, capitalized && i === 0);
+        return `${a}, ${getYear(e)}`;
+      });
+      return `(${parts.join("; ")})`;
+    }
+
+    case "footcite":
+    case "footcites": {
+      // Footnote citation — show as superscript-like indicator
+      const parts = entries.map((e, i) => {
+        const a = formatAuthor(e, starred, capitalized && i === 0);
+        return `${a}, ${getYear(e)}`;
+      });
+      return `[fn: ${parts.join("; ")}]`;
     }
 
     default:

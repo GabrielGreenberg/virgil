@@ -19,6 +19,9 @@ function serializeMarks(
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
 
+  // latexCommand mark: text is already raw LaTeX — return as-is
+  if (marks.some((m) => m.type === "latexCommand")) return text;
+
   let result = escapeLatex(text);
   for (const mark of marks) {
     switch (mark.type) {

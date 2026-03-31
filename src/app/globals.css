@@ -278,17 +278,22 @@ body {
   opacity: 1;
 }
 
+/* Unhandled LaTeX commands — grey monospace */
+.ProseMirror .latex-cmd {
+  font-family: var(--font-mono), ui-monospace, monospace !important;
+  color: #9ca3af !important;
+  font-size: 0.9em;
+}
+
 /* Citation inline nodes */
 .citation-node {
-  display: inline-flex;
-  align-items: stretch;
+  display: inline;
   background: #fef9c3;
-  border-radius: 2px;
+  border-radius: 3px;
   cursor: pointer;
-  font-size: inherit;
-  line-height: inherit;
-  vertical-align: baseline;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
+  border: 1.5px solid #d4a843;
+  padding: 0px 4px;
 }
 
 .citation-node:hover {
@@ -296,19 +301,11 @@ body {
 }
 
 .citation-node-bar {
-  width: 3px;
-  background: #d4a843;
-  border-radius: 2px 0 0 2px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.citation-node-bar:hover {
-  background: #b8912e;
+  display: none;
 }
 
 .citation-node-text {
-  padding: 1px 5px 1px 4px;
+  /* text flows inline with body */
 }
 
 /* Citation display in panel */

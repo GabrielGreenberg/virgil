@@ -7,7 +7,7 @@ import Highlight from "@tiptap/extension-highlight";
 import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark } from "@/lib/tiptap-extensions";
 import MenuBar from "./MenuBar";
 
 interface EditorProps {
@@ -111,6 +111,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LatexComment,
       ArchiveMarker,
       Citation,
+      LatexCommandMark,
     ],
     content: initialContent,
     editorProps: {

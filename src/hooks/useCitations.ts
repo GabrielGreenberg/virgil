@@ -6,12 +6,12 @@ import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
   parseBibFile,
   serializeBibFile,
-  parseNatbibCommand,
+  parseCiteCommand,
   formatInlineCitation,
   formatBibliography,
 } from "@/lib/bib-parser";
 
-const EMPTY: CitationsState = { citations: [], bibPath: "", citationStyle: "apa" };
+const EMPTY: CitationsState = { citations: [], bibPath: "", citationStyle: "apa", bibPackage: "biblatex" };
 
 export function useCitations(docId: string | null) {
   const [state, setState] = useState<CitationsState>(EMPTY);
@@ -43,7 +43,7 @@ export function useCitations(docId: string | null) {
     if (!docId) return;
     fetch(`/api/bib?docId=${docId}`)
       .then((r) => r.json())
-      .then((data: { bibText: string }) => {
+      .then((data: { bibText: string; detectedPackage?: string }) => {
         if (docRef.current === docId) {
           setBibRaw(data.bibText || "");
           if (data.bibText) {
@@ -52,6 +52,10 @@ export function useCitations(docId: string | null) {
             } catch {
               setBibEntries([]);
             }
+          }
+          // Auto-set bib package from tex preamble detection
+          if (data.detectedPackage) {
+            setState((prev) => ({ ...prev, bibPackage: data.detectedPackage! }));
           }
         }
       })
@@ -88,7 +92,7 @@ export function useCitations(docId: string | null) {
 
   const addCitation = useCallback(
     (command: string, existingId?: string): CitationRef => {
-      const parsed = parseNatbibCommand(command);
+      const parsed = parseCiteCommand(command);
       const ref: CitationRef = {
         id: existingId || uuid(),
         command,
@@ -109,7 +113,7 @@ export function useCitations(docId: string | null) {
 
   const updateCitation = useCallback(
     (id: string, command: string) => {
-      const parsed = parseNatbibCommand(command);
+      const parsed = parseCiteCommand(command);
       setState((prev) => {
         const next = {
           ...prev,
@@ -139,6 +143,17 @@ export function useCitations(docId: string | null) {
     (style: string) => {
       setState((prev) => {
         const next = { ...prev, citationStyle: style };
+        persistState(next);
+        return next;
+      });
+    },
+    [persistState]
+  );
+
+  const setBibPackage = useCallback(
+    (pkg: string) => {
+      setState((prev) => {
+        const next = { ...prev, bibPackage: pkg };
         persistState(next);
         return next;
       });
@@ -178,7 +193,7 @@ export function useCitations(docId: string | null) {
 
   const getDisplayText = useCallback(
     (command: string): string => {
-      return formatInlineCitation(command, bibEntries);
+      return formatInlineCitation(command, bibEntries, stateRef.current.bibPackage);
     },
     [bibEntries]
   );
@@ -194,7 +209,7 @@ export function useCitations(docId: string | null) {
   const syncFromEditor = useCallback(
     (editorCitations: Array<{ citationId: string; command: string }>) => {
       const refs: CitationRef[] = editorCitations.map((ec) => {
-        const parsed = parseNatbibCommand(ec.command);
+        const parsed = parseCiteCommand(ec.command);
         return {
           id: ec.citationId,
           command: ec.command,
@@ -215,12 +230,14 @@ export function useCitations(docId: string | null) {
     citations: state.citations,
     bibPath: state.bibPath,
     citationStyle: state.citationStyle,
+    bibPackage: state.bibPackage || "biblatex",
     bibEntries,
     bibRaw,
     addCitation,
     updateCitation,
     deleteCitation,
     setStyle,
+    setBibPackage,
     updateBibEntry,
     getBibEntry,
     getDisplayText,

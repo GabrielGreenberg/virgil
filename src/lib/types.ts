@@ -108,6 +108,7 @@ export interface CitationsState {
   citations: CitationRef[];
   bibPath: string; // relative path to .bib file
   citationStyle: string; // CSL template name: "apa", "chicago-author-date", "mla"
+  bibPackage: string; // "natbib" | "biblatex"
 }
 
 export interface CitationInfo {
