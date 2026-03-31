@@ -9,7 +9,7 @@ import Highlight from "@tiptap/extension-highlight";
 import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField } from "@/lib/tiptap-extensions";
 import MenuBar from "./MenuBar";
 
 interface EditorProps {
@@ -131,7 +131,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           const label = currentNode.attrs.label as string | null;
           annot.innerHTML = "";
           const span = document.createElement("span");
-          span.textContent = label ? `${typeName}  ·  label:${label}` : typeName;
+          span.textContent = label ? `${typeName}  ·  label: ${label}` : typeName;
           annot.appendChild(span);
         }
 
@@ -155,7 +155,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           annot.innerHTML = "";
           const typeName = getTypeName(currentNode);
           const prefix = document.createElement("span");
-          prefix.textContent = `${typeName}  ·  label:`;
+          prefix.textContent = `${typeName}  ·  label: `;
           annot.appendChild(prefix);
 
           const input = document.createElement("input");
@@ -245,6 +245,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       ArchiveMarker,
       Citation,
       LatexCommandMark,
+      TitleField,
       LabelHandler,
     ],
     content: initialContent,
@@ -325,7 +326,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const el = domAtPos.node instanceof HTMLElement
           ? domAtPos.node
           : domAtPos.node.parentElement;
-        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+        el?.scrollIntoView({ behavior: "instant", block: "center" });
       }
     },
     archiveSelection(archiveId: string): string | null {
@@ -646,8 +647,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [highlightText, applyHighlight]);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0">
-      <div className="flex-1 overflow-y-auto bg-white">
+    <div className="flex flex-col flex-1 min-w-0 min-h-0">
+      <div className="flex-1 overflow-y-auto bg-white min-h-0">
         <EditorContent editor={editor} />
       </div>
     </div>

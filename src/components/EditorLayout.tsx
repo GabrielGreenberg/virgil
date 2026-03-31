@@ -1172,9 +1172,6 @@ export default function EditorLayout() {
         </div>
       )}
 
-      {/* Toolbar — spans full width above sidebars */}
-      <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} />
-
       {/* Main area: left strip + tab + left panel + editor + right panel + tab + right strip */}
       <div ref={mainAreaRef} className="flex flex-1 overflow-hidden relative">
         {/* Archive connector lines */}
@@ -1252,22 +1249,25 @@ export default function EditorLayout() {
           )
         }
 
-        {/* Editor column */}
-        {currentDocId && content && !docLoading ? (
-          <VirgilEditor
-            ref={editorRef}
-            initialContent={content}
-            onUpdate={handleUpdate}
-            highlightText={highlightText}
-            onAddComment={handleAddComment}
-            onArchive={handleArchive}
-            onEditorReady={setEditorInstance}
-          />
-        ) : (
-          <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
-            {docLoading ? "Loading..." : ""}
-          </div>
-        )}
+        {/* Editor column: toolbar + content */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden">
+          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} />
+          {currentDocId && content && !docLoading ? (
+            <VirgilEditor
+              ref={editorRef}
+              initialContent={content}
+              onUpdate={handleUpdate}
+              highlightText={highlightText}
+              onAddComment={handleAddComment}
+              onArchive={handleArchive}
+              onEditorReady={setEditorInstance}
+            />
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
+              {docLoading ? "Loading..." : ""}
+            </div>
+          )}
+        </div>
 
         {/* Right: collapsed tab or open panel */}
         {activeRight && rightItems.some((p) => p.id === activeRight)

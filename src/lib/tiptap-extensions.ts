@@ -320,8 +320,20 @@ export const DisplayMath = Node.create({
               undefined,
               "\ufffc"
             );
-            // Match $$...$$  where the last $ is what the user typed, preceded by another $
-            // So textBefore must end with $$...$$  (3 $s: opening $$, content, closing $ already typed)
+
+            // Case 1: $$ on an empty/start of paragraph → empty display math block
+            if (textBefore === "$") {
+              const start = from - 1;
+              const tr = state.tr.replaceWith(
+                start,
+                from,
+                nodeType.create({ latex: "" })
+              );
+              view.dispatch(tr);
+              return true;
+            }
+
+            // Case 2: $$content$$ — closing pair
             const match = textBefore.match(/\$\$([^$]+)\$$/);
             if (!match) return false;
             const latex = match[1];
@@ -574,6 +586,32 @@ export const LatexComment = Node.create({
             _pendingAutoFocusComment = !commentText;
             return true;
           },
+        },
+      }),
+      // Also catch paragraphs that start with "% " via appendTransaction,
+      // in case handleTextInput misses it (e.g. paste, or typing % before existing text)
+      new Plugin({
+        key: new PluginKey("latexCommentNormalize"),
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          const { doc } = newState;
+          const paragraphType = newState.schema.nodes.paragraph;
+          const changes: Array<{ pos: number; size: number; text: string }> = [];
+          doc.forEach((node, pos) => {
+            if (node.type !== paragraphType) return;
+            const text = node.textContent;
+            if (text.startsWith("% ") || text === "%") {
+              const commentText = text.replace(/^% ?/, "");
+              changes.push({ pos, size: node.nodeSize, text: commentText });
+            }
+          });
+          if (changes.length === 0) return null;
+          const tr = newState.tr;
+          for (const c of [...changes].reverse()) {
+            tr.replaceWith(c.pos, c.pos + c.size, nodeType.create({ text: c.text }));
+          }
+          _pendingAutoFocusComment = changes.some((c) => !c.text);
+          return tr;
         },
       }),
     ];
@@ -870,5 +908,114 @@ export const LabelHandler = Extension.create({
         },
       }),
     ];
+  },
+});
+
+// --- Title Field (block node with editable content, labeled "Title" / "Author" / "Date") ---
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  author: "Author",
+  date: "Date",
+};
+
+export const TitleField = Node.create({
+  name: "titleField",
+  group: "block",
+  content: "inline*",
+
+  addAttributes() {
+    return {
+      field: { default: "title" },
+      rawPrefix: { default: null },
+      isToday: { default: false },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="title-field"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "title-field",
+        "data-field": HTMLAttributes.field,
+      }),
+      0,
+    ];
+  },
+
+  addNodeView() {
+    return ({ node }) => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "title-field-wrapper";
+
+      const content = document.createElement("div");
+      content.className = `title-field-content${node.attrs.field === "title" ? " title-field-title" : ""}`;
+      wrapper.appendChild(content);
+
+      const annot = document.createElement("div");
+      annot.className = "title-field-annotation";
+      annot.contentEditable = "false";
+      annot.textContent = FIELD_LABELS[node.attrs.field as string] || node.attrs.field;
+      wrapper.appendChild(annot);
+
+      return {
+        dom: wrapper,
+        contentDOM: content,
+        update(updatedNode) {
+          if (updatedNode.type.name !== "titleField") return false;
+          annot.textContent = FIELD_LABELS[updatedNode.attrs.field as string] || updatedNode.attrs.field;
+          return true;
+        },
+      };
+    };
+  },
+});
+
+// --- Maketitle Marker (atom block, visual separator) ---
+
+export const MaketitleMarker = Node.create({
+  name: "maketitleMarker",
+  group: "block",
+  atom: true,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="maketitle-marker"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "maketitle-marker",
+        class: "maketitle-marker",
+      }),
+      "\\maketitle",
+    ];
+  },
+
+  addNodeView() {
+    return () => {
+      const wrapper = document.createElement("div");
+      wrapper.className = "maketitle-marker";
+
+      const line1 = document.createElement("span");
+      line1.className = "maketitle-line";
+      wrapper.appendChild(line1);
+
+      const label = document.createElement("span");
+      label.className = "maketitle-label";
+      label.textContent = "maketitle";
+      wrapper.appendChild(label);
+
+      const line2 = document.createElement("span");
+      line2.className = "maketitle-line";
+      wrapper.appendChild(line2);
+
+      return { dom: wrapper };
+    };
   },
 });

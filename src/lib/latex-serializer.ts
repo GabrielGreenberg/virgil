@@ -74,6 +74,16 @@ function serializeNode(node: JSONContent): string {
       return `${cmd}{${inner}}${labelStr}\n\n`;
     }
 
+    case "titleField": {
+      const field = node.attrs?.field as string;
+      const rawPrefix = (node.attrs?.rawPrefix as string) || "";
+      if (node.attrs?.isToday) {
+        return `\\${field}{\\today}\n\n`;
+      }
+      const inner = (node.content || []).map(serializeInline).join("");
+      return `\\${field}{${rawPrefix}${inner}}\n\n`;
+    }
+
     case "codeBlock": {
       const inner = (node.content || []).map(serializeInline).join("");
       return `\\begin{verbatim}\n${inner}\n\\end{verbatim}\n\n`;

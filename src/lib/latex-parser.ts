@@ -353,6 +353,7 @@ function unescapeLatex(text: string): string {
 }
 
 export function parseLatex(latex: string): JSONContent {
+  seenTitleFields.clear();
   const body = stripPreamble(latex);
   const doc: JSONContent = { type: "doc", content: [] };
 
@@ -388,6 +389,8 @@ function numberFootnotes(node: JSONContent): void {
   }
   walk(node);
 }
+
+const seenTitleFields = new Set<string>();
 
 function parseBody(ctx: ParseContext, parent: JSONContent): void {
   if (!parent.content) parent.content = [];
@@ -427,6 +430,40 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         continue;
       }
     }
+
+    // \title{...}, \author{...}, \date{...} — only first occurrence of each
+    const titleFieldMatch = rest.match(/^\\(title|author|date)\{/);
+    if (titleFieldMatch && !seenTitleFields.has(titleFieldMatch[1])) {
+      const field = titleFieldMatch[1];
+      seenTitleFields.add(field);
+      ctx.pos += titleFieldMatch[0].length - 1; // position at {
+      const inner = extractBraced(ctx.src, ctx.pos);
+      if (inner) {
+        ctx.pos = inner.end;
+        // Strip LaTeX formatting commands from content, store as rawPrefix
+        let rawContent = inner.content;
+        let rawPrefix = "";
+        const prefixMatch = rawContent.match(/^((?:\\(?:rmfamily|Large|large|huge|Huge|bfseries|itshape|sffamily|normalsize|small|footnotesize|tiny|textbf|textit|textsf)\s*)+)/);
+        if (prefixMatch) {
+          rawPrefix = prefixMatch[1];
+          rawContent = rawContent.slice(rawPrefix.length);
+        }
+        // Replace \today with actual date for display
+        let isToday = false;
+        if (rawContent.trim() === "\\today") {
+          isToday = true;
+          const now = new Date();
+          rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+        }
+        parent.content.push({
+          type: "titleField",
+          attrs: { field, rawPrefix: rawPrefix || null, isToday },
+          content: parseInlineContent(rawContent),
+        });
+        continue;
+      }
+    }
+
 
     // Display math \[...\]
     if (rest.startsWith("\\[")) {
