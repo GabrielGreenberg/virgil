@@ -88,5 +88,22 @@ export function useDocument(docId: string | null) {
     [debouncedSave]
   );
 
-  return { content, loading, onUpdate, saveNow: save, saveStatus };
+  const refetch = useCallback(() => {
+    const id = currentDocIdRef.current;
+    if (!id) return;
+    setLoading(true);
+    fetch(`/api/document?docId=${id}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (currentDocIdRef.current === id) {
+          setContent(data.content);
+          setLoading(false);
+        }
+      })
+      .catch(() => {
+        if (currentDocIdRef.current === id) setLoading(false);
+      });
+  }, []);
+
+  return { content, loading, onUpdate, saveNow: save, saveStatus, refetch };
 }

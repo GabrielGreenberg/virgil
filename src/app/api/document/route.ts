@@ -9,8 +9,8 @@ import {
   updateDocTimestamp,
 } from "@/lib/storage";
 import { parseLatex } from "@/lib/latex-parser";
-import { serializeToLatex } from "@/lib/latex-serializer";
-import type { EditorStateData } from "@/lib/types";
+import { serializeToLatex, assignUuids, extractSidecarData } from "@/lib/latex-serializer";
+import type { EditorStateData, VirgilSidecar } from "@/lib/types";
 
 const DEFAULT_LATEX = `\\documentclass{article}
 \\usepackage[utf8]{inputenc}
@@ -44,9 +44,11 @@ export async function GET(request: Request) {
 
     const texPath = await getTexPath(docId);
     const statePath = await getMetaPath(docId, "editor-state.json");
+    const sidecarPath = await getMetaPath(docId, "virgil.json");
 
     const latex = await readTextFile(texPath, DEFAULT_LATEX);
-    const doc = parseLatex(latex);
+    const sidecar = await readJsonFile<VirgilSidecar>(sidecarPath, { paragraphs: {} });
+    const doc = parseLatex(latex, sidecar);
     const editorState = await readJsonFile<EditorStateData>(statePath, DEFAULT_EDITOR_STATE);
 
     return NextResponse.json({ content: doc, editorState });
@@ -68,9 +70,15 @@ export async function PUT(request: Request) {
 
     const texPath = await getTexPath(docId);
     const statePath = await getMetaPath(docId, "editor-state.json");
+    const sidecarPath = await getMetaPath(docId, "virgil.json");
 
+    // Assign UUIDs to any non-empty paragraphs that lack them
+    assignUuids(content);
+
+    const sidecar = extractSidecarData(content);
     const latex = serializeToLatex(content);
     await writeTextFile(texPath, latex);
+    await writeJsonFile(sidecarPath, sidecar);
     await writeJsonFile(statePath, {
       ...editorState,
       lastModified: new Date().toISOString(),

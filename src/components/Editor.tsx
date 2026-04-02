@@ -3,13 +3,14 @@
 import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Heading } from "@tiptap/extension-heading";
+import { Paragraph } from "@tiptap/extension-paragraph";
 import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner } from "@/lib/tiptap-extensions";
 import MenuBar from "./MenuBar";
 
 interface EditorProps {
@@ -95,6 +96,186 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
 
+  const ParagraphWithTitle = Paragraph.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        parTitle: { default: null },
+        uuid: { default: null, rendered: false },
+      };
+    },
+    addNodeView() {
+      return ({ node, getPos, editor: nodeEditor }) => {
+        let currentNode = node;
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "par-title-wrapper";
+
+        // Controls in left margin
+        const controls = document.createElement("div");
+        controls.className = "par-title-controls";
+        controls.contentEditable = "false";
+        wrapper.appendChild(controls);
+
+        // Title annotation (above paragraph)
+        const titleAnnot = document.createElement("div");
+        titleAnnot.className = "par-title-annotation";
+        titleAnnot.contentEditable = "false";
+        wrapper.appendChild(titleAnnot);
+
+        // Paragraph content
+        const p = document.createElement("p");
+        wrapper.appendChild(p);
+
+        function setTitle(newTitle: string | null) {
+          const pos = typeof getPos === "function" ? getPos() : null;
+          if (pos != null) {
+            const n = nodeEditor.state.doc.nodeAt(pos);
+            if (n) {
+              const attrs = { ...n.attrs, parTitle: newTitle };
+              // Assign UUID if setting a title and node doesn't have one yet
+              if (newTitle && !attrs.uuid) {
+                attrs.uuid = Math.random().toString(16).slice(2, 6);
+              }
+              const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
+              nodeEditor.view.dispatch(tr);
+            }
+          }
+        }
+
+        function enterEditMode() {
+          // Create overlay input outside ProseMirror's DOM tree
+          const rect = titleAnnot.getBoundingClientRect();
+          const wrapperRect = wrapper.getBoundingClientRect();
+
+          titleAnnot.style.display = "block";
+          titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
+
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "par-title-input";
+          input.value = (currentNode.attrs.parTitle as string) || "";
+          input.placeholder = "Paragraph title…";
+          input.style.position = "fixed";
+          input.style.left = `${wrapperRect.left}px`;
+          input.style.top = `${titleAnnot.getBoundingClientRect().top}px`;
+          input.style.width = `${wrapperRect.width * 0.6}px`;
+          input.style.zIndex = "9999";
+          document.body.appendChild(input);
+
+          let committed = false;
+          const cleanup = () => {
+            if (document.body.contains(input)) document.body.removeChild(input);
+          };
+          const commit = () => {
+            if (committed) return;
+            committed = true;
+            const val = input.value.trim() || null;
+            cleanup();
+            setTitle(val);
+          };
+
+          input.addEventListener("keydown", (ev) => {
+            ev.stopPropagation();
+            if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanup(); renderAnnot(); }
+          });
+
+          input.addEventListener("blur", () => {
+            setTimeout(() => { if (!committed) commit(); }, 150);
+          });
+
+          input.focus();
+          input.select();
+        }
+
+        function renderAnnot() {
+          const title = currentNode.attrs.parTitle as string | null;
+          controls.innerHTML = "";
+          titleAnnot.innerHTML = "";
+
+          if (title) {
+            wrapper.classList.add("has-title");
+
+            // Show title text with × delete button inside annotation
+            titleAnnot.style.display = "block";
+            const xBtn = document.createElement("button");
+            xBtn.className = "par-title-delete";
+            xBtn.textContent = "×";
+            xBtn.title = "Remove title";
+            xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+            xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
+            titleAnnot.appendChild(xBtn);
+            const span = document.createElement("span");
+            span.textContent = title;
+            titleAnnot.appendChild(span);
+          } else {
+            wrapper.classList.remove("has-title");
+
+            // Only show controls if paragraph has real text content
+            const hasText = currentNode.textContent.trim().length > 0;
+            if (hasText) {
+              // + button (add)
+              const plusBtn = document.createElement("button");
+              plusBtn.className = "par-title-btn";
+              plusBtn.textContent = "+";
+              plusBtn.title = "Add title";
+              plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+              plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+              controls.appendChild(plusBtn);
+
+              // T label
+              const tLabel = document.createElement("span");
+              tLabel.className = "par-title-label";
+              tLabel.textContent = "T";
+              controls.appendChild(tLabel);
+            }
+
+            // Hide annotation area
+            titleAnnot.style.display = "none";
+          }
+        }
+
+        renderAnnot();
+
+        // Click on title text to edit
+        titleAnnot.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        titleAnnot.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (titleAnnot.querySelector("input")) return;
+          enterEditMode();
+        });
+
+        return {
+          dom: wrapper,
+          contentDOM: p,
+          stopEvent(event) {
+            return (
+              controls === event.target || controls.contains(event.target as Node) ||
+              titleAnnot === event.target || titleAnnot.contains(event.target as Node)
+            );
+          },
+          ignoreMutation(mutation) {
+            // Prevent ProseMirror from reacting to DOM changes in controls/annotation
+            if (controls.contains(mutation.target) || titleAnnot.contains(mutation.target)) return true;
+            if (mutation.target === wrapper && mutation.type === "childList") return true;
+            return false;
+          },
+          update(updatedNode) {
+            if (updatedNode.type.name !== "paragraph") return false;
+            currentNode = updatedNode;
+            if (!titleAnnot.querySelector("input")) renderAnnot();
+            return true;
+          },
+        };
+      };
+    },
+  });
+
   const HeadingWithLabel = Heading.extend({
     addAttributes() {
       return {
@@ -126,46 +307,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return TYPE_NAMES[Math.min((n.attrs.level as number) - 1, 2)];
         }
 
-        function renderAnnot() {
-          const typeName = getTypeName(currentNode);
-          const label = currentNode.attrs.label as string | null;
-          annot.innerHTML = "";
-          const span = document.createElement("span");
-          span.textContent = label ? `${typeName}  ·  label: ${label}` : typeName;
-          annot.appendChild(span);
-        }
-
-        renderAnnot();
-
-        // Phase 1: prevent browser default on mousedown so the contenteditable
-        // doesn't receive focus (which would let PM steal it back later).
-        annot.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-        });
-
-        // Phase 2: on click (after mouseup), create the input and focus it.
-        // By this point PM's mouseup handler has already run harmlessly
-        // (since mousedown was prevented, PM never set up a MouseDown tracker).
-        annot.addEventListener("click", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
+        function enterEditMode(targetSpan: HTMLElement) {
           if (annot.querySelector("input")) return;
-
-          annot.innerHTML = "";
-          const typeName = getTypeName(currentNode);
-          const prefix = document.createElement("span");
-          prefix.textContent = `${typeName}  ·  label: `;
-          annot.appendChild(prefix);
 
           const input = document.createElement("input");
           input.type = "text";
           input.className = "heading-label-input";
           input.value = (currentNode.attrs.label as string) || "";
           input.placeholder = "label key";
-          annot.appendChild(input);
 
-          // Stop mousedown on the input itself from reaching PM
+          // Auto-size to content
+          function autoSize() {
+            input.style.width = Math.max(input.value.length + 1, 6) + "ch";
+          }
+          autoSize();
+          input.addEventListener("input", autoSize);
+
+          // Replace the target span with the input inline
+          targetSpan.replaceWith(input);
+
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
           let committed = false;
@@ -185,23 +345,81 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (ev.key === "Enter") { ev.preventDefault(); commit(); }
             if (ev.key === "Escape") { ev.preventDefault(); committed = true; renderAnnot(); }
           });
-          // Arm blur-to-commit after a delay so PM's async focus
-          // recovery doesn't immediately destroy the input.
+
           let armed = false;
           input.addEventListener("blur", () => { if (armed) commit(); });
           setTimeout(() => { armed = true; }, 200);
 
-          // Focus the input. If PM steals focus within 200ms, we
-          // refocus. This handles PM's selectionchange observer.
-          input.focus();
-          input.select();
+          requestAnimationFrame(() => {
+            input.focus();
+            if (currentNode.attrs.label) {
+              // Place cursor at end for existing labels
+              input.selectionStart = input.selectionEnd = input.value.length;
+            } else {
+              input.select();
+            }
+          });
           const refocusId = setInterval(() => {
             if (document.activeElement !== input && annot.contains(input)) {
               input.focus();
-              input.select();
             }
           }, 30);
           setTimeout(() => clearInterval(refocusId), 250);
+        }
+
+        function renderAnnot() {
+          const typeName = getTypeName(currentNode);
+          const label = currentNode.attrs.label as string | null;
+          annot.innerHTML = "";
+
+          const typeSpan = document.createElement("span");
+          typeSpan.textContent = typeName;
+          annot.appendChild(typeSpan);
+
+          if (label) {
+            const sep = document.createElement("span");
+            sep.textContent = "  ·  label: ";
+            annot.appendChild(sep);
+
+            const labelSpan = document.createElement("span");
+            labelSpan.textContent = label;
+            labelSpan.className = "heading-label-text";
+            annot.appendChild(labelSpan);
+          } else {
+            const addBtn = document.createElement("span");
+            addBtn.className = "heading-label-add";
+            addBtn.textContent = "Label +";
+            annot.appendChild(addBtn);
+          }
+        }
+
+        renderAnnot();
+
+        // Phase 1: prevent browser default on mousedown so the contenteditable
+        // doesn't receive focus (which would let PM steal it back later).
+        annot.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+
+        // Phase 2: on click, enter edit mode if clicking on a label or the add button.
+        annot.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const target = e.target as HTMLElement;
+          if (target.classList.contains("heading-label-text")) {
+            enterEditMode(target);
+          } else if (target.classList.contains("heading-label-add")) {
+            // For new label, we need to insert a label area first
+            const labelSpan = document.createElement("span");
+            labelSpan.className = "heading-label-text";
+            // Add separator before label
+            const sep = document.createElement("span");
+            sep.textContent = "  ·  label: ";
+            target.replaceWith(sep);
+            sep.after(labelSpan);
+            enterEditMode(labelSpan);
+          }
         });
 
         return {
@@ -211,6 +429,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           // area so it cannot steal focus from our label input.
           stopEvent(event) {
             return annot === event.target || annot.contains(event.target as Node);
+          },
+          ignoreMutation(mutation) {
+            // Ignore all mutations in the annotation area (label editing, etc.)
+            if (annot.contains(mutation.target)) return true;
+            return false;
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;
@@ -229,7 +452,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     extensions: [
       StarterKit.configure({
         heading: false,
+        paragraph: false,
       }),
+      ParagraphWithTitle,
       HeadingWithLabel,
       Placeholder.configure({
         placeholder: "Start writing...",
@@ -247,6 +472,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LatexCommandMark,
       TitleField,
       LabelHandler,
+      EmptyParagraphTitleCleaner,
     ],
     content: initialContent,
     editorProps: {

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import type { Editor } from "@tiptap/react";
 import type { UserComment } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
+import { useInTextPositions, findTextPosition } from "@/hooks/useInTextPositions";
 
 interface CommentPanelProps {
   comments: UserComment[];
@@ -19,9 +21,13 @@ interface CommentPanelProps {
   selectedCommentId: string | null;
   onSelectComment: (id: string | null) => void;
   onClose?: () => void;
+  editor: Editor | null;
+  panelSide: "left" | "right";
+  viewMode: "list" | "in-text";
+  onViewModeChange: (mode: "list" | "in-text") => void;
 }
 
-export default function CommentPanel({
+export default function RevisionsPanel({
   activeComments,
   resolvedComments,
   onResolve,
@@ -35,9 +41,19 @@ export default function CommentPanel({
   selectedCommentId,
   onSelectComment,
   onClose,
+  editor,
+  panelSide,
+  viewMode,
+  onViewModeChange,
 }: CommentPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const inTextItems = useMemo(
+    () => activeComments.map((c) => ({ id: c.id, pos: findTextPosition(editor, c.selectedText) })),
+    [activeComments, editor]
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor, inTextItems, viewMode === "in-text"
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [newCommentText, setNewCommentText] = useState("");
@@ -67,7 +83,7 @@ export default function CommentPanel({
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
         <h3 className="text-sm font-semibold text-stone-700">
-          Comments
+          Revisions
           {activeComments.length > 0 && (
             <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
               ({activeComments.length})
@@ -83,16 +99,19 @@ export default function CommentPanel({
               {showResolved ? "Hide" : "Show"} resolved ({resolvedComments.length})
             </button>
           )}
-          <ViewToggle mode={viewMode} onChange={setViewMode} />
+          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className="flex-1 overflow-y-auto"
+      >
         {/* New comment form */}
         {pendingSelectedText && (
           <div className="px-4 py-3 border-b border-[var(--border)] bg-amber-50/50">
             <div className="text-xs text-[var(--muted)] mb-1.5 truncate font-medium">
-              Commenting on: &ldquo;{pendingSelectedText.length > 60 ? pendingSelectedText.slice(0, 60) + "..." : pendingSelectedText}&rdquo;
+              Revision for: &ldquo;{pendingSelectedText.length > 60 ? pendingSelectedText.slice(0, 60) + "..." : pendingSelectedText}&rdquo;
             </div>
             <textarea
               ref={newCommentRef}
@@ -111,7 +130,7 @@ export default function CommentPanel({
                   setNewCommentText("");
                 }
               }}
-              placeholder="Write your comment..."
+              placeholder="Describe the revision..."
               className="w-full bg-white border border-[var(--border)] rounded px-2.5 py-2 text-sm text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
               rows={3}
             />
@@ -142,11 +161,40 @@ export default function CommentPanel({
 
         {activeComments.length === 0 && !showResolved && !pendingSelectedText && (
           <div className="p-6 text-center text-[var(--muted)] text-sm">
-            No comments yet. Select text and click &quot;+ Comment&quot; to add one.
+            No revisions yet. Select text and click &quot;+ Revision&quot; to add one.
           </div>
         )}
 
-        {activeComments.map((c) => (
+        {viewMode === "in-text" && activeComments.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {activeComments.map((c) => {
+              const top = positions.get(c.id);
+              if (top === undefined) return null;
+              return (
+                <div
+                  key={c.id}
+                  className={`absolute left-0 right-0 px-4 py-2 border-b cursor-pointer transition-colors in-text-connector in-text-connector-${panelSide} ${
+                    selectedCommentId === c.id
+                      ? "bg-amber-50 border-l-2 border-l-amber-400 border-b-[var(--border-light)]"
+                      : "border-b-[var(--border-light)] hover:bg-stone-50"
+                  }`}
+                  style={{ top }}
+                  onClick={() => {
+                    if (selectedCommentId === c.id) { onSelectComment(null); onHighlight(null); }
+                    else { onSelectComment(c.id); onHighlight(c.selectedText); }
+                  }}
+                >
+                  <div className="text-[10px] text-[var(--muted)] truncate font-medium">
+                    &ldquo;{c.selectedText}&rdquo;
+                  </div>
+                  <p className="text-xs text-stone-600 leading-snug line-clamp-2 mt-0.5">{c.comment}</p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+
+        activeComments.map((c) => (
           <div
             key={c.id}
             className={`px-4 py-3 border-b cursor-pointer transition-colors ${
@@ -220,7 +268,8 @@ export default function CommentPanel({
               </>
             )}
           </div>
-        ))}
+        )))
+        }
 
         {showResolved && resolvedComments.length > 0 && (
           <>

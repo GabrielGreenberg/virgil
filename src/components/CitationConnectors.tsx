@@ -13,11 +13,13 @@ export default function CitationConnectors({
   selectedId,
   panelSide,
   mainRef,
+  panelEntrySelector,
 }: {
   editor: Editor | null;
   selectedId: string | null;
   panelSide: "left" | "right";
   mainRef: React.RefObject<HTMLDivElement | null>;
+  panelEntrySelector?: string;
 }) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const rafRef = useRef(0);
@@ -51,9 +53,11 @@ export default function CitationConnectors({
     if (!markerEl) { setConnectors([]); return; }
 
     const entryEl = main.querySelector(
-      `[data-citation-entry="${selectedId}"]`
+      panelEntrySelector || `[data-citation-entry="${selectedId}"]`
     ) as HTMLElement | null;
     if (!entryEl) { setConnectors([]); return; }
+    // Skip curved connectors when panel is in in-text mode (straight lines handle it)
+    if (getComputedStyle(entryEl).position === "absolute") { setConnectors([]); return; }
 
     const mRect = markerEl.getBoundingClientRect();
     const eRect = entryEl.getBoundingClientRect();
@@ -74,15 +78,16 @@ export default function CitationConnectors({
         ? eRect.left - cr.left
         : eRect.right - cr.left;
 
-    const entryBelow = ey >= mCenter;
-
-    const startX = markerAbove || markerBelow ? marginLaneX : mx;
-    const startY = markerAbove ? -2 : markerBelow ? cr.height + 2 : (entryBelow ? mBottom + 1 : mTop - 1);
-    const exitDir = entryBelow ? 1 : -1;
-
     let d: string;
 
-    if (markerAbove || markerBelow) {
+    // Prefer straight horizontal line when marker and entry are close in Y
+    const yDiff = Math.abs(mCenter - ey);
+    if (!markerAbove && !markerBelow && yDiff < 30) {
+      // Straight line from marker to entry
+      const lineY = (mCenter + ey) / 2;
+      d = `M ${mx} ${lineY} L ${ex} ${lineY}`;
+    } else if (markerAbove || markerBelow) {
+      const startY = markerAbove ? -2 : cr.height + 2;
       const r3 = 4;
       const hDir = panelSide === "right" ? 1 : -1;
       const entryDist = Math.abs(ex - marginLaneX);
@@ -96,12 +101,15 @@ export default function CitationConnectors({
         `L ${ex} ${ey}`,
       ].join(" ");
     } else {
+      const entryBelow = ey >= mCenter;
+      const startY = entryBelow ? mBottom + 1 : mTop - 1;
+      const exitDir = entryBelow ? 1 : -1;
       const turnY = startY + exitDir * 4;
       const r = 4;
       const hDir = panelSide === "right" ? 1 : -1;
       const vDir = ey > turnY ? 1 : -1;
 
-      const hDist = Math.abs(marginLaneX - startX);
+      const hDist = Math.abs(marginLaneX - mx);
       const vDist = Math.abs(ey - turnY);
       const exitDist = Math.abs(turnY - startY);
       const entryDist = Math.abs(ex - marginLaneX);
@@ -111,9 +119,9 @@ export default function CitationConnectors({
       const r3 = Math.max(0.5, Math.min(r, vDist * 0.35, entryDist * 0.35));
 
       d = [
-        `M ${startX} ${startY}`,
-        `L ${startX} ${turnY - exitDir * r1}`,
-        `Q ${startX} ${turnY}, ${startX + hDir * r1} ${turnY}`,
+        `M ${mx} ${startY}`,
+        `L ${mx} ${turnY - exitDir * r1}`,
+        `Q ${mx} ${turnY}, ${mx + hDir * r1} ${turnY}`,
         `L ${marginLaneX - hDir * r2} ${turnY}`,
         `Q ${marginLaneX} ${turnY}, ${marginLaneX} ${turnY + vDir * r2}`,
         `L ${marginLaneX} ${ey - vDir * r3}`,

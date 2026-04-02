@@ -93,6 +93,29 @@ body {
 }
 
 
+.heading-label-text {
+  cursor: pointer;
+}
+
+.heading-label-text:hover {
+  text-decoration: underline;
+}
+
+.heading-label-add {
+  display: none;
+  margin-left: 0.5em;
+  cursor: pointer;
+  color: #6b9ac4;
+}
+
+.heading-label-add:hover {
+  text-decoration: underline;
+}
+
+.heading-annotation:hover .heading-label-add {
+  display: inline;
+}
+
 .heading-label-input {
   background: transparent;
   border: none;
@@ -105,6 +128,161 @@ body {
   letter-spacing: 0.04em;
   width: 12ch;
   padding: 0;
+}
+
+/* Paragraph title annotations */
+.par-title-wrapper {
+  display: block;
+  position: relative;
+}
+
+/* Extend hover zone into the left margin for + T controls */
+.par-title-wrapper::before {
+  content: "";
+  position: absolute;
+  left: -60px;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+}
+
+.par-title-annotation {
+  display: block;
+  position: relative;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #c45a5a;
+  font-family: var(--font-sans), Inter, sans-serif;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.1em;
+  cursor: pointer;
+  user-select: none;
+  padding: 0 0 1px 0;
+}
+
+.par-title-wrapper.has-title .par-title-annotation {
+  margin-top: 1.2em;
+}
+
+/* Extend hover zone into the left margin for × button */
+.par-title-annotation::before {
+  content: "";
+  position: absolute;
+  left: -40px;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+}
+
+.par-title-annotation:hover {
+  color: #a33;
+}
+
+.par-title-delete {
+  position: absolute;
+  left: -24px;
+  top: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  color: #c45a5a;
+  background: #fef5f5;
+  border: 1px solid #e8b4b4;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1;
+  user-select: none;
+  padding: 0;
+}
+
+.par-title-delete:hover {
+  background: #fde8e8;
+  border-color: #c45a5a;
+}
+
+.par-title-annotation:hover .par-title-delete {
+  display: inline-flex;
+}
+
+.par-title-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid #c45a5a;
+  outline: none;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #c45a5a;
+  font-family: var(--font-sans), Inter, sans-serif;
+  letter-spacing: 0.02em;
+  width: 30ch;
+  padding: 0;
+}
+
+.par-title-controls {
+  position: absolute;
+  left: -42px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.par-title-wrapper:hover .par-title-controls {
+  opacity: 1;
+}
+
+.par-title-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  color: #c45a5a;
+  background: #fef5f5;
+  border: 1px solid #e8b4b4;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1;
+  user-select: none;
+  padding: 0;
+}
+
+.par-title-btn:hover {
+  background: #fde8e8;
+  border-color: #c45a5a;
+}
+
+span.par-title-label {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 9px !important;
+  font-weight: 700 !important;
+  font-family: var(--font-sans), system-ui, sans-serif !important;
+  color: #c45a5a !important;
+  user-select: none;
+  line-height: 1 !important;
+}
+
+/* When title exists, hide the + T controls */
+.par-title-wrapper.has-title .par-title-controls {
+  display: none;
+}
+
+/* When no title, controls at paragraph first line level */
+.par-title-wrapper:not(.has-title) .par-title-controls {
+  top: 0.35em;
 }
 
 /* Title field blocks */
@@ -282,6 +460,59 @@ body {
   background: #fde8e8;
 }
 
+/* In-text connector lines are now drawn via InTextConnectors SVG component */
+
+/* Note markers (green N in editor gutter) */
+.note-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  color: #15803d;
+  background: #f0fdf4;
+  border: 1.5px solid #86efac;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.note-marker:hover {
+  background: #dcfce7;
+  border-color: #4ade80;
+}
+.note-marker-selected {
+  background: #bbf7d0;
+  border-color: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+/* Note editor (contentEditable rich text) */
+.note-editor {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+.note-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-light);
+  pointer-events: none;
+}
+.note-editor ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.note-editor ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.note-editor li {
+  margin: 0.1em 0;
+}
+
 /* Footnote edit popup */
 .footnote-editor-popup {
   background: white;
@@ -409,6 +640,12 @@ body {
 
 .citation-node:hover {
   background: #fef08a;
+}
+
+.citation-highlight-bib {
+  background: #fef08a;
+  box-shadow: 0 0 0 2px #d4a843;
+  border-radius: 3px;
 }
 
 .citation-node-bar {

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "comments" | "suggestions" | "archive" | "footnotes" | "references" | "outline" | "todo" | "cutter";
+export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -21,14 +21,16 @@ const DEFAULT_PREFS: ViewPrefs = {
   placements: [
     { id: "outline", side: "left" },
     { id: "todo", side: "left" },
-    { id: "comments", side: "right" },
+    { id: "notes", side: "right" },
+    { id: "revisions", side: "right" },
     { id: "archive", side: "right" },
     { id: "footnotes", side: "right" },
-    { id: "references", side: "right" },
+    { id: "citations", side: "right" },
+    { id: "bibliography", side: "right" },
     { id: "cutter", side: "right" },
   ],
   activeLeft: null,
-  activeRight: "comments",
+  activeRight: "notes",
   panelWidths: {},
 };
 
@@ -40,9 +42,31 @@ function loadPrefs(): ViewPrefs {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_PREFS;
     const parsed = JSON.parse(raw);
+    // Migrate: replace old "references" panel with "citations" + "bibliography"
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let placements: any[] = parsed.placements || [];
+    const hasOldRef = placements.some((p: any) => p.id === "references");
+    if (hasOldRef) {
+      const refSide = placements.find((p: any) => p.id === "references")!.side;
+      placements = placements.filter((p: any) => p.id !== "references");
+      placements.push({ id: "citations", side: refSide });
+      placements.push({ id: "bibliography", side: refSide });
+      if (parsed.activeLeft === "references") parsed.activeLeft = "citations";
+      if (parsed.activeRight === "references") parsed.activeRight = "citations";
+    }
+    // Migrate: replace old "comments" panel with "notes" + "revisions"
+    const hasOldComments = placements.some((p: any) => p.id === "comments");
+    if (hasOldComments) {
+      const commentsSide = placements.find((p: any) => p.id === "comments")!.side;
+      placements = placements.filter((p: any) => p.id !== "comments");
+      placements.push({ id: "notes", side: commentsSide });
+      placements.push({ id: "revisions", side: commentsSide });
+      if (parsed.activeLeft === "comments") parsed.activeLeft = "revisions";
+      if (parsed.activeRight === "comments") parsed.activeRight = "revisions";
+    }
     // Merge with defaults to handle new panels added in updates
-    const existingIds = new Set((parsed.placements || []).map((p: PanelPlacement) => p.id));
-    const merged = [...(parsed.placements || [])];
+    const existingIds = new Set(placements.map((p: PanelPlacement) => p.id));
+    const merged = [...placements];
     for (const dp of DEFAULT_PREFS.placements) {
       if (!existingIds.has(dp.id)) merged.push(dp);
     }

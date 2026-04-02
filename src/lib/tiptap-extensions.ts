@@ -562,6 +562,27 @@ export const LatexComment = Node.create({
     ];
   },
 
+  addKeyboardShortcuts() {
+    return {
+      Delete: ({ editor }) => {
+        const { selection } = editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === "latexComment") {
+          editor.commands.deleteSelection();
+          return true;
+        }
+        return false;
+      },
+      Backspace: ({ editor }) => {
+        const { selection } = editor.state;
+        if (selection instanceof NodeSelection && selection.node.type.name === "latexComment") {
+          editor.commands.deleteSelection();
+          return true;
+        }
+        return false;
+      },
+    };
+  },
+
   addProseMirrorPlugins() {
     const nodeType = this.type;
     return [
@@ -904,6 +925,41 @@ export const LabelHandler = Extension.create({
             tr.setNodeMarkup(c.headingPos, undefined, { ...c.headingAttrs, label: c.label });
             tr.delete(c.paraPos, c.paraPos + c.paraSize);
           }
+          return tr;
+        },
+      }),
+    ];
+  },
+});
+
+/**
+ * Clears parTitle (and uuid) from empty paragraphs.
+ * This prevents stranded titles when a paragraph is split (e.g. Enter at start).
+ */
+export const EmptyParagraphTitleCleaner = Extension.create({
+  name: "emptyParagraphTitleCleaner",
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("emptyParagraphTitleCleaner"),
+        appendTransaction(transactions, _oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          const { doc, schema } = newState;
+          const paragraphType = schema.nodes.paragraph;
+          let tr: ReturnType<typeof newState.tr> | null = null;
+
+          doc.forEach((node, pos) => {
+            if (node.type !== paragraphType) return;
+            if (!node.attrs.parTitle) return;
+            // If paragraph has no text content, clear its title and uuid
+            if (node.textContent.trim() === "") {
+              if (!tr) tr = newState.tr;
+              tr.setNodeMarkup(pos, undefined, { ...node.attrs, parTitle: null, uuid: null });
+            }
+          });
+
           return tr;
         },
       }),

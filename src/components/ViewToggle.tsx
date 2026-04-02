@@ -37,7 +37,8 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
   return (
     <div className="flex items-center bg-stone-100 rounded p-0.5 gap-0.5">
       <button
-        onClick={() => onChange("in-text")}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onChange("in-text"); }}
         className={`p-1 rounded transition-colors ${
           mode === "in-text" ? "bg-white shadow-sm" : "hover:bg-stone-50"
         }`}
@@ -46,7 +47,8 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
         <IconInText active={mode === "in-text"} />
       </button>
       <button
-        onClick={() => onChange("list")}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); onChange("list"); }}
         className={`p-1 rounded transition-colors ${
           mode === "list" ? "bg-white shadow-sm" : "hover:bg-stone-50"
         }`}

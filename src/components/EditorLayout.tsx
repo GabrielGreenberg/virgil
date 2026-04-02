@@ -6,7 +6,8 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import MenuBar from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
-import CommentPanel from "./CommentPanel";
+import RevisionsPanel from "./CommentPanel";
+import NotesPanel from "./NotesPanel";
 import OutlinePanel from "./OutlinePanel";
 import TodoPanel from "./TodoPanel";
 import ArchivePanel from "./ArchivePanel";
@@ -14,6 +15,7 @@ import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "./FootnotePanel";
 import FootnoteConnectors from "./FootnoteConnectors";
 import CitationConnectors from "./CitationConnectors";
+import InTextConnectors from "./InTextConnectors";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
@@ -23,11 +25,31 @@ import { useComments } from "@/hooks/useComments";
 import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
-import CitationPanel from "./CitationPanel";
+import { useAnnotations } from "@/hooks/useAnnotations";
+import { useNotes } from "@/hooks/useNotes";
+import NoteMarkers from "./NoteMarkers";
+import dynamic from "next/dynamic";
+import type { CodeEditorHandle } from "./CodeEditor";
+const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
+import CitationsPanel from "./CitationsPanel";
+import BibliographyPanel from "./BibliographyPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
+import { serializeToLatex } from "@/lib/latex-serializer";
 
 // --- Icons ---
-function IconComment({ active }: { active?: boolean }) {
+function IconNotes({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="13" y2="17" />
+    </svg>
+  );
+}
+
+function IconRevisions({ active }: { active?: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -101,11 +123,25 @@ function IconFootnote({ active }: { active?: boolean }) {
   );
 }
 
-function IconReference({ active }: { active?: boolean }) {
+function IconCitation({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 17h.01" />
+      <path d="M2 4h20v16H2z" />
+      <path d="M6 8h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H7" />
+      <path d="M14 8h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-1" />
+    </svg>
+  );
+}
+
+function IconBibliography({ active }: { active?: boolean }) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h6" />
+      <path d="M8 15h4" />
     </svg>
   );
 }
@@ -137,10 +173,12 @@ function IconCutter({ active }: { active?: boolean }) {
 const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
   outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
   todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
-  comments: { label: "Comments", icon: (a) => <IconComment active={a} /> },
+  notes: { label: "Notes", icon: (a) => <IconNotes active={a} /> },
+  revisions: { label: "Revisions", icon: (a) => <IconRevisions active={a} /> },
   archive: { label: "Archived Text", icon: (a) => <IconArchive active={a} /> },
   footnotes: { label: "Footnotes", icon: (a) => <IconFootnote active={a} /> },
-  references: { label: "Reference Notes", icon: (a) => <IconReference active={a} /> },
+  citations: { label: "Citations", icon: (a) => <IconCitation active={a} /> },
+  bibliography: { label: "Bibliography", icon: (a) => <IconBibliography active={a} /> },
   suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
   cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
 };
@@ -300,6 +338,68 @@ function StripButton({
     handledByPointer.current = false;
   }, []);
 
+  const indicatorRef = useRef<HTMLDivElement | null>(null);
+
+  const updateDropIndicator = useCallback((clientX: number, clientY: number) => {
+    // Find which strip we're hovering
+    const centerX = window.innerWidth / 2;
+    const targetSide = clientX < centerX ? "left" : "right";
+    const strips = document.querySelectorAll("[data-strip-side]");
+    const targetStrip = Array.from(strips).find(
+      (el) => (el as HTMLElement).dataset.stripSide === targetSide
+    ) as HTMLElement | undefined;
+
+    if (!targetStrip) {
+      indicatorRef.current?.remove();
+      indicatorRef.current = null;
+      return;
+    }
+
+    // Ensure indicator element exists
+    if (!indicatorRef.current) {
+      const ind = document.createElement("div");
+      ind.id = "virgil-drop-indicator";
+      ind.style.cssText = `
+        position: fixed; z-index: 9998; pointer-events: none;
+        height: 2px; background: var(--accent); border-radius: 1px;
+        transition: top 0.1s ease, left 0.1s ease;
+      `;
+      document.body.appendChild(ind);
+      indicatorRef.current = ind;
+    }
+
+    const allBtns = Array.from(targetStrip.querySelectorAll("[data-panel-id]"));
+    const isSameSide = targetSide === side;
+    // On same side, skip the dragged button so indicator matches movePanel's index
+    const buttons = isSameSide
+      ? allBtns.filter((el) => (el as HTMLElement).dataset.panelId !== panelId)
+      : allBtns;
+    const stripRect = targetStrip.getBoundingClientRect();
+    const ind = indicatorRef.current;
+
+    // Set horizontal position/width to match strip
+    ind.style.left = `${stripRect.left + 4}px`;
+    ind.style.width = `${stripRect.width - 8}px`;
+
+    if (buttons.length === 0) {
+      ind.style.top = `${stripRect.top + 12}px`;
+      return;
+    }
+
+    // Find the gap the cursor is nearest to
+    for (let i = 0; i < buttons.length; i++) {
+      const rect = buttons[i].getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (clientY < midY) {
+        ind.style.top = `${rect.top - 2}px`;
+        return;
+      }
+    }
+    // After last button
+    const lastRect = buttons[buttons.length - 1].getBoundingClientRect();
+    ind.style.top = `${lastRect.bottom + 2}px`;
+  }, [side, panelId]);
+
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!pointerStart.current) return;
     const dx = e.clientX - pointerStart.current.x;
@@ -330,15 +430,20 @@ function StripButton({
       document.body.appendChild(ghost);
       ghostRef.current = ghost;
     }
-    if (isDragging.current && ghostRef.current) {
-      ghostRef.current.style.left = `${e.clientX - 18}px`;
-      ghostRef.current.style.top = `${e.clientY - 18}px`;
+    if (isDragging.current) {
+      if (ghostRef.current) {
+        ghostRef.current.style.left = `${e.clientX - 18}px`;
+        ghostRef.current.style.top = `${e.clientY - 18}px`;
+      }
+      updateDropIndicator(e.clientX, e.clientY);
     }
-  }, []);
+  }, [updateDropIndicator]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     ghostRef.current?.remove();
     ghostRef.current = null;
+    indicatorRef.current?.remove();
+    indicatorRef.current = null;
 
     if (isDragging.current) {
       const centerX = window.innerWidth / 2;
@@ -354,7 +459,14 @@ function StripButton({
 
       let toIndex: number | undefined;
       if (targetStrip) {
-        const buttons = Array.from(targetStrip.querySelectorAll("[data-panel-id]"));
+        const allButtons = Array.from(targetStrip.querySelectorAll("[data-panel-id]"));
+        const isSameSide = toSide === side;
+        // When dropping on the same side, skip the dragged button to match
+        // movePanel's index (it filters the item out before splicing).
+        // When crossing sides, the dragged button isn't in the target strip.
+        const buttons = isSameSide
+          ? allButtons.filter((el) => (el as HTMLElement).dataset.panelId !== panelId)
+          : allButtons;
         const dropY = e.clientY;
         toIndex = buttons.length; // default: end
         for (let i = 0; i < buttons.length; i++) {
@@ -419,7 +531,7 @@ export default function EditorLayout() {
     openByPath,
   } = useFiles();
 
-  const { content, loading: docLoading, onUpdate, saveStatus } = useDocument(currentDocId);
+  const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(currentDocId);
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -438,6 +550,13 @@ export default function EditorLayout() {
     resolveComment,
     deleteComment,
   } = useComments(currentDocId);
+  const {
+    notes,
+    addNote,
+    updateNote,
+    updateNotePosition,
+    deleteNote,
+  } = useNotes(currentDocId);
   const {
     items: todoItems,
     addItem: addTodo,
@@ -472,6 +591,8 @@ export default function EditorLayout() {
     syncFromEditor: syncCitationsFromEditor,
   } = useCitations(currentDocId);
 
+  const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
+
   const {
     prefs,
     leftItems,
@@ -496,15 +617,120 @@ export default function EditorLayout() {
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
+  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
+  const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
+  const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
+
+  // Lifted view modes — persist across panel re-mounts and across sessions
+  const [panelViewModes, setPanelViewModes] = useState<Record<string, "list" | "in-text">>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = localStorage.getItem("virgil-panel-view-modes");
+      return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+  });
+  const getPanelViewMode = useCallback((panelId: string) => panelViewModes[panelId] || "list", [panelViewModes]);
+  const setPanelViewMode = useCallback((panelId: string, mode: "list" | "in-text") => {
+    setPanelViewModes((prev) => {
+      const next = { ...prev, [panelId]: mode };
+      try { localStorage.setItem("virgil-panel-view-modes", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const [codeView, setCodeView] = useState(false);
+  const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
+  const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
+  const pendingScrollText = useRef<string | null>(null);
+
+  // Scroll TipTap to position after returning from code view
+  useEffect(() => {
+    if (!editorInstance || !pendingScrollText.current) return;
+    const snippet = pendingScrollText.current;
+    pendingScrollText.current = null;
+
+    // Extract meaningful words from the LaTeX lines — strip all commands/braces
+    const cleaned = snippet
+      .replace(/\\[a-zA-Z]+\*?/g, " ")     // strip command names
+      .replace(/\[[^\]]*\]/g, " ")          // strip optional args
+      .replace(/[{}\\$~^_&%#]/g, " ")       // strip special chars
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Get words long enough to be meaningful (avoid matching "the", "and", etc.)
+    const words = cleaned.split(" ").filter((w) => w.length > 3);
+    if (words.length < 2) return;
+
+    const docText = editorInstance.state.doc.textBetween(
+      0, editorInstance.state.doc.content.size, "\n"
+    );
+
+    // Use regex with .*? between words — same approach as V→C (tolerates formatting differences)
+    let matchIdx = -1;
+    for (let len = Math.min(words.length, 6); len >= 2; len--) {
+      // Escape regex special chars in each word
+      const escaped = words.slice(0, len).map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      const pattern = escaped.join("[\\s\\S]{0,30}");
+      try {
+        const re = new RegExp(pattern);
+        const match = re.exec(docText);
+        if (match) {
+          matchIdx = match.index;
+          break;
+        }
+      } catch { /* invalid regex — try shorter */ }
+    }
+
+    if (matchIdx < 0) return;
+
+    // Convert text offset to ProseMirror doc position
+    let pos = 0;
+    let textOffset = 0;
+    editorInstance.state.doc.descendants((node, nodePos) => {
+      if (pos > 0) return false;
+      if (node.isText) {
+        const len = (node.text || "").length;
+        if (textOffset + len > matchIdx) {
+          pos = nodePos + (matchIdx - textOffset);
+          return false;
+        }
+        textOffset += len;
+      } else if (node.isBlock && textOffset > 0) {
+        textOffset += 1; // \n separator
+      }
+      return true;
+    });
+
+    if (pos > 0) {
+      const doScroll = () => {
+        try {
+          editorInstance.commands.setTextSelection(pos);
+          const coords = editorInstance.view.coordsAtPos(pos);
+          const scrollEl = editorInstance.view.dom.closest(".overflow-y-auto");
+          if (scrollEl && coords) {
+            const scrollRect = scrollEl.getBoundingClientRect();
+            const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 150;
+            scrollEl.scrollTop = Math.max(0, targetY);
+          }
+        } catch { /* pos out of range */ }
+      };
+      setTimeout(doScroll, 200);
+      setTimeout(doScroll, 500);
+    }
+  }, [editorInstance]);
 
   // Derive citation order from editor state
   // Debounced citation order and editor citations (avoid recomputing on every keystroke)
   const [citationOrder, setCitationOrder] = useState<string[]>([]);
-  const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[] }>>([]);
+  const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[]; pos: number }>>([]);
+  const citationPositionMap = useMemo(
+    () => new Map(allEditorCitations.map((c) => [c.citationId, c.pos])),
+    [allEditorCitations]
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -512,9 +738,10 @@ export default function EditorLayout() {
       const cits = editorRef.current?.getCitations() ?? [];
       setAllEditorCitations(
         cits.map((c) => {
-          const keyMatch = c.command.match(/\{([^}]+)\}/);
-          const keys = keyMatch ? keyMatch[1].split(",").map((k: string) => k.trim()) : [];
-          return { citationId: c.citationId, command: c.command, keys };
+          // Match all {key} groups — handles \cites{a}{b}{c} and \citep{a,b,c}
+          const allMatches = [...c.command.matchAll(/\{([^}]+)\}/g)];
+          const keys = allMatches.flatMap((m) => m[1].split(",").map((k: string) => k.trim()));
+          return { citationId: c.citationId, command: c.command, keys, pos: c.pos };
         })
       );
     }, 500);
@@ -545,6 +772,24 @@ export default function EditorLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance]);
+
+  // Highlight citation nodes in editor when a bib key is selected in Bibliography panel
+  useEffect(() => {
+    if (!selectedBibKey) return;
+    // Find all citation nodes whose keys include the selected bib key
+    const matching = allEditorCitations.filter((c) => c.keys.includes(selectedBibKey));
+    const els: HTMLElement[] = [];
+    for (const c of matching) {
+      const el = document.querySelector(`[data-citation-id="${c.citationId}"]`) as HTMLElement | null;
+      if (el) {
+        el.classList.add("citation-highlight-bib");
+        els.push(el);
+      }
+    }
+    return () => {
+      for (const el of els) el.classList.remove("citation-highlight-bib");
+    };
+  }, [selectedBibKey, allEditorCitations]);
 
   // Derive footnotes list from editor state (sorted by document position)
   const footnotes = useMemo(() => {
@@ -759,11 +1004,11 @@ export default function EditorLayout() {
       if (detail?.citationId) {
         setSelectedCitationId(detail.citationId);
         const p = prefsRef.current;
-        const refPlacement = p.placements.find((pl) => pl.id === "references");
-        if (refPlacement?.side === "left") {
-          if (p.activeLeft !== "references") setActiveLeft("references");
+        const citPlacement = p.placements.find((pl) => pl.id === "citations");
+        if (citPlacement?.side === "left") {
+          if (p.activeLeft !== "citations") setActiveLeft("citations");
         } else {
-          if (p.activeRight !== "references") setActiveRight("references");
+          if (p.activeRight !== "citations") setActiveRight("citations");
         }
         // Scroll the panel entry into view
         requestAnimationFrame(() => {
@@ -783,11 +1028,11 @@ export default function EditorLayout() {
       if (detail?.partial) {
         setPendingCitationCreate(detail.partial);
         const p = prefsRef.current;
-        const refPlacement = p.placements.find((pl) => pl.id === "references");
-        if (refPlacement?.side === "left") {
-          if (p.activeLeft !== "references") setActiveLeft("references");
+        const citPlacement = p.placements.find((pl) => pl.id === "citations");
+        if (citPlacement?.side === "left") {
+          if (p.activeLeft !== "citations") setActiveLeft("citations");
         } else {
-          if (p.activeRight !== "references") setActiveRight("references");
+          if (p.activeRight !== "citations") setActiveRight("citations");
         }
       }
     };
@@ -824,10 +1069,10 @@ export default function EditorLayout() {
     const selectedText = editorRef.current?.getSelectedText();
     if (!selectedText || selectedText.trim().length === 0) return;
     setPendingCommentText(selectedText);
-    // Open comments panel on whichever side it's on
-    const commentPlacement = prefs.placements.find((p) => p.id === "comments");
-    if (commentPlacement?.side === "left") setActiveLeft("comments");
-    else setActiveRight("comments");
+    // Open revisions panel on whichever side it's on
+    const revPlacement = prefs.placements.find((p) => p.id === "revisions");
+    if (revPlacement?.side === "left") setActiveLeft("revisions");
+    else setActiveRight("revisions");
   }, [prefs.placements, setActiveLeft, setActiveRight]);
 
   const handleSubmitComment = useCallback(
@@ -868,8 +1113,62 @@ export default function EditorLayout() {
   }, [openByPath]);
 
 
-  const handleMove = useCallback((draggedId: PanelId, toSide: Side) => {
-    movePanel(draggedId, toSide);
+  const switchToCodeView = useCallback(() => {
+    // Compute line number from TipTap scroll position
+    let line: number | undefined;
+    try {
+      const editor = editorRef.current?.getEditor();
+      if (editor && content) {
+        // Get visible area top position
+        const scrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+        const viewportTop = scrollEl ? scrollEl.scrollTop : 0;
+        // Find the ProseMirror position at the top of the viewport
+        const topPos = editor.view.posAtCoords({
+          left: editor.view.dom.getBoundingClientRect().left + 50,
+          top: (scrollEl?.getBoundingClientRect().top ?? 0) + 20,
+        });
+        const pos = topPos?.pos ?? editor.state.selection.from;
+
+        // Get ~60 chars of plain text around this position
+        const start = Math.max(0, pos - 10);
+        const end = Math.min(editor.state.doc.content.size, pos + 60);
+        const snippet = editor.state.doc.textBetween(start, end, " ").trim();
+
+        // Extract clean words and search in LaTeX source
+        const words = snippet.split(/\s+/).filter((w) => w.length > 3);
+        if (words.length >= 2) {
+          const latex = serializeToLatex(content);
+          // Try progressively shorter word sequences
+          for (let len = Math.min(words.length, 6); len >= 2; len--) {
+            const phrase = words.slice(0, len).join(".*?");
+            const re = new RegExp(phrase, "s");
+            const match = re.exec(latex);
+            if (match) {
+              line = latex.substring(0, match.index).split("\n").length;
+              break;
+            }
+          }
+        }
+      }
+    } catch { /* fallback: no line */ }
+    setCodeViewLine(line);
+    setEditorInstance(null);
+    setCodeView(true);
+  }, [content]);
+
+  const switchToVisualView = useCallback(() => {
+    // Capture text around visible area before destroying code editor
+    const handle = codeEditorHandleRef.current;
+    if (handle) {
+      pendingScrollText.current = handle.getTextAroundCursor();
+    }
+    codeEditorHandleRef.current = null;
+    setCodeView(false);
+    refetchDoc();
+  }, [refetchDoc]);
+
+  const handleMove = useCallback((draggedId: PanelId, toSide: Side, toIndex?: number) => {
+    movePanel(draggedId, toSide, toIndex);
   }, [movePanel]);
 
   // Loading
@@ -896,13 +1195,17 @@ export default function EditorLayout() {
     saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "";
 
   const suggestionPanelVisible = (activeLeft === "suggestions" || activeRight === "suggestions") && hasSuggestions;
-  const commentsPanelActive = activeLeft === "comments" || activeRight === "comments";
+  const revisionsPanelActive = activeLeft === "revisions" || activeRight === "revisions";
+  const notesPanelSide: "left" | "right" | null =
+    activeLeft === "notes" ? "left" : activeRight === "notes" ? "right" : null;
   const archivePanelSide: "left" | "right" | null =
     activeLeft === "archive" ? "left" : activeRight === "archive" ? "right" : null;
   const footnotePanelSide: "left" | "right" | null =
     activeLeft === "footnotes" ? "left" : activeRight === "footnotes" ? "right" : null;
   const citationPanelSide: "left" | "right" | null =
-    activeLeft === "references" ? "left" : activeRight === "references" ? "right" : null;
+    activeLeft === "citations" ? "left" : activeRight === "citations" ? "right" : null;
+  const bibliographyPanelSide: "left" | "right" | null =
+    activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
   // Render a panel by its ID
   function renderPanel(panelId: PanelId, side: Side) {
@@ -956,10 +1259,26 @@ export default function EditorLayout() {
       );
     }
 
-    if (panelId === "comments") {
+    if (panelId === "notes") {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
-          <CommentPanel
+          <NotesPanel
+            notes={notes}
+            onAdd={addNote}
+            onUpdate={updateNote}
+            onDelete={deleteNote}
+            onSelectNote={setSelectedNoteId}
+            selectedNoteId={selectedNoteId}
+            cursorPos={editorInstance?.state?.selection?.from ?? 0}
+          />
+        </ResizablePanel>
+      );
+    }
+
+    if (panelId === "revisions") {
+      return (
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+          <RevisionsPanel
             comments={comments}
             activeComments={activeComments}
             resolvedComments={resolvedComments}
@@ -973,6 +1292,11 @@ export default function EditorLayout() {
             onCancelNew={handleCancelComment}
             selectedCommentId={selectedCommentId}
             onSelectComment={setSelectedCommentId}
+            editor={editorInstance}
+            panelSide={side}
+            viewMode={getPanelViewMode("revisions")}
+            onViewModeChange={(m) => setPanelViewMode("revisions", m)}
+
             onClose={() => {
               if (side === "left") setActiveLeft(null);
               else setActiveRight(null);
@@ -995,6 +1319,11 @@ export default function EditorLayout() {
             onReanchor={handleReanchor}
             onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
             anchoredIds={anchoredIds}
+            editor={editorInstance}
+            panelSide={side}
+            viewMode={getPanelViewMode("archive")}
+            onViewModeChange={(m) => setPanelViewMode("archive", m)}
+
           />
         </ResizablePanel>
       );
@@ -1010,15 +1339,20 @@ export default function EditorLayout() {
             onEdit={handleEditFootnote}
             onDelete={handleDeleteFootnote}
             onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
+            editor={editorInstance}
+            panelSide={side}
+            viewMode={getPanelViewMode("footnotes")}
+            onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
+
           />
         </ResizablePanel>
       );
     }
 
-    if (panelId === "references") {
+    if (panelId === "citations") {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
-          <CitationPanel
+          <CitationsPanel
             citations={citations}
             bibEntries={bibEntries}
             citationStyle={citationStyle}
@@ -1030,11 +1364,9 @@ export default function EditorLayout() {
             onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
             onUpdateCitation={updateCitation}
             onDeleteCitation={deleteCitation}
-            onUpdateBibEntry={updateBibEntry}
             onSetStyle={setCitationStyle}
             onSetBibPackage={setBibPackage}
             getDisplayText={getCitationDisplayText}
-            getFormattedBib={getFormattedBib}
             pendingCreate={pendingCitationCreate}
             onCreateCitation={(cmd) => {
               const ref = addCitation(cmd);
@@ -1044,7 +1376,32 @@ export default function EditorLayout() {
               editorRef.current?.insertCitation(cmd, citId, display);
             }}
             onClearPendingCreate={() => setPendingCitationCreate(null)}
+            editor={editorInstance}
+            panelSide={side}
+            citationPositions={citationPositionMap}
+            viewMode={getPanelViewMode("citations")}
+            onViewModeChange={(m) => setPanelViewMode("citations", m)}
+
+          />
+        </ResizablePanel>
+      );
+    }
+
+    if (panelId === "bibliography") {
+      return (
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+          <BibliographyPanel
+            citations={citations}
+            bibEntries={bibEntries}
+            selectedBibKey={selectedBibKey}
+            onSelectBibKey={setSelectedBibKey}
+            onUpdateBibEntry={updateBibEntry}
+            getFormattedBib={getFormattedBib}
+            getAnnotation={getAnnotation}
+            setAnnotation={setAnnotation}
             allEditorCitations={allEditorCitations}
+            onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
+            onActiveCitationChange={setBibActiveCitationId}
           />
         </ResizablePanel>
       );
@@ -1146,7 +1503,31 @@ export default function EditorLayout() {
           ))}
         </div>
 
-        <div className="shrink-0 w-2" />
+        <div className="shrink-0 flex items-center px-2 gap-1">
+          <button
+            onClick={codeView ? switchToVisualView : switchToCodeView}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
+            title={codeView ? "Visual Editor" : "Code Editor"}
+          >
+            {codeView ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                Visual
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="16 18 22 12 16 6" />
+                  <polyline points="8 6 2 12 8 18" />
+                </svg>
+                Code
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Path bar */}
@@ -1172,7 +1553,16 @@ export default function EditorLayout() {
         </div>
       )}
 
-      {/* Main area: left strip + tab + left panel + editor + right panel + tab + right strip */}
+      {/* Main area */}
+      {codeView && currentDocId ? (
+        <div className="flex flex-1 overflow-hidden">
+          <CodeEditor
+            docId={currentDocId}
+            initialLine={codeViewLine}
+            onReady={(handle) => { codeEditorHandleRef.current = handle; }}
+          />
+        </div>
+      ) : (
       <div ref={mainAreaRef} className="flex flex-1 overflow-hidden relative">
         {/* Archive connector lines */}
         {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
@@ -1192,7 +1582,7 @@ export default function EditorLayout() {
             mainRef={mainAreaRef}
           />
         )}
-        {/* Citation connector lines */}
+        {/* Citation connector lines (list mode: curved, page view: straight) */}
         {citationPanelSide && selectedCitationId && (
           <CitationConnectors
             editor={editorInstance}
@@ -1201,6 +1591,27 @@ export default function EditorLayout() {
             mainRef={mainAreaRef}
           />
         )}
+        {citationPanelSide && getPanelViewMode("citations") === "in-text" && selectedCitationId && (
+          <InTextConnectors
+            editor={editorInstance}
+            selectedId={selectedCitationId}
+            panelSide={citationPanelSide}
+            mainRef={mainAreaRef}
+            markerAttr="data-citation-id"
+            entryAttr="data-citation-entry"
+          />
+        )}
+        {/* Bibliography connector line — points to the active occurrence */}
+        {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (
+          <CitationConnectors
+            editor={editorInstance}
+            selectedId={bibActiveCitationId}
+            panelSide={bibliographyPanelSide}
+            mainRef={mainAreaRef}
+            panelEntrySelector={`[data-bib-entry="${selectedBibKey}"]`}
+          />
+        )}
+
 
         {/* Left icon strip */}
         <div data-strip-side="left" className="flex flex-col items-center py-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
@@ -1212,7 +1623,7 @@ export default function EditorLayout() {
               onClick={() => togglePanel(p.id)}
               onMove={handleMove}
               side="left"
-              badge={p.id === "comments" && activeComments.length > 0}
+              badge={p.id === "revisions" && activeComments.length > 0}
               stripRef={null as any}
             />
           ))}
@@ -1250,18 +1661,27 @@ export default function EditorLayout() {
         }
 
         {/* Editor column: toolbar + content */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative">
           <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} />
           {currentDocId && content && !docLoading ? (
-            <VirgilEditor
-              ref={editorRef}
-              initialContent={content}
-              onUpdate={handleUpdate}
-              highlightText={highlightText}
-              onAddComment={handleAddComment}
-              onArchive={handleArchive}
-              onEditorReady={setEditorInstance}
-            />
+            <>
+              <VirgilEditor
+                ref={editorRef}
+                initialContent={content}
+                onUpdate={handleUpdate}
+                highlightText={highlightText}
+                onAddComment={handleAddComment}
+                onArchive={handleArchive}
+                onEditorReady={setEditorInstance}
+              />
+              <NoteMarkers
+                editor={editorInstance}
+                notes={notes}
+                panelSide={notesPanelSide}
+                selectedNoteId={selectedNoteId}
+                onSelectNote={setSelectedNoteId}
+              />
+            </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
               {docLoading ? "Loading..." : ""}
@@ -1309,12 +1729,13 @@ export default function EditorLayout() {
               onClick={() => togglePanel(p.id)}
               onMove={handleMove}
               side="right"
-              badge={p.id === "comments" && activeComments.length > 0}
+              badge={p.id === "revisions" && activeComments.length > 0}
               stripRef={null as any}
             />
           ))}
         </div>
       </div>
+      )}
     </div>
   );
 }

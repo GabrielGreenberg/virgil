@@ -216,7 +216,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote }: MenuBarP
       {onAddComment && (
         <>
           <div className="w-px h-4 bg-[var(--border)] mx-1" />
-          <Btn onClick={onAddComment} title="Add comment on selection (Cmd+Shift+M)">
+          <Btn onClick={onAddComment} title="Add revision on selection (Cmd+Shift+M)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 2.5h12a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H4.5L2 13.5V3a.5.5 0 0 1 .5-.5z" />
               <line x1="8" y1="5.5" x2="8" y2="9" />

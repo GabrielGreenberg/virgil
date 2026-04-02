@@ -1,3 +1,11 @@
+export interface ParagraphMeta {
+  title?: string;
+}
+
+export interface VirgilSidecar {
+  paragraphs: Record<string, ParagraphMeta>;
+}
+
 export interface EditorStateData {
   cursorPosition: number;
   selection: { anchor: number; head: number } | null;
@@ -116,4 +124,23 @@ export interface CitationInfo {
   command: string;
   displayText: string;
   pos: number;
+}
+
+// --- Notes ---
+
+export interface UserNote {
+  id: string;
+  content: string; // HTML string (rich text from mini editor)
+  anchorPos: number; // document position the note is tied to
+  createdAt: string;
+}
+
+export interface NotesState {
+  notes: UserNote[];
+}
+
+// --- Annotations ---
+
+export interface AnnotationsState {
+  [bibKey: string]: string; // bib key → annotation text
 }

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useMemo, memo } from "react";
+import type { Editor } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
+import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -14,6 +16,10 @@ interface ArchivePanelProps {
   onReanchor?: (id: string) => void;
   onScrollToMarker?: (id: string) => void;
   anchoredIds?: Set<string>;
+  editor: Editor | null;
+  panelSide: "left" | "right";
+  viewMode: "list" | "in-text";
+  onViewModeChange: (mode: "list" | "in-text") => void;
 }
 
 function ArchivePanel({
@@ -26,8 +32,19 @@ function ArchivePanel({
   onReanchor,
   onScrollToMarker,
   anchoredIds,
+  editor,
+  panelSide,
+  viewMode,
+  onViewModeChange,
 }: ArchivePanelProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const inTextItems = useMemo(
+    () => getArchiveMarkerPositions(editor),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, snippets]
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor, inTextItems, viewMode === "in-text"
+  );
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -71,17 +88,47 @@ function ArchivePanel({
             </span>
           )}
         </h3>
-        <ViewToggle mode={viewMode} onChange={setViewMode} />
+        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className="flex-1 overflow-y-auto"
+      >
         {snippets.length === 0 && (
           <div className="p-6 text-center text-[var(--muted)] text-sm">
             No archived text. Select text and use the menu to archive it.
           </div>
         )}
 
-        {snippets.map((s) => {
+        {viewMode === "in-text" && snippets.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {snippets.map((s) => {
+              const top = positions.get(s.id);
+              if (top === undefined) return null;
+              return (
+                <div
+                  key={s.id}
+                  data-archive-entry={s.id}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
+                    selectedId === s.id
+                      ? "bg-amber-50 border-l-2 border-l-amber-400 border-b-stone-300"
+                      : "border-b-stone-300 hover:bg-stone-50"
+                  }`}
+                  style={{ top }}
+                  onClick={() => onSelect(selectedId === s.id ? null : s.id)}
+                >
+                  <p className="text-xs text-stone-600 leading-snug line-clamp-2"
+                    style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
+                    {s.text}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+
+        snippets.map((s) => {
           const orphaned = anchoredIds && !anchoredIds.has(s.id);
           const isAnchored = !orphaned;
 
@@ -220,7 +267,8 @@ function ArchivePanel({
               </div>
             </div>
           );
-        })}
+        }))
+        }
       </div>
     </div>
   );

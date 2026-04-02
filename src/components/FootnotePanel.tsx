@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, memo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import type { Editor } from "@tiptap/react";
 import type { FootnoteInfo } from "./Editor";
+import ViewToggle, { ViewMode } from "./ViewToggle";
+import { useInTextPositions } from "@/hooks/useInTextPositions";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -10,6 +13,10 @@ interface FootnotePanelProps {
   onEdit: (id: string, newContent: string) => void;
   onDelete: (id: string) => void;
   onScrollToMarker: (id: string) => void;
+  editor: Editor | null;
+  panelSide: "left" | "right";
+  viewMode: "list" | "in-text";
+  onViewModeChange: (mode: "list" | "in-text") => void;
 }
 
 function FootnotePanel({
@@ -19,7 +26,18 @@ function FootnotePanel({
   onEdit,
   onDelete,
   onScrollToMarker,
+  editor,
+  panelSide,
+  viewMode,
+  onViewModeChange,
 }: FootnotePanelProps) {
+  const inTextItems = useMemo(
+    () => footnotes.map((fn) => ({ id: fn.footnoteId, pos: fn.pos })),
+    [footnotes]
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor, inTextItems, viewMode === "in-text"
+  );
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -78,16 +96,58 @@ function FootnotePanel({
             </span>
           )}
         </h3>
+        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className="flex-1 overflow-y-auto"
+      >
         {footnotes.length === 0 && (
           <div className="p-6 text-center text-[var(--muted)] text-sm">
             No footnotes. Select text and use the toolbar to create one.
           </div>
         )}
 
-        {footnotes.map((fn) => {
+        {viewMode === "in-text" && footnotes.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {footnotes.map((fn) => {
+              const top = positions.get(fn.footnoteId);
+              if (top === undefined) return null;
+              return (
+                <div
+                  key={fn.footnoteId}
+                  data-footnote-entry={fn.footnoteId}
+                  className={`absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
+                    selectedId === fn.footnoteId
+                      ? "bg-red-50/60 border-l-2 border-l-[#b45757] border-b-stone-300"
+                      : "border-b-stone-300 hover:bg-stone-50"
+                  }`}
+                  style={{ top }}
+                  onClick={() => onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)}
+                >
+                  <div className="flex items-start gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); onSelect(fn.footnoteId); onScrollToMarker(fn.footnoteId); }}
+                      className="inline-flex items-center shrink-0 mt-0.5"
+                    >
+                      <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold"
+                        style={{ background: "#fef2f2", color: "#b45757", border: "1.5px solid #b45757" }}>
+                        {fn.number}
+                      </span>
+                    </button>
+                    <p className="text-xs text-stone-600 leading-snug line-clamp-2 min-w-0"
+                      style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
+                      {fn.content || <span className="italic text-stone-400">Empty</span>}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+
+        footnotes.map((fn) => {
           const isEditing = editingId === fn.footnoteId;
           const isSelected = selectedId === fn.footnoteId;
 
@@ -214,7 +274,8 @@ function FootnotePanel({
               </div>
             </div>
           );
-        })}
+        }))
+        }
       </div>
     </div>
   );

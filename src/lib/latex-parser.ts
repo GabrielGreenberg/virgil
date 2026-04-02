@@ -1,4 +1,5 @@
 import { JSONContent } from "@tiptap/react";
+import type { VirgilSidecar } from "@/lib/types";
 
 interface ParseContext {
   pos: number;
@@ -352,7 +353,7 @@ function unescapeLatex(text: string): string {
   return text;
 }
 
-export function parseLatex(latex: string): JSONContent {
+export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent {
   seenTitleFields.clear();
   const body = stripPreamble(latex);
   const doc: JSONContent = { type: "doc", content: [] };
@@ -372,7 +373,22 @@ export function parseLatex(latex: string): JSONContent {
   // Number footnotes sequentially
   numberFootnotes(doc);
 
+  // Merge sidecar titles into paragraph nodes by UUID
+  if (sidecar) {
+    mergeSidecarTitles(doc, sidecar);
+  }
+
   return doc;
+}
+
+function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {
+  if (node.type === "paragraph" && node.attrs?.uuid) {
+    const meta = sidecar.paragraphs[node.attrs.uuid as string];
+    if (meta?.title) {
+      node.attrs.parTitle = meta.title;
+    }
+  }
+  node.content?.forEach((child) => mergeSidecarTitles(child, sidecar));
 }
 
 function numberFootnotes(node: JSONContent): void {
@@ -530,6 +546,19 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     // % comment line
     if (rest.startsWith("%")) {
+      // Virgil markers
+      if (rest.startsWith("%!v:")) {
+        const eol = ctx.src.indexOf("\n", ctx.pos);
+        // Blank paragraph marker
+        if (rest.startsWith("%!v:blank")) {
+          ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
+          parent.content.push({ type: "paragraph" });
+          continue;
+        }
+        // Skip UUID anchor comments silently
+        ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
+        continue;
+      }
       const eol = ctx.src.indexOf("\n", ctx.pos);
       const commentText = eol !== -1
         ? ctx.src.slice(ctx.pos + 1, eol).trim()
@@ -572,15 +601,52 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       }
     }
 
+    // \partitle{...} — legacy migration: attach title to following paragraph
+    if (rest.startsWith("\\partitle{")) {
+      const inner = extractBraced(ctx.src, ctx.pos + "\\partitle".length);
+      if (inner !== null) {
+        ctx.pos = inner.end;
+        while (ctx.pos < ctx.src.length && /\s/.test(ctx.src[ctx.pos])) ctx.pos++;
+        const para = readParagraph(ctx);
+        if (para) {
+          const { text: paraText, uuid } = stripUuidAnchor(para);
+          const content = parseInlineContent(paraText);
+          if (content.length > 0) {
+            const attrs: Record<string, unknown> = { parTitle: inner.content };
+            if (uuid) attrs.uuid = uuid;
+            parent.content.push({ type: "paragraph", attrs, content });
+            continue;
+          }
+        }
+        parent.content.push({
+          type: "paragraph",
+          attrs: { parTitle: inner.content },
+        });
+        continue;
+      }
+    }
+
     // Regular paragraph — read until double newline or a command
     const para = readParagraph(ctx);
     if (para) {
-      const content = parseInlineContent(para);
+      const { text: paraText, uuid } = stripUuidAnchor(para);
+      const content = parseInlineContent(paraText);
       if (content.length > 0) {
-        parent.content.push({ type: "paragraph", content });
+        const node: JSONContent = { type: "paragraph", content };
+        if (uuid) node.attrs = { uuid };
+        parent.content.push(node);
       }
     }
   }
+}
+
+/** Strip trailing %!v:xxxx anchor from paragraph text, return text + uuid */
+function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
+  const match = text.match(/\s*%!v:([0-9a-f]{4})\s*$/);
+  if (match) {
+    return { text: text.slice(0, match.index).trimEnd(), uuid: match[1] };
+  }
+  return { text, uuid: null };
 }
 
 function parseList(content: string, type: string): JSONContent {

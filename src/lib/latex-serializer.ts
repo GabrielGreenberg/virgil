@@ -1,4 +1,5 @@
 import { JSONContent } from "@tiptap/react";
+import type { VirgilSidecar } from "@/lib/types";
 
 const PREAMBLE = `\\documentclass{article}
 \\usepackage[utf8]{inputenc}
@@ -59,9 +60,11 @@ function serializeNode(node: JSONContent): string {
       return (node.content || []).map(serializeNode).join("");
 
     case "paragraph": {
-      if (!node.content || node.content.length === 0) return "\n";
+      if (!node.content || node.content.length === 0) return "%!v:blank\n";
       const inner = (node.content || []).map(serializeInline).join("");
-      return inner + "\n\n";
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return inner + anchor + "\n\n";
     }
 
     case "heading": {
@@ -176,4 +179,48 @@ export function serializeToLatex(doc: JSONContent): string {
 
 export function serializeBodyOnly(doc: JSONContent): string {
   return serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function generateUuid(existing: Set<string>): string {
+  let id: string;
+  do {
+    id = Math.random().toString(16).slice(2, 6);
+  } while (existing.has(id));
+  return id;
+}
+
+/** Assign UUIDs to all non-empty paragraphs that lack one. Mutates the doc in place. */
+export function assignUuids(doc: JSONContent): void {
+  const existing = new Set<string>();
+  // First pass: collect existing UUIDs
+  function collect(node: JSONContent) {
+    if (node.type === "paragraph" && node.attrs?.uuid) {
+      existing.add(node.attrs.uuid as string);
+    }
+    node.content?.forEach(collect);
+  }
+  collect(doc);
+  // Second pass: assign missing UUIDs to non-empty paragraphs
+  function assign(node: JSONContent) {
+    if (node.type === "paragraph" && node.content && node.content.length > 0 && !node.attrs?.uuid) {
+      if (!node.attrs) node.attrs = {};
+      node.attrs.uuid = generateUuid(existing);
+      existing.add(node.attrs.uuid as string);
+    }
+    node.content?.forEach(assign);
+  }
+  assign(doc);
+}
+
+/** Extract sidecar data (paragraph titles keyed by UUID) from the document. */
+export function extractSidecarData(doc: JSONContent): VirgilSidecar {
+  const paragraphs: VirgilSidecar["paragraphs"] = {};
+  function walk(node: JSONContent) {
+    if (node.type === "paragraph" && node.attrs?.uuid && node.attrs?.parTitle) {
+      paragraphs[node.attrs.uuid as string] = { title: node.attrs.parTitle as string };
+    }
+    node.content?.forEach(walk);
+  }
+  walk(doc);
+  return { paragraphs };
 }
