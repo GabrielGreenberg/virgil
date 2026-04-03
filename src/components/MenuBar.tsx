@@ -242,19 +242,27 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
         </>
       )}
       {onArchive && (
-        <Btn onClick={onArchive} title="Archive selected text">
+        <button
+          onClick={onArchive}
+          title="Archive selected text"
+          className="px-2 py-1 rounded text-sm transition-colors text-[#7191b0] hover:bg-[#f0f5fa] hover:text-[#5a7a99]"
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="2" width="12" height="12" rx="2.5" />
             <text x="8" y="11.2" textAnchor="middle" fontSize="9" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor" stroke="none">A</text>
           </svg>
-        </Btn>
+        </button>
       )}
       {onCreateFootnote && (
-        <Btn onClick={onCreateFootnote} title="Create footnote from selection">
+        <button
+          onClick={onCreateFootnote}
+          title="Create footnote from selection"
+          className="px-2 py-1 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
+        >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <text x="3" y="12" fontSize="12" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor">fn</text>
           </svg>
-        </Btn>
+        </button>
       )}
 
       <div className="flex-1" />

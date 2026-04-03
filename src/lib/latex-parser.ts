@@ -382,7 +382,8 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
 }
 
 function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {
-  if (node.type === "paragraph" && node.attrs?.uuid) {
+  const TITLED = new Set(["paragraph", "bulletList", "orderedList"]);
+  if (TITLED.has(node.type!) && node.attrs?.uuid) {
     const meta = sidecar.paragraphs[node.attrs.uuid as string];
     if (meta?.title) {
       node.attrs.parTitle = meta.title;
@@ -507,6 +508,17 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           : ctx.src.slice(ctx.pos);
       ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
 
+      // Check for a trailing %!v:xxxx UUID anchor right after \end{env}
+      let listUuid: string | null = null;
+      if (env === "itemize" || env === "enumerate") {
+        const afterEnd = ctx.src.slice(ctx.pos);
+        const uuidMatch = afterEnd.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        if (uuidMatch) {
+          listUuid = uuidMatch[1];
+          ctx.pos += uuidMatch[0].length;
+        }
+      }
+
       switch (env) {
         case "verbatim":
           parent.content.push({
@@ -522,12 +534,24 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
             parent.content.push(quoteDoc);
           }
           break;
-        case "itemize":
-          parent.content.push(parseList(envContent, "bulletList"));
+        case "itemize": {
+          const listNode = parseList(envContent, "bulletList");
+          if (listUuid) {
+            if (!listNode.attrs) listNode.attrs = {};
+            listNode.attrs.uuid = listUuid;
+          }
+          parent.content.push(listNode);
           break;
-        case "enumerate":
-          parent.content.push(parseList(envContent, "orderedList"));
+        }
+        case "enumerate": {
+          const listNode = parseList(envContent, "orderedList");
+          if (listUuid) {
+            if (!listNode.attrs) listNode.attrs = {};
+            listNode.attrs.uuid = listUuid;
+          }
+          parent.content.push(listNode);
           break;
+        }
         default:
           // Unknown environment — preserve as grey monospace paragraph
           parent.content.push({

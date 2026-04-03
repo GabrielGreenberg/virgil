@@ -58,7 +58,7 @@ function extractHeadings(doc: JSONContent | null): HeadingItem[] {
         index: idx,
         parTitles: [],
       });
-    } else if (node.type === "paragraph" && node.attrs?.parTitle) {
+    } else if ((node.type === "paragraph" || node.type === "bulletList" || node.type === "orderedList") && node.attrs?.parTitle) {
       pendingTitles.push({ title: node.attrs.parTitle as string, index: idx });
     }
     idx++;

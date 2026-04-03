@@ -4,6 +4,8 @@ import { useEditor, EditorContent, JSONContent, Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Heading } from "@tiptap/extension-heading";
 import { Paragraph } from "@tiptap/extension-paragraph";
+import BulletList from "@tiptap/extension-bullet-list";
+import OrderedList from "@tiptap/extension-ordered-list";
 import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
@@ -108,6 +110,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return ({ node, getPos, editor: nodeEditor }) => {
         let currentNode = node;
 
+        // Detect if this paragraph is inside a list item — skip title controls
+        const pos = typeof getPos === "function" ? getPos() : null;
+        let insideList = false;
+        if (pos != null) {
+          const resolved = nodeEditor.state.doc.resolve(pos);
+          for (let d = resolved.depth; d >= 0; d--) {
+            if (resolved.node(d).type.name === "listItem") { insideList = true; break; }
+          }
+        }
+
+        if (insideList) {
+          const p = document.createElement("p");
+          return { dom: p, contentDOM: p };
+        }
+
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
 
@@ -132,7 +149,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (pos != null) {
             const n = nodeEditor.state.doc.nodeAt(pos);
             if (n) {
-              const attrs = { ...n.attrs, parTitle: newTitle };
+              const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
               // Assign UUID if setting a title and node doesn't have one yet
               if (newTitle && !attrs.uuid) {
                 attrs.uuid = Math.random().toString(16).slice(2, 6);
@@ -273,6 +290,175 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           },
         };
       };
+    },
+  });
+
+  // --- List title node view factory (shared by bullet + ordered lists) ---
+  function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
+    return ({ node, getPos, editor: nodeEditor }: { node: any; getPos: (() => number | undefined) | boolean; editor: any }) => {
+      let currentNode = node;
+
+      const wrapper = document.createElement("div");
+      wrapper.className = "list-title-wrapper";
+
+      const controls = document.createElement("div");
+      controls.className = "par-title-controls";
+      controls.contentEditable = "false";
+      wrapper.appendChild(controls);
+
+      const titleAnnot = document.createElement("div");
+      titleAnnot.className = "par-title-annotation";
+      titleAnnot.contentEditable = "false";
+      wrapper.appendChild(titleAnnot);
+
+      const listEl = document.createElement(tagName);
+      wrapper.appendChild(listEl);
+
+      function setTitle(newTitle: string | null) {
+        const pos = typeof getPos === "function" ? getPos() : null;
+        if (pos != null) {
+          const n = nodeEditor.state.doc.nodeAt(pos);
+          if (n) {
+            const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
+            if (newTitle && !attrs.uuid) {
+              attrs.uuid = Math.random().toString(16).slice(2, 6);
+            }
+            const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
+            nodeEditor.view.dispatch(tr);
+          }
+        }
+      }
+
+      function enterEditMode() {
+        const wrapperRect = wrapper.getBoundingClientRect();
+        // Position input just above the list element
+        const listRect = listEl.getBoundingClientRect();
+        const topPos = listRect.top - 20;
+
+        const overlay = document.createElement("div");
+        overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;`;
+        document.body.appendChild(overlay);
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "par-title-input";
+        input.value = currentNode.attrs.parTitle || "";
+        input.placeholder = "Title…";
+        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${topPos}px;width:${wrapperRect.width * 0.6}px;`;
+        document.body.appendChild(input);
+        input.focus();
+        input.select();
+
+        let committed = false;
+        function commit() {
+          if (committed) return;
+          committed = true;
+          const val = input.value.trim();
+          setTitle(val || null);
+          if (document.body.contains(input)) input.remove();
+          if (document.body.contains(overlay)) overlay.remove();
+        }
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") { e.preventDefault(); committed = true; if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
+        });
+        input.addEventListener("blur", commit);
+        overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
+      }
+
+      function renderAnnot() {
+        const title = currentNode.attrs.parTitle as string | null;
+        controls.innerHTML = "";
+        titleAnnot.innerHTML = "";
+
+        if (title) {
+          wrapper.classList.add("has-title");
+          titleAnnot.style.display = "block";
+          const xBtn = document.createElement("button");
+          xBtn.className = "par-title-delete";
+          xBtn.textContent = "×";
+          xBtn.title = "Remove title";
+          xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+          xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
+          titleAnnot.appendChild(xBtn);
+          const span = document.createElement("span");
+          span.textContent = title;
+          titleAnnot.appendChild(span);
+        } else {
+          wrapper.classList.remove("has-title");
+          titleAnnot.style.display = "none";
+          // Show + button to add title
+          const plusBtn = document.createElement("button");
+          plusBtn.className = "par-title-btn";
+          plusBtn.textContent = "+";
+          plusBtn.title = "Add title";
+          plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+          plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+          controls.appendChild(plusBtn);
+          const tLabel = document.createElement("span");
+          tLabel.className = "par-title-label";
+          tLabel.textContent = "T";
+          controls.appendChild(tLabel);
+        }
+      }
+
+      renderAnnot();
+
+      titleAnnot.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+      titleAnnot.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (titleAnnot.querySelector("input")) return;
+        enterEditMode();
+      });
+
+      return {
+        dom: wrapper,
+        contentDOM: listEl,
+        stopEvent(event: any) {
+          return (
+            controls === event.target || controls.contains(event.target as Node) ||
+            titleAnnot === event.target || titleAnnot.contains(event.target as Node)
+          );
+        },
+        ignoreMutation(mutation: any) {
+          if (mutation.target && (controls.contains(mutation.target) || titleAnnot.contains(mutation.target))) return true;
+          if (mutation.target === wrapper && mutation.type === "childList") return true;
+          return false;
+        },
+        update(updatedNode: any) {
+          if (updatedNode.type.name !== typeName) return false;
+          currentNode = updatedNode;
+          if (!titleAnnot.querySelector("input")) renderAnnot();
+          return true;
+        },
+      };
+    };
+  }
+
+  const BulletListWithTitle = BulletList.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        parTitle: { default: null },
+        uuid: { default: null, rendered: false },
+      };
+    },
+    addNodeView() {
+      return createListTitleNodeView("ul", "bulletList");
+    },
+  });
+
+  const OrderedListWithTitle = OrderedList.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        parTitle: { default: null },
+        uuid: { default: null, rendered: false },
+      };
+    },
+    addNodeView() {
+      return createListTitleNodeView("ol", "orderedList");
     },
   });
 
@@ -453,9 +639,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       StarterKit.configure({
         heading: false,
         paragraph: false,
+        bulletList: false,
+        orderedList: false,
       }),
       ParagraphWithTitle,
       HeadingWithLabel,
+      BulletListWithTitle,
+      OrderedListWithTitle,
       Placeholder.configure({
         placeholder: "Start writing...",
       }),

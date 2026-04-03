@@ -54,14 +54,15 @@ function escapeLatex(text: string): string {
     .replace(/\^/g, "\\textasciicircum{}");
 }
 
-function serializeNode(node: JSONContent): string {
+function serializeNode(node: JSONContent, insideList = false): string {
   switch (node.type) {
     case "doc":
-      return (node.content || []).map(serializeNode).join("");
+      return (node.content || []).map((n) => serializeNode(n)).join("");
 
     case "paragraph": {
-      if (!node.content || node.content.length === 0) return "%!v:blank\n";
+      if (!node.content || node.content.length === 0) return insideList ? "" : "%!v:blank\n";
       const inner = (node.content || []).map(serializeInline).join("");
+      if (insideList) return inner;
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return inner + anchor + "\n\n";
@@ -93,23 +94,27 @@ function serializeNode(node: JSONContent): string {
     }
 
     case "blockquote": {
-      const inner = (node.content || []).map(serializeNode).join("");
+      const inner = (node.content || []).map((n) => serializeNode(n)).join("");
       return `\\begin{quote}\n${inner}\\end{quote}\n\n`;
     }
 
     case "bulletList": {
-      const items = (node.content || []).map(serializeNode).join("");
-      return `\\begin{itemize}\n${items}\\end{itemize}\n\n`;
+      const items = (node.content || []).map((n) => serializeNode(n)).join("");
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `\\begin{itemize}\n${items}\\end{itemize}${anchor}\n\n`;
     }
 
     case "orderedList": {
-      const items = (node.content || []).map(serializeNode).join("");
-      return `\\begin{enumerate}\n${items}\\end{enumerate}\n\n`;
+      const items = (node.content || []).map((n) => serializeNode(n)).join("");
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `\\begin{enumerate}\n${items}\\end{enumerate}${anchor}\n\n`;
     }
 
     case "listItem": {
       const inner = (node.content || [])
-        .map(serializeNode)
+        .map((n) => serializeNode(n, true))
         .join("")
         .trim();
       return `  \\item ${inner}\n`;
@@ -143,7 +148,7 @@ function serializeNode(node: JSONContent): string {
 
     default:
       if (node.content) {
-        return (node.content || []).map(serializeNode).join("");
+        return (node.content || []).map((n) => serializeNode(n)).join("");
       }
       return "";
   }
@@ -189,34 +194,62 @@ function generateUuid(existing: Set<string>): string {
   return id;
 }
 
-/** Assign UUIDs to all non-empty paragraphs that lack one. Mutates the doc in place. */
+/** Assign UUIDs to all non-empty paragraphs and lists that lack one. Mutates the doc in place.
+ *  Skips paragraphs inside list items (they don't get individual codes).
+ *  Lists (bulletList, orderedList) get a single UUID for the whole list. */
 export function assignUuids(doc: JSONContent): void {
+  const LIST_TYPES = new Set(["bulletList", "orderedList"]);
   const existing = new Set<string>();
   // First pass: collect existing UUIDs
   function collect(node: JSONContent) {
-    if (node.type === "paragraph" && node.attrs?.uuid) {
+    if ((node.type === "paragraph" || LIST_TYPES.has(node.type!)) && node.attrs?.uuid) {
       existing.add(node.attrs.uuid as string);
     }
     node.content?.forEach(collect);
   }
   collect(doc);
-  // Second pass: assign missing UUIDs to non-empty paragraphs
-  function assign(node: JSONContent) {
-    if (node.type === "paragraph" && node.content && node.content.length > 0 && !node.attrs?.uuid) {
+  // Second pass: assign missing UUIDs (skip paragraphs inside list items)
+  function assign(node: JSONContent, insideList = false) {
+    // Lists get a single UUID for the whole list
+    if (LIST_TYPES.has(node.type!)) {
+      if (!node.attrs?.uuid) {
+        if (!node.attrs) node.attrs = {};
+        node.attrs.uuid = generateUuid(existing);
+        existing.add(node.attrs.uuid as string);
+      }
+      // Clear stale UUIDs on paragraphs inside list items
+      node.content?.forEach((listItem) => {
+        listItem.content?.forEach((child) => {
+          if (child.type === "paragraph" && child.attrs?.uuid) {
+            child.attrs.uuid = null;
+            child.attrs.parTitle = null;
+          }
+        });
+      });
+      return;
+    }
+    if (
+      node.type === "paragraph" &&
+      !insideList &&
+      node.content &&
+      node.content.length > 0 &&
+      !node.attrs?.uuid
+    ) {
       if (!node.attrs) node.attrs = {};
       node.attrs.uuid = generateUuid(existing);
       existing.add(node.attrs.uuid as string);
     }
-    node.content?.forEach(assign);
+    node.content?.forEach((child) => assign(child, insideList));
   }
   assign(doc);
 }
 
-/** Extract sidecar data (paragraph titles keyed by UUID) from the document. */
+/** Extract sidecar data (paragraph/list titles keyed by UUID) from the document. */
 export function extractSidecarData(doc: JSONContent): VirgilSidecar {
+  const TITLED_TYPES = new Set(["paragraph", "bulletList", "orderedList"]);
   const paragraphs: VirgilSidecar["paragraphs"] = {};
   function walk(node: JSONContent) {
-    if (node.type === "paragraph" && node.attrs?.uuid && node.attrs?.parTitle) {
+    if (TITLED_TYPES.has(node.type!) && node.attrs?.uuid && node.attrs?.parTitle) {
       paragraphs[node.attrs.uuid as string] = { title: node.attrs.parTitle as string };
     }
     node.content?.forEach(walk);

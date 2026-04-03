@@ -183,6 +183,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   bibliography: { label: "Bibliography", icon: (a) => <IconBibliography active={a} /> },
   suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
   cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
+  blank: { label: "Blank", icon: () => null },
 };
 
 function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
@@ -647,6 +648,7 @@ export default function EditorLayout() {
       return next;
     });
   }, []);
+
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
@@ -1223,6 +1225,14 @@ export default function EditorLayout() {
     const onWidthChange = (w: number) => setPanelWidth(side, panelId, w);
     const onCollapse = () => { if (side === "left") collapseLeft(); else collapseRight(); };
 
+    if (panelId === "blank") {
+      return (
+        <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+          <div className="w-full h-full bg-[var(--background)]" />
+        </ResizablePanel>
+      );
+    }
+
     if (panelId === "suggestions" && hasSuggestions) {
       return (
         <SuggestionPanel
@@ -1245,14 +1255,14 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <TodoPanel
-            items={todoItems}
-            onAdd={addTodo}
-            onToggle={toggleTodo}
-            onUpdate={updateTodo}
-            onUpdateNotes={updateTodoNotes}
-            onDelete={deleteTodo}
-            onArchiveDone={archiveTodos}
-          />
+              items={todoItems}
+              onAdd={addTodo}
+              onToggle={toggleTodo}
+              onUpdate={updateTodo}
+              onUpdateNotes={updateTodoNotes}
+              onDelete={deleteTodo}
+              onArchiveDone={archiveTodos}
+            />
         </ResizablePanel>
       );
     }
@@ -1261,9 +1271,9 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <OutlinePanel
-            content={latestDoc || content}
-            onScrollTo={handleScrollToHeading}
-          />
+              content={latestDoc || content}
+              onScrollTo={handleScrollToHeading}
+            />
         </ResizablePanel>
       );
     }
@@ -1272,14 +1282,14 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <NotesPanel
-            notes={notes}
-            onAdd={addNote}
-            onUpdate={updateNote}
-            onDelete={deleteNote}
-            onSelectNote={setSelectedNoteId}
-            selectedNoteId={selectedNoteId}
-            cursorPos={editorInstance?.state?.selection?.from ?? 0}
-          />
+              notes={notes}
+              onAdd={addNote}
+              onUpdate={updateNote}
+              onDelete={deleteNote}
+              onSelectNote={setSelectedNoteId}
+              selectedNoteId={selectedNoteId}
+              cursorPos={editorInstance?.state?.selection?.from ?? 0}
+            />
         </ResizablePanel>
       );
     }
@@ -1288,29 +1298,29 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <RevisionsPanel
-            comments={comments}
-            activeComments={activeComments}
-            resolvedComments={resolvedComments}
-            onResolve={resolveComment}
-            onDelete={deleteComment}
-            onUpdate={updateComment}
-            onHighlight={setCommentHighlight}
-            visible={true}
-            pendingSelectedText={pendingCommentText}
-            onSubmitNew={handleSubmitComment}
-            onCancelNew={handleCancelComment}
-            selectedCommentId={selectedCommentId}
-            onSelectComment={setSelectedCommentId}
-            editor={editorInstance}
-            panelSide={side}
-            viewMode={getPanelViewMode("revisions")}
-            onViewModeChange={(m) => setPanelViewMode("revisions", m)}
+              comments={comments}
+              activeComments={activeComments}
+              resolvedComments={resolvedComments}
+              onResolve={resolveComment}
+              onDelete={deleteComment}
+              onUpdate={updateComment}
+              onHighlight={setCommentHighlight}
+              visible={true}
+              pendingSelectedText={pendingCommentText}
+              onSubmitNew={handleSubmitComment}
+              onCancelNew={handleCancelComment}
+              selectedCommentId={selectedCommentId}
+              onSelectComment={setSelectedCommentId}
+              editor={editorInstance}
+              panelSide={side}
+              viewMode={getPanelViewMode("revisions")}
+              onViewModeChange={(m) => setPanelViewMode("revisions", m)}
 
-            onClose={() => {
-              if (side === "left") setActiveLeft(null);
-              else setActiveRight(null);
-            }}
-          />
+              onClose={() => {
+                if (side === "left") setActiveLeft(null);
+                else setActiveRight(null);
+              }}
+            />
         </ResizablePanel>
       );
     }
@@ -1319,21 +1329,21 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <ArchivePanel
-            snippets={sortedArchiveSnippets}
-            selectedId={selectedArchiveId}
-            onSelect={setSelectedArchiveId}
-            onInsert={handleInsertArchive}
-            onRestore={handleRestoreArchive}
-            onDelete={handleDeleteArchive}
-            onReanchor={handleReanchor}
-            onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
-            anchoredIds={anchoredIds}
-            editor={editorInstance}
-            panelSide={side}
-            viewMode={getPanelViewMode("archive")}
-            onViewModeChange={(m) => setPanelViewMode("archive", m)}
+              snippets={sortedArchiveSnippets}
+              selectedId={selectedArchiveId}
+              onSelect={setSelectedArchiveId}
+              onInsert={handleInsertArchive}
+              onRestore={handleRestoreArchive}
+              onDelete={handleDeleteArchive}
+              onReanchor={handleReanchor}
+              onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
+              anchoredIds={anchoredIds}
+              editor={editorInstance}
+              panelSide={side}
+              viewMode={getPanelViewMode("archive")}
+              onViewModeChange={(m) => setPanelViewMode("archive", m)}
 
-          />
+            />
         </ResizablePanel>
       );
     }
@@ -1342,18 +1352,18 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <FootnotePanel
-            footnotes={footnotes}
-            selectedId={selectedFootnoteId}
-            onSelect={setSelectedFootnoteId}
-            onEdit={handleEditFootnote}
-            onDelete={handleDeleteFootnote}
-            onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
-            editor={editorInstance}
-            panelSide={side}
-            viewMode={getPanelViewMode("footnotes")}
-            onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
+              footnotes={footnotes}
+              selectedId={selectedFootnoteId}
+              onSelect={setSelectedFootnoteId}
+              onEdit={handleEditFootnote}
+              onDelete={handleDeleteFootnote}
+              onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
+              editor={editorInstance}
+              panelSide={side}
+              viewMode={getPanelViewMode("footnotes")}
+              onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
 
-          />
+            />
         </ResizablePanel>
       );
     }
@@ -1362,36 +1372,36 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <CitationsPanel
-            citations={citations}
-            bibEntries={bibEntries}
-            citationStyle={citationStyle}
-            bibPackage={bibPackage}
-            bibPath={bibPath}
-            selectedId={selectedCitationId}
-            citationOrder={citationOrder}
-            onSelect={setSelectedCitationId}
-            onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
-            onUpdateCitation={updateCitation}
-            onDeleteCitation={deleteCitation}
-            onSetStyle={setCitationStyle}
-            onSetBibPackage={setBibPackage}
-            getDisplayText={getCitationDisplayText}
-            pendingCreate={pendingCitationCreate}
-            onCreateCitation={(cmd) => {
-              const ref = addCitation(cmd);
-              return ref.id;
-            }}
-            onInsertCitation={(cmd, citId, display) => {
-              editorRef.current?.insertCitation(cmd, citId, display);
-            }}
-            onClearPendingCreate={() => setPendingCitationCreate(null)}
-            editor={editorInstance}
-            panelSide={side}
-            citationPositions={citationPositionMap}
-            viewMode={getPanelViewMode("citations")}
-            onViewModeChange={(m) => setPanelViewMode("citations", m)}
+              citations={citations}
+              bibEntries={bibEntries}
+              citationStyle={citationStyle}
+              bibPackage={bibPackage}
+              bibPath={bibPath}
+              selectedId={selectedCitationId}
+              citationOrder={citationOrder}
+              onSelect={setSelectedCitationId}
+              onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
+              onUpdateCitation={updateCitation}
+              onDeleteCitation={deleteCitation}
+              onSetStyle={setCitationStyle}
+              onSetBibPackage={setBibPackage}
+              getDisplayText={getCitationDisplayText}
+              pendingCreate={pendingCitationCreate}
+              onCreateCitation={(cmd) => {
+                const ref = addCitation(cmd);
+                return ref.id;
+              }}
+              onInsertCitation={(cmd, citId, display) => {
+                editorRef.current?.insertCitation(cmd, citId, display);
+              }}
+              onClearPendingCreate={() => setPendingCitationCreate(null)}
+              editor={editorInstance}
+              panelSide={side}
+              citationPositions={citationPositionMap}
+              viewMode={getPanelViewMode("citations")}
+              onViewModeChange={(m) => setPanelViewMode("citations", m)}
 
-          />
+            />
         </ResizablePanel>
       );
     }
@@ -1400,22 +1410,22 @@ export default function EditorLayout() {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
           <BibliographyPanel
-            citations={citations}
-            bibEntries={bibEntries}
-            selectedBibKey={selectedBibKey}
-            onSelectBibKey={setSelectedBibKey}
-            onUpdateBibEntry={updateBibEntry}
-            onUpdateBibKeyAndType={updateBibKeyAndType}
-            getFormattedBib={getFormattedBib}
-            getAnnotation={getAnnotation}
-            setAnnotation={setAnnotation}
-            onRequestReview={requestBibReview}
-            onCancelReview={cancelBibReview}
-            getReviewStatus={getBibReviewStatus}
-            allEditorCitations={allEditorCitations}
-            onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
-            onActiveCitationChange={setBibActiveCitationId}
-          />
+              citations={citations}
+              bibEntries={bibEntries}
+              selectedBibKey={selectedBibKey}
+              onSelectBibKey={setSelectedBibKey}
+              onUpdateBibEntry={updateBibEntry}
+              onUpdateBibKeyAndType={updateBibKeyAndType}
+              getFormattedBib={getFormattedBib}
+              getAnnotation={getAnnotation}
+              setAnnotation={setAnnotation}
+              onRequestReview={requestBibReview}
+              onCancelReview={cancelBibReview}
+              getReviewStatus={getBibReviewStatus}
+              allEditorCitations={allEditorCitations}
+              onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
+              onActiveCitationChange={setBibActiveCitationId}
+            />
         </ResizablePanel>
       );
     }
@@ -1428,8 +1438,8 @@ export default function EditorLayout() {
   }
 
   // Build strip icon list, filtering out suggestions if none exist
-  const leftStripItems = leftItems.filter((p) => p.id !== "suggestions" || hasSuggestions);
-  const rightStripItems = rightItems.filter((p) => p.id !== "suggestions" || hasSuggestions);
+  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
+  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
 
   return (
     <div className="flex flex-col h-screen bg-[var(--background)]">
@@ -1452,7 +1462,7 @@ export default function EditorLayout() {
           <div className="flex items-center gap-1.5 px-3 pt-2 pb-1.5 shrink-0">
             <h1
               className="text-[var(--accent)] text-base font-semibold tracking-widest mr-1"
-              style={{ fontFamily: "var(--font-display), Playfair Display, serif" }}
+              style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
             >
               VIRGIL
             </h1>
@@ -1628,6 +1638,11 @@ export default function EditorLayout() {
 
         {/* Left icon strip */}
         <div data-strip-side="left" className="flex flex-col items-center py-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          <button
+            onClick={() => { if (activeLeft !== "blank") setActiveLeft("blank"); }}
+            className="w-3 h-3 rounded-[2px] border border-stone-400 hover:border-stone-500 transition-colors mb-1 bg-transparent"
+            title="Blank panel"
+          />
           {leftStripItems.map((p) => (
             <StripButton
               key={p.id}
@@ -1643,7 +1658,7 @@ export default function EditorLayout() {
         </div>
 
         {/* Left: collapsed tab or open panel */}
-        {activeLeft && leftItems.some((p) => p.id === activeLeft)
+        {activeLeft && (activeLeft === "blank" || leftItems.some((p) => p.id === activeLeft))
           ? renderPanel(activeLeft, "left")
           : (
             /* Collapsed tab — just the protruding tab with expand chevron */
@@ -1703,7 +1718,7 @@ export default function EditorLayout() {
         </div>
 
         {/* Right: collapsed tab or open panel */}
-        {activeRight && rightItems.some((p) => p.id === activeRight)
+        {activeRight && (activeRight === "blank" || rightItems.some((p) => p.id === activeRight))
           ? renderPanel(activeRight, "right")
           : (
             <div className="relative shrink-0" style={{ width: 0 }}>
@@ -1734,6 +1749,11 @@ export default function EditorLayout() {
 
         {/* Right icon strip */}
         <div data-strip-side="right" className="flex flex-col items-center py-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          <button
+            onClick={() => { if (activeRight !== "blank") setActiveRight("blank"); }}
+            className="w-3 h-3 rounded-[2px] border border-stone-400 hover:border-stone-500 transition-colors mb-1 bg-transparent"
+            title="Blank panel"
+          />
           {rightStripItems.map((p) => (
             <StripButton
               key={p.id}

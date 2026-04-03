@@ -367,7 +367,47 @@ span.par-title-label {
 }
 
 .tiptap li {
-  margin-bottom: 0.25em;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* Paragraphs inside list items: no extra margin, match in-paragraph line spacing */
+.tiptap li > p,
+.tiptap li > p:first-child,
+.tiptap li > p:last-child {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* List title wrapper — reuse paragraph title styles */
+.list-title-wrapper {
+  display: block;
+  position: relative;
+}
+
+.list-title-wrapper::before {
+  content: "";
+  position: absolute;
+  left: -60px;
+  top: 0;
+  bottom: 0;
+  width: 60px;
+}
+
+.list-title-wrapper:hover > .par-title-controls {
+  opacity: 1;
+}
+
+.list-title-wrapper.has-title > .par-title-controls {
+  display: none;
+}
+
+.list-title-wrapper:not(.has-title) > .par-title-controls {
+  top: 0.35em;
+}
+
+.list-title-wrapper.has-title > .par-title-annotation {
+  margin-top: 1.2em;
 }
 
 .tiptap pre {

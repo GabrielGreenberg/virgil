@@ -948,7 +948,7 @@ export const EmptyParagraphTitleCleaner = Extension.create({
 
           const { doc, schema } = newState;
           const paragraphType = schema.nodes.paragraph;
-          let tr: ReturnType<typeof newState.tr> | null = null;
+          let tr: typeof newState.tr | null = null;
 
           doc.forEach((node, pos) => {
             if (node.type !== paragraphType) return;

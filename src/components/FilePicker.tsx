@@ -20,8 +20,8 @@ export default function FilePicker({ docs, onOpen, onCreate, onDelete }: FilePic
       <div className="flex items-center gap-3 mb-8">
         <Image src="/logo.png" alt="Virgil" width={56} height={56} className="opacity-85" />
         <h1
-          className="text-[var(--accent)] text-3xl tracking-widest"
-          style={{ fontFamily: "var(--font-display), Playfair Display, serif" }}
+          className="text-[var(--accent)] text-3xl font-semibold tracking-widest"
+          style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
         >
           VIRGIL
         </h1>
