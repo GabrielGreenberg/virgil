@@ -640,11 +640,16 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
   }
 }
 
-/** Strip trailing %!v:xxxx anchor from paragraph text, return text + uuid */
+/** Strip trailing %!v:xxxx anchor(s) from paragraph text, return text + uuid (last one wins) */
 function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
-  const match = text.match(/\s*%!v:([0-9a-f]{4})\s*$/);
+  // Match one or more %!v:xxxx markers at the end of the line
+  const match = text.match(/(\s*(?:%!v:[0-9a-f]{4}\s*)+)$/);
   if (match) {
-    return { text: text.slice(0, match.index).trimEnd(), uuid: match[1] };
+    const cleaned = text.slice(0, match.index).trimEnd();
+    // Extract the last UUID from the matched markers
+    const uuids = [...match[1].matchAll(/%!v:([0-9a-f]{4})/g)];
+    const lastUuid = uuids.length > 0 ? uuids[uuids.length - 1][1] : null;
+    return { text: cleaned, uuid: lastUuid };
   }
   return { text, uuid: null };
 }

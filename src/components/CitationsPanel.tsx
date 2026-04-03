@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
+import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -148,52 +149,48 @@ function CitationsPanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-stone-700">
-            Citations ({citations.length})
-          </h3>
-          <div className="flex items-center gap-2">
+      <PanelHeader title="Citations" count={citations.length}>
+        <div className="flex items-center gap-1.5">
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="text-xs px-2 py-1 rounded border border-stone-300 bg-white text-stone-500 hover:bg-stone-50 flex items-center gap-1"
+              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle cx="12" cy="19" r="1" />
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
               </svg>
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-48 py-1">
                 {/* View mode */}
-                <div className="px-3 py-1 text-xs font-medium text-stone-400 uppercase tracking-wide">View</div>
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">View</div>
                 <button
                   onClick={() => { setViewMode("selected"); setMenuOpen(false); }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
                 >
-                  <span className="w-4 text-center">{viewMode === "selected" ? "✓" : ""}</span>
+                  <span className="w-4 text-center text-stone-400">{viewMode === "selected" ? "\u2713" : ""}</span>
                   Selected only
                 </button>
                 <button
                   onClick={() => { setViewMode("all"); setMenuOpen(false); }}
-                  className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
                 >
-                  <span className="w-4 text-center">{viewMode === "all" ? "✓" : ""}</span>
+                  <span className="w-4 text-center text-stone-400">{viewMode === "all" ? "\u2713" : ""}</span>
                   Show all
                 </button>
 
                 <div className="border-t border-stone-100 my-1" />
 
                 {/* Package */}
-                <div className="px-3 py-1 text-xs font-medium text-stone-400 uppercase tracking-wide">Package</div>
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Package</div>
                 {BIB_PACKAGES.map((p) => (
                   <button
                     key={p.value}
                     onClick={() => { onSetBibPackage(p.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
                   >
-                    <span className="w-4 text-center">{bibPackage === p.value ? "✓" : ""}</span>
+                    <span className="w-4 text-center text-stone-400">{bibPackage === p.value ? "\u2713" : ""}</span>
                     {p.label}
                   </button>
                 ))}
@@ -201,32 +198,26 @@ function CitationsPanel({
                 <div className="border-t border-stone-100 my-1" />
 
                 {/* Style */}
-                <div className="px-3 py-1 text-xs font-medium text-stone-400 uppercase tracking-wide">Style</div>
+                <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Style</div>
                 {STYLES.map((s) => (
                   <button
                     key={s.value}
                     onClick={() => { onSetStyle(s.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
                   >
-                    <span className="w-4 text-center">{citationStyle === s.value ? "✓" : ""}</span>
+                    <span className="w-4 text-center text-stone-400">{citationStyle === s.value ? "\u2713" : ""}</span>
                     {s.label}
                   </button>
                 ))}
               </div>
             )}
           </div>
-          </div>
         </div>
-        {bibPath && (
-          <div className="text-xs text-stone-400 truncate mt-1" title={bibPath}>
-            .bib: {bibPath}
-          </div>
-        )}
-      </div>
+      </PanelHeader>
 
       {/* New citation form */}
       {pendingCreate !== null && (
-        <div className="px-4 py-3 border-b border-[var(--border)] bg-amber-50/50">
+        <div className="mx-2 mt-2 rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
           <div className="text-xs font-medium text-stone-500 mb-1">New citation</div>
           <div className="flex gap-1.5">
             <input
@@ -259,10 +250,10 @@ function CitationsPanel({
       {/* Citation list */}
       <div
         ref={toggleViewMode === "in-text" ? panelScrollRef : undefined}
-        className="flex-1 overflow-y-auto"
+        className={toggleViewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
       >
         {visibleCitations.length === 0 && !pendingCreate && (
-          <div className="p-6 text-center text-sm text-[var(--muted)]">
+          <div className={PANEL.empty}>
             {viewMode === "selected" && !selectedId
               ? "Click a citation in the editor to view it here."
               : <>No citations yet. Type <code className="text-xs bg-stone-100 px-1 rounded">\cite</code> in the editor to add one.</>
@@ -302,15 +293,13 @@ function CitationsPanel({
             <div
               key={cit.id}
               data-citation-entry={cit.id}
-              className={`border-b border-[var(--border)] cursor-pointer transition-colors ${
-                isSelected ? "bg-amber-50 border-l-2 border-l-amber-400" : "hover:bg-stone-50"
-              }`}
+              className={panelCard(isSelected, "cursor-pointer")}
               onClick={() => {
                 onSelect(isSelected ? null : cit.id);
                 onScrollToMarker(cit.id);
               }}
             >
-              <div className="px-4 py-2.5">
+              <div className={PANEL.cardInner}>
                 {/* WYSIWYG display */}
                 <div className="flex items-center gap-2 mb-1.5">
                   <div className="citation-display-line text-sm flex-1">

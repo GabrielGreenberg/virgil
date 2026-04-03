@@ -8,6 +8,10 @@ interface MenuBarProps {
   onAddComment?: () => void;
   onArchive?: () => void;
   onCreateFootnote?: () => void;
+  showParTitles: boolean;
+  onToggleParTitles: () => void;
+  showLatexComments: boolean;
+  onToggleLatexComments: () => void;
 }
 
 function Btn({
@@ -102,7 +106,19 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments }: MenuBarProps) {
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const viewMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!viewMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(e.target as Node)) setViewMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [viewMenuOpen]);
+
   if (!editor) return null;
 
   return (
@@ -240,6 +256,39 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote }: MenuBarP
           </svg>
         </Btn>
       )}
+
+      <div className="flex-1" />
+
+      <div className="relative" ref={viewMenuRef}>
+        <button
+          onClick={() => setViewMenuOpen(!viewMenuOpen)}
+          className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+          title="View options"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+            <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+          </svg>
+        </button>
+        {viewMenuOpen && (
+          <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-52 py-1">
+            <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Display</div>
+            <button
+              onClick={() => { onToggleParTitles(); setViewMenuOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+            >
+              <span className="w-4 text-center text-stone-400">{showParTitles ? "\u2713" : ""}</span>
+              Paragraph titles
+            </button>
+            <button
+              onClick={() => { onToggleLatexComments(); setViewMenuOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+            >
+              <span className="w-4 text-center text-stone-400">{showLatexComments ? "\u2713" : ""}</span>
+              % comments
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

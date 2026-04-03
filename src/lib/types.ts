@@ -144,3 +144,17 @@ export interface NotesState {
 export interface AnnotationsState {
   [bibKey: string]: string; // bib key → annotation text
 }
+
+// --- Bib Review Requests ---
+
+export interface BibReviewRequest {
+  bibKey: string;
+  type: "fields" | "notes";
+  requestedAt: string;
+  status: "pending" | "complete";
+  requestNotes?: string;
+}
+
+export interface BibReviewState {
+  requests: BibReviewRequest[];
+}

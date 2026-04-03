@@ -77,9 +77,7 @@ export async function writeJsonFile<T>(
   data: T
 ): Promise<void> {
   await fs.mkdir(path.dirname(filepath), { recursive: true });
-  const tmp = filepath + ".tmp";
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf-8");
-  await fs.rename(tmp, filepath);
+  await fs.writeFile(filepath, JSON.stringify(data, null, 2), "utf-8");
 }
 
 export async function readTextFile(
@@ -98,9 +96,7 @@ export async function writeTextFile(
   content: string
 ): Promise<void> {
   await fs.mkdir(path.dirname(filepath), { recursive: true });
-  const tmp = filepath + ".tmp";
-  await fs.writeFile(tmp, content, "utf-8");
-  await fs.rename(tmp, filepath);
+  await fs.writeFile(filepath, content, "utf-8");
 }
 
 // --- File index management ---

@@ -184,6 +184,47 @@ export function useCitations(docId: string | null) {
     [persistBib]
   );
 
+  const updateBibKeyAndType = useCallback(
+    (oldKey: string, newKey: string, newType: string) => {
+      setBibEntries((prev) => {
+        const next = prev.map((e) => {
+          if (e.key !== oldKey) return e;
+          const updated = { ...e, key: newKey, type: newType };
+          const lines = Object.entries(updated.fields)
+            .map(([k, v]) => `  ${k} = {${v}}`)
+            .join(",\n");
+          updated.raw = `@${updated.type}{${updated.key},\n${lines}\n}`;
+          return updated;
+        });
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        persistBib(newRaw);
+        return next;
+      });
+      // Update citation refs that reference the old key
+      if (oldKey !== newKey) {
+        setState((prev) => {
+          const next = {
+            ...prev,
+            citations: prev.citations.map((c) => {
+              if (!c.keys.includes(oldKey)) return c;
+              const newKeys = c.keys.map((k) => (k === oldKey ? newKey : k));
+              // Replace the old key in the command string
+              const newCommand = c.command.replace(
+                new RegExp(`\\b${oldKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"),
+                newKey
+              );
+              return { ...c, keys: newKeys, command: newCommand };
+            }),
+          };
+          persistState(next);
+          return next;
+        });
+      }
+    },
+    [persistBib, persistState]
+  );
+
   const getBibEntry = useCallback(
     (key: string): BibEntry | undefined => {
       return bibEntries.find((e) => e.key === key);
@@ -239,6 +280,7 @@ export function useCitations(docId: string | null) {
     setStyle,
     setBibPackage,
     updateBibEntry,
+    updateBibKeyAndType,
     getBibEntry,
     getDisplayText,
     getFormattedBib,

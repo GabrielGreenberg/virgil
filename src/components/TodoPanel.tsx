@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
+import { panelCard, PANEL, PanelHeader, Chevron } from "./panel-primitives";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -55,111 +56,101 @@ function TodoRow({
   }, [notes, item.notes, item.id, onUpdateNotes]);
 
   return (
-    <div className={`group border-b border-[var(--border-light)] ${item.done ? "bg-stone-50/50" : ""}`}>
-      <div className="flex items-start gap-2 px-4 py-2.5">
-        {/* Number */}
-        <span className={`text-xs mt-0.5 w-4 text-right shrink-0 tabular-nums ${item.done ? "text-stone-300" : "text-stone-500"}`}>
-          {index + 1}.
-        </span>
+    <div className={panelCard(false, item.done ? "opacity-60" : "")}>
+      <div className={PANEL.cardInner}>
+        <div className="flex items-start gap-2">
+          {/* Number */}
+          <span className={`text-xs mt-0.5 w-4 text-right shrink-0 tabular-nums ${item.done ? "text-stone-300" : "text-stone-500"}`}>
+            {index + 1}.
+          </span>
 
-        {/* Checkbox */}
-        <button
-          onClick={() => onToggle(item.id)}
-          className="mt-0.5 shrink-0"
-        >
-          {item.done ? (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
-              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
-            </svg>
-          )}
-        </button>
-
-        {/* Text + expand arrow */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start gap-1">
-            {/* Wedge arrow for notes */}
-            <button
-              onClick={() => setExpanded(!expanded)}
-              className="mt-1 p-0 text-[var(--muted-light)] hover:text-[var(--muted)] transition-colors shrink-0"
-              title={expanded ? "Collapse notes" : "Expand notes"}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 12 12"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className={`transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
-              >
-                <path d="M4.5 2l4 4-4 4" />
+          {/* Checkbox */}
+          <button
+            onClick={() => onToggle(item.id)}
+            className="mt-0.5 shrink-0"
+          >
+            {item.done ? (
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
+                <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </button>
-
-            {editing ? (
-              <input
-                ref={inputRef}
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                onBlur={commitEdit}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") commitEdit();
-                  if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
-                }}
-                className="flex-1 text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
-              />
             ) : (
-              <span
-                className={`flex-1 text-sm leading-relaxed cursor-pointer ${
-                  item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
-                }`}
-                onDoubleClick={() => { setEditText(item.text); setEditing(true); }}
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+              </svg>
+            )}
+          </button>
+
+          {/* Text + expand arrow */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-1">
+              {/* Chevron for notes */}
+              <button
+                onClick={() => setExpanded(!expanded)}
+                className="mt-1 p-0 text-[var(--muted-light)] hover:text-[var(--muted)] transition-colors shrink-0"
+                title={expanded ? "Collapse notes" : "Expand notes"}
               >
-                {item.text}
-              </span>
+                <Chevron expanded={expanded} />
+              </button>
+
+              {editing ? (
+                <input
+                  ref={inputRef}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  onBlur={commitEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") commitEdit();
+                    if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
+                  }}
+                  className="flex-1 text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+                />
+              ) : (
+                <span
+                  className={`flex-1 text-sm leading-relaxed cursor-pointer ${
+                    item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
+                  }`}
+                  onDoubleClick={() => { setEditText(item.text); setEditing(true); }}
+                >
+                  {item.text}
+                </span>
+              )}
+            </div>
+
+            {/* Notes (expanded) — sub-pod */}
+            {expanded && (
+              <div className={`mt-2 ${PANEL.subpod}`}>
+                <textarea
+                  ref={notesRef}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  onBlur={commitNotes}
+                  placeholder="Add notes..."
+                  className="w-full bg-transparent text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none resize-none leading-relaxed"
+                  rows={3}
+                />
+              </div>
+            )}
+
+            {/* Notes indicator when collapsed */}
+            {!expanded && item.notes && (
+              <div className="ml-5 mt-0.5 text-[10px] text-[var(--muted-light)] truncate">
+                {item.notes.slice(0, 60)}{item.notes.length > 60 ? "..." : ""}
+              </div>
             )}
           </div>
 
-          {/* Notes (expanded) */}
-          {expanded && (
-            <div className="ml-3 mt-2 mb-1">
-              <textarea
-                ref={notesRef}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={commitNotes}
-                placeholder="Add notes..."
-                className="w-full bg-stone-50 border border-[var(--border-light)] rounded px-2.5 py-2 text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none focus:border-stone-300 resize-none leading-relaxed"
-                rows={3}
-              />
-            </div>
-          )}
-
-          {/* Notes indicator when collapsed */}
-          {!expanded && item.notes && (
-            <div className="ml-3 mt-0.5 text-[10px] text-[var(--muted-light)] truncate">
-              {item.notes.slice(0, 60)}{item.notes.length > 60 ? "..." : ""}
-            </div>
-          )}
+          {/* Delete */}
+          <button
+            onClick={() => onDelete(item.id)}
+            className="opacity-0 group-hover:opacity-40 hover:!opacity-100 text-red-400 hover:text-red-500 transition-opacity p-1 mt-0.5 shrink-0"
+            title="Delete"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-
-        {/* Delete */}
-        <button
-          onClick={() => onDelete(item.id)}
-          className="opacity-0 group-hover:opacity-40 hover:!opacity-100 text-red-400 hover:text-red-500 transition-opacity p-1 mt-0.5 shrink-0"
-          title="Delete"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
       </div>
     </div>
   );
@@ -190,16 +181,7 @@ export default function TodoPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-stone-700">
-          Todo List
-          {pending.length > 0 && (
-            <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
-              ({pending.length})
-            </span>
-          )}
-        </h3>
-      </div>
+      <PanelHeader title="Todo List" count={pending.length} />
 
       {/* Add input */}
       <div className="px-4 py-2.5 border-b border-[var(--border-light)]">
@@ -222,10 +204,10 @@ export default function TodoPanel({
         </div>
       </div>
 
-      {/* Items — single list preserving order */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Items */}
+      <div className={PANEL.list}>
         {items.length === 0 && (
-          <div className="p-6 text-center text-[var(--muted)] text-sm">
+          <div className={PANEL.empty}>
             No tasks yet.
           </div>
         )}

@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { UserNote } from "@/lib/types";
+import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -107,41 +108,39 @@ function NoteEditor({
 
   return (
     <div
-      className={`border-b border-[var(--border-light)] transition-colors ${
-        selected
-          ? "bg-emerald-50/50 border-l-2 border-l-emerald-500"
-          : "hover:bg-stone-50"
-      }`}
+      className={panelCard(selected)}
       onClick={() => onSelect(selected ? null : note.id)}
     >
-      <div className="px-3 pt-2 pb-1 flex items-center justify-between">
-        <span className="inline-flex items-center gap-1">
-          <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-400 bg-emerald-50 text-emerald-700 text-[10px] font-bold leading-none">
-            N
+      <div className={PANEL.cardInner}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-400 bg-emerald-50 text-emerald-700 text-[10px] font-bold leading-none">
+              N
+            </span>
+            <span className="text-[10px] text-[var(--muted)]">
+              {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+            </span>
           </span>
-          <span className="text-[10px] text-[var(--muted)]">
-            {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-          </span>
-        </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
-          className="text-xs text-[var(--muted)] hover:text-red-500 transition-colors"
-        >
-          Delete
-        </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
+            className="text-xs text-[var(--muted)] hover:text-red-500 transition-colors"
+          >
+            Delete
+          </button>
+        </div>
+
+        {selected && <FormatToolbar editorRef={editorRef} />}
+
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onClick={(e) => e.stopPropagation()}
+          className="note-editor py-1 text-sm text-stone-700 leading-relaxed focus:outline-none min-h-[2.5rem]"
+          data-placeholder="Write a note..."
+        />
       </div>
-
-      {selected && <FormatToolbar editorRef={editorRef} />}
-
-      <div
-        ref={editorRef}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={handleInput}
-        onClick={(e) => e.stopPropagation()}
-        className="note-editor px-3 py-2 text-sm text-stone-700 leading-relaxed focus:outline-none min-h-[2.5rem]"
-        data-placeholder="Write a note..."
-      />
     </div>
   );
 }
@@ -159,15 +158,7 @@ export default function NotesPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-stone-700">
-          Notes
-          {notes.length > 0 && (
-            <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
-              ({notes.length})
-            </span>
-          )}
-        </h3>
+      <PanelHeader title="Notes" count={notes.length}>
         <button
           onClick={() => onAdd(cursorPos)}
           className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-1"
@@ -177,11 +168,11 @@ export default function NotesPanel({
           </svg>
           Add Note
         </button>
-      </div>
+      </PanelHeader>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className={PANEL.list}>
         {sortedNotes.length === 0 && (
-          <div className="p-6 text-center text-[var(--muted)] text-sm">
+          <div className={PANEL.empty}>
             No notes yet. Click &quot;Add Note&quot; to create one at the current cursor position.
           </div>
         )}

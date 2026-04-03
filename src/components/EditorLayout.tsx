@@ -26,6 +26,7 @@ import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
+import { useBibReview } from "@/hooks/useBibReview";
 import { useNotes } from "@/hooks/useNotes";
 import NoteMarkers from "./NoteMarkers";
 import dynamic from "next/dynamic";
@@ -90,15 +91,16 @@ function IconX() {
   );
 }
 
-// Outline icon: headline + two indented dot+line sub-items
+// Outline icon: headline + two indented bullet+line sub-items
 function IconOutline({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 5h16" />
-      <circle cx="7" cy="12" r="1.2" fill={active ? "var(--accent)" : "currentColor"} stroke="none" />
-      <path d="M10 12h10" />
-      <circle cx="7" cy="19" r="1.2" fill={active ? "var(--accent)" : "currentColor"} stroke="none" />
-      <path d="M10 19h8" />
+      <rect x="5.5" y="10.5" width="3" height="3" rx="0.75" fill={c} stroke="none" />
+      <path d="M11 12h9" />
+      <rect x="5.5" y="17.5" width="3" height="3" rx="0.75" fill={c} stroke="none" />
+      <path d="M11 19h7" />
     </svg>
   );
 }
@@ -123,13 +125,14 @@ function IconFootnote({ active }: { active?: boolean }) {
   );
 }
 
+// Citation icon: open book with bookmark ribbon
 function IconCitation({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 17h.01" />
-      <path d="M2 4h20v16H2z" />
-      <path d="M6 8h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2H7" />
-      <path d="M14 8h2a2 2 0 0 1 2 2v0a2 2 0 0 1-2 2h-1" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+      <path d="M17 3v7l1.5-1.5L20 10V3" stroke={c} fill={active ? "var(--accent)" : "currentColor"} fillOpacity="0.25" />
     </svg>
   );
 }
@@ -140,8 +143,7 @@ function IconBibliography({ active }: { active?: boolean }) {
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
       <path d="M8 7h8" />
-      <path d="M8 11h6" />
-      <path d="M8 15h4" />
+      <path d="M8 12h6" />
     </svg>
   );
 }
@@ -586,12 +588,14 @@ export default function EditorLayout() {
     setStyle: setCitationStyle,
     setBibPackage,
     updateBibEntry,
+    updateBibKeyAndType,
     getDisplayText: getCitationDisplayText,
     getFormattedBib,
     syncFromEditor: syncCitationsFromEditor,
   } = useCitations(currentDocId);
 
   const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
+  const { requestReview: requestBibReview, cancelRequest: cancelBibReview, getRequestStatus: getBibReviewStatus } = useBibReview(currentDocId);
 
   const {
     prefs,
@@ -612,6 +616,8 @@ export default function EditorLayout() {
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const [showParTitles, setShowParTitles] = useState(true);
+  const [showLatexComments, setShowLatexComments] = useState(true);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
@@ -828,7 +834,7 @@ export default function EditorLayout() {
   useEffect(() => {
     if (hasSuggestions) {
       const hasPending = suggestionsState.suggestions.some((s) => s.status === "pending");
-      if (hasPending) setActiveRight("suggestions");
+      if (hasPending && prefsRef.current.activeRight !== "suggestions") setActiveRight("suggestions");
     }
   }, [suggestionsState.suggestions.length, hasSuggestions, setActiveRight]);
 
@@ -873,7 +879,7 @@ export default function EditorLayout() {
     } else {
       if (prefs.activeRight !== "archive") setActiveRight("archive");
     }
-  }, [archiveText, prefs.placements, setActiveLeft, setActiveRight]);
+  }, [archiveText, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const insertingRef = useRef(false);
   const handleInsertArchive = useCallback((id: string) => {
@@ -1069,11 +1075,14 @@ export default function EditorLayout() {
     const selectedText = editorRef.current?.getSelectedText();
     if (!selectedText || selectedText.trim().length === 0) return;
     setPendingCommentText(selectedText);
-    // Open revisions panel on whichever side it's on
+    // Ensure revisions panel is open (setActiveLeft/Right are toggles, so only call if not already active)
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
-    if (revPlacement?.side === "left") setActiveLeft("revisions");
-    else setActiveRight("revisions");
-  }, [prefs.placements, setActiveLeft, setActiveRight]);
+    if (revPlacement?.side === "left") {
+      if (prefs.activeLeft !== "revisions") setActiveLeft("revisions");
+    } else {
+      if (prefs.activeRight !== "revisions") setActiveRight("revisions");
+    }
+  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const handleSubmitComment = useCallback(
     (comment: string) => {
@@ -1396,9 +1405,13 @@ export default function EditorLayout() {
             selectedBibKey={selectedBibKey}
             onSelectBibKey={setSelectedBibKey}
             onUpdateBibEntry={updateBibEntry}
+            onUpdateBibKeyAndType={updateBibKeyAndType}
             getFormattedBib={getFormattedBib}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}
+            onRequestReview={requestBibReview}
+            onCancelReview={cancelBibReview}
+            getReviewStatus={getBibReviewStatus}
             allEditorCitations={allEditorCitations}
             onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
             onActiveCitationChange={setBibActiveCitationId}
@@ -1661,8 +1674,8 @@ export default function EditorLayout() {
         }
 
         {/* Editor column: toolbar + content */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative">
-          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} />
+        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`}>
+          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} />
           {currentDocId && content && !docLoading ? (
             <>
               <VirgilEditor

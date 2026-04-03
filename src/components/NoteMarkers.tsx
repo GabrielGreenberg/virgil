@@ -31,7 +31,14 @@ export default function NoteMarkers({
       return;
     }
 
-    const scrollEl = editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null;
+    let scrollEl: HTMLElement | null;
+    try {
+      scrollEl = editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null;
+    } catch {
+      // editor view not mounted yet
+      setMarkers([]);
+      return;
+    }
     if (!scrollEl) {
       setMarkers([]);
       return;
@@ -56,7 +63,15 @@ export default function NoteMarkers({
   useEffect(() => {
     compute();
 
-    if (!editor || !editor.view?.dom) return;
+    if (!editor) return;
+    let dom: Element | undefined;
+    try {
+      dom = editor.view?.dom;
+    } catch {
+      // editor view not mounted yet
+      return;
+    }
+    if (!dom) return;
 
     const onUpdate = () => {
       cancelAnimationFrame(rafRef.current);
@@ -66,7 +81,7 @@ export default function NoteMarkers({
     editor.on("update", onUpdate);
     editor.on("selectionUpdate", onUpdate);
 
-    const scrollEl = editor.view.dom?.closest(".overflow-y-auto");
+    const scrollEl = dom.closest(".overflow-y-auto");
     scrollEl?.addEventListener("scroll", onUpdate, { passive: true });
     window.addEventListener("resize", onUpdate);
 
@@ -81,7 +96,12 @@ export default function NoteMarkers({
 
   if (!panelSide || markers.length === 0) return null;
 
-  const scrollEl = editor?.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+  let scrollEl: HTMLElement | null = null;
+  try {
+    scrollEl = (editor?.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null) ?? null;
+  } catch {
+    // editor view not mounted yet
+  }
   if (!scrollEl) return null;
 
   return (
