@@ -71,11 +71,13 @@ function serializeNode(node: JSONContent, insideList = false): string {
     case "heading": {
       const level = (node.attrs?.level as number) || 1;
       const label = node.attrs?.label as string | null;
+      const uuid = node.attrs?.uuid as string | null;
       const inner = (node.content || []).map(serializeInline).join("");
       const commands = ["\\section", "\\subsection", "\\subsubsection"];
       const cmd = commands[Math.min(level - 1, 2)];
       const labelStr = label ? `\n\\label{${label}}` : "";
-      return `${cmd}{${inner}}${labelStr}\n\n`;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `${cmd}{${inner}}${labelStr}${anchor}\n\n`;
     }
 
     case "titleField": {
@@ -199,10 +201,11 @@ function generateUuid(existing: Set<string>): string {
  *  Lists (bulletList, orderedList) get a single UUID for the whole list. */
 export function assignUuids(doc: JSONContent): void {
   const LIST_TYPES = new Set(["bulletList", "orderedList"]);
+  const UUID_TYPES = new Set(["paragraph", "heading", "bulletList", "orderedList"]);
   const existing = new Set<string>();
   // First pass: collect existing UUIDs
   function collect(node: JSONContent) {
-    if ((node.type === "paragraph" || LIST_TYPES.has(node.type!)) && node.attrs?.uuid) {
+    if (UUID_TYPES.has(node.type!) && node.attrs?.uuid) {
       existing.add(node.attrs.uuid as string);
     }
     node.content?.forEach(collect);
@@ -227,6 +230,12 @@ export function assignUuids(doc: JSONContent): void {
         });
       });
       return;
+    }
+    // Headings always get a UUID
+    if (node.type === "heading" && !node.attrs?.uuid) {
+      if (!node.attrs) node.attrs = {};
+      node.attrs.uuid = generateUuid(existing);
+      existing.add(node.attrs.uuid as string);
     }
     if (
       node.type === "paragraph" &&

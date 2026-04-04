@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState, useRef, useEffect } from "react";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -96,5 +96,74 @@ export function PanelHeader({
       </h3>
       {children}
     </div>
+  );
+}
+
+/* ── Three-dot item menu ─────────────────────────────────────────── */
+
+export function ItemMenu({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    // Position the fixed dropdown relative to the button
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    const handler = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={btnRef}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+        title="Options"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <circle cx="12" cy="5" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="19" r="2" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[100px]"
+          style={{ top: pos.top, right: pos.right }}
+          onClick={() => setOpen(false)}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Standard menu item for delete actions inside ItemMenu. */
+export function MenuDelete({ onClick, label }: { onClick: () => void; label?: string }) {
+  return (
+    <button
+      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
+    >
+      {label ?? "Delete"}
+    </button>
   );
 }

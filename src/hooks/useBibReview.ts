@@ -25,14 +25,15 @@ export function useBibReview(docId: string | null) {
     fetchState(docId);
   }, [docId, fetchState]);
 
-  // Poll every 5s for status changes (a Claude session may mark requests complete)
+  // Poll every 10s for status changes, but only when there are pending requests
+  const hasPending = state.requests.some((r) => r.status === "pending");
   useEffect(() => {
-    if (!docId) return;
+    if (!docId || !hasPending) return;
     const interval = setInterval(() => {
       if (docIdRef.current) fetchState(docIdRef.current);
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
-  }, [docId, fetchState]);
+  }, [docId, hasPending, fetchState]);
 
   const persist = useCallback(async (s: BibReviewState) => {
     const id = docIdRef.current;

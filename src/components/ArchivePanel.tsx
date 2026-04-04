@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -136,6 +136,12 @@ function ArchivePanel({
             >
               <div className={PANEL.cardInner}>
                 <div className="flex items-start gap-2.5">
+                  {/* Three-dot menu — top right */}
+                  <div className="absolute top-2 right-2">
+                    <ItemMenu>
+                      <MenuDelete onClick={() => onDelete(s.id)} />
+                    </ItemMenu>
+                  </div>
                   {/* Anchor badge */}
                   <button
                     onClick={(e) => {
@@ -245,13 +251,6 @@ function ArchivePanel({
                       title="Restore to marker position and remove from archive"
                     >
                       Restore
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
-                      className="text-xs text-red-400 bg-red-50 hover:bg-red-100 hover:text-red-600 px-2 py-1 rounded border border-red-200 transition-colors"
-                      title="Permanently delete"
-                    >
-                      Delete
                     </button>
                   </div>
                 </div>

@@ -196,6 +196,46 @@ export function parseBiblatexCommand(command: string): ParsedCiteCommand | null 
  * Generate the WYSIWYG inline display text for a citation command.
  * This is what appears in the editor body.
  */
+/** Format author last names with et al. truncation. */
+function formatAuthorLastNames(entry: BibEntry | undefined, starred: boolean, capitalized: boolean): string {
+  if (!entry) return "??";
+  const authorStr = entry.fields.author || "";
+  const authors = authorStr.split(" and ").map((a) => a.trim());
+  let result: string;
+  if (starred || authors.length <= 2) {
+    if (authors.length === 1) {
+      result = lastNameOf(authors[0]);
+    } else if (authors.length === 2) {
+      result = lastNameOf(authors[0]) + " and " + lastNameOf(authors[1]);
+    } else {
+      result =
+        authors.slice(0, -1).map(lastNameOf).join(", ") +
+        ", and " +
+        lastNameOf(authors[authors.length - 1]);
+    }
+  } else {
+    result = lastNameOf(authors[0]) + " et al.";
+  }
+  if (capitalized && result.length > 0) {
+    result = result[0].toUpperCase() + result.slice(1);
+  }
+  return result;
+}
+
+/** Extract year from a BibEntry, falling back to "n.d." */
+function getEntryYear(entry: BibEntry | undefined): string {
+  return entry?.fields.year || "n.d.";
+}
+
+/** Always returns "Author (Year)" format for a single bib key, regardless of citation command. */
+export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): string {
+  const entry = bibEntries.find((e) => e.key === key);
+  if (!entry) return key;
+  const author = formatAuthorLastNames(entry, false, false);
+  const year = getEntryYear(entry);
+  return `${author} (${year})`;
+}
+
 export function formatInlineCitation(
   command: string,
   bibEntries: BibEntry[],
@@ -206,35 +246,10 @@ export function formatInlineCitation(
 
   const entryMap = new Map(bibEntries.map((e) => [e.key, e]));
 
-  const formatAuthor = (entry: BibEntry | undefined, star: boolean, cap: boolean): string => {
-    if (!entry) return "??";
-    const authorStr = entry.fields.author || "";
-    const authors = authorStr.split(" and ").map((a) => a.trim());
-    let result: string;
-    if (star || authors.length <= 2) {
-      // Full list
-      if (authors.length === 1) {
-        result = lastNameOf(authors[0]);
-      } else if (authors.length === 2) {
-        result = lastNameOf(authors[0]) + " and " + lastNameOf(authors[1]);
-      } else {
-        result =
-          authors.slice(0, -1).map(lastNameOf).join(", ") +
-          ", and " +
-          lastNameOf(authors[authors.length - 1]);
-      }
-    } else {
-      result = lastNameOf(authors[0]) + " et al.";
-    }
-    if (cap && result.length > 0) {
-      result = result[0].toUpperCase() + result.slice(1);
-    }
-    return result;
-  };
-
-  const getYear = (entry: BibEntry | undefined): string => {
-    return entry?.fields.year || "n.d.";
-  };
+  // Use promoted helpers with closure-compatible wrappers
+  const formatAuthor = (entry: BibEntry | undefined, star: boolean, cap: boolean) =>
+    formatAuthorLastNames(entry, star, cap);
+  const getYear = (entry: BibEntry | undefined) => getEntryYear(entry);
 
   const { type, starred, capitalized, keys, prenote, postnote } = parsed;
 

@@ -303,20 +303,20 @@ function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
             className="text-[var(--muted)] hover:text-stone-600 transition-colors"
             title="Expand all"
           >
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 1 L7 4.5 L12 1" />
-              <path d="M2 5.5 L7 9 L12 5.5" />
+              <path d="M2 6.5 L7 10 L12 6.5" />
             </svg>
           </button>
           <button
             onClick={collapseAll}
             className="text-[var(--muted)] hover:text-stone-600 transition-colors"
             title="Collapse all"
+            style={{ marginTop: "-2px" }}
           >
-            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: "-2px" }}>
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 5.5 L7 2 L12 5.5" />
-              <path d="M2 8 L7 4.5 L12 8" />
-              <path d="M2 10.5 L7 7 L12 10.5" />
+              <path d="M2 9 L7 5.5 L12 9" />
             </svg>
           </button>
           <div className="relative" ref={menuRef}>

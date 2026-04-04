@@ -439,9 +439,19 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           label = labelMatch[1];
           ctx.pos += labelMatch[0].length;
         }
+        // Check for optional %!v:xxxx UUID anchor after heading/label
+        const afterLabel = ctx.src.slice(ctx.pos);
+        const uuidMatch = afterLabel.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        let uuid: string | null = null;
+        if (uuidMatch) {
+          uuid = uuidMatch[1];
+          ctx.pos += uuidMatch[0].length;
+        }
+        const attrs: Record<string, unknown> = { level, label };
+        if (uuid) attrs.uuid = uuid;
         parent.content.push({
           type: "heading",
-          attrs: { level, label },
+          attrs,
           content: parseInlineContent(inner.content),
         });
         continue;

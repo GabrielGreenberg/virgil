@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { FootnoteInfo } from "./Editor";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -153,6 +153,12 @@ function FootnotePanel({
             >
               <div className={PANEL.cardInner}>
                 <div className="flex items-start gap-2.5">
+                  {/* Three-dot menu — top right */}
+                  <div className="absolute top-2 right-2">
+                    <ItemMenu>
+                      <MenuDelete onClick={() => onDelete(fn.footnoteId)} />
+                    </ItemMenu>
+                  </div>
                   {/* Number badge — clickable to scroll to marker */}
                   <button
                     onClick={(e) => {
@@ -252,13 +258,6 @@ function FootnotePanel({
                           <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
                         </svg>
                       )}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(fn.footnoteId); }}
-                      className="text-xs text-red-400 bg-red-50 hover:bg-red-100 hover:text-red-600 px-2 py-1 rounded border border-red-200 transition-colors"
-                      title="Delete footnote"
-                    >
-                      Delete
                     </button>
                   </div>
                 </div>

@@ -722,15 +722,6 @@ span.par-title-label {
   /* text flows inline with body */
 }
 
-/* Citation display in panel */
-.citation-display-line {
-  background: #fef9c3;
-  padding: 2px 6px;
-  border-radius: 2px;
-  border-left: 3px solid #d4a843;
-  display: inline-block;
-}
-
 .citation-preview {
   background: #fef9c3;
   padding: 0 3px;

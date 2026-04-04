@@ -650,12 +650,38 @@ export default function EditorLayout() {
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
+  const [codeViewParagraphId, setCodeViewParagraphId] = useState<string | null>(null);
   const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
   const pendingScrollText = useRef<string | null>(null);
+  const pendingParagraphId = useRef<string | null>(null);
+
+  // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
+  const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
+  const currentParaRef = useRef<string | null>(null);
+  const navigatingRef = useRef(false);
+  const [paraNavVersion, setParaNavVersion] = useState(0); // bump to re-render toolbar
 
   // Scroll TipTap to position after returning from code view
   useEffect(() => {
-    if (!editorInstance || !pendingScrollText.current) return;
+    if (!editorInstance) return;
+
+    // Prefer paragraph UUID for scroll sync
+    const paraId = pendingParagraphId.current;
+    if (paraId) {
+      pendingParagraphId.current = null;
+      pendingScrollText.current = null; // clear text fallback
+      const doScroll = () => {
+        try {
+          editorRef.current?.scrollToParagraphId(paraId);
+        } catch { /* ignore */ }
+      };
+      setTimeout(doScroll, 200);
+      setTimeout(doScroll, 500);
+      return;
+    }
+
+    // Fallback: text-based matching (for edge cases where UUID isn't available)
+    if (!pendingScrollText.current) return;
     const snippet = pendingScrollText.current;
     pendingScrollText.current = null;
 
@@ -728,6 +754,93 @@ export default function EditorLayout() {
       setTimeout(doScroll, 500);
     }
   }, [editorInstance]);
+
+  // Track active paragraph and build navigation history
+  // Model: stack always includes current position, idx points to where we are now.
+  // Back: idx--, Forward: idx++, New position: truncate forward + push.
+  useEffect(() => {
+    if (!editorInstance && !codeView) return;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+
+    const checkParagraph = () => {
+      if (navigatingRef.current) return;
+      let paraId: string | null = null;
+      if (codeView) {
+        paraId = codeEditorHandleRef.current?.getActiveParagraphId() ?? null;
+      } else if (editorRef.current) {
+        paraId = editorRef.current.getActiveParagraphId();
+      }
+      if (!paraId || paraId === currentParaRef.current) return;
+      currentParaRef.current = paraId;
+      const h = paraHistoryRef.current;
+      h.stack = h.stack.slice(0, h.idx + 1);
+      h.stack.push(paraId);
+      if (h.stack.length > 100) h.stack.shift();
+      h.idx = h.stack.length - 1;
+      setParaNavVersion((v) => v + 1);
+    };
+
+    const debouncedCheck = () => {
+      if (timerId) clearTimeout(timerId);
+      timerId = setTimeout(checkParagraph, 1000);
+    };
+
+    if (!codeView && editorInstance) {
+      const scrollEl = editorInstance.view.dom.closest(".overflow-y-auto");
+      scrollEl?.addEventListener("scroll", debouncedCheck, { passive: true });
+      const interval = setInterval(debouncedCheck, 2000);
+      return () => {
+        scrollEl?.removeEventListener("scroll", debouncedCheck);
+        clearInterval(interval);
+        if (timerId) clearTimeout(timerId);
+      };
+    } else if (codeView) {
+      const interval = setInterval(debouncedCheck, 2000);
+      return () => {
+        clearInterval(interval);
+        if (timerId) clearTimeout(timerId);
+      };
+    }
+  }, [editorInstance, codeView]);
+
+  // Clear history on document change
+  useEffect(() => {
+    paraHistoryRef.current = { stack: [], idx: -1 };
+    currentParaRef.current = null;
+    setParaNavVersion((v) => v + 1);
+  }, [currentDocId]);
+
+  const scrollToParagraph = useCallback((uuid: string) => {
+    if (codeView) {
+      codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
+    } else {
+      editorRef.current?.scrollToParagraphId(uuid);
+    }
+  }, [codeView]);
+
+  const paraNavBack = useCallback(() => {
+    const h = paraHistoryRef.current;
+    if (h.idx <= 0) return;
+    h.idx--;
+    const targetId = h.stack[h.idx];
+    navigatingRef.current = true;
+    currentParaRef.current = targetId;
+    scrollToParagraph(targetId);
+    setParaNavVersion((v) => v + 1);
+    setTimeout(() => { navigatingRef.current = false; }, 1500);
+  }, [scrollToParagraph]);
+
+  const paraNavForward = useCallback(() => {
+    const h = paraHistoryRef.current;
+    if (h.idx >= h.stack.length - 1) return;
+    h.idx++;
+    const targetId = h.stack[h.idx];
+    navigatingRef.current = true;
+    currentParaRef.current = targetId;
+    scrollToParagraph(targetId);
+    setParaNavVersion((v) => v + 1);
+    setTimeout(() => { navigatingRef.current = false; }, 1500);
+  }, [scrollToParagraph]);
 
   // Derive citation order from editor state
   // Debounced citation order and editor citations (avoid recomputing on every keystroke)
@@ -972,7 +1085,7 @@ export default function EditorLayout() {
         // Scroll the archive entry into view
         requestAnimationFrame(() => {
           const entry = document.querySelector(`[data-archive-entry="${detail.archiveId}"]`);
-          entry?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
         });
       }
     };
@@ -995,7 +1108,7 @@ export default function EditorLayout() {
         }
         requestAnimationFrame(() => {
           const entry = document.querySelector(`[data-footnote-entry="${detail.footnoteId}"]`);
-          entry?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
         });
       }
     };
@@ -1019,7 +1132,7 @@ export default function EditorLayout() {
         // Scroll the panel entry into view
         requestAnimationFrame(() => {
           const entry = document.querySelector(`[data-citation-entry="${detail.citationId}"]`);
-          entry?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
         });
       }
     };
@@ -1123,43 +1236,41 @@ export default function EditorLayout() {
 
 
   const switchToCodeView = useCallback(() => {
-    // Compute line number from TipTap scroll position
+    // Get the active paragraph UUID using rules 1-3
+    const paraId = editorRef.current?.getActiveParagraphId() ?? null;
+    setCodeViewParagraphId(paraId);
+
+    // Fallback: compute line number from text matching
     let line: number | undefined;
-    try {
-      const editor = editorRef.current?.getEditor();
-      if (editor && content) {
-        // Get visible area top position
-        const scrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
-        const viewportTop = scrollEl ? scrollEl.scrollTop : 0;
-        // Find the ProseMirror position at the top of the viewport
-        const topPos = editor.view.posAtCoords({
-          left: editor.view.dom.getBoundingClientRect().left + 50,
-          top: (scrollEl?.getBoundingClientRect().top ?? 0) + 20,
-        });
-        const pos = topPos?.pos ?? editor.state.selection.from;
-
-        // Get ~60 chars of plain text around this position
-        const start = Math.max(0, pos - 10);
-        const end = Math.min(editor.state.doc.content.size, pos + 60);
-        const snippet = editor.state.doc.textBetween(start, end, " ").trim();
-
-        // Extract clean words and search in LaTeX source
-        const words = snippet.split(/\s+/).filter((w) => w.length > 3);
-        if (words.length >= 2) {
-          const latex = serializeToLatex(content);
-          // Try progressively shorter word sequences
-          for (let len = Math.min(words.length, 6); len >= 2; len--) {
-            const phrase = words.slice(0, len).join(".*?");
-            const re = new RegExp(phrase, "s");
-            const match = re.exec(latex);
-            if (match) {
-              line = latex.substring(0, match.index).split("\n").length;
-              break;
+    if (!paraId) {
+      try {
+        const editor = editorRef.current?.getEditor();
+        if (editor && content) {
+          const scrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+          const topPos = editor.view.posAtCoords({
+            left: editor.view.dom.getBoundingClientRect().left + 50,
+            top: (scrollEl?.getBoundingClientRect().top ?? 0) + 20,
+          });
+          const pos = topPos?.pos ?? editor.state.selection.from;
+          const start = Math.max(0, pos - 10);
+          const end = Math.min(editor.state.doc.content.size, pos + 60);
+          const snippet = editor.state.doc.textBetween(start, end, " ").trim();
+          const words = snippet.split(/\s+/).filter((w) => w.length > 3);
+          if (words.length >= 2) {
+            const latex = serializeToLatex(content);
+            for (let len = Math.min(words.length, 6); len >= 2; len--) {
+              const phrase = words.slice(0, len).join(".*?");
+              const re = new RegExp(phrase, "s");
+              const match = re.exec(latex);
+              if (match) {
+                line = latex.substring(0, match.index).split("\n").length;
+                break;
+              }
             }
           }
         }
-      }
-    } catch { /* fallback: no line */ }
+      } catch { /* fallback: no line */ }
+    }
     setCodeViewLine(line);
     setEditorInstance(null);
     setCodeView(true);
@@ -1169,7 +1280,15 @@ export default function EditorLayout() {
     // Capture text around visible area before destroying code editor
     const handle = codeEditorHandleRef.current;
     if (handle) {
-      pendingScrollText.current = handle.getTextAroundCursor();
+      // Prefer paragraph UUID; fall back to text matching
+      const paraId = handle.getActiveParagraphId();
+      if (paraId) {
+        pendingParagraphId.current = paraId;
+        pendingScrollText.current = null;
+      } else {
+        pendingScrollText.current = handle.getTextAroundCursor();
+        pendingParagraphId.current = null;
+      }
     }
     codeEditorHandleRef.current = null;
     setCodeView(false);
@@ -1396,7 +1515,14 @@ export default function EditorLayout() {
               citationPositions={citationPositionMap}
               viewMode={getPanelViewMode("citations")}
               onViewModeChange={(m) => setPanelViewMode("citations", m)}
-
+              getFormattedBib={getFormattedBib}
+              getAnnotation={getAnnotation}
+              setAnnotation={setAnnotation}
+              onRequestReview={requestBibReview}
+              onCancelReview={cancelBibReview}
+              getReviewStatus={getBibReviewStatus}
+              onUpdateBibEntry={updateBibEntry}
+              onUpdateBibKeyAndType={updateBibKeyAndType}
             />
         </ResizablePanel>
       );
@@ -1421,6 +1547,7 @@ export default function EditorLayout() {
               allEditorCitations={allEditorCitations}
               onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
               onActiveCitationChange={setBibActiveCitationId}
+              bibPackage={bibPackage}
             />
         </ResizablePanel>
       );
@@ -1543,6 +1670,32 @@ export default function EditorLayout() {
         </div>
 
         <div className="shrink-0 flex items-center px-2 gap-1">
+          {paraHistoryRef.current.stack.length > 1 && (
+            <>
+              <button
+                onClick={paraNavBack}
+                disabled={paraHistoryRef.current.idx <= 0}
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+                title="Go back"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12" />
+                  <polyline points="12 19 5 12 12 5" />
+                </svg>
+              </button>
+              <button
+                onClick={paraNavForward}
+                disabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+                title="Go forward"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <polyline points="12 5 19 12 12 19" />
+                </svg>
+              </button>
+            </>
+          )}
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
@@ -1598,6 +1751,7 @@ export default function EditorLayout() {
           <CodeEditor
             docId={currentDocId}
             initialLine={codeViewLine}
+            initialParagraphId={codeViewParagraphId}
             onReady={(handle) => { codeEditorHandleRef.current = handle; }}
           />
         </div>
@@ -1708,6 +1862,11 @@ export default function EditorLayout() {
                 onAddComment={handleAddComment}
                 onArchive={handleArchive}
                 onEditorReady={setEditorInstance}
+                onCitationDrop={(command) => {
+                  const display = getCitationDisplayText(command);
+                  const ref = addCitation(command);
+                  return { id: ref.id, displayText: display };
+                }}
               />
               <NoteMarkers
                 editor={editorInstance}

@@ -52,16 +52,47 @@ const virgilTheme = EditorView.theme({
 export interface CodeEditorHandle {
   getCurrentLine(): number;
   getTextAroundCursor(): string;
+  getActiveParagraphId(): string | null;
+  scrollToParagraphId(uuid: string): void;
 }
 
 interface CodeEditorProps {
   docId: string;
   initialLine?: number;
+  initialParagraphId?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
   onReady?: (handle: CodeEditorHandle) => void;
 }
 
-export default function CodeEditor({ docId, initialLine, onDirtyChange, onReady }: CodeEditorProps) {
+// Helper: find all paragraph UUIDs and their line ranges in LaTeX source
+// Only tracks actual content lines — pure comment lines (starting with %)
+// are not counted as part of the paragraph.
+function findParagraphUuids(text: string): Array<{ uuid: string; startLine: number; endLine: number }> {
+  const lines = text.split("\n");
+  const results: Array<{ uuid: string; startLine: number; endLine: number }> = [];
+  let contentStart = -1; // first content (non-comment) line in current block
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line === "") {
+      contentStart = -1;
+      continue;
+    }
+    // Pure comment lines (starting with %) that don't carry a UUID anchor
+    // are not part of the paragraph content
+    const hasUuid = /%!v:[0-9a-f]{4}/.test(line);
+    const isPureComment = line.startsWith("%") && !hasUuid;
+    if (!isPureComment && contentStart === -1) contentStart = i;
+    if (hasUuid) {
+      const match = line.match(/%!v:([0-9a-f]{4})/)!;
+      const start = contentStart === -1 ? i : contentStart;
+      results.push({ uuid: match[1], startLine: start + 1, endLine: i + 1 }); // 1-based
+      contentStart = -1;
+    }
+  }
+  return results;
+}
+
+export default function CodeEditor({ docId, initialLine, initialParagraphId, onDirtyChange, onReady }: CodeEditorProps) {
   const [value, setValue] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -82,15 +113,30 @@ export default function CodeEditor({ docId, initialLine, onDirtyChange, onReady 
       .catch(() => setValue(""));
   }, [docId]);
 
-  // Scroll to initial line once editor + content are ready
+  // Scroll to initial position once editor + content are ready
+  // Prefer paragraph UUID; fall back to line number
   useEffect(() => {
-    if (scrolledRef.current || !initialLine || value === null) return;
+    if (scrolledRef.current || value === null) return;
+    if (!initialParagraphId && !initialLine) return;
 
     const tryScroll = () => {
       const view = editorViewRef.current;
       if (!view) return false;
       try {
-        const line = Math.min(initialLine, view.state.doc.lines);
+        let targetLine: number | undefined;
+
+        // Prefer paragraph UUID
+        if (initialParagraphId) {
+          const paras = findParagraphUuids(view.state.doc.toString());
+          const found = paras.find((p) => p.uuid === initialParagraphId);
+          if (found) targetLine = found.startLine;
+        }
+
+        // Fall back to line number
+        if (!targetLine && initialLine) targetLine = initialLine;
+        if (!targetLine) return false;
+
+        const line = Math.min(targetLine, view.state.doc.lines);
         const pos = view.state.doc.line(Math.max(1, line)).from;
         view.dispatch({
           effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 80 }),
@@ -112,7 +158,7 @@ export default function CodeEditor({ docId, initialLine, onDirtyChange, onReady 
       }, 100);
       return () => clearInterval(interval);
     }
-  }, [value, initialLine]);
+  }, [value, initialLine, initialParagraphId]);
 
   const persist = useCallback(async (latex: string) => {
     setSaving(true);
@@ -218,6 +264,73 @@ export default function CodeEditor({ docId, initialLine, onDirtyChange, onReady 
                 contentLines.push(text);
               }
               return contentLines.join("\n");
+            },
+            getActiveParagraphId() {
+              const v = editorViewRef.current;
+              if (!v) return null;
+              const text = v.state.doc.toString();
+              const paras = findParagraphUuids(text);
+              if (paras.length === 0) return null;
+
+              // Cursor line (1-based)
+              const cursorLine = v.state.doc.lineAt(v.state.selection.main.head).number;
+              // Top visible line
+              const topPos = v.lineBlockAtHeight(v.scrollDOM.scrollTop).from;
+              const topLine = v.state.doc.lineAt(topPos).number;
+              const bottomPos = v.lineBlockAtHeight(v.scrollDOM.scrollTop + v.scrollDOM.clientHeight).from;
+              const bottomLine = v.state.doc.lineAt(bottomPos).number;
+
+              // Rule 1: Find paragraph containing cursor
+              let cursorPara = paras.find((p) => cursorLine >= p.startLine && cursorLine <= p.endLine);
+
+              // If cursor not in a UUID paragraph, find nearest
+              if (!cursorPara) {
+                let bestDist = Infinity;
+                for (const p of paras) {
+                  const mid = (p.startLine + p.endLine) / 2;
+                  const dist = Math.abs(mid - cursorLine);
+                  if (dist < bestDist) {
+                    bestDist = dist;
+                    cursorPara = p;
+                  }
+                }
+              }
+
+              // Check if cursor's paragraph opening is visible
+              if (cursorPara && cursorPara.startLine >= topLine && cursorPara.startLine <= bottomLine) {
+                return cursorPara.uuid;
+              }
+
+              // Rule 2: Find topmost paragraph whose opening lines are visible
+              for (const p of paras) {
+                if (p.startLine >= topLine && p.startLine <= bottomLine) {
+                  return p.uuid;
+                }
+              }
+
+              // Rule 3: Find any paragraph overlapping the viewport
+              for (const p of paras) {
+                if (p.endLine >= topLine && p.startLine <= bottomLine) {
+                  return p.uuid;
+                }
+              }
+
+              return cursorPara?.uuid ?? null;
+            },
+            scrollToParagraphId(uuid: string) {
+              const v = editorViewRef.current;
+              if (!v) return;
+              const paras = findParagraphUuids(v.state.doc.toString());
+              const found = paras.find((p) => p.uuid === uuid);
+              if (!found) return;
+              try {
+                const line = Math.min(found.startLine, v.state.doc.lines);
+                const pos = v.state.doc.line(Math.max(1, line)).from;
+                v.dispatch({
+                  effects: EditorView.scrollIntoView(pos, { y: "start", yMargin: 80 }),
+                  selection: { anchor: pos },
+                });
+              } catch { /* ignore */ }
             },
           });
         }}

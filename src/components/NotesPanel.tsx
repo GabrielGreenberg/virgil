@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { UserNote } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -121,12 +121,9 @@ function NoteEditor({
               {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
             </span>
           </span>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
-            className="text-xs text-[var(--muted)] hover:text-red-500 transition-colors"
-          >
-            Delete
-          </button>
+          <ItemMenu>
+            <MenuDelete onClick={() => onDelete(note.id)} />
+          </ItemMenu>
         </div>
 
         {selected && <FormatToolbar editorRef={editorRef} />}

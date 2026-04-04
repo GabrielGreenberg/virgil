@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { TodoItem } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, Chevron } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, Chevron, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -140,16 +140,9 @@ function TodoRow({
             )}
           </div>
 
-          {/* Delete */}
-          <button
-            onClick={() => onDelete(item.id)}
-            className="opacity-0 group-hover:opacity-40 hover:!opacity-100 text-red-400 hover:text-red-500 transition-opacity p-1 mt-0.5 shrink-0"
-            title="Delete"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
+          <ItemMenu>
+            <MenuDelete onClick={() => onDelete(item.id)} />
+          </ItemMenu>
         </div>
       </div>
     </div>

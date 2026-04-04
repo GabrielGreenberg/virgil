@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { UserComment } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, findTextPosition } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface CommentPanelProps {
   comments: UserComment[];
@@ -205,8 +205,13 @@ export default function RevisionsPanel({
               }}
             >
               <div className={PANEL.cardInner}>
-                <div className="text-xs text-[var(--muted)] mb-1.5 truncate font-medium">
-                  &ldquo;{c.selectedText}&rdquo;
+                <div className="flex items-start justify-between mb-1.5">
+                  <div className="text-xs text-[var(--muted)] truncate font-medium flex-1 min-w-0">
+                    &ldquo;{c.selectedText}&rdquo;
+                  </div>
+                  <ItemMenu>
+                    <MenuDelete onClick={() => onDelete(c.id)} />
+                  </ItemMenu>
                 </div>
 
                 {editingId === c.id ? (
@@ -238,7 +243,7 @@ export default function RevisionsPanel({
                     <p className="text-sm text-stone-700 leading-relaxed whitespace-pre-wrap">
                       {c.comment}
                     </p>
-                    <div className="flex gap-2 mt-2">
+                    <div className="flex gap-2 mt-2 items-center">
                       <button
                         onClick={() => startEdit(c)}
                         className="text-xs text-[var(--muted)] hover:text-stone-600 transition-colors"
@@ -250,12 +255,6 @@ export default function RevisionsPanel({
                         className="text-xs text-emerald-600 hover:text-emerald-700 transition-colors"
                       >
                         Resolve
-                      </button>
-                      <button
-                        onClick={() => onDelete(c.id)}
-                        className="text-xs text-red-500 hover:text-red-600 transition-colors"
-                      >
-                        Delete
                       </button>
                     </div>
                   </>
@@ -277,18 +276,17 @@ export default function RevisionsPanel({
                 className={panelCard(false, "opacity-60")}
               >
                 <div className={PANEL.cardInner}>
-                  <div className="text-xs text-[var(--muted)] mb-1 truncate">
-                    &ldquo;{c.selectedText}&rdquo;
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="text-xs text-[var(--muted)] truncate flex-1 min-w-0">
+                      &ldquo;{c.selectedText}&rdquo;
+                    </div>
+                    <ItemMenu>
+                      <MenuDelete onClick={() => onDelete(c.id)} label="Remove" />
+                    </ItemMenu>
                   </div>
                   <p className="text-sm text-stone-600 line-through">
                     {c.comment}
                   </p>
-                  <button
-                    onClick={() => onDelete(c.id)}
-                    className="text-xs text-[var(--muted)] hover:text-red-500 mt-1 transition-colors"
-                  >
-                    Remove
-                  </button>
                 </div>
               </div>
             ))}
