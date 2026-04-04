@@ -158,3 +158,24 @@ export interface BibReviewRequest {
 export interface BibReviewState {
   requests: BibReviewRequest[];
 }
+
+export interface Quotation {
+  id: string;
+  title: string;
+  text: string;
+  page: string;
+}
+
+export interface QuotationGroup {
+  id: string;
+  title: string;
+  citeKey: string;
+  paragraphId: string | null;
+  quotations: Quotation[];
+  notes: string;
+  createdAt: string;
+}
+
+export interface QuotationsState {
+  groups: QuotationGroup[];
+}

@@ -28,12 +28,14 @@ import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useNotes } from "@/hooks/useNotes";
+import { useQuotations } from "@/hooks/useQuotations";
 import NoteMarkers from "./NoteMarkers";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
+import QuotationsPanel from "./QuotationsPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
 import { serializeToLatex } from "@/lib/latex-serializer";
 
@@ -130,9 +132,14 @@ function IconCitation({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
-      <path d="M17 3v7l1.5-1.5L20 10V3" stroke={c} fill={active ? "var(--accent)" : "currentColor"} fillOpacity="0.25" />
+      {/* Page body */}
+      <path d="M9 6h9l3 3v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+      {/* Page fold */}
+      <path d="M18 6v3h3" />
+      {/* Arrow shaft going up-left off the page, base at mid-page */}
+      <path d="M13 15L3 3" />
+      {/* Arrow head — well clear of page */}
+      <path d="M7 3H3v4" />
     </svg>
   );
 }
@@ -172,6 +179,19 @@ function IconCutter({ active }: { active?: boolean }) {
   );
 }
 
+function IconQuotations({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {/* Rounded box */}
+      <rect x="2" y="2" width="20" height="20" rx="3" />
+      {/* Quote marks — toolbar style, centered in box */}
+      <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
+      <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
+    </svg>
+  );
+}
+
 const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
   outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
   todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
@@ -183,6 +203,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   bibliography: { label: "Bibliography", icon: (a) => <IconBibliography active={a} /> },
   suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
   cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
+  quotations: { label: "Quotations", icon: (a) => <IconQuotations active={a} /> },
   blank: { label: "Blank", icon: () => null },
 };
 
@@ -208,23 +229,20 @@ function ResizablePanel({
   side = "right",
   width,
   onWidthChange,
-  onCollapse,
 }: {
   children: React.ReactNode;
   side?: "left" | "right";
   width: number;
   onWidthChange: (w: number) => void;
-  onCollapse: () => void;
 }) {
   const dragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest("[data-collapse-btn]")) return;
     startX.current = e.clientX;
     startWidth.current = width;
-    dragging.current = false; // only becomes true after movement
+    dragging.current = false;
 
     const onMouseMove = (e: MouseEvent) => {
       const dx = Math.abs(e.clientX - startX.current);
@@ -240,10 +258,6 @@ function ResizablePanel({
       onWidthChange(Math.max(240, Math.min(600, startWidth.current + delta)));
     };
     const onMouseUp = () => {
-      if (!dragging.current) {
-        // No drag happened — treat as click → collapse
-        onCollapse();
-      }
       dragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
@@ -252,12 +266,10 @@ function ResizablePanel({
     };
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
-  }, [width, side, onWidthChange, onCollapse]);
-
-  const chevronInward = side === "left" ? "left" : "right";
+  }, [width, side, onWidthChange]);
 
   return (
-    <div className="relative flex shrink-0" style={{ width }}>
+    <div className="relative flex shrink-0 h-full" style={{ width }}>
       {/* Panel content */}
       <div className={`flex-1 min-w-0 overflow-hidden ${side === "left" ? "order-1" : "order-2"}`}>
         {children}
@@ -268,41 +280,16 @@ function ResizablePanel({
         style={{ width: 1, background: "#e5e2dd" }}
         onMouseDown={onMouseDown}
       />
-      {/* Protruding tab — vertically centered, flush with panel */}
+      {/* Oval drag handle — centered on the border line */}
       <div
-        className={`absolute z-20 ${side === "left" ? "-right-[16px]" : "-left-[16px]"}`}
+        className={`absolute z-20 ${side === "left" ? "-right-[4px]" : "-left-[4px]"}`}
         style={{ top: "50%", transform: "translateY(-50%)" }}
       >
         <div
-          className={`relative flex items-center justify-center cursor-col-resize group bg-[var(--background)] transition-colors hover:bg-stone-50 ${
-            side === "left"
-              ? "rounded-r-lg border-t border-r border-b border-[var(--border)]"
-              : "rounded-l-lg border-t border-l border-b border-[var(--border)]"
-          }`}
-          style={{ width: 16, height: 72 }}
+          className="cursor-col-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
+          style={{ width: 8, height: 40, borderRadius: 4 }}
           onMouseDown={onMouseDown}
-        >
-          {/* Grip dots — true center */}
-          <div className="flex flex-col gap-[4px] opacity-40 group-hover:opacity-60 transition-opacity">
-            <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-            <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-            <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-          </div>
-          {/* Chevron circle — pinned to bottom */}
-          <button
-            data-collapse-btn
-            onClick={(e) => { e.stopPropagation(); onCollapse(); }}
-            className="absolute bottom-[4px] flex items-center justify-center cursor-pointer opacity-35 hover:opacity-60 transition-opacity"
-            title="Collapse panel"
-          >
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#8a8580" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-              {chevronInward === "left"
-                ? <path d="M5 1.5L2.5 4L5 6.5" />
-                : <path d="M3 1.5L5.5 4L3 6.5" />
-              }
-            </svg>
-          </button>
-        </div>
+        />
       </div>
     </div>
   );
@@ -560,6 +547,17 @@ export default function EditorLayout() {
     updateNotePosition,
     deleteNote,
   } = useNotes(currentDocId);
+  const {
+    groups: quotationGroups,
+    addGroup: addQuotationGroup,
+    deleteGroup: deleteQuotationGroup,
+    updateGroupTitle: updateQuotationGroupTitle,
+    addQuotation: addQuotationToGroup,
+    updateQuotation,
+    deleteQuotation,
+    updateCiteKey: updateQuotationCiteKey,
+    updateNotes: updateQuotationNotes,
+  } = useQuotations(currentDocId);
   const {
     items: todoItems,
     addItem: addTodo,
@@ -1223,11 +1221,9 @@ export default function EditorLayout() {
     const meta = PANEL_META[panelId];
     const width = getPanelWidth(side, panelId);
     const onWidthChange = (w: number) => setPanelWidth(side, panelId, w);
-    const onCollapse = () => { if (side === "left") collapseLeft(); else collapseRight(); };
-
     if (panelId === "blank") {
       return (
-        <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange}>
           <div className="w-full h-full bg-[var(--background)]" />
         </ResizablePanel>
       );
@@ -1253,7 +1249,7 @@ export default function EditorLayout() {
 
     if (panelId === "todo") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <TodoPanel
               items={todoItems}
               onAdd={addTodo}
@@ -1269,7 +1265,7 @@ export default function EditorLayout() {
 
     if (panelId === "outline") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <OutlinePanel
               content={latestDoc || content}
               onScrollTo={handleScrollToHeading}
@@ -1280,7 +1276,7 @@ export default function EditorLayout() {
 
     if (panelId === "notes") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <NotesPanel
               notes={notes}
               onAdd={addNote}
@@ -1296,7 +1292,7 @@ export default function EditorLayout() {
 
     if (panelId === "revisions") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <RevisionsPanel
               comments={comments}
               activeComments={activeComments}
@@ -1327,7 +1323,7 @@ export default function EditorLayout() {
 
     if (panelId === "archive") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <ArchivePanel
               snippets={sortedArchiveSnippets}
               selectedId={selectedArchiveId}
@@ -1350,7 +1346,7 @@ export default function EditorLayout() {
 
     if (panelId === "footnotes") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <FootnotePanel
               footnotes={footnotes}
               selectedId={selectedFootnoteId}
@@ -1370,7 +1366,7 @@ export default function EditorLayout() {
 
     if (panelId === "citations") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <CitationsPanel
               citations={citations}
               bibEntries={bibEntries}
@@ -1408,7 +1404,7 @@ export default function EditorLayout() {
 
     if (panelId === "bibliography") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
           <BibliographyPanel
               citations={citations}
               bibEntries={bibEntries}
@@ -1430,8 +1426,28 @@ export default function EditorLayout() {
       );
     }
 
+    if (panelId === "quotations") {
+      return (
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
+          <QuotationsPanel
+            groups={quotationGroups}
+            bibEntries={bibEntries}
+            citationStyle={citationStyle}
+            onAddGroup={addQuotationGroup}
+            onDeleteGroup={deleteQuotationGroup}
+            onUpdateGroupTitle={updateQuotationGroupTitle}
+            onAddQuotation={addQuotationToGroup}
+            onUpdateQuotation={updateQuotation}
+            onDeleteQuotation={deleteQuotation}
+            onUpdateCiteKey={updateQuotationCiteKey}
+            onUpdateNotes={updateQuotationNotes}
+          />
+        </ResizablePanel>
+      );
+    }
+
     return (
-      <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange} onCollapse={onCollapse}>
+      <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
         <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />
       </ResizablePanel>
     );
@@ -1638,11 +1654,28 @@ export default function EditorLayout() {
 
         {/* Left icon strip */}
         <div data-strip-side="left" className="flex flex-col items-center py-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
+          <button
+            onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
+            className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 mb-0.5"
+            title={activeLeft ? "Collapse panel" : "Expand panel"}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {activeLeft
+                ? <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
+                : <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
+              }
+            </svg>
+          </button>
           <button
             onClick={() => { if (activeLeft !== "blank") setActiveLeft("blank"); }}
-            className="w-3 h-3 rounded-[2px] border border-stone-400 hover:border-stone-500 transition-colors mb-1 bg-transparent"
+            className={`p-2 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
             title="Blank panel"
-          />
+          >
+            <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
+          </button>
+          {/* Separator between fixed tools and movable tools */}
+          <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
           {leftStripItems.map((p) => (
             <StripButton
               key={p.id}
@@ -1657,35 +1690,9 @@ export default function EditorLayout() {
           ))}
         </div>
 
-        {/* Left: collapsed tab or open panel */}
-        {activeLeft && (activeLeft === "blank" || leftItems.some((p) => p.id === activeLeft))
-          ? renderPanel(activeLeft, "left")
-          : (
-            /* Collapsed tab — just the protruding tab with expand chevron */
-            <div className="relative shrink-0" style={{ width: 0 }}>
-              <div
-                className="absolute z-20 -right-[16px]"
-                style={{ top: "50%", transform: "translateY(-50%)" }}
-              >
-                <div
-                  className="relative flex items-center justify-center cursor-pointer group bg-[var(--background)] transition-colors hover:bg-stone-50 rounded-r-lg border-t border-r border-b border-[var(--border)]"
-                  style={{ width: 16, height: 72 }}
-                  onClick={() => expandLeft()}
-                >
-                  <div className="flex flex-col gap-[4px] opacity-40 group-hover:opacity-60 transition-opacity">
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                  </div>
-                  <div className="absolute bottom-[4px] flex items-center justify-center opacity-35 group-hover:opacity-60 transition-opacity">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#8a8580" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M3 1.5L5.5 4L3 6.5" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
+        {/* Left panel (only rendered when active) */}
+        {activeLeft && (activeLeft === "blank" || leftItems.some((p) => p.id === activeLeft)) &&
+          renderPanel(activeLeft, "left")
         }
 
         {/* Editor column: toolbar + content */}
@@ -1717,43 +1724,35 @@ export default function EditorLayout() {
           )}
         </div>
 
-        {/* Right: collapsed tab or open panel */}
-        {activeRight && (activeRight === "blank" || rightItems.some((p) => p.id === activeRight))
-          ? renderPanel(activeRight, "right")
-          : (
-            <div className="relative shrink-0" style={{ width: 0 }}>
-              <div
-                className="absolute z-20 -left-[16px]"
-                style={{ top: "50%", transform: "translateY(-50%)" }}
-              >
-                <div
-                  className="relative flex items-center justify-center cursor-pointer group bg-[var(--background)] transition-colors hover:bg-stone-50 rounded-l-lg border-t border-l border-b border-[var(--border)]"
-                  style={{ width: 16, height: 72 }}
-                  onClick={() => expandRight()}
-                >
-                  <div className="flex flex-col gap-[4px] opacity-40 group-hover:opacity-60 transition-opacity">
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                    <div className="w-[4px] h-[4px] rounded-full bg-stone-400" />
-                  </div>
-                  <div className="absolute bottom-[4px] flex items-center justify-center opacity-35 group-hover:opacity-60 transition-opacity">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none" stroke="#8a8580" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M5 1.5L2.5 4L5 6.5" />
-                    </svg>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )
+        {/* Right panel (only rendered when active) */}
+        {activeRight && (activeRight === "blank" || rightItems.some((p) => p.id === activeRight)) &&
+          renderPanel(activeRight, "right")
         }
 
         {/* Right icon strip */}
         <div data-strip-side="right" className="flex flex-col items-center py-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
+          <button
+            onClick={() => { activeRight ? collapseRight() : expandRight(); }}
+            className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 mb-0.5"
+            title={activeRight ? "Collapse panel" : "Expand panel"}
+          >
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              {activeRight
+                ? <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
+                : <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
+              }
+            </svg>
+          </button>
           <button
             onClick={() => { if (activeRight !== "blank") setActiveRight("blank"); }}
-            className="w-3 h-3 rounded-[2px] border border-stone-400 hover:border-stone-500 transition-colors mb-1 bg-transparent"
+            className={`p-2 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
             title="Blank panel"
-          />
+          >
+            <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
+          </button>
+          {/* Separator between fixed tools and movable tools */}
+          <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
           {rightStripItems.map((p) => (
             <StripButton
               key={p.id}

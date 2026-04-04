@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "blank";
+export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "blank";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -20,6 +20,7 @@ export interface ViewPrefs {
 const DEFAULT_PREFS: ViewPrefs = {
   placements: [
     { id: "outline", side: "left" },
+    { id: "quotations", side: "left" },
     { id: "todo", side: "left" },
     { id: "notes", side: "right" },
     { id: "revisions", side: "right" },
