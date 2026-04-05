@@ -295,7 +295,7 @@ function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
         <div className="flex items-center gap-2">
           <button

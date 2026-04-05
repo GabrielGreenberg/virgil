@@ -50,6 +50,7 @@ const BLOCK_TYPES = [
 function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
 
   const current = editor.isActive("heading", { level: 1 })
     ? "1"
@@ -68,10 +69,18 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    setOpen(!open);
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen(!open)}
+        onClick={handleToggle}
         title="Block type"
         className="px-2 py-1 rounded text-sm transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700 flex items-center gap-1"
       >
@@ -79,7 +88,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[160px]">
+        <div className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[160px]" style={{ top: pos.top, left: pos.left }}>
           {BLOCK_TYPES.map((bt) => (
             <button
               key={bt.value}
@@ -131,7 +140,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
       el.removeEventListener("scroll", updateScrollIndicators);
       ro.disconnect();
     };
-  }, [updateScrollIndicators]);
+  }, [updateScrollIndicators, editor]);
 
   useEffect(() => {
     if (!viewMenuOpen) return;
@@ -145,7 +154,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
   if (!editor) return null;
 
   return (
-    <div className="flex items-center border-b border-[var(--border)] bg-white py-[11px] min-w-0">
+    <div className="flex items-center border-b border-[var(--border)] bg-white h-[var(--header-h)] min-w-0">
       {/* Scrollable toolbar region */}
       <div className="relative flex-1 min-w-0">
         {canScrollLeft && (

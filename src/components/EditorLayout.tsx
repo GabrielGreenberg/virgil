@@ -225,7 +225,7 @@ function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewTogg
   const [viewMode, setViewMode] = useState<import("./ViewToggle").ViewMode>("list");
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <div className="px-4 py-3 border-b border-[var(--border)] flex items-center justify-between">
+      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-stone-700">{title}</h3>
         {hasViewToggle && <ViewToggle mode={viewMode} onChange={setViewMode} />}
       </div>

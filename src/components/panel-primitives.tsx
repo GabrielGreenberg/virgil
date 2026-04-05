@@ -47,8 +47,8 @@ export const PANEL = {
   subpod: "rounded-md border border-stone-200 bg-stone-50/70 p-3 overflow-hidden",
   /** Sub-pod with white background (for rich-text editors, etc.). */
   subpodWhite: "rounded-md border border-stone-200 bg-white overflow-hidden",
-  /** Standard panel header bar. */
-  header: "px-4 py-3 border-b border-[var(--border)]",
+  /** Standard panel header bar — height set by --header-h so all headers align. */
+  header: "px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0",
   /** Empty-state message. */
   empty: "p-6 text-center text-sm text-[var(--muted)]",
 } as const;
