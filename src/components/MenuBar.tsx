@@ -12,6 +12,7 @@ interface MenuBarProps {
   onToggleParTitles: () => void;
   showLatexComments: boolean;
   onToggleLatexComments: () => void;
+  onOpenPreferences?: () => void;
 }
 
 function Btn({
@@ -115,7 +116,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -327,6 +328,17 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
               >
                 <span className="w-4 text-center text-stone-400">{showLatexComments ? "\u2713" : ""}</span>
                 % comments
+              </button>
+              <div className="my-1 border-t border-stone-100" />
+              <button
+                onClick={() => { onOpenPreferences?.(); setViewMenuOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+              >
+                <svg className="w-4 h-4 text-stone-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                  <circle cx="8" cy="8" r="2.5" />
+                  <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.17 3.17l1.42 1.42M11.41 11.41l1.42 1.42M3.17 12.83l1.42-1.42M11.41 4.59l1.42-1.42" />
+                </svg>
+                Preferences&hellip;
               </button>
             </div>
           )}
