@@ -245,18 +245,9 @@ function CitationsPanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       {/* Header */}
-      <PanelHeader title="Citations" count={citations.length}>
+      <PanelHeader title="Citations" count={citations.length} onAdd={() => { setPanelInitiatedCreate(true); onStartCreate(); }}>
         <div className="flex items-center gap-1.5">
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
-          <button
-            onClick={() => { setPanelInitiatedCreate(true); onStartCreate(); }}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="New citation"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-          </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}

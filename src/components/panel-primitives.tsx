@@ -78,14 +78,16 @@ export function Chevron({ expanded }: { expanded: boolean }) {
 export function PanelHeader({
   title,
   count,
+  onAdd,
   children,
 }: {
   title: string;
   count?: number;
+  onAdd?: () => void;
   children?: ReactNode;
 }) {
   return (
-    <div className={`${PANEL.header} flex items-center justify-between`}>
+    <div className={`${PANEL.header} flex items-center gap-1.5`}>
       <h3 className="text-sm font-semibold text-stone-700">
         {title}
         {count != null && count > 0 && (
@@ -94,6 +96,18 @@ export function PanelHeader({
           </span>
         )}
       </h3>
+      {onAdd && (
+        <button
+          onClick={onAdd}
+          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+          title="Add"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+        </button>
+      )}
+      <div className="flex-1" />
       {children}
     </div>
   );

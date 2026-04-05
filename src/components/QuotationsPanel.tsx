@@ -582,14 +582,7 @@ export default function QuotationsPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations" count={groups.length}>
-        <button
-          onClick={handleAdd}
-          className="px-2.5 py-1 text-xs font-medium rounded bg-amber-600 text-white hover:bg-amber-700 transition-colors"
-        >
-          + Add
-        </button>
-      </PanelHeader>
+      <PanelHeader title="Quotations" count={groups.length} onAdd={handleAdd} />
 
       <div className={PANEL.list}>
         {groups.length === 0 ? (
