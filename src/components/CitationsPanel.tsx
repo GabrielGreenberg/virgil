@@ -8,6 +8,7 @@ import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
+import CitationBuilder from "./CitationBuilder";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -72,10 +73,7 @@ function CitationsPanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, toggleViewMode === "in-text"
   );
-  const [editingCmd, setEditingCmd] = useState<string | null>(null);
-  const [editCmdValue, setEditCmdValue] = useState("");
-  const [newCiteCmd, setNewCiteCmd] = useState("");
-  const newCiteRef = useRef<HTMLInputElement>(null);
+  const [editingCitationId, setEditingCitationId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Per-citation: which bib key's pod is expanded (null = none)
@@ -90,13 +88,6 @@ function CitationsPanel({
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (pendingCreate) {
-      setNewCiteCmd(pendingCreate);
-      setTimeout(() => newCiteRef.current?.focus(), 50);
-    }
-  }, [pendingCreate]);
-
   const orderedCitations = useMemo(() =>
     [...citations].sort((a, b) => {
       const ai = citationOrder.indexOf(a.id);
@@ -109,27 +100,18 @@ function CitationsPanel({
     [citations, citationOrder]
   );
 
-  const startEditCmd = (cit: CitationRef) => {
-    setEditingCmd(cit.id);
-    setEditCmdValue(cit.command);
-  };
-
-  const commitEditCmd = () => {
-    if (editingCmd && editCmdValue.trim()) {
-      onUpdateCitation(editingCmd, editCmdValue.trim());
-    }
-    setEditingCmd(null);
-  };
-
-  const handleNewCiteSubmit = () => {
-    const cmd = newCiteCmd.trim();
-    if (!cmd) return;
-    const fullCmd = cmd.includes("{") ? cmd : cmd + "{}";
-    const id = onCreateCitation(fullCmd);
-    const display = getDisplayText(fullCmd);
-    onInsertCitation(fullCmd, id, display);
-    setNewCiteCmd("");
+  const handleBuilderCreate = (command: string) => {
+    const id = onCreateCitation(command);
+    const display = getDisplayText(command);
+    onInsertCitation(command, id, display);
     onClearPendingCreate();
+  };
+
+  const handleBuilderEdit = (command: string) => {
+    if (editingCitationId) {
+      onUpdateCitation(editingCitationId, command);
+      setEditingCitationId(null);
+    }
   };
 
   const visibleCitations = orderedCitations;
@@ -161,6 +143,23 @@ function CitationsPanel({
 
   /* ── Shared card content (used in both views) ──────────────────── */
   const renderCardContent = (cit: CitationRef) => {
+    // Edit mode: show full builder
+    if (editingCitationId === cit.id) {
+      return (
+        <div onClick={(e) => e.stopPropagation()}>
+          <CitationBuilder
+            initialCommand={cit.command}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            getDisplayText={getDisplayText}
+            onSave={handleBuilderEdit}
+            onCancel={() => setEditingCitationId(null)}
+            saveLabel="Save"
+          />
+        </div>
+      );
+    }
+
     const expandedKey = expandedBibKeys[cit.id] ?? null;
     const expandedEntry = expandedKey ? bibEntryMap.get(expandedKey) : undefined;
 
@@ -190,32 +189,14 @@ function CitationsPanel({
           })}
         </div>
 
-        {/* LaTeX command (editable) */}
-        {editingCmd === cit.id ? (
-          <div className="mb-1.5">
-            <input
-              type="text"
-              value={editCmdValue}
-              onChange={(e) => setEditCmdValue(e.target.value)}
-              onBlur={commitEditCmd}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEditCmd();
-                if (e.key === "Escape") setEditingCmd(null);
-              }}
-              autoFocus
-              className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        ) : (
-          <div
-            className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-text truncate"
-            onClick={(e) => { e.stopPropagation(); startEditCmd(cit); }}
-            title="Click to edit command"
-          >
-            {cit.command}
-          </div>
-        )}
+        {/* LaTeX command — click to enter edit mode */}
+        <div
+          className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-pointer truncate"
+          onClick={(e) => { e.stopPropagation(); setEditingCitationId(cit.id); }}
+          title="Click to edit citation"
+        >
+          {cit.command}
+        </div>
 
         {/* Missing keys */}
         {cit.keys.filter((k) => !bibEntryMap.has(k)).map((k) => (
@@ -289,31 +270,19 @@ function CitationsPanel({
         </div>
       </PanelHeader>
 
-      {/* New citation form */}
+      {/* New citation builder */}
       {pendingCreate !== null && (
-        <div className="mx-2 mt-2 rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
+        <div className="mx-2 mt-2">
           <div className="text-xs font-medium text-stone-500 mb-1">New citation</div>
-          <div className="flex gap-1.5">
-            <input
-              ref={newCiteRef}
-              type="text"
-              value={newCiteCmd}
-              onChange={(e) => setNewCiteCmd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleNewCiteSubmit();
-                if (e.key === "Escape") { setNewCiteCmd(""); onClearPendingCreate(); }
-              }}
-              placeholder="\citep{key}"
-              className="flex-1 text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
-            />
-            <button onClick={handleNewCiteSubmit}
-              className="text-xs px-2 py-1 bg-stone-700 text-white rounded hover:bg-stone-800">Add</button>
-          </div>
-          {newCiteCmd && getDisplayText(newCiteCmd) !== newCiteCmd && (
-            <div className="mt-1 text-xs text-stone-500">
-              Preview: <span className="citation-preview">{getDisplayText(newCiteCmd)}</span>
-            </div>
-          )}
+          <CitationBuilder
+            initialCommand={pendingCreate.includes("{") ? pendingCreate : undefined}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            getDisplayText={getDisplayText}
+            onSave={handleBuilderCreate}
+            onCancel={onClearPendingCreate}
+            saveLabel="Add citation"
+          />
         </div>
       )}
 

@@ -112,11 +112,18 @@ export function serializeBibFile(entries: BibEntry[]): string {
 // Citation command parsing (natbib + biblatex)
 // ---------------------------------------------------------------------------
 
+export interface ParsedCiteKey {
+  key: string;
+  prenote?: string;
+  postnote?: string;
+}
+
 export interface ParsedCiteCommand {
   type: string; // normalized: "cite", "citet"/"textcite", "citep"/"parencite", "citealt", "citealp", "citeauthor", "citeyear", "citeyearpar", "autocite", "footcite", "cites", "textcites", "parencites"
   starred: boolean;
   capitalized: boolean;
   keys: string[];
+  entries: ParsedCiteKey[]; // per-key with individual pre/post notes
   prenote?: string;
   postnote?: string;
 }
@@ -159,7 +166,9 @@ export function parseNatbibCommand(command: string): ParsedCiteCommand | null {
   }
 
   const keys = m[5].split(",").map((k) => k.trim());
-  return { type: cmdName, starred, capitalized, keys, prenote, postnote };
+  // Natbib: shared pre/post for all keys
+  const entries: ParsedCiteKey[] = keys.map((k) => ({ key: k, prenote, postnote }));
+  return { type: cmdName, starred, capitalized, keys, entries, prenote, postnote };
 }
 
 /** Parse a biblatex command string */
@@ -181,11 +190,72 @@ export function parseBiblatexCommand(command: string): ParsedCiteCommand | null 
     postnote = m[3];
   }
 
-  // Extract all keys from potentially multiple {key} groups
-  const keysStr = m[5];
-  const keys = [...keysStr.matchAll(/\{([^}]*)\}/g)].map((km) => km[1].trim());
+  // Extract all keys from potentially multiple {key} groups, with per-key notes
+  const tail = command.slice(m[0].length - m[5].length);
+  const entries: ParsedCiteKey[] = [];
+  const perKeyRe = /(?:\[([^\]]*)\])?(?:\[([^\]]*)\])?\{([^}]*)\}/g;
+  let km;
+  while ((km = perKeyRe.exec(tail)) !== null) {
+    let kPre: string | undefined;
+    let kPost: string | undefined;
+    if (km[2] !== undefined) { kPre = km[1]; kPost = km[2]; }
+    else if (km[1] !== undefined) { kPost = km[1]; }
+    entries.push({ key: km[3].trim(), prenote: kPre, postnote: kPost });
+  }
+  const keys = entries.map((e) => e.key);
 
-  return { type: cmdName, starred, capitalized, keys, prenote, postnote };
+  return { type: cmdName, starred, capitalized, keys, entries, prenote, postnote };
+}
+
+// ---------------------------------------------------------------------------
+// Serialize structured citation back to LaTeX command
+// ---------------------------------------------------------------------------
+
+/** Reconstruct a LaTeX citation command from parsed components. */
+export function serializeCiteCommand(
+  parsed: { type: string; starred: boolean; capitalized: boolean; entries: ParsedCiteKey[] },
+  bibPackage: string = "natbib"
+): string {
+  const { type, starred, capitalized, entries } = parsed;
+  if (entries.length === 0) return "";
+
+  const cmdBase = capitalized ? type[0].toUpperCase() + type.slice(1) : type;
+  const star = starred ? "*" : "";
+
+  // Check if any entry has per-key notes
+  const hasPerKeyNotes = entries.some((e) => e.prenote || e.postnote);
+
+  if (bibPackage === "natbib") {
+    // Natbib: \citep[pre][post]{key1,key2} — shared pre/post from first entry
+    const pre = entries[0]?.prenote;
+    const post = entries[0]?.postnote;
+    const keys = entries.map((e) => e.key).join(",");
+    let brackets = "";
+    if (pre !== undefined && pre !== "") brackets = `[${pre}][${post || ""}]`;
+    else if (post) brackets = `[${post}]`;
+    return `\\${cmdBase}${star}${brackets}{${keys}}`;
+  }
+
+  // Biblatex
+  if (entries.length === 1 && !type.endsWith("s")) {
+    // Single entry, singular command: \textcite[pre][post]{key}
+    const { key, prenote: pre, postnote: post } = entries[0];
+    let brackets = "";
+    if (pre !== undefined && pre !== "") brackets = `[${pre}][${post || ""}]`;
+    else if (post) brackets = `[${post}]`;
+    return `\\${cmdBase}${star}${brackets}{${key}}`;
+  }
+
+  // Multiple entries → use plural form with per-key [pre][post]{key}
+  const pluralType = type.endsWith("s") ? type : type + "s";
+  const pluralBase = capitalized ? pluralType[0].toUpperCase() + pluralType.slice(1) : pluralType;
+  const parts = entries.map((e) => {
+    let brackets = "";
+    if (e.prenote !== undefined && e.prenote !== "") brackets = `[${e.prenote}][${e.postnote || ""}]`;
+    else if (e.postnote) brackets = `[${e.postnote}]`;
+    return `${brackets}{${e.key}}`;
+  });
+  return `\\${pluralBase}${star}${parts.join("")}`;
 }
 
 // ---------------------------------------------------------------------------
