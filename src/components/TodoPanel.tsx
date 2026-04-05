@@ -103,12 +103,13 @@ function TodoRow({
                     if (e.key === "Enter") commitEdit();
                     if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
                   }}
-                  className="flex-1 text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+                  className="text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+                  style={{ width: Math.max(editText.length + 1, 2) + "ch" }}
                 />
               ) : (
                 <span
                   className={`flex-1 text-sm leading-relaxed cursor-pointer ${
-                    item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
+                    item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium hover:underline decoration-[var(--accent)]"
                   }`}
                   onDoubleClick={() => { setEditText(item.text); setEditing(true); }}
                 >

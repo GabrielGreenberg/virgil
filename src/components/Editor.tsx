@@ -15,6 +15,35 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner } from "@/lib/tiptap-extensions";
 import MenuBar from "./MenuBar";
 
+/**
+ * Auto-sizes an <input> to its content by measuring text in a hidden <span>.
+ * Returns a cleanup function that removes the sizer and listener.
+ */
+function autoSizeInput(input: HTMLInputElement, minCh = 2): () => void {
+  const sizer = document.createElement("span");
+  sizer.style.cssText =
+    "position:absolute;visibility:hidden;white-space:pre;pointer-events:none;";
+  document.body.appendChild(sizer);
+
+  function sync() {
+    // Copy font from input so measurement matches
+    const cs = getComputedStyle(input);
+    sizer.style.font = cs.font;
+    sizer.style.letterSpacing = cs.letterSpacing;
+    sizer.textContent = input.value || input.placeholder || "";
+    input.style.width = Math.max(sizer.offsetWidth + 2, minCh * 8) + "px";
+  }
+
+  input.addEventListener("input", sync);
+  // Initial size — schedule after the input is rendered
+  requestAnimationFrame(sync);
+
+  return () => {
+    input.removeEventListener("input", sync);
+    if (document.body.contains(sizer)) sizer.remove();
+  };
+}
+
 interface EditorProps {
   initialContent: JSONContent;
   onUpdate: (doc: JSONContent) => void;
@@ -190,12 +219,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           input.style.position = "fixed";
           input.style.left = `${wrapperRect.left}px`;
           input.style.top = `${titleAnnot.getBoundingClientRect().top}px`;
-          input.style.width = `${wrapperRect.width * 0.6}px`;
           input.style.zIndex = "9999";
           document.body.appendChild(input);
 
+          // Auto-size to content (must be in DOM first for font measurement)
+          const cleanupSizer = autoSizeInput(input);
+
           let committed = false;
           const cleanup = () => {
+            cleanupSizer();
             if (document.body.contains(input)) document.body.removeChild(input);
           };
           const commit = () => {
@@ -239,6 +271,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
             titleAnnot.appendChild(xBtn);
             const span = document.createElement("span");
+            span.className = "par-title-text";
             span.textContent = title;
             titleAnnot.appendChild(span);
           } else {
@@ -384,8 +417,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         input.className = "par-title-input";
         input.value = currentNode.attrs.parTitle || "";
         input.placeholder = "Title…";
-        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${topPos}px;width:${wrapperRect.width * 0.6}px;`;
+        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${topPos}px;`;
         document.body.appendChild(input);
+
+        // Auto-size to content (must be in DOM first for font measurement)
+        const cleanupSizer = autoSizeInput(input);
+
         input.focus();
         input.select();
 
@@ -393,6 +430,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         function commit() {
           if (committed) return;
           committed = true;
+          cleanupSizer();
           const val = input.value.trim();
           setTitle(val || null);
           if (document.body.contains(input)) input.remove();
@@ -400,7 +438,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          if (e.key === "Escape") { e.preventDefault(); committed = true; if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
+          if (e.key === "Escape") { e.preventDefault(); committed = true; cleanupSizer(); if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
         });
         input.addEventListener("blur", commit);
         overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
@@ -423,6 +461,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
           titleAnnot.appendChild(xBtn);
           const span = document.createElement("span");
+          span.className = "par-title-text";
           span.textContent = title;
           titleAnnot.appendChild(span);
         } else {
@@ -559,15 +598,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           input.value = (currentNode.attrs.label as string) || "";
           input.placeholder = "label key";
 
-          // Auto-size to content
-          function autoSize() {
-            input.style.width = Math.max(input.value.length + 1, 6) + "ch";
-          }
-          autoSize();
-          input.addEventListener("input", autoSize);
-
           // Replace the target span with the input inline
           targetSpan.replaceWith(input);
+
+          // Auto-size to content (must be in DOM first for font measurement)
+          const cleanupSizer = autoSizeInput(input);
 
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
@@ -575,6 +610,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           const commit = () => {
             if (committed) return;
             committed = true;
+            cleanupSizer();
             const newLabel = input.value.trim() || null;
             const p = typeof getPos === "function" ? getPos() : null;
             if (p != null) {
@@ -586,7 +622,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
           input.addEventListener("keydown", (ev) => {
             if (ev.key === "Enter") { ev.preventDefault(); commit(); }
-            if (ev.key === "Escape") { ev.preventDefault(); committed = true; renderAnnot(); }
+            if (ev.key === "Escape") { ev.preventDefault(); committed = true; cleanupSizer(); renderAnnot(); }
           });
 
           let armed = false;
