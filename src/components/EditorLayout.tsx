@@ -38,6 +38,7 @@ import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import type { OrphanedFootnote } from "@/lib/types";
 
 // --- Icons ---
 function IconNotes({ active }: { active?: boolean }) {
@@ -315,12 +316,14 @@ function StripButton({
   badge?: boolean;
   stripRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const meta = PANEL_META[panelId];
+  const meta = PANEL_META[panelId as keyof typeof PANEL_META];
   const btnRef = useRef<HTMLButtonElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const handledByPointer = useRef(false);
+
+  if (!meta) return null;
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     pointerStart.current = { x: e.clientX, y: e.clientY };
@@ -625,6 +628,8 @@ export default function EditorLayout() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
+  const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
+  const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
@@ -1061,10 +1066,33 @@ export default function EditorLayout() {
   }, []);
 
   const handleDeleteFootnote = useCallback((id: string) => {
+    suppressOrphanRef.current.add(id);
     editorRef.current?.deleteFootnote(id);
-    editorRef.current?.renumberFootnotes();
     setSelectedFootnoteId(null);
   }, []);
+
+  const handleDeleteOrphan = useCallback((id: string) => {
+    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
+  }, []);
+
+  const handleEditOrphan = useCallback((id: string, newContent: string) => {
+    setOrphanedFootnotes((prev) => prev.map((o) =>
+      o.footnoteId === id ? { ...o, content: newContent } : o
+    ));
+  }, []);
+
+  const handleReanchorFootnote = useCallback((id: string) => {
+    const orphan = orphanedFootnotes.find((o) => o.footnoteId === id);
+    if (!orphan || !editorRef.current) return;
+    const ed = editorRef.current.getEditor();
+    if (!ed) return;
+    ed.chain().focus().insertContent({
+      type: "footnote",
+      attrs: { footnoteId: orphan.footnoteId, content: orphan.content, number: 0 },
+    }).run();
+    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
+    setSelectedFootnoteId(id);
+  }, [orphanedFootnotes]);
 
   // Listen for archive marker clicks from the editor
   const prefsRef = useRef(prefs);
@@ -1115,6 +1143,41 @@ export default function EditorLayout() {
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
   }, [setActiveLeft, setActiveRight]);
+
+  // Listen for orphaned footnotes (deleted from editor but preserved in panel)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.footnoteId) return;
+      if (suppressOrphanRef.current.has(detail.footnoteId)) {
+        suppressOrphanRef.current.delete(detail.footnoteId);
+        return;
+      }
+      setOrphanedFootnotes((prev) => {
+        if (prev.some((o) => o.footnoteId === detail.footnoteId)) return prev;
+        return [...prev, {
+          footnoteId: detail.footnoteId,
+          content: detail.content,
+          orphanedAt: new Date().toISOString(),
+        }];
+      });
+    };
+    window.addEventListener("virgil-footnote-orphaned", handler);
+    return () => window.removeEventListener("virgil-footnote-orphaned", handler);
+  }, []);
+
+  // Listen for footnote panel drops (clean up orphan state)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.footnoteId) return;
+      if (detail.isOrphan) {
+        setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== detail.footnoteId));
+      }
+    };
+    window.addEventListener("virgil-footnote-panel-dropped", handler);
+    return () => window.removeEventListener("virgil-footnote-panel-dropped", handler);
+  }, []);
 
   // Listen for citation marker clicks from the editor
   useEffect(() => {
@@ -1337,9 +1400,10 @@ export default function EditorLayout() {
 
   // Render a panel by its ID
   function renderPanel(panelId: PanelId, side: Side) {
-    const meta = PANEL_META[panelId];
+    const meta = PANEL_META[panelId as keyof typeof PANEL_META];
     const width = getPanelWidth(side, panelId);
     const onWidthChange = (w: number) => setPanelWidth(side, panelId, w);
+    if (!meta) return null;
     if (panelId === "blank") {
       return (
         <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange}>
@@ -1477,7 +1541,10 @@ export default function EditorLayout() {
               panelSide={side}
               viewMode={getPanelViewMode("footnotes")}
               onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
-
+              orphanedFootnotes={orphanedFootnotes}
+              onDeleteOrphan={handleDeleteOrphan}
+              onEditOrphan={handleEditOrphan}
+              onReanchor={handleReanchorFootnote}
             />
         </ResizablePanel>
       );
@@ -1773,6 +1840,7 @@ export default function EditorLayout() {
             selectedId={selectedFootnoteId}
             panelSide={footnotePanelSide}
             mainRef={mainAreaRef}
+            docVersion={latestDoc}
           />
         )}
         {/* Citation connector lines (list mode: curved, page view: straight) */}

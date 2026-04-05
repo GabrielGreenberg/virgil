@@ -179,3 +179,11 @@ export interface QuotationGroup {
 export interface QuotationsState {
   groups: QuotationGroup[];
 }
+
+// --- Orphaned Footnotes ---
+
+export interface OrphanedFootnote {
+  footnoteId: string;
+  content: string;
+  orphanedAt: string;
+}

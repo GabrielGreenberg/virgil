@@ -13,11 +13,13 @@ export default function FootnoteConnectors({
   selectedId,
   panelSide,
   mainRef,
+  docVersion,
 }: {
   editor: Editor | null;
   selectedId: string | null;
   panelSide: "left" | "right";
   mainRef: React.RefObject<HTMLDivElement | null>;
+  docVersion?: unknown;
 }) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const rafRef = useRef(0);
@@ -132,7 +134,8 @@ export default function FootnoteConnectors({
     }
 
     setConnectors(results);
-  }, [editor, selectedId, panelSide, mainRef]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, selectedId, panelSide, mainRef, docVersion]);
 
   const scheduleCompute = useCallback(() => {
     cancelAnimationFrame(rafRef.current);

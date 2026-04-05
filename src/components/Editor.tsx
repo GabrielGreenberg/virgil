@@ -678,25 +678,82 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-16 py-10",
       },
       handleDrop(view, event) {
-        const data = event.dataTransfer?.getData("application/x-virgil-citation");
-        if (!data || !onCitationDropRef.current) return false;
-        event.preventDefault();
-        try {
-          const { command, citationId } = JSON.parse(data);
-          const result = onCitationDropRef.current(command, citationId);
-          if (!result) return true;
-          const coords = { left: event.clientX, top: event.clientY };
-          const pos = view.posAtCoords(coords);
-          if (!pos) return true;
-          const node = view.state.schema.nodes.citation.create({
-            citationId: result.id,
-            command,
-            displayText: result.displayText,
-          });
-          const tr = view.state.tr.insert(pos.pos, node);
-          view.dispatch(tr);
-        } catch { /* ignore bad data */ }
-        return true;
+        // --- Citation drop ---
+        const citData = event.dataTransfer?.getData("application/x-virgil-citation");
+        if (citData && onCitationDropRef.current) {
+          event.preventDefault();
+          try {
+            const { command, citationId } = JSON.parse(citData);
+            const result = onCitationDropRef.current(command, citationId);
+            if (!result) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+            const node = view.state.schema.nodes.citation.create({
+              citationId: result.id,
+              command,
+              displayText: result.displayText,
+            });
+            const tr = view.state.tr.insert(pos.pos, node);
+            view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Footnote drop (from panel) ---
+        const fnData = event.dataTransfer?.getData("application/x-virgil-footnote");
+        if (fnData) {
+          event.preventDefault();
+          try {
+            const { footnoteId, content, isOrphan } = JSON.parse(fnData);
+            if (!isOrphan) {
+              const confirmed = window.confirm(
+                "This will move the footnote from its current position in the document. Continue?"
+              );
+              if (!confirmed) return true;
+            }
+
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+
+            let tr = view.state.tr;
+
+            if (!isOrphan) {
+              let oldPos: number | null = null;
+              view.state.doc.descendants((node, npos) => {
+                if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
+                  oldPos = npos;
+                  return false;
+                }
+                return true;
+              });
+              if (oldPos != null) {
+                tr = tr.delete(oldPos, oldPos + 1);
+              }
+            }
+
+            const mappedPos = tr.mapping.map(pos.pos);
+            const newNode = view.state.schema.nodes.footnote.create({
+              footnoteId,
+              content,
+              number: 0,
+            });
+            tr = tr.insert(mappedPos, newNode);
+            view.dispatch(tr);
+
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("virgil-footnote-panel-dropped", {
+                  detail: { footnoteId, isOrphan },
+                })
+              );
+            }, 0);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        return false;
       },
     },
     immediatelyRender: false,
