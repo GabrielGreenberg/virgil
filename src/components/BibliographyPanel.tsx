@@ -254,20 +254,10 @@ function BibliographyPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Bibliography" count={sortedEntries.length}>
+      <PanelHeader title="Bibliography" count={sortedEntries.length} onAdd={() => setAddMenuOpen((o) => !o)}>
         <div className="flex items-center gap-1">
-          {/* Add button */}
+          {/* Add menu dropdown (button is in PanelHeader via onAdd) */}
           <div className="relative" ref={addMenuRef}>
-            <button
-              onClick={() => setAddMenuOpen((o) => !o)}
-              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-              title="Add entry"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-            </button>
             {addMenuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
                 <button

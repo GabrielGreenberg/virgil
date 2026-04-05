@@ -155,17 +155,7 @@ export default function NotesPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Notes" count={notes.length}>
-        <button
-          onClick={() => onAdd(cursorPos)}
-          className="text-xs px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-1"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-          Add Note
-        </button>
-      </PanelHeader>
+      <PanelHeader title="Notes" count={notes.length} onAdd={() => onAdd(cursorPos)} />
 
       <div className={PANEL.list}>
         {sortedNotes.length === 0 && (
