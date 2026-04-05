@@ -30,7 +30,6 @@ interface CitationsPanelProps {
   onCreateCitation: (command: string) => string;
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
-  onStartCreate: () => void;
   editor: Editor | null;
   panelSide: "left" | "right";
   citationPositions: Map<string, number>;
@@ -61,7 +60,7 @@ const BIB_PACKAGES = [
 function CitationsPanel({
   citations, bibEntries, citationStyle, bibPackage, bibPath, selectedId, citationOrder,
   onSelect, onScrollToMarker, onUpdateCitation, onDeleteCitation, onSetStyle, onSetBibPackage,
-  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate, onStartCreate,
+  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate,
   editor, panelSide, citationPositions,
   viewMode: toggleViewMode, onViewModeChange: handleToggleViewMode,
   getFormattedBib, getAnnotation, setAnnotation, onRequestReview, onCancelReview,
@@ -74,10 +73,8 @@ function CitationsPanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, toggleViewMode === "in-text"
   );
-  const [editingCmd, setEditingCmd] = useState<string | null>(null);
-  const [editCmdValue, setEditCmdValue] = useState("");
+  const [editingCitationId, setEditingCitationId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [panelInitiatedCreate, setPanelInitiatedCreate] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Per-citation: which bib key's pod is expanded (null = none)
   const [expandedBibKeys, setExpandedBibKeys] = useState<Record<string, string | null>>({});
@@ -103,27 +100,19 @@ function CitationsPanel({
     [citations, citationOrder]
   );
 
-  const startEditCmd = (cit: CitationRef) => {
-    setEditingCmd(cit.id);
-    setEditCmdValue(cit.command);
-  };
-
-  const commitEditCmd = () => {
-    if (editingCmd && editCmdValue.trim()) {
-      onUpdateCitation(editingCmd, editCmdValue.trim());
-    }
-    setEditingCmd(null);
-  };
-
-  const handleBuilderSubmit = useCallback((command: string) => {
+  const handleBuilderCreate = (command: string) => {
     const id = onCreateCitation(command);
-    if (!panelInitiatedCreate) {
-      const display = getDisplayText(command);
-      onInsertCitation(command, id, display);
-    }
-    setPanelInitiatedCreate(false);
+    const display = getDisplayText(command);
+    onInsertCitation(command, id, display);
     onClearPendingCreate();
-  }, [onCreateCitation, getDisplayText, onInsertCitation, onClearPendingCreate, panelInitiatedCreate]);
+  };
+
+  const handleBuilderEdit = (command: string) => {
+    if (editingCitationId) {
+      onUpdateCitation(editingCitationId, command);
+      setEditingCitationId(null);
+    }
+  };
 
   const visibleCitations = orderedCitations;
 
@@ -154,6 +143,23 @@ function CitationsPanel({
 
   /* ── Shared card content (used in both views) ──────────────────── */
   const renderCardContent = (cit: CitationRef) => {
+    // Edit mode: show full builder
+    if (editingCitationId === cit.id) {
+      return (
+        <div onClick={(e) => e.stopPropagation()}>
+          <CitationBuilder
+            initialCommand={cit.command}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            getDisplayText={getDisplayText}
+            onSave={handleBuilderEdit}
+            onCancel={() => setEditingCitationId(null)}
+            saveLabel="Save"
+          />
+        </div>
+      );
+    }
+
     const expandedKey = expandedBibKeys[cit.id] ?? null;
     const expandedEntry = expandedKey ? bibEntryMap.get(expandedKey) : undefined;
 
@@ -183,32 +189,14 @@ function CitationsPanel({
           })}
         </div>
 
-        {/* LaTeX command (editable) */}
-        {editingCmd === cit.id ? (
-          <div className="mb-1.5">
-            <input
-              type="text"
-              value={editCmdValue}
-              onChange={(e) => setEditCmdValue(e.target.value)}
-              onBlur={commitEditCmd}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEditCmd();
-                if (e.key === "Escape") setEditingCmd(null);
-              }}
-              autoFocus
-              className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        ) : (
-          <div
-            className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-text truncate"
-            onClick={(e) => { e.stopPropagation(); startEditCmd(cit); }}
-            title="Click to edit command"
-          >
-            {cit.command}
-          </div>
-        )}
+        {/* LaTeX command — click to enter edit mode */}
+        <div
+          className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-pointer truncate"
+          onClick={(e) => { e.stopPropagation(); setEditingCitationId(cit.id); }}
+          title="Click to edit citation"
+        >
+          {cit.command}
+        </div>
 
         {/* Missing keys */}
         {cit.keys.filter((k) => !bibEntryMap.has(k)).map((k) => (
@@ -245,7 +233,7 @@ function CitationsPanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       {/* Header */}
-      <PanelHeader title="Citations" count={citations.length} onAdd={() => { setPanelInitiatedCreate(true); onStartCreate(); }}>
+      <PanelHeader title="Citations" count={citations.length} onAdd={() => { onStartCreate(); }}>
         <div className="flex items-center gap-1.5">
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
           <div className="relative" ref={menuRef}>
@@ -282,16 +270,20 @@ function CitationsPanel({
         </div>
       </PanelHeader>
 
-      {/* New citation form */}
+      {/* New citation builder */}
       {pendingCreate !== null && (
-        <CitationBuilder
-          bibEntries={bibEntries}
-          bibPackage={bibPackage}
-          pendingCreate={pendingCreate}
-          getDisplayText={getDisplayText}
-          onSubmit={handleBuilderSubmit}
-          onCancel={() => { setPanelInitiatedCreate(false); onClearPendingCreate(); }}
-        />
+        <div className="mx-2 mt-2">
+          <div className="text-xs font-medium text-stone-500 mb-1">New citation</div>
+          <CitationBuilder
+            initialCommand={pendingCreate.includes("{") ? pendingCreate : undefined}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            getDisplayText={getDisplayText}
+            onSave={handleBuilderCreate}
+            onCancel={onClearPendingCreate}
+            saveLabel="Add citation"
+          />
+        </div>
       )}
 
       {/* Citation list */}

@@ -2,474 +2,333 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
-import { formatMinimalCitation } from "@/lib/bib-parser";
+import type { ParsedCiteKey } from "@/lib/bib-parser";
+import { parseCiteCommand, serializeCiteCommand, formatMinimalCitation } from "@/lib/bib-parser";
 
-/* ── Command definitions per package ──────────────────────────────── */
+/* ── Command type options per package ─────────────────────────────── */
 
-const NATBIB_COMMANDS = [
-  { value: "citep", label: "\\citep", desc: "Parenthetical: (Author, Year)" },
-  { value: "citet", label: "\\citet", desc: "Textual: Author (Year)" },
-  { value: "cite", label: "\\cite", desc: "Default: Author (Year)" },
-  { value: "citealt", label: "\\citealt", desc: "No parens: Author Year" },
-  { value: "citealp", label: "\\citealp", desc: "No parens: Author, Year" },
-  { value: "citeauthor", label: "\\citeauthor", desc: "Author name only" },
-  { value: "citeyear", label: "\\citeyear", desc: "Year only" },
+const NATBIB_TYPES = [
+  { value: "citep", label: "\\citep", desc: "(Author, Year)" },
+  { value: "citet", label: "\\citet", desc: "Author (Year)" },
+  { value: "cite", label: "\\cite", desc: "Author (Year)" },
+  { value: "citealt", label: "\\citealt", desc: "Author Year" },
+  { value: "citealp", label: "\\citealp", desc: "Author, Year" },
+  { value: "citeauthor", label: "\\citeauthor", desc: "Author" },
+  { value: "citeyear", label: "\\citeyear", desc: "Year" },
   { value: "citeyearpar", label: "\\citeyearpar", desc: "(Year)" },
 ];
 
-const BIBLATEX_COMMANDS = [
-  { value: "parencite", label: "\\parencite", desc: "Parenthetical: (Author, Year)" },
-  { value: "textcite", label: "\\textcite", desc: "Textual: Author (Year)" },
-  { value: "cite", label: "\\cite", desc: "Default citation" },
-  { value: "autocite", label: "\\autocite", desc: "Context-sensitive" },
-  { value: "footcite", label: "\\footcite", desc: "Footnote citation" },
-  { value: "citeauthor", label: "\\citeauthor", desc: "Author name only" },
-  { value: "citeyear", label: "\\citeyear", desc: "Year only" },
+const BIBLATEX_TYPES = [
+  { value: "autocite", label: "\\autocite", desc: "(Author, Year)" },
+  { value: "textcite", label: "\\textcite", desc: "Author (Year)" },
+  { value: "parencite", label: "\\parencite", desc: "(Author, Year)" },
+  { value: "cite", label: "\\cite", desc: "Author Year" },
+  { value: "footcite", label: "\\footcite", desc: "[fn: Author, Year]" },
+  { value: "citeauthor", label: "\\citeauthor", desc: "Author" },
+  { value: "citeyear", label: "\\citeyear", desc: "Year" },
 ];
 
-/** Map bare command names from pendingCreate (e.g. "\\citep") to a command value */
-function parsePartialCommand(partial: string): { cmd: string; starred: boolean; capitalized: boolean } | null {
-  const m = partial.match(/^\\([A-Za-z]+)(\*?)$/);
-  if (!m) return null;
-  let cmd = m[1];
-  const starred = m[2] === "*";
-  const capitalized = cmd[0] >= "A" && cmd[0] <= "Z";
-  if (capitalized) cmd = cmd[0].toLowerCase() + cmd.slice(1);
-  return { cmd, starred, capitalized };
-}
+/* ── Key search dropdown ──────────────────────────────────────────── */
 
-/* ── Props ────────────────────────────────────────────────────────── */
-
-interface CitationBuilderProps {
-  bibEntries: BibEntry[];
-  bibPackage: string;
-  pendingCreate: string;
-  getDisplayText: (command: string) => string;
-  onSubmit: (command: string) => void;
-  onCancel: () => void;
-}
-
-/* ── Component ────────────────────────────────────────────────────── */
-
-export default function CitationBuilder({
+function KeySearchDropdown({
+  value,
+  onChange,
   bibEntries,
-  bibPackage,
-  pendingCreate,
-  getDisplayText,
-  onSubmit,
-  onCancel,
-}: CitationBuilderProps) {
-  /* ── Mode: builder vs raw ─────────────────────────────────────── */
-  const [mode, setMode] = useState<"builder" | "raw">("builder");
+  placeholder,
+}: {
+  value: string;
+  onChange: (key: string) => void;
+  bibEntries: BibEntry[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState(value);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
 
-  /* ── Raw mode state ───────────────────────────────────────────── */
-  const [rawCmd, setRawCmd] = useState(pendingCreate);
-  const rawRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { setSearch(value); }, [value]);
 
-  /* ── Builder mode state ───────────────────────────────────────── */
-  const commands = bibPackage === "natbib" ? NATBIB_COMMANDS : BIBLATEX_COMMANDS;
-  const defaultCmd = bibPackage === "natbib" ? "citep" : "parencite";
-
-  // Parse pendingCreate to pre-fill builder
-  const initial = useMemo(() => parsePartialCommand(pendingCreate), [pendingCreate]);
-
-  const [cmdType, setCmdType] = useState(
-    initial && commands.some((c) => c.value === initial.cmd) ? initial.cmd : defaultCmd
-  );
-  const [starred, setStarred] = useState(initial?.starred ?? false);
-  const [capitalized, setCapitalized] = useState(initial?.capitalized ?? false);
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [prenote, setPrenote] = useState("");
-  const [postnote, setPostnote] = useState("");
-
-  /* ── Key autocomplete state ───────────────────────────────────── */
-  const [keySearch, setKeySearch] = useState("");
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [highlightIdx, setHighlightIdx] = useState(0);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Filter bib entries by search term, excluding already-selected keys
-  const filteredEntries = useMemo(() => {
-    const q = keySearch.toLowerCase().trim();
-    const selected = new Set(selectedKeys);
-    const pool = bibEntries.filter((e) => !selected.has(e.key));
-    if (!q) return pool.slice(0, 20);
-    return pool
-      .filter((e) => {
-        const hay = `${e.key} ${e.fields.author || ""} ${e.fields.title || ""} ${e.fields.year || ""}`.toLowerCase();
-        return hay.includes(q);
-      })
-      .slice(0, 20);
-  }, [keySearch, bibEntries, selectedKeys]);
-
-  // Reset highlight when filtered list changes
   useEffect(() => {
-    setHighlightIdx(0);
-  }, [filteredEntries.length]);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    if (!dropdownOpen) return;
+    if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
-        searchRef.current && !searchRef.current.contains(e.target as Node)
-      ) {
-        setDropdownOpen(false);
-      }
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [dropdownOpen]);
+  }, [open]);
 
-  // Auto-focus the key search field on mount in builder mode
-  useEffect(() => {
-    if (mode === "builder") {
-      setTimeout(() => searchRef.current?.focus(), 50);
-    }
-  }, [mode]);
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    if (!q) return bibEntries.slice(0, 20);
+    return bibEntries.filter((e) =>
+      e.key.toLowerCase().includes(q) ||
+      (e.fields.author || "").toLowerCase().includes(q) ||
+      (e.fields.title || "").toLowerCase().includes(q)
+    ).slice(0, 20);
+  }, [search, bibEntries]);
 
-  // Auto-focus raw input when switching to raw mode
-  useEffect(() => {
-    if (mode === "raw") {
-      setTimeout(() => rawRef.current?.focus(), 50);
-    }
-  }, [mode]);
-
-  /* ── Command composition ──────────────────────────────────────── */
-  const composedCommand = useMemo(() => {
-    if (selectedKeys.length === 0) return "";
-
-    // Build command name
-    let name = cmdType;
-    if (capitalized) name = name[0].toUpperCase() + name.slice(1);
-    let cmd = `\\${name}`;
-    if (starred) cmd += "*";
-
-    // Optional notes
-    if (prenote && postnote) {
-      cmd += `[${prenote}][${postnote}]`;
-    } else if (postnote) {
-      cmd += `[${postnote}]`;
-    } else if (prenote) {
-      // prenote without postnote: need both brackets
-      cmd += `[${prenote}][]`;
-    }
-
-    // Keys — biblatex multi-cite commands use separate braces
-    const isMultiCite = /^(cites|textcites|parencites|autocites|footcites)$/.test(cmdType);
-    if (isMultiCite) {
-      cmd += selectedKeys.map((k) => `{${k}}`).join("");
-    } else {
-      cmd += `{${selectedKeys.join(",")}}`;
-    }
-
-    return cmd;
-  }, [cmdType, starred, capitalized, selectedKeys, prenote, postnote]);
-
-  const preview = useMemo(() => {
-    if (!composedCommand) return "";
-    return getDisplayText(composedCommand);
-  }, [composedCommand, getDisplayText]);
-
-  /* ── Handlers ─────────────────────────────────────────────────── */
-
-  const addKey = useCallback((key: string) => {
-    setSelectedKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
-    setKeySearch("");
-    setDropdownOpen(false);
-    setTimeout(() => searchRef.current?.focus(), 0);
-  }, []);
-
-  const removeKey = useCallback((key: string) => {
-    setSelectedKeys((prev) => prev.filter((k) => k !== key));
-  }, []);
-
-  const handleKeyInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      if (dropdownOpen) {
-        setDropdownOpen(false);
-        e.stopPropagation();
-      } else {
-        onCancel();
-      }
-      return;
-    }
-    if (e.key === "Backspace" && keySearch === "" && selectedKeys.length > 0) {
-      removeKey(selectedKeys[selectedKeys.length - 1]);
-      return;
-    }
-    if (!dropdownOpen || filteredEntries.length === 0) {
-      if (e.key === "Enter" && composedCommand) {
-        onSubmit(composedCommand);
-      }
-      return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setHighlightIdx((i) => Math.min(i + 1, filteredEntries.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setHighlightIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      addKey(filteredEntries[highlightIdx].key);
-    }
-  };
-
-  const handleBuilderSubmit = () => {
-    if (composedCommand) onSubmit(composedCommand);
-  };
-
-  const handleRawSubmit = () => {
-    const cmd = rawCmd.trim();
-    if (!cmd) return;
-    const full = cmd.includes("{") ? cmd : cmd + "{}";
-    onSubmit(full);
-  };
-
-  /* ── Scroll highlighted dropdown item into view ───────────────── */
-  useEffect(() => {
-    if (!dropdownOpen || !dropdownRef.current) return;
-    const item = dropdownRef.current.children[highlightIdx] as HTMLElement | undefined;
-    item?.scrollIntoView({ block: "nearest" });
-  }, [highlightIdx, dropdownOpen]);
-
-  /* ── Render ───────────────────────────────────────────────────── */
   return (
-    <div className="mx-2 mt-2 rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
-      {/* Header with mode tabs */}
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-xs font-medium text-stone-500">New citation</div>
-        <div className="flex rounded-md border border-stone-200 overflow-hidden">
-          <button
-            onClick={() => setMode("builder")}
-            className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              mode === "builder"
-                ? "bg-stone-700 text-white"
-                : "bg-white text-stone-500 hover:bg-stone-50"
-            }`}
-          >
-            Builder
-          </button>
-          <button
-            onClick={() => setMode("raw")}
-            className={`px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              mode === "raw"
-                ? "bg-stone-700 text-white"
-                : "bg-white text-stone-500 hover:bg-stone-50"
-            }`}
-          >
-            Raw
-          </button>
-        </div>
-      </div>
-
-      {mode === "raw" ? (
-        /* ── Raw mode ─────────────────────────────────────────────── */
-        <div>
-          <div className="flex gap-1.5">
-            <input
-              ref={rawRef}
-              type="text"
-              value={rawCmd}
-              onChange={(e) => setRawCmd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleRawSubmit();
-                if (e.key === "Escape") onCancel();
-              }}
-              placeholder="\citep{key}"
-              className="flex-1 text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
-            />
+    <div className="relative flex-1" ref={dropRef}>
+      <input
+        ref={inputRef}
+        type="text"
+        value={search}
+        onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { onChange(search); setOpen(false); }
+          if (e.key === "Escape") setOpen(false);
+        }}
+        onBlur={() => { setTimeout(() => { onChange(search); }, 150); }}
+        placeholder={placeholder || "key"}
+        className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
+      />
+      {open && filtered.length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-stone-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+          {filtered.map((e) => (
             <button
-              onClick={handleRawSubmit}
-              className="text-xs px-2 py-1 bg-stone-700 text-white rounded hover:bg-stone-800"
+              key={e.key}
+              onMouseDown={(ev) => { ev.preventDefault(); onChange(e.key); setSearch(e.key); setOpen(false); }}
+              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-stone-50 flex flex-col gap-0.5"
             >
-              Add
+              <span className="font-mono text-stone-700">{e.key}</span>
+              <span className="text-stone-400 truncate">
+                {formatMinimalCitation(e.key, [e])}
+                {e.fields.title ? ` \u2014 ${e.fields.title}` : ""}
+              </span>
             </button>
-          </div>
-          {rawCmd && getDisplayText(rawCmd) !== rawCmd && (
-            <div className="mt-1 text-xs text-stone-500">
-              Preview: <span className="citation-preview">{getDisplayText(rawCmd)}</span>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* ── Builder mode ─────────────────────────────────────────── */
-        <div className="space-y-2">
-          {/* Row 1: Command type + star + capitalize */}
-          <div className="flex items-center gap-2">
-            <select
-              value={cmdType}
-              onChange={(e) => setCmdType(e.target.value)}
-              className="text-xs font-mono border border-stone-300 rounded px-1.5 py-1 bg-white text-stone-700 flex-1 min-w-0"
-            >
-              {commands.map((c) => (
-                <option key={c.value} value={c.value}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-            <label className="flex items-center gap-1 text-[11px] text-stone-500 cursor-pointer whitespace-nowrap select-none">
-              <input
-                type="checkbox"
-                checked={starred}
-                onChange={(e) => setStarred(e.target.checked)}
-                className="rounded border-stone-300 text-amber-600 focus:ring-amber-500 w-3 h-3"
-              />
-              *
-            </label>
-            <label className="flex items-center gap-1 text-[11px] text-stone-500 cursor-pointer whitespace-nowrap select-none">
-              <input
-                type="checkbox"
-                checked={capitalized}
-                onChange={(e) => setCapitalized(e.target.checked)}
-                className="rounded border-stone-300 text-amber-600 focus:ring-amber-500 w-3 h-3"
-              />
-              Capitalize
-            </label>
-          </div>
-
-          {/* Command description */}
-          <div className="text-[10px] text-stone-400 -mt-1">
-            {commands.find((c) => c.value === cmdType)?.desc}
-          </div>
-
-          {/* Row 2: Key autocomplete */}
-          <div className="relative">
-            <div className="text-[10px] font-medium text-stone-400 uppercase tracking-wider mb-0.5">Keys</div>
-            {/* Selected key chips */}
-            {selectedKeys.length > 0 && (
-              <div className="flex flex-wrap gap-1 mb-1">
-                {selectedKeys.map((key) => (
-                  <span
-                    key={key}
-                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-amber-100 border border-amber-200 text-[11px] text-stone-700 font-mono"
-                  >
-                    {key}
-                    <button
-                      onClick={() => removeKey(key)}
-                      className="ml-0.5 text-stone-400 hover:text-stone-600 leading-none"
-                      title="Remove key"
-                    >
-                      &times;
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-            <input
-              ref={searchRef}
-              type="text"
-              value={keySearch}
-              onChange={(e) => {
-                setKeySearch(e.target.value);
-                setDropdownOpen(true);
-              }}
-              onFocus={() => setDropdownOpen(true)}
-              onKeyDown={handleKeyInputKeyDown}
-              placeholder={selectedKeys.length > 0 ? "Add another key\u2026" : "Search by key, author, title, year\u2026"}
-              className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
-            />
-            {/* Autocomplete dropdown */}
-            {dropdownOpen && filteredEntries.length > 0 && (
-              <div
-                ref={dropdownRef}
-                className="absolute left-0 right-0 mt-0.5 bg-white border border-stone-200 rounded-md shadow-lg max-h-40 overflow-y-auto z-50"
-              >
-                {filteredEntries.map((entry, i) => (
-                  <button
-                    key={entry.key}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      addKey(entry.key);
-                    }}
-                    className={`w-full text-left px-2 py-1.5 text-xs flex items-baseline gap-2 ${
-                      i === highlightIdx
-                        ? "bg-amber-50 text-stone-800"
-                        : "text-stone-600 hover:bg-stone-50"
-                    }`}
-                  >
-                    <span className="font-mono font-medium text-stone-700 shrink-0">{entry.key}</span>
-                    <span className="text-stone-400 truncate">
-                      {formatMinimalCitation(entry.key, bibEntries)}
-                      {entry.fields.title && (
-                        <> &mdash; <span className="italic">{truncate(entry.fields.title, 50)}</span></>
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-            {dropdownOpen && keySearch && filteredEntries.length === 0 && (
-              <div className="absolute left-0 right-0 mt-0.5 bg-white border border-stone-200 rounded-md shadow-lg z-50 px-3 py-2 text-xs text-stone-400">
-                No matching entries
-              </div>
-            )}
-          </div>
-
-          {/* Row 3: Prenote / Postnote */}
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <div className="text-[10px] font-medium text-stone-400 uppercase tracking-wider mb-0.5">Prenote</div>
-              <input
-                type="text"
-                value={prenote}
-                onChange={(e) => setPrenote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && composedCommand) handleBuilderSubmit();
-                  if (e.key === "Escape") onCancel();
-                }}
-                placeholder="e.g. see"
-                className="w-full text-xs border border-stone-300 rounded px-2 py-1 bg-white"
-              />
-            </div>
-            <div className="flex-1">
-              <div className="text-[10px] font-medium text-stone-400 uppercase tracking-wider mb-0.5">Postnote</div>
-              <input
-                type="text"
-                value={postnote}
-                onChange={(e) => setPostnote(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && composedCommand) handleBuilderSubmit();
-                  if (e.key === "Escape") onCancel();
-                }}
-                placeholder="e.g. p.~42"
-                className="w-full text-xs border border-stone-300 rounded px-2 py-1 bg-white"
-              />
-            </div>
-          </div>
-
-          {/* Preview */}
-          {composedCommand && (
-            <div className="rounded border border-stone-200 bg-white px-2 py-1.5">
-              <div className="text-[10px] text-stone-400 mb-0.5">Preview</div>
-              <div className="text-xs text-stone-600 font-mono break-all">{composedCommand}</div>
-              {preview && preview !== composedCommand && (
-                <div className="text-xs text-stone-500 mt-0.5 citation-preview">{preview}</div>
-              )}
-            </div>
-          )}
-
-          {/* Submit */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleBuilderSubmit}
-              disabled={!composedCommand}
-              className="text-xs px-3 py-1 bg-stone-700 text-white rounded hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Add citation
-            </button>
-          </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-/* ── Helpers ──────────────────────────────────────────────────────── */
+/* ── Main builder ─────────────────────────────────────────────────── */
 
-function truncate(s: string, max: number): string {
-  return s.length > max ? s.slice(0, max) + "\u2026" : s;
+interface CitationBuilderProps {
+  initialCommand?: string;
+  bibPackage: string;
+  bibEntries: BibEntry[];
+  getDisplayText: (command: string) => string;
+  onSave: (command: string) => void;
+  onCancel: () => void;
+  saveLabel?: string; // "Add citation" | "Save"
+}
+
+interface BuilderEntry {
+  id: string;
+  key: string;
+  prenote: string;
+  postnote: string;
+}
+
+let _entryIdCounter = 0;
+function nextEntryId() { return `be_${++_entryIdCounter}`; }
+
+export default function CitationBuilder({
+  initialCommand,
+  bibPackage,
+  bibEntries,
+  getDisplayText,
+  onSave,
+  onCancel,
+  saveLabel = "Add citation",
+}: CitationBuilderProps) {
+  const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
+
+  // Parse initial command (if editing)
+  const initial = useMemo(() => {
+    if (!initialCommand) return null;
+    return parseCiteCommand(initialCommand);
+  }, [initialCommand]);
+
+  const [cmdType, setCmdType] = useState(() => {
+    if (initial) {
+      // Map plural back to singular for the dropdown
+      let t = initial.type;
+      if (t.endsWith("s") && !["cites"].includes(t)) {
+        // textcites → textcite, parencites → parencite, etc.
+        t = t.slice(0, -1);
+      }
+      if (t === "cites") t = "cite";
+      return t;
+    }
+    return types[0].value;
+  });
+
+  const [starred, setStarred] = useState(initial?.starred ?? false);
+  const [capitalized, setCapitalized] = useState(initial?.capitalized ?? false);
+
+  const [entries, setEntries] = useState<BuilderEntry[]>(() => {
+    if (initial && initial.entries.length > 0) {
+      return initial.entries.map((e) => ({
+        id: nextEntryId(),
+        key: e.key,
+        prenote: e.prenote || "",
+        postnote: e.postnote || "",
+      }));
+    }
+    return [{ id: nextEntryId(), key: "", prenote: "", postnote: "" }];
+  });
+
+  // Build the command string from current state
+  const command = useMemo(() => {
+    const parsedEntries: ParsedCiteKey[] = entries
+      .filter((e) => e.key.trim())
+      .map((e) => ({
+        key: e.key.trim(),
+        prenote: e.prenote || undefined,
+        postnote: e.postnote || undefined,
+      }));
+    if (parsedEntries.length === 0) return "";
+    return serializeCiteCommand(
+      { type: cmdType, starred, capitalized, entries: parsedEntries },
+      bibPackage
+    );
+  }, [cmdType, starred, capitalized, entries, bibPackage]);
+
+  const preview = useMemo(() => {
+    if (!command) return "";
+    return getDisplayText(command);
+  }, [command, getDisplayText]);
+
+  const updateEntry = useCallback((id: string, patch: Partial<BuilderEntry>) => {
+    setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
+  }, []);
+
+  const removeEntry = useCallback((id: string) => {
+    setEntries((prev) => prev.length > 1 ? prev.filter((e) => e.id !== id) : prev);
+  }, []);
+
+  const addEntry = useCallback(() => {
+    setEntries((prev) => [...prev, { id: nextEntryId(), key: "", prenote: "", postnote: "" }]);
+  }, []);
+
+  const handleSave = () => {
+    if (command) onSave(command);
+  };
+
+  const isNatbib = bibPackage === "natbib";
+
+  return (
+    <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
+      {/* Command type row */}
+      <div className="flex items-center gap-2 mb-2.5">
+        <select
+          value={cmdType}
+          onChange={(e) => setCmdType(e.target.value)}
+          className="text-xs font-mono border border-stone-300 rounded px-1.5 py-1 bg-white"
+        >
+          {types.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={starred}
+            onChange={(e) => setStarred(e.target.checked)}
+            className="rounded border-stone-300"
+          />
+          <span className="font-mono">*</span>
+        </label>
+      </div>
+
+      {/* Key entries */}
+      <div className="space-y-2 mb-2.5">
+        {entries.map((entry, idx) => (
+          <div key={entry.id} className="rounded-md border border-stone-200 bg-white p-2">
+            <div className="flex items-center gap-1.5 mb-1">
+              <KeySearchDropdown
+                value={entry.key}
+                onChange={(k) => updateEntry(entry.id, { key: k })}
+                bibEntries={bibEntries}
+                placeholder="citation key"
+              />
+              {entries.length > 1 && (
+                <button
+                  onClick={() => removeEntry(entry.id)}
+                  className="text-stone-400 hover:text-red-400 p-0.5 transition-colors"
+                  title="Remove this reference"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {/* Pre/post notes — per key for biblatex, shared (only on first) for natbib */}
+            {(!isNatbib || idx === 0) && (
+              <div className="flex gap-1.5 mt-1">
+                <input
+                  type="text"
+                  value={entry.prenote}
+                  onChange={(e) => {
+                    if (isNatbib) {
+                      // Natbib: apply same pre/post to all entries
+                      setEntries((prev) => prev.map((en) => ({ ...en, prenote: e.target.value })));
+                    } else {
+                      updateEntry(entry.id, { prenote: e.target.value });
+                    }
+                  }}
+                  placeholder="pre-note"
+                  className="flex-1 text-xs border border-stone-200 rounded px-1.5 py-0.5 bg-stone-50/50 placeholder:text-stone-300"
+                />
+                <input
+                  type="text"
+                  value={entry.postnote}
+                  onChange={(e) => {
+                    if (isNatbib) {
+                      setEntries((prev) => prev.map((en) => ({ ...en, postnote: e.target.value })));
+                    } else {
+                      updateEntry(entry.id, { postnote: e.target.value });
+                    }
+                  }}
+                  placeholder="post-note"
+                  className="flex-1 text-xs border border-stone-200 rounded px-1.5 py-0.5 bg-stone-50/50 placeholder:text-stone-300"
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Add reference button */}
+      <button
+        onClick={addEntry}
+        className="text-xs text-stone-500 hover:text-stone-700 mb-2.5 flex items-center gap-1 transition-colors"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        Add reference
+      </button>
+
+      {/* Preview */}
+      {preview && preview !== command && (
+        <div className="text-xs text-stone-500 mb-2.5 truncate">
+          <span className="text-stone-400">Preview:</span>{" "}
+          <span className="citation-preview">{preview}</span>
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onCancel}
+          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={!command}
+          className="text-xs px-2.5 py-1 bg-stone-700 text-white rounded hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {saveLabel}
+        </button>
+      </div>
+    </div>
+  );
 }
