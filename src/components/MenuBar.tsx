@@ -179,16 +179,6 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
           <path d="M6.5 2.5h5M4.5 13.5h5M9.5 2.5L6.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" fill="none"/>
         </svg>
       </Btn>
-      <Btn
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-        active={editor.isActive("underline")}
-        title="Underline (Cmd+U)"
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-          <path d="M4.5 2.5v5c0 2.2 1.3 3.5 3.5 3.5s3.5-1.3 3.5-3.5v-5"/>
-          <line x1="3.5" y1="13.5" x2="12.5" y2="13.5"/>
-        </svg>
-      </Btn>
 
       <div className="w-px h-4 bg-[var(--border)] mx-1" />
 
