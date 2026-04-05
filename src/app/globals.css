@@ -126,7 +126,6 @@ body {
   color: #6b9ac4;
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.04em;
-  width: 12ch;
   padding: 0;
 }
 
@@ -178,6 +177,10 @@ body {
   color: #a33;
 }
 
+.par-title-text:hover {
+  text-decoration: underline;
+}
+
 .par-title-delete {
   position: absolute;
   left: -24px;
@@ -219,7 +222,6 @@ body {
   color: #c45a5a;
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.02em;
-  width: 30ch;
   padding: 0;
 }
 
