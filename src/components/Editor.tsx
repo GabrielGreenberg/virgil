@@ -134,11 +134,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
 
-        // Controls in left margin
+        // Controls in left margin (inline styles — CSS classes purged by Tailwind v4)
         const controls = document.createElement("div");
         controls.className = "par-title-controls";
         controls.contentEditable = "false";
+        Object.assign(controls.style, {
+          position: "absolute", left: "-42px", display: "flex",
+          alignItems: "center", gap: "2px", opacity: "0", transition: "opacity 0.15s",
+        });
         wrapper.appendChild(controls);
+
+        // Hover show/hide for controls
+        wrapper.addEventListener("mouseenter", () => { if (!wrapper.classList.contains("has-title")) controls.style.opacity = "1"; });
+        wrapper.addEventListener("mouseleave", () => { controls.style.opacity = "0"; });
 
         // Title annotation (above paragraph)
         const titleAnnot = document.createElement("div");
@@ -219,6 +227,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
           if (title) {
             wrapper.classList.add("has-title");
+            controls.style.display = "none";
 
             // Show title text with × delete button inside annotation
             titleAnnot.style.display = "block";
@@ -238,20 +247,38 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // Only show controls if paragraph has real text content
             const hasText = currentNode.textContent.trim().length > 0;
             if (hasText) {
-              // + button (add)
+              controls.style.display = "flex";
+
+              // + button (add) — inline styles since CSS purged by Tailwind v4
               const plusBtn = document.createElement("button");
-              plusBtn.className = "par-title-btn";
               plusBtn.textContent = "+";
               plusBtn.title = "Add title";
+              Object.assign(plusBtn.style, {
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
+                fontFamily: "var(--font-sans), system-ui, sans-serif",
+                color: "#c45a5a", background: "#fef5f5",
+                border: "1px solid #e8b4b4", borderRadius: "3px",
+                cursor: "pointer", lineHeight: "1", userSelect: "none", padding: "0",
+              });
+              plusBtn.addEventListener("mouseenter", () => { plusBtn.style.background = "#fde8e8"; plusBtn.style.borderColor = "#c45a5a"; });
+              plusBtn.addEventListener("mouseleave", () => { plusBtn.style.background = "#fef5f5"; plusBtn.style.borderColor = "#e8b4b4"; });
               plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
               plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
               controls.appendChild(plusBtn);
 
               // T label
               const tLabel = document.createElement("span");
-              tLabel.className = "par-title-label";
               tLabel.textContent = "T";
+              Object.assign(tLabel.style, {
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
+                fontFamily: "var(--font-sans), system-ui, sans-serif",
+                color: "#c45a5a", userSelect: "none", lineHeight: "1",
+              });
               controls.appendChild(tLabel);
+            } else {
+              controls.style.display = "none";
             }
 
             // Hide annotation area
@@ -310,7 +337,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const controls = document.createElement("div");
       controls.className = "par-title-controls";
       controls.contentEditable = "false";
+      Object.assign(controls.style, {
+        position: "absolute", left: "-42px", display: "flex",
+        alignItems: "center", gap: "2px", opacity: "0", transition: "opacity 0.15s",
+      });
       wrapper.appendChild(controls);
+
+      wrapper.addEventListener("mouseenter", () => { if (!wrapper.classList.contains("has-title")) controls.style.opacity = "1"; });
+      wrapper.addEventListener("mouseleave", () => { controls.style.opacity = "0"; });
 
       const titleAnnot = document.createElement("div");
       titleAnnot.className = "par-title-annotation";
@@ -379,6 +413,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         if (title) {
           wrapper.classList.add("has-title");
+          controls.style.display = "none";
           titleAnnot.style.display = "block";
           const xBtn = document.createElement("button");
           xBtn.className = "par-title-delete";
@@ -392,18 +427,33 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           titleAnnot.appendChild(span);
         } else {
           wrapper.classList.remove("has-title");
+          controls.style.display = "flex";
           titleAnnot.style.display = "none";
-          // Show + button to add title
+          // Show + button to add title (inline styles — CSS purged by Tailwind v4)
           const plusBtn = document.createElement("button");
-          plusBtn.className = "par-title-btn";
           plusBtn.textContent = "+";
           plusBtn.title = "Add title";
+          Object.assign(plusBtn.style, {
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
+            fontFamily: "var(--font-sans), system-ui, sans-serif",
+            color: "#c45a5a", background: "#fef5f5",
+            border: "1px solid #e8b4b4", borderRadius: "3px",
+            cursor: "pointer", lineHeight: "1", userSelect: "none", padding: "0",
+          });
+          plusBtn.addEventListener("mouseenter", () => { plusBtn.style.background = "#fde8e8"; plusBtn.style.borderColor = "#c45a5a"; });
+          plusBtn.addEventListener("mouseleave", () => { plusBtn.style.background = "#fef5f5"; plusBtn.style.borderColor = "#e8b4b4"; });
           plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
           plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
           controls.appendChild(plusBtn);
           const tLabel = document.createElement("span");
-          tLabel.className = "par-title-label";
           tLabel.textContent = "T";
+          Object.assign(tLabel.style, {
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
+            fontFamily: "var(--font-sans), system-ui, sans-serif",
+            color: "#c45a5a", userSelect: "none", lineHeight: "1",
+          });
           controls.appendChild(tLabel);
         }
       }
