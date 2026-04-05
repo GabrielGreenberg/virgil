@@ -31,19 +31,22 @@ function extractHeadings(doc: JSONContent | null): HeadingItem[] {
   let pendingTitles: { title: string; index: number }[] = [];
   let foundFirstHeading = false;
 
+  // Always insert "Title" entry that scrolls to the top of the document
+  headings.push({
+    id: "heading-opening",
+    level: 1,
+    text: "Title",
+    label: null,
+    index: 0,
+    parTitles: [],
+    isImplicit: true,
+  });
+
   for (const node of doc.content) {
     if (node.type === "heading" && node.attrs?.level) {
       if (!foundFirstHeading) {
-        // Insert implicit "Start" entry before the first real heading
-        headings.push({
-          id: "heading-opening",
-          level: 1,
-          text: "Start",
-          label: null,
-          index: 0,
-          parTitles: pendingTitles,
-          isImplicit: true,
-        });
+        // Attach any paragraph titles before the first heading to "Title"
+        headings[0].parTitles = pendingTitles;
         pendingTitles = [];
         foundFirstHeading = true;
       } else if (pendingTitles.length > 0) {
