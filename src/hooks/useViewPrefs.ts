@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "blank";
+export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "wordcount" | "blank";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -29,6 +29,7 @@ const DEFAULT_PREFS: ViewPrefs = {
     { id: "citations", side: "right" },
     { id: "bibliography", side: "right" },
     { id: "cutter", side: "right" },
+    { id: "wordcount", side: "right" },
   ],
   activeLeft: null,
   activeRight: "notes",

@@ -37,6 +37,8 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
+import { useWordCount } from "@/hooks/useWordCount";
+import WordCountPanel from "./WordCountPanel";
 import { serializeToLatex } from "@/lib/latex-serializer";
 
 // --- Icons ---
@@ -192,6 +194,15 @@ function IconQuotations({ active }: { active?: boolean }) {
   );
 }
 
+function IconWordCount({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill={c}>
+      <text x="3" y="15.5" fontSize="16" fontWeight="700" fontFamily="system-ui, sans-serif">#</text>
+    </svg>
+  );
+}
+
 const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
   outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
   todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
@@ -204,6 +215,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
   cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
   quotations: { label: "Quotations", icon: (a) => <IconQuotations active={a} /> },
+  wordcount: { label: "Word Count", icon: (a) => <IconWordCount active={a} /> },
   blank: { label: "Blank", icon: () => null },
 };
 
@@ -317,6 +329,7 @@ function StripButton({
 }) {
   const meta = PANEL_META[panelId];
   const btnRef = useRef<HTMLButtonElement>(null);
+  if (!meta) return null;
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
@@ -615,6 +628,7 @@ export default function EditorLayout() {
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
@@ -1549,6 +1563,14 @@ export default function EditorLayout() {
               onActiveCitationChange={setBibActiveCitationId}
               bibPackage={bibPackage}
             />
+        </ResizablePanel>
+      );
+    }
+
+    if (panelId === "wordcount") {
+      return (
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
+          <WordCountPanel counts={wordCounts} selection={wordSelection} />
         </ResizablePanel>
       );
     }
