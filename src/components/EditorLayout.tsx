@@ -37,6 +37,8 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
+import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
+import PreferencesModal from "./PreferencesModal";
 import { serializeToLatex } from "@/lib/latex-serializer";
 
 // --- Icons ---
@@ -271,7 +273,7 @@ function ResizablePanel({
   return (
     <div className="relative flex shrink-0 h-full" style={{ width }}>
       {/* Panel content */}
-      <div className={`flex-1 min-w-0 overflow-hidden ${side === "left" ? "order-1" : "order-2"}`}>
+      <div className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}>
         {children}
       </div>
       {/* Edge border — continuous line */}
@@ -617,6 +619,8 @@ export default function EditorLayout() {
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const { prefs: editorPrefs, updatePref, resetAll: resetPrefs } = usePreferences();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
@@ -647,6 +651,30 @@ export default function EditorLayout() {
     });
   }, []);
 
+
+  // Inject editor preferences as CSS custom properties
+  useEffect(() => {
+    const s = document.documentElement.style;
+    s.setProperty("--editor-font-size", `${editorPrefs.editorFontSize}rem`);
+    s.setProperty("--editor-line-height", `${editorPrefs.editorLineHeight}`);
+    s.setProperty("--editor-text-color", editorPrefs.editorTextColor);
+    s.setProperty("--accent", editorPrefs.accentColor);
+    s.setProperty("--accent-light", deriveLight(editorPrefs.accentColor, 0.1));
+    s.setProperty("--background", editorPrefs.backgroundColor);
+    s.setProperty("--surface", editorPrefs.surfaceColor);
+    s.setProperty("--comment-bg", hexToRgba(editorPrefs.commentColor, 0.25));
+    s.setProperty("--comment-border", hexToRgba(editorPrefs.commentColor, 0.5));
+    s.setProperty("--latex-comment-color", editorPrefs.latexCommentColor);
+    s.setProperty("--latex-comment-bg", deriveLight(editorPrefs.latexCommentColor, 0.12));
+    s.setProperty("--citation-color", editorPrefs.citationColor);
+    s.setProperty("--citation-bg", deriveLight(editorPrefs.citationColor, 0.08));
+    s.setProperty("--footnote-color", editorPrefs.footnoteColor);
+    s.setProperty("--footnote-bg", deriveLight(editorPrefs.footnoteColor, 0.08));
+    s.setProperty("--note-color", editorPrefs.noteColor);
+    s.setProperty("--note-bg", deriveLight(editorPrefs.noteColor, 0.06));
+    s.setProperty("--panel-font-size", `${editorPrefs.panelFontSize}px`);
+    s.setProperty("--panel-header-size", `${editorPrefs.panelHeaderSize}px`);
+  }, [editorPrefs]);
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
@@ -1851,7 +1879,7 @@ export default function EditorLayout() {
 
         {/* Editor column: toolbar + content */}
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`}>
-          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} />
+          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} onOpenPreferences={() => setPreferencesOpen(true)} />
           {currentDocId && content && !docLoading ? (
             <>
               <VirgilEditor
@@ -1926,6 +1954,14 @@ export default function EditorLayout() {
           ))}
         </div>
       </div>
+      )}
+      {preferencesOpen && (
+        <PreferencesModal
+          prefs={editorPrefs}
+          onUpdate={updatePref}
+          onReset={resetPrefs}
+          onClose={() => setPreferencesOpen(false)}
+        />
       )}
     </div>
   );

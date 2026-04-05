@@ -86,7 +86,7 @@ export function PanelHeader({
 }) {
   return (
     <div className={`${PANEL.header} flex items-center justify-between`}>
-      <h3 className="text-sm font-semibold text-stone-700">
+      <h3 className="text-sm font-semibold text-stone-700 panel-header-title">
         {title}
         {count != null && count > 0 && (
           <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
