@@ -440,6 +440,12 @@ export const Footnote = Node.create({
               return true;
             });
             view.dispatch(trFixed);
+            // Notify persistent state about the new footnote
+            window.dispatchEvent(
+              new CustomEvent("virgil-footnote-created", {
+                detail: { footnoteId, content },
+              })
+            );
             return true;
           },
         },
@@ -568,6 +574,14 @@ export const Footnote = Node.create({
                 content: newVal,
               })
             );
+            // Notify persistent state about the edit
+            if (node.attrs.footnoteId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-footnote-edited", {
+                  detail: { footnoteId: node.attrs.footnoteId, content: newVal },
+                })
+              );
+            }
           }
           popup.remove();
         };

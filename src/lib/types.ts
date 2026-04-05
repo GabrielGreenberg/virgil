@@ -127,6 +127,18 @@ export interface CitationInfo {
   pos: number;
 }
 
+// --- Footnotes (persistent state, supports unanchored) ---
+
+export interface FootnoteRef {
+  id: string;
+  content: string;
+  createdAt: string;
+}
+
+export interface FootnotesState {
+  footnotes: FootnoteRef[];
+}
+
 // --- Notes ---
 
 export interface UserNote {
