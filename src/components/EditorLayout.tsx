@@ -329,12 +329,14 @@ function StripButton({
   badge?: boolean;
   stripRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const meta = PANEL_META[panelId];
+  const meta = PANEL_META[panelId as keyof typeof PANEL_META];
   const btnRef = useRef<HTMLButtonElement>(null);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const handledByPointer = useRef(false);
+
+  if (!meta) return null;
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     pointerStart.current = { x: e.clientX, y: e.clientY };
@@ -1107,16 +1109,6 @@ export default function EditorLayout() {
     setSelectedFootnoteId(id);
   }, [orphanedFootnotes]);
 
-  const handleCreateEmptyFootnote = useCallback(() => {
-    const footnoteId = crypto.randomUUID();
-    setOrphanedFootnotes((prev) => [...prev, {
-      footnoteId,
-      content: "",
-      orphanedAt: new Date().toISOString(),
-    }]);
-    setSelectedFootnoteId(footnoteId);
-  }, []);
-
   // Listen for archive marker clicks from the editor
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -1172,7 +1164,6 @@ export default function EditorLayout() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
-      // Skip if this was an intentional delete from panel
       if (suppressOrphanRef.current.has(detail.footnoteId)) {
         suppressOrphanRef.current.delete(detail.footnoteId);
         return;
@@ -1424,9 +1415,10 @@ export default function EditorLayout() {
 
   // Render a panel by its ID
   function renderPanel(panelId: PanelId, side: Side) {
-    const meta = PANEL_META[panelId];
+    const meta = PANEL_META[panelId as keyof typeof PANEL_META];
     const width = getPanelWidth(side, panelId);
     const onWidthChange = (w: number) => setPanelWidth(side, panelId, w);
+    if (!meta) return null;
     if (panelId === "blank") {
       return (
         <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange}>
@@ -1568,7 +1560,6 @@ export default function EditorLayout() {
               onDeleteOrphan={handleDeleteOrphan}
               onEditOrphan={handleEditOrphan}
               onReanchor={handleReanchorFootnote}
-              onCreate={handleCreateEmptyFootnote}
             />
         </ResizablePanel>
       );

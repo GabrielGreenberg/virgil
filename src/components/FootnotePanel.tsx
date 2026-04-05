@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -23,7 +23,6 @@ interface FootnotePanelProps {
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: string) => void;
   onReanchor?: (id: string) => void;
-  onCreate?: () => void;
 }
 
 function FootnotePanel({
@@ -41,7 +40,6 @@ function FootnotePanel({
   onDeleteOrphan,
   onEditOrphan,
   onReanchor,
-  onCreate,
 }: FootnotePanelProps) {
   const inTextItems = useMemo(
     () => footnotes.map((fn) => ({ id: fn.footnoteId, pos: fn.pos })),
@@ -79,7 +77,6 @@ function FootnotePanel({
 
   const commitEdit = useCallback(() => {
     if (editingId) {
-      // Check if it's an orphaned footnote
       if (orphanedFootnotes.some((o) => o.footnoteId === editingId)) {
         onEditOrphan(editingId, editValue);
       } else {
@@ -96,13 +93,11 @@ function FootnotePanel({
   useEffect(() => {
     if (editingId && textareaRef.current) {
       textareaRef.current.focus();
-      // Place cursor at end
       const len = textareaRef.current.value.length;
       textareaRef.current.setSelectionRange(len, len);
     }
   }, [editingId]);
 
-  // Drag handler for footnote cards (anchored and orphaned)
   const handleDragStart = useCallback((e: React.DragEvent, footnoteId: string, content: string, isOrphan: boolean) => {
     e.dataTransfer.setData("text/plain", content);
     e.dataTransfer.setData("application/x-virgil-footnote", JSON.stringify({ footnoteId, content, isOrphan }));
@@ -128,18 +123,6 @@ function FootnotePanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <PanelHeader title="Footnotes" count={totalCount}>
-        {onCreate && (
-          <button
-            onClick={onCreate}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="New footnote"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="7" y1="3" x2="7" y2="11" />
-              <line x1="3" y1="7" x2="11" y2="7" />
-            </svg>
-          </button>
-        )}
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 
@@ -191,7 +174,7 @@ function FootnotePanel({
               );
             })}
 
-            {/* Orphaned footnotes at the bottom of the in-text view */}
+            {/* Orphaned footnotes at bottom of in-text view */}
             {orphanedFootnotes.length > 0 && (
               <div className="absolute left-0 right-0 px-1 pr-4" style={{ top: (editorScrollHeight || 0) + 8 }}>
                 <div className="text-[10px] text-stone-400 uppercase tracking-wide font-medium px-1 pb-1">
@@ -244,19 +227,15 @@ function FootnotePanel({
             >
               <div className={PANEL.cardInner}>
                 <div className="flex items-start gap-2.5">
-                  {/* Three-dot menu — top right */}
+                  {/* Three-dot menu */}
                   <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
                     <ItemMenu>
                       <MenuDelete onClick={() => onDelete(fn.footnoteId)} />
                     </ItemMenu>
                   </div>
-                  {/* Number badge — clickable to scroll to marker */}
+                  {/* Number badge */}
                   <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(fn.footnoteId);
-                      onScrollToMarker(fn.footnoteId);
-                    }}
+                    onClick={(e) => { e.stopPropagation(); onSelect(fn.footnoteId); onScrollToMarker(fn.footnoteId); }}
                     draggable={false}
                     onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
                     className="inline-flex items-center gap-0.5 shrink-0 mt-0.5 cursor-pointer group"
@@ -290,20 +269,11 @@ function FootnotePanel({
                         value={editValue}
                         onChange={(e) => setEditValue(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        onBlur={() => {
-                          setTimeout(() => {
-                            if (editingId) commitEdit();
-                          }, 100);
-                        }}
+                        onBlur={() => { setTimeout(() => { if (editingId) commitEdit(); }, 100); }}
                         onKeyDown={(e) => {
                           e.stopPropagation();
-                          if (e.key === "Escape") {
-                            cancelEdit();
-                          }
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                            e.preventDefault();
-                            commitEdit();
-                          }
+                          if (e.key === "Escape") cancelEdit();
+                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commitEdit(); }
                         }}
                       />
                     ) : (
@@ -381,21 +351,17 @@ function FootnotePanel({
                 data-footnote-entry={orphan.footnoteId}
                 draggable
                 onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
-                className={panelCard(false, "cursor-grab active:cursor-grabbing border-dashed")}
+                className={fnCard(false, "cursor-grab active:cursor-grabbing border-dashed")}
               >
                 <div className={PANEL.cardInner}>
                   <div className="flex items-start gap-2.5">
-                    {/* Three-dot menu — top right */}
                     <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
                       <ItemMenu>
                         <MenuDelete onClick={() => onDeleteOrphan(orphan.footnoteId)} />
                       </ItemMenu>
                     </div>
-                    {/* Orphan badge — gray with strikethrough */}
-                    <span
-                      className="inline-flex items-center justify-center shrink-0 mt-0.5"
-                      title="No anchor in document"
-                    >
+                    {/* Orphan badge */}
+                    <span className="inline-flex items-center justify-center shrink-0 mt-0.5" title="No anchor in document">
                       <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
                         <rect x="1" y="1" width="14" height="14" rx="3"
                           stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />

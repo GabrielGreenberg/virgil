@@ -448,11 +448,9 @@ export const Footnote = Node.create({
       new Plugin({
         key: new PluginKey("footnoteOrphanDetector"),
         appendTransaction(transactions, oldState, newState) {
-          // Only act on doc-changing transactions
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          // Collect footnote info from old and new states
-          const oldFootnotes = new Map<string, string>(); // id → content
+          const oldFootnotes = new Map<string, string>();
           oldState.doc.descendants((node) => {
             if (node.type.name === "footnote" && node.attrs.footnoteId) {
               oldFootnotes.set(node.attrs.footnoteId, node.attrs.content || "");
@@ -468,7 +466,6 @@ export const Footnote = Node.create({
             return true;
           });
 
-          // Detect orphaned footnotes (present in old, missing in new)
           for (const [id, content] of oldFootnotes) {
             if (!newFootnotes.has(id) && content.trim()) {
               setTimeout(() => {
@@ -481,14 +478,11 @@ export const Footnote = Node.create({
             }
           }
 
-          // Auto-renumber footnotes if any are out of sequence
           let counter = 1;
           let needsRenumber = false;
           newState.doc.descendants((node) => {
             if (node.type.name === "footnote") {
-              if (node.attrs.number !== counter) {
-                needsRenumber = true;
-              }
+              if (node.attrs.number !== counter) needsRenumber = true;
               counter++;
             }
             return true;
