@@ -30,6 +30,7 @@ const DEFAULT_PREFS: ViewPrefs = {
     { id: "citations", side: "right" },
     { id: "bibliography", side: "right" },
     { id: "cutter", side: "right" },
+    { id: "search", side: "left" },
   ],
   activeLeft: null,
   activeRight: "notes",

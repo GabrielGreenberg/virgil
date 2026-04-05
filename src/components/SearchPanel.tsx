@@ -1,70 +1,53 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { Editor } from "@tiptap/react";
-import { PanelHeader, PANEL, panelCard } from "./panel-primitives";
+import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
+import type { Editor } from "@tiptap/react";
+import { panelCard, PANEL } from "./panel-primitives";
+
+/* ── Types ──────────────────────────────────────────────────────────── */
 
 interface SearchResult {
   from: number;
   to: number;
-  fragment: string;
-  matchStart: number;
-  matchLen: number;
-  /** Breadcrumb path: section > subsection > par title */
-  path: string[];
+  /** ~40 chars before the match */
+  before: string;
+  /** The matched text */
+  match: string;
+  /** ~40 chars after the match */
+  after: string;
+  /** Breadcrumb path: section hierarchy above the match */
+  breadcrumb: string[];
 }
 
 interface SearchPanelProps {
   editor: Editor | null;
 }
 
-const CONTEXT_CHARS = 40;
+/* ── Helpers ─────────────────────────────────────────────────────────── */
 
-/**
- * Build a map of ProseMirror positions to section breadcrumb paths
- * by walking the document's top-level nodes (headings + parTitles).
- */
-function buildSectionMap(editor: Editor): { pos: number; path: string[] }[] {
-  const sections: { pos: number; path: string[] }[] = [];
-  const headingStack: { level: number; text: string }[] = [];
-  let currentParTitle: string | null = null;
+const CTX = 40; // context chars on each side
 
-  editor.state.doc.forEach((node, offset) => {
+/** Build breadcrumb by walking doc nodes up to a position. */
+function buildBreadcrumb(editor: Editor, pos: number): string[] {
+  const crumbs: string[] = [];
+  editor.state.doc.descendants((node, nodePos) => {
+    if (nodePos >= pos) return false;
     if (node.type.name === "heading") {
       const level = node.attrs.level as number;
-      const text = node.textContent || "Untitled";
-      // Pop headings of equal or deeper level
-      while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) {
-        headingStack.pop();
-      }
-      headingStack.push({ level, text });
-      currentParTitle = null;
-      sections.push({ pos: offset, path: headingStack.map((h) => h.text) });
-    } else {
-      const parTitle = node.attrs?.parTitle as string | null;
-      if (parTitle) {
-        currentParTitle = parTitle;
-      }
-      const path = [
-        ...headingStack.map((h) => h.text),
-        ...(currentParTitle ? [currentParTitle] : []),
-      ];
-      sections.push({ pos: offset, path });
+      const text =
+        node.textContent?.trim() || "Untitled";
+      // Prune deeper headings when a higher-level heading appears
+      while (crumbs.length > 0 && crumbs.length >= level) crumbs.pop();
+      crumbs.push(text);
     }
+    return true;
   });
-  return sections;
+  return crumbs;
 }
 
-function getPathForPos(sections: { pos: number; path: string[] }[], pos: number): string[] {
-  let best: string[] = [];
-  for (const s of sections) {
-    if (s.pos <= pos) best = s.path;
-    else break;
-  }
-  return best;
-}
+/* ── Component ───────────────────────────────────────────────────────── */
 
-export default function SearchPanel({ editor }: SearchPanelProps) {
+function SearchPanel({ editor }: SearchPanelProps) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
@@ -72,110 +55,79 @@ export default function SearchPanel({ editor }: SearchPanelProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Focus input on mount
+  // Auto-focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Clear highlight when query changes or panel unmounts
-  useEffect(() => {
-    return () => {
-      if (editor) {
-        editor.chain().selectAll().unsetHighlight().run();
-      }
-    };
-  }, [editor]);
+  /* ── Search results (memoised) ────────────────────────────────────── */
 
   const results: SearchResult[] = useMemo(() => {
     if (!editor || !query) return [];
 
-    const sectionMap = buildSectionMap(editor);
-    const matches: SearchResult[] = [];
+    const docText = editor.state.doc.textBetween(
+      0,
+      editor.state.doc.content.size,
+      "\n",
+    );
 
-    // Build full plain text and position map
-    const textParts: { text: string; pos: number }[] = [];
-    let fullText = "";
-
-    editor.state.doc.descendants((node, pos) => {
-      if (node.isText && node.text) {
-        textParts.push({ text: node.text, pos });
-        fullText += node.text;
-      } else if (node.isBlock && fullText.length > 0 && !fullText.endsWith("\n")) {
-        textParts.push({ text: "\n", pos: -1 });
-        fullText += "\n";
-      }
-      return true;
-    });
-
-    // Search through the full text
-    let searchText = fullText;
-    let searchQuery = query;
-    if (!caseSensitive) {
-      searchText = fullText.toLowerCase();
-      searchQuery = query.toLowerCase();
+    // Escape regex special chars
+    let pattern = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    if (wholeWord) pattern = `\\b${pattern}\\b`;
+    const flags = caseSensitive ? "g" : "gi";
+    let re: RegExp;
+    try {
+      re = new RegExp(pattern, flags);
+    } catch {
+      return [];
     }
 
-    let searchFrom = 0;
-    while (searchFrom < searchText.length) {
-      const idx = searchText.indexOf(searchQuery, searchFrom);
-      if (idx === -1) break;
+    const matches: SearchResult[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(docText)) !== null) {
+      const matchStart = m.index;
+      const matchEnd = matchStart + m[0].length;
 
-      // Whole word check
-      if (wholeWord) {
-        const before = idx > 0 ? fullText[idx - 1] : " ";
-        const after = idx + query.length < fullText.length ? fullText[idx + query.length] : " ";
-        if (/\w/.test(before) || /\w/.test(after)) {
-          searchFrom = idx + 1;
-          continue;
-        }
-      }
+      // Context
+      const before = docText.slice(Math.max(0, matchStart - CTX), matchStart);
+      const after = docText.slice(matchEnd, matchEnd + CTX);
 
-      // Convert text offset to ProseMirror position
-      let charOffset = 0;
-      let fromPos = -1;
-      let toPos = -1;
+      // Map text offset → ProseMirror position
+      let pmFrom = 0;
+      let pmTo = 0;
+      let textOffset = 0;
+      let foundFrom = false;
+      let foundTo = false;
 
-      for (const part of textParts) {
-        const partEnd = charOffset + part.text.length;
-        if (fromPos === -1 && idx >= charOffset && idx < partEnd) {
-          if (part.pos === -1) break;
-          fromPos = part.pos + (idx - charOffset);
-        }
-        if (fromPos !== -1 && toPos === -1) {
-          const endIdx = idx + query.length;
-          if (endIdx <= partEnd) {
-            if (part.pos === -1) break;
-            toPos = part.pos + (endIdx - charOffset);
+      editor.state.doc.descendants((node, nodePos) => {
+        if (foundTo) return false;
+        if (node.isText) {
+          const len = (node.text || "").length;
+          if (!foundFrom && textOffset + len > matchStart) {
+            pmFrom = nodePos + (matchStart - textOffset);
+            foundFrom = true;
           }
+          if (!foundTo && textOffset + len >= matchEnd) {
+            pmTo = nodePos + (matchEnd - textOffset);
+            foundTo = true;
+          }
+          textOffset += len;
+        } else if (node.isBlock && textOffset > 0) {
+          textOffset += 1; // \n separator
         }
-        charOffset = partEnd;
-        if (toPos !== -1) break;
-      }
+        return true;
+      });
 
-      if (fromPos !== -1 && toPos !== -1) {
-        // Extract context fragment
-        const ctxStart = Math.max(0, idx - CONTEXT_CHARS);
-        const ctxEnd = Math.min(fullText.length, idx + query.length + CONTEXT_CHARS);
-        const fragment = fullText.slice(ctxStart, ctxEnd).replace(/\n/g, " ");
-        const matchStart = idx - ctxStart;
-
-        // Add ellipsis
-        let prefix = "";
-        let suffix = "";
-        if (ctxStart > 0) prefix = "\u2026";
-        if (ctxEnd < fullText.length) suffix = "\u2026";
-
+      if (foundFrom && foundTo) {
         matches.push({
-          from: fromPos,
-          to: toPos,
-          fragment: prefix + fragment + suffix,
-          matchStart: matchStart + prefix.length,
-          matchLen: query.length,
-          path: getPathForPos(sectionMap, fromPos),
+          from: pmFrom,
+          to: pmTo,
+          before,
+          match: m[0],
+          after,
+          breadcrumb: buildBreadcrumb(editor, pmFrom),
         });
       }
-
-      searchFrom = idx + 1;
     }
 
     return matches;
@@ -184,137 +136,220 @@ export default function SearchPanel({ editor }: SearchPanelProps) {
   // Reset selection when results change
   useEffect(() => {
     setSelectedIdx(null);
-    // Clear any previous highlight when search changes
-    if (editor) {
-      editor.chain().selectAll().unsetHighlight().run();
-    }
-  }, [results, editor]);
+  }, [results]);
+
+  /* ── Navigation ──────────────────────────────────────────────────── */
 
   const navigateToResult = useCallback(
     (result: SearchResult, idx: number) => {
       if (!editor) return;
       setSelectedIdx(idx);
 
-      // Clear previous highlight, apply new one, then position cursor
-      editor
-        .chain()
-        .selectAll()
-        .unsetHighlight()
-        .setTextSelection({ from: result.from, to: result.to })
-        .setHighlight({ color: "#fbbf2480" })
-        .setTextSelection(result.from)
-        .run();
+      // Select the match in the editor
+      editor.commands.setTextSelection({ from: result.from, to: result.to });
 
-      // Scroll into view
-      const domAtPos = editor.view.domAtPos(result.from);
-      const el =
-        domAtPos.node instanceof HTMLElement
-          ? domAtPos.node
-          : domAtPos.node.parentElement;
-      el?.scrollIntoView({ behavior: "instant", block: "center" });
+      // Scroll editor to the match
+      try {
+        const coords = editor.view.coordsAtPos(result.from);
+        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        if (scrollEl && coords) {
+          const scrollRect = scrollEl.getBoundingClientRect();
+          const targetY =
+            coords.top - scrollRect.top + scrollEl.scrollTop - 150;
+          scrollEl.scrollTop = Math.max(0, targetY);
+        }
+      } catch {
+        /* pos may be out of view range */
+      }
+
+      // Scroll the card into view in the panel list
+      requestAnimationFrame(() => {
+        const card = listRef.current?.querySelector(
+          `[data-result-idx="${idx}"]`,
+        );
+        card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
     },
     [editor],
   );
 
-  // Keyboard navigation
+  const goNext = useCallback(() => {
+    if (results.length === 0) return;
+    const next =
+      selectedIdx === null ? 0 : (selectedIdx + 1) % results.length;
+    navigateToResult(results[next], next);
+  }, [results, selectedIdx, navigateToResult]);
+
+  const goPrev = useCallback(() => {
+    if (results.length === 0) return;
+    const prev =
+      selectedIdx === null
+        ? results.length - 1
+        : (selectedIdx - 1 + results.length) % results.length;
+    navigateToResult(results[prev], prev);
+  }, [results, selectedIdx, navigateToResult]);
+
+  /* ── Keyboard handler ────────────────────────────────────────────── */
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (results.length === 0) return;
-
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        const next = selectedIdx === null ? 0 : Math.min(selectedIdx + 1, results.length - 1);
-        setSelectedIdx(next);
-        navigateToResult(results[next], next);
+        goNext();
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
-        const prev = selectedIdx === null ? results.length - 1 : Math.max(selectedIdx - 1, 0);
-        setSelectedIdx(prev);
-        navigateToResult(results[prev], prev);
+        goPrev();
       } else if (e.key === "Enter") {
         e.preventDefault();
-        if (selectedIdx !== null) {
-          navigateToResult(results[selectedIdx], selectedIdx);
-        } else if (results.length > 0) {
-          navigateToResult(results[0], 0);
-        }
+        goNext();
       }
     },
-    [results, selectedIdx, navigateToResult],
+    [results, goNext, goPrev],
   );
+
+  /* ── Counter text ────────────────────────────────────────────────── */
+
+  const counterText = useMemo(() => {
+    if (!query) return null;
+    if (results.length === 0) return "0 results";
+    if (selectedIdx === null) return `${results.length} results`;
+    return `${selectedIdx + 1} of ${results.length}`;
+  }, [query, results.length, selectedIdx]);
+
+  /* ── Render ──────────────────────────────────────────────────────── */
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Search" count={query ? results.length : undefined} />
+      {/* Header with counter + nav arrows */}
+      <div className={`${PANEL.header} flex items-center justify-between`}>
+        <h3 className="text-sm font-semibold text-stone-700">Search</h3>
+        {counterText && (
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-[var(--muted)] tabular-nums mr-1">
+              {counterText}
+            </span>
+            <button
+              onClick={goPrev}
+              disabled={results.length === 0}
+              className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
+              title="Previous match (Up)"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+            </button>
+            <button
+              onClick={goNext}
+              disabled={results.length === 0}
+              className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
+              title="Next match (Down)"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
 
-      {/* Search input + options */}
-      <div className="px-3 py-2 border-b border-[var(--border)] space-y-2">
+      {/* Search input + toggles */}
+      <div className="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2">
         <input
           ref={inputRef}
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Search in document..."
-          className="w-full px-2.5 py-1.5 text-sm rounded-md border border-stone-200 bg-white
-                     focus:outline-none focus:border-stone-400 focus:ring-1 focus:ring-stone-300
-                     placeholder:text-stone-400"
+          placeholder="Find in document..."
+          className="flex-1 text-sm bg-transparent outline-none placeholder:text-stone-400"
         />
-        <div className="flex items-center gap-3 text-xs text-stone-500">
-          <label className="flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={caseSensitive}
-              onChange={(e) => setCaseSensitive(e.target.checked)}
-              className="rounded border-stone-300 text-stone-600 focus:ring-stone-400
-                         w-3.5 h-3.5"
-            />
-            Match case
-          </label>
-          <label className="flex items-center gap-1 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={wholeWord}
-              onChange={(e) => setWholeWord(e.target.checked)}
-              className="rounded border-stone-300 text-stone-600 focus:ring-stone-400
-                         w-3.5 h-3.5"
-            />
-            Whole word
-          </label>
-        </div>
+        <button
+          onClick={() => setCaseSensitive((v) => !v)}
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
+            caseSensitive
+              ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
+              : "border-stone-300 text-stone-400 hover:text-stone-600"
+          }`}
+          title="Match case"
+        >
+          Aa
+        </button>
+        <button
+          onClick={() => setWholeWord((v) => !v)}
+          className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
+            wholeWord
+              ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
+              : "border-stone-300 text-stone-400 hover:text-stone-600"
+          }`}
+          title="Whole word"
+        >
+          W
+        </button>
       </div>
 
       {/* Results list */}
       <div ref={listRef} className={PANEL.list}>
+        {!query && (
+          <p className={PANEL.empty}>Type to search your document.</p>
+        )}
         {query && results.length === 0 && (
           <p className={PANEL.empty}>No matches found.</p>
         )}
         {results.map((r, i) => (
           <button
             key={`${r.from}-${i}`}
-            className={`${panelCard(selectedIdx === i)} w-full text-left cursor-pointer`}
+            data-result-idx={i}
+            className={`${panelCard(selectedIdx === i)} w-full text-left`}
             onClick={() => navigateToResult(r, i)}
           >
-            <div className={`${PANEL.cardInner} py-2`}>
-              {r.path.length > 0 && (
-                <p className="text-[10px] leading-tight text-stone-400 mb-1 truncate">
-                  {r.path.join(" \u203A ")}
-                </p>
+            <div className={PANEL.cardInner}>
+              {r.breadcrumb.length > 0 && (
+                <div className="text-[10px] text-[var(--muted)] truncate mb-1">
+                  {r.breadcrumb.join(" \u203a ")}
+                </div>
               )}
-              <p className="text-xs leading-relaxed text-stone-600 break-words">
-                {r.fragment.slice(0, r.matchStart)}
-                <mark className="bg-amber-200/80 text-stone-900 rounded-sm px-0.5">
-                  {r.fragment.slice(r.matchStart, r.matchStart + r.matchLen)}
+              <div className="text-sm text-stone-700 leading-snug break-words">
+                {r.before.length > 0 && (
+                  <span className="text-stone-400">
+                    {r.before.length === CTX ? "\u2026" : ""}
+                    {r.before}
+                  </span>
+                )}
+                <mark className="bg-amber-200/80 text-stone-800 rounded-sm px-px">
+                  {r.match}
                 </mark>
-                {r.fragment.slice(r.matchStart + r.matchLen)}
-              </p>
+                {r.after.length > 0 && (
+                  <span className="text-stone-400">
+                    {r.after}
+                    {r.after.length === CTX ? "\u2026" : ""}
+                  </span>
+                )}
+              </div>
             </div>
           </button>
         ))}
-        {!query && (
-          <p className={PANEL.empty}>Type to search through your document.</p>
-        )}
       </div>
     </div>
   );
 }
+
+export default memo(SearchPanel);
