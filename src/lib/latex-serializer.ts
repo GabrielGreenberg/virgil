@@ -253,16 +253,105 @@ export function assignUuids(doc: JSONContent): void {
   assign(doc);
 }
 
-/** Extract sidecar data (paragraph/list titles keyed by UUID) from the document. */
+/** Recursively extract plain text from a JSONContent subtree. */
+function extractPlainText(node: JSONContent): string {
+  if (node.type === "text") return node.text || "";
+  if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
+  if (node.type === "citation") return node.attrs?.command || "";
+  if (node.type === "footnote") return node.attrs?.content || "";
+  if (node.type === "hardBreak") return " ";
+  if (node.type === "archiveMarker") return "";
+  if (!node.content) return "";
+  const sep = node.type === "bulletList" || node.type === "orderedList" ? "; " : "";
+  return node.content.map(extractPlainText).join(sep);
+}
+
+/** Compute a content fingerprint: lowercased, whitespace-collapsed, first 80 chars. */
+function computeFingerprint(node: JSONContent): string {
+  const text = extractPlainText(node);
+  return text.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
+const UUID_ELIGIBLE = new Set(["paragraph", "heading", "bulletList", "orderedList"]);
+
+/** Extract sidecar data (titles + fingerprints keyed by UUID) from the document. */
 export function extractSidecarData(doc: JSONContent): VirgilSidecar {
-  const TITLED_TYPES = new Set(["paragraph", "bulletList", "orderedList"]);
   const paragraphs: VirgilSidecar["paragraphs"] = {};
   function walk(node: JSONContent) {
-    if (TITLED_TYPES.has(node.type!) && node.attrs?.uuid && node.attrs?.parTitle) {
-      paragraphs[node.attrs.uuid as string] = { title: node.attrs.parTitle as string };
+    if (UUID_ELIGIBLE.has(node.type!) && node.attrs?.uuid) {
+      const uuid = node.attrs.uuid as string;
+      const fp = computeFingerprint(node);
+      const title = node.attrs.parTitle as string | undefined;
+      if (title || fp) {
+        paragraphs[uuid] = {
+          ...(title ? { title } : {}),
+          ...(fp ? { fingerprint: fp } : {}),
+        };
+      }
     }
     node.content?.forEach(walk);
   }
   walk(doc);
   return { paragraphs };
+}
+
+/** Recover orphaned UUIDs by matching content fingerprints. Mutates doc in place. */
+export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): void {
+  const LIST_TYPES = new Set(["bulletList", "orderedList"]);
+
+  // 1. Collect current UUIDs in the document
+  const currentUuids = new Set<string>();
+  function collectCurrent(node: JSONContent) {
+    if (UUID_ELIGIBLE.has(node.type!) && node.attrs?.uuid) {
+      currentUuids.add(node.attrs.uuid as string);
+    }
+    node.content?.forEach(collectCurrent);
+  }
+  collectCurrent(doc);
+
+  // 2. Find orphaned sidecar entries (UUIDs not in the document)
+  const orphansByFingerprint = new Map<string, { uuid: string; title?: string }[]>();
+  for (const [uuid, meta] of Object.entries(sidecar.paragraphs)) {
+    if (currentUuids.has(uuid)) continue;
+    if (!meta.fingerprint) continue;
+    const list = orphansByFingerprint.get(meta.fingerprint) || [];
+    list.push({ uuid, title: meta.title });
+    orphansByFingerprint.set(meta.fingerprint, list);
+  }
+
+  if (orphansByFingerprint.size === 0) return;
+
+  // 3. Walk document for UUID-eligible nodes missing a UUID, try to recover
+  function recover(node: JSONContent, insideList = false) {
+    if (LIST_TYPES.has(node.type!)) {
+      if (!node.attrs?.uuid) {
+        const fp = computeFingerprint(node);
+        if (fp) tryRestore(node, fp);
+      }
+      return; // don't recurse into list items for recovery
+    }
+    if (
+      node.type === "heading" ||
+      (node.type === "paragraph" && !insideList && node.content && node.content.length > 0)
+    ) {
+      if (!node.attrs?.uuid) {
+        const fp = computeFingerprint(node);
+        if (fp) tryRestore(node, fp);
+      }
+    }
+    node.content?.forEach((child) => recover(child, insideList));
+  }
+
+  function tryRestore(node: JSONContent, fp: string) {
+    const candidates = orphansByFingerprint.get(fp);
+    if (!candidates || candidates.length !== 1) return; // skip ambiguous
+    const orphan = candidates[0];
+    if (!node.attrs) node.attrs = {};
+    node.attrs.uuid = orphan.uuid;
+    if (orphan.title) node.attrs.parTitle = orphan.title;
+    currentUuids.add(orphan.uuid);
+    orphansByFingerprint.delete(fp); // consumed
+  }
+
+  recover(doc);
 }

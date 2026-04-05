@@ -225,6 +225,20 @@ export function useCitations(docId: string | null) {
     [persistBib, persistState]
   );
 
+  const addBibEntry = useCallback(
+    (entry: BibEntry) => {
+      setBibEntries((prev) => {
+        if (prev.some((e) => e.key === entry.key)) return prev;
+        const next = [...prev, entry];
+        const newRaw = serializeBibFile(next);
+        setBibRaw(newRaw);
+        persistBib(newRaw);
+        return next;
+      });
+    },
+    [persistBib]
+  );
+
   const getBibEntry = useCallback(
     (key: string): BibEntry | undefined => {
       return bibEntries.find((e) => e.key === key);
@@ -279,6 +293,7 @@ export function useCitations(docId: string | null) {
     deleteCitation,
     setStyle,
     setBibPackage,
+    addBibEntry,
     updateBibEntry,
     updateBibKeyAndType,
     getBibEntry,

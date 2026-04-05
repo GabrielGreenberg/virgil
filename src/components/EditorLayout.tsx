@@ -27,6 +27,7 @@ import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
+import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useQuotations } from "@/hooks/useQuotations";
 import NoteMarkers from "./NoteMarkers";
@@ -36,8 +37,10 @@ const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
+import SearchPanel from "./SearchPanel";
 import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import type { OrphanedFootnote } from "@/lib/types";
 
 // --- Icons ---
 function IconNotes({ active }: { active?: boolean }) {
@@ -192,6 +195,16 @@ function IconQuotations({ active }: { active?: boolean }) {
   );
 }
 
+function IconSearch({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="M21 21l-4.35-4.35" />
+    </svg>
+  );
+}
+
 const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
   outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
   todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
@@ -204,6 +217,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
   cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
   quotations: { label: "Quotations", icon: (a) => <IconQuotations active={a} /> },
+  search: { label: "Search", icon: (a) => <IconSearch active={a} /> },
   blank: { label: "Blank", icon: () => null },
 };
 
@@ -586,6 +600,7 @@ export default function EditorLayout() {
     deleteCitation,
     setStyle: setCitationStyle,
     setBibPackage,
+    addBibEntry,
     updateBibEntry,
     updateBibKeyAndType,
     getDisplayText: getCitationDisplayText,
@@ -595,6 +610,7 @@ export default function EditorLayout() {
 
   const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
   const { requestReview: requestBibReview, cancelRequest: cancelBibReview, getRequestStatus: getBibReviewStatus } = useBibReview(currentDocId);
+  const { generalBibPath, entryRequests, setGeneralBibPath, addEntryRequest, removeEntryRequest } = useBibSettings(currentDocId);
 
   const {
     prefs,
@@ -625,6 +641,8 @@ export default function EditorLayout() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
+  const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
+  const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
@@ -1061,9 +1079,42 @@ export default function EditorLayout() {
   }, []);
 
   const handleDeleteFootnote = useCallback((id: string) => {
+    suppressOrphanRef.current.add(id);
     editorRef.current?.deleteFootnote(id);
-    editorRef.current?.renumberFootnotes();
     setSelectedFootnoteId(null);
+  }, []);
+
+  const handleDeleteOrphan = useCallback((id: string) => {
+    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
+  }, []);
+
+  const handleEditOrphan = useCallback((id: string, newContent: string) => {
+    setOrphanedFootnotes((prev) => prev.map((o) =>
+      o.footnoteId === id ? { ...o, content: newContent } : o
+    ));
+  }, []);
+
+  const handleReanchorFootnote = useCallback((id: string) => {
+    const orphan = orphanedFootnotes.find((o) => o.footnoteId === id);
+    if (!orphan || !editorRef.current) return;
+    const ed = editorRef.current.getEditor();
+    if (!ed) return;
+    ed.chain().focus().insertContent({
+      type: "footnote",
+      attrs: { footnoteId: orphan.footnoteId, content: orphan.content, number: 0 },
+    }).run();
+    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
+    setSelectedFootnoteId(id);
+  }, [orphanedFootnotes]);
+
+  const handleCreateEmptyFootnote = useCallback(() => {
+    const footnoteId = crypto.randomUUID();
+    setOrphanedFootnotes((prev) => [...prev, {
+      footnoteId,
+      content: "",
+      orphanedAt: new Date().toISOString(),
+    }]);
+    setSelectedFootnoteId(footnoteId);
   }, []);
 
   // Listen for archive marker clicks from the editor
@@ -1115,6 +1166,42 @@ export default function EditorLayout() {
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
   }, [setActiveLeft, setActiveRight]);
+
+  // Listen for orphaned footnotes (deleted from editor but preserved in panel)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.footnoteId) return;
+      // Skip if this was an intentional delete from panel
+      if (suppressOrphanRef.current.has(detail.footnoteId)) {
+        suppressOrphanRef.current.delete(detail.footnoteId);
+        return;
+      }
+      setOrphanedFootnotes((prev) => {
+        if (prev.some((o) => o.footnoteId === detail.footnoteId)) return prev;
+        return [...prev, {
+          footnoteId: detail.footnoteId,
+          content: detail.content,
+          orphanedAt: new Date().toISOString(),
+        }];
+      });
+    };
+    window.addEventListener("virgil-footnote-orphaned", handler);
+    return () => window.removeEventListener("virgil-footnote-orphaned", handler);
+  }, []);
+
+  // Listen for footnote panel drops (clean up orphan state)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.footnoteId) return;
+      if (detail.isOrphan) {
+        setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== detail.footnoteId));
+      }
+    };
+    window.addEventListener("virgil-footnote-panel-dropped", handler);
+    return () => window.removeEventListener("virgil-footnote-panel-dropped", handler);
+  }, []);
 
   // Listen for citation marker clicks from the editor
   useEffect(() => {
@@ -1477,7 +1564,11 @@ export default function EditorLayout() {
               panelSide={side}
               viewMode={getPanelViewMode("footnotes")}
               onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
-
+              orphanedFootnotes={orphanedFootnotes}
+              onDeleteOrphan={handleDeleteOrphan}
+              onEditOrphan={handleEditOrphan}
+              onReanchor={handleReanchorFootnote}
+              onCreate={handleCreateEmptyFootnote}
             />
         </ResizablePanel>
       );
@@ -1510,6 +1601,7 @@ export default function EditorLayout() {
                 editorRef.current?.insertCitation(cmd, citId, display);
               }}
               onClearPendingCreate={() => setPendingCitationCreate(null)}
+              onStartCreate={() => setPendingCitationCreate("\\cite")}
               editor={editorInstance}
               panelSide={side}
               citationPositions={citationPositionMap}
@@ -1548,6 +1640,12 @@ export default function EditorLayout() {
               onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
               onActiveCitationChange={setBibActiveCitationId}
               bibPackage={bibPackage}
+              onAddBibEntry={addBibEntry}
+              generalBibPath={generalBibPath}
+              onSetGeneralBibPath={setGeneralBibPath}
+              entryRequests={entryRequests}
+              onAddEntryRequest={addEntryRequest}
+              onRemoveEntryRequest={removeEntryRequest}
             />
         </ResizablePanel>
       );
@@ -1569,6 +1667,14 @@ export default function EditorLayout() {
             onUpdateCiteKey={updateQuotationCiteKey}
             onUpdateNotes={updateQuotationNotes}
           />
+        </ResizablePanel>
+      );
+    }
+
+    if (panelId === "search") {
+      return (
+        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
+          <SearchPanel editor={editorInstance} />
         </ResizablePanel>
       );
     }
@@ -1773,6 +1879,7 @@ export default function EditorLayout() {
             selectedId={selectedFootnoteId}
             panelSide={footnotePanelSide}
             mainRef={mainAreaRef}
+            docVersion={latestDoc}
           />
         )}
         {/* Citation connector lines (list mode: curved, page view: straight) */}

@@ -1,5 +1,6 @@
 export interface ParagraphMeta {
   title?: string;
+  fingerprint?: string;
 }
 
 export interface VirgilSidecar {
@@ -159,6 +160,21 @@ export interface BibReviewState {
   requests: BibReviewRequest[];
 }
 
+// --- Bib Settings (general bibliography, entry requests) ---
+
+export interface BibEntryRequest {
+  id: string;
+  description: string;
+  status: "pending" | "complete";
+  createdAt: string;
+  resolvedKey?: string;
+}
+
+export interface BibSettings {
+  generalBibPath: string | null;
+  entryRequests: BibEntryRequest[];
+}
+
 export interface Quotation {
   id: string;
   title: string;
@@ -178,4 +194,12 @@ export interface QuotationGroup {
 
 export interface QuotationsState {
   groups: QuotationGroup[];
+}
+
+// --- Orphaned Footnotes ---
+
+export interface OrphanedFootnote {
+  footnoteId: string;
+  content: string;
+  orphanedAt: string;
 }

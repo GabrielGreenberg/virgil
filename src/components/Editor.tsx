@@ -168,10 +168,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         function enterEditMode() {
           // Create overlay input outside ProseMirror's DOM tree
-          const rect = titleAnnot.getBoundingClientRect();
           const wrapperRect = wrapper.getBoundingClientRect();
 
           titleAnnot.style.display = "block";
+          titleAnnot.style.opacity = "1";
           titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
 
           const input = document.createElement("input");
@@ -219,43 +219,38 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
           if (title) {
             wrapper.classList.add("has-title");
+            wrapper.classList.remove("has-add-btn");
 
-            // Show title text with × delete button inside annotation
+            // Show title text with × delete inline after title
             titleAnnot.style.display = "block";
-            const xBtn = document.createElement("button");
+            const span = document.createElement("span");
+            span.textContent = title;
+            titleAnnot.appendChild(span);
+            const xBtn = document.createElement("span");
             xBtn.className = "par-title-delete";
-            xBtn.textContent = "×";
+            xBtn.textContent = "\u00d7";
             xBtn.title = "Remove title";
             xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
             xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
             titleAnnot.appendChild(xBtn);
-            const span = document.createElement("span");
-            span.textContent = title;
-            titleAnnot.appendChild(span);
           } else {
             wrapper.classList.remove("has-title");
 
-            // Only show controls if paragraph has real text content
+            // Only show +T control above paragraph if it has real text content
             const hasText = currentNode.textContent.trim().length > 0;
             if (hasText) {
-              // + button (add)
-              const plusBtn = document.createElement("button");
-              plusBtn.className = "par-title-btn";
-              plusBtn.textContent = "+";
-              plusBtn.title = "Add title";
-              plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-              plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
-              controls.appendChild(plusBtn);
-
-              // T label
-              const tLabel = document.createElement("span");
-              tLabel.className = "par-title-label";
-              tLabel.textContent = "T";
-              controls.appendChild(tLabel);
+              wrapper.classList.add("has-add-btn");
+              titleAnnot.style.display = "block";
+              const addLabel = document.createElement("span");
+              addLabel.className = "par-title-add";
+              addLabel.textContent = "+ T";
+              addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+              addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+              titleAnnot.appendChild(addLabel);
+            } else {
+              wrapper.classList.remove("has-add-btn");
+              titleAnnot.style.display = "none";
             }
-
-            // Hide annotation area
-            titleAnnot.style.display = "none";
           }
         }
 
@@ -337,39 +332,44 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
       function enterEditMode() {
         const wrapperRect = wrapper.getBoundingClientRect();
-        // Position input just above the list element
-        const listRect = listEl.getBoundingClientRect();
-        const topPos = listRect.top - 20;
 
-        const overlay = document.createElement("div");
-        overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;`;
-        document.body.appendChild(overlay);
+        titleAnnot.style.display = "block";
+        titleAnnot.style.opacity = "1";
+        titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
 
         const input = document.createElement("input");
         input.type = "text";
         input.className = "par-title-input";
         input.value = currentNode.attrs.parTitle || "";
-        input.placeholder = "Title…";
-        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${topPos}px;width:${wrapperRect.width * 0.6}px;`;
+        input.placeholder = "List title…";
+        input.style.position = "fixed";
+        input.style.left = `${wrapperRect.left}px`;
+        input.style.top = `${titleAnnot.getBoundingClientRect().top}px`;
+        input.style.width = `${wrapperRect.width * 0.6}px`;
+        input.style.zIndex = "9999";
         document.body.appendChild(input);
         input.focus();
         input.select();
 
         let committed = false;
+        const cleanup = () => {
+          if (document.body.contains(input)) input.remove();
+        };
         function commit() {
           if (committed) return;
           committed = true;
           const val = input.value.trim();
+          cleanup();
           setTitle(val || null);
-          if (document.body.contains(input)) input.remove();
-          if (document.body.contains(overlay)) overlay.remove();
         }
         input.addEventListener("keydown", (e) => {
+          e.stopPropagation();
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          if (e.key === "Escape") { e.preventDefault(); committed = true; if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
+          if (e.key === "Escape") { e.preventDefault(); committed = true; cleanup(); renderAnnot(); }
         });
-        input.addEventListener("blur", commit);
-        overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
+        input.addEventListener("blur", () => {
+          setTimeout(() => { if (!committed) commit(); }, 150);
+        });
       }
 
       function renderAnnot() {
@@ -379,32 +379,28 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         if (title) {
           wrapper.classList.add("has-title");
+          wrapper.classList.remove("has-add-btn");
           titleAnnot.style.display = "block";
-          const xBtn = document.createElement("button");
+          const span = document.createElement("span");
+          span.textContent = title;
+          titleAnnot.appendChild(span);
+          const xBtn = document.createElement("span");
           xBtn.className = "par-title-delete";
-          xBtn.textContent = "×";
+          xBtn.textContent = "\u00d7";
           xBtn.title = "Remove title";
           xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
           xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
           titleAnnot.appendChild(xBtn);
-          const span = document.createElement("span");
-          span.textContent = title;
-          titleAnnot.appendChild(span);
         } else {
           wrapper.classList.remove("has-title");
-          titleAnnot.style.display = "none";
-          // Show + button to add title
-          const plusBtn = document.createElement("button");
-          plusBtn.className = "par-title-btn";
-          plusBtn.textContent = "+";
-          plusBtn.title = "Add title";
-          plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-          plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
-          controls.appendChild(plusBtn);
-          const tLabel = document.createElement("span");
-          tLabel.className = "par-title-label";
-          tLabel.textContent = "T";
-          controls.appendChild(tLabel);
+          wrapper.classList.add("has-add-btn");
+          titleAnnot.style.display = "block";
+          const addLabel = document.createElement("span");
+          addLabel.className = "par-title-add";
+          addLabel.textContent = "+ T";
+          addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+          addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+          titleAnnot.appendChild(addLabel);
         }
       }
 
@@ -678,25 +674,86 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-16 py-10",
       },
       handleDrop(view, event) {
-        const data = event.dataTransfer?.getData("application/x-virgil-citation");
-        if (!data || !onCitationDropRef.current) return false;
-        event.preventDefault();
-        try {
-          const { command, citationId } = JSON.parse(data);
-          const result = onCitationDropRef.current(command, citationId);
-          if (!result) return true;
-          const coords = { left: event.clientX, top: event.clientY };
-          const pos = view.posAtCoords(coords);
-          if (!pos) return true;
-          const node = view.state.schema.nodes.citation.create({
-            citationId: result.id,
-            command,
-            displayText: result.displayText,
-          });
-          const tr = view.state.tr.insert(pos.pos, node);
-          view.dispatch(tr);
-        } catch { /* ignore bad data */ }
-        return true;
+        // --- Citation drop ---
+        const citData = event.dataTransfer?.getData("application/x-virgil-citation");
+        if (citData && onCitationDropRef.current) {
+          event.preventDefault();
+          try {
+            const { command, citationId } = JSON.parse(citData);
+            const result = onCitationDropRef.current(command, citationId);
+            if (!result) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+            const node = view.state.schema.nodes.citation.create({
+              citationId: result.id,
+              command,
+              displayText: result.displayText,
+            });
+            const tr = view.state.tr.insert(pos.pos, node);
+            view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Footnote drop (from panel) ---
+        const fnData = event.dataTransfer?.getData("application/x-virgil-footnote");
+        if (fnData) {
+          event.preventDefault();
+          try {
+            const { footnoteId, content, isOrphan } = JSON.parse(fnData);
+            // Warn when moving an anchored footnote
+            if (!isOrphan) {
+              const confirmed = window.confirm(
+                "This will move the footnote from its current position in the document. Continue?"
+              );
+              if (!confirmed) return true;
+            }
+
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+
+            let tr = view.state.tr;
+
+            if (!isOrphan) {
+              // Find and delete the old footnote node
+              let oldPos: number | null = null;
+              view.state.doc.descendants((node, npos) => {
+                if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
+                  oldPos = npos;
+                  return false;
+                }
+                return true;
+              });
+              if (oldPos != null) {
+                tr = tr.delete(oldPos, oldPos + 1);
+              }
+            }
+
+            // Map the drop position through any deletions
+            const mappedPos = tr.mapping.map(pos.pos);
+            const newNode = view.state.schema.nodes.footnote.create({
+              footnoteId,
+              content,
+              number: 0, // auto-renumber plugin will fix this
+            });
+            tr = tr.insert(mappedPos, newNode);
+            view.dispatch(tr);
+
+            // Notify EditorLayout to clean up orphan state
+            setTimeout(() => {
+              window.dispatchEvent(
+                new CustomEvent("virgil-footnote-panel-dropped", {
+                  detail: { footnoteId, isOrphan },
+                })
+              );
+            }, 0);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        return false;
       },
     },
     immediatelyRender: false,

@@ -136,15 +136,6 @@ body {
   position: relative;
 }
 
-/* Extend hover zone into the left margin for + T controls */
-.par-title-wrapper::before {
-  content: "";
-  position: absolute;
-  left: -60px;
-  top: 0;
-  bottom: 0;
-  width: 60px;
-}
 
 .par-title-annotation {
   display: block;
@@ -164,49 +155,29 @@ body {
   margin-top: 1.2em;
 }
 
-/* Extend hover zone into the left margin for × button */
-.par-title-annotation::before {
-  content: "";
-  position: absolute;
-  left: -40px;
-  top: 0;
-  bottom: 0;
-  width: 40px;
-}
 
 .par-title-annotation:hover {
   color: #a33;
 }
 
 .par-title-delete {
-  position: absolute;
-  left: -24px;
-  top: 0;
   display: none;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 11px;
-  font-weight: 700;
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 500;
   color: #c45a5a;
-  background: #fef5f5;
-  border: 1px solid #e8b4b4;
-  border-radius: 3px;
   cursor: pointer;
-  line-height: 1;
   user-select: none;
-  padding: 0;
+  margin-left: 0.4em;
+  opacity: 0.5;
 }
 
 .par-title-delete:hover {
-  background: #fde8e8;
-  border-color: #c45a5a;
+  opacity: 1;
+  color: #a33;
 }
 
 .par-title-annotation:hover .par-title-delete {
-  display: inline-flex;
+  display: inline;
 }
 
 .par-title-input {
@@ -223,66 +194,37 @@ body {
   padding: 0;
 }
 
-.par-title-controls {
-  position: absolute;
-  left: -42px;
-  display: flex;
-  align-items: center;
-  gap: 2px;
+/* "+T" add label shown above paragraph on hover */
+.par-title-add {
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #c45a5a;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.6;
+  letter-spacing: 0.04em;
+}
+
+.par-title-add:hover {
+  opacity: 1;
+  color: #a33;
+}
+
+/* When the wrapper has the add button (no title yet), hide annotation until hover */
+.par-title-wrapper.has-add-btn > .par-title-annotation,
+.list-title-wrapper.has-add-btn > .par-title-annotation {
   opacity: 0;
   transition: opacity 0.15s;
 }
 
-.par-title-wrapper:hover .par-title-controls {
+.par-title-wrapper.has-add-btn:hover > .par-title-annotation,
+.list-title-wrapper.has-add-btn:hover > .par-title-annotation {
   opacity: 1;
 }
 
-.par-title-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 9px;
-  font-weight: 700;
-  font-family: var(--font-sans), system-ui, sans-serif;
-  color: #c45a5a;
-  background: #fef5f5;
-  border: 1px solid #e8b4b4;
-  border-radius: 3px;
-  cursor: pointer;
-  line-height: 1;
-  user-select: none;
-  padding: 0;
-}
-
-.par-title-btn:hover {
-  background: #fde8e8;
-  border-color: #c45a5a;
-}
-
-span.par-title-label {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  font-size: 9px !important;
-  font-weight: 700 !important;
-  font-family: var(--font-sans), system-ui, sans-serif !important;
-  color: #c45a5a !important;
-  user-select: none;
-  line-height: 1 !important;
-}
-
-/* When title exists, hide the + T controls */
-.par-title-wrapper.has-title .par-title-controls {
+/* Legacy controls — no longer used, kept hidden */
+.par-title-controls {
   display: none;
-}
-
-/* When no title, controls at paragraph first line level */
-.par-title-wrapper:not(.has-title) .par-title-controls {
-  top: 0.35em;
 }
 
 /* Title field blocks */
@@ -385,25 +327,9 @@ span.par-title-label {
   position: relative;
 }
 
-.list-title-wrapper::before {
-  content: "";
-  position: absolute;
-  left: -60px;
-  top: 0;
-  bottom: 0;
-  width: 60px;
-}
 
-.list-title-wrapper:hover > .par-title-controls {
-  opacity: 1;
-}
-
-.list-title-wrapper.has-title > .par-title-controls {
+.list-title-wrapper > .par-title-controls {
   display: none;
-}
-
-.list-title-wrapper:not(.has-title) > .par-title-controls {
-  top: 0.35em;
 }
 
 .list-title-wrapper.has-title > .par-title-annotation {
@@ -778,6 +704,14 @@ span.par-title-label {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #b5b0aa;
+}
+
+/* Toolbar horizontal scroll — hide scrollbar */
+.toolbar-scroll {
+  scrollbar-width: none;
+}
+.toolbar-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 /* View toggles — hide paragraph titles */

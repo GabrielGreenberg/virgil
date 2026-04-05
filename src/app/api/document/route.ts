@@ -9,7 +9,7 @@ import {
   updateDocTimestamp,
 } from "@/lib/storage";
 import { parseLatex } from "@/lib/latex-parser";
-import { serializeToLatex, assignUuids, extractSidecarData } from "@/lib/latex-serializer";
+import { serializeToLatex, assignUuids, extractSidecarData, recoverOrphanedUuids } from "@/lib/latex-serializer";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
 
 const DEFAULT_LATEX = `\\documentclass{article}
@@ -71,6 +71,10 @@ export async function PUT(request: Request) {
     const texPath = await getTexPath(docId);
     const statePath = await getMetaPath(docId, "editor-state.json");
     const sidecarPath = await getMetaPath(docId, "virgil.json");
+
+    // Recover orphaned UUIDs (e.g. markers stripped by external edits)
+    const existingSidecar = await readJsonFile<VirgilSidecar>(sidecarPath, { paragraphs: {} });
+    recoverOrphanedUuids(content, existingSidecar);
 
     // Assign UUIDs to any non-empty paragraphs that lack them
     assignUuids(content);

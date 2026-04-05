@@ -24,6 +24,8 @@ export interface BibEntryCardProps {
   bibPackage?: string;
   /** Bib entries list — needed for formatMinimalCitation in drag ghost. */
   bibEntries?: BibEntry[];
+  /** Whether this entry is cited in the document. */
+  isCited?: boolean;
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -118,7 +120,7 @@ function AnnotationEditor({
 export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
-  occurrenceInfo, compact, bibPackage, bibEntries,
+  occurrenceInfo, compact, bibPackage, bibEntries, isCited = true,
 }: BibEntryCardProps) {
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
@@ -414,7 +416,7 @@ export default function BibEntryCard({
       data-bib-entry={entry.key}
       draggable
       onDragStart={handleDragStart}
-      className={panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}
+      className={panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}
       onClick={onClick}
     >
       <div className={PANEL.cardInner}>

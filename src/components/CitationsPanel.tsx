@@ -8,6 +8,7 @@ import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
+import CitationBuilder from "./CitationBuilder";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -29,6 +30,7 @@ interface CitationsPanelProps {
   onCreateCitation: (command: string) => string;
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
+  onStartCreate: () => void;
   editor: Editor | null;
   panelSide: "left" | "right";
   citationPositions: Map<string, number>;
@@ -59,7 +61,7 @@ const BIB_PACKAGES = [
 function CitationsPanel({
   citations, bibEntries, citationStyle, bibPackage, bibPath, selectedId, citationOrder,
   onSelect, onScrollToMarker, onUpdateCitation, onDeleteCitation, onSetStyle, onSetBibPackage,
-  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate,
+  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate, onStartCreate,
   editor, panelSide, citationPositions,
   viewMode: toggleViewMode, onViewModeChange: handleToggleViewMode,
   getFormattedBib, getAnnotation, setAnnotation, onRequestReview, onCancelReview,
@@ -74,9 +76,8 @@ function CitationsPanel({
   );
   const [editingCmd, setEditingCmd] = useState<string | null>(null);
   const [editCmdValue, setEditCmdValue] = useState("");
-  const [newCiteCmd, setNewCiteCmd] = useState("");
-  const newCiteRef = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [panelInitiatedCreate, setPanelInitiatedCreate] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   // Per-citation: which bib key's pod is expanded (null = none)
   const [expandedBibKeys, setExpandedBibKeys] = useState<Record<string, string | null>>({});
@@ -89,13 +90,6 @@ function CitationsPanel({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
-
-  useEffect(() => {
-    if (pendingCreate) {
-      setNewCiteCmd(pendingCreate);
-      setTimeout(() => newCiteRef.current?.focus(), 50);
-    }
-  }, [pendingCreate]);
 
   const orderedCitations = useMemo(() =>
     [...citations].sort((a, b) => {
@@ -121,16 +115,15 @@ function CitationsPanel({
     setEditingCmd(null);
   };
 
-  const handleNewCiteSubmit = () => {
-    const cmd = newCiteCmd.trim();
-    if (!cmd) return;
-    const fullCmd = cmd.includes("{") ? cmd : cmd + "{}";
-    const id = onCreateCitation(fullCmd);
-    const display = getDisplayText(fullCmd);
-    onInsertCitation(fullCmd, id, display);
-    setNewCiteCmd("");
+  const handleBuilderSubmit = useCallback((command: string) => {
+    const id = onCreateCitation(command);
+    if (!panelInitiatedCreate) {
+      const display = getDisplayText(command);
+      onInsertCitation(command, id, display);
+    }
+    setPanelInitiatedCreate(false);
     onClearPendingCreate();
-  };
+  }, [onCreateCitation, getDisplayText, onInsertCitation, onClearPendingCreate, panelInitiatedCreate]);
 
   const visibleCitations = orderedCitations;
 
@@ -255,6 +248,15 @@ function CitationsPanel({
       <PanelHeader title="Citations" count={citations.length}>
         <div className="flex items-center gap-1.5">
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
+          <button
+            onClick={() => { setPanelInitiatedCreate(true); onStartCreate(); }}
+            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+            title="New citation"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
@@ -291,30 +293,14 @@ function CitationsPanel({
 
       {/* New citation form */}
       {pendingCreate !== null && (
-        <div className="mx-2 mt-2 rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
-          <div className="text-xs font-medium text-stone-500 mb-1">New citation</div>
-          <div className="flex gap-1.5">
-            <input
-              ref={newCiteRef}
-              type="text"
-              value={newCiteCmd}
-              onChange={(e) => setNewCiteCmd(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleNewCiteSubmit();
-                if (e.key === "Escape") { setNewCiteCmd(""); onClearPendingCreate(); }
-              }}
-              placeholder="\citep{key}"
-              className="flex-1 text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
-            />
-            <button onClick={handleNewCiteSubmit}
-              className="text-xs px-2 py-1 bg-stone-700 text-white rounded hover:bg-stone-800">Add</button>
-          </div>
-          {newCiteCmd && getDisplayText(newCiteCmd) !== newCiteCmd && (
-            <div className="mt-1 text-xs text-stone-500">
-              Preview: <span className="citation-preview">{getDisplayText(newCiteCmd)}</span>
-            </div>
-          )}
-        </div>
+        <CitationBuilder
+          bibEntries={bibEntries}
+          bibPackage={bibPackage}
+          pendingCreate={pendingCreate}
+          getDisplayText={getDisplayText}
+          onSubmit={handleBuilderSubmit}
+          onCancel={() => { setPanelInitiatedCreate(false); onClearPendingCreate(); }}
+        />
       )}
 
       {/* Citation list */}

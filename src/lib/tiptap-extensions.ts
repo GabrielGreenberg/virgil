@@ -373,6 +373,7 @@ export const Footnote = Node.create({
   group: "inline",
   inline: true,
   atom: true,
+  draggable: true,
 
   addAttributes() {
     return {
@@ -443,6 +444,73 @@ export const Footnote = Node.create({
           },
         },
       }),
+      // Orphan detector + auto-renumber plugin
+      new Plugin({
+        key: new PluginKey("footnoteOrphanDetector"),
+        appendTransaction(transactions, oldState, newState) {
+          // Only act on doc-changing transactions
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+
+          // Collect footnote info from old and new states
+          const oldFootnotes = new Map<string, string>(); // id → content
+          oldState.doc.descendants((node) => {
+            if (node.type.name === "footnote" && node.attrs.footnoteId) {
+              oldFootnotes.set(node.attrs.footnoteId, node.attrs.content || "");
+            }
+            return true;
+          });
+
+          const newFootnotes = new Set<string>();
+          newState.doc.descendants((node) => {
+            if (node.type.name === "footnote" && node.attrs.footnoteId) {
+              newFootnotes.add(node.attrs.footnoteId);
+            }
+            return true;
+          });
+
+          // Detect orphaned footnotes (present in old, missing in new)
+          for (const [id, content] of oldFootnotes) {
+            if (!newFootnotes.has(id) && content.trim()) {
+              setTimeout(() => {
+                window.dispatchEvent(
+                  new CustomEvent("virgil-footnote-orphaned", {
+                    detail: { footnoteId: id, content },
+                  })
+                );
+              }, 0);
+            }
+          }
+
+          // Auto-renumber footnotes if any are out of sequence
+          let counter = 1;
+          let needsRenumber = false;
+          newState.doc.descendants((node) => {
+            if (node.type.name === "footnote") {
+              if (node.attrs.number !== counter) {
+                needsRenumber = true;
+              }
+              counter++;
+            }
+            return true;
+          });
+
+          if (!needsRenumber) return null;
+
+          const tr = newState.tr;
+          let num = 1;
+          newState.doc.descendants((node, pos) => {
+            if (node.type.name === "footnote") {
+              if (node.attrs.number !== num) {
+                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
+              }
+              num++;
+            }
+            return true;
+          });
+
+          return tr.steps.length > 0 ? tr : null;
+        },
+      }),
     ];
   },
 
@@ -453,6 +521,8 @@ export const Footnote = Node.create({
       dom.dataset.type = "footnote";
       dom.dataset.footnoteId = node.attrs.footnoteId || "";
       dom.contentEditable = "false";
+      dom.draggable = true;
+      dom.style.cursor = "grab";
       dom.textContent = String(node.attrs.number || "1");
       dom.title = node.attrs.content || "";
 
@@ -529,7 +599,7 @@ export const Footnote = Node.create({
         });
       });
 
-      return { dom };
+      return { dom, draggable: true };
     };
   },
 });

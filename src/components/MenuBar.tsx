@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect } from "react";
+import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Editor } from "@tiptap/react";
 
 interface MenuBarProps {
@@ -109,6 +109,29 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
 function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 0);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    updateScrollIndicators();
+    el.addEventListener("scroll", updateScrollIndicators);
+    const ro = new ResizeObserver(updateScrollIndicators);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateScrollIndicators);
+      ro.disconnect();
+    };
+  }, [updateScrollIndicators]);
 
   useEffect(() => {
     if (!viewMenuOpen) return;
@@ -122,7 +145,13 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
   if (!editor) return null;
 
   return (
-    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)] bg-white flex-wrap">
+    <div className="flex items-center border-b border-[var(--border)] bg-white py-[11px] min-w-0">
+      {/* Scrollable toolbar region */}
+      <div className="relative flex-1 min-w-0">
+        {canScrollLeft && (
+          <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
+        )}
+        <div ref={scrollRef} className="flex items-center gap-1 overflow-x-auto px-3 toolbar-scroll [&>*]:shrink-0">
       <Btn
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
@@ -265,37 +294,44 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
         </button>
       )}
 
-      <div className="flex-1" />
-
-      <div className="relative" ref={viewMenuRef}>
-        <button
-          onClick={() => setViewMenuOpen(!viewMenuOpen)}
-          className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-          title="View options"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-            <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
-          </svg>
-        </button>
-        {viewMenuOpen && (
-          <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-52 py-1">
-            <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Display</div>
-            <button
-              onClick={() => { onToggleParTitles(); setViewMenuOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
-            >
-              <span className="w-4 text-center text-stone-400">{showParTitles ? "\u2713" : ""}</span>
-              Paragraph titles
-            </button>
-            <button
-              onClick={() => { onToggleLatexComments(); setViewMenuOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
-            >
-              <span className="w-4 text-center text-stone-400">{showLatexComments ? "\u2713" : ""}</span>
-              % comments
-            </button>
-          </div>
+        </div>
+        {canScrollRight && (
+          <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
         )}
+      </div>
+
+      {/* Pinned view menu — outside scroll area */}
+      <div className="shrink-0 px-2">
+        <div className="relative" ref={viewMenuRef}>
+          <button
+            onClick={() => setViewMenuOpen(!viewMenuOpen)}
+            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+            title="View options"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+            </svg>
+          </button>
+          {viewMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-52 py-1">
+              <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Display</div>
+              <button
+                onClick={() => { onToggleParTitles(); setViewMenuOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+              >
+                <span className="w-4 text-center text-stone-400">{showParTitles ? "\u2713" : ""}</span>
+                Paragraph titles
+              </button>
+              <button
+                onClick={() => { onToggleLatexComments(); setViewMenuOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+              >
+                <span className="w-4 text-center text-stone-400">{showLatexComments ? "\u2713" : ""}</span>
+                % comments
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
