@@ -23,6 +23,7 @@ interface EditorProps {
   onArchive?: () => void;
   onEditorReady?: (editor: Editor) => void;
   onCitationDrop?: (command: string, citationId?: string) => { id: string; displayText: string } | null;
+  onFootnoteDrop?: (footnoteId: string, content: string) => void;
 }
 
 export interface FootnoteInfo {
@@ -49,6 +50,8 @@ export interface EditorHandle {
   deleteFootnote: (footnoteId: string) => void;
   createFootnoteFromSelection: () => { footnoteId: string } | null;
   renumberFootnotes: () => void;
+  getFootnoteIds: () => Set<string>;
+  getFootnoteOrder: () => string[];
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string) => void;
   updateCitationDisplay: (citationId: string, displayText: string) => void;
@@ -95,7 +98,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, onAddComment, onArchive, onEditorReady, onCitationDrop },
+  { initialContent, onUpdate, highlightText, onAddComment, onArchive, onEditorReady, onCitationDrop, onFootnoteDrop },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -103,6 +106,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
+
+  const onFootnoteDropRef = useRef(onFootnoteDrop);
+  onFootnoteDropRef.current = onFootnoteDrop;
 
   const ParagraphWithTitle = Paragraph.extend({
     addAttributes() {
@@ -678,25 +684,69 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-16 py-10",
       },
       handleDrop(view, event) {
-        const data = event.dataTransfer?.getData("application/x-virgil-citation");
-        if (!data || !onCitationDropRef.current) return false;
-        event.preventDefault();
-        try {
-          const { command, citationId } = JSON.parse(data);
-          const result = onCitationDropRef.current(command, citationId);
-          if (!result) return true;
-          const coords = { left: event.clientX, top: event.clientY };
-          const pos = view.posAtCoords(coords);
-          if (!pos) return true;
-          const node = view.state.schema.nodes.citation.create({
-            citationId: result.id,
-            command,
-            displayText: result.displayText,
-          });
-          const tr = view.state.tr.insert(pos.pos, node);
-          view.dispatch(tr);
-        } catch { /* ignore bad data */ }
-        return true;
+        // --- Citation drop ---
+        const citData = event.dataTransfer?.getData("application/x-virgil-citation");
+        if (citData && onCitationDropRef.current) {
+          event.preventDefault();
+          try {
+            const { command, citationId } = JSON.parse(citData);
+            const result = onCitationDropRef.current(command, citationId);
+            if (!result) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+            const node = view.state.schema.nodes.citation.create({
+              citationId: result.id,
+              command,
+              displayText: result.displayText,
+            });
+            const tr = view.state.tr.insert(pos.pos, node);
+            view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Footnote drop ---
+        const fnData = event.dataTransfer?.getData("application/x-virgil-footnote");
+        if (fnData) {
+          event.preventDefault();
+          try {
+            const { footnoteId, content } = JSON.parse(fnData);
+            // Prevent duplicate anchoring — skip if already in the document
+            let alreadyAnchored = false;
+            view.state.doc.descendants((n) => {
+              if (n.type.name === "footnote" && n.attrs.footnoteId === footnoteId) {
+                alreadyAnchored = true;
+                return false;
+              }
+              return !alreadyAnchored;
+            });
+            if (alreadyAnchored) return true;
+
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+            const node = view.state.schema.nodes.footnote.create({
+              footnoteId,
+              content,
+              number: 0,
+            });
+            let tr = view.state.tr.insert(pos.pos, node);
+            // Renumber all footnotes in the updated doc
+            let counter = 1;
+            tr.doc.descendants((n, p) => {
+              if (n.type.name === "footnote") {
+                tr = tr.setNodeMarkup(p, undefined, { ...n.attrs, number: counter++ });
+              }
+              return true;
+            });
+            view.dispatch(tr);
+            onFootnoteDropRef.current?.(footnoteId, content);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        return false;
       },
     },
     immediatelyRender: false,
@@ -967,6 +1017,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           attrs: { footnoteId, content: text, number: 0 },
         })
         .run();
+      // Notify persistent state
+      window.dispatchEvent(
+        new CustomEvent("virgil-footnote-created", {
+          detail: { footnoteId, content: text },
+        })
+      );
       return { footnoteId };
     },
     renumberFootnotes(): void {
@@ -985,6 +1041,30 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         tr = tr.setNodeMarkup(pos, undefined, { ...attrs, number: counter++ });
       }
       editor.view.dispatch(tr);
+    },
+
+    getFootnoteIds(): Set<string> {
+      const ids = new Set<string>();
+      if (!editor) return ids;
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "footnote" && node.attrs.footnoteId) {
+          ids.add(node.attrs.footnoteId);
+        }
+        return true;
+      });
+      return ids;
+    },
+
+    getFootnoteOrder(): string[] {
+      if (!editor) return [];
+      const order: string[] = [];
+      editor.state.doc.descendants((node) => {
+        if (node.type.name === "footnote" && node.attrs.footnoteId) {
+          order.push(node.attrs.footnoteId);
+        }
+        return true;
+      });
+      return order;
     },
 
     getCitations() {

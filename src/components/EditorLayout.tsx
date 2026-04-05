@@ -28,6 +28,7 @@ import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useNotes } from "@/hooks/useNotes";
+import { useFootnotes } from "@/hooks/useFootnotes";
 import { useQuotations } from "@/hooks/useQuotations";
 import NoteMarkers from "./NoteMarkers";
 import dynamic from "next/dynamic";
@@ -593,6 +594,14 @@ export default function EditorLayout() {
     syncFromEditor: syncCitationsFromEditor,
   } = useCitations(currentDocId);
 
+  const {
+    footnoteRefs,
+    addFootnote,
+    updateFootnoteContent: updateFootnoteInState,
+    deleteFootnote: deleteFootnoteFromState,
+    syncFromEditor: syncFootnotesFromEditor,
+  } = useFootnotes(currentDocId);
+
   const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
   const { requestReview: requestBibReview, cancelRequest: cancelBibReview, getRequestStatus: getBibReviewStatus } = useBibReview(currentDocId);
 
@@ -916,6 +925,17 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, editorInstance]);
 
+  // Set of footnote IDs anchored in the document
+  const footnoteAnchoredIds = useMemo<Set<string>>(() => {
+    return editorRef.current?.getFootnoteIds() ?? new Set();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestDoc, editorInstance]);
+
+  // Unanchored footnotes: in persistent state but not in editor
+  const unanchoredFootnotes = useMemo(() => {
+    return footnoteRefs.filter((fn) => !footnoteAnchoredIds.has(fn.id));
+  }, [footnoteRefs, footnoteAnchoredIds]);
+
   // Set of archive marker IDs present in the current document
   const anchoredIds = useMemo<Set<string>>(() => {
     return editorRef.current?.getMarkerIds() ?? new Set();
@@ -1058,13 +1078,15 @@ export default function EditorLayout() {
 
   const handleEditFootnote = useCallback((id: string, newContent: string) => {
     editorRef.current?.updateFootnoteContent(id, newContent);
-  }, []);
+    updateFootnoteInState(id, newContent);
+  }, [updateFootnoteInState]);
 
   const handleDeleteFootnote = useCallback((id: string) => {
     editorRef.current?.deleteFootnote(id);
     editorRef.current?.renumberFootnotes();
+    deleteFootnoteFromState(id);
     setSelectedFootnoteId(null);
-  }, []);
+  }, [deleteFootnoteFromState]);
 
   // Listen for archive marker clicks from the editor
   const prefsRef = useRef(prefs);
@@ -1158,6 +1180,38 @@ export default function EditorLayout() {
     window.addEventListener("virgil-citation-create", handler);
     return () => window.removeEventListener("virgil-citation-create", handler);
   }, [setActiveLeft, setActiveRight]);
+
+  // Sync footnotes created via \footnote{} input rule or createFootnoteFromSelection
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { footnoteId, content } = (e as CustomEvent).detail;
+      if (footnoteId) addFootnote(content, footnoteId);
+    };
+    window.addEventListener("virgil-footnote-created", handler);
+    return () => window.removeEventListener("virgil-footnote-created", handler);
+  }, [addFootnote]);
+
+  // Sync footnote edits from the inline popup
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { footnoteId, content } = (e as CustomEvent).detail;
+      if (footnoteId) updateFootnoteInState(footnoteId, content);
+    };
+    window.addEventListener("virgil-footnote-edited", handler);
+    return () => window.removeEventListener("virgil-footnote-edited", handler);
+  }, [updateFootnoteInState]);
+
+  // Sync footnotes from editor on load
+  useEffect(() => {
+    if (!editorInstance) return;
+    const editorFns = editorRef.current?.getFootnotes() ?? [];
+    if (editorFns.length > 0) {
+      syncFootnotesFromEditor(
+        editorFns.map((fn) => ({ footnoteId: fn.footnoteId, content: fn.content }))
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance]);
 
   // Handle drag-and-drop of archive snippets into the editor.
   // ProseMirror handles the text insertion from text/plain automatically;
@@ -1477,7 +1531,9 @@ export default function EditorLayout() {
               panelSide={side}
               viewMode={getPanelViewMode("footnotes")}
               onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
-
+              unanchoredFootnotes={unanchoredFootnotes}
+              onCreateFootnote={(content) => addFootnote(content)}
+              onDeleteFromState={deleteFootnoteFromState}
             />
         </ResizablePanel>
       );
@@ -1866,6 +1922,10 @@ export default function EditorLayout() {
                   const display = getCitationDisplayText(command);
                   const ref = addCitation(command);
                   return { id: ref.id, displayText: display };
+                }}
+                onFootnoteDrop={(footnoteId, content) => {
+                  editorRef.current?.renumberFootnotes();
+                  addFootnote(content, footnoteId);
                 }}
               />
               <NoteMarkers
