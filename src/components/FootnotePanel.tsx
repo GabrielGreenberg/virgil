@@ -23,6 +23,7 @@ interface FootnotePanelProps {
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: string) => void;
   onReanchor?: (id: string) => void;
+  onAdd?: () => void;
 }
 
 function FootnotePanel({
@@ -40,6 +41,7 @@ function FootnotePanel({
   onDeleteOrphan,
   onEditOrphan,
   onReanchor,
+  onAdd,
 }: FootnotePanelProps) {
   const inTextItems = useMemo(
     () => footnotes.map((fn) => ({ id: fn.footnoteId, pos: fn.pos })),
@@ -51,6 +53,20 @@ function FootnotePanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const prevOrphanCountRef = useRef(orphanedFootnotes.length);
+
+  // Auto-edit newly added empty orphan footnotes
+  useEffect(() => {
+    const prev = prevOrphanCountRef.current;
+    prevOrphanCountRef.current = orphanedFootnotes.length;
+    if (orphanedFootnotes.length > prev) {
+      const newest = orphanedFootnotes[orphanedFootnotes.length - 1];
+      if (newest && newest.content === "") {
+        setEditingId(newest.footnoteId);
+        setEditValue("");
+      }
+    }
+  }, [orphanedFootnotes]);
 
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
@@ -122,7 +138,7 @@ function FootnotePanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Footnotes" count={totalCount}>
+      <PanelHeader title="Footnotes" count={totalCount} onAdd={onAdd}>
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 
