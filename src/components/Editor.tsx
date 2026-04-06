@@ -754,6 +754,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     scrollToHeading(blockIndex: number): void {
       if (!editor) return;
+      // Sentinel -1 means "scroll to the very top of the document"
+      if (blockIndex === -1) {
+        editor.commands.setTextSelection(1);
+        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        if (scrollEl) scrollEl.scrollTop = 0;
+        return;
+      }
       // Walk top-level nodes to find the nth one
       let pos = 0;
       let idx = 0;

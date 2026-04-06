@@ -31,20 +31,34 @@ function extractHeadings(doc: JSONContent | null): HeadingItem[] {
   let pendingTitles: { title: string; index: number }[] = [];
   let foundFirstHeading = false;
 
+  // Extract document title from titleField nodes
+  let docTitle = "";
+  for (const node of doc.content) {
+    if (node.type === "titleField" && node.attrs?.field === "title") {
+      docTitle = extractText(node).trim();
+      break;
+    }
+  }
+
+  // Always insert the title entry at the top — scrolls to very top of document
+  headings.push({
+    id: "heading-title",
+    level: 1,
+    text: docTitle || "Untitled",
+    label: null,
+    index: -1, // sentinel: means "scroll to very top"
+    parTitles: [],
+    isImplicit: true,
+  });
+
   for (const node of doc.content) {
     if (node.type === "heading" && node.attrs?.level) {
       if (!foundFirstHeading) {
-        // Insert implicit "Start" entry before the first real heading
-        headings.push({
-          id: "heading-opening",
-          level: 1,
-          text: "Start",
-          label: null,
-          index: 0,
-          parTitles: pendingTitles,
-          isImplicit: true,
-        });
-        pendingTitles = [];
+        // Attach any pending parTitles to the title entry
+        if (pendingTitles.length > 0) {
+          headings[0].parTitles.push(...pendingTitles);
+          pendingTitles = [];
+        }
         foundFirstHeading = true;
       } else if (pendingTitles.length > 0) {
         headings[headings.length - 1].parTitles.push(...pendingTitles);
