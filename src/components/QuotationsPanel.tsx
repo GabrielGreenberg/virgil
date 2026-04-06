@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import type { QuotationGroup, Quotation, BibEntry } from "@/lib/types";
-import { panelCard, PANEL, Chevron, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
 
@@ -59,24 +59,13 @@ function AutoTextarea({
 function formatMinimalCitation(entry: BibEntry): string {
   const author = entry.fields.author;
   const year = entry.fields.year;
-  if (!author && !year) return "";
-  // Extract last name of first author
+  if (!author && !year) return entry.key;
   const lastName = author
     ? author.split(",")[0].split(" and ")[0].trim().split(" ").pop() ?? author
     : "";
   if (lastName && year) return `${lastName} (${year})`;
   if (lastName) return lastName;
   return `(${year})`;
-}
-
-/** Medium citation: Author (Year). Title. */
-function formatMediumCitation(entry: BibEntry): string {
-  const minimal = formatMinimalCitation(entry);
-  const title = entry.fields.title;
-  if (!title) return minimal;
-  // Clean braces from BibTeX title
-  const cleanTitle = title.replace(/[{}]/g, "");
-  return minimal ? `${minimal}. ${cleanTitle}.` : `${cleanTitle}.`;
 }
 
 /* ── Cite Key Autocomplete ───────────────────────────────────────── */
@@ -95,12 +84,10 @@ function CiteKeyAutocomplete({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Sync external value changes
   useEffect(() => { setInputValue(value); }, [value]);
 
   const results = useMemo(() => {
     if (inputValue.length < 1) {
-      // Show all entries alphabetically when field is empty
       return bibEntries
         .slice()
         .sort((a, b) => a.key.localeCompare(b.key))
@@ -122,7 +109,6 @@ function CiteKeyAutocomplete({
     return scored.slice(0, 12);
   }, [inputValue, bibEntries]);
 
-  // Click-outside
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
@@ -178,7 +164,6 @@ function CiteKeyAutocomplete({
           }}
           onFocus={() => setIsOpen(true)}
           onBlur={() => {
-            // Commit on blur if changed
             setTimeout(() => {
               if (inputValue !== value) onChange(inputValue);
             }, 150);
@@ -258,29 +243,13 @@ const QuotationEntry = memo(function QuotationEntry({
     [groupId, quotation.id, debouncedUpdate]
   );
 
-  // Sync from external changes
   useEffect(() => { setTitle(quotation.title); }, [quotation.title]);
   useEffect(() => { setText(quotation.text); }, [quotation.text]);
   useEffect(() => { setPage(quotation.page); }, [quotation.page]);
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close menu on click-outside
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
   return (
     <div className={`${PANEL.subpodWhite} p-3`}>
-      {/* Quotation title bar with three-dot menu */}
+      {/* Title bar with menu */}
       <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-stone-100">
         <input
           type="text"
@@ -289,31 +258,11 @@ const QuotationEntry = memo(function QuotationEntry({
           placeholder="Title"
           className="flex-1 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
         />
-        <div ref={menuRef} className="relative ml-2 shrink-0">
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="text-stone-500 hover:text-stone-700 transition-colors px-0.5 leading-none text-sm"
-            title="Options"
-          >
-            &#x22EE;
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[100px]">
-              {canDelete && (
-                <button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    onDelete(groupId, quotation.id);
-                    setMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  Delete
-                </button>
-              )}
-            </div>
-          )}
-        </div>
+        {canDelete && (
+          <ItemMenu>
+            <MenuDelete onClick={() => onDelete(groupId, quotation.id)} />
+          </ItemMenu>
+        )}
       </div>
 
       {/* Quote text */}
@@ -333,7 +282,7 @@ const QuotationEntry = memo(function QuotationEntry({
             type="text"
             value={page}
             onChange={handlePageChange}
-            placeholder="—"
+            placeholder="--"
             className="w-14 text-xs font-mono bg-transparent outline-none text-stone-600 border-b border-transparent focus:border-stone-300"
           />
         </div>
@@ -375,7 +324,7 @@ function CollapsibleNotes({
         <span>Notes</span>
         {!expanded && notes && (
           <span className="text-[10px] text-stone-400 truncate max-w-[140px]">
-            — {notes.slice(0, 60)}
+            -- {notes.slice(0, 60)}
           </span>
         )}
       </button>
@@ -394,15 +343,14 @@ function CollapsibleNotes({
   );
 }
 
-/* ── Quotation Group Card ────────────────────────────────────────── */
+/* ── Reference Card ─────────────────────────────────────────────── */
 
-function QuotationGroupCard({
+function ReferenceCard({
   group,
   bibEntries,
   selected,
   onSelect,
   onDelete,
-  onUpdateGroupTitle,
   onAddQuotation,
   onUpdateQuotation,
   onDeleteQuotation,
@@ -414,7 +362,6 @@ function QuotationGroupCard({
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddQuotation: (groupId: string) => string;
   onUpdateQuotation: (groupId: string, qId: string, fields: Partial<Pick<Quotation, "title" | "text" | "page">>) => void;
   onDeleteQuotation: (groupId: string, qId: string) => void;
@@ -423,87 +370,37 @@ function QuotationGroupCard({
 }) {
   const matchedEntry = bibEntries.find((e) => e.key === group.citeKey);
 
-  const [groupTitle, setGroupTitle] = useState(group.title);
-  const debouncedTitleUpdate = useDebouncedCallback(onUpdateGroupTitle, 400);
-
-  useEffect(() => { setGroupTitle(group.title); }, [group.title]);
-
-  const handleGroupTitleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      setGroupTitle(v);
-      debouncedTitleUpdate(group.id, v);
-    },
-    [group.id, debouncedTitleUpdate]
-  );
-
-  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
-  const groupMenuRef = useRef<HTMLDivElement>(null);
-
-  // Close group menu on click-outside
-  useEffect(() => {
-    if (!groupMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (groupMenuRef.current && !groupMenuRef.current.contains(e.target as Node)) {
-        setGroupMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [groupMenuOpen]);
-
-  const mediumCitation = useMemo(() => {
-    if (!matchedEntry) return null;
-    return formatMediumCitation(matchedEntry);
+  const cleanTitle = useMemo(() => {
+    if (!matchedEntry?.fields.title) return null;
+    return matchedEntry.fields.title.replace(/[{}]/g, "");
   }, [matchedEntry]);
 
   return (
     <div className={panelCard(selected)} onClick={onSelect}>
       <div className={PANEL.cardInner}>
-        {/* Header: editable title + three-dot menu */}
-        <div className="flex items-center justify-between mb-2">
-          <input
-            type="text"
-            value={groupTitle}
-            onChange={handleGroupTitleChange}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Title"
-            className="flex-1 text-sm font-medium bg-transparent outline-none placeholder:text-stone-300"
-            style={{ color: "#c45a5a" }}
-          />
-          <div ref={groupMenuRef} className="relative ml-2 shrink-0">
-            <button
-              onClick={(e) => { e.stopPropagation(); setGroupMenuOpen((o) => !o); }}
-              className="text-stone-500 hover:text-stone-700 transition-colors px-0.5 leading-none text-sm"
-              title="Options"
-            >
-              &#x22EE;
-            </button>
-            {groupMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[100px]">
-                <button
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onDelete();
-                    setGroupMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
+        {/* Reference header */}
+        <div className="flex items-start justify-between mb-2">
+          {matchedEntry ? (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-stone-800">
+                {formatMinimalCitation(matchedEntry)}
+              </p>
+              {cleanTitle && (
+                <p className="text-xs text-stone-500 leading-relaxed mt-0.5">
+                  {cleanTitle}
+                </p>
+              )}
+            </div>
+          ) : (
+            <span className="text-sm text-stone-400 italic">No reference</span>
+          )}
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} label="Delete reference" />
+          </ItemMenu>
         </div>
 
-        {/* Medium citation display */}
-        {matchedEntry && mediumCitation && (
-          <p className="text-xs text-stone-500 leading-relaxed mb-2">{mediumCitation}</p>
-        )}
-
         {/* Cite key autocomplete */}
-        <div className="mb-3">
+        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
           <CiteKeyAutocomplete
             value={group.citeKey}
             bibEntries={bibEntries}
@@ -512,33 +409,34 @@ function QuotationGroupCard({
         </div>
 
         {/* Quotation entries */}
-        <div className="space-y-2">
+        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
           {group.quotations.map((q) => (
-            <div key={q.id} className="group/entry">
-              <QuotationEntry
-                quotation={q}
-                groupId={group.id}
-                canDelete={group.quotations.length > 1}
-                onUpdate={onUpdateQuotation}
-                onDelete={onDeleteQuotation}
-              />
-            </div>
+            <QuotationEntry
+              key={q.id}
+              quotation={q}
+              groupId={group.id}
+              canDelete={group.quotations.length > 1}
+              onUpdate={onUpdateQuotation}
+              onDelete={onDeleteQuotation}
+            />
           ))}
         </div>
 
-        {/* Add quotation button */}
+        {/* Add quote button */}
         <button
           onClick={(e) => { e.stopPropagation(); onAddQuotation(group.id); }}
-          className="mt-1.5 text-xs text-amber-600 hover:text-amber-700 transition-colors"
+          className="mt-2 text-xs text-amber-600 hover:text-amber-700 transition-colors"
         >
-          + Add quotation
+          + Add quote
         </button>
 
         {/* Collapsible notes */}
-        <CollapsibleNotes
-          notes={group.notes}
-          onChange={(notes) => onUpdateNotes(group.id, notes)}
-        />
+        <div onClick={(e) => e.stopPropagation()}>
+          <CollapsibleNotes
+            notes={group.notes}
+            onChange={(notes) => onUpdateNotes(group.id, notes)}
+          />
+        </div>
       </div>
     </div>
   );
@@ -563,10 +461,8 @@ export interface QuotationsPanelProps {
 export default function QuotationsPanel({
   groups,
   bibEntries,
-  citationStyle,
   onAddGroup,
   onDeleteGroup,
-  onUpdateGroupTitle,
   onAddQuotation,
   onUpdateQuotation,
   onDeleteQuotation,
@@ -582,23 +478,22 @@ export default function QuotationsPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations" count={groups.length} onAdd={handleAdd} />
+      <PanelHeader title="Quotations" count={groups.length} />
 
       <div className={PANEL.list}>
         {groups.length === 0 ? (
           <div className={PANEL.empty}>
-            No quotation groups yet. Click &ldquo;+ Add&rdquo; to start collecting quotes.
+            No references yet. Add one to start collecting quotes.
           </div>
         ) : (
           groups.map((group) => (
-            <QuotationGroupCard
+            <ReferenceCard
               key={group.id}
               group={group}
               bibEntries={bibEntries}
               selected={selectedGroupId === group.id}
               onSelect={() => setSelectedGroupId(group.id)}
               onDelete={() => onDeleteGroup(group.id)}
-              onUpdateGroupTitle={onUpdateGroupTitle}
               onAddQuotation={onAddQuotation}
               onUpdateQuotation={onUpdateQuotation}
               onDeleteQuotation={onDeleteQuotation}
@@ -607,6 +502,14 @@ export default function QuotationsPanel({
             />
           ))
         )}
+
+        {/* Add reference button */}
+        <button
+          onClick={handleAdd}
+          className="w-full py-2.5 text-xs font-medium text-amber-600 hover:text-amber-700 hover:bg-amber-50/50 rounded-lg border border-dashed border-stone-300 hover:border-amber-400 transition-colors"
+        >
+          + Add reference
+        </button>
       </div>
     </div>
   );
