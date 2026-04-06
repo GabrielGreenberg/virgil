@@ -48,6 +48,8 @@ interface EditorProps {
   initialContent: JSONContent;
   onUpdate: (doc: JSONContent) => void;
   highlightText: string | null;
+  /** Position-based highlight (from search panel). Takes priority over highlightText. */
+  highlightRange: { from: number; to: number } | null;
   onAddComment?: () => void;
   onArchive?: () => void;
   onEditorReady?: (editor: Editor) => void;
@@ -124,11 +126,13 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, onAddComment, onArchive, onEditorReady, onCitationDrop },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
+  const highlightRangeRef = useRef(highlightRange);
+  highlightRangeRef.current = highlightRange;
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
@@ -1338,19 +1342,43 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
     editor.chain().selectAll().unsetHighlight().run();
 
+    // Position-based highlight (from search panel) takes priority
+    const range = highlightRangeRef.current;
+    if (range) {
+      try {
+        editor
+          .chain()
+          .setTextSelection(range)
+          .setHighlight({ color: "#fbbf2480" })
+          .setTextSelection(range.from)
+          .run();
+
+        const domAtPos = editor.view.domAtPos(range.from);
+        if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
+          const el =
+            domAtPos.node instanceof HTMLElement
+              ? domAtPos.node
+              : domAtPos.node.parentElement;
+          el?.scrollIntoView({ behavior: "instant", block: "center" });
+        }
+      } catch { /* pos out of range after edit */ }
+      return;
+    }
+
+    // Text-based highlight (from revisions/suggestions)
     if (!highlightTextRef.current) return;
 
-    const range = findTextRange(editor, highlightTextRef.current);
-    if (!range) return;
+    const textRange = findTextRange(editor, highlightTextRef.current);
+    if (!textRange) return;
 
     editor
       .chain()
-      .setTextSelection(range)
+      .setTextSelection(textRange)
       .setHighlight({ color: "#fbbf2480" })
-      .setTextSelection(range.from)
+      .setTextSelection(textRange.from)
       .run();
 
-    const domAtPos = editor.view.domAtPos(range.from);
+    const domAtPos = editor.view.domAtPos(textRange.from);
     if (domAtPos.node instanceof HTMLElement || domAtPos.node.parentElement) {
       const el =
         domAtPos.node instanceof HTMLElement
@@ -1362,8 +1390,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   useEffect(() => {
     highlightTextRef.current = highlightText;
+    highlightRangeRef.current = highlightRange;
     applyHighlight();
-  }, [highlightText, applyHighlight]);
+  }, [highlightText, highlightRange, applyHighlight]);
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">

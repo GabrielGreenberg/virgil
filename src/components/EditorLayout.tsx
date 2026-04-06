@@ -667,6 +667,7 @@ export default function EditorLayout() {
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
+  const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
 
   // Lifted view modes — persist across panel re-mounts and across sessions
   const [panelViewModes, setPanelViewModes] = useState<Record<string, "list" | "in-text">>(() => {
@@ -1431,13 +1432,22 @@ export default function EditorLayout() {
   const activeLeft = prefs.activeLeft;
   const activeRight = prefs.activeRight;
 
-  const highlightText = pendingCommentText
-    ? pendingCommentText
-    : commentHighlight
-      ? commentHighlight
-      : (activeLeft === "suggestions" || activeRight === "suggestions") && currentSuggestion
-        ? currentSuggestion.original_text
-        : null;
+  // Clear search highlight when the search panel is no longer visible
+  const searchPanelOpen = activeLeft === "search" || activeRight === "search";
+  useEffect(() => {
+    if (!searchPanelOpen) setSearchHighlightRange(null);
+  }, [searchPanelOpen]);
+
+  // Search range highlight takes priority — skip text-based highlight when active
+  const highlightText = searchHighlightRange
+    ? null
+    : pendingCommentText
+      ? pendingCommentText
+      : commentHighlight
+        ? commentHighlight
+        : (activeLeft === "suggestions" || activeRight === "suggestions") && currentSuggestion
+          ? currentSuggestion.original_text
+          : null;
 
   const saveLabel =
     saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "";
@@ -1715,7 +1725,7 @@ export default function EditorLayout() {
     if (panelId === "search") {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <SearchPanel editor={editorInstance} />
+          <SearchPanel editor={editorInstance} onHighlightRange={setSearchHighlightRange} />
         </ResizablePanel>
       );
     }
@@ -2003,6 +2013,7 @@ export default function EditorLayout() {
                 initialContent={content}
                 onUpdate={handleUpdate}
                 highlightText={highlightText}
+                highlightRange={searchHighlightRange}
                 onAddComment={handleAddComment}
                 onArchive={handleArchive}
                 onEditorReady={setEditorInstance}

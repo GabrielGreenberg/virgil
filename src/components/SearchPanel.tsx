@@ -21,6 +21,7 @@ interface SearchResult {
 
 interface SearchPanelProps {
   editor: Editor | null;
+  onHighlightRange: (range: { from: number; to: number } | null) => void;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
@@ -47,7 +48,7 @@ function buildBreadcrumb(editor: Editor, pos: number): string[] {
 
 /* ── Component ───────────────────────────────────────────────────────── */
 
-function SearchPanel({ editor }: SearchPanelProps) {
+function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
@@ -133,10 +134,11 @@ function SearchPanel({ editor }: SearchPanelProps) {
     return matches;
   }, [editor, query, caseSensitive, wholeWord]);
 
-  // Reset selection when results change
+  // Reset selection and clear highlight when results change
   useEffect(() => {
     setSelectedIdx(null);
-  }, [results]);
+    onHighlightRange(null);
+  }, [results, onHighlightRange]);
 
   /* ── Navigation ──────────────────────────────────────────────────── */
 
@@ -145,22 +147,8 @@ function SearchPanel({ editor }: SearchPanelProps) {
       if (!editor) return;
       setSelectedIdx(idx);
 
-      // Select the match in the editor
-      editor.commands.setTextSelection({ from: result.from, to: result.to });
-
-      // Scroll editor to the match
-      try {
-        const coords = editor.view.coordsAtPos(result.from);
-        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
-        if (scrollEl && coords) {
-          const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY =
-            coords.top - scrollRect.top + scrollEl.scrollTop - 150;
-          scrollEl.scrollTop = Math.max(0, targetY);
-        }
-      } catch {
-        /* pos may be out of view range */
-      }
+      // Highlight the match in the editor (position-based)
+      onHighlightRange({ from: result.from, to: result.to });
 
       // Scroll the card into view in the panel list
       requestAnimationFrame(() => {
@@ -170,7 +158,7 @@ function SearchPanel({ editor }: SearchPanelProps) {
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     },
-    [editor],
+    [editor, onHighlightRange],
   );
 
   const goNext = useCallback(() => {
@@ -189,9 +177,9 @@ function SearchPanel({ editor }: SearchPanelProps) {
     navigateToResult(results[prev], prev);
   }, [results, selectedIdx, navigateToResult]);
 
-  /* ── Keyboard handler ────────────────────────────────────────────── */
+  /* ── Keyboard handlers ───────────────────────────────────────────── */
 
-  const handleKeyDown = useCallback(
+  const handleNavKeys = useCallback(
     (e: React.KeyboardEvent) => {
       if (results.length === 0) return;
       if (e.key === "ArrowDown") {
@@ -278,7 +266,7 @@ function SearchPanel({ editor }: SearchPanelProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onKeyDown={handleNavKeys}
           placeholder="Find in document..."
           className="flex-1 text-sm bg-transparent outline-none placeholder:text-stone-400"
         />
@@ -307,7 +295,13 @@ function SearchPanel({ editor }: SearchPanelProps) {
       </div>
 
       {/* Results list */}
-      <div ref={listRef} className={PANEL.list}>
+      <div
+        ref={listRef}
+        className={PANEL.list}
+        tabIndex={0}
+        onKeyDown={handleNavKeys}
+        style={{ outline: "none" }}
+      >
         {!query && (
           <p className={PANEL.empty}>Type to search your document.</p>
         )}
@@ -319,7 +313,10 @@ function SearchPanel({ editor }: SearchPanelProps) {
             key={`${r.from}-${i}`}
             data-result-idx={i}
             className={`${panelCard(selectedIdx === i)} w-full text-left`}
-            onClick={() => navigateToResult(r, i)}
+            onClick={() => {
+              navigateToResult(r, i);
+              listRef.current?.focus();
+            }}
           >
             <div className={PANEL.cardInner}>
               {r.breadcrumb.length > 0 && (
