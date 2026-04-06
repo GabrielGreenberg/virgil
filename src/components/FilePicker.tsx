@@ -17,7 +17,7 @@ export default function FilePicker({ docs, onOpen, onCreate, onDelete }: FilePic
 
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-[var(--background)]">
-      <div className="flex items-center gap-3 mb-8">
+      <a href="https://GabrielGreenberg.com/Virgil" target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 mb-8 no-underline">
         <Image src="/logo.png" alt="Virgil" width={56} height={56} className="opacity-85" />
         <h1
           className="text-[var(--accent)] text-3xl font-semibold tracking-widest"
@@ -25,7 +25,7 @@ export default function FilePicker({ docs, onOpen, onCreate, onDelete }: FilePic
         >
           VIRGIL
         </h1>
-      </div>
+      </a>
 
       <div className="w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
