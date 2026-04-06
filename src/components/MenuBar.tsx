@@ -122,7 +122,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
   if (!editor) return null;
 
   return (
-    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)] bg-white flex-wrap">
+    <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[var(--border)] bg-[var(--background)] flex-wrap">
       <Btn
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
