@@ -30,6 +30,7 @@ interface CitationsPanelProps {
   onCreateCitation: (command: string) => string;
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
+  onStartCreate: () => void;
   editor: Editor | null;
   panelSide: "left" | "right";
   citationPositions: Map<string, number>;
@@ -60,7 +61,7 @@ const BIB_PACKAGES = [
 function CitationsPanel({
   citations, bibEntries, citationStyle, bibPackage, bibPath, selectedId, citationOrder,
   onSelect, onScrollToMarker, onUpdateCitation, onDeleteCitation, onSetStyle, onSetBibPackage,
-  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate,
+  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate, onStartCreate,
   editor, panelSide, citationPositions,
   viewMode: toggleViewMode, onViewModeChange: handleToggleViewMode,
   getFormattedBib, getAnnotation, setAnnotation, onRequestReview, onCancelReview,

@@ -1420,6 +1420,12 @@ export default function EditorLayout() {
     movePanel(draggedId, toSide, toIndex);
   }, [movePanel]);
 
+  // Clear search highlight when the search panel is no longer visible
+  const searchPanelOpen = prefs.activeLeft === "search" || prefs.activeRight === "search";
+  useEffect(() => {
+    if (!searchPanelOpen) setSearchHighlightRange(null);
+  }, [searchPanelOpen]);
+
   // Loading
   if (filesLoading) {
     return (
@@ -1431,12 +1437,6 @@ export default function EditorLayout() {
 
   const activeLeft = prefs.activeLeft;
   const activeRight = prefs.activeRight;
-
-  // Clear search highlight when the search panel is no longer visible
-  const searchPanelOpen = activeLeft === "search" || activeRight === "search";
-  useEffect(() => {
-    if (!searchPanelOpen) setSearchHighlightRange(null);
-  }, [searchPanelOpen]);
 
   // Search range highlight takes priority — skip text-based highlight when active
   const highlightText = searchHighlightRange
