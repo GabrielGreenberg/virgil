@@ -16,6 +16,9 @@ interface HeadingItem {
 interface OutlinePanelProps {
   content: JSONContent | null;
   onScrollTo: (headingIndex: number) => void;
+  onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
+  onRenameHeading?: (blockIndex: number, newText: string) => void;
+  onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
 }
 
 function extractText(node: JSONContent): string {
@@ -224,6 +227,315 @@ function OutlineNode({
   );
 }
 
+/* ── Edit mode types & helpers ─────────────────────────────────────── */
+
+interface OutlinePod {
+  type: "heading" | "parTitle";
+  level: number;        // 1-3 for headings, 4 for parTitles
+  text: string;
+  blockIndex: number;   // top-level block index in doc.content
+  blockCount: number;   // how many top-level blocks this pod covers
+  id: string;
+}
+
+function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
+  const pods: OutlinePod[] = [];
+  // Skip the implicit title entry (index === -1)
+  const realHeadings = headings.filter((h) => !h.isImplicit);
+
+  for (let i = 0; i < realHeadings.length; i++) {
+    const h = realHeadings[i];
+    // blockCount: from this heading to the next heading of same or higher level
+    let blockCount = 1;
+    const nextSameOrHigher = realHeadings.find(
+      (nh, ni) => ni > i && nh.level <= h.level
+    );
+    if (nextSameOrHigher) {
+      blockCount = nextSameOrHigher.index - h.index;
+    } else {
+      blockCount = totalBlocks - h.index;
+    }
+
+    pods.push({
+      type: "heading",
+      level: h.level,
+      text: h.text,
+      blockIndex: h.index,
+      blockCount,
+      id: h.id,
+    });
+
+    // Add parTitle pods under this heading
+    for (const pt of h.parTitles) {
+      pods.push({
+        type: "parTitle",
+        level: 4,
+        text: pt.title,
+        blockIndex: pt.index,
+        blockCount: 1,
+        id: `pt-${pt.index}`,
+      });
+    }
+  }
+
+  return pods;
+}
+
+/* ── Drag handle icon ──────────────────────────────────────────────── */
+
+function DragHandle() {
+  return (
+    <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor" className="shrink-0 opacity-40">
+      <circle cx="3" cy="2" r="1.2" />
+      <circle cx="7" cy="2" r="1.2" />
+      <circle cx="3" cy="7" r="1.2" />
+      <circle cx="7" cy="7" r="1.2" />
+      <circle cx="3" cy="12" r="1.2" />
+      <circle cx="7" cy="12" r="1.2" />
+    </svg>
+  );
+}
+
+/* ── Editable pod component ────────────────────────────────────────── */
+
+function EditablePod({
+  pod,
+  isDragging,
+  dropPosition,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  onRename,
+}: {
+  pod: OutlinePod;
+  isDragging: boolean;
+  dropPosition: "above" | "below" | null;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+  onRename: (newText: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(pod.text);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const commitRename = () => {
+    const trimmed = editText.trim();
+    if (trimmed && trimmed !== pod.text) {
+      onRename(trimmed);
+    }
+    setEditing(false);
+  };
+
+  const indent = pod.type === "parTitle"
+    ? (3 * 16 + 8) // parTitles indent at level 4
+    : ((pod.level - 1) * 16 + 8);
+
+  const isParTitle = pod.type === "parTitle";
+
+  return (
+    <div
+      className="relative"
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+    >
+      {dropPosition === "above" && (
+        <div className="absolute top-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 -translate-y-1/2" />
+      )}
+      <div
+        draggable
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        className={`flex items-center gap-1.5 rounded-md border transition-all cursor-grab active:cursor-grabbing ${
+          isDragging
+            ? "opacity-30 border-stone-300 bg-stone-100"
+            : isParTitle
+              ? "border-stone-200 bg-white hover:border-stone-300"
+              : "border-stone-200 bg-white hover:border-stone-300 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+        }`}
+        style={{
+          marginLeft: `${indent}px`,
+          marginRight: 8,
+          paddingTop: isParTitle ? 3 : 5,
+          paddingBottom: isParTitle ? 3 : 5,
+          paddingLeft: 6,
+          paddingRight: 8,
+          marginTop: 2,
+          marginBottom: 2,
+        }}
+      >
+        <DragHandle />
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") { setEditText(pod.text); setEditing(false); }
+            }}
+            onBlur={commitRename}
+            className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
+              isParTitle ? "text-[11px] text-[#c45a5a]" : "text-sm text-stone-800"
+            }`}
+          />
+        ) : (
+          <span
+            onClick={() => { setEditText(pod.text); setEditing(true); }}
+            className={`flex-1 min-w-0 truncate cursor-text ${
+              isParTitle
+                ? "text-[11px] text-[#c45a5a]"
+                : pod.level === 1
+                  ? "text-sm font-semibold text-stone-800"
+                  : pod.level === 2
+                    ? "text-sm font-medium text-stone-700"
+                    : "text-sm text-stone-600"
+            }`}
+          >
+            {pod.text}
+          </span>
+        )}
+        {!isParTitle && pod.blockCount > 1 && (
+          <span className="text-[10px] text-stone-400 shrink-0">
+            {pod.blockCount}
+          </span>
+        )}
+      </div>
+      {dropPosition === "below" && (
+        <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 translate-y-1/2" />
+      )}
+    </div>
+  );
+}
+
+/* ── Editable outline (edit mode container) ────────────────────────── */
+
+function EditableOutline({
+  headings,
+  totalBlocks,
+  onReorderBlocks,
+  onRenameHeading,
+  onRenameParTitle,
+}: {
+  headings: HeadingItem[];
+  totalBlocks: number;
+  onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
+  onRenameHeading: (blockIndex: number, newText: string) => void;
+  onRenameParTitle: (blockIndex: number, newTitle: string) => void;
+}) {
+  const pods = useMemo(() => buildPods(headings, totalBlocks), [headings, totalBlocks]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ podId: string; position: "above" | "below" } | null>(null);
+
+  const handleDragStart = useCallback((pod: OutlinePod, e: React.DragEvent) => {
+    setDraggingId(pod.id);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", pod.id);
+    // Custom ghost
+    const ghost = document.createElement("div");
+    ghost.textContent = pod.text;
+    ghost.style.cssText = "position:fixed;top:-1000px;padding:4px 12px;background:#fff;border:1px solid #d6d3d1;border-radius:6px;font-size:13px;color:#44403c;box-shadow:0 2px 8px rgba(0,0,0,0.12);max-width:200px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 10, 14);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }, []);
+
+  const handleDragOver = useCallback((podId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    // Determine above/below based on mouse position
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const position = e.clientY < midY ? "above" : "below";
+    setDropTarget({ podId, position });
+  }, []);
+
+  const handleDrop = useCallback((targetPodId: string, e: React.DragEvent) => {
+    e.preventDefault();
+    if (!draggingId || !dropTarget) { setDraggingId(null); setDropTarget(null); return; }
+
+    const sourcePod = pods.find((p) => p.id === draggingId);
+    const targetPod = pods.find((p) => p.id === targetPodId);
+    if (!sourcePod || !targetPod || sourcePod.id === targetPod.id) {
+      setDraggingId(null);
+      setDropTarget(null);
+      return;
+    }
+
+    // Compute the target block index
+    let targetBlockIndex: number;
+    if (dropTarget.position === "above") {
+      targetBlockIndex = targetPod.blockIndex;
+    } else {
+      targetBlockIndex = targetPod.blockIndex + targetPod.blockCount;
+    }
+
+    // Don't drop within source's own range
+    if (targetBlockIndex > sourcePod.blockIndex && targetBlockIndex < sourcePod.blockIndex + sourcePod.blockCount) {
+      setDraggingId(null);
+      setDropTarget(null);
+      return;
+    }
+
+    onReorderBlocks(sourcePod.blockIndex, sourcePod.blockCount, targetBlockIndex);
+    setDraggingId(null);
+    setDropTarget(null);
+  }, [draggingId, dropTarget, pods, onReorderBlocks]);
+
+  const handleRename = useCallback((pod: OutlinePod, newText: string) => {
+    if (pod.type === "heading") {
+      onRenameHeading(pod.blockIndex, newText);
+    } else {
+      onRenameParTitle(pod.blockIndex, newText);
+    }
+  }, [onRenameHeading, onRenameParTitle]);
+
+  if (pods.length === 0) {
+    return (
+      <div className="p-6 text-center text-[var(--muted)] text-sm">
+        No sections found.
+      </div>
+    );
+  }
+
+  return (
+    <div className="py-1">
+      {pods.map((pod) => (
+        <EditablePod
+          key={pod.id}
+          pod={pod}
+          isDragging={draggingId === pod.id}
+          dropPosition={
+            dropTarget?.podId === pod.id ? dropTarget.position : null
+          }
+          onDragStart={(e) => handleDragStart(pod, e)}
+          onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
+          onDragOver={(e) => handleDragOver(pod.id, e)}
+          onDragLeave={() => {
+            setDropTarget((prev) => prev?.podId === pod.id ? null : prev);
+          }}
+          onDrop={(e) => handleDrop(pod.id, e)}
+          onRename={(newText) => handleRename(pod, newText)}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Storage ───────────────────────────────────────────────────────── */
+
 const OUTLINE_STORAGE_KEY = "virgil-outline-prefs";
 
 function loadOutlinePrefs(): { collapsed: string[]; showLabels: boolean; showTitles: boolean } {
@@ -247,11 +559,14 @@ function saveOutlinePrefs(collapsed: Set<string>, showLabels: boolean, showTitle
   } catch {}
 }
 
-function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
+/* ── Main OutlinePanel ─────────────────────────────────────────────── */
+
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
@@ -286,6 +601,11 @@ function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
   const headings = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
 
+  const totalBlocks = useMemo(() => {
+    if (!content || !content.content) return 0;
+    return content.content.length;
+  }, [content]);
+
   const toggleNode = useCallback((id: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -312,63 +632,87 @@ function OutlinePanel({ content, onScrollTo }: OutlinePanelProps) {
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
         <div className="flex items-center gap-2">
-          <button
-            onClick={expandAll}
-            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
-            title="Expand all"
-          >
-            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 1 L7 4.5 L12 1" />
-              <path d="M2 6.5 L7 10 L12 6.5" />
-            </svg>
-          </button>
-          <button
-            onClick={collapseAll}
-            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
-            title="Collapse all"
-            style={{ marginTop: "-2px" }}
-          >
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 5.5 L7 2 L12 5.5" />
-              <path d="M2 9 L7 5.5 L12 9" />
-            </svg>
-          </button>
-          <div className="relative" ref={menuRef}>
+          {onReorderBlocks && (
             <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="text-[var(--muted)] hover:text-stone-600 transition-colors p-0.5"
-              title="View options"
+              onClick={() => setEditMode(!editMode)}
+              className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+                editMode
+                  ? "bg-[var(--accent)] text-white"
+                  : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
+              }`}
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="3" r="1.5" />
-                <circle cx="8" cy="8" r="1.5" />
-                <circle cx="8" cy="13" r="1.5" />
-              </svg>
+              Edit
             </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[140px]">
+          )}
+          {!editMode && (
+            <>
+              <button
+                onClick={expandAll}
+                className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+                title="Expand all"
+              >
+                <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 1 L7 4.5 L12 1" />
+                  <path d="M2 6.5 L7 10 L12 6.5" />
+                </svg>
+              </button>
+              <button
+                onClick={collapseAll}
+                className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+                title="Collapse all"
+                style={{ marginTop: "-2px" }}
+              >
+                <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 5.5 L7 2 L12 5.5" />
+                  <path d="M2 9 L7 5.5 L12 9" />
+                </svg>
+              </button>
+              <div className="relative" ref={menuRef}>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                  onClick={() => { setShowLabels(!showLabels); setMenuOpen(false); }}
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  className="text-[var(--muted)] hover:text-stone-600 transition-colors p-0.5"
+                  title="View options"
                 >
-                  <span>Show labels</span>
-                  <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <circle cx="8" cy="3" r="1.5" />
+                    <circle cx="8" cy="8" r="1.5" />
+                    <circle cx="8" cy="13" r="1.5" />
+                  </svg>
                 </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                  onClick={() => { setShowTitles(!showTitles); setMenuOpen(false); }}
-                >
-                  <span>Show par. titles</span>
-                  <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
-                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[140px]">
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                      onClick={() => { setShowLabels(!showLabels); setMenuOpen(false); }}
+                    >
+                      <span>Show labels</span>
+                      <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
+                    </button>
+                    <button
+                      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                      onClick={() => { setShowTitles(!showTitles); setMenuOpen(false); }}
+                    >
+                      <span>Show par. titles</span>
+                      <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
-        {tree.length === 0 ? (
+        {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
+          <EditableOutline
+            headings={headings}
+            totalBlocks={totalBlocks}
+            onReorderBlocks={onReorderBlocks}
+            onRenameHeading={onRenameHeading}
+            onRenameParTitle={onRenameParTitle}
+          />
+        ) : tree.length === 0 ? (
           <div className="p-6 text-center text-[var(--muted)] text-sm">
             No sections found. Use the Section dropdown in the toolbar to add headings.
           </div>
