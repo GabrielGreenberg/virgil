@@ -167,21 +167,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
 
-        // Controls in left margin (inline styles — CSS classes purged by Tailwind v4)
-        const controls = document.createElement("div");
-        controls.className = "par-title-controls";
-        controls.contentEditable = "false";
-        Object.assign(controls.style, {
-          position: "absolute", left: "-42px", display: "flex",
-          alignItems: "center", gap: "2px", opacity: "0", transition: "opacity 0.15s",
-        });
-        wrapper.appendChild(controls);
-
-        // Hover show/hide for controls
-        wrapper.addEventListener("mouseenter", () => { if (!wrapper.classList.contains("has-title")) controls.style.opacity = "1"; });
-        wrapper.addEventListener("mouseleave", () => { controls.style.opacity = "0"; });
-
-        // Title annotation (above paragraph)
+        // Title annotation area (above paragraph — holds +T or title)
         const titleAnnot = document.createElement("div");
         titleAnnot.className = "par-title-annotation";
         titleAnnot.contentEditable = "false";
@@ -208,12 +194,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         function enterEditMode() {
-          // Create overlay input outside ProseMirror's DOM tree
-          const rect = titleAnnot.getBoundingClientRect();
-          const wrapperRect = wrapper.getBoundingClientRect();
-
+          // Show annotation area and place input over it
+          wrapper.classList.add("has-add-btn");
           titleAnnot.style.display = "block";
           titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
+
+          const annotRect = titleAnnot.getBoundingClientRect();
+          const wrapperRect = wrapper.getBoundingClientRect();
 
           const input = document.createElement("input");
           input.type = "text";
@@ -222,7 +209,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           input.placeholder = "Paragraph title…";
           input.style.position = "fixed";
           input.style.left = `${wrapperRect.left}px`;
-          input.style.top = `${titleAnnot.getBoundingClientRect().top}px`;
+          input.style.top = `${annotRect.top}px`;
           input.style.zIndex = "9999";
           document.body.appendChild(input);
 
@@ -258,15 +245,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         function renderAnnot() {
           const title = currentNode.attrs.parTitle as string | null;
-          controls.innerHTML = "";
           titleAnnot.innerHTML = "";
 
           if (title) {
             wrapper.classList.add("has-title");
-            controls.style.display = "none";
-
-            // Show title text with × delete button inside annotation
+            wrapper.classList.remove("has-add-btn");
             titleAnnot.style.display = "block";
+
+            // Title text first, then × delete button to its right
+            const span = document.createElement("span");
+            span.className = "par-title-text";
+            span.textContent = title;
+            titleAnnot.appendChild(span);
             const xBtn = document.createElement("button");
             xBtn.className = "par-title-delete";
             xBtn.textContent = "×";
@@ -274,52 +264,26 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
             xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
             titleAnnot.appendChild(xBtn);
-            const span = document.createElement("span");
-            span.className = "par-title-text";
-            span.textContent = title;
-            titleAnnot.appendChild(span);
           } else {
             wrapper.classList.remove("has-title");
 
-            // Only show controls if paragraph has real text content
+            // Only show +T if paragraph has real text content
             const hasText = currentNode.textContent.trim().length > 0;
             if (hasText) {
-              controls.style.display = "flex";
+              wrapper.classList.add("has-add-btn");
+              titleAnnot.style.display = "block";
 
-              // + button (add) — inline styles since CSS purged by Tailwind v4
-              const plusBtn = document.createElement("button");
-              plusBtn.textContent = "+";
-              plusBtn.title = "Add title";
-              Object.assign(plusBtn.style, {
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
-                fontFamily: "var(--font-sans), system-ui, sans-serif",
-                color: "#c45a5a", background: "#fef5f5",
-                border: "1px solid #e8b4b4", borderRadius: "3px",
-                cursor: "pointer", lineHeight: "1", userSelect: "none", padding: "0",
-              });
-              plusBtn.addEventListener("mouseenter", () => { plusBtn.style.background = "#fde8e8"; plusBtn.style.borderColor = "#c45a5a"; });
-              plusBtn.addEventListener("mouseleave", () => { plusBtn.style.background = "#fef5f5"; plusBtn.style.borderColor = "#e8b4b4"; });
-              plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-              plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
-              controls.appendChild(plusBtn);
-
-              // T label
-              const tLabel = document.createElement("span");
-              tLabel.textContent = "T";
-              Object.assign(tLabel.style, {
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
-                fontFamily: "var(--font-sans), system-ui, sans-serif",
-                color: "#c45a5a", userSelect: "none", lineHeight: "1",
-              });
-              controls.appendChild(tLabel);
+              // "+T" label shown in the gap above paragraph, revealed on hover
+              const addLabel = document.createElement("span");
+              addLabel.className = "par-title-add";
+              addLabel.textContent = "+T";
+              addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+              addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+              titleAnnot.appendChild(addLabel);
             } else {
-              controls.style.display = "none";
+              wrapper.classList.remove("has-add-btn");
+              titleAnnot.style.display = "none";
             }
-
-            // Hide annotation area
-            titleAnnot.style.display = "none";
           }
         }
 
@@ -342,13 +306,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           contentDOM: p,
           stopEvent(event) {
             return (
-              controls === event.target || controls.contains(event.target as Node) ||
               titleAnnot === event.target || titleAnnot.contains(event.target as Node)
             );
           },
           ignoreMutation(mutation) {
-            // Prevent ProseMirror from reacting to DOM changes in controls/annotation
-            if (controls.contains(mutation.target) || titleAnnot.contains(mutation.target)) return true;
+            if (titleAnnot.contains(mutation.target)) return true;
             if (mutation.target === wrapper && mutation.type === "childList") return true;
             return false;
           },
@@ -370,18 +332,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
       const wrapper = document.createElement("div");
       wrapper.className = "list-title-wrapper";
-
-      const controls = document.createElement("div");
-      controls.className = "par-title-controls";
-      controls.contentEditable = "false";
-      Object.assign(controls.style, {
-        position: "absolute", left: "-42px", display: "flex",
-        alignItems: "center", gap: "2px", opacity: "0", transition: "opacity 0.15s",
-      });
-      wrapper.appendChild(controls);
-
-      wrapper.addEventListener("mouseenter", () => { if (!wrapper.classList.contains("has-title")) controls.style.opacity = "1"; });
-      wrapper.addEventListener("mouseleave", () => { controls.style.opacity = "0"; });
 
       const titleAnnot = document.createElement("div");
       titleAnnot.className = "par-title-annotation";
@@ -407,10 +357,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       }
 
       function enterEditMode() {
+        // Show annotation area and place input over it
+        wrapper.classList.add("has-add-btn");
+        titleAnnot.style.display = "block";
+        titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
+
+        const annotRect = titleAnnot.getBoundingClientRect();
         const wrapperRect = wrapper.getBoundingClientRect();
-        // Position input just above the list element
-        const listRect = listEl.getBoundingClientRect();
-        const topPos = listRect.top - 20;
 
         const overlay = document.createElement("div");
         overlay.style.cssText = `position:fixed;top:0;left:0;right:0;bottom:0;z-index:9998;`;
@@ -421,7 +374,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         input.className = "par-title-input";
         input.value = currentNode.attrs.parTitle || "";
         input.placeholder = "Title…";
-        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${topPos}px;`;
+        input.style.cssText = `position:fixed;z-index:9999;left:${wrapperRect.left}px;top:${annotRect.top}px;`;
         document.body.appendChild(input);
 
         // Auto-size to content (must be in DOM first for font measurement)
@@ -450,13 +403,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
       function renderAnnot() {
         const title = currentNode.attrs.parTitle as string | null;
-        controls.innerHTML = "";
         titleAnnot.innerHTML = "";
 
         if (title) {
           wrapper.classList.add("has-title");
-          controls.style.display = "none";
+          wrapper.classList.remove("has-add-btn");
           titleAnnot.style.display = "block";
+
+          const span = document.createElement("span");
+          span.className = "par-title-text";
+          span.textContent = title;
+          titleAnnot.appendChild(span);
           const xBtn = document.createElement("button");
           xBtn.className = "par-title-delete";
           xBtn.textContent = "×";
@@ -464,40 +421,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           xBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
           xBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); setTitle(null); });
           titleAnnot.appendChild(xBtn);
-          const span = document.createElement("span");
-          span.className = "par-title-text";
-          span.textContent = title;
-          titleAnnot.appendChild(span);
         } else {
           wrapper.classList.remove("has-title");
-          controls.style.display = "flex";
-          titleAnnot.style.display = "none";
-          // Show + button to add title (inline styles — CSS purged by Tailwind v4)
-          const plusBtn = document.createElement("button");
-          plusBtn.textContent = "+";
-          plusBtn.title = "Add title";
-          Object.assign(plusBtn.style, {
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
-            fontFamily: "var(--font-sans), system-ui, sans-serif",
-            color: "#c45a5a", background: "#fef5f5",
-            border: "1px solid #e8b4b4", borderRadius: "3px",
-            cursor: "pointer", lineHeight: "1", userSelect: "none", padding: "0",
-          });
-          plusBtn.addEventListener("mouseenter", () => { plusBtn.style.background = "#fde8e8"; plusBtn.style.borderColor = "#c45a5a"; });
-          plusBtn.addEventListener("mouseleave", () => { plusBtn.style.background = "#fef5f5"; plusBtn.style.borderColor = "#e8b4b4"; });
-          plusBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
-          plusBtn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
-          controls.appendChild(plusBtn);
-          const tLabel = document.createElement("span");
-          tLabel.textContent = "T";
-          Object.assign(tLabel.style, {
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "16px", height: "16px", fontSize: "9px", fontWeight: "700",
-            fontFamily: "var(--font-sans), system-ui, sans-serif",
-            color: "#c45a5a", userSelect: "none", lineHeight: "1",
-          });
-          controls.appendChild(tLabel);
+          wrapper.classList.add("has-add-btn");
+          titleAnnot.style.display = "block";
+
+          const addLabel = document.createElement("span");
+          addLabel.className = "par-title-add";
+          addLabel.textContent = "+T";
+          addLabel.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); });
+          addLabel.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); enterEditMode(); });
+          titleAnnot.appendChild(addLabel);
         }
       }
 
@@ -516,12 +450,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         contentDOM: listEl,
         stopEvent(event: any) {
           return (
-            controls === event.target || controls.contains(event.target as Node) ||
             titleAnnot === event.target || titleAnnot.contains(event.target as Node)
           );
         },
         ignoreMutation(mutation: any) {
-          if (mutation.target && (controls.contains(mutation.target) || titleAnnot.contains(mutation.target))) return true;
+          if (mutation.target && titleAnnot.contains(mutation.target)) return true;
           if (mutation.target === wrapper && mutation.type === "childList") return true;
           return false;
         },

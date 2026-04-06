@@ -36,7 +36,7 @@ body {
 }
 
 .tiptap p {
-  margin-bottom: 0.75em;
+  margin-bottom: 1.1em;
   line-height: var(--editor-line-height, 1.8);
   font-size: var(--editor-font-size, 1.05rem);
 }
@@ -130,12 +130,12 @@ body {
   padding: 0;
 }
 
-/* Paragraph title annotations */
-.par-title-wrapper {
+/* Paragraph title annotations — shown in gap above paragraph */
+.par-title-wrapper,
+.list-title-wrapper {
   display: block;
   position: relative;
 }
-
 
 .par-title-annotation {
   display: block;
@@ -145,16 +145,12 @@ body {
   color: #c45a5a;
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.02em;
-  margin-bottom: 0.1em;
+  margin-bottom: 1px;
   cursor: pointer;
   user-select: none;
-  padding: 0 0 1px 0;
+  padding: 0;
+  line-height: 1.4;
 }
-
-.par-title-wrapper.has-title .par-title-annotation {
-  margin-top: 1.2em;
-}
-
 
 .par-title-annotation:hover {
   color: #a33;
@@ -164,6 +160,7 @@ body {
   text-decoration: underline;
 }
 
+/* × delete button — to the right of title text, shown on hover */
 .par-title-delete {
   display: none;
   font-size: 0.72rem;
@@ -184,6 +181,7 @@ body {
   display: inline;
 }
 
+/* Input field for editing title */
 .par-title-input {
   background: transparent;
   border: none;
@@ -195,9 +193,10 @@ body {
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.02em;
   padding: 0;
+  line-height: 1.4;
 }
 
-/* "+T" add label shown above paragraph on hover */
+/* "+T" add label shown in gap above paragraph on hover */
 .par-title-add {
   font-size: 0.72rem;
   font-weight: 500;
@@ -213,7 +212,7 @@ body {
   color: #a33;
 }
 
-/* When the wrapper has the add button (no title yet), hide annotation until hover */
+/* When no title yet, hide annotation area until hover reveals +T */
 .par-title-wrapper.has-add-btn > .par-title-annotation,
 .list-title-wrapper.has-add-btn > .par-title-annotation {
   opacity: 0;
@@ -223,11 +222,6 @@ body {
 .par-title-wrapper.has-add-btn:hover > .par-title-annotation,
 .list-title-wrapper.has-add-btn:hover > .par-title-annotation {
   opacity: 1;
-}
-
-/* Legacy controls — no longer used, kept hidden */
-.par-title-controls {
-  display: none;
 }
 
 /* Title field blocks */
@@ -302,13 +296,13 @@ body {
 .tiptap ul {
   list-style-type: disc;
   padding-left: 1.5em;
-  margin: 0.5em 0;
+  margin: 0.6em 0;
 }
 
 .tiptap ol {
   list-style-type: decimal;
   padding-left: 1.5em;
-  margin: 0.5em 0;
+  margin: 0.6em 0;
 }
 
 .tiptap li {
@@ -324,20 +318,7 @@ body {
   margin-bottom: 0 !important;
 }
 
-/* List title wrapper — reuse paragraph title styles */
-.list-title-wrapper {
-  display: block;
-  position: relative;
-}
-
-
-.list-title-wrapper > .par-title-controls {
-  display: none;
-}
-
-.list-title-wrapper.has-title > .par-title-annotation {
-  margin-top: 1.2em;
-}
+/* List title wrapper already declared above with .par-title-wrapper */
 
 .tiptap pre {
   background: #f5f3f0;
@@ -719,12 +700,8 @@ body {
 
 /* View toggles — hide paragraph titles */
 .hide-par-titles .par-title-annotation,
-.hide-par-titles .par-title-controls {
+.hide-par-titles .par-title-annotation {
   display: none !important;
-}
-.hide-par-titles .par-title-wrapper.has-title .par-title-annotation {
-  display: none !important;
-  margin-top: 0;
 }
 
 /* View toggles — hide LaTeX % comments */
