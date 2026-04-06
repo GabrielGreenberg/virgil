@@ -311,7 +311,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           },
           ignoreMutation(mutation) {
             if (titleAnnot.contains(mutation.target)) return true;
-            if (mutation.target === wrapper && mutation.type === "childList") return true;
+            if (mutation.target === wrapper) return true;
             return false;
           },
           update(updatedNode) {
@@ -455,7 +455,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         },
         ignoreMutation(mutation: any) {
           if (mutation.target && titleAnnot.contains(mutation.target)) return true;
-          if (mutation.target === wrapper && mutation.type === "childList") return true;
+          if (mutation.target === wrapper) return true;
           return false;
         },
         update(updatedNode: any) {
