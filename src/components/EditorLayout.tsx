@@ -1129,6 +1129,15 @@ export default function EditorLayout() {
     setSelectedFootnoteId(null);
   }, []);
 
+  const handleAddFootnote = useCallback(() => {
+    const id = crypto.randomUUID();
+    setOrphanedFootnotes((prev) => [
+      ...prev,
+      { footnoteId: id, content: "", orphanedAt: new Date().toISOString() },
+    ]);
+    return id;
+  }, []);
+
   const handleDeleteOrphan = useCallback((id: string) => {
     setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
   }, []);
@@ -1612,6 +1621,7 @@ export default function EditorLayout() {
               onDeleteOrphan={handleDeleteOrphan}
               onEditOrphan={handleEditOrphan}
               onReanchor={handleReanchorFootnote}
+              onAdd={handleAddFootnote}
             />
         </ResizablePanel>
       );
