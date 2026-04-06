@@ -1031,6 +1031,71 @@ export default function EditorLayout() {
     editorRef.current?.scrollToHeading(blockIndex);
   }, []);
 
+  const handleReorderBlocks = useCallback((fromIndex: number, count: number, toIndex: number) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    const doc = editor.state.doc;
+    // Collect absolute positions of each top-level block
+    const positions: { from: number; to: number }[] = [];
+    doc.forEach((node, offset) => {
+      positions.push({ from: offset, to: offset + node.nodeSize });
+    });
+    if (fromIndex < 0 || fromIndex + count > positions.length || toIndex < 0 || toIndex > positions.length) return;
+    if (toIndex >= fromIndex && toIndex <= fromIndex + count) return; // no-op
+
+    const sliceFrom = positions[fromIndex].from;
+    const sliceTo = positions[fromIndex + count - 1].to;
+    const slice = doc.slice(sliceFrom, sliceTo);
+
+    let tr = editor.state.tr;
+    if (toIndex < fromIndex) {
+      // Moving upward: insert first, then delete (positions shift correctly)
+      const insertPos = positions[toIndex].from;
+      tr = tr.insert(insertPos, slice.content);
+      // After insert, the original range shifted by slice size
+      const shift = slice.content.size;
+      tr = tr.delete(sliceFrom + shift, sliceTo + shift);
+    } else {
+      // Moving downward: delete first, then insert
+      tr = tr.delete(sliceFrom, sliceTo);
+      // After delete, positions above the deleted range shifted
+      const shift = sliceTo - sliceFrom;
+      const insertPos = toIndex >= positions.length
+        ? positions[positions.length - 1].to - shift
+        : positions[toIndex].from - shift;
+      tr = tr.insert(insertPos, slice.content);
+    }
+    editor.view.dispatch(tr);
+  }, []);
+
+  const handleRenameHeading = useCallback((blockIndex: number, newText: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    let idx = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (idx === blockIndex && node.type.name === "heading") {
+        const from = offset + 1; // inside the heading node
+        const to = offset + node.nodeSize - 1; // end of heading content
+        const tr = editor.state.tr.delete(from, to).insertText(newText, from);
+        editor.view.dispatch(tr);
+      }
+      idx++;
+    });
+  }, []);
+
+  const handleRenameParTitle = useCallback((blockIndex: number, newTitle: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    let idx = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (idx === blockIndex) {
+        const tr = editor.state.tr.setNodeMarkup(offset, undefined, { ...node.attrs, parTitle: newTitle });
+        editor.view.dispatch(tr);
+      }
+      idx++;
+    });
+  }, []);
+
   const handleAct = useCallback(
     (id: string, action: "accepted" | "rejected" | "skipped") => {
       if (action === "accepted" && currentSuggestion && currentSuggestion.id === id) {
@@ -1519,6 +1584,9 @@ export default function EditorLayout() {
           <OutlinePanel
               content={latestDoc || content}
               onScrollTo={handleScrollToHeading}
+              onReorderBlocks={handleReorderBlocks}
+              onRenameHeading={handleRenameHeading}
+              onRenameParTitle={handleRenameParTitle}
             />
         </ResizablePanel>
       );
