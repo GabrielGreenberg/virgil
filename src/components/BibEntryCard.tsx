@@ -168,7 +168,7 @@ export default function BibEntryCard({
   };
 
   const handleDragStart = useCallback((e: React.DragEvent) => {
-    const cmd = bibPackage === "natbib" ? `\\cite{${entry.key}}` : `\\autocite{${entry.key}}`;
+    const cmd = `\\cite{${entry.key}}`;
     const display = bibEntries ? formatMinimalCitation(entry.key, bibEntries) : entry.key;
     e.dataTransfer.setData("text/plain", cmd);
     e.dataTransfer.setData("application/x-virgil-citation", JSON.stringify({ command: cmd, bibKey: entry.key }));
