@@ -6,6 +6,11 @@ import { panelCard, PANEL, PanelHeader, PrevNextCounter } from "./panel-primitiv
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
+type BreadcrumbSegment = {
+  text: string;
+  kind: "section" | "parTitle" | "documentStart";
+};
+
 interface SearchResult {
   from: number;
   to: number;
@@ -15,8 +20,8 @@ interface SearchResult {
   match: string;
   /** ~40 chars after the match */
   after: string;
-  /** Breadcrumb path: section hierarchy above the match */
-  breadcrumb: string[];
+  /** Breadcrumb path: section hierarchy + paragraph title above the match */
+  breadcrumb: BreadcrumbSegment[];
 }
 
 interface SearchPanelProps {
@@ -29,20 +34,51 @@ interface SearchPanelProps {
 const CTX = 40; // context chars on each side
 
 /** Build breadcrumb by walking doc nodes up to a position. */
-function buildBreadcrumb(editor: Editor, pos: number): string[] {
-  const crumbs: string[] = [];
+function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
+  const sections: BreadcrumbSegment[] = [];
+  // Use empty string as the "no title found" sentinel — this avoids
+  // TypeScript closure-narrowing issues that come with `string | null`.
+  let parTitle = "";
+
   editor.state.doc.descendants((node, nodePos) => {
     if (nodePos >= pos) return false;
+
     if (node.type.name === "heading") {
       const level = node.attrs.level as number;
-      const text =
-        node.textContent?.trim() || "Untitled";
+      const text = node.textContent?.trim() || "Untitled";
       // Prune deeper headings when a higher-level heading appears
-      while (crumbs.length > 0 && crumbs.length >= level) crumbs.pop();
-      crumbs.push(text);
+      while (sections.length > 0 && sections.length >= level) sections.pop();
+      sections.push({ text, kind: "section" });
+      return true;
     }
+
+    // Pick up the closest paragraph title from any ancestor that contains pos.
+    // parTitle lives on paragraph / bulletList / orderedList nodes; descendants
+    // visits parents before children, so a deeper match overwrites a shallower
+    // one — we end up with the most specific containing title.
+    const titleAttr = node.attrs?.parTitle as string | null | undefined;
+    if (
+      titleAttr &&
+      (node.type.name === "paragraph" ||
+        node.type.name === "bulletList" ||
+        node.type.name === "orderedList") &&
+      nodePos + node.nodeSize > pos
+    ) {
+      parTitle = titleAttr;
+    }
+
     return true;
   });
+
+  const crumbs: BreadcrumbSegment[] =
+    sections.length > 0
+      ? sections
+      : [{ text: "Document start", kind: "documentStart" }];
+
+  if (parTitle) {
+    crumbs.push({ text: parTitle, kind: "parTitle" });
+  }
+
   return crumbs;
 }
 
@@ -273,8 +309,27 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
           >
             <div className={PANEL.cardInner}>
               {r.breadcrumb.length > 0 && (
-                <div className="text-[10px] text-[var(--muted)] truncate mb-1">
-                  {r.breadcrumb.join(" \u203a ")}
+                <div className="text-[10px] truncate mb-1">
+                  {r.breadcrumb.map((seg, segIdx) => (
+                    <span key={segIdx}>
+                      {segIdx > 0 && (
+                        <span className="text-[var(--muted)]">
+                          {" \u203a "}
+                        </span>
+                      )}
+                      <span
+                        className={
+                          seg.kind === "parTitle"
+                            ? "text-[#c45a5a]"
+                            : seg.kind === "documentStart"
+                              ? "italic text-[var(--muted)] opacity-70"
+                              : "text-[var(--muted)]"
+                        }
+                      >
+                        {seg.text}
+                      </span>
+                    </span>
+                  ))}
                 </div>
               )}
               <div className="text-sm text-stone-700 leading-snug break-words">
