@@ -487,6 +487,43 @@ body {
   margin: 0.1em 0;
 }
 
+/* Footnote rich text editor (contentEditable) */
+.footnote-content-editor {
+  font-family: var(--font-serif), Georgia, serif;
+}
+.footnote-content-editor:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted-light);
+  pointer-events: none;
+  font-style: italic;
+}
+.footnote-content-editor p {
+  margin: 0;
+}
+.footnote-content-editor p + p {
+  margin-top: 0.4em;
+}
+.footnote-content-editor ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.footnote-content-editor ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.footnote-content-editor li {
+  margin: 0.1em 0;
+}
+
+/* Footnote drop indicator */
+.footnote-card-drop-target {
+  outline: 2px dashed #b45757;
+  outline-offset: -2px;
+  background: #fff5f5;
+}
+
 /* Footnote edit popup */
 .footnote-editor-popup {
   background: white;

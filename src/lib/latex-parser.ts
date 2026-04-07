@@ -1,5 +1,6 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
+import { footnoteLatexToHtml } from "@/lib/footnote-content";
 
 interface ParseContext {
   pos: number;
@@ -146,7 +147,11 @@ function parseInlineContent(text: string): JSONContent[] {
         if (inner !== null) {
           nodes.push({
             type: "footnote",
-            attrs: { content: inner.content, number: 0, footnoteId: crypto.randomUUID() },
+            attrs: {
+              content: footnoteLatexToHtml(inner.content),
+              number: 0,
+              footnoteId: crypto.randomUUID(),
+            },
           });
           i = inner.end;
           continue;

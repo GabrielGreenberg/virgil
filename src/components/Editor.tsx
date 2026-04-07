@@ -13,6 +13,7 @@ import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner } from "@/lib/tiptap-extensions";
+import { normalizeFootnoteContent } from "@/lib/footnote-content";
 import MenuBar from "./MenuBar";
 
 /**
@@ -1099,7 +1100,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (node.type.name === "footnote" && node.attrs.footnoteId) {
           footnotes.push({
             footnoteId: node.attrs.footnoteId,
-            content: node.attrs.content || "",
+            content: normalizeFootnoteContent(node.attrs.content || ""),
             number: node.attrs.number || 0,
             pos,
           });

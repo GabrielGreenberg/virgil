@@ -4,9 +4,13 @@ import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote } from "@/lib/types";
-import ViewToggle, { ViewMode } from "./ViewToggle";
+import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
+import {
+  normalizeFootnoteContent,
+  footnoteHtmlToPlainText,
+} from "@/lib/footnote-content";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -22,9 +26,277 @@ interface FootnotePanelProps {
   orphanedFootnotes: OrphanedFootnote[];
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: string) => void;
-  onReanchor?: (id: string) => void;
   onAdd?: () => void;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Format toolbar (rich text controls for the contentEditable surface)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FormatToolbar({
+  editorRef,
+  isSelected,
+}: {
+  editorRef: React.RefObject<HTMLDivElement | null>;
+  isSelected: boolean;
+}) {
+  const exec = (cmd: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, value);
+  };
+
+  const btnClass = isSelected
+    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover:bg-white/15 transition-colors"
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-stone-600 hover:bg-stone-100 transition-colors";
+  const dividerClass = isSelected
+    ? "w-px h-4 bg-white/20 mx-0.5"
+    : "w-px h-4 bg-[var(--border-light)] mx-0.5";
+
+  return (
+    <div
+      className={`flex items-center gap-0.5 px-1 py-0.5 mb-1 border-b ${
+        isSelected ? "border-white/20" : "border-[var(--border-light)]"
+      }`}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button onMouseDown={(e) => { e.preventDefault(); exec("bold"); }} className={`${btnClass} font-bold`} title="Bold">B</button>
+      <button onMouseDown={(e) => { e.preventDefault(); exec("italic"); }} className={`${btnClass} italic`} title="Italic">I</button>
+      <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }} className={`${btnClass} underline`} title="Underline">U</button>
+      <div className={dividerClass} />
+      <button
+        onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
+        className={btnClass}
+        title="Bullet list"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="2" cy="4" r="1.5" />
+          <rect x="5" y="3" width="10" height="2" rx="0.5" />
+          <circle cx="2" cy="8" r="1.5" />
+          <rect x="5" y="7" width="10" height="2" rx="0.5" />
+          <circle cx="2" cy="12" r="1.5" />
+          <rect x="5" y="11" width="10" height="2" rx="0.5" />
+        </svg>
+      </button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); exec("insertOrderedList"); }}
+        className={btnClass}
+        title="Numbered list"
+      >
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text>
+          <rect x="5" y="3" width="10" height="2" rx="0.5" />
+          <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text>
+          <rect x="5" y="7" width="10" height="2" rx="0.5" />
+          <text x="0" y="13.5" fontSize="5" fontWeight="600">3</text>
+          <rect x="5" y="11" width="10" height="2" rx="0.5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drop helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface DropResult {
+  insertion: string; // HTML to splice into the editor
+  archiveIdToRemove?: string;
+}
+
+function buildDropInsertion(e: React.DragEvent): DropResult | null {
+  // Footnotes refuse footnote-into-footnote drops.
+  if (e.dataTransfer.types.includes("application/x-virgil-footnote")) {
+    return null;
+  }
+
+  const archiveId = e.dataTransfer.getData("application/x-virgil-archive-id");
+  const citationData = e.dataTransfer.getData("application/x-virgil-citation");
+  const text = e.dataTransfer.getData("text/plain");
+
+  if (citationData) {
+    // Insert the citation as its raw LaTeX command — round-trips through
+    // serialize/parse without needing a custom inline element type here.
+    try {
+      const { command } = JSON.parse(citationData);
+      if (typeof command === "string" && command) {
+        return { insertion: escapeHtml(command) };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  if (archiveId && text) {
+    return { insertion: escapeHtml(text), archiveIdToRemove: archiveId };
+  }
+
+  if (text) {
+    return { insertion: escapeHtml(text) };
+  }
+
+  return null;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// Insert HTML at the current contentEditable selection (or append if no caret).
+function insertHtmlAtSelection(host: HTMLDivElement, html: string) {
+  host.focus();
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount > 0 && host.contains(sel.anchorNode)) {
+    document.execCommand("insertHTML", false, html);
+    return;
+  }
+  // No live caret inside the host: append at the end.
+  const range = document.createRange();
+  range.selectNodeContents(host);
+  range.collapse(false);
+  sel?.removeAllRanges();
+  sel?.addRange(range);
+  document.execCommand("insertHTML", false, html);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FootnoteEditor (rich content surface used by both anchored and orphan cards)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function FootnoteEditor({
+  footnoteId,
+  initialContent,
+  isSelected,
+  isOrphan,
+  onChange,
+  onDropArchive,
+  onFocusChange,
+}: {
+  footnoteId: string;
+  initialContent: string;
+  isSelected: boolean;
+  isOrphan: boolean;
+  onChange: (html: string) => void;
+  onDropArchive: (archiveId: string) => void;
+  onFocusChange?: (focused: boolean) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  // Sync the contentEditable host with the underlying footnote content. We
+  // skip the sync while the user is actively typing — otherwise React would
+  // clobber the caret on every debounced flush.
+  useEffect(() => {
+    if (!editorRef.current) return;
+    if (document.activeElement === editorRef.current) return;
+    const desired = normalizeFootnoteContent(initialContent || "");
+    if (editorRef.current.innerHTML !== desired) {
+      editorRef.current.innerHTML = desired;
+    }
+  }, [footnoteId, initialContent]);
+
+  const flush = useCallback(() => {
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
+    onChange(html);
+  }, [onChange]);
+
+  const handleInput = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(flush, 300);
+  }, [flush]);
+
+  const handleFocus = useCallback(() => {
+    onFocusChange?.(true);
+  }, [onFocusChange]);
+
+  const handleBlur = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    flush();
+    onFocusChange?.(false);
+  }, [flush, onFocusChange]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("application/x-virgil-footnote")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-virgil-archive-id")
+      ? "move"
+      : "copy";
+    if (!isDragOver) setIsDragOver(true);
+  }, [isDragOver]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // dragleave bubbles from children too — only clear when the cursor is
+    // actually leaving the wrapper, not crossing into a descendant.
+    const next = e.relatedTarget as Node | null;
+    if (next && e.currentTarget.contains(next)) return;
+    setIsDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      const result = buildDropInsertion(e);
+      setIsDragOver(false);
+      if (!result) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!editorRef.current) return;
+
+      // If the host is empty, drop the placeholder paragraph first so the
+      // caret has somewhere to land.
+      if (editorRef.current.innerHTML === "" || editorRef.current.innerHTML === "<br>") {
+        editorRef.current.innerHTML = "<p></p>";
+      }
+      insertHtmlAtSelection(editorRef.current, result.insertion);
+      flush();
+
+      if (result.archiveIdToRemove) {
+        onDropArchive(result.archiveIdToRemove);
+      }
+    },
+    [flush, onDropArchive],
+  );
+
+  return (
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={isDragOver ? "footnote-card-drop-target rounded" : undefined}
+    >
+      {isSelected && <FormatToolbar key="toolbar" editorRef={editorRef} isSelected />}
+      <div
+        key="editor"
+        ref={editorRef}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={handleInput}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        // Prevent the parent card's drag handler from picking up internal selections.
+        draggable={false}
+        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        className={`footnote-content-editor py-1 text-sm leading-relaxed focus:outline-none min-h-[2.5rem] ${
+          isSelected ? "text-white" : isOrphan ? "text-stone-500" : "text-stone-700"
+        }`}
+        data-placeholder={isOrphan ? "Empty — drag text in or type" : "Empty footnote"}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FootnotePanel
+// ─────────────────────────────────────────────────────────────────────────────
 
 function FootnotePanel({
   footnotes,
@@ -40,7 +312,6 @@ function FootnotePanel({
   orphanedFootnotes,
   onDeleteOrphan,
   onEditOrphan,
-  onReanchor,
   onAdd,
 }: FootnotePanelProps) {
   const inTextItems = useMemo(
@@ -67,81 +338,58 @@ function FootnotePanel({
     const i = footnotes.findIndex((fn) => fn.footnoteId === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, footnotes, cycleIdx, setCycleIdx]);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const prevOrphanCountRef = useRef(orphanedFootnotes.length);
 
-  // Auto-edit newly added empty orphan footnotes
-  useEffect(() => {
-    const prev = prevOrphanCountRef.current;
-    prevOrphanCountRef.current = orphanedFootnotes.length;
-    if (orphanedFootnotes.length > prev) {
-      const newest = orphanedFootnotes[orphanedFootnotes.length - 1];
-      if (newest && newest.content === "") {
-        setEditingId(newest.footnoteId);
-        setEditValue("");
-      }
-    }
-  }, [orphanedFootnotes]);
-
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [focusedId, setFocusedId] = useState<string | null>(null);
 
-  const handleCopy = useCallback((id: string, text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const handleCopy = useCallback((id: string, html: string) => {
+    navigator.clipboard.writeText(footnoteHtmlToPlainText(html)).then(() => {
       setCopiedId(id);
       setTimeout(() => setCopiedId((prev) => prev === id ? null : prev), 1500);
     });
   }, []);
 
-  const startEditing = useCallback((fn: FootnoteInfo) => {
-    setEditingId(fn.footnoteId);
-    setEditValue(fn.content);
+  const handleEditAnchored = useCallback(
+    (id: string, html: string) => {
+      onEdit(id, normalizeFootnoteContent(html));
+    },
+    [onEdit],
+  );
+
+  const handleEditOrphanContent = useCallback(
+    (id: string, html: string) => {
+      onEditOrphan(id, normalizeFootnoteContent(html));
+    },
+    [onEditOrphan],
+  );
+
+  const onDropArchive = useCallback((archiveId: string) => {
+    window.dispatchEvent(
+      new CustomEvent("virgil-footnote-consumed-archive", {
+        detail: { archiveId },
+      }),
+    );
   }, []);
 
-  const commitEdit = useCallback(() => {
-    if (editingId) {
-      if (orphanedFootnotes.some((o) => o.footnoteId === editingId)) {
-        onEditOrphan(editingId, editValue);
-      } else {
-        onEdit(editingId, editValue);
-      }
-      setEditingId(null);
-    }
-  }, [editingId, editValue, onEdit, onEditOrphan, orphanedFootnotes]);
-
-  const cancelEdit = useCallback(() => {
-    setEditingId(null);
-  }, []);
-
-  useEffect(() => {
-    if (editingId && textareaRef.current) {
-      textareaRef.current.focus();
-      const len = textareaRef.current.value.length;
-      textareaRef.current.setSelectionRange(len, len);
-    }
-  }, [editingId]);
-
-  const handleDragStart = useCallback((e: React.DragEvent, footnoteId: string, content: string, isOrphan: boolean) => {
-    e.dataTransfer.setData("text/plain", content);
-    e.dataTransfer.setData("application/x-virgil-footnote", JSON.stringify({ footnoteId, content, isOrphan }));
-    e.dataTransfer.effectAllowed = "move";
-    const ghost = document.createElement("div");
-    ghost.textContent = content.length > 80 ? content.slice(0, 80) + "\u2026" : content;
-    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef2f2;border:1px solid #b45757;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 10, 14);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }, []);
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, footnoteId: string, html: string, isOrphan: boolean) => {
+      const plain = footnoteHtmlToPlainText(html);
+      e.dataTransfer.setData("text/plain", plain);
+      e.dataTransfer.setData(
+        "application/x-virgil-footnote",
+        JSON.stringify({ footnoteId, content: html, isOrphan }),
+      );
+      e.dataTransfer.effectAllowed = "move";
+      const ghost = document.createElement("div");
+      ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
+      ghost.style.cssText =
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef2f2;border:1px solid #b45757;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 10, 14);
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    },
+    [],
+  );
 
   // Footnote-specific card class with prominent red selection
   const fnCard = (selected: boolean, extra?: string) =>
@@ -181,6 +429,7 @@ function FootnotePanel({
             {footnotes.map((fn) => {
               const top = positions.get(fn.footnoteId);
               if (top === undefined) return null;
+              const preview = footnoteHtmlToPlainText(fn.content);
               return (
                 <div
                   key={fn.footnoteId}
@@ -207,7 +456,7 @@ function FootnotePanel({
                     </button>
                     <p className="text-xs text-stone-600 leading-snug line-clamp-2 min-w-0"
                       style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
-                      {fn.content || <span className="italic text-stone-400">Empty</span>}
+                      {preview || <span className="italic text-stone-400">Empty</span>}
                     </p>
                   </div>
                 </div>
@@ -220,32 +469,35 @@ function FootnotePanel({
                 <div className="text-[10px] text-stone-400 uppercase tracking-wide font-medium px-1 pb-1">
                   Unanchored
                 </div>
-                {orphanedFootnotes.map((orphan) => (
-                  <div
-                    key={orphan.footnoteId}
-                    data-footnote-entry={orphan.footnoteId}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
-                    className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-stone-50 transition-colors"
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 mt-0.5">
-                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                          <rect x="1" y="1" width="14" height="14" rx="3"
-                            stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
-                          <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
-                            fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
-                          <line x1="3" y1="13" x2="13" y2="3"
-                            stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-                        </svg>
-                      </span>
-                      <p className="text-xs text-stone-400 leading-snug line-clamp-2 min-w-0"
-                        style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
-                        {orphan.content}
-                      </p>
+                {orphanedFootnotes.map((orphan) => {
+                  const preview = footnoteHtmlToPlainText(orphan.content);
+                  return (
+                    <div
+                      key={orphan.footnoteId}
+                      data-footnote-entry={orphan.footnoteId}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
+                      className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-stone-50 transition-colors"
+                    >
+                      <div className="flex items-start gap-2">
+                        <span className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 mt-0.5">
+                          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                            <rect x="1" y="1" width="14" height="14" rx="3"
+                              stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
+                            <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
+                              fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
+                            <line x1="3" y1="13" x2="13" y2="3"
+                              stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
+                          </svg>
+                        </span>
+                        <p className="text-xs text-stone-400 leading-snug line-clamp-2 min-w-0"
+                          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
+                          {preview}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -253,16 +505,16 @@ function FootnotePanel({
 
         <>
         {footnotes.map((fn) => {
-          const isEditing = editingId === fn.footnoteId;
           const isSelected = selectedId === fn.footnoteId;
+          const isFocused = focusedId === fn.footnoteId;
 
           return (
             <div
               key={fn.footnoteId}
               data-footnote-entry={fn.footnoteId}
-              draggable
+              draggable={!isFocused}
               onDragStart={(e) => handleDragStart(e, fn.footnoteId, fn.content, false)}
-              className={fnCard(isSelected, "cursor-grab active:cursor-grabbing")}
+              className={fnCard(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}
               onClick={() => onSelect(isSelected ? null : fn.footnoteId)}
             >
               <div className={PANEL.cardInner}>
@@ -300,51 +552,18 @@ function FootnotePanel({
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    {isEditing ? (
-                      <textarea
-                        ref={textareaRef}
-                        className="w-full border border-[var(--border)] rounded px-2 py-1.5 text-sm resize-vertical focus:border-[#b45757] focus:outline-none"
-                        style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                        rows={3}
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                        onBlur={() => { setTimeout(() => { if (editingId) commitEdit(); }, 100); }}
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === "Escape") cancelEdit();
-                          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commitEdit(); }
-                        }}
-                      />
-                    ) : (
-                      <div className="relative">
-                        <p
-                          className={`text-sm leading-relaxed whitespace-pre-wrap cursor-text ${
-                            isSelected ? "text-white" : "text-stone-700"
-                          } ${expandedIds.has(fn.footnoteId) ? "" : "line-clamp-4"}`}
-                          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                          onClick={(e) => { e.stopPropagation(); startEditing(fn); }}
-                        >
-                          {fn.content || <span className={`italic ${isSelected ? "text-white/60" : "text-stone-400"}`}>Empty footnote</span>}
-                        </p>
-                        {fn.content.length > 150 && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); toggleExpanded(fn.footnoteId); }}
-                            className={`absolute bottom-0 right-0 p-0.5 transition-colors pl-4 ${
-                              isSelected
-                                ? "text-white/60 hover:text-white bg-gradient-to-l from-[#b45757] via-[#b45757] to-transparent"
-                                : "text-stone-400 hover:text-stone-600 bg-gradient-to-l from-white via-white to-transparent"
-                            }`}
-                            title={expandedIds.has(fn.footnoteId) ? "Collapse" : "Expand"}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                              style={{ transform: expandedIds.has(fn.footnoteId) ? "rotate(180deg)" : undefined, transition: "transform 0.15s" }}>
-                              <polyline points="6 9 12 15 18 9" />
-                            </svg>
-                          </button>
-                        )}
-                      </div>
-                    )}
+                    <FootnoteEditor
+                      footnoteId={fn.footnoteId}
+                      initialContent={fn.content}
+                      isSelected={isSelected}
+                      isOrphan={false}
+                      onChange={(html) => handleEditAnchored(fn.footnoteId, html)}
+                      onDropArchive={onDropArchive}
+                      onFocusChange={(focused) => {
+                        if (focused) setFocusedId(fn.footnoteId);
+                        else setFocusedId((curr) => (curr === fn.footnoteId ? null : curr));
+                      }}
+                    />
                   </div>
                 </div>
 
@@ -385,13 +604,15 @@ function FootnotePanel({
                 Unanchored ({orphanedFootnotes.length})
               </div>
             </div>
-            {orphanedFootnotes.map((orphan) => (
+            {orphanedFootnotes.map((orphan) => {
+              const isFocused = focusedId === orphan.footnoteId;
+              return (
               <div
                 key={orphan.footnoteId}
                 data-footnote-entry={orphan.footnoteId}
-                draggable
+                draggable={!isFocused}
                 onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
-                className={fnCard(false, "cursor-grab active:cursor-grabbing border-dashed")}
+                className={fnCard(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}
               >
                 <div className={PANEL.cardInner}>
                   <div className="flex items-start gap-2.5">
@@ -413,47 +634,22 @@ function FootnotePanel({
                     </span>
 
                     <div className="flex-1 min-w-0">
-                      {editingId === orphan.footnoteId ? (
-                        <textarea
-                          ref={textareaRef}
-                          className="w-full border border-[var(--border)] rounded px-2 py-1.5 text-sm resize-vertical focus:border-[#b45757] focus:outline-none"
-                          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                          rows={3}
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                          onBlur={() => { setTimeout(() => { if (editingId) commitEdit(); }, 100); }}
-                          onKeyDown={(e) => {
-                            e.stopPropagation();
-                            if (e.key === "Escape") cancelEdit();
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commitEdit(); }
-                          }}
-                        />
-                      ) : (
-                        <p
-                          className="text-sm text-stone-500 leading-relaxed whitespace-pre-wrap cursor-text line-clamp-4"
-                          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-                          onClick={(e) => { e.stopPropagation(); setEditingId(orphan.footnoteId); setEditValue(orphan.content); }}
-                        >
-                          {orphan.content || <span className="italic text-stone-400">Empty — click to edit, then drag to place</span>}
-                        </p>
-                      )}
+                      <FootnoteEditor
+                        footnoteId={orphan.footnoteId}
+                        initialContent={orphan.content}
+                        isSelected={false}
+                        isOrphan
+                        onChange={(html) => handleEditOrphanContent(orphan.footnoteId, html)}
+                        onDropArchive={onDropArchive}
+                        onFocusChange={(focused) => {
+                          if (focused) setFocusedId(orphan.footnoteId);
+                          else setFocusedId((curr) => (curr === orphan.footnoteId ? null : curr));
+                        }}
+                      />
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between mt-2 ml-7">
-                    <span className="text-[10px] text-[var(--muted-light)] flex items-center gap-1.5">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onReanchor?.(orphan.footnoteId); }}
-                        className="inline-flex items-center justify-center text-[#b45757] hover:text-[#8b3a3a] transition-colors"
-                        title="Insert at cursor position"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <line x1="7" y1="3" x2="7" y2="11" />
-                          <line x1="3" y1="7" x2="11" y2="7" />
-                        </svg>
-                      </button>
-                    </span>
+                  <div className="flex items-center justify-end mt-2 ml-7">
                     <div className="flex gap-1.5 items-center">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleCopy(orphan.footnoteId, orphan.content); }}
@@ -475,7 +671,8 @@ function FootnotePanel({
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </>
         )}
         </>

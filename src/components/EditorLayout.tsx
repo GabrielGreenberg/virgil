@@ -1534,19 +1534,6 @@ export default function EditorLayout() {
     ));
   }, []);
 
-  const handleReanchorFootnote = useCallback((id: string) => {
-    const orphan = orphanedFootnotes.find((o) => o.footnoteId === id);
-    if (!orphan || !editorRef.current) return;
-    const ed = editorRef.current.getEditor();
-    if (!ed) return;
-    ed.chain().focus().insertContent({
-      type: "footnote",
-      attrs: { footnoteId: orphan.footnoteId, content: orphan.content, number: 0 },
-    }).run();
-    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
-    setSelectedFootnoteId(id);
-  }, [orphanedFootnotes]);
-
   // Listen for archive marker clicks from the editor
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1629,6 +1616,20 @@ export default function EditorLayout() {
     window.addEventListener("virgil-footnote-panel-dropped", handler);
     return () => window.removeEventListener("virgil-footnote-panel-dropped", handler);
   }, []);
+
+  // Footnote panel drop targets consume archive snippets — remove the marker
+  // and the archive entry on success.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const archiveId = detail?.archiveId;
+      if (!archiveId) return;
+      editorRef.current?.removeArchiveMarker(archiveId);
+      deleteSnippet(archiveId);
+    };
+    window.addEventListener("virgil-footnote-consumed-archive", handler);
+    return () => window.removeEventListener("virgil-footnote-consumed-archive", handler);
+  }, [deleteSnippet]);
 
   // Listen for citation marker clicks from the editor
   useEffect(() => {
@@ -2251,7 +2252,6 @@ export default function EditorLayout() {
           orphanedFootnotes={orphanedFootnotes}
           onDeleteOrphan={handleDeleteOrphan}
           onEditOrphan={handleEditOrphan}
-          onReanchor={handleReanchorFootnote}
           onAdd={handleAddFootnote}
         />
       );
