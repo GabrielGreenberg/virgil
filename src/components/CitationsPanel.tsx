@@ -80,6 +80,10 @@ function CitationsPanel({
   // Per-citation: which bib key's pod is expanded (null = none)
   const [expandedBibKeys, setExpandedBibKeys] = useState<Record<string, string | null>>({});
 
+  // `panelScrollRef` doubles as the keyboard-focus target and the handle we use
+  // to scroll the selected card into view. It's always attached to the outer
+  // list div; `useInTextPositions` only consults it when enabled.
+
   useEffect(() => {
     if (!menuOpen) return;
     const handler = (e: MouseEvent) => {
@@ -117,12 +121,36 @@ function CitationsPanel({
 
   const visibleCitations = orderedCitations;
 
+  // Jump to a citation node in the editor and briefly highlight it.
+  // Used by the per-card target button and arrow-key navigation.
+  const jumpToCitation = useCallback(
+    (id: string) => {
+      onScrollToMarker(id);
+      const el = document.querySelector(
+        `[data-citation-id="${id}"]`,
+      ) as HTMLElement | null;
+      if (!el) return;
+      el.classList.add("citation-highlight-bib");
+      window.setTimeout(() => {
+        el.classList.remove("citation-highlight-bib");
+      }, 1600);
+    },
+    [onScrollToMarker],
+  );
+
   const onActivateCitation = useCallback(
     (cit: CitationRef) => {
       onSelect(cit.id);
-      onScrollToMarker(cit.id);
+      jumpToCitation(cit.id);
+      // Scroll the selected card into view within the panel list
+      requestAnimationFrame(() => {
+        const card = panelScrollRef.current?.querySelector(
+          `[data-citation-entry="${cit.id}"]`,
+        );
+        card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
     },
-    [onSelect, onScrollToMarker],
+    [onSelect, jumpToCitation, panelScrollRef],
   );
   const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
     useCycle(orderedCitations, onActivateCitation);
@@ -133,6 +161,21 @@ function CitationsPanel({
     const i = orderedCitations.findIndex((c) => c.id === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, orderedCitations, cycleIdx, setCycleIdx]);
+
+  // Arrow-key navigation — mirrors SearchPanel's pattern
+  const handleNavKeys = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (orderedCitations.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cycleNext();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cyclePrev();
+      }
+    },
+    [orderedCitations, cycleNext, cyclePrev],
+  );
 
 
   const bibEntryMap = useMemo(
@@ -184,8 +227,8 @@ function CitationsPanel({
 
     return (
       <>
-        {/* Citation key buttons */}
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        {/* Citation key buttons — pr-7 reserves space for TargetButton in top-right corner */}
+        <div className="flex flex-wrap gap-1.5 mb-2 pr-7">
           {cit.keys.map((key) => {
             const entry = bibEntryMap.get(key);
             const isActive = expandedKey === key;
@@ -314,8 +357,10 @@ function CitationsPanel({
 
       {/* Citation list */}
       <div
-        ref={toggleViewMode === "in-text" ? panelScrollRef : undefined}
-        className={toggleViewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
+        ref={panelScrollRef}
+        tabIndex={0}
+        onKeyDown={handleNavKeys}
+        className={`${toggleViewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list} focus:outline-none`}
       >
         {visibleCitations.length === 0 && !pendingCreate && (
           <div className={PANEL.empty}>
@@ -329,6 +374,7 @@ function CitationsPanel({
               const top = positions.get(cit.id);
               if (top === undefined) return null;
               const isSelected = selectedId === cit.id;
+              const isEditing = editingCitationId === cit.id;
               return (
                 <div
                   key={cit.id}
@@ -337,9 +383,15 @@ function CitationsPanel({
                   onDragStart={(e) => handleCiteDragStart(e, cit)}
                   className={`absolute left-2 right-2 ${panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")} in-text-connector in-text-connector-${panelSide}`}
                   style={{ top }}
-                  onClick={() => { onSelect(isSelected ? null : cit.id); onScrollToMarker(cit.id); }}
+                  onClick={() => {
+                    onSelect(isSelected ? null : cit.id);
+                    panelScrollRef.current?.focus();
+                  }}
                 >
                   <div className={PANEL.cardInner}>
+                    {!isEditing && (
+                      <TargetButton onClick={() => jumpToCitation(cit.id)} />
+                    )}
                     {renderCardContent(cit)}
                   </div>
                 </div>
@@ -349,6 +401,7 @@ function CitationsPanel({
         ) : (
           visibleCitations.map((cit) => {
             const isSelected = selectedId === cit.id;
+            const isEditing = editingCitationId === cit.id;
             return (
               <div
                 key={cit.id}
@@ -356,9 +409,15 @@ function CitationsPanel({
                 draggable
                 onDragStart={(e) => handleCiteDragStart(e, cit)}
                 className={panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}
-                onClick={() => { onSelect(isSelected ? null : cit.id); onScrollToMarker(cit.id); }}
+                onClick={() => {
+                  onSelect(isSelected ? null : cit.id);
+                  panelScrollRef.current?.focus();
+                }}
               >
                 <div className={PANEL.cardInner}>
+                  {!isEditing && (
+                    <TargetButton onClick={() => jumpToCitation(cit.id)} />
+                  )}
                   {renderCardContent(cit)}
                 </div>
               </div>
@@ -367,6 +426,41 @@ function CitationsPanel({
         )}
       </div>
     </div>
+  );
+}
+
+/* ── Target icon button ─────────────────────────────────────────────── */
+
+function TargetButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className="absolute top-1.5 right-1.5 p-1 rounded text-stone-400 hover:text-[var(--accent)] hover:bg-stone-100 transition-colors z-10"
+      title="Jump to citation in text"
+      aria-label="Jump to citation in text"
+    >
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="12" r="10" />
+        <line x1="22" y1="12" x2="18" y2="12" />
+        <line x1="6" y1="12" x2="2" y2="12" />
+        <line x1="12" y1="6" x2="12" y2="2" />
+        <line x1="12" y1="22" x2="12" y2="18" />
+        <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+      </svg>
+    </button>
   );
 }
 
