@@ -242,6 +242,7 @@ function OutlineNode({
   depth,
   showLabels,
   showTitles,
+  showWordCount,
   sectionWordCount,
   perSectionCounts,
 }: {
@@ -252,6 +253,7 @@ function OutlineNode({
   depth: number;
   showLabels: boolean;
   showTitles: boolean;
+  showWordCount: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
 }) {
@@ -310,9 +312,11 @@ function OutlineNode({
             </div>
           )}
         </div>
-        <span className="text-[10px] tabular-nums text-stone-400 shrink-0 mt-0.5">
-          {sectionWordCount}
-        </span>
+        {showWordCount && (
+          <span className="text-[10px] tabular-nums text-stone-400 shrink-0 mt-0.5">
+            {sectionWordCount}
+          </span>
+        )}
       </div>
 
       {!isCollapsed && hasTitles && (
@@ -342,6 +346,7 @@ function OutlineNode({
               depth={depth + 1}
               showLabels={showLabels}
               showTitles={showTitles}
+              showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
             />
@@ -755,23 +760,43 @@ function EditableOutline({
 
 const OUTLINE_STORAGE_KEY = "virgil-outline-prefs";
 
-function loadOutlinePrefs(): { collapsed: string[]; showLabels: boolean; showTitles: boolean } {
-  if (typeof window === "undefined") return { collapsed: [], showLabels: true, showTitles: true };
+interface OutlinePrefs {
+  collapsed: string[];
+  showLabels: boolean;
+  showTitles: boolean;
+  showWordCount: boolean;
+}
+
+function loadOutlinePrefs(): OutlinePrefs {
+  const defaults: OutlinePrefs = {
+    collapsed: [],
+    showLabels: true,
+    showTitles: true,
+    showWordCount: true,
+  };
+  if (typeof window === "undefined") return defaults;
   try {
     const raw = localStorage.getItem(OUTLINE_STORAGE_KEY);
-    if (!raw) return { collapsed: [], showLabels: true, showTitles: true };
-    return JSON.parse(raw);
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw) as Partial<OutlinePrefs>;
+    return { ...defaults, ...parsed };
   } catch {
-    return { collapsed: [], showLabels: true, showTitles: true };
+    return defaults;
   }
 }
 
-function saveOutlinePrefs(collapsed: Set<string>, showLabels: boolean, showTitles: boolean) {
+function saveOutlinePrefs(
+  collapsed: Set<string>,
+  showLabels: boolean,
+  showTitles: boolean,
+  showWordCount: boolean,
+) {
   try {
     localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify({
       collapsed: [...collapsed],
       showLabels,
       showTitles,
+      showWordCount,
     }));
   } catch {}
 }
@@ -782,6 +807,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
+  const [showWordCount, setShowWordCount] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -794,6 +820,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setCollapsed(new Set(saved.collapsed));
     setShowLabels(saved.showLabels);
     setShowTitles(saved.showTitles);
+    setShowWordCount(saved.showWordCount);
   }, []);
 
   // Mark initialized after first render with loaded state
@@ -802,8 +829,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       initialized.current = true;
       return;
     }
-    saveOutlinePrefs(collapsed, showLabels, showTitles);
-  }, [collapsed, showLabels, showTitles]);
+    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount);
+  }, [collapsed, showLabels, showTitles, showWordCount]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -831,7 +858,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   // Per-section word counts (view mode only). Keyed by heading id.
   const perSectionCounts = useMemo(() => {
     const result = new Map<string, number>();
-    if (editMode) return result; // skip work — not displayed in edit mode
+    if (editMode || !showWordCount) return result; // skip work — not displayed
     for (let i = 0; i < headings.length; i++) {
       const h = headings[i];
       const next = headings.find((nh, ni) => ni > i && nh.level <= h.level);
@@ -842,7 +869,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       );
     }
     return result;
-  }, [editMode, headings, perBlockCounts, totalBlocks, wcConfig.include]);
+  }, [editMode, showWordCount, headings, perBlockCounts, totalBlocks, wcConfig.include]);
 
   const toggleNode = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -865,15 +892,11 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setCollapsed(new Set());
   }, []);
 
-  const topRowLabel = docTitle || "Document start";
-  const topRowMuted = !docTitle;
-
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <div className="flex items-center gap-2">
-          {/* Edit toggle lives on the LEFT now, where a future "+" button
-              will sit beside it. */}
+          <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
           {onReorderBlocks && (
             <button
               onClick={() => setEditMode(!editMode)}
@@ -886,7 +909,6 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               Edit
             </button>
           )}
-          <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -938,6 +960,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   <span>Show par. titles</span>
                   <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
                 </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  onClick={() => { setShowWordCount(!showWordCount); }}
+                >
+                  <span>Show word count</span>
+                  <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
+                </button>
                 <div className="border-t border-stone-100 my-1" />
                 <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
                   Include in count
@@ -962,20 +991,30 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
-        {/* Fixed top row — always visible, both modes. Not draggable. */}
+        {/* Fixed top row — always visible, both modes. Not draggable.
+            Also acts as the column header for the word count column via
+            the "words" label on the right. */}
         <div
-          className="flex items-center gap-1 cursor-pointer hover:bg-stone-50 rounded transition-colors"
+          className="flex items-start gap-1 cursor-pointer hover:bg-stone-50 rounded transition-colors"
           style={{ paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4 }}
           onClick={() => onScrollTo(-1)}
         >
           <span className="w-4 shrink-0" />
-          <span
-            className={`text-sm leading-snug truncate ${
-              topRowMuted ? "italic text-stone-400" : "font-semibold text-stone-800"
-            }`}
-          >
-            {topRowLabel}
-          </span>
+          <div className="min-w-0 flex-1 text-sm leading-snug truncate">
+            {docTitle ? (
+              <>
+                <span className="font-normal text-stone-400">Title: </span>
+                <span className="font-semibold text-stone-800">{docTitle}</span>
+              </>
+            ) : (
+              <span className="italic text-stone-400">Document start</span>
+            )}
+          </div>
+          {showWordCount && (
+            <span className="text-[10px] text-stone-400 shrink-0 mt-0.5">
+              words
+            </span>
+          )}
         </div>
 
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
@@ -1003,6 +1042,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               depth={0}
               showLabels={showLabels}
               showTitles={showTitles}
+              showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
             />
