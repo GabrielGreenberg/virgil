@@ -8,7 +8,7 @@ import { panelCard, PANEL, PanelHeader, PrevNextCounter } from "./panel-primitiv
 
 type BreadcrumbSegment = {
   text: string;
-  kind: "section" | "parTitle" | "documentStart";
+  kind: "section" | "parTitle" | "documentStart" | "title";
 };
 
 interface SearchResult {
@@ -32,6 +32,25 @@ interface SearchPanelProps {
 /* ── Helpers ─────────────────────────────────────────────────────────── */
 
 const CTX = 40; // context chars on each side
+
+/**
+ * Extract the document's title (from the titleField node) if present.
+ * Returns empty string when there's no title, so callers can fall back
+ * to "Document start".
+ */
+function getDocTitle(editor: Editor): string {
+  let title = "";
+  editor.state.doc.forEach((node) => {
+    if (
+      node.type.name === "titleField" &&
+      node.attrs?.field === "title"
+    ) {
+      const text = node.textContent?.trim() || "";
+      if (text) title = text;
+    }
+  });
+  return title;
+}
 
 /** Build breadcrumb by walking doc nodes up to a position. */
 function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
@@ -70,10 +89,18 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
     return true;
   });
 
-  const crumbs: BreadcrumbSegment[] =
-    sections.length > 0
-      ? sections
+  let crumbs: BreadcrumbSegment[];
+  if (sections.length > 0) {
+    crumbs = sections;
+  } else {
+    // Before the first heading. If the document has a title, use it as
+    // the de-facto name of this first region; otherwise fall back to
+    // "Document start".
+    const docTitle = getDocTitle(editor);
+    crumbs = docTitle
+      ? [{ text: docTitle, kind: "title" }]
       : [{ text: "Document start", kind: "documentStart" }];
+  }
 
   if (parTitle) {
     crumbs.push({ text: parTitle, kind: "parTitle" });
@@ -317,17 +344,26 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
                           {" \u203a "}
                         </span>
                       )}
-                      <span
-                        className={
-                          seg.kind === "parTitle"
-                            ? "text-[#c45a5a]"
-                            : seg.kind === "documentStart"
-                              ? "italic text-[var(--muted)] opacity-70"
-                              : "text-[var(--muted)]"
-                        }
-                      >
-                        {seg.text}
-                      </span>
+                      {seg.kind === "title" ? (
+                        <>
+                          <span className="text-[var(--muted)]">Title: </span>
+                          <span className="text-stone-600 font-medium">
+                            {seg.text}
+                          </span>
+                        </>
+                      ) : (
+                        <span
+                          className={
+                            seg.kind === "parTitle"
+                              ? "text-[#c45a5a]"
+                              : seg.kind === "documentStart"
+                                ? "italic text-[var(--muted)] opacity-70"
+                                : "text-[var(--muted)]"
+                          }
+                        >
+                          {seg.text}
+                        </span>
+                      )}
                     </span>
                   ))}
                 </div>
