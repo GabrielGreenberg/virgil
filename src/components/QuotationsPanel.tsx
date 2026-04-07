@@ -1,8 +1,22 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import type { QuotationGroup, Quotation, BibEntry } from "@/lib/types";
-import { panelCard, PANEL, Chevron, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
+import type {
+  QuotationGroup,
+  Reference,
+  Quote,
+  BibEntry,
+} from "@/lib/types";
+import {
+  panelCard,
+  PANEL,
+  Chevron,
+  PanelHeader,
+  ItemMenu,
+  MenuDelete,
+  PrevNextCounter,
+  useCycle,
+} from "./panel-primitives";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
 
@@ -196,83 +210,72 @@ function CiteKeyAutocomplete({
   );
 }
 
-/* ── Single Quotation Entry ──────────────────────────────────────── */
+/* ── Single Quote Entry (text + page only — no title) ────────────── */
 
-const QuotationEntry = memo(function QuotationEntry({
-  quotation,
+const QuoteEntry = memo(function QuoteEntry({
+  quote,
   groupId,
+  referenceId,
   canDelete,
   onUpdate,
   onDelete,
 }: {
-  quotation: Quotation;
+  quote: Quote;
   groupId: string;
+  referenceId: string;
   canDelete: boolean;
-  onUpdate: (groupId: string, qId: string, fields: Partial<Pick<Quotation, "title" | "text" | "page">>) => void;
-  onDelete: (groupId: string, qId: string) => void;
+  onUpdate: (
+    groupId: string,
+    referenceId: string,
+    quoteId: string,
+    fields: Partial<Pick<Quote, "text" | "page">>
+  ) => void;
+  onDelete: (groupId: string, referenceId: string, quoteId: string) => void;
 }) {
-  const [title, setTitle] = useState(quotation.title);
-  const [text, setText] = useState(quotation.text);
-  const [page, setPage] = useState(quotation.page);
+  const [text, setText] = useState(quote.text);
+  const [page, setPage] = useState(quote.page);
 
   const debouncedUpdate = useDebouncedCallback(onUpdate, 400);
-
-  const handleTitleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      setTitle(v);
-      debouncedUpdate(groupId, quotation.id, { title: v });
-    },
-    [groupId, quotation.id, debouncedUpdate]
-  );
 
   const handleTextChange = useCallback(
     (v: string) => {
       setText(v);
-      debouncedUpdate(groupId, quotation.id, { text: v });
+      debouncedUpdate(groupId, referenceId, quote.id, { text: v });
     },
-    [groupId, quotation.id, debouncedUpdate]
+    [groupId, referenceId, quote.id, debouncedUpdate]
   );
 
   const handlePageChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const v = e.target.value;
       setPage(v);
-      debouncedUpdate(groupId, quotation.id, { page: v });
+      debouncedUpdate(groupId, referenceId, quote.id, { page: v });
     },
-    [groupId, quotation.id, debouncedUpdate]
+    [groupId, referenceId, quote.id, debouncedUpdate]
   );
 
-  useEffect(() => { setTitle(quotation.title); }, [quotation.title]);
-  useEffect(() => { setText(quotation.text); }, [quotation.text]);
-  useEffect(() => { setPage(quotation.page); }, [quotation.page]);
+  useEffect(() => { setText(quote.text); }, [quote.text]);
+  useEffect(() => { setPage(quote.page); }, [quote.page]);
 
   return (
     <div className={`${PANEL.subpodWhite} p-3`}>
-      {/* Title bar with menu */}
-      <div className="flex items-center justify-between mb-1.5 pb-1.5 border-b border-stone-100">
-        <input
-          type="text"
-          value={title}
-          onChange={handleTitleChange}
-          placeholder="Title"
-          className="flex-1 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
-        />
+      {/* Quote text */}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          <AutoTextarea
+            value={text}
+            onChange={handleTextChange}
+            placeholder="Enter quoted text..."
+            className="text-sm text-stone-700 leading-relaxed italic"
+            rows={1}
+          />
+        </div>
         {canDelete && (
           <ItemMenu>
-            <MenuDelete onClick={() => onDelete(groupId, quotation.id)} />
+            <MenuDelete onClick={() => onDelete(groupId, referenceId, quote.id)} />
           </ItemMenu>
         )}
       </div>
-
-      {/* Quote text */}
-      <AutoTextarea
-        value={text}
-        onChange={handleTextChange}
-        placeholder="Enter quoted text..."
-        className="text-sm text-stone-700 leading-relaxed italic"
-        rows={1}
-      />
 
       {/* Page number */}
       <div className="flex items-center mt-1.5 pt-1.5 border-t border-stone-100">
@@ -287,6 +290,106 @@ const QuotationEntry = memo(function QuotationEntry({
           />
         </div>
       </div>
+    </div>
+  );
+});
+
+/* ── Reference Sub-pod (citeKey + nested quotes) ─────────────────── */
+
+const ReferenceBlock = memo(function ReferenceBlock({
+  reference,
+  groupId,
+  bibEntries,
+  canDelete,
+  onUpdateCiteKey,
+  onDelete,
+  onAddQuote,
+  onUpdateQuote,
+  onDeleteQuote,
+}: {
+  reference: Reference;
+  groupId: string;
+  bibEntries: BibEntry[];
+  canDelete: boolean;
+  onUpdateCiteKey: (groupId: string, referenceId: string, key: string) => void;
+  onDelete: (groupId: string, referenceId: string) => void;
+  onAddQuote: (groupId: string, referenceId: string) => string;
+  onUpdateQuote: (
+    groupId: string,
+    referenceId: string,
+    quoteId: string,
+    fields: Partial<Pick<Quote, "text" | "page">>
+  ) => void;
+  onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
+}) {
+  const matchedEntry = bibEntries.find((e) => e.key === reference.citeKey);
+
+  const cleanTitle = useMemo(() => {
+    if (!matchedEntry?.fields.title) return null;
+    return matchedEntry.fields.title.replace(/[{}]/g, "");
+  }, [matchedEntry]);
+
+  const handleCiteKeyChange = useCallback(
+    (key: string) => onUpdateCiteKey(groupId, reference.id, key),
+    [onUpdateCiteKey, groupId, reference.id]
+  );
+
+  return (
+    <div className={`${PANEL.subpod} space-y-2`}>
+      {/* Reference header — formatted citation + delete */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          {matchedEntry ? (
+            <>
+              <p className="text-xs font-medium text-stone-700">
+                {formatMinimalCitation(matchedEntry)}
+              </p>
+              {cleanTitle && (
+                <p className="text-[11px] text-stone-500 leading-snug mt-0.5">
+                  {cleanTitle}
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="text-xs text-stone-400 italic">No reference selected</p>
+          )}
+        </div>
+        {canDelete && (
+          <ItemMenu>
+            <MenuDelete onClick={() => onDelete(groupId, reference.id)} label="Delete reference" />
+          </ItemMenu>
+        )}
+      </div>
+
+      {/* Cite key autocomplete */}
+      <CiteKeyAutocomplete
+        value={reference.citeKey}
+        bibEntries={bibEntries}
+        onChange={handleCiteKeyChange}
+      />
+
+      {/* Nested quotes */}
+      <div className="space-y-1.5">
+        {reference.quotes.map((q) => (
+          <QuoteEntry
+            key={q.id}
+            quote={q}
+            groupId={groupId}
+            referenceId={reference.id}
+            canDelete={reference.quotes.length > 1}
+            onUpdate={onUpdateQuote}
+            onDelete={onDeleteQuote}
+          />
+        ))}
+      </div>
+
+      {/* Add quote button */}
+      <button
+        onClick={() => onAddQuote(groupId, reference.id)}
+        className="text-[11px] text-amber-600 hover:text-amber-700 transition-colors"
+      >
+        + Add quote
+      </button>
     </div>
   );
 });
@@ -343,18 +446,21 @@ function CollapsibleNotes({
   );
 }
 
-/* ── Reference Card ─────────────────────────────────────────────── */
+/* ── Group Card ──────────────────────────────────────────────────── */
 
-function ReferenceCard({
+function GroupCard({
   group,
   bibEntries,
   selected,
   onSelect,
   onDelete,
-  onAddQuotation,
-  onUpdateQuotation,
-  onDeleteQuotation,
-  onUpdateCiteKey,
+  onUpdateGroupTitle,
+  onAddReference,
+  onDeleteReference,
+  onUpdateReferenceCiteKey,
+  onAddQuote,
+  onUpdateQuote,
+  onDeleteQuote,
   onUpdateNotes,
 }: {
   group: QuotationGroup;
@@ -362,18 +468,32 @@ function ReferenceCard({
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  onAddQuotation: (groupId: string) => string;
-  onUpdateQuotation: (groupId: string, qId: string, fields: Partial<Pick<Quotation, "title" | "text" | "page">>) => void;
-  onDeleteQuotation: (groupId: string, qId: string) => void;
-  onUpdateCiteKey: (groupId: string, key: string) => void;
+  onUpdateGroupTitle: (groupId: string, title: string) => void;
+  onAddReference: (groupId: string) => string;
+  onDeleteReference: (groupId: string, referenceId: string) => void;
+  onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
+  onAddQuote: (groupId: string, referenceId: string) => string;
+  onUpdateQuote: (
+    groupId: string,
+    referenceId: string,
+    quoteId: string,
+    fields: Partial<Pick<Quote, "text" | "page">>
+  ) => void;
+  onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
 }) {
-  const matchedEntry = bibEntries.find((e) => e.key === group.citeKey);
-
-  const cleanTitle = useMemo(() => {
-    if (!matchedEntry?.fields.title) return null;
-    return matchedEntry.fields.title.replace(/[{}]/g, "");
-  }, [matchedEntry]);
+  // Local title state with debounced persist
+  const [title, setTitle] = useState(group.title);
+  useEffect(() => { setTitle(group.title); }, [group.title]);
+  const debouncedTitleUpdate = useDebouncedCallback(onUpdateGroupTitle, 400);
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.value;
+      setTitle(v);
+      debouncedTitleUpdate(group.id, v);
+    },
+    [group.id, debouncedTitleUpdate]
+  );
 
   const handleDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
@@ -389,10 +509,11 @@ function ReferenceCard({
         "application/x-virgil-quotation",
         JSON.stringify({ groupId: group.id })
       );
-      // Plain-text fallback
-      e.dataTransfer.setData("text/plain", group.quotations[0]?.text || "");
+      // Plain-text fallback — first quote of first reference
+      const firstQuote = group.references[0]?.quotes[0]?.text ?? "";
+      e.dataTransfer.setData("text/plain", firstQuote);
     },
-    [group.id, group.quotations]
+    [group.id, group.references]
   );
 
   return (
@@ -404,56 +525,45 @@ function ReferenceCard({
       data-quotation-group-id={group.id}
     >
       <div className={PANEL.cardInner}>
-        {/* Reference header */}
-        <div className="flex items-start justify-between mb-2">
-          {matchedEntry ? (
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-stone-800">
-                {formatMinimalCitation(matchedEntry)}
-              </p>
-              {cleanTitle && (
-                <p className="text-xs text-stone-500 leading-relaxed mt-0.5">
-                  {cleanTitle}
-                </p>
-              )}
-            </div>
-          ) : (
-            <span className="text-sm text-stone-400 italic">No reference</span>
-          )}
+        {/* Group title — one big title for the whole group */}
+        <div className="flex items-start justify-between gap-2 mb-3">
+          <input
+            type="text"
+            value={title}
+            onChange={handleTitleChange}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Group title..."
+            className="flex-1 text-base font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal border-b border-transparent focus:border-stone-200 pb-0.5"
+          />
           <ItemMenu>
-            <MenuDelete onClick={onDelete} label="Delete reference" />
+            <MenuDelete onClick={onDelete} label="Delete group" />
           </ItemMenu>
         </div>
 
-        {/* Cite key autocomplete */}
-        <div className="mb-3" onClick={(e) => e.stopPropagation()}>
-          <CiteKeyAutocomplete
-            value={group.citeKey}
-            bibEntries={bibEntries}
-            onChange={(key) => onUpdateCiteKey(group.id, key)}
-          />
-        </div>
-
-        {/* Quotation entries */}
+        {/* References */}
         <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-          {group.quotations.map((q) => (
-            <QuotationEntry
-              key={q.id}
-              quotation={q}
+          {group.references.map((r) => (
+            <ReferenceBlock
+              key={r.id}
+              reference={r}
               groupId={group.id}
-              canDelete={group.quotations.length > 1}
-              onUpdate={onUpdateQuotation}
-              onDelete={onDeleteQuotation}
+              bibEntries={bibEntries}
+              canDelete={group.references.length > 1}
+              onUpdateCiteKey={onUpdateReferenceCiteKey}
+              onDelete={onDeleteReference}
+              onAddQuote={onAddQuote}
+              onUpdateQuote={onUpdateQuote}
+              onDeleteQuote={onDeleteQuote}
             />
           ))}
         </div>
 
-        {/* Add quote button */}
+        {/* Add reference button */}
         <button
-          onClick={(e) => { e.stopPropagation(); onAddQuotation(group.id); }}
+          onClick={(e) => { e.stopPropagation(); onAddReference(group.id); }}
           className="mt-2 text-xs text-amber-600 hover:text-amber-700 transition-colors"
         >
-          + Add quote
+          + Add reference
         </button>
 
         {/* Collapsible notes */}
@@ -477,10 +587,17 @@ export interface QuotationsPanelProps {
   onAddGroup: () => QuotationGroup;
   onDeleteGroup: (groupId: string) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onAddQuotation: (groupId: string) => string;
-  onUpdateQuotation: (groupId: string, qId: string, fields: Partial<Pick<Quotation, "title" | "text" | "page">>) => void;
-  onDeleteQuotation: (groupId: string, qId: string) => void;
-  onUpdateCiteKey: (groupId: string, key: string) => void;
+  onAddReference: (groupId: string) => string;
+  onDeleteReference: (groupId: string, referenceId: string) => void;
+  onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
+  onAddQuote: (groupId: string, referenceId: string) => string;
+  onUpdateQuote: (
+    groupId: string,
+    referenceId: string,
+    quoteId: string,
+    fields: Partial<Pick<Quote, "text" | "page">>
+  ) => void;
+  onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
   /** Optional controlled selected group id */
   selectedGroupId?: string | null;
@@ -493,10 +610,13 @@ export default function QuotationsPanel({
   bibEntries,
   onAddGroup,
   onDeleteGroup,
-  onAddQuotation,
-  onUpdateQuotation,
-  onDeleteQuotation,
-  onUpdateCiteKey,
+  onUpdateGroupTitle,
+  onAddReference,
+  onDeleteReference,
+  onUpdateReferenceCiteKey,
+  onAddQuote,
+  onUpdateQuote,
+  onDeleteQuote,
   onUpdateNotes,
   selectedGroupId: controlledSelectedGroupId,
   onSelectGroup,
@@ -543,7 +663,7 @@ export default function QuotationsPanel({
       setSelectedGroupId(g.id);
       if (g.paragraphId) onScrollToParagraph?.(g.paragraphId);
     },
-    [onScrollToParagraph],
+    [onScrollToParagraph, setSelectedGroupId],
   );
   const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
     useCycle(anchoredGroups, onActivateGroup);
@@ -570,32 +690,35 @@ export default function QuotationsPanel({
       <div className={PANEL.list} ref={listRef}>
         {groups.length === 0 ? (
           <div className={PANEL.empty}>
-            No references yet. Add one to start collecting quotes.
+            No quotations yet. Add a group to start collecting references.
           </div>
         ) : (
           groups.map((group) => (
-            <ReferenceCard
+            <GroupCard
               key={group.id}
               group={group}
               bibEntries={bibEntries}
               selected={selectedGroupId === group.id}
               onSelect={() => setSelectedGroupId(group.id)}
               onDelete={() => onDeleteGroup(group.id)}
-              onAddQuotation={onAddQuotation}
-              onUpdateQuotation={onUpdateQuotation}
-              onDeleteQuotation={onDeleteQuotation}
-              onUpdateCiteKey={onUpdateCiteKey}
+              onUpdateGroupTitle={onUpdateGroupTitle}
+              onAddReference={onAddReference}
+              onDeleteReference={onDeleteReference}
+              onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
+              onAddQuote={onAddQuote}
+              onUpdateQuote={onUpdateQuote}
+              onDeleteQuote={onDeleteQuote}
               onUpdateNotes={onUpdateNotes}
             />
           ))
         )}
 
-        {/* Add reference button */}
+        {/* Add group button */}
         <button
           onClick={handleAdd}
           className="w-full py-2.5 text-xs font-medium text-amber-600 hover:text-amber-700 hover:bg-amber-50/50 rounded-lg border border-dashed border-stone-300 hover:border-amber-400 transition-colors"
         >
-          + Add reference
+          + Add group
         </button>
       </div>
     </div>

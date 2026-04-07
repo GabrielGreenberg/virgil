@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readJsonFile, writeJsonFile, getMetaPath } from "@/lib/storage";
 import type { QuotationsState } from "@/lib/types";
+import { migrateQuotationsState } from "@/lib/migrate-quotations";
 
 const DEFAULT_STATE: QuotationsState = { groups: [] };
 
@@ -16,7 +17,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "docId required" }, { status: 400 });
     }
     const filepath = await getMetaPath(docId, "quotations.json");
-    const state = await readJsonFile<QuotationsState>(filepath, DEFAULT_STATE);
+    const raw = await readJsonFile<QuotationsState>(filepath, DEFAULT_STATE);
+    const state = migrateQuotationsState(raw);
     return NextResponse.json(state);
   } catch (error) {
     console.error("Error loading quotations:", error);

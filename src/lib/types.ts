@@ -187,19 +187,35 @@ export interface BibSettings {
   entryRequests: BibEntryRequest[];
 }
 
-export interface Quotation {
+/**
+ * Quotation hierarchy:
+ *   QuotationGroup
+ *     ├─ title (one big title for the whole group)
+ *     ├─ references: Reference[]
+ *     │     ├─ citeKey (each reference has its own citation)
+ *     │     └─ quotes: Quote[]
+ *     │           ├─ text
+ *     │           └─ page
+ *     └─ notes / paragraphId
+ */
+
+export interface Quote {
   id: string;
-  title: string;
   text: string;
   page: string;
+}
+
+export interface Reference {
+  id: string;
+  citeKey: string;
+  quotes: Quote[];
 }
 
 export interface QuotationGroup {
   id: string;
   title: string;
-  citeKey: string;
+  references: Reference[];
   paragraphId: string | null;
-  quotations: Quotation[];
   notes: string;
   createdAt: string;
 }

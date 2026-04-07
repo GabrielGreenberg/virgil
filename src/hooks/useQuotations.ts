@@ -2,9 +2,27 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
-import type { QuotationsState, QuotationGroup, Quotation } from "@/lib/types";
+import type {
+  QuotationsState,
+  QuotationGroup,
+  Reference,
+  Quote,
+} from "@/lib/types";
+import { migrateQuotationsState } from "@/lib/migrate-quotations";
 
 const EMPTY_STATE: QuotationsState = { groups: [] };
+
+function makeQuote(text = "", page = ""): Quote {
+  return { id: uuid(), text, page };
+}
+
+function makeReference(citeKey = "", quotes?: Quote[]): Reference {
+  return {
+    id: uuid(),
+    citeKey,
+    quotes: quotes && quotes.length ? quotes : [makeQuote()],
+  };
+}
 
 export function useQuotations(docId: string | null) {
   const [state, setState] = useState<QuotationsState>(EMPTY_STATE);
@@ -19,9 +37,11 @@ export function useQuotations(docId: string | null) {
 
     fetch(`/api/quotations?docId=${docId}`)
       .then((r) => r.json())
-      .then((data: QuotationsState) => {
-        if (currentDocIdRef.current === docId && data.groups) {
-          setState(data);
+      .then((data) => {
+        if (currentDocIdRef.current === docId) {
+          // Belt-and-suspenders: route already migrates, but if a stale
+          // file slips through we still want a clean shape on the client.
+          setState(migrateQuotationsState(data));
         }
       })
       .catch(() => {});
@@ -41,16 +61,29 @@ export function useQuotations(docId: string | null) {
     }
   }, []);
 
+  // Helper to update one group and persist atomically.
+  const updateGroup = useCallback(
+    (groupId: string, mutate: (g: QuotationGroup) => QuotationGroup) => {
+      setState((prev) => {
+        const newState = {
+          groups: prev.groups.map((g) => (g.id === groupId ? mutate(g) : g)),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist]
+  );
+
+  // --- Group ops ---
+
   const addGroup = useCallback(
     (init?: { text?: string; paragraphId?: string | null }) => {
       const newGroup: QuotationGroup = {
         id: uuid(),
         title: "",
-        citeKey: "",
+        references: [makeReference("", [makeQuote(init?.text ?? "")])],
         paragraphId: init?.paragraphId ?? null,
-        quotations: [
-          { id: uuid(), title: "", text: init?.text ?? "", page: "" },
-        ],
         notes: "",
         createdAt: new Date().toISOString(),
       };
@@ -60,21 +93,6 @@ export function useQuotations(docId: string | null) {
         return newState;
       });
       return newGroup;
-    },
-    [persist]
-  );
-
-  const setParagraphId = useCallback(
-    (groupId: string, paragraphId: string | null) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId ? { ...g, paragraphId } : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
     },
     [persist]
   );
@@ -90,107 +108,115 @@ export function useQuotations(docId: string | null) {
     [persist]
   );
 
-  const addQuotation = useCallback(
-    (groupId: string) => {
-      const newQuote: Quotation = { id: uuid(), title: "", text: "", page: "" };
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId
-              ? { ...g, quotations: [...g.quotations, newQuote] }
-              : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
-      return newQuote.id;
-    },
-    [persist]
-  );
-
   const updateGroupTitle = useCallback(
     (groupId: string, title: string) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId ? { ...g, title } : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
+      updateGroup(groupId, (g) => ({ ...g, title }));
     },
-    [persist]
-  );
-
-  const updateQuotation = useCallback(
-    (groupId: string, quotationId: string, fields: Partial<Pick<Quotation, "title" | "text" | "page">>) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId
-              ? {
-                  ...g,
-                  quotations: g.quotations.map((q) =>
-                    q.id === quotationId ? { ...q, ...fields } : q
-                  ),
-                }
-              : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
-    },
-    [persist]
-  );
-
-  const deleteQuotation = useCallback(
-    (groupId: string, quotationId: string) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId
-              ? { ...g, quotations: g.quotations.filter((q) => q.id !== quotationId) }
-              : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
-    },
-    [persist]
-  );
-
-  const updateCiteKey = useCallback(
-    (groupId: string, citeKey: string) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId ? { ...g, citeKey } : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
-    },
-    [persist]
+    [updateGroup]
   );
 
   const updateNotes = useCallback(
     (groupId: string, notes: string) => {
-      setState((prev) => {
-        const newState = {
-          groups: prev.groups.map((g) =>
-            g.id === groupId ? { ...g, notes } : g
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
+      updateGroup(groupId, (g) => ({ ...g, notes }));
     },
-    [persist]
+    [updateGroup]
+  );
+
+  const setParagraphId = useCallback(
+    (groupId: string, paragraphId: string | null) => {
+      updateGroup(groupId, (g) => ({ ...g, paragraphId }));
+    },
+    [updateGroup]
+  );
+
+  // --- Reference ops ---
+
+  const addReference = useCallback(
+    (groupId: string) => {
+      const newRef = makeReference();
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: [...g.references, newRef],
+      }));
+      return newRef.id;
+    },
+    [updateGroup]
+  );
+
+  const deleteReference = useCallback(
+    (groupId: string, referenceId: string) => {
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: g.references.filter((r) => r.id !== referenceId),
+      }));
+    },
+    [updateGroup]
+  );
+
+  const updateReferenceCiteKey = useCallback(
+    (groupId: string, referenceId: string, citeKey: string) => {
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: g.references.map((r) =>
+          r.id === referenceId ? { ...r, citeKey } : r
+        ),
+      }));
+    },
+    [updateGroup]
+  );
+
+  // --- Quote ops ---
+
+  const addQuote = useCallback(
+    (groupId: string, referenceId: string) => {
+      const newQuote = makeQuote();
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: g.references.map((r) =>
+          r.id === referenceId ? { ...r, quotes: [...r.quotes, newQuote] } : r
+        ),
+      }));
+      return newQuote.id;
+    },
+    [updateGroup]
+  );
+
+  const updateQuote = useCallback(
+    (
+      groupId: string,
+      referenceId: string,
+      quoteId: string,
+      fields: Partial<Pick<Quote, "text" | "page">>
+    ) => {
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: g.references.map((r) =>
+          r.id === referenceId
+            ? {
+                ...r,
+                quotes: r.quotes.map((q) =>
+                  q.id === quoteId ? { ...q, ...fields } : q
+                ),
+              }
+            : r
+        ),
+      }));
+    },
+    [updateGroup]
+  );
+
+  const deleteQuote = useCallback(
+    (groupId: string, referenceId: string, quoteId: string) => {
+      updateGroup(groupId, (g) => ({
+        ...g,
+        references: g.references.map((r) =>
+          r.id === referenceId
+            ? { ...r, quotes: r.quotes.filter((q) => q.id !== quoteId) }
+            : r
+        ),
+      }));
+    },
+    [updateGroup]
   );
 
   return {
@@ -198,11 +224,13 @@ export function useQuotations(docId: string | null) {
     addGroup,
     deleteGroup,
     updateGroupTitle,
-    addQuotation,
-    updateQuotation,
-    deleteQuotation,
-    updateCiteKey,
     updateNotes,
     setParagraphId,
+    addReference,
+    deleteReference,
+    updateReferenceCiteKey,
+    addQuote,
+    updateQuote,
+    deleteQuote,
   };
 }
