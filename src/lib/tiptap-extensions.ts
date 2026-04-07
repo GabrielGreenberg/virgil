@@ -1,6 +1,10 @@
 import { Node, Mark, mergeAttributes, Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
+import {
+  footnoteHtmlToPlainText,
+  normalizeFootnoteContent,
+} from "@/lib/footnote-content";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
 let _pendingAutoFocusComment = false;
@@ -416,7 +420,7 @@ export const Footnote = Node.create({
             ) + text;
             const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
             if (!match) return false;
-            const content = match[1];
+            const content = normalizeFootnoteContent(match[1]);
             const footnoteId = crypto.randomUUID();
             const start = from + 1 - match[0].length;
             const tr = state.tr.replaceWith(
@@ -524,7 +528,7 @@ export const Footnote = Node.create({
       dom.draggable = true;
       dom.style.cursor = "grab";
       dom.textContent = String(node.attrs.number || "1");
-      dom.title = node.attrs.content || "";
+      dom.title = footnoteHtmlToPlainText(node.attrs.content || "");
 
       dom.addEventListener("click", (e) => {
         e.preventDefault();
@@ -548,7 +552,7 @@ export const Footnote = Node.create({
 
         const textarea = document.createElement("textarea");
         textarea.className = "footnote-editor-input";
-        textarea.value = node.attrs.content || "";
+        textarea.value = footnoteHtmlToPlainText(node.attrs.content || "");
         textarea.rows = 3;
         textarea.placeholder = "Footnote text...";
 
@@ -565,7 +569,7 @@ export const Footnote = Node.create({
         textarea.focus();
 
         const commit = () => {
-          const newVal = textarea.value;
+          const newVal = normalizeFootnoteContent(textarea.value);
           const pos = typeof getPos === "function" ? getPos() : undefined;
           if (pos != null && editor && editor.view) {
             editor.view.dispatch(

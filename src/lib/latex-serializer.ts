@@ -1,5 +1,6 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
+import { footnoteHtmlToLatex, footnoteHtmlToPlainText } from "@/lib/footnote-content";
 
 const PREAMBLE = `\\documentclass{article}
 \\usepackage[utf8]{inputenc}
@@ -132,7 +133,7 @@ function serializeNode(node: JSONContent, insideList = false): string {
       return `\\[\n${node.attrs?.latex || ""}\n\\]\n\n`;
 
     case "footnote":
-      return `\\footnote{${node.attrs?.content || ""}}`;
+      return `\\footnote{${footnoteHtmlToLatex(node.attrs?.content || "")}}`;
 
     case "latexComment":
       return `% ${node.attrs?.text || ""}\n`;
@@ -164,7 +165,7 @@ function serializeInline(node: JSONContent): string {
     return `$${node.attrs?.latex || ""}$`;
   }
   if (node.type === "footnote") {
-    return `\\footnote{${node.attrs?.content || ""}}`;
+    return `\\footnote{${footnoteHtmlToLatex(node.attrs?.content || "")}}`;
   }
   if (node.type === "archiveMarker") {
     const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
@@ -258,7 +259,7 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "text") return node.text || "";
   if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
   if (node.type === "citation") return node.attrs?.command || "";
-  if (node.type === "footnote") return node.attrs?.content || "";
+  if (node.type === "footnote") return footnoteHtmlToPlainText(node.attrs?.content || "");
   if (node.type === "hardBreak") return " ";
   if (node.type === "archiveMarker") return "";
   if (!node.content) return "";
