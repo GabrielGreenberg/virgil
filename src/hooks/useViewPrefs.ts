@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "search" | "wordcount" | "blank";
+export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "search" | "wordcount" | "blank" | "omni";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -42,6 +42,8 @@ const DEFAULT_PREFS: ViewPrefs = {
     { id: "revisions", side: "right" },
     { id: "cutter", side: "right" },
     { id: "archive", side: "right" },
+    // NOTE: "omni" and "blank" are presentation-tool pod panels — they
+    // are not placed in the strip and are not part of `placements`.
   ],
   activeLeft: null,
   activeRight: null,
