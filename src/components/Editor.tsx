@@ -88,6 +88,18 @@ export interface EditorHandle {
   insertCitation: (command: string, citationId: string, displayText: string) => void;
   getActiveParagraphId: () => string | null;
   scrollToParagraphId: (uuid: string) => void;
+  /**
+   * Returns the UUID of the paragraph (or list/heading with paragraph-like uuid)
+   * containing the given doc position. If the node has no UUID yet, one is
+   * generated and applied. Returns null if no eligible node is found.
+   */
+  ensureParagraphUuid: (pos: number) => string | null;
+  /** Like ensureParagraphUuid but for the paragraph containing the current selection. */
+  ensureActiveParagraphUuid: () => string | null;
+  /** Resolve a screen-space (clientX, clientY) point to a paragraph UUID, ensuring one. */
+  ensureParagraphUuidAtCoords: (x: number, y: number) => string | null;
+  /** Returns paragraph UUIDs and their top offset (px) within the editor scroll container. */
+  getParagraphPositions: () => Array<{ id: string; top: number }>;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -701,6 +713,58 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-16 py-10",
       },
       handleDrop(view, event) {
+        // --- Quotation drop (from QuotationsPanel) ---
+        const quotData = event.dataTransfer?.getData("application/x-virgil-quotation");
+        if (quotData) {
+          event.preventDefault();
+          try {
+            const { groupId } = JSON.parse(quotData);
+            if (!groupId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true;
+            // Walk up to find the enclosing paragraph/heading/list and ensure
+            // it has a uuid attribute. Mirrors ensureParagraphUuid above.
+            const $pos = view.state.doc.resolve(posResult.pos);
+            let paragraphId: string | null = null;
+            for (let depth = $pos.depth; depth >= 0; depth--) {
+              const node = $pos.node(depth);
+              const name = node.type.name;
+              if (
+                name === "paragraph" ||
+                name === "heading" ||
+                name === "bulletList" ||
+                name === "orderedList"
+              ) {
+                if (node.attrs?.uuid) {
+                  paragraphId = node.attrs.uuid as string;
+                } else {
+                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
+                  const newUuid = Math.random().toString(16).slice(2, 10);
+                  try {
+                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
+                      ...node.attrs,
+                      uuid: newUuid,
+                    });
+                    tr.setMeta("addToHistory", false);
+                    view.dispatch(tr);
+                    paragraphId = newUuid;
+                  } catch { /* ignore */ }
+                }
+                break;
+              }
+            }
+            if (paragraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-quotation-drop", {
+                  detail: { groupId, paragraphId },
+                })
+              );
+            }
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
         // --- Citation drop ---
         const citData = event.dataTransfer?.getData("application/x-virgil-citation");
         if (citData && onCitationDropRef.current) {
@@ -1267,6 +1331,91 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           scrollEl.scrollTop = Math.max(0, targetY);
         }
       } catch { /* pos out of range */ }
+    },
+    ensureParagraphUuid(pos: number): string | null {
+      if (!editor) return null;
+      const doc = editor.state.doc;
+      if (pos < 0 || pos > doc.content.size) return null;
+      const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+      // Walk up to find the nearest paragraph/heading/list ancestor that holds a UUID.
+      for (let depth = $pos.depth; depth >= 0; depth--) {
+        const node = $pos.node(depth);
+        const name = node.type.name;
+        if (
+          name === "paragraph" ||
+          name === "heading" ||
+          name === "bulletList" ||
+          name === "orderedList"
+        ) {
+          if (node.attrs?.uuid) return node.attrs.uuid as string;
+          // Generate and apply
+          const nodePos = depth === 0 ? 0 : $pos.before(depth);
+          const newUuid = Math.random().toString(16).slice(2, 10);
+          try {
+            const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
+              ...node.attrs,
+              uuid: newUuid,
+            });
+            // Mark this transaction as a metadata-only change so persistence
+            // layers can ignore it if they want.
+            tr.setMeta("addToHistory", false);
+            editor.view.dispatch(tr);
+            return newUuid;
+          } catch {
+            return null;
+          }
+        }
+      }
+      return null;
+    },
+    ensureActiveParagraphUuid(): string | null {
+      if (!editor) return null;
+      return (this as EditorHandle).ensureParagraphUuid(editor.state.selection.from);
+    },
+    ensureParagraphUuidAtCoords(x: number, y: number): string | null {
+      if (!editor) return null;
+      let posResult: { pos: number; inside: number } | null;
+      try {
+        posResult = editor.view.posAtCoords({ left: x, top: y });
+      } catch {
+        return null;
+      }
+      if (!posResult) return null;
+      return (this as EditorHandle).ensureParagraphUuid(posResult.pos);
+    },
+    getParagraphPositions(): Array<{ id: string; top: number }> {
+      if (!editor) return [];
+      const view = editor.view;
+      let scrollEl: HTMLElement | null = null;
+      try {
+        scrollEl = view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+      } catch {
+        return [];
+      }
+      if (!scrollEl) return [];
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const result: Array<{ id: string; top: number }> = [];
+      editor.state.doc.descendants((node, pos) => {
+        const name = node.type.name;
+        const id = node.attrs?.uuid as string | undefined;
+        if (
+          id &&
+          (name === "paragraph" ||
+            name === "heading" ||
+            name === "bulletList" ||
+            name === "orderedList")
+        ) {
+          try {
+            const coords = view.coordsAtPos(pos + 1);
+            const top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+            result.push({ id, top });
+          } catch { /* ignore */ }
+        }
+        // Don't recurse into list items — the list itself carries the uuid
+        if (name === "bulletList" || name === "orderedList") return false;
+        return true;
+      });
+      return result;
     },
   }), [editor]);
 

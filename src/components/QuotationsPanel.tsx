@@ -375,8 +375,34 @@ function ReferenceCard({
     return matchedEntry.fields.title.replace(/[{}]/g, "");
   }, [matchedEntry]);
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      // Don't initiate drag from inside form controls — let the user
+      // interact with text fields normally
+      const target = e.target as HTMLElement;
+      if (target.closest("input, textarea, button")) {
+        e.preventDefault();
+        return;
+      }
+      e.dataTransfer.effectAllowed = "link";
+      e.dataTransfer.setData(
+        "application/x-virgil-quotation",
+        JSON.stringify({ groupId: group.id })
+      );
+      // Plain-text fallback
+      e.dataTransfer.setData("text/plain", group.quotations[0]?.text || "");
+    },
+    [group.id, group.quotations]
+  );
+
   return (
-    <div className={panelCard(selected)} onClick={onSelect}>
+    <div
+      className={panelCard(selected)}
+      onClick={onSelect}
+      draggable
+      onDragStart={handleDragStart}
+      data-quotation-group-id={group.id}
+    >
       <div className={PANEL.cardInner}>
         {/* Reference header */}
         <div className="flex items-start justify-between mb-2">
@@ -456,6 +482,9 @@ export interface QuotationsPanelProps {
   onDeleteQuotation: (groupId: string, qId: string) => void;
   onUpdateCiteKey: (groupId: string, key: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
+  /** Optional controlled selected group id */
+  selectedGroupId?: string | null;
+  onSelectGroup?: (groupId: string | null) => void;
 }
 
 export default function QuotationsPanel({
@@ -468,19 +497,44 @@ export default function QuotationsPanel({
   onDeleteQuotation,
   onUpdateCiteKey,
   onUpdateNotes,
+  selectedGroupId: controlledSelectedGroupId,
+  onSelectGroup,
 }: QuotationsPanelProps) {
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [internalSelectedGroupId, setInternalSelectedGroupId] = useState<
+    string | null
+  >(null);
+  const selectedGroupId =
+    controlledSelectedGroupId !== undefined
+      ? controlledSelectedGroupId
+      : internalSelectedGroupId;
+  const setSelectedGroupId = useCallback(
+    (id: string | null) => {
+      if (onSelectGroup) onSelectGroup(id);
+      else setInternalSelectedGroupId(id);
+    },
+    [onSelectGroup]
+  );
+
+  // Scroll the selected group into view when selection changes externally
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    const el = listRef.current?.querySelector(
+      `[data-quotation-group-id="${selectedGroupId}"]`
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selectedGroupId]);
 
   const handleAdd = useCallback(() => {
     const g = onAddGroup();
     setSelectedGroupId(g.id);
-  }, [onAddGroup]);
+  }, [onAddGroup, setSelectedGroupId]);
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <PanelHeader title="Quotations" count={groups.length} />
 
-      <div className={PANEL.list}>
+      <div className={PANEL.list} ref={listRef}>
         {groups.length === 0 ? (
           <div className={PANEL.empty}>
             No references yet. Add one to start collecting quotes.

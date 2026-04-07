@@ -30,7 +30,8 @@ import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useQuotations } from "@/hooks/useQuotations";
-import NoteMarkers from "./NoteMarkers";
+import Marginalia from "./Marginalia";
+import type { MarginaliaMarker } from "@/lib/marginalia";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -588,6 +589,7 @@ export default function EditorLayout() {
     deleteQuotation,
     updateCiteKey: updateQuotationCiteKey,
     updateNotes: updateQuotationNotes,
+    setParagraphId: setQuotationParagraphId,
   } = useQuotations(currentDocId);
   const {
     items: todoItems,
@@ -644,6 +646,8 @@ export default function EditorLayout() {
     setActiveLeft,
     setActiveRight,
   } = useViewPrefs();
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -659,6 +663,7 @@ export default function EditorLayout() {
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
+  const [selectedQuotationGroupId, setSelectedQuotationGroupId] = useState<string | null>(null);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
   const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
@@ -1184,6 +1189,75 @@ export default function EditorLayout() {
     setSelectedFootnoteId(result.footnoteId);
   }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
+  // --- Quotation handlers ---
+  const handleQuoteSelection = useCallback(() => {
+    if (!editorRef.current) return;
+    const ed = editorRef.current.getEditor();
+    if (!ed) return;
+    const { from, to } = ed.state.selection;
+    if (from === to) return; // nothing selected
+    const text = ed.state.doc.textBetween(from, to, " ").trim();
+    if (!text) return;
+    const paragraphId = editorRef.current.ensureParagraphUuid(from);
+    const group = addQuotationGroup({ text, paragraphId });
+    // Open quotations panel
+    const placement = prefs.placements.find((p) => p.id === "quotations");
+    if (placement?.side === "left") {
+      if (prefs.activeLeft !== "quotations") setActiveLeft("quotations");
+    } else {
+      if (prefs.activeRight !== "quotations") setActiveRight("quotations");
+    }
+    setSelectedQuotationGroupId(group.id);
+  }, [
+    addQuotationGroup,
+    prefs.placements,
+    prefs.activeLeft,
+    prefs.activeRight,
+    setActiveLeft,
+    setActiveRight,
+  ]);
+
+  // Listen for quotation drops onto paragraphs (dispatched by Editor.tsx handleDrop)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.groupId && detail?.paragraphId) {
+        setQuotationParagraphId(detail.groupId, detail.paragraphId);
+        setSelectedQuotationGroupId(detail.groupId);
+      }
+    };
+    window.addEventListener("virgil-quotation-drop", handler);
+    return () => window.removeEventListener("virgil-quotation-drop", handler);
+  }, [setQuotationParagraphId]);
+
+  const handleQuotationMarkerClick = useCallback(
+    (groupId: string) => {
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "quotations");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "quotations") setActiveLeft("quotations");
+      } else {
+        if (p.activeRight !== "quotations") setActiveRight("quotations");
+      }
+      setSelectedQuotationGroupId(groupId);
+    },
+    [setActiveLeft, setActiveRight]
+  );
+
+  const handleNoteMarkerClick = useCallback(
+    (noteId: string) => {
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "notes");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "notes") setActiveLeft("notes");
+      } else {
+        if (p.activeRight !== "notes") setActiveRight("notes");
+      }
+      setSelectedNoteId(selectedNoteId === noteId ? null : noteId);
+    },
+    [setActiveLeft, setActiveRight, selectedNoteId]
+  );
+
   const handleEditFootnote = useCallback((id: string, newContent: string) => {
     editorRef.current?.updateFootnoteContent(id, newContent);
   }, []);
@@ -1227,8 +1301,6 @@ export default function EditorLayout() {
   }, [orphanedFootnotes]);
 
   // Listen for archive marker clicks from the editor
-  const prefsRef = useRef(prefs);
-  prefsRef.current = prefs;
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
@@ -1500,6 +1572,123 @@ export default function EditorLayout() {
     if (!searchPanelOpen) setSearchHighlightRange(null);
   }, [searchPanelOpen]);
 
+  // --- Marginalia: build the marker list and side map ---
+  // (Hooks must run on every render — placed before any early returns.)
+  const marginaliaPanelSides = useMemo(
+    () => ({
+      quotations:
+        prefs.activeLeft === "quotations"
+          ? ("left" as const)
+          : prefs.activeRight === "quotations"
+            ? ("right" as const)
+            : null,
+      notes:
+        prefs.activeLeft === "notes"
+          ? ("left" as const)
+          : prefs.activeRight === "notes"
+            ? ("right" as const)
+            : null,
+      archive:
+        prefs.activeLeft === "archive"
+          ? ("left" as const)
+          : prefs.activeRight === "archive"
+            ? ("right" as const)
+            : null,
+      revisions:
+        prefs.activeLeft === "revisions"
+          ? ("left" as const)
+          : prefs.activeRight === "revisions"
+            ? ("right" as const)
+            : null,
+      cutter:
+        prefs.activeLeft === "cutter"
+          ? ("left" as const)
+          : prefs.activeRight === "cutter"
+            ? ("right" as const)
+            : null,
+    }),
+    [prefs.activeLeft, prefs.activeRight]
+  );
+
+  // Track editor doc version so we re-resolve note anchorPos → paragraphId
+  // whenever the document changes (paragraph positions/uuids may shift).
+  const [editorDocVersion, setEditorDocVersion] = useState(0);
+  useEffect(() => {
+    if (!editorInstance) return;
+    const bump = () => setEditorDocVersion((v) => v + 1);
+    editorInstance.on("update", bump);
+    return () => {
+      editorInstance.off("update", bump);
+    };
+  }, [editorInstance]);
+
+  const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
+    // Touch editorDocVersion so this memo recomputes when the doc changes
+    void editorDocVersion;
+    const result: MarginaliaMarker[] = [];
+
+    // Quotation markers — anchored by paragraphId
+    for (const g of quotationGroups) {
+      if (!g.paragraphId) continue;
+      result.push({
+        id: g.id,
+        type: "quote",
+        paragraphId: g.paragraphId,
+        selected: selectedQuotationGroupId === g.id,
+        title: g.quotations[0]?.title || g.citeKey || "Quotation",
+        onClick: () => handleQuotationMarkerClick(g.id),
+      });
+    }
+
+    // Note markers — derive paragraphId from anchorPos via the editor
+    if (editorInstance) {
+      const doc = editorInstance.state.doc;
+      for (const n of notes) {
+        if (n.anchorPos < 0 || n.anchorPos > doc.content.size) continue;
+        const $pos = doc.resolve(Math.min(Math.max(n.anchorPos, 0), doc.content.size));
+        let paragraphId: string | null = null;
+        for (let depth = $pos.depth; depth >= 0; depth--) {
+          const ancestor = $pos.node(depth);
+          const name = ancestor.type.name;
+          if (
+            name === "paragraph" ||
+            name === "heading" ||
+            name === "bulletList" ||
+            name === "orderedList"
+          ) {
+            paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
+            // If the enclosing paragraph has no uuid, assign one so the
+            // marker can anchor to it.
+            if (!paragraphId) {
+              paragraphId = editorRef.current?.ensureParagraphUuid(n.anchorPos) ?? null;
+            }
+            break;
+          }
+        }
+        if (!paragraphId) continue;
+        result.push({
+          id: n.id,
+          type: "note",
+          paragraphId,
+          selected: selectedNoteId === n.id,
+          title: "Note",
+          onClick: () => handleNoteMarkerClick(n.id),
+        });
+      }
+    }
+
+    return result;
+  }, [
+    quotationGroups,
+    selectedQuotationGroupId,
+    notes,
+    selectedNoteId,
+    editorInstance,
+    editorDocVersion,
+    handleQuotationMarkerClick,
+    handleNoteMarkerClick,
+  ]);
+
   // Loading
   if (filesLoading) {
     return (
@@ -1530,6 +1719,8 @@ export default function EditorLayout() {
   const revisionsPanelActive = activeLeft === "revisions" || activeRight === "revisions";
   const notesPanelSide: "left" | "right" | null =
     activeLeft === "notes" ? "left" : activeRight === "notes" ? "right" : null;
+  const quotationsPanelSide: "left" | "right" | null =
+    activeLeft === "quotations" ? "left" : activeRight === "quotations" ? "right" : null;
   const archivePanelSide: "left" | "right" | null =
     activeLeft === "archive" ? "left" : activeRight === "archive" ? "right" : null;
   const footnotePanelSide: "left" | "right" | null =
@@ -1795,6 +1986,8 @@ export default function EditorLayout() {
             onDeleteQuotation={deleteQuotation}
             onUpdateCiteKey={updateQuotationCiteKey}
             onUpdateNotes={updateQuotationNotes}
+            selectedGroupId={selectedQuotationGroupId}
+            onSelectGroup={setSelectedQuotationGroupId}
           />
         </ResizablePanel>
       );
@@ -2083,7 +2276,7 @@ export default function EditorLayout() {
 
         {/* Editor column: toolbar + content */}
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`}>
-          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} onOpenPreferences={() => setPreferencesOpen(true)} />
+          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} onQuoteSelection={handleQuoteSelection} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} onOpenPreferences={() => setPreferencesOpen(true)} />
           {currentDocId && content && !docLoading ? (
             <>
               <VirgilEditor
@@ -2101,12 +2294,10 @@ export default function EditorLayout() {
                   return { id: ref.id, displayText: display };
                 }}
               />
-              <NoteMarkers
+              <Marginalia
                 editor={editorInstance}
-                notes={notes}
-                panelSide={notesPanelSide}
-                selectedNoteId={selectedNoteId}
-                onSelectNote={setSelectedNoteId}
+                markers={marginaliaMarkers}
+                panelSides={marginaliaPanelSides}
               />
             </>
           ) : (
