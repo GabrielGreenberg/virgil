@@ -143,6 +143,7 @@ export interface FootnotesState {
 
 export interface UserNote {
   id: string;
+  title: string; // optional display title (empty string if untitled)
   content: string; // HTML string (rich text from mini editor)
   anchorPos: number; // document position the note is tied to
   createdAt: string;

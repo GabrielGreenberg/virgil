@@ -789,6 +789,55 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
+        // --- Note drop (from NotesPanel) ---
+        // Re-anchors a note to the dropped paragraph. Does NOT insert any
+        // text — the note keeps living in the side panel; only its
+        // anchorPos changes so the gutter "N" marker moves.
+        const noteData = event.dataTransfer?.getData("application/x-virgil-note");
+        if (noteData) {
+          event.preventDefault();
+          try {
+            const { noteId } = JSON.parse(noteData);
+            if (!noteId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true;
+            // Walk up to the enclosing paragraph and ensure it has a uuid
+            // so the marginalia marker can anchor to it on the next render.
+            const $pos = view.state.doc.resolve(posResult.pos);
+            for (let depth = $pos.depth; depth >= 0; depth--) {
+              const node = $pos.node(depth);
+              const name = node.type.name;
+              if (
+                name === "paragraph" ||
+                name === "heading" ||
+                name === "bulletList" ||
+                name === "orderedList"
+              ) {
+                if (!node.attrs?.uuid) {
+                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
+                  const newUuid = Math.random().toString(16).slice(2, 10);
+                  try {
+                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
+                      ...node.attrs,
+                      uuid: newUuid,
+                    });
+                    tr.setMeta("addToHistory", false);
+                    view.dispatch(tr);
+                  } catch { /* ignore */ }
+                }
+                break;
+              }
+            }
+            window.dispatchEvent(
+              new CustomEvent("virgil-note-drop", {
+                detail: { noteId, anchorPos: posResult.pos },
+              })
+            );
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
         // --- Footnote drop (from panel) ---
         const fnData = event.dataTransfer?.getData("application/x-virgil-footnote");
         if (fnData) {

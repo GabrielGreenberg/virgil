@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import type { UserNote } from "@/lib/types";
 import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
@@ -8,6 +8,7 @@ interface NotesPanelProps {
   notes: UserNote[];
   onAdd: (anchorPos: number, content?: string) => UserNote;
   onUpdate: (id: string, content: string) => void;
+  onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
@@ -81,17 +82,20 @@ function NoteEditor({
   note,
   selected,
   onUpdate,
+  onUpdateTitle,
   onDelete,
   onSelect,
 }: {
   note: UserNote;
   selected: boolean;
   onUpdate: (id: string, content: string) => void;
+  onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
 }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const titleDebounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== note.content) {
@@ -107,27 +111,64 @@ function NoteEditor({
     }, 400);
   }, [note.id, onUpdate]);
 
+  // Title input is uncontrolled — defaultValue is set per note.id (the
+  // outer .map keys NoteEditor on note.id, so a fresh mount happens on
+  // selection change). This avoids `setState` in an effect.
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const v = e.target.value;
+      if (titleDebounceRef.current) clearTimeout(titleDebounceRef.current);
+      titleDebounceRef.current = setTimeout(() => {
+        onUpdateTitle(note.id, v);
+      }, 300);
+    },
+    [note.id, onUpdateTitle]
+  );
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent<HTMLSpanElement>) => {
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = "link";
+      e.dataTransfer.setData(
+        "application/x-virgil-note",
+        JSON.stringify({ noteId: note.id })
+      );
+      // Plain-text fallback so the drag image isn't empty everywhere.
+      e.dataTransfer.setData("text/plain", note.title || "Note");
+    },
+    [note.id, note.title]
+  );
+
   return (
     <div
       className={panelCard(selected)}
       onClick={() => onSelect(selected ? null : note.id)}
     >
       <div className={PANEL.cardInner}>
-        <div className="flex items-center justify-between mb-1">
-          <span className="inline-flex items-center gap-1">
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-400 bg-emerald-50 text-emerald-700 text-[10px] font-bold leading-none">
-              N
-            </span>
-            <span className="text-[10px] text-[var(--muted)]">
-              {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-            </span>
+        <div className="flex items-center justify-between gap-1.5 mb-1">
+          <span
+            draggable
+            onDragStart={handleDragStart}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-400 bg-emerald-50 text-emerald-700 text-[10px] font-bold leading-none shrink-0 cursor-grab active:cursor-grabbing"
+            title="Drag to anchor this note to a paragraph"
+          >
+            N
           </span>
+          <input
+            type="text"
+            defaultValue={note.title}
+            onChange={handleTitleChange}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Title"
+            className="flex-1 min-w-0 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
+          />
           <ItemMenu>
             <MenuDelete onClick={() => onDelete(note.id)} />
           </ItemMenu>
         </div>
 
-        {selected && <FormatToolbar editorRef={editorRef} />}
+        <FormatToolbar editorRef={editorRef} />
 
         <div
           ref={editorRef}
@@ -147,6 +188,7 @@ export default function NotesPanel({
   notes,
   onAdd,
   onUpdate,
+  onUpdateTitle,
   onDelete,
   onSelectNote,
   selectedNoteId,
@@ -199,6 +241,7 @@ export default function NotesPanel({
             note={note}
             selected={selectedNoteId === note.id}
             onUpdate={onUpdate}
+            onUpdateTitle={onUpdateTitle}
             onDelete={onDelete}
             onSelect={onSelectNote}
           />

@@ -735,6 +735,7 @@ export default function EditorLayout() {
     notes,
     addNote,
     updateNote,
+    updateNoteTitle,
     updateNotePosition,
     deleteNote,
   } = useNotes(currentDocId);
@@ -1462,6 +1463,20 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-quotation-drop", handler);
   }, [setQuotationParagraphId]);
 
+  // Listen for note drops onto paragraphs — re-anchor the note to the
+  // dropped doc position. Marginalia derives the paragraphId on its own.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.noteId && typeof detail.anchorPos === "number") {
+        updateNotePosition(detail.noteId, detail.anchorPos);
+        setSelectedNoteId(detail.noteId);
+      }
+    };
+    window.addEventListener("virgil-note-drop", handler);
+    return () => window.removeEventListener("virgil-note-drop", handler);
+  }, [updateNotePosition]);
+
   const handleQuotationMarkerClick = useCallback(
     (groupId: string) => {
       const p = prefsRef.current;
@@ -2162,6 +2177,7 @@ export default function EditorLayout() {
           notes={notes}
           onAdd={addNote}
           onUpdate={updateNote}
+          onUpdateTitle={updateNoteTitle}
           onDelete={deleteNote}
           onSelectNote={setSelectedNoteId}
           selectedNoteId={selectedNoteId}
