@@ -6,7 +6,7 @@ import type { BibEntry, CitationRef } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder from "./CitationBuilder";
 
@@ -161,7 +161,7 @@ function CitationsPanel({
   };
 
   /* ── Shared card content (used in both views) ──────────────────── */
-  const renderCardContent = (cit: CitationRef) => {
+  const renderCardContent = (cit: CitationRef, isSelected: boolean) => {
     // Edit mode: show full builder
     if (editingCitationId === cit.id) {
       return (
@@ -184,8 +184,14 @@ function CitationsPanel({
 
     return (
       <>
+        {/* Target icon when selected */}
+        {isSelected && (
+          <div className="absolute top-1.5 right-1.5" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+            <TargetIcon onClick={() => onScrollToMarker(cit.id)} title="Jump to citation" />
+          </div>
+        )}
         {/* Citation key buttons */}
-        <div className="flex flex-wrap gap-1.5 mb-2">
+        <div className={`flex flex-wrap gap-1.5 mb-2${isSelected ? " pr-7" : ""}`}>
           {cit.keys.map((key) => {
             const entry = bibEntryMap.get(key);
             const isActive = expandedKey === key;
@@ -337,10 +343,10 @@ function CitationsPanel({
                   onDragStart={(e) => handleCiteDragStart(e, cit)}
                   className={`absolute left-2 right-2 ${panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")} in-text-connector in-text-connector-${panelSide}`}
                   style={{ top }}
-                  onClick={() => { onSelect(isSelected ? null : cit.id); onScrollToMarker(cit.id); }}
+                  onClick={() => onSelect(isSelected ? null : cit.id)}
                 >
                   <div className={PANEL.cardInner}>
-                    {renderCardContent(cit)}
+                    {renderCardContent(cit, isSelected)}
                   </div>
                 </div>
               );
@@ -356,10 +362,10 @@ function CitationsPanel({
                 draggable
                 onDragStart={(e) => handleCiteDragStart(e, cit)}
                 className={panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}
-                onClick={() => { onSelect(isSelected ? null : cit.id); onScrollToMarker(cit.id); }}
+                onClick={() => onSelect(isSelected ? null : cit.id)}
               >
                 <div className={PANEL.cardInner}>
-                  {renderCardContent(cit)}
+                  {renderCardContent(cit, isSelected)}
                 </div>
               </div>
             );

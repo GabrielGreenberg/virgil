@@ -15,6 +15,7 @@ import {
   ItemMenu,
   MenuDelete,
   PrevNextCounter,
+  TargetIcon,
   useCycle,
 } from "./panel-primitives";
 
@@ -454,6 +455,7 @@ function GroupCard({
   selected,
   onSelect,
   onDelete,
+  onJump,
   onUpdateGroupTitle,
   onAddReference,
   onDeleteReference,
@@ -468,6 +470,7 @@ function GroupCard({
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onJump?: () => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
   onDeleteReference: (groupId: string, referenceId: string) => void;
@@ -535,9 +538,14 @@ function GroupCard({
             placeholder="Group title..."
             className="flex-1 text-base font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal border-b border-transparent focus:border-stone-200 pb-0.5"
           />
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} label="Delete group" />
-          </ItemMenu>
+          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+            {selected && onJump && (
+              <TargetIcon onClick={onJump} title="Jump to quotation in text" />
+            )}
+            <ItemMenu>
+              <MenuDelete onClick={onDelete} label="Delete group" />
+            </ItemMenu>
+          </div>
         </div>
 
         {/* References */}
@@ -701,6 +709,7 @@ export default function QuotationsPanel({
               selected={selectedGroupId === group.id}
               onSelect={() => setSelectedGroupId(group.id)}
               onDelete={() => onDeleteGroup(group.id)}
+              onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
               onUpdateGroupTitle={onUpdateGroupTitle}
               onAddReference={onAddReference}
               onDeleteReference={onDeleteReference}

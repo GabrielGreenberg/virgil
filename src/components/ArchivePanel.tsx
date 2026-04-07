@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -140,19 +140,25 @@ function ArchivePanel({
             {snippets.map((s) => {
               const top = positions.get(s.id);
               if (top === undefined) return null;
+              const isSelected = selectedId === s.id;
               return (
                 <div
                   key={s.id}
                   data-archive-entry={s.id}
                   className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
-                    selectedId === s.id
+                    isSelected
                       ? "bg-amber-50 border-l-2 border-l-amber-400 border-b-stone-300"
                       : "border-b-stone-300 hover:bg-stone-50"
                   }`}
                   style={{ top }}
-                  onClick={() => onSelect(selectedId === s.id ? null : s.id)}
+                  onClick={() => onSelect(isSelected ? null : s.id)}
                 >
-                  <p className="text-xs text-stone-600 leading-snug line-clamp-2"
+                  {isSelected && onScrollToMarker && (
+                    <div className="absolute top-1 right-1">
+                      <TargetIcon onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
+                    </div>
+                  )}
+                  <p className="text-xs text-stone-600 leading-snug line-clamp-2 pr-6"
                     style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
                     {s.text}
                   </p>
@@ -178,43 +184,29 @@ function ArchivePanel({
             >
               <div className={PANEL.cardInner}>
                 <div className="flex items-start gap-2.5">
-                  {/* Three-dot menu — top right */}
-                  <div className="absolute top-2 right-2">
+                  {/* Top-right controls: target (when selected + anchored) + three-dot menu */}
+                  <div className="absolute top-2 right-2 flex items-center gap-0.5">
+                    {isSelected && isAnchored && onScrollToMarker && (
+                      <TargetIcon onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
+                    )}
                     <ItemMenu>
                       <MenuDelete onClick={() => onDelete(s.id)} />
                     </ItemMenu>
                   </div>
-                  {/* Anchor badge — draggable for orphaned snippets to re-anchor by drop */}
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelect(s.id);
-                      if (isAnchored) onScrollToMarker?.(s.id);
-                    }}
+                  {/* Anchor badge — visual only for anchored; drag handle for orphaned (re-anchor on drop) */}
+                  <span
                     draggable={orphaned}
                     onDragStart={orphaned ? (e) => handleAnchorDragStart(e, s) : undefined}
-                    className={`inline-flex items-center gap-0.5 shrink-0 mt-0.5 ${
-                      isAnchored ? "cursor-pointer group" : "cursor-grab active:cursor-grabbing"
+                    onClick={orphaned ? (e) => e.stopPropagation() : undefined}
+                    className={`inline-flex items-center shrink-0 mt-0.5 ${
+                      orphaned ? "cursor-grab active:cursor-grabbing" : ""
                     }`}
-                    title={
-                      orphaned
-                        ? "Drag onto a paragraph to re-anchor"
-                        : "Go to anchor in document"
-                    }
+                    title={orphaned ? "Drag onto a paragraph to re-anchor" : "Archived snippet"}
                   >
-                    {isAnchored && (
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none"
-                        className="text-[#7191b0] opacity-0 group-hover:opacity-100 transition-opacity order-first"
-                        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="1" y1="6" x2="8" y2="6" />
-                        <polyline points="5 3 8 6 5 9" />
-                      </svg>
-                    )}
                     <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
                       <rect x="1" y="1" width="14" height="14" rx="3"
                         stroke={orphaned ? "#b0b0b0" : "#7191b0"} strokeWidth="1.5"
                         fill={orphaned ? "#f5f5f4" : "#f0f5fa"}
-                        className={isAnchored ? "group-hover:fill-[#dce8f3]" : ""}
                       />
                       <text x="8" y="12" textAnchor="middle" fontSize="10" fontWeight="600"
                         fill={orphaned ? "#b0b0b0" : "#7191b0"}
@@ -224,7 +216,7 @@ function ArchivePanel({
                           stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
                       )}
                     </svg>
-                  </button>
+                  </span>
 
                   <div className="flex-1 min-w-0">
                     <div className="relative">

@@ -366,3 +366,41 @@ export function MenuDelete({ onClick, label }: { onClick: () => void; label?: st
     </button>
   );
 }
+
+/* ── Target icon ──────────────────────────────────────────────────── */
+
+/**
+ * Small target/bullseye button shown in the top-right of a *selected*
+ * panel card. Clicking it jumps the editor to the element's anchor in
+ * the document. Clicking the surrounding card only selects; jump is
+ * always done through this button.
+ *
+ * The button stops propagation so parent card click handlers don't also
+ * fire their own select behavior.
+ */
+export function TargetIcon({
+  onClick,
+  title = "Jump to in text",
+  className,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className={`p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-white/60 transition-colors ${className ?? ""}`}
+      title={title}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <circle cx="12" cy="12" r="5" />
+        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+      </svg>
+    </button>
+  );
+}

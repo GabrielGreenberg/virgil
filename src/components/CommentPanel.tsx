@@ -14,6 +14,7 @@ import {
   PanelHeader,
   ItemMenu,
   MenuDelete,
+  TargetIcon,
 } from "./panel-primitives";
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -356,6 +357,7 @@ interface CardProps {
   selected: boolean;
   header?: React.ReactNode;
   onSelect: () => void;
+  onJump?: () => void;
   onResolve: () => void;
   onReopen: () => void;
   onDelete: () => void;
@@ -371,6 +373,7 @@ function RevisionCard({
   selected,
   header,
   onSelect,
+  onJump,
   onResolve,
   onReopen,
   onDelete,
@@ -386,9 +389,14 @@ function RevisionCard({
       <div className={`${PANEL.cardInner} space-y-2`}>
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">{header}</div>
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
+          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+            {selected && onJump && (
+              <TargetIcon onClick={onJump} title="Jump to text in document" />
+            )}
+            <ItemMenu>
+              <MenuDelete onClick={onDelete} />
+            </ItemMenu>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -801,13 +809,22 @@ export default function RevisionsPanel({
                 </div>
               }
               onSelect={() => {
+                // Clear any existing highlight when switching selection —
+                // jumps (and the accompanying highlight) happen only via the
+                // target icon.
+                onHighlight(null);
                 if (isSelected) {
                   onSelectRevision(null);
-                  onHighlight(null);
                 } else {
                   onSelectRevision(r.id);
-                  onHighlight(r.selectedText);
                 }
+              }}
+              onJump={() => {
+                // Re-trigger onHighlight even if already set, so the editor
+                // re-applies the mark and scrolls to the text.
+                onHighlight(null);
+                // Use a microtask so the null->text transition is observed.
+                queueMicrotask(() => onHighlight(r.selectedText));
               }}
               onResolve={() => handleResolve("text", r.id)}
               onReopen={() => onReopen("text", r.id)}

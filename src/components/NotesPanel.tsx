@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import RichTextField from "./RichTextField";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 
@@ -30,6 +30,7 @@ function NoteCard({
   onUpdateTitle,
   onDelete,
   onSelect,
+  onJump,
   getCitationDisplayText,
   onCitationCreated,
 }: {
@@ -39,6 +40,7 @@ function NoteCard({
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
+  onJump?: () => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
 }) {
@@ -97,6 +99,9 @@ function NoteCard({
             placeholder="Title"
             className="flex-1 min-w-0 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
           />
+          {selected && onJump && (
+            <TargetIcon onClick={onJump} title="Jump to note anchor" />
+          )}
           <ItemMenu>
             <MenuDelete onClick={() => onDelete(note.id)} />
           </ItemMenu>
@@ -181,6 +186,7 @@ export default function NotesPanel({
             onUpdateTitle={onUpdateTitle}
             onDelete={onDelete}
             onSelect={onSelectNote}
+            onJump={onScrollToPos ? () => onScrollToPos(note.anchorPos) : undefined}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
           />

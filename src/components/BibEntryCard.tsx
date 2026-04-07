@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, TargetIcon } from "./panel-primitives";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -26,6 +26,8 @@ export interface BibEntryCardProps {
   bibEntries?: BibEntry[];
   /** Whether this entry is cited in the document. */
   isCited?: boolean;
+  /** Called when user clicks the target icon to jump to this entry in the text. Only shown when selected. */
+  onJump?: () => void;
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -120,7 +122,7 @@ function AnnotationEditor({
 export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
-  occurrenceInfo, compact, bibPackage, bibEntries, isCited = true,
+  occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
 }: BibEntryCardProps) {
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
@@ -200,19 +202,32 @@ export default function BibEntryCard({
   };
 
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
-  const pr = hasOccCounter ? "pr-16" : "";
+  const showTargetIcon = isSelected && !!onJump && !compact;
+  // Reserve right padding so text doesn't run under top-right widgets.
+  const pr = showTargetIcon
+    ? (hasOccCounter ? "pr-24" : "pr-8")
+    : (hasOccCounter ? "pr-16" : "");
 
   const content = (
     <>
-      {/* Occurrence counter — top right */}
-      {hasOccCounter && (
+      {/* Top-right widgets: target icon (when selected) + occurrence counter */}
+      {(showTargetIcon || hasOccCounter) && (
         <div
-          className="absolute top-2.5 right-3 flex items-center gap-0.5 text-xs text-stone-400"
+          className="absolute top-2 right-2 flex items-center gap-1"
           onClick={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
-          <button onClick={() => occurrenceInfo.onCycle(-1)} className="hover:text-stone-600 px-0.5" title="Previous occurrence">&#x25B2;</button>
-          <span className="font-mono">{occurrenceInfo.current + 1}/{occurrenceInfo.total}</span>
-          <button onClick={() => occurrenceInfo.onCycle(1)} className="hover:text-stone-600 px-0.5" title="Next occurrence">&#x25BC;</button>
+          {showTargetIcon && (
+            <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+          )}
+          {hasOccCounter && (
+            <div className="flex items-center gap-0.5 text-xs text-stone-400">
+              <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-stone-600 px-0.5" title="Previous occurrence">&#x25B2;</button>
+              <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
+              <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-stone-600 px-0.5" title="Next occurrence">&#x25BC;</button>
+            </div>
+          )}
         </div>
       )}
 
