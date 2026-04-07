@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { UserNote } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -12,6 +12,7 @@ interface NotesPanelProps {
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
   cursorPos: number;
+  onScrollToPos?: (pos: number) => void;
 }
 
 function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElement | null> }) {
@@ -150,12 +151,40 @@ export default function NotesPanel({
   onSelectNote,
   selectedNoteId,
   cursorPos,
+  onScrollToPos,
 }: NotesPanelProps) {
-  const sortedNotes = [...notes].sort((a, b) => a.anchorPos - b.anchorPos);
+  const sortedNotes = useMemo(
+    () => [...notes].sort((a, b) => a.anchorPos - b.anchorPos),
+    [notes],
+  );
+
+  const onActivateNote = useCallback(
+    (note: UserNote) => {
+      onSelectNote(note.id);
+      onScrollToPos?.(note.anchorPos);
+    },
+    [onSelectNote, onScrollToPos],
+  );
+  const { idx, next, prev, setIdx } = useCycle(sortedNotes, onActivateNote);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedNoteId) return;
+    const i = sortedNotes.findIndex((n) => n.id === selectedNoteId);
+    if (i >= 0 && i !== idx) setIdx(i);
+  }, [selectedNoteId, sortedNotes, idx, setIdx]);
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Notes" count={notes.length} onAdd={() => onAdd(cursorPos)} />
+      <PanelHeader title="Notes" count={notes.length} onAdd={() => onAdd(cursorPos)}>
+        <PrevNextCounter
+          current={idx}
+          total={sortedNotes.length}
+          onPrev={prev}
+          onNext={next}
+          label="notes"
+        />
+      </PanelHeader>
 
       <div className={PANEL.list}>
         {sortedNotes.length === 0 && (

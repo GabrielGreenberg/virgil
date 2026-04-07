@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
-import { panelCard, PANEL } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter } from "./panel-primitives";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -196,68 +196,21 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
     [results, goNext, goPrev],
   );
 
-  /* ── Counter text ────────────────────────────────────────────────── */
-
-  const counterText = useMemo(() => {
-    if (!query) return null;
-    if (results.length === 0) return "0 results";
-    if (selectedIdx === null) return `${results.length} results`;
-    return `${selectedIdx + 1} of ${results.length}`;
-  }, [query, results.length, selectedIdx]);
-
   /* ── Render ──────────────────────────────────────────────────────── */
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      {/* Header with counter + nav arrows */}
-      <div className={`${PANEL.header} flex items-center justify-between`}>
-        <h3 className="text-sm font-semibold text-stone-700">Search</h3>
-        {counterText && (
-          <div className="flex items-center gap-1">
-            <span className="text-xs text-[var(--muted)] tabular-nums mr-1">
-              {counterText}
-            </span>
-            <button
-              onClick={goPrev}
-              disabled={results.length === 0}
-              className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
-              title="Previous match (Up)"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="18 15 12 9 6 15" />
-              </svg>
-            </button>
-            <button
-              onClick={goNext}
-              disabled={results.length === 0}
-              className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
-              title="Next match (Down)"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <polyline points="6 9 12 15 18 9" />
-              </svg>
-            </button>
-          </div>
+      <PanelHeader title="Search">
+        {query && (
+          <PrevNextCounter
+            current={selectedIdx}
+            total={results.length}
+            onPrev={goPrev}
+            onNext={goNext}
+            label="results"
+          />
         )}
-      </div>
+      </PanelHeader>
 
       {/* Search input + toggles */}
       <div className="px-3 py-2 border-b border-[var(--border)] flex items-center gap-2">

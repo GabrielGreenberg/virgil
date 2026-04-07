@@ -100,6 +100,8 @@ export interface EditorHandle {
   ensureParagraphUuidAtCoords: (x: number, y: number) => string | null;
   /** Returns paragraph UUIDs and their top offset (px) within the editor scroll container. */
   getParagraphPositions: () => Array<{ id: string; top: number }>;
+  /** Scroll to a raw doc position (used by panel prev/next navigation). */
+  scrollToPos: (pos: number) => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -1416,6 +1418,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         return true;
       });
       return result;
+    },
+    scrollToPos(pos: number): void {
+      if (!editor) return;
+      const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
+      try {
+        editor.commands.setTextSelection(clamped);
+        const coords = editor.view.coordsAtPos(clamped);
+        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        if (scrollEl && coords) {
+          const scrollRect = scrollEl.getBoundingClientRect();
+          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
+          scrollEl.scrollTop = Math.max(0, targetY);
+        }
+      } catch { /* pos out of range */ }
     },
   }), [editor]);
 

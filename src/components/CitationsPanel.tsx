@@ -6,7 +6,7 @@ import type { BibEntry, CitationRef } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, useCycle } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder from "./CitationBuilder";
 
@@ -116,6 +116,24 @@ function CitationsPanel({
   };
 
   const visibleCitations = orderedCitations;
+
+  const onActivateCitation = useCallback(
+    (cit: CitationRef) => {
+      onSelect(cit.id);
+      onScrollToMarker(cit.id);
+    },
+    [onSelect, onScrollToMarker],
+  );
+  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
+    useCycle(orderedCitations, onActivateCitation);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedId) return;
+    const i = orderedCitations.findIndex((c) => c.id === selectedId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedId, orderedCitations, cycleIdx, setCycleIdx]);
+
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -236,6 +254,13 @@ function CitationsPanel({
       {/* Header */}
       <PanelHeader title="Citations" count={citations.length} onAdd={() => { onStartCreate(); }}>
         <div className="flex items-center gap-1.5">
+          <PrevNextCounter
+            current={cycleIdx}
+            total={orderedCitations.length}
+            onPrev={cyclePrev}
+            onNext={cycleNext}
+            label="citations"
+          />
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
           <div className="relative" ref={menuRef}>
             <button

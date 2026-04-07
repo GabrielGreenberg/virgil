@@ -10,10 +10,19 @@ export interface PanelPlacement {
   side: Side;
 }
 
+export type Half = "top" | "bottom";
+
 export interface ViewPrefs {
   placements: PanelPlacement[];
+  /** Top half (or only half when not split). */
   activeLeft: PanelId | null;
   activeRight: PanelId | null;
+  /** Bottom half — null when the side is not split. */
+  activeLeftBottom: PanelId | null;
+  activeRightBottom: PanelId | null;
+  /** 0..1 — top half height ratio when the side is split. */
+  splitLeftRatio: number;
+  splitRightRatio: number;
   panelWidths: Record<string, number>; // keyed by `${side}-${panelId}`
 }
 
@@ -34,6 +43,10 @@ const DEFAULT_PREFS: ViewPrefs = {
   ],
   activeLeft: null,
   activeRight: "notes",
+  activeLeftBottom: null,
+  activeRightBottom: null,
+  splitLeftRatio: 0.5,
+  splitRightRatio: 0.5,
   panelWidths: {},
 };
 
@@ -183,6 +196,65 @@ export function useViewPrefs() {
     return prefs.panelWidths[side] || 320;
   }, [prefs.panelWidths]);
 
+  /** Set the panel id for a specific half of a side. */
+  const setActiveHalf = useCallback(
+    (side: Side, half: Half, id: PanelId | null) => {
+      update((p) => {
+        if (side === "left") {
+          return half === "top"
+            ? { ...p, activeLeft: id }
+            : { ...p, activeLeftBottom: id };
+        }
+        return half === "top"
+          ? { ...p, activeRight: id }
+          : { ...p, activeRightBottom: id };
+      });
+    },
+    [update],
+  );
+
+  /**
+   * Toggle split for a side. If not currently split, splits with the
+   * existing active panel as top and "blank" as bottom (or vice-versa
+   * if there's no active panel). If split, collapses by keeping the
+   * top half and clearing the bottom.
+   */
+  const toggleSplit = useCallback((side: Side) => {
+    update((p) => {
+      const isSplit =
+        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
+      if (side === "left") {
+        if (isSplit) {
+          return { ...p, activeLeftBottom: null };
+        }
+        // Splitting: ensure top is something visible; bottom defaults to blank
+        const top = p.activeLeft ?? "blank";
+        return {
+          ...p,
+          activeLeft: top,
+          activeLeftBottom: "blank",
+        };
+      } else {
+        if (isSplit) {
+          return { ...p, activeRightBottom: null };
+        }
+        const top = p.activeRight ?? "blank";
+        return {
+          ...p,
+          activeRight: top,
+          activeRightBottom: "blank",
+        };
+      }
+    });
+  }, [update]);
+
+  const setSplitRatio = useCallback((side: Side, ratio: number) => {
+    const clamped = Math.max(0.05, Math.min(0.95, ratio));
+    update((p) => (side === "left"
+      ? { ...p, splitLeftRatio: clamped }
+      : { ...p, splitRightRatio: clamped }));
+  }, [update]);
+
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
@@ -200,5 +272,8 @@ export function useViewPrefs() {
     movePanel,
     setPanelWidth,
     getPanelWidth,
+    setActiveHalf,
+    toggleSplit,
+    setSplitRatio,
   };
 }
