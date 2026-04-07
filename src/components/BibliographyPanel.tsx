@@ -85,6 +85,9 @@ function BibliographyPanel({
   const [requestText, setRequestText] = useState("");
   const requestInputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Ref for the entries list — used for keyboard navigation scroll + focus
+  const listRef = useRef<HTMLDivElement>(null);
+
   // Click-outside for three-dot menu
   useEffect(() => {
     if (!menuOpen) return;
@@ -212,6 +215,63 @@ function BibliographyPanel({
   }, [bibEntries, citedKeys, filter]);
 
   const existingKeys = useMemo(() => new Set(bibEntries.map((e) => e.key)), [bibEntries]);
+
+  /* ── Keyboard navigation (ArrowUp / ArrowDown) ─────────────────────── */
+
+  const selectedIdx = useMemo(() => {
+    if (!selectedBibKey) return -1;
+    return sortedEntries.findIndex((e) => e.key === selectedBibKey);
+  }, [selectedBibKey, sortedEntries]);
+
+  const navigateToEntry = useCallback(
+    (key: string) => {
+      handleSelectBibKey(key);
+      requestAnimationFrame(() => {
+        const card = listRef.current?.querySelector(
+          `[data-bib-entry="${CSS.escape(key)}"]`,
+        );
+        card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      });
+    },
+    [handleSelectBibKey],
+  );
+
+  const goNext = useCallback(() => {
+    if (sortedEntries.length === 0) return;
+    const next =
+      selectedIdx === -1 ? 0 : (selectedIdx + 1) % sortedEntries.length;
+    navigateToEntry(sortedEntries[next].key);
+  }, [sortedEntries, selectedIdx, navigateToEntry]);
+
+  const goPrev = useCallback(() => {
+    if (sortedEntries.length === 0) return;
+    const prev =
+      selectedIdx === -1
+        ? sortedEntries.length - 1
+        : (selectedIdx - 1 + sortedEntries.length) % sortedEntries.length;
+    navigateToEntry(sortedEntries[prev].key);
+  }, [sortedEntries, selectedIdx, navigateToEntry]);
+
+  const handleNavKeys = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (sortedEntries.length === 0) return;
+      // Don't intercept when typing in a nested input, textarea, or
+      // contenteditable (e.g. annotation editor, inline field edits).
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        goNext();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        goPrev();
+      }
+    },
+    [sortedEntries, goNext, goPrev],
+  );
 
   // File picker for general bibliography
   const handlePickGeneralBib = useCallback(async () => {
@@ -465,7 +525,13 @@ function BibliographyPanel({
         </div>
       )}
 
-      <div className={PANEL.list}>
+      <div
+        ref={listRef}
+        className={PANEL.list}
+        tabIndex={0}
+        onKeyDown={handleNavKeys}
+        style={{ outline: "none" }}
+      >
         {sortedEntries.length === 0 && (
           <div className={PANEL.empty}>
             {filter === "cited"
@@ -485,7 +551,10 @@ function BibliographyPanel({
               key={entry.key}
               entry={entry}
               isSelected={isSelected}
-              onClick={() => handleSelectBibKey(isSelected ? null : entry.key)}
+              onClick={() => {
+                handleSelectBibKey(isSelected ? null : entry.key);
+                listRef.current?.focus();
+              }}
               getFormattedBib={getFormattedBib}
               getAnnotation={getAnnotation}
               setAnnotation={setAnnotation}
