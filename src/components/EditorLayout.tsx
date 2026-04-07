@@ -21,7 +21,7 @@ import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
 import { useDocument } from "@/hooks/useDocument";
 import { useSuggestions } from "@/hooks/useSuggestions";
-import { useComments } from "@/hooks/useComments";
+import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
@@ -723,14 +723,22 @@ export default function EditorLayout() {
     clearSuggestions,
   } = useSuggestions(currentDocId);
   const {
-    comments,
-    activeComments,
-    resolvedComments,
-    addComment,
-    updateComment,
-    resolveComment,
-    deleteComment,
-  } = useComments(currentDocId);
+    users: revisionUsers,
+    activeUserId: activeRevisionUserId,
+    generalRevisions,
+    textRevisions,
+    setActiveUser: setActiveRevisionUser,
+    addUser: addRevisionUser,
+    addGeneralRevision,
+    addTextRevision,
+    addTurn: addRevisionTurn,
+    resolveRevision,
+    reopenRevision,
+    deleteRevision,
+  } = useRevisions(currentDocId);
+  const activeRevisionsCount =
+    generalRevisions.filter((r) => !r.resolved).length +
+    textRevisions.filter((r) => !r.resolved).length;
   const {
     notes,
     addNote,
@@ -1679,9 +1687,12 @@ export default function EditorLayout() {
     };
   }, [editorInstance, deleteSnippet]);
 
+  const pendingRevisionAnchorRef = useRef<number>(0);
+
   const handleAddComment = useCallback(() => {
     const selectedText = editorRef.current?.getSelectedText();
     if (!selectedText || selectedText.trim().length === 0) return;
+    pendingRevisionAnchorRef.current = editorInstance?.state?.selection?.from ?? 0;
     setPendingCommentText(selectedText);
     // Ensure revisions panel is open (setActiveLeft/Right are toggles, so only call if not already active)
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
@@ -1690,16 +1701,16 @@ export default function EditorLayout() {
     } else {
       if (prefs.activeRight !== "revisions") setActiveRight("revisions");
     }
-  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight, editorInstance]);
 
   const handleSubmitComment = useCallback(
     (comment: string) => {
       if (pendingCommentText && comment.trim()) {
-        addComment(pendingCommentText, comment.trim());
+        addTextRevision(pendingCommentText, pendingRevisionAnchorRef.current, comment.trim());
       }
       setPendingCommentText(null);
     },
-    [addComment, pendingCommentText]
+    [addTextRevision, pendingCommentText]
   );
 
   const handleCancelComment = useCallback(() => {
@@ -2087,28 +2098,24 @@ export default function EditorLayout() {
     if (panelId === "revisions") {
       return (
         <RevisionsPanel
-          comments={comments}
-          activeComments={activeComments}
-          resolvedComments={resolvedComments}
-          onResolve={resolveComment}
-          onDelete={deleteComment}
-          onUpdate={updateComment}
-          onHighlight={setCommentHighlight}
+          users={revisionUsers}
+          activeUserId={activeRevisionUserId}
+          generalRevisions={generalRevisions}
+          textRevisions={textRevisions}
+          onSetActiveUser={setActiveRevisionUser}
+          onAddUser={addRevisionUser}
+          onAddGeneral={(text) => { addGeneralRevision(text); }}
+          onAddTurn={addRevisionTurn}
+          onResolve={resolveRevision}
+          onReopen={reopenRevision}
+          onDelete={deleteRevision}
           visible={true}
           pendingSelectedText={pendingCommentText}
           onSubmitNew={handleSubmitComment}
           onCancelNew={handleCancelComment}
-          selectedCommentId={selectedCommentId}
-          onSelectComment={setSelectedCommentId}
-          editor={editorInstance}
-          panelSide={side}
-          viewMode={getPanelViewMode("revisions")}
-          onViewModeChange={(m) => setPanelViewMode("revisions", m)}
-          onScrollToPos={handleScrollToPos}
-          onClose={() => {
-            if (side === "left") setActiveLeft(null);
-            else setActiveRight(null);
-          }}
+          selectedRevisionId={selectedCommentId}
+          onSelectRevision={setSelectedCommentId}
+          onHighlight={setCommentHighlight}
         />
       );
     }
@@ -2571,7 +2578,7 @@ export default function EditorLayout() {
               onClick={() => handleStripClick(p.id, "left")}
               onMove={handleMove}
               side="left"
-              badge={p.id === "revisions" && activeComments.length > 0}
+              badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
             />
           ))}
@@ -2709,7 +2716,7 @@ export default function EditorLayout() {
               onClick={() => handleStripClick(p.id, "right")}
               onMove={handleMove}
               side="right"
-              badge={p.id === "revisions" && activeComments.length > 0}
+              badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
             />
           ))}

@@ -1,0 +1,261 @@
+"use client";
+
+import { useState, useCallback, useEffect, useRef } from "react";
+import { v4 as uuid } from "uuid";
+import type {
+  GeneralRevision,
+  RevisionTurn,
+  RevisionUser,
+  RevisionsState,
+  TextRevision,
+} from "@/lib/types";
+
+const DEFAULT_USERS: RevisionUser[] = [
+  { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
+  { id: "me", name: "Me", color: "#3b82f6", isDefault: true },
+];
+
+const EMPTY_STATE: RevisionsState = {
+  users: [...DEFAULT_USERS],
+  generalRevisions: [],
+  textRevisions: [],
+  activeUserId: "me",
+};
+
+export type RevisionKind = "general" | "text";
+
+export function useRevisions(docId: string | null) {
+  const [state, setState] = useState<RevisionsState>(EMPTY_STATE);
+  const currentDocIdRef = useRef(docId);
+
+  const load = useCallback((id: string | null) => {
+    if (!id) {
+      setState(EMPTY_STATE);
+      return;
+    }
+    fetch(`/api/revisions?docId=${id}`)
+      .then((r) => r.json())
+      .then((data: RevisionsState) => {
+        if (currentDocIdRef.current !== id) return;
+        setState({
+          users: data.users?.length ? data.users : [...DEFAULT_USERS],
+          generalRevisions: data.generalRevisions ?? [],
+          textRevisions: data.textRevisions ?? [],
+          activeUserId: data.activeUserId ?? "me",
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    currentDocIdRef.current = docId;
+    load(docId);
+  }, [docId, load]);
+
+  // Refresh on window focus so Claude-authored turns show up after the
+  // agent writes them directly to revisions.json.
+  useEffect(() => {
+    const onFocus = () => load(currentDocIdRef.current);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
+  const persist = useCallback(async (newState: RevisionsState) => {
+    const id = currentDocIdRef.current;
+    if (!id) return;
+    try {
+      await fetch(`/api/revisions?docId=${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newState),
+      });
+    } catch (err) {
+      console.error("Failed to save revisions:", err);
+    }
+  }, []);
+
+  const update = useCallback(
+    (mut: (prev: RevisionsState) => RevisionsState) => {
+      setState((prev) => {
+        const next = mut(prev);
+        persist(next);
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  const setActiveUser = useCallback(
+    (userId: string) => {
+      update((prev) => ({ ...prev, activeUserId: userId }));
+    },
+    [update],
+  );
+
+  const addUser = useCallback(
+    (name: string, color: string): RevisionUser => {
+      const u: RevisionUser = { id: uuid(), name: name.trim(), color };
+      update((prev) => ({ ...prev, users: [...prev.users, u], activeUserId: u.id }));
+      return u;
+    },
+    [update],
+  );
+
+  const addGeneralRevision = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return null;
+      const now = new Date().toISOString();
+      let created: GeneralRevision | null = null;
+      update((prev) => {
+        const authorId = prev.activeUserId ?? "me";
+        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        const rev: GeneralRevision = {
+          id: uuid(),
+          authorId,
+          createdAt: now,
+          text: trimmed,
+          turns: [turn],
+          resolved: false,
+        };
+        created = rev;
+        return { ...prev, generalRevisions: [...prev.generalRevisions, rev] };
+      });
+      return created;
+    },
+    [update],
+  );
+
+  const addTextRevision = useCallback(
+    (selectedText: string, anchorPos: number, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return null;
+      const now = new Date().toISOString();
+      let created: TextRevision | null = null;
+      update((prev) => {
+        const authorId = prev.activeUserId ?? "me";
+        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        const rev: TextRevision = {
+          id: uuid(),
+          authorId,
+          createdAt: now,
+          resolved: false,
+          selectedText,
+          anchorPos,
+          text: trimmed,
+          turns: [turn],
+        };
+        created = rev;
+        return { ...prev, textRevisions: [...prev.textRevisions, rev] };
+      });
+      return created;
+    },
+    [update],
+  );
+
+  const addTurn = useCallback(
+    (kind: RevisionKind, revisionId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const now = new Date().toISOString();
+      update((prev) => {
+        const authorId = prev.activeUserId ?? "me";
+        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.map((r) =>
+              r.id === revisionId ? { ...r, turns: [...r.turns, turn] } : r,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.map((r) =>
+            r.id === revisionId ? { ...r, turns: [...r.turns, turn] } : r,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  const resolveRevision = useCallback(
+    (kind: RevisionKind, revisionId: string) => {
+      update((prev) => {
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.map((r) =>
+              r.id === revisionId ? { ...r, resolved: true } : r,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.map((r) =>
+            r.id === revisionId ? { ...r, resolved: true } : r,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  const reopenRevision = useCallback(
+    (kind: RevisionKind, revisionId: string) => {
+      update((prev) => {
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.map((r) =>
+              r.id === revisionId ? { ...r, resolved: false } : r,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.map((r) =>
+            r.id === revisionId ? { ...r, resolved: false } : r,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  const deleteRevision = useCallback(
+    (kind: RevisionKind, revisionId: string) => {
+      update((prev) => {
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.filter((r) => r.id !== revisionId),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.filter((r) => r.id !== revisionId),
+        };
+      });
+    },
+    [update],
+  );
+
+  return {
+    state,
+    users: state.users,
+    activeUserId: state.activeUserId ?? "me",
+    generalRevisions: state.generalRevisions,
+    textRevisions: state.textRevisions,
+    setActiveUser,
+    addUser,
+    addGeneralRevision,
+    addTextRevision,
+    addTurn,
+    resolveRevision,
+    reopenRevision,
+    deleteRevision,
+    refresh: () => load(currentDocIdRef.current),
+  };
+}
