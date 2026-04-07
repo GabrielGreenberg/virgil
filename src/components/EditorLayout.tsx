@@ -1389,13 +1389,17 @@ export default function EditorLayout() {
     setSelectedArchiveId(null);
   }, [deleteSnippet]);
 
-  const handleReanchor = useCallback((id: string) => {
+  const handleReanchor = useCallback((id: string, pos?: number) => {
     const snippet = archiveSnippets.find((s) => s.id === id);
     if (!snippet || !editorRef.current) return;
     const editor = editorRef.current.getEditor();
     if (!editor) return;
     const preview = snippet.text.slice(0, 30);
-    editor.chain().focus().insertContent({
+    const chain = editor.chain().focus();
+    if (typeof pos === "number") {
+      chain.setTextSelection(pos);
+    }
+    chain.insertContent({
       type: "archiveMarker",
       attrs: { archiveId: id, preview },
     }).run();
@@ -1655,14 +1659,52 @@ export default function EditorLayout() {
   }, [setActiveLeft, setActiveRight]);
 
   // Handle drag-and-drop of archive snippets into the editor.
-  // ProseMirror handles the text insertion from text/plain automatically;
-  // we just need to remove the snippet from archive after the drop.
+  // - "card" drag (application/x-virgil-archive-id): ProseMirror inserts the
+  //   text from text/plain; we then remove the marker and delete from archive.
+  // - "anchor" drag (application/x-virgil-archive-anchor-id): re-anchor an
+  //   orphaned snippet by inserting an archiveMarker at the drop position.
+  //   No text is inserted and the snippet stays in archive.
   useEffect(() => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
     const editorDom = editor.view.dom;
 
+    const handleDragOver = (e: DragEvent) => {
+      const types = e.dataTransfer?.types;
+      if (!types) return;
+      if (types.includes("application/x-virgil-archive-anchor-id")) {
+        // Anchor drag: ProseMirror won't preventDefault since there's no
+        // text/plain. Do it ourselves so the drop event fires.
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
+        editorDom.classList.add("virgil-archive-drop-target");
+      } else if (types.includes("application/x-virgil-archive-id")) {
+        editorDom.classList.add("virgil-archive-drop-target");
+      }
+    };
+    const handleDragLeave = (e: DragEvent) => {
+      // Only remove highlight if we actually leave the editor
+      const related = e.relatedTarget as Node | null;
+      if (!related || !editorDom.contains(related)) {
+        editorDom.classList.remove("virgil-archive-drop-target");
+      }
+    };
+
     const handleDrop = (e: DragEvent) => {
+      editorDom.classList.remove("virgil-archive-drop-target");
+      const anchorId = e.dataTransfer?.getData("application/x-virgil-archive-anchor-id");
+      if (anchorId) {
+        // Re-anchor only — don't let ProseMirror insert any text.
+        e.preventDefault();
+        e.stopPropagation();
+        let pos: number | undefined;
+        try {
+          const result = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
+          if (result) pos = result.pos;
+        } catch { /* ignore */ }
+        handleReanchor(anchorId, pos);
+        return;
+      }
       const archiveId = e.dataTransfer?.getData("application/x-virgil-archive-id");
       if (archiveId) {
         // Let ProseMirror handle the text insertion; just clean up archive and marker
@@ -1673,11 +1715,15 @@ export default function EditorLayout() {
       }
     };
 
+    editorDom.addEventListener("dragover", handleDragOver);
+    editorDom.addEventListener("dragleave", handleDragLeave);
     editorDom.addEventListener("drop", handleDrop);
     return () => {
+      editorDom.removeEventListener("dragover", handleDragOver);
+      editorDom.removeEventListener("dragleave", handleDragLeave);
       editorDom.removeEventListener("drop", handleDrop);
     };
-  }, [editorInstance, deleteSnippet]);
+  }, [editorInstance, deleteSnippet, handleReanchor]);
 
   const handleAddComment = useCallback(() => {
     const selectedText = editorRef.current?.getSelectedText();
@@ -1959,6 +2005,46 @@ export default function EditorLayout() {
           onClick: () => handleNoteMarkerClick(n.id),
         });
       }
+
+      // Archive markers — walk the doc to find each archiveMarker node and
+      // anchor a gutter icon to its containing paragraph. The inline node
+      // stays in place; this is an additional gutter indicator.
+      doc.descendants((node, pos) => {
+        if (node.type.name !== "archiveMarker") return true;
+        const archiveId = node.attrs?.archiveId as string | undefined;
+        if (!archiveId) return true;
+        const $pos = doc.resolve(pos);
+        let paragraphId: string | null = null;
+        for (let depth = $pos.depth; depth >= 0; depth--) {
+          const ancestor = $pos.node(depth);
+          const name = ancestor.type.name;
+          if (
+            name === "paragraph" ||
+            name === "heading" ||
+            name === "bulletList" ||
+            name === "orderedList"
+          ) {
+            paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
+            if (!paragraphId) {
+              paragraphId = editorRef.current?.ensureParagraphUuid(pos) ?? null;
+            }
+            break;
+          }
+        }
+        if (!paragraphId) return true;
+        result.push({
+          id: archiveId,
+          type: "archive",
+          paragraphId,
+          selected: selectedArchiveId === archiveId,
+          title: "Archived snippet",
+          onClick: () => {
+            setSelectedArchiveId(archiveId);
+            editorRef.current?.scrollToArchiveMarker(archiveId);
+          },
+        });
+        return true;
+      });
     }
 
     return result;
@@ -1967,6 +2053,7 @@ export default function EditorLayout() {
     selectedQuotationGroupId,
     notes,
     selectedNoteId,
+    selectedArchiveId,
     editorInstance,
     editorDocVersion,
     handleQuotationMarkerClick,
@@ -2122,7 +2209,6 @@ export default function EditorLayout() {
           onInsert={handleInsertArchive}
           onRestore={handleRestoreArchive}
           onDelete={handleDeleteArchive}
-          onReanchor={handleReanchor}
           onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
           anchoredIds={anchoredIds}
           editor={editorInstance}

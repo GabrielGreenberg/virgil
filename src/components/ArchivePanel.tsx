@@ -14,7 +14,6 @@ interface ArchivePanelProps {
   onInsert: (id: string) => void;
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
-  onReanchor?: (id: string) => void;
   onScrollToMarker?: (id: string) => void;
   anchoredIds?: Set<string>;
   editor: Editor | null;
@@ -30,7 +29,6 @@ function ArchivePanel({
   onInsert,
   onRestore,
   onDelete,
-  onReanchor,
   onScrollToMarker,
   anchoredIds,
   editor,
@@ -97,6 +95,20 @@ function ArchivePanel({
     ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f5f5f4;border:1px solid #d6d3d1;border-radius:4px;font-size:12px;color:#44403c;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 10, 14);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }, []);
+
+  // Anchor-only drag (orphaned snippets) — drops re-anchor the snippet at
+  // the drop position without inserting any text.
+  const handleAnchorDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
+    e.stopPropagation();
+    e.dataTransfer.setData("application/x-virgil-archive-anchor-id", snippet.id);
+    e.dataTransfer.effectAllowed = "link";
+    const ghost = document.createElement("div");
+    ghost.textContent = "\u2693 anchor";
+    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;padding:4px 8px;background:#f0f5fa;border:1px solid #a8c1d8;border-radius:4px;font-size:11px;color:#5a7a99;font-family:var(--font-sans),sans-serif;";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 10, 10);
     requestAnimationFrame(() => document.body.removeChild(ghost));
   }, []);
 
@@ -172,17 +184,23 @@ function ArchivePanel({
                       <MenuDelete onClick={() => onDelete(s.id)} />
                     </ItemMenu>
                   </div>
-                  {/* Anchor badge */}
+                  {/* Anchor badge — draggable for orphaned snippets to re-anchor by drop */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelect(s.id);
                       if (isAnchored) onScrollToMarker?.(s.id);
                     }}
+                    draggable={orphaned}
+                    onDragStart={orphaned ? (e) => handleAnchorDragStart(e, s) : undefined}
                     className={`inline-flex items-center gap-0.5 shrink-0 mt-0.5 ${
-                      isAnchored ? "cursor-pointer group" : "cursor-default"
+                      isAnchored ? "cursor-pointer group" : "cursor-grab active:cursor-grabbing"
                     }`}
-                    title={orphaned ? "No anchor in document" : "Go to anchor in document"}
+                    title={
+                      orphaned
+                        ? "Drag onto a paragraph to re-anchor"
+                        : "Go to anchor in document"
+                    }
                   >
                     {isAnchored && (
                       <svg width="10" height="10" viewBox="0 0 12 12" fill="none"
@@ -232,24 +250,7 @@ function ArchivePanel({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between mt-2 ml-7">
-                  <span className="text-[10px] text-[var(--muted-light)] flex items-center gap-1.5">
-                    {orphaned && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onReanchor?.(s.id); }}
-                        className="inline-flex items-center justify-center text-[#7191b0] hover:text-[#4a6d8c] transition-colors"
-                        title="Insert new anchor at cursor"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                          <line x1="7" y1="3" x2="7" y2="11" />
-                          <line x1="3" y1="7" x2="11" y2="7" />
-                        </svg>
-                      </button>
-                    )}
-                    {new Date(s.createdAt).toLocaleDateString(undefined, {
-                      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
-                    })}
-                  </span>
+                <div className="flex items-center justify-end mt-2 ml-7">
                   <div className="flex gap-1.5 items-center">
                     {/* Copy button */}
                     <button
@@ -268,17 +269,21 @@ function ArchivePanel({
                         </svg>
                       )}
                     </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onInsert(s.id); }}
-                      className="text-xs text-stone-500 bg-stone-100 hover:bg-stone-200 hover:text-stone-700 px-2 py-1 rounded border border-stone-200 transition-colors"
-                      title="Insert at cursor and remove from archive"
-                    >
-                      Insert
-                    </button>
+                    {isAnchored && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onInsert(s.id); }}
+                        className="text-xs text-stone-500 bg-stone-100 hover:bg-stone-200 hover:text-stone-700 px-2 py-1 rounded border border-stone-200 transition-colors"
+                        title="Insert at cursor and remove from archive"
+                      >
+                        Insert
+                      </button>
+                    )}
                     <button
                       onClick={(e) => { e.stopPropagation(); onRestore(s.id); }}
                       className="text-xs text-[var(--accent)] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border border-stone-200 transition-colors"
-                      title="Restore to marker position and remove from archive"
+                      title={isAnchored
+                        ? "Restore to marker position and remove from archive"
+                        : "Insert at cursor and remove from archive"}
                     >
                       Restore
                     </button>
