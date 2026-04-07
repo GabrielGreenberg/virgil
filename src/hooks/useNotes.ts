@@ -20,9 +20,15 @@ export function useNotes(docId: string | null) {
     fetch(`/api/notes?docId=${docId}`)
       .then((r) => r.json())
       .then((data: NotesState) => {
-        if (currentDocIdRef.current === docId && data.notes) {
-          setState(data);
-        }
+        if (currentDocIdRef.current !== docId || !data.notes) return;
+        // Migrate legacy notes that have no `title` field — coerce to "".
+        const migrated: NotesState = {
+          notes: data.notes.map((n) => ({
+            ...n,
+            title: typeof n.title === "string" ? n.title : "",
+          })),
+        };
+        setState(migrated);
       })
       .catch(() => {});
   }, [docId]);
@@ -45,6 +51,7 @@ export function useNotes(docId: string | null) {
     (anchorPos: number, content: string = "") => {
       const newNote: UserNote = {
         id: uuid(),
+        title: "",
         content,
         anchorPos,
         createdAt: new Date().toISOString(),
@@ -65,6 +72,21 @@ export function useNotes(docId: string | null) {
         const newState = {
           notes: prev.notes.map((n) =>
             n.id === id ? { ...n, content } : n
+          ),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist]
+  );
+
+  const updateNoteTitle = useCallback(
+    (id: string, title: string) => {
+      setState((prev) => {
+        const newState = {
+          notes: prev.notes.map((n) =>
+            n.id === id ? { ...n, title } : n
           ),
         };
         persist(newState);
@@ -106,6 +128,7 @@ export function useNotes(docId: string | null) {
     notes: state.notes,
     addNote,
     updateNote,
+    updateNoteTitle,
     updateNotePosition,
     deleteNote,
   };
