@@ -9,11 +9,12 @@ import OrderedList from "@tiptap/extension-ordered-list";
 import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
-import Underline from "@tiptap/extension-underline";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
+import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner } from "@/lib/tiptap-extensions";
-import { normalizeFootnoteContent } from "@/lib/footnote-content";
+import { normalizeRichContent } from "@/lib/footnote-content";
+import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
 
 /**
@@ -59,7 +60,7 @@ interface EditorProps {
 
 export interface FootnoteInfo {
   footnoteId: string;
-  content: string;
+  content: TipJSON;
   number: number;
   pos: number;
 }
@@ -77,7 +78,7 @@ export interface EditorHandle {
   getMarkerOrder: () => string[];
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string) => void;
-  updateFootnoteContent: (footnoteId: string, newContent: string) => void;
+  updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
   deleteFootnote: (footnoteId: string) => void;
   createFootnoteFromSelection: () => { footnoteId: string } | null;
   renumberFootnotes: () => void;
@@ -697,7 +698,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       Highlight.configure({
         multicolor: true,
       }),
-      Underline,
       InlineMath,
       DisplayMath,
       Footnote,
@@ -791,18 +791,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         // --- Note drop (from NotesPanel) ---
-        // Re-anchors a note to the dropped paragraph. Does NOT insert any
-        // text — the note keeps living in the side panel; only its
-        // anchorPos changes so the gutter "N" marker moves.
+        // Inserts the note's body inline at the drop point. The note still
+        // exists in the side panel — this is a "stamp it into the text" copy.
+        // Holding Shift while dropping preserves the legacy "re-anchor only"
+        // behavior for users who relied on it.
         const noteData = event.dataTransfer?.getData("application/x-virgil-note");
         if (noteData) {
           event.preventDefault();
           try {
-            const { noteId } = JSON.parse(noteData);
+            const parsed = JSON.parse(noteData);
+            const { noteId, content } = parsed;
             if (!noteId) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
             if (!posResult) return true;
+
             // Walk up to the enclosing paragraph and ensure it has a uuid
             // so the marginalia marker can anchor to it on the next render.
             const $pos = view.state.doc.resolve(posResult.pos);
@@ -830,9 +833,43 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 break;
               }
             }
+
+            const reanchorOnly = event.shiftKey;
+            if (!reanchorOnly && content) {
+              // Insert the note body inline. The content is a JSONContent doc;
+              // pull out its inline children so we don't drop a fresh paragraph
+              // boundary in the middle of the target paragraph. Paragraphs in
+              // the source become space-separated runs.
+              try {
+                const inlineJson: TipJSON[] = [];
+                const walk = (n: TipJSON | undefined) => {
+                  if (!n) return;
+                  if (n.type === "paragraph") {
+                    if (inlineJson.length > 0) inlineJson.push({ type: "text", text: " " });
+                    (n.content || []).forEach((c) => inlineJson.push(c));
+                    return;
+                  }
+                  if (n.content) n.content.forEach(walk);
+                };
+                walk(content as TipJSON);
+                if (inlineJson.length > 0) {
+                  const pmNodes = inlineJson
+                    .map((j) => {
+                      try { return PMNode.fromJSON(view.state.schema, j); }
+                      catch { return null; }
+                    })
+                    .filter(Boolean) as PMNode[];
+                  if (pmNodes.length > 0) {
+                    const tr = view.state.tr.insert(posResult.pos, pmNodes);
+                    view.dispatch(tr);
+                  }
+                }
+              } catch { /* fall through to anchor-only */ }
+            }
+
             window.dispatchEvent(
               new CustomEvent("virgil-note-drop", {
-                detail: { noteId, anchorPos: posResult.pos },
+                detail: { noteId, anchorPos: posResult.pos, inserted: !reanchorOnly && !!content },
               })
             );
           } catch { /* ignore bad data */ }
@@ -1100,7 +1137,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (node.type.name === "footnote" && node.attrs.footnoteId) {
           footnotes.push({
             footnoteId: node.attrs.footnoteId,
-            content: normalizeFootnoteContent(node.attrs.content || ""),
+            content: normalizeRichContent(node.attrs.content),
             number: node.attrs.number || 0,
             pos,
           });
@@ -1118,7 +1155,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         el.scrollIntoView({ behavior: "instant", block: "center" });
       }
     },
-    updateFootnoteContent(footnoteId: string, newContent: string): void {
+    updateFootnoteContent(footnoteId: string, newContent: TipJSON): void {
       if (!editor) return;
       let fnPos: number | null = null;
       let fnNode: any = null;
@@ -1161,13 +1198,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
       const footnoteId = crypto.randomUUID();
+      const content: TipJSON = {
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+      };
       editor
         .chain()
         .focus()
         .deleteSelection()
         .insertContent({
           type: "footnote",
-          attrs: { footnoteId, content: text, number: 0 },
+          attrs: { footnoteId, content, number: 0 },
         })
         .run();
       return { footnoteId };

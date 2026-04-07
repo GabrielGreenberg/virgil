@@ -174,7 +174,9 @@ export interface CitationInfo {
 
 export interface FootnoteRef {
   id: string;
-  content: string;
+  // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
+  // Legacy footnotes stored HTML strings; migrated on read.
+  content: unknown;
   createdAt: string;
 }
 
@@ -187,7 +189,9 @@ export interface FootnotesState {
 export interface UserNote {
   id: string;
   title: string; // optional display title (empty string if untitled)
-  content: string; // HTML string (rich text from mini editor)
+  // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
+  // Legacy notes were stored as HTML strings; the helper migrates them on read.
+  content: unknown;
   anchorPos: number; // document position the note is tied to
   createdAt: string;
 }
@@ -272,6 +276,7 @@ export interface QuotationsState {
 
 export interface OrphanedFootnote {
   footnoteId: string;
-  content: string;
+  // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
+  content: unknown;
   orphanedAt: string;
 }

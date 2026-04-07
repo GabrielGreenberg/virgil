@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import type { JSONContent } from "@tiptap/react";
 import { v4 as uuid } from "uuid";
 import type { NotesState, UserNote } from "@/lib/types";
+import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
 
 const EMPTY_STATE: NotesState = { notes: [] };
 
@@ -21,11 +23,14 @@ export function useNotes(docId: string | null) {
       .then((r) => r.json())
       .then((data: NotesState) => {
         if (currentDocIdRef.current !== docId || !data.notes) return;
-        // Migrate legacy notes that have no `title` field — coerce to "".
+        // Migrate legacy notes:
+        //   - missing `title`  → coerce to ""
+        //   - HTML string body → convert to JSONContent
         const migrated: NotesState = {
           notes: data.notes.map((n) => ({
             ...n,
             title: typeof n.title === "string" ? n.title : "",
+            content: normalizeRichContent(n.content),
           })),
         };
         setState(migrated);
@@ -48,11 +53,11 @@ export function useNotes(docId: string | null) {
   }, []);
 
   const addNote = useCallback(
-    (anchorPos: number, content: string = "") => {
+    (anchorPos: number, content?: JSONContent) => {
       const newNote: UserNote = {
         id: uuid(),
         title: "",
-        content,
+        content: content ?? emptyRichContent(),
         anchorPos,
         createdAt: new Date().toISOString(),
       };
@@ -67,7 +72,7 @@ export function useNotes(docId: string | null) {
   );
 
   const updateNote = useCallback(
-    (id: string, content: string) => {
+    (id: string, content: JSONContent) => {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>

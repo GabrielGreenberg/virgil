@@ -524,6 +524,66 @@ body {
   background: #fff5f5;
 }
 
+/* RichTextField mini-editor (Tiptap-backed footnote/note bodies) */
+.rtf-content {
+  padding: 0.25rem 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  min-height: 2.5rem;
+  color: #44403c;
+}
+.rtf-content-footnote {
+  font-family: var(--font-serif), Georgia, serif;
+  color: #44403c;
+}
+.rtf-content-note {
+  font-family: var(--font-sans), system-ui, sans-serif;
+  color: #44403c;
+}
+.rtf-content.rtf-selected {
+  color: #ffffff;
+}
+.rtf-content.rtf-muted {
+  color: #78716c;
+}
+.rtf-content p {
+  margin: 0;
+}
+.rtf-content p + p {
+  margin-top: 0.4em;
+}
+.rtf-content ul {
+  list-style: disc;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.rtf-content ol {
+  list-style: decimal;
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.rtf-content li {
+  margin: 0.1em 0;
+}
+.rtf-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-light);
+  pointer-events: none;
+  float: left;
+  height: 0;
+  font-style: italic;
+}
+.rtf-content.rtf-selected p.is-editor-empty:first-child::before {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Drop highlight on the wrapper */
+.rtf-drop-target {
+  outline: 2px dashed #b45757;
+  outline-offset: -2px;
+  background: #fff5f5;
+}
+
 /* Footnote edit popup */
 .footnote-editor-popup {
   background: white;

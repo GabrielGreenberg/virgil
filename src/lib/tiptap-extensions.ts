@@ -2,8 +2,8 @@ import { Node, Mark, mergeAttributes, Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
 import {
-  footnoteHtmlToPlainText,
-  normalizeFootnoteContent,
+  richJsonToPlainText,
+  normalizeRichContent,
 } from "@/lib/footnote-content";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
@@ -381,7 +381,10 @@ export const Footnote = Node.create({
 
   addAttributes() {
     return {
-      content: { default: "" },
+      // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
+      // Default null so every footnote node owns its own object (avoids the
+      // single-shared-default-mutation footgun).
+      content: { default: null },
       number: { default: 1 },
       footnoteId: { default: "" },
     };
@@ -420,7 +423,7 @@ export const Footnote = Node.create({
             ) + text;
             const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
             if (!match) return false;
-            const content = normalizeFootnoteContent(match[1]);
+            const content = normalizeRichContent(match[1]);
             const footnoteId = crypto.randomUUID();
             const start = from + 1 - match[0].length;
             const tr = state.tr.replaceWith(
@@ -460,10 +463,10 @@ export const Footnote = Node.create({
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          const oldFootnotes = new Map<string, string>();
+          const oldFootnotes = new Map<string, unknown>();
           oldState.doc.descendants((node) => {
             if (node.type.name === "footnote" && node.attrs.footnoteId) {
-              oldFootnotes.set(node.attrs.footnoteId, node.attrs.content || "");
+              oldFootnotes.set(node.attrs.footnoteId, node.attrs.content);
             }
             return true;
           });
@@ -477,7 +480,7 @@ export const Footnote = Node.create({
           });
 
           for (const [id, content] of oldFootnotes) {
-            if (!newFootnotes.has(id) && content.trim()) {
+            if (!newFootnotes.has(id) && richJsonToPlainText(content).trim()) {
               setTimeout(() => {
                 window.dispatchEvent(
                   new CustomEvent("virgil-footnote-orphaned", {
@@ -519,7 +522,7 @@ export const Footnote = Node.create({
   },
 
   addNodeView() {
-    return ({ node, getPos, editor }) => {
+    return ({ node }) => {
       const dom = document.createElement("span");
       dom.className = "footnote-marker";
       dom.dataset.type = "footnote";
@@ -528,13 +531,13 @@ export const Footnote = Node.create({
       dom.draggable = true;
       dom.style.cursor = "grab";
       dom.textContent = String(node.attrs.number || "1");
-      dom.title = footnoteHtmlToPlainText(node.attrs.content || "");
+      dom.title = richJsonToPlainText(node.attrs.content);
 
+      // Click on the marker just routes the user to the side panel — the
+      // panel hosts the full Tiptap mini editor for footnote bodies now.
       dom.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-
-        // Dispatch event for panel selection
         if (node.attrs.footnoteId) {
           window.dispatchEvent(
             new CustomEvent("virgil-footnote-click", {
@@ -542,76 +545,19 @@ export const Footnote = Node.create({
             })
           );
         }
-
-        // Show a small popup input below the footnote marker
-        const existing = document.querySelector(".footnote-editor-popup");
-        if (existing) existing.remove();
-
-        const popup = document.createElement("div");
-        popup.className = "footnote-editor-popup";
-
-        const textarea = document.createElement("textarea");
-        textarea.className = "footnote-editor-input";
-        textarea.value = footnoteHtmlToPlainText(node.attrs.content || "");
-        textarea.rows = 3;
-        textarea.placeholder = "Footnote text...";
-
-        popup.appendChild(textarea);
-
-        // Position near the marker
-        const rect = dom.getBoundingClientRect();
-        popup.style.position = "fixed";
-        popup.style.left = `${rect.left}px`;
-        popup.style.top = `${rect.bottom + 4}px`;
-        popup.style.zIndex = "1000";
-
-        document.body.appendChild(popup);
-        textarea.focus();
-
-        const commit = () => {
-          const newVal = normalizeFootnoteContent(textarea.value);
-          const pos = typeof getPos === "function" ? getPos() : undefined;
-          if (pos != null && editor && editor.view) {
-            editor.view.dispatch(
-              editor.view.state.tr.setNodeMarkup(pos, undefined, {
-                ...node.attrs,
-                content: newVal,
-              })
-            );
-            // Notify persistent state about the edit
-            if (node.attrs.footnoteId) {
-              window.dispatchEvent(
-                new CustomEvent("virgil-footnote-edited", {
-                  detail: { footnoteId: node.attrs.footnoteId, content: newVal },
-                })
-              );
-            }
-          }
-          popup.remove();
-        };
-
-        textarea.addEventListener("blur", () => {
-          // Small delay to allow click on popup itself
-          setTimeout(() => {
-            if (!popup.contains(document.activeElement)) {
-              commit();
-            }
-          }, 100);
-        });
-
-        textarea.addEventListener("keydown", (e) => {
-          const ke = e as KeyboardEvent;
-          if (ke.key === "Escape") {
-            popup.remove();
-          }
-          if (ke.key === "Enter" && (ke.metaKey || ke.ctrlKey)) {
-            ke.preventDefault();
-            commit();
-          }
-        });
       });
 
-      return { dom, draggable: true };
+      return {
+        dom,
+        draggable: true,
+        update(updatedNode) {
+          if (updatedNode.type.name !== "footnote") return false;
+          dom.dataset.footnoteId = updatedNode.attrs.footnoteId || "";
+          dom.textContent = String(updatedNode.attrs.number || "1");
+          dom.title = richJsonToPlainText(updatedNode.attrs.content);
+          return true;
+        },
+      };
     };
   },
 });

@@ -1515,9 +1515,23 @@ export default function EditorLayout() {
     [setActiveLeft, setActiveRight, selectedNoteId]
   );
 
-  const handleEditFootnote = useCallback((id: string, newContent: string) => {
+  const handleEditFootnote = useCallback((id: string, newContent: JSONContent) => {
     editorRef.current?.updateFootnoteContent(id, newContent);
   }, []);
+
+  // Used by the footnote/note rich-text panels when the user drops a brand-new
+  // citation. Mirrors the main editor's onCitationDrop: register the
+  // command in the citations store so it shows up in the side panel and
+  // gets a stable id, then return the resolved id + display text for the
+  // mini-editor to attach to the new Citation node.
+  const handleCitationCreated = useCallback(
+    (command: string) => {
+      const display = getCitationDisplayText(command);
+      const ref = addCitation(command);
+      return { id: ref.id, displayText: display };
+    },
+    [getCitationDisplayText, addCitation],
+  );
 
   const handleDeleteFootnote = useCallback((id: string) => {
     suppressOrphanRef.current.add(id);
@@ -1529,7 +1543,11 @@ export default function EditorLayout() {
     const id = crypto.randomUUID();
     setOrphanedFootnotes((prev) => [
       ...prev,
-      { footnoteId: id, content: "", orphanedAt: new Date().toISOString() },
+      {
+        footnoteId: id,
+        content: { type: "doc", content: [{ type: "paragraph" }] },
+        orphanedAt: new Date().toISOString(),
+      },
     ]);
     return id;
   }, []);
@@ -1538,7 +1556,7 @@ export default function EditorLayout() {
     setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
   }, []);
 
-  const handleEditOrphan = useCallback((id: string, newContent: string) => {
+  const handleEditOrphan = useCallback((id: string, newContent: unknown) => {
     setOrphanedFootnotes((prev) => prev.map((o) =>
       o.footnoteId === id ? { ...o, content: newContent } : o
     ));
@@ -2197,6 +2215,8 @@ export default function EditorLayout() {
           selectedNoteId={selectedNoteId}
           cursorPos={editorInstance?.state?.selection?.from ?? 0}
           onScrollToPos={handleScrollToPos}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={handleCitationCreated}
         />
       );
     }
@@ -2262,6 +2282,8 @@ export default function EditorLayout() {
           onDeleteOrphan={handleDeleteOrphan}
           onEditOrphan={handleEditOrphan}
           onAdd={handleAddFootnote}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={handleCitationCreated}
         />
       );
     }

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import type { JSONContent } from "@tiptap/react";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
+import { normalizeRichContent } from "@/lib/footnote-content";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
@@ -17,7 +19,15 @@ export function useFootnotes(docId: string | null) {
     fetch(`/api/footnotes?docId=${docId}`)
       .then((r) => r.json())
       .then((data: FootnotesState) => {
-        if (docRef.current === docId && data.footnotes) setState(data);
+        if (docRef.current !== docId || !data.footnotes) return;
+        // Migrate legacy footnotes that stored content as HTML strings.
+        const migrated: FootnotesState = {
+          footnotes: data.footnotes.map((f) => ({
+            ...f,
+            content: normalizeRichContent(f.content),
+          })),
+        };
+        setState(migrated);
       })
       .catch(() => {});
   }, [docId]);
@@ -36,10 +46,10 @@ export function useFootnotes(docId: string | null) {
     }
   }, []);
 
-  const addFootnote = useCallback((content: string, existingId?: string): FootnoteRef => {
+  const addFootnote = useCallback((content: JSONContent | string, existingId?: string): FootnoteRef => {
     const ref: FootnoteRef = {
       id: existingId || crypto.randomUUID(),
-      content,
+      content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
     };
     // Skip if already registered
@@ -52,7 +62,7 @@ export function useFootnotes(docId: string | null) {
     return ref;
   }, [persist]);
 
-  const updateFootnoteContent = useCallback((id: string, content: string) => {
+  const updateFootnoteContent = useCallback((id: string, content: JSONContent) => {
     setState((prev) => {
       const next = {
         footnotes: prev.footnotes.map((f) =>
@@ -75,9 +85,8 @@ export function useFootnotes(docId: string | null) {
   }, [persist]);
 
   const syncFromEditor = useCallback(
-    (editorFootnotes: Array<{ footnoteId: string; content: string }>) => {
+    (editorFootnotes: Array<{ footnoteId: string; content: JSONContent }>) => {
       const current = stateRef.current;
-      const existingIds = new Set(current.footnotes.map((f) => f.id));
       const editorIds = new Set(editorFootnotes.map((f) => f.footnoteId));
 
       // Keep unanchored footnotes (in state but not in editor)
