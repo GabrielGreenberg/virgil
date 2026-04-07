@@ -744,12 +744,14 @@ export default function EditorLayout() {
     addGroup: addQuotationGroup,
     deleteGroup: deleteQuotationGroup,
     updateGroupTitle: updateQuotationGroupTitle,
-    addQuotation: addQuotationToGroup,
-    updateQuotation,
-    deleteQuotation,
-    updateCiteKey: updateQuotationCiteKey,
     updateNotes: updateQuotationNotes,
     setParagraphId: setQuotationParagraphId,
+    addReference: addQuotationReference,
+    deleteReference: deleteQuotationReference,
+    updateReferenceCiteKey: updateQuotationReferenceCiteKey,
+    addQuote: addQuotationQuote,
+    updateQuote: updateQuotationQuote,
+    deleteQuote: deleteQuotationQuote,
   } = useQuotations(currentDocId);
   const {
     items: todoItems,
@@ -1981,7 +1983,7 @@ export default function EditorLayout() {
         type: "quote",
         paragraphId: g.paragraphId,
         selected: selectedQuotationGroupId === g.id,
-        title: g.quotations[0]?.title || g.citeKey || "Quotation",
+        title: g.title || g.references[0]?.citeKey || "Quotation",
         onClick: () => handleQuotationMarkerClick(g.id),
       });
     }
@@ -2343,10 +2345,12 @@ export default function EditorLayout() {
           onAddGroup={addQuotationGroup}
           onDeleteGroup={deleteQuotationGroup}
           onUpdateGroupTitle={updateQuotationGroupTitle}
-          onAddQuotation={addQuotationToGroup}
-          onUpdateQuotation={updateQuotation}
-          onDeleteQuotation={deleteQuotation}
-          onUpdateCiteKey={updateQuotationCiteKey}
+          onAddReference={addQuotationReference}
+          onDeleteReference={deleteQuotationReference}
+          onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
+          onAddQuote={addQuotationQuote}
+          onUpdateQuote={updateQuotationQuote}
+          onDeleteQuote={deleteQuotationQuote}
           onUpdateNotes={updateQuotationNotes}
           selectedGroupId={selectedQuotationGroupId}
           onSelectGroup={setSelectedQuotationGroupId}
