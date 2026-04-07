@@ -39,6 +39,7 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import SearchPanel from "./SearchPanel";
+import OmniViewPanel, { type OmniSection } from "./OmniViewPanel";
 import EditorMirror from "./EditorMirror";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
@@ -238,6 +239,21 @@ function IconWordCount({ active }: { active?: boolean }) {
   );
 }
 
+// OmniView icon: same square as the blank panel button, but with a
+// few horizontal "lines" written inside to signal "all panel content".
+function IconOmni({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c}
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" />
+      <line x1="3" y1="4.25" x2="11" y2="4.25" />
+      <line x1="3" y1="7" x2="11" y2="7" />
+      <line x1="3" y1="9.75" x2="8.5" y2="9.75" />
+    </svg>
+  );
+}
+
 const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
   outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
   todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
@@ -253,6 +269,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   search: { label: "Search", icon: (a) => <IconSearch active={a} /> },
   wordcount: { label: "Word Count", icon: (a) => <IconWordCount active={a} /> },
   blank: { label: "Blank", icon: () => null },
+  omni: { label: "OmniView", icon: (a) => <IconOmni active={a} /> },
 };
 
 function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
@@ -1932,41 +1949,51 @@ export default function EditorLayout() {
 
   // --- Marginalia: build the marker list and side map ---
   // (Hooks must run on every render — placed before any early returns.)
-  const marginaliaPanelSides = useMemo(
-    () => ({
-      quotations:
-        prefs.activeLeft === "quotations"
-          ? ("left" as const)
-          : prefs.activeRight === "quotations"
-            ? ("right" as const)
-            : null,
-      notes:
-        prefs.activeLeft === "notes"
-          ? ("left" as const)
-          : prefs.activeRight === "notes"
-            ? ("right" as const)
-            : null,
-      archive:
-        prefs.activeLeft === "archive"
-          ? ("left" as const)
-          : prefs.activeRight === "archive"
-            ? ("right" as const)
-            : null,
-      revisions:
-        prefs.activeLeft === "revisions"
-          ? ("left" as const)
-          : prefs.activeRight === "revisions"
-            ? ("right" as const)
-            : null,
-      cutter:
-        prefs.activeLeft === "cutter"
-          ? ("left" as const)
-          : prefs.activeRight === "cutter"
-            ? ("right" as const)
-            : null,
-    }),
-    [prefs.activeLeft, prefs.activeRight]
-  );
+  // OmniView aggregates several panels on one side, so when omni is
+  // active the child panels count as "on that side" for marginalia too.
+  const marginaliaPanelSides = useMemo(() => {
+    const omniLeft = prefs.activeLeft === "omni";
+    const omniRight = prefs.activeRight === "omni";
+    // Quotations is a left-side child of OmniView
+    const quotationsSide: "left" | "right" | null =
+      prefs.activeLeft === "quotations" || omniLeft
+        ? "left"
+        : prefs.activeRight === "quotations"
+          ? "right"
+          : null;
+    // Notes, archive, revisions, cutter are right-side children of OmniView
+    const notesSide: "left" | "right" | null =
+      prefs.activeLeft === "notes"
+        ? "left"
+        : prefs.activeRight === "notes" || omniRight
+          ? "right"
+          : null;
+    const archiveSide: "left" | "right" | null =
+      prefs.activeLeft === "archive"
+        ? "left"
+        : prefs.activeRight === "archive" || omniRight
+          ? "right"
+          : null;
+    const revisionsSide: "left" | "right" | null =
+      prefs.activeLeft === "revisions"
+        ? "left"
+        : prefs.activeRight === "revisions" || omniRight
+          ? "right"
+          : null;
+    const cutterSide: "left" | "right" | null =
+      prefs.activeLeft === "cutter"
+        ? "left"
+        : prefs.activeRight === "cutter" || omniRight
+          ? "right"
+          : null;
+    return {
+      quotations: quotationsSide,
+      notes: notesSide,
+      archive: archiveSide,
+      revisions: revisionsSide,
+      cutter: cutterSide,
+    };
+  }, [prefs.activeLeft, prefs.activeRight]);
 
   // Track editor doc version so we re-resolve note anchorPos → paragraphId
   // whenever the document changes (paragraph positions/uuids may shift).
@@ -2134,17 +2161,27 @@ export default function EditorLayout() {
     saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "";
 
   const suggestionPanelVisible = (activeLeft === "suggestions" || activeRight === "suggestions") && hasSuggestions;
-  const revisionsPanelActive = activeLeft === "revisions" || activeRight === "revisions";
+  const revisionsPanelActive =
+    activeLeft === "revisions" ||
+    activeRight === "revisions" ||
+    activeRight === "omni";
+  // OmniView aggregates several child panels on one side; when omni is
+  // active, the side-of-panel lookups must include its children so
+  // connector lines render from the correct side.
+  //   Left omni children:  footnotes, citations, quotations
+  //   Right omni children: notes, revisions, cutter, archive
+  const omniLeftActive = activeLeft === "omni";
+  const omniRightActive = activeRight === "omni";
   const notesPanelSide: "left" | "right" | null =
-    activeLeft === "notes" ? "left" : activeRight === "notes" ? "right" : null;
+    activeLeft === "notes" ? "left" : activeRight === "notes" || omniRightActive ? "right" : null;
   const quotationsPanelSide: "left" | "right" | null =
-    activeLeft === "quotations" ? "left" : activeRight === "quotations" ? "right" : null;
+    activeLeft === "quotations" || omniLeftActive ? "left" : activeRight === "quotations" ? "right" : null;
   const archivePanelSide: "left" | "right" | null =
-    activeLeft === "archive" ? "left" : activeRight === "archive" ? "right" : null;
+    activeLeft === "archive" ? "left" : activeRight === "archive" || omniRightActive ? "right" : null;
   const footnotePanelSide: "left" | "right" | null =
-    activeLeft === "footnotes" ? "left" : activeRight === "footnotes" ? "right" : null;
+    activeLeft === "footnotes" || omniLeftActive ? "left" : activeRight === "footnotes" ? "right" : null;
   const citationPanelSide: "left" | "right" | null =
-    activeLeft === "citations" ? "left" : activeRight === "citations" ? "right" : null;
+    activeLeft === "citations" || omniLeftActive ? "left" : activeRight === "citations" ? "right" : null;
   const bibliographyPanelSide: "left" | "right" | null =
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
@@ -2390,6 +2427,50 @@ export default function EditorLayout() {
 
     if (panelId === "search") {
       return <SearchPanel editor={editorInstance} onHighlightRange={setSearchHighlightRange} />;
+    }
+
+    if (panelId === "omni") {
+      // OmniView — aggregates a side's panels into one stacked view.
+      // Each section is rendered by calling back into renderPanelInner
+      // for the child panel id, so all props and functionality match
+      // the standalone panel exactly. Left shows reference tools;
+      // right shows writing/workflow tools.
+      const childIds: PanelId[] =
+        side === "left"
+          ? ["footnotes", "citations", "quotations"]
+          : ["notes", "revisions", "cutter", "archive"];
+      const labelFor = (id: PanelId): string => {
+        if (id === "cutter") return "Cuts";
+        return PANEL_META[id]?.label ?? id;
+      };
+      const countFor = (id: PanelId): number | undefined => {
+        switch (id) {
+          case "footnotes":
+            return footnotes.length + orphanedFootnotes.length;
+          case "citations":
+            return citations.length;
+          case "quotations":
+            return quotationGroups.length;
+          case "notes":
+            return notes.length;
+          case "revisions":
+            return (
+              generalRevisions.filter((r) => !r.resolved).length +
+              textRevisions.filter((r) => !r.resolved).length
+            );
+          case "archive":
+            return sortedArchiveSnippets.length;
+          default:
+            return undefined;
+        }
+      };
+      const sections: OmniSection[] = childIds.map((id) => ({
+        id,
+        label: labelFor(id),
+        count: countFor(id),
+        render: () => renderPanelInner(id, side),
+      }));
+      return <OmniViewPanel side={side} sections={sections} />;
     }
 
     return <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />;
@@ -2686,6 +2767,15 @@ export default function EditorLayout() {
             >
               <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
             </button>
+            {/* OmniView — square like Blank, but with lines inside.
+                Shows all left-side elements (footnotes, citations, quotes). */}
+            <button
+              onClick={() => { setActiveLeft(activeLeft === "omni" ? null : "omni"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="OmniView — show all left panels"
+            >
+              <IconOmni active={activeLeft === "omni"} />
+            </button>
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("left")}
@@ -2823,6 +2913,15 @@ export default function EditorLayout() {
               title="Blank panel"
             >
               <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
+            </button>
+            {/* OmniView — square like Blank, but with lines inside.
+                Shows all right-side elements (notes, revisions, cuts, archive). */}
+            <button
+              onClick={() => { setActiveRight(activeRight === "omni" ? null : "omni"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="OmniView — show all right panels"
+            >
+              <IconOmni active={activeRight === "omni"} />
             </button>
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
