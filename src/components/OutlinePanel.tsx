@@ -2,15 +2,20 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
+import {
+  type Category,
+  ALL_CATEGORIES,
+  CATEGORY_LABELS,
+  useWordCountConfig,
+} from "@/hooks/useWordCountConfig";
 
 interface HeadingItem {
   id: string;
   level: number;
   text: string;
   label: string | null;
-  index: number; // position in doc for scrolling
+  index: number; // top-level block index in doc.content
   parTitles: { title: string; index: number }[]; // paragraph titles under this heading
-  isImplicit?: boolean; // true for the synthetic "Start" entry
 }
 
 interface OutlinePanelProps {
@@ -21,52 +26,38 @@ interface OutlinePanelProps {
   onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
 }
 
+/* ── Doc text extraction ───────────────────────────────────────────── */
+
 function extractText(node: JSONContent): string {
   if (node.type === "text") return node.text || "";
   if (node.content) return node.content.map(extractText).join("");
   return "";
 }
 
+function getDocTitle(doc: JSONContent | null): string {
+  if (!doc?.content) return "";
+  for (const node of doc.content) {
+    if (node.type === "titleField" && node.attrs?.field === "title") {
+      return extractText(node).trim();
+    }
+  }
+  return "";
+}
+
 function extractHeadings(doc: JSONContent | null): HeadingItem[] {
   if (!doc || !doc.content) return [];
   const headings: HeadingItem[] = [];
-  let idx = 0;
   let pendingTitles: { title: string; index: number }[] = [];
-  let foundFirstHeading = false;
 
-  // Extract document title from titleField nodes
-  let docTitle = "";
-  for (const node of doc.content) {
-    if (node.type === "titleField" && node.attrs?.field === "title") {
-      docTitle = extractText(node).trim();
-      break;
-    }
-  }
-
-  // Always insert the title entry at the top — scrolls to very top of document
-  headings.push({
-    id: "heading-title",
-    level: 1,
-    text: docTitle || "Untitled",
-    label: null,
-    index: -1, // sentinel: means "scroll to very top"
-    parTitles: [],
-    isImplicit: true,
-  });
-
-  for (const node of doc.content) {
+  doc.content.forEach((node, idx) => {
     if (node.type === "heading" && node.attrs?.level) {
-      if (!foundFirstHeading) {
-        // Attach any pending parTitles to the title entry
-        if (pendingTitles.length > 0) {
-          headings[0].parTitles.push(...pendingTitles);
-          pendingTitles = [];
-        }
-        foundFirstHeading = true;
-      } else if (pendingTitles.length > 0) {
+      // Attach any pending parTitles to the previous heading. Titles
+      // before the first heading are dropped — they belong to the
+      // "Document start" region which has no editable outline row.
+      if (pendingTitles.length > 0 && headings.length > 0) {
         headings[headings.length - 1].parTitles.push(...pendingTitles);
-        pendingTitles = [];
       }
+      pendingTitles = [];
       headings.push({
         id: `heading-${idx}`,
         level: node.attrs.level as number,
@@ -75,19 +66,23 @@ function extractHeadings(doc: JSONContent | null): HeadingItem[] {
         index: idx,
         parTitles: [],
       });
-    } else if ((node.type === "paragraph" || node.type === "bulletList" || node.type === "orderedList") && node.attrs?.parTitle) {
+    } else if (
+      (node.type === "paragraph" ||
+        node.type === "bulletList" ||
+        node.type === "orderedList") &&
+      node.attrs?.parTitle
+    ) {
       pendingTitles.push({ title: node.attrs.parTitle as string, index: idx });
     }
-    idx++;
-  }
-  // Attach any trailing paragraph titles to the last heading
+  });
   if (pendingTitles.length > 0 && headings.length > 0) {
     headings[headings.length - 1].parTitles.push(...pendingTitles);
   }
   return headings;
 }
 
-// Build a tree structure from flat headings
+/* ── Tree builder (view mode) ──────────────────────────────────────── */
+
 interface TreeNode {
   heading: HeadingItem;
   children: TreeNode[];
@@ -99,12 +94,9 @@ function buildTree(headings: HeadingItem[]): TreeNode[] {
 
   for (const h of headings) {
     const node: TreeNode = { heading: h, children: [] };
-
-    // Pop stack until we find a parent with a lower level
     while (stack.length > 0 && stack[stack.length - 1].heading.level >= h.level) {
       stack.pop();
     }
-
     if (stack.length === 0) {
       roots.push(node);
     } else {
@@ -116,6 +108,132 @@ function buildTree(headings: HeadingItem[]): TreeNode[] {
   return roots;
 }
 
+/* ── Per-section word counting (view mode) ─────────────────────────── */
+
+function countWords(text: string): number {
+  const trimmed = text.trim();
+  if (!trimmed) return 0;
+  return trimmed.split(/\s+/).length;
+}
+
+/**
+ * Walk a single top-level JSONContent block and bucket its text by category.
+ * Mirrors the PmNode walker in useWordCount.ts so the per-section outline
+ * counts and the panel-level totals stay in agreement.
+ */
+function walkBlockJson(node: JSONContent): Record<Category, number> {
+  const cats: Record<Category, string[]> = {
+    mainText: [],
+    headings: [],
+    footnotes: [],
+    blockquotes: [],
+    lists: [],
+    math: [],
+    comments: [],
+  };
+
+  const collectInline = (n: JSONContent, bucket: string[]) => {
+    if (n.type === "text" && n.text) {
+      bucket.push(n.text);
+      return;
+    }
+    if (n.type === "inlineMath") {
+      const latex = (n.attrs?.latex as string) || "";
+      if (latex) cats.math.push(latex);
+      return;
+    }
+    if (n.type === "citation") return;
+    if (n.type === "footnote") {
+      const content = (n.attrs?.content as string) || "";
+      if (content) cats.footnotes.push(content);
+      return;
+    }
+    if (n.type === "hardBreak") {
+      bucket.push(" ");
+      return;
+    }
+    if (n.content) {
+      for (const child of n.content) collectInline(child, bucket);
+    }
+  };
+
+  const walkBlock = (n: JSONContent, ctx: Category) => {
+    switch (n.type) {
+      case "heading":
+        collectInline(n, cats.headings);
+        return;
+      case "blockquote":
+        if (n.content) for (const child of n.content) walkBlock(child, "blockquotes");
+        return;
+      case "bulletList":
+      case "orderedList":
+        if (n.content) {
+          const childCtx: Category = ctx === "blockquotes" ? "blockquotes" : "lists";
+          for (const child of n.content) walkBlock(child, childCtx);
+        }
+        return;
+      case "listItem":
+        if (n.content) for (const child of n.content) walkBlock(child, ctx);
+        return;
+      case "displayMath": {
+        const latex = (n.attrs?.latex as string) || "";
+        if (latex) cats.math.push(latex);
+        return;
+      }
+      case "latexComment": {
+        const text = (n.attrs?.text as string) || "";
+        if (text) cats.comments.push(text);
+        return;
+      }
+      case "paragraph":
+      case "codeBlock":
+        collectInline(n, cats[ctx]);
+        return;
+      default:
+        if (n.content && n.content.length > 0) {
+          for (const child of n.content) walkBlock(child, ctx);
+        }
+        return;
+    }
+  };
+
+  walkBlock(node, "mainText");
+
+  const out = {} as Record<Category, number>;
+  for (const cat of ALL_CATEGORIES) {
+    out[cat] = countWords(cats[cat].join(" "));
+  }
+  return out;
+}
+
+/**
+ * Precompute per-block category word counts so per-heading section sums
+ * are O(blocks) instead of O(blocks × headings).
+ */
+function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
+  if (!doc?.content) return [];
+  return doc.content.map((node) => walkBlockJson(node));
+}
+
+function sumIncludedWords(
+  perBlock: Record<Category, number>[],
+  fromIdx: number,
+  toIdx: number, // exclusive
+  include: Record<Category, boolean>,
+): number {
+  let total = 0;
+  for (let i = fromIdx; i < toIdx; i++) {
+    const counts = perBlock[i];
+    if (!counts) continue;
+    for (const cat of ALL_CATEGORIES) {
+      if (include[cat]) total += counts[cat];
+    }
+  }
+  return total;
+}
+
+/* ── View-mode tree row ────────────────────────────────────────────── */
+
 function OutlineNode({
   node,
   collapsed,
@@ -124,6 +242,8 @@ function OutlineNode({
   depth,
   showLabels,
   showTitles,
+  sectionWordCount,
+  perSectionCounts,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -132,6 +252,8 @@ function OutlineNode({
   depth: number;
   showLabels: boolean;
   showTitles: boolean;
+  sectionWordCount: number;
+  perSectionCounts: Map<string, number>;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
@@ -170,16 +292,14 @@ function OutlineNode({
         ) : (
           <span className="w-4 shrink-0" />
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <span
             className={`text-sm leading-snug ${
-              node.heading.isImplicit
-                ? "text-stone-400"
-                : node.heading.level === 1
-                  ? "font-semibold text-stone-800"
-                  : node.heading.level === 2
-                    ? "font-medium text-stone-700"
-                    : "text-stone-600"
+              node.heading.level === 1
+                ? "font-semibold text-stone-800"
+                : node.heading.level === 2
+                  ? "font-medium text-stone-700"
+                  : "text-stone-600"
             }`}
           >
             {node.heading.text}
@@ -190,6 +310,9 @@ function OutlineNode({
             </div>
           )}
         </div>
+        <span className="text-[10px] tabular-nums text-stone-400 shrink-0 mt-0.5">
+          {sectionWordCount}
+        </span>
       </div>
 
       {!isCollapsed && hasTitles && (
@@ -219,6 +342,8 @@ function OutlineNode({
               depth={depth + 1}
               showLabels={showLabels}
               showTitles={showTitles}
+              sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
+              perSectionCounts={perSectionCounts}
             />
           ))}
         </div>
@@ -236,25 +361,39 @@ interface OutlinePod {
   blockIndex: number;   // top-level block index in doc.content
   blockCount: number;   // how many top-level blocks this pod covers
   id: string;
+  parentHeadingId?: string; // parTitles & sub-headings collapse under this id
+  hasCollapsibleChildren?: boolean; // headings only — true when something
+                                    // would be hidden by collapsing
 }
 
 function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
   const pods: OutlinePod[] = [];
-  // Skip the implicit title entry (index === -1)
-  const realHeadings = headings.filter((h) => !h.isImplicit);
 
-  for (let i = 0; i < realHeadings.length; i++) {
-    const h = realHeadings[i];
-    // blockCount: from this heading to the next heading of same or higher level
+  // Walk a stack of ancestor headings so each item knows which heading
+  // would hide it when collapsed. The "owner" of a pod for collapsing
+  // purposes is its nearest strictly-higher-level heading ancestor.
+  const stack: { id: string; level: number }[] = [];
+
+  for (let i = 0; i < headings.length; i++) {
+    const h = headings[i];
+
+    // Pop ancestors at our level or deeper before recording our parent.
+    while (stack.length > 0 && stack[stack.length - 1].level >= h.level) {
+      stack.pop();
+    }
+    const parentHeadingId = stack[stack.length - 1]?.id;
+
+    // blockCount: from this heading to the next heading of same/higher level
     let blockCount = 1;
-    const nextSameOrHigher = realHeadings.find(
-      (nh, ni) => ni > i && nh.level <= h.level
-    );
+    const nextSameOrHigher = headings.find((nh, ni) => ni > i && nh.level <= h.level);
     if (nextSameOrHigher) {
       blockCount = nextSameOrHigher.index - h.index;
     } else {
       blockCount = totalBlocks - h.index;
     }
+
+    const hasSubHeading = i < headings.length - 1 && headings[i + 1].level > h.level;
+    const hasCollapsibleChildren = hasSubHeading || h.parTitles.length > 0;
 
     pods.push({
       type: "heading",
@@ -263,7 +402,12 @@ function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
       blockIndex: h.index,
       blockCount,
       id: h.id,
+      parentHeadingId,
+      hasCollapsibleChildren,
     });
+
+    // Push this heading onto the stack so its descendants can find it.
+    stack.push({ id: h.id, level: h.level });
 
     // Add parTitle pods under this heading
     for (const pt of h.parTitles) {
@@ -274,11 +418,40 @@ function buildPods(headings: HeadingItem[], totalBlocks: number): OutlinePod[] {
         blockIndex: pt.index,
         blockCount: 1,
         id: `pt-${pt.index}`,
+        parentHeadingId: h.id,
       });
     }
   }
 
   return pods;
+}
+
+/**
+ * Decide which pods are hidden because some ancestor heading is collapsed.
+ * A pod is hidden if any heading on its parent chain is in `collapsed`.
+ */
+function computeHiddenPods(
+  pods: OutlinePod[],
+  collapsed: Set<string>,
+): Set<string> {
+  const hidden = new Set<string>();
+  // Map each heading id to its parent heading id for fast walks.
+  const parentOf = new Map<string, string | undefined>();
+  for (const p of pods) {
+    if (p.type === "heading") parentOf.set(p.id, p.parentHeadingId);
+  }
+  const isAncestorCollapsed = (startParentId: string | undefined): boolean => {
+    let cur = startParentId;
+    while (cur) {
+      if (collapsed.has(cur)) return true;
+      cur = parentOf.get(cur);
+    }
+    return false;
+  };
+  for (const p of pods) {
+    if (isAncestorCollapsed(p.parentHeadingId)) hidden.add(p.id);
+  }
+  return hidden;
 }
 
 /* ── Drag handle icon ──────────────────────────────────────────────── */
@@ -302,6 +475,8 @@ function EditablePod({
   pod,
   isDragging,
   dropPosition,
+  isCollapsed,
+  onToggleCollapse,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -312,6 +487,8 @@ function EditablePod({
   pod: OutlinePod;
   isDragging: boolean;
   dropPosition: "above" | "below" | null;
+  isCollapsed: boolean;
+  onToggleCollapse?: () => void;
   onDragStart: (e: React.DragEvent) => void;
   onDragEnd: () => void;
   onDragOver: (e: React.DragEvent) => void;
@@ -343,6 +520,7 @@ function EditablePod({
     : ((pod.level - 1) * 16 + 8);
 
   const isParTitle = pod.type === "parTitle";
+  const showChevron = !isParTitle && pod.hasCollapsibleChildren;
 
   return (
     <div
@@ -376,6 +554,33 @@ function EditablePod({
           marginBottom: 2,
         }}
       >
+        {showChevron ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleCollapse?.();
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 transition-colors shrink-0"
+            title={isCollapsed ? "Expand" : "Collapse"}
+          >
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+            >
+              <path d="M4.5 2l4 4-4 4" />
+            </svg>
+          </button>
+        ) : (
+          <span className="w-3 shrink-0" />
+        )}
         <DragHandle />
         {editing ? (
           <input
@@ -425,17 +630,23 @@ function EditablePod({
 function EditableOutline({
   headings,
   totalBlocks,
+  collapsed,
+  onToggleCollapse,
   onReorderBlocks,
   onRenameHeading,
   onRenameParTitle,
 }: {
   headings: HeadingItem[];
   totalBlocks: number;
+  collapsed: Set<string>;
+  onToggleCollapse: (id: string) => void;
   onReorderBlocks: (fromIndex: number, count: number, toIndex: number) => void;
   onRenameHeading: (blockIndex: number, newText: string) => void;
   onRenameParTitle: (blockIndex: number, newTitle: string) => void;
 }) {
   const pods = useMemo(() => buildPods(headings, totalBlocks), [headings, totalBlocks]);
+  const hiddenIds = useMemo(() => computeHiddenPods(pods, collapsed), [pods, collapsed]);
+  const visiblePods = useMemo(() => pods.filter((p) => !hiddenIds.has(p.id)), [pods, hiddenIds]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ podId: string; position: "above" | "below" } | null>(null);
 
@@ -512,13 +723,19 @@ function EditableOutline({
 
   return (
     <div className="py-1">
-      {pods.map((pod) => (
+      {visiblePods.map((pod) => (
         <EditablePod
           key={pod.id}
           pod={pod}
           isDragging={draggingId === pod.id}
           dropPosition={
             dropTarget?.podId === pod.id ? dropTarget.position : null
+          }
+          isCollapsed={collapsed.has(pod.id)}
+          onToggleCollapse={
+            pod.type === "heading" && pod.hasCollapsibleChildren
+              ? () => onToggleCollapse(pod.id)
+              : undefined
           }
           onDragStart={(e) => handleDragStart(pod, e)}
           onDragEnd={() => { setDraggingId(null); setDropTarget(null); }}
@@ -569,6 +786,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
+  const { config: wcConfig, setInclude: setWcInclude } = useWordCountConfig();
 
   // Load persisted prefs on mount
   useEffect(() => {
@@ -600,11 +818,31 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
 
   const headings = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
+  const docTitle = useMemo(() => getDocTitle(content), [content]);
 
   const totalBlocks = useMemo(() => {
     if (!content || !content.content) return 0;
     return content.content.length;
   }, [content]);
+
+  // Per-block category counts — recomputed when content changes.
+  const perBlockCounts = useMemo(() => buildPerBlockCounts(content), [content]);
+
+  // Per-section word counts (view mode only). Keyed by heading id.
+  const perSectionCounts = useMemo(() => {
+    const result = new Map<string, number>();
+    if (editMode) return result; // skip work — not displayed in edit mode
+    for (let i = 0; i < headings.length; i++) {
+      const h = headings[i];
+      const next = headings.find((nh, ni) => ni > i && nh.level <= h.level);
+      const toIdx = next ? next.index : totalBlocks;
+      result.set(
+        h.id,
+        sumIncludedWords(perBlockCounts, h.index, toIdx, wcConfig.include),
+      );
+    }
+    return result;
+  }, [editMode, headings, perBlockCounts, totalBlocks, wcConfig.include]);
 
   const toggleNode = useCallback((id: string) => {
     setCollapsed((prev) => {
@@ -627,11 +865,15 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setCollapsed(new Set());
   }, []);
 
+  const topRowLabel = docTitle || "Document start";
+  const topRowMuted = !docTitle;
+
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
-        <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
         <div className="flex items-center gap-2">
+          {/* Edit toggle lives on the LEFT now, where a future "+" button
+              will sit beside it. */}
           {onReorderBlocks && (
             <button
               onClick={() => setEditMode(!editMode)}
@@ -644,70 +886,104 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               Edit
             </button>
           )}
-          {!editMode && (
-            <>
-              <button
-                onClick={expandAll}
-                className="text-[var(--muted)] hover:text-stone-600 transition-colors"
-                title="Expand all"
-              >
-                <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 1 L7 4.5 L12 1" />
-                  <path d="M2 6.5 L7 10 L12 6.5" />
-                </svg>
-              </button>
-              <button
-                onClick={collapseAll}
-                className="text-[var(--muted)] hover:text-stone-600 transition-colors"
-                title="Collapse all"
-                style={{ marginTop: "-2px" }}
-              >
-                <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 5.5 L7 2 L12 5.5" />
-                  <path d="M2 9 L7 5.5 L12 9" />
-                </svg>
-              </button>
-              <div className="relative" ref={menuRef}>
+          <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={expandAll}
+            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+            title="Expand all"
+          >
+            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 1 L7 4.5 L12 1" />
+              <path d="M2 6.5 L7 10 L12 6.5" />
+            </svg>
+          </button>
+          <button
+            onClick={collapseAll}
+            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+            title="Collapse all"
+            style={{ marginTop: "-2px" }}
+          >
+            <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 5.5 L7 2 L12 5.5" />
+              <path d="M2 9 L7 5.5 L12 9" />
+            </svg>
+          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="text-[var(--muted)] hover:text-stone-600 transition-colors p-0.5"
+              title="View options"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
                 <button
-                  onClick={() => setMenuOpen(!menuOpen)}
-                  className="text-[var(--muted)] hover:text-stone-600 transition-colors p-0.5"
-                  title="View options"
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  onClick={() => { setShowLabels(!showLabels); }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <circle cx="8" cy="3" r="1.5" />
-                    <circle cx="8" cy="8" r="1.5" />
-                    <circle cx="8" cy="13" r="1.5" />
-                  </svg>
+                  <span>Show labels</span>
+                  <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
                 </button>
-                {menuOpen && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[140px]">
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  onClick={() => { setShowTitles(!showTitles); }}
+                >
+                  <span>Show par. titles</span>
+                  <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
+                </button>
+                <div className="border-t border-stone-100 my-1" />
+                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
+                  Include in count
+                </div>
+                {ALL_CATEGORIES.map((cat) => {
+                  const checked = wcConfig.include[cat];
+                  return (
                     <button
+                      key={cat}
+                      onClick={() => setWcInclude(cat, !checked)}
                       className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                      onClick={() => { setShowLabels(!showLabels); setMenuOpen(false); }}
                     >
-                      <span>Show labels</span>
-                      <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
+                      <span>{CATEGORY_LABELS[cat]}</span>
+                      <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
                     </button>
-                    <button
-                      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                      onClick={() => { setShowTitles(!showTitles); setMenuOpen(false); }}
-                    >
-                      <span>Show par. titles</span>
-                      <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
-                    </button>
-                  </div>
-                )}
+                  );
+                })}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto py-2">
+        {/* Fixed top row — always visible, both modes. Not draggable. */}
+        <div
+          className="flex items-center gap-1 cursor-pointer hover:bg-stone-50 rounded transition-colors"
+          style={{ paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4 }}
+          onClick={() => onScrollTo(-1)}
+        >
+          <span className="w-4 shrink-0" />
+          <span
+            className={`text-sm leading-snug truncate ${
+              topRowMuted ? "italic text-stone-400" : "font-semibold text-stone-800"
+            }`}
+          >
+            {topRowLabel}
+          </span>
+        </div>
+
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
             headings={headings}
             totalBlocks={totalBlocks}
+            collapsed={collapsed}
+            onToggleCollapse={toggleNode}
             onReorderBlocks={onReorderBlocks}
             onRenameHeading={onRenameHeading}
             onRenameParTitle={onRenameParTitle}
@@ -727,6 +1003,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               depth={0}
               showLabels={showLabels}
               showTitles={showTitles}
+              sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
+              perSectionCounts={perSectionCounts}
             />
           ))
         )}
