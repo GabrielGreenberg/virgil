@@ -1,15 +1,26 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Node as PmNode } from "@tiptap/pm/model";
+import {
+  type Category,
+  type WordCountConfig,
+  ALL_CATEGORIES,
+  CATEGORY_LABELS,
+} from "./useWordCountConfig";
 
 export interface WordCounts {
+  /** Sum of words from categories the config marks as included. */
   total: number;
+  /** Characters (no whitespace) of the included text. */
   characters: number;
+  /** Sentences in the included text. */
   sentences: number;
+  /** Reading time string for the included text. */
   readingTime: string;
-  categories: Record<string, number>;
+  /** Raw per-category word counts (independent of config). */
+  categories: Record<Category, number>;
 }
 
 export interface SelectionCounts {
@@ -17,17 +28,9 @@ export interface SelectionCounts {
   characters: number;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  mainText: "Main Text",
-  headings: "Headings",
-  footnotes: "Footnotes",
-  blockquotes: "Block Quotes",
-  lists: "Lists",
-  math: "Math",
-  comments: "Comments",
-};
-
+// Re-export so existing imports keep working.
 export { CATEGORY_LABELS };
+export type { Category };
 
 function countWords(text: string): number {
   const trimmed = text.trim();
@@ -40,9 +43,22 @@ function countSentences(text: string): number {
   return matches ? matches.length : text.trim() ? 1 : 0;
 }
 
-type Category = "mainText" | "headings" | "footnotes" | "blockquotes" | "lists" | "math" | "comments";
+const EMPTY_TEXTS: Record<Category, string> = {
+  mainText: "",
+  headings: "",
+  footnotes: "",
+  blockquotes: "",
+  lists: "",
+  math: "",
+  comments: "",
+};
 
-function walkDoc(doc: PmNode): WordCounts {
+/**
+ * Walk the document and bucket text by category. Categories are stored as
+ * raw strings so the consuming hook can re-derive totals whenever the
+ * include config changes — without re-walking the doc.
+ */
+function walkDoc(doc: PmNode): Record<Category, string> {
   const cats: Record<Category, string[]> = {
     mainText: [],
     headings: [],
@@ -57,12 +73,12 @@ function walkDoc(doc: PmNode): WordCounts {
     if (node.isText && node.text) {
       bucket.push(node.text);
     } else if (node.type.name === "inlineMath") {
-      bucket.push(node.attrs.latex || "");
+      const latex = (node.attrs.latex as string) || "";
+      if (latex) cats.math.push(latex);
     } else if (node.type.name === "citation") {
       // citations are reference markers, not prose — skip
     } else if (node.type.name === "footnote") {
-      // footnote content goes to footnotes category
-      const content = node.attrs.content || "";
+      const content = (node.attrs.content as string) || "";
       if (content) cats.footnotes.push(content);
     } else if (node.type.name === "hardBreak") {
       bucket.push(" ");
@@ -95,13 +111,13 @@ function walkDoc(doc: PmNode): WordCounts {
         break;
 
       case "displayMath": {
-        const latex = node.attrs.latex || "";
+        const latex = (node.attrs.latex as string) || "";
         if (latex) cats.math.push(latex);
         break;
       }
 
       case "latexComment": {
-        const text = node.attrs.text || "";
+        const text = (node.attrs.text as string) || "";
         if (text) cats.comments.push(text);
         break;
       }
@@ -126,17 +142,38 @@ function walkDoc(doc: PmNode): WordCounts {
 
   walkBlock(doc, "mainText");
 
-  const allText: string[] = [];
-  const categories: Record<string, number> = {};
-
-  for (const [key, parts] of Object.entries(cats)) {
-    const joined = parts.join(" ");
-    const wc = countWords(joined);
-    categories[key] = wc;
-    if (joined.trim()) allText.push(joined);
+  const out = { ...EMPTY_TEXTS };
+  for (const cat of ALL_CATEGORIES) {
+    out[cat] = cats[cat].join(" ");
   }
+  return out;
+}
 
-  const fullText = allText.join(" ");
+/**
+ * Apply the include config to bucketed text and produce display-ready counts.
+ */
+function computeCounts(
+  texts: Record<Category, string>,
+  config: WordCountConfig,
+): WordCounts {
+  const categories: Record<Category, number> = {
+    mainText: 0,
+    headings: 0,
+    footnotes: 0,
+    blockquotes: 0,
+    lists: 0,
+    math: 0,
+    comments: 0,
+  };
+  const includedParts: string[] = [];
+  for (const cat of ALL_CATEGORIES) {
+    const text = texts[cat];
+    categories[cat] = countWords(text);
+    if (config.include[cat] && text.trim()) {
+      includedParts.push(text);
+    }
+  }
+  const fullText = includedParts.join(" ");
   const total = countWords(fullText);
   const characters = fullText.replace(/\s/g, "").length;
   const sentences = countSentences(fullText);
@@ -146,50 +183,100 @@ function walkDoc(doc: PmNode): WordCounts {
   return { total, characters, sentences, readingTime, categories };
 }
 
-function getSelectionCounts(editor: Editor): SelectionCounts | null {
+/**
+ * Count words/characters in the current selection. Comments are skipped
+ * unless the user explicitly selected only comment content (pragmatic rule
+ * — clicking a single comment node should still report its size).
+ */
+function getSelectionCounts(editor: Editor, config: WordCountConfig): SelectionCounts | null {
   const { from, to } = editor.state.selection;
   if (from === to) return null;
-  const text = editor.state.doc.textBetween(from, to, " ");
+
+  let nonCommentWords = 0;
+  let nonCommentChars = 0;
+  let commentWords = 0;
+  let commentChars = 0;
+  let nonCommentContent = false;
+
+  const addText = (text: string, isComment: boolean) => {
+    const w = countWords(text);
+    const c = text.replace(/\s/g, "").length;
+    if (isComment) {
+      commentWords += w;
+      commentChars += c;
+    } else {
+      nonCommentWords += w;
+      nonCommentChars += c;
+      if (text.trim()) nonCommentContent = true;
+    }
+  };
+
+  editor.state.doc.nodesBetween(from, to, (node, pos) => {
+    const name = node.type.name;
+
+    if (name === "latexComment") {
+      addText((node.attrs.text as string) || "", true);
+      return false;
+    }
+    if (name === "footnote") {
+      addText((node.attrs.content as string) || "", false);
+      return false;
+    }
+    if (name === "inlineMath" || name === "displayMath") {
+      addText((node.attrs.latex as string) || "", false);
+      return false;
+    }
+    if (name === "citation") {
+      // skip — markers, not prose
+      return false;
+    }
+    if (node.isText && node.text) {
+      const start = Math.max(pos, from);
+      const end = Math.min(pos + node.nodeSize, to);
+      const slice = node.text.slice(start - pos, end - pos);
+      if (slice) addText(slice, false);
+      return false;
+    }
+    return true;
+  });
+
+  // Pragmatic rule: if the selection contains *only* comment text, count it
+  // even when the include config excludes comments — the user clearly wanted
+  // to know how big that comment is.
+  const onlyComments = !nonCommentContent && (commentWords > 0 || commentChars > 0);
+  const includeComments = config.include.comments || onlyComments;
+
   return {
-    words: countWords(text),
-    characters: text.replace(/\s/g, "").length,
+    words: nonCommentWords + (includeComments ? commentWords : 0),
+    characters: nonCommentChars + (includeComments ? commentChars : 0),
   };
 }
 
-export function useWordCount(editor: Editor | null) {
-  const [counts, setCounts] = useState<WordCounts>({
-    total: 0, characters: 0, sentences: 0, readingTime: "0 min",
-    categories: {},
-  });
-  const [selection, setSelection] = useState<SelectionCounts | null>(null);
+export function useWordCount(editor: Editor | null, config: WordCountConfig) {
+  const [texts, setTexts] = useState<Record<Category, string>>(() => EMPTY_TEXTS);
+  // selSignal increments on every selectionUpdate so the selection memo
+  // recomputes against the current editor state without us having to mirror
+  // the (from, to) range into React state.
+  const [selSignal, setSelSignal] = useState(0);
 
   const contentTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const selTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const recount = useCallback(() => {
-    if (!editor) return;
-    setCounts(walkDoc(editor.state.doc));
-  }, [editor]);
-
-  const resel = useCallback(() => {
-    if (!editor) return;
-    setSelection(getSelectionCounts(editor));
-  }, [editor]);
-
   useEffect(() => {
     if (!editor) return;
 
-    // initial count
-    setCounts(walkDoc(editor.state.doc));
-    setSelection(getSelectionCounts(editor));
+    setTexts(walkDoc(editor.state.doc));
+    setSelSignal((s) => s + 1);
 
     const onUpdate = () => {
       clearTimeout(contentTimer.current);
-      contentTimer.current = setTimeout(recount, 300);
+      contentTimer.current = setTimeout(() => {
+        setTexts(walkDoc(editor.state.doc));
+      }, 300);
     };
     const onSel = () => {
       clearTimeout(selTimer.current);
-      selTimer.current = setTimeout(resel, 50);
+      selTimer.current = setTimeout(() => setSelSignal((s) => s + 1), 50);
     };
 
     editor.on("update", onUpdate);
@@ -201,7 +288,16 @@ export function useWordCount(editor: Editor | null) {
       clearTimeout(contentTimer.current);
       clearTimeout(selTimer.current);
     };
-  }, [editor, recount, resel]);
+  }, [editor]);
+
+  const counts = useMemo(() => computeCounts(texts, config), [texts, config]);
+
+  const selection = useMemo(
+    () => (editor ? getSelectionCounts(editor, config) : null),
+    // selSignal is the dependency that ties this to editor selection events.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, config, selSignal],
+  );
 
   return { counts, selection };
 }

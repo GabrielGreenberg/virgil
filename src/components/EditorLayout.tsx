@@ -42,6 +42,7 @@ import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
 import PreferencesModal from "./PreferencesModal";
 import { useWordCount } from "@/hooks/useWordCount";
+import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import WordCountPanel from "./WordCountPanel";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import type { OrphanedFootnote } from "@/lib/types";
@@ -648,7 +649,11 @@ export default function EditorLayout() {
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
-  const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
+  const { config: wordCountConfig, setInclude: setWordCountInclude } = useWordCountConfig();
+  const { counts: wordCounts, selection: wordSelection } = useWordCount(
+    editorInstance,
+    wordCountConfig,
+  );
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -1775,7 +1780,12 @@ export default function EditorLayout() {
     if (panelId === "wordcount") {
       return (
         <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <WordCountPanel counts={wordCounts} selection={wordSelection} />
+          <WordCountPanel
+            counts={wordCounts}
+            selection={wordSelection}
+            config={wordCountConfig}
+            setInclude={setWordCountInclude}
+          />
         </ResizablePanel>
       );
     }
