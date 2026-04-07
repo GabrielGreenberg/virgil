@@ -8,6 +8,7 @@ interface MenuBarProps {
   onAddComment?: () => void;
   onArchive?: () => void;
   onCreateFootnote?: () => void;
+  onQuoteSelection?: () => void;
   showParTitles: boolean;
   onToggleParTitles: () => void;
   showLatexComments: boolean;
@@ -116,7 +117,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -290,6 +291,18 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <text x="3" y="12" fontSize="12" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor">fn</text>
+          </svg>
+        </button>
+      )}
+      {onQuoteSelection && (
+        <button
+          onClick={onQuoteSelection}
+          title="Create quotation from selection"
+          className="px-2 py-1 rounded text-sm transition-colors text-[#a16207] hover:bg-[#fffbeb] hover:text-[#854d0e]"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
+            <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
+            <path d="M10 3.5C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
           </svg>
         </button>
       )}

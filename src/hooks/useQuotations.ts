@@ -41,23 +41,43 @@ export function useQuotations(docId: string | null) {
     }
   }, []);
 
-  const addGroup = useCallback(() => {
-    const newGroup: QuotationGroup = {
-      id: uuid(),
-      title: "",
-      citeKey: "",
-      paragraphId: null,
-      quotations: [{ id: uuid(), title: "", text: "", page: "" }],
-      notes: "",
-      createdAt: new Date().toISOString(),
-    };
-    setState((prev) => {
-      const newState = { groups: [newGroup, ...prev.groups] };
-      persist(newState);
-      return newState;
-    });
-    return newGroup;
-  }, [persist]);
+  const addGroup = useCallback(
+    (init?: { text?: string; paragraphId?: string | null }) => {
+      const newGroup: QuotationGroup = {
+        id: uuid(),
+        title: "",
+        citeKey: "",
+        paragraphId: init?.paragraphId ?? null,
+        quotations: [
+          { id: uuid(), title: "", text: init?.text ?? "", page: "" },
+        ],
+        notes: "",
+        createdAt: new Date().toISOString(),
+      };
+      setState((prev) => {
+        const newState = { groups: [newGroup, ...prev.groups] };
+        persist(newState);
+        return newState;
+      });
+      return newGroup;
+    },
+    [persist]
+  );
+
+  const setParagraphId = useCallback(
+    (groupId: string, paragraphId: string | null) => {
+      setState((prev) => {
+        const newState = {
+          groups: prev.groups.map((g) =>
+            g.id === groupId ? { ...g, paragraphId } : g
+          ),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist]
+  );
 
   const deleteGroup = useCallback(
     (groupId: string) => {
@@ -183,5 +203,6 @@ export function useQuotations(docId: string | null) {
     deleteQuotation,
     updateCiteKey,
     updateNotes,
+    setParagraphId,
   };
 }
