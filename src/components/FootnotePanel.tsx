@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
+import { PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -187,16 +187,18 @@ function FootnotePanel({
                   style={{ top }}
                   onClick={() => onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)}
                 >
+                  {selectedId === fn.footnoteId && (
+                    <div className="absolute top-1 right-1" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+                      <TargetIcon onClick={() => onScrollToMarker(fn.footnoteId)} title="Jump to footnote marker" />
+                    </div>
+                  )}
                   <div className="flex items-start gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onSelect(fn.footnoteId); onScrollToMarker(fn.footnoteId); }}
-                      className="inline-flex items-center shrink-0 mt-0.5"
-                    >
+                    <span className="inline-flex items-center shrink-0 mt-0.5">
                       <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold"
                         style={{ background: "#fef2f2", color: "#b45757", border: "1.5px solid #b45757" }}>
                         {fn.number}
                       </span>
-                    </button>
+                    </span>
                     <p className="text-xs text-stone-600 leading-snug line-clamp-2 min-w-0"
                       style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
                       {preview || <span className="italic text-stone-400">Empty</span>}
@@ -337,19 +339,22 @@ function FootnotePanel({
             >
               <div className={PANEL.cardInner}>
                 <div className="flex items-start gap-2.5">
-                  {/* Three-dot menu */}
-                  <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+                  {/* Top-right controls: target (when selected) + three-dot menu */}
+                  <div className="absolute top-2 right-2 flex items-center gap-0.5" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+                    {isSelected && (
+                      <TargetIcon
+                        onClick={() => onScrollToMarker(fn.footnoteId)}
+                        title="Jump to footnote marker"
+                        className="text-white/80 hover:text-white hover:bg-white/15"
+                      />
+                    )}
                     <ItemMenu>
                       <MenuDelete onClick={() => onDelete(fn.footnoteId)} />
                     </ItemMenu>
                   </div>
                   {/* Number badge */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onSelect(fn.footnoteId); onScrollToMarker(fn.footnoteId); }}
-                    draggable={false}
-                    onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                    className="inline-flex items-center gap-0.5 shrink-0 mt-0.5 cursor-pointer group"
-                    title="Go to footnote in document"
+                  <span
+                    className="inline-flex items-center shrink-0 mt-0.5"
                   >
                     <span
                       className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold transition-colors"
@@ -361,13 +366,7 @@ function FootnotePanel({
                     >
                       {fn.number}
                     </span>
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"
-                      className={`${isSelected ? "text-white/70" : "text-[#b45757]"} opacity-0 group-hover:opacity-100 transition-opacity order-first`}
-                      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="1" y1="6" x2="8" y2="6" />
-                      <polyline points="5 3 8 6 5 9" />
-                    </svg>
-                  </button>
+                  </span>
 
                   <div className="flex-1 min-w-0">
                     <RichTextField

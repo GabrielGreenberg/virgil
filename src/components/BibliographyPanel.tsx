@@ -173,13 +173,22 @@ function BibliographyPanel({
       const idx = keyOccurrenceIdx[key] || 0;
       const targetId = ids[idx] || ids[0];
       if (targetId) {
-        onScrollToCitation?.(targetId);
         onActiveCitationChange?.(targetId);
       }
     } else {
       onActiveCitationChange?.(null);
     }
-  }, [onSelectBibKey, keyToCitationIds, keyOccurrenceIdx, onScrollToCitation, onActiveCitationChange]);
+  }, [onSelectBibKey, keyToCitationIds, keyOccurrenceIdx, onActiveCitationChange]);
+
+  const handleJumpToBibKey = useCallback((key: string) => {
+    const ids = keyToCitationIds()[key] || [];
+    const idx = keyOccurrenceIdx[key] || 0;
+    const targetId = ids[idx] || ids[0];
+    if (targetId) {
+      onScrollToCitation?.(targetId);
+      onActiveCitationChange?.(targetId);
+    }
+  }, [keyToCitationIds, keyOccurrenceIdx, onScrollToCitation, onActiveCitationChange]);
 
   const citedKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -555,6 +564,7 @@ function BibliographyPanel({
                 handleSelectBibKey(isSelected ? null : entry.key);
                 listRef.current?.focus();
               }}
+              onJump={isCited ? () => handleJumpToBibKey(entry.key) : undefined}
               getFormattedBib={getFormattedBib}
               getAnnotation={getAnnotation}
               setAnnotation={setAnnotation}
