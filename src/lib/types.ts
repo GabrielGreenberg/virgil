@@ -63,6 +63,49 @@ export interface CommentsState {
   comments: UserComment[];
 }
 
+// --- Revisions (Claude-cowork dialogue) ---
+
+export interface RevisionUser {
+  id: string;
+  name: string;
+  color: string; // hex
+  isDefault?: boolean; // locked / built-in
+}
+
+export interface RevisionTurn {
+  id: string;
+  authorId: string;
+  createdAt: string;
+  text: string;
+}
+
+export interface GeneralRevision {
+  id: string;
+  authorId: string;
+  createdAt: string;
+  text: string;
+  turns: RevisionTurn[];
+  resolved: boolean;
+}
+
+export interface TextRevision {
+  id: string;
+  authorId: string;
+  createdAt: string;
+  resolved: boolean;
+  selectedText: string;
+  anchorPos: number;
+  text: string;
+  turns: RevisionTurn[];
+}
+
+export interface RevisionsState {
+  users: RevisionUser[];
+  generalRevisions: GeneralRevision[];
+  textRevisions: TextRevision[];
+  activeUserId?: string;
+}
+
 export interface DocMeta {
   id: string;
   name: string;
