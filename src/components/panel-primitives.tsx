@@ -48,7 +48,7 @@ export const PANEL = {
   /** Sub-pod with white background (for rich-text editors, etc.). */
   subpodWhite: "rounded-md border border-stone-200 bg-white overflow-hidden",
   /** Standard panel header bar — height set by --header-h so all headers align. */
-  header: "px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0",
+  header: "px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 bg-[var(--header-bg)]",
   /** Empty-state message. */
   empty: "p-6 text-center text-sm text-[var(--muted)]",
 } as const;
@@ -162,23 +162,29 @@ export function HSplit({
   );
 
   return (
-    <div className="relative shrink-0" style={{ height: 1 }}>
+    <div className="relative shrink-0 z-10" style={{ height: 6 }}>
+      {/* Wider invisible hit target */}
       <div
         className="absolute inset-x-0 cursor-row-resize"
-        style={{ top: -3, height: 7, background: "transparent" }}
+        style={{ top: -4, height: 14, background: "transparent" }}
         onMouseDown={onMouseDown}
       />
-      <div className="absolute inset-x-0" style={{ top: 0, height: 1, background: "#e5e2dd" }} />
+      {/* Visible bar — darker outline, white interior matching editor bg */}
       <div
-        className="absolute left-1/2 cursor-row-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
-        style={{
-          top: -4,
-          marginLeft: -20,
-          width: 40,
-          height: 8,
-          borderRadius: 4,
-        }}
+        className="absolute inset-x-0 cursor-row-resize bg-white hover:bg-stone-50 border-y border-stone-300 transition-colors"
+        style={{ top: 0, height: 6 }}
         onMouseDown={onMouseDown}
+      />
+      {/* Centered grip */}
+      <div
+        className="absolute left-1/2 cursor-row-resize bg-white border border-stone-300 hover:border-stone-400 transition-colors pointer-events-none z-20"
+        style={{
+          top: -3,
+          marginLeft: -16,
+          width: 33,
+          height: 10,
+          borderRadius: 2,
+        }}
       />
     </div>
   );

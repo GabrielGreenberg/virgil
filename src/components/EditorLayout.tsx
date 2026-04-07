@@ -212,12 +212,19 @@ function IconSearch({ active }: { active?: boolean }) {
   );
 }
 
-function IconSplit({ active }: { active?: boolean }) {
-  const c = active ? "var(--accent)" : "currentColor";
+function IconSplit({ active, focusedHalf }: { active?: boolean; focusedHalf?: "top" | "bottom" }) {
   return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="10" height="4.5" rx="1" />
-      <rect x="2" y="7.5" width="10" height="4.5" rx="1" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {/* Shaded half indicating which pane is focused */}
+      {active && focusedHalf === "top" && (
+        <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+      )}
+      {active && focusedHalf === "bottom" && (
+        <rect x="4" y="12" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+      )}
+      {/* Outline + single divider line */}
+      <rect x="4" y="4" width="16" height="16" rx="1.5" />
+      <line x1="4" y1="12" x2="20" y2="12" />
     </svg>
   );
 }
@@ -252,7 +259,7 @@ function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewTogg
   const [viewMode, setViewMode] = useState<import("./ViewToggle").ViewMode>("list");
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between">
+      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <h3 className="text-sm font-semibold text-stone-700">{title}</h3>
         {hasViewToggle && <ViewToggle mode={viewMode} onChange={setViewMode} />}
       </div>
@@ -402,12 +409,16 @@ function SplitEditorPanes({
   ratio,
   onRatioChange,
   onClose,
+  onMirrorFocus,
+  onMirrorViewReady,
 }: {
   editorInstance: Editor | null;
   canonical: React.ReactNode;
   ratio: number;
   onRatioChange: (r: number) => void;
   onClose: () => void;
+  onMirrorFocus?: () => void;
+  onMirrorViewReady?: (view: import("prosemirror-view").EditorView | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -418,8 +429,8 @@ function SplitEditorPanes({
         const el = containerRef.current;
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        if (rect.width <= 0) return;
-        const r = (ev.clientX - rect.left) / rect.width;
+        if (rect.height <= 0) return;
+        const r = (ev.clientY - rect.top) / rect.height;
         onRatioChange(Math.max(0.15, Math.min(0.85, r)));
       };
       const onUp = () => {
@@ -428,7 +439,7 @@ function SplitEditorPanes({
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
-      document.body.style.cursor = "col-resize";
+      document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
@@ -437,41 +448,36 @@ function SplitEditorPanes({
   );
 
   return (
-    <div ref={containerRef} className="flex-1 flex min-w-0 min-h-0">
-      {/* Left pane — canonical TipTap view */}
+    <div ref={containerRef} className="flex-1 flex flex-col min-w-0 min-h-0">
+      {/* Top pane — canonical TipTap view */}
       <div
         className="relative flex flex-col min-w-0 min-h-0"
         style={{ flex: `${ratio} 1 0` }}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-1 right-1 z-10 p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100/80 transition-colors"
-          title="Close split"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M18 6L6 18M6 6l12 12" />
-          </svg>
-        </button>
         {canonical}
       </div>
-      {/* Vertical divider */}
+      {/* Horizontal divider */}
       <div
-        className="relative shrink-0 cursor-col-resize"
-        style={{ width: 1, background: "#e5e2dd" }}
+        className="relative shrink-0 cursor-row-resize bg-stone-50 hover:bg-stone-100 border-y border-stone-300 transition-colors z-10"
+        style={{ height: 6 }}
         onMouseDown={onMouseDown}
       >
         <div
-          className="absolute top-1/2 -left-[4px] cursor-col-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
-          style={{ width: 8, height: 40, borderRadius: 4, transform: "translateY(-50%)" }}
-          onMouseDown={onMouseDown}
+          className="absolute left-1/2 bg-white border border-stone-300 hover:border-stone-400 transition-colors pointer-events-none z-20"
+          style={{ top: -3, height: 10, width: 33, borderRadius: 2, transform: "translateX(-50%)" }}
         />
       </div>
-      {/* Right pane — EditorMirror */}
+      {/* Bottom pane — EditorMirror */}
       <div
         className="flex flex-col min-w-0 min-h-0"
         style={{ flex: `${1 - ratio} 1 0` }}
       >
-        <EditorMirror editor={editorInstance} onClose={onClose} />
+        <EditorMirror
+          editor={editorInstance}
+          onClose={onClose}
+          onFocus={onMirrorFocus}
+          onViewReady={onMirrorViewReady}
+        />
       </div>
     </div>
   );
@@ -814,6 +820,10 @@ export default function EditorLayout() {
   // two independently-scrolling views of the same ProseMirror state.
   const [editorSplit, setEditorSplit] = useState(false);
   const [editorSplitRatio, setEditorSplitRatio] = useState(0.5);
+  // Which pane last received focus — used to route panel interactions
+  // (outline clicks, note jumps, etc.) to the pane the user is in.
+  const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
+  const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -1199,8 +1209,60 @@ export default function EditorLayout() {
   );
 
   const handleScrollToHeading = useCallback((blockIndex: number) => {
+    // If the split is open and the bottom pane is active, scroll the mirror
+    // view; otherwise fall back to the canonical editor's scroll behavior.
+    const mirrorView = mirrorViewRef.current;
+    if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return;
+      if (blockIndex === -1) {
+        editor.commands.setTextSelection(1);
+        const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
+        if (scrollEl) scrollEl.scrollTop = 0;
+        return;
+      }
+      let pos = 0;
+      let idx = 0;
+      editor.state.doc.forEach((_node, offset) => {
+        if (idx === blockIndex) pos = offset + 1;
+        idx++;
+      });
+      if (pos > 0) {
+        editor.commands.setTextSelection(pos);
+        try {
+          const domAtPos = mirrorView.domAtPos(pos);
+          const el = domAtPos.node instanceof HTMLElement
+            ? domAtPos.node
+            : domAtPos.node.parentElement;
+          el?.scrollIntoView({ behavior: "instant", block: "center" });
+        } catch { /* noop */ }
+      }
+      return;
+    }
     editorRef.current?.scrollToHeading(blockIndex);
-  }, []);
+  }, [editorSplit, activeSplitPane]);
+
+  // Scroll `pos` into view in whichever pane is currently active.
+  const handleScrollToPos = useCallback((pos: number) => {
+    const mirrorView = mirrorViewRef.current;
+    if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return;
+      const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
+      try {
+        editor.commands.setTextSelection(clamped);
+        const coords = mirrorView.coordsAtPos(clamped);
+        const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
+        if (scrollEl && coords) {
+          const scrollRect = scrollEl.getBoundingClientRect();
+          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
+          scrollEl.scrollTop = Math.max(0, targetY);
+        }
+      } catch { /* pos out of range */ }
+      return;
+    }
+    editorRef.current?.scrollToPos(pos);
+  }, [editorSplit, activeSplitPane]);
 
   const handleReorderBlocks = useCallback((fromIndex: number, count: number, toIndex: number) => {
     const editor = editorRef.current?.getEditor();
@@ -1825,6 +1887,25 @@ export default function EditorLayout() {
     };
   }, [editorInstance]);
 
+  // Track focus on the canonical editor — interactions with the top pane
+  // mark it active so panels route their jumps there.
+  useEffect(() => {
+    if (!editorInstance) return;
+    const dom = editorInstance.view.dom as HTMLElement;
+    const mark = () => setActiveSplitPane("top");
+    dom.addEventListener("focusin", mark);
+    dom.addEventListener("mousedown", mark);
+    return () => {
+      dom.removeEventListener("focusin", mark);
+      dom.removeEventListener("mousedown", mark);
+    };
+  }, [editorInstance]);
+
+  // Reset to the top pane whenever the split closes.
+  useEffect(() => {
+    if (!editorSplit) setActiveSplitPane("top");
+  }, [editorSplit]);
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Touch editorDocVersion so this memo recomputes when the doc changes
     void editorDocVersion;
@@ -1998,7 +2079,7 @@ export default function EditorLayout() {
           onSelectNote={setSelectedNoteId}
           selectedNoteId={selectedNoteId}
           cursorPos={editorInstance?.state?.selection?.from ?? 0}
-          onScrollToPos={(pos) => editorRef.current?.scrollToPos(pos)}
+          onScrollToPos={handleScrollToPos}
         />
       );
     }
@@ -2023,7 +2104,7 @@ export default function EditorLayout() {
           panelSide={side}
           viewMode={getPanelViewMode("revisions")}
           onViewModeChange={(m) => setPanelViewMode("revisions", m)}
-          onScrollToPos={(pos) => editorRef.current?.scrollToPos(pos)}
+          onScrollToPos={handleScrollToPos}
           onClose={() => {
             if (side === "left") setActiveLeft(null);
             else setActiveRight(null);
@@ -2447,52 +2528,41 @@ export default function EditorLayout() {
 
 
         {/* Left icon strip */}
-        <div data-strip-side="left" className="flex flex-col items-center py-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
-          {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
-          <button
-            onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
-            className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 mb-0.5"
-            title={activeLeft ? "Collapse panel" : "Expand panel"}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              {activeLeft
-                ? <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
-                : <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
-              }
-            </svg>
-          </button>
-          <button
-            onClick={() => { if (activeLeft !== "blank") setActiveLeft("blank"); }}
-            className={`p-2 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-            title="Blank panel"
-          >
-            <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
-          </button>
-          {/* Split panel toggle */}
-          <button
-            onClick={() => toggleSplit("left")}
-            className={`p-2 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-            title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
-          >
-            <IconSplit active={prefs.activeLeftBottom != null} />
-          </button>
-          {/* Top/Bottom focus toggle (only when split) */}
-          {prefs.activeLeftBottom != null && (
-            <div className="flex flex-col items-stretch gap-px text-[9px] font-bold leading-none">
-              <button
-                onClick={() => setFocusedHalfLeft("top")}
-                className={`px-1 py-0.5 rounded ${focusedHalfLeft === "top" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
-                title="Focus top half"
-              >T</button>
-              <button
-                onClick={() => setFocusedHalfLeft("bottom")}
-                className={`px-1 py-0.5 rounded ${focusedHalfLeft === "bottom" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
-                title="Focus bottom half"
-              >B</button>
-            </div>
-          )}
-          {/* Separator between fixed tools and movable tools */}
-          <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
+        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
+          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
+            {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
+            <button
+              onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
+              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+              title={activeLeft ? "Collapse panel" : "Expand panel"}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                {activeLeft
+                  ? <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
+                  : <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
+                }
+              </svg>
+            </button>
+            <button
+              onClick={() => { if (activeLeft !== "blank") setActiveLeft("blank"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="Blank panel"
+            >
+              <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
+            </button>
+            {/* Split panel toggle — shaded half reflects which pane is focused */}
+            <button
+              onClick={() => toggleSplit("left")}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+            >
+              <IconSplit
+                active={prefs.activeLeftBottom != null}
+                focusedHalf={prefs.activeLeftBottom != null ? focusedHalfLeft : undefined}
+              />
+            </button>
+          </div>
           {leftStripItems.map((p) => (
             <StripButton
               key={p.id}
@@ -2525,6 +2595,7 @@ export default function EditorLayout() {
             onOpenPreferences={() => setPreferencesOpen(true)}
             editorSplit={editorSplit}
             onToggleEditorSplit={() => setEditorSplit((s) => !s)}
+            activeSplitPane={editorSplit ? activeSplitPane : undefined}
           />
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
@@ -2533,6 +2604,8 @@ export default function EditorLayout() {
                 ratio={editorSplitRatio}
                 onRatioChange={setEditorSplitRatio}
                 onClose={() => setEditorSplit(false)}
+                onMirrorFocus={() => setActiveSplitPane("bottom")}
+                onMirrorViewReady={(v) => { mirrorViewRef.current = v; }}
                 canonical={
                   <>
                     <VirgilEditor
@@ -2593,52 +2666,41 @@ export default function EditorLayout() {
         {renderPanelColumn("right")}
 
         {/* Right icon strip */}
-        <div data-strip-side="right" className="flex flex-col items-center py-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
-          {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
-          <button
-            onClick={() => { activeRight ? collapseRight() : expandRight(); }}
-            className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 mb-0.5"
-            title={activeRight ? "Collapse panel" : "Expand panel"}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              {activeRight
-                ? <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
-                : <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
-              }
-            </svg>
-          </button>
-          <button
-            onClick={() => { if (activeRight !== "blank") setActiveRight("blank"); }}
-            className={`p-2 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-            title="Blank panel"
-          >
-            <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
-          </button>
-          {/* Split panel toggle */}
-          <button
-            onClick={() => toggleSplit("right")}
-            className={`p-2 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-            title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
-          >
-            <IconSplit active={prefs.activeRightBottom != null} />
-          </button>
-          {/* Top/Bottom focus toggle (only when split) */}
-          {prefs.activeRightBottom != null && (
-            <div className="flex flex-col items-stretch gap-px text-[9px] font-bold leading-none">
-              <button
-                onClick={() => setFocusedHalfRight("top")}
-                className={`px-1 py-0.5 rounded ${focusedHalfRight === "top" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
-                title="Focus top half"
-              >T</button>
-              <button
-                onClick={() => setFocusedHalfRight("bottom")}
-                className={`px-1 py-0.5 rounded ${focusedHalfRight === "bottom" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
-                title="Focus bottom half"
-              >B</button>
-            </div>
-          )}
-          {/* Separator between fixed tools and movable tools */}
-          <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
+        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+          {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
+          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
+            {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
+            <button
+              onClick={() => { activeRight ? collapseRight() : expandRight(); }}
+              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+              title={activeRight ? "Collapse panel" : "Expand panel"}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                {activeRight
+                  ? <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
+                  : <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
+                }
+              </svg>
+            </button>
+            <button
+              onClick={() => { if (activeRight !== "blank") setActiveRight("blank"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="Blank panel"
+            >
+              <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
+            </button>
+            {/* Split panel toggle — shaded half reflects which pane is focused */}
+            <button
+              onClick={() => toggleSplit("right")}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+            >
+              <IconSplit
+                active={prefs.activeRightBottom != null}
+                focusedHalf={prefs.activeRightBottom != null ? focusedHalfRight : undefined}
+              />
+            </button>
+          </div>
           {rightStripItems.map((p) => (
             <StripButton
               key={p.id}

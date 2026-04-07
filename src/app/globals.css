@@ -10,7 +10,8 @@
   --muted-light: #b5b0aa;
   --accent: #7c5e3c;
   --accent-light: #f5f0ea;
-  --header-h: 44px;
+  --header-h: 34px;
+  --header-bg: #f5f3ee;
 }
 
 @theme inline {

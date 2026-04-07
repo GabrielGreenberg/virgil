@@ -19,23 +19,46 @@ import { EditorView } from "prosemirror-view";
 interface EditorMirrorProps {
   editor: Editor | null;
   onClose: () => void;
+  onFocus?: () => void;
+  onViewReady?: (view: EditorView | null) => void;
 }
 
-export default function EditorMirror({ editor, onClose }: EditorMirrorProps) {
+export default function EditorMirror({ editor, onClose, onFocus, onViewReady }: EditorMirrorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const onFocusRef = useRef(onFocus);
+  const onViewReadyRef = useRef(onViewReady);
+  onFocusRef.current = onFocus;
+  onViewReadyRef.current = onViewReady;
 
   useEffect(() => {
     if (!editor || !hostRef.current) return;
 
     // Match the canonical TipTap view's content-DOM attributes so the
-    // mirror inherits the same prose styling.
-    const canonicalAttrs = (editor.view.props as { attributes?: Record<string, string> })
-      .attributes ?? {};
+    // mirror inherits the same prose styling. Read directly from the
+    // rendered DOM element (rather than editorProps) so classes injected
+    // by TipTap itself — notably `tiptap`, which scopes most of the editor
+    // typography in globals.css — are included.
+    const canonicalDom = editor.view.dom as HTMLElement;
+    const canonicalAttrs: Record<string, string> = {};
+    for (const attr of Array.from(canonicalDom.attributes)) {
+      if (attr.name === "contenteditable") continue;
+      canonicalAttrs[attr.name] = attr.value;
+    }
+
+    // Pull node and mark view factories off the canonical view so the mirror
+    // renders the same custom node-views (headings, titles, citations, etc.)
+    // and mark decorations as the top pane.
+    const canonicalProps = editor.view.props as {
+      nodeViews?: Record<string, unknown>;
+      markViews?: Record<string, unknown>;
+    };
 
     const view = new EditorView(hostRef.current, {
       state: editor.state,
       attributes: canonicalAttrs,
+      nodeViews: (canonicalProps.nodeViews ?? {}) as never,
+      markViews: (canonicalProps.markViews ?? {}) as never,
       dispatchTransaction(tr) {
         // Route through the canonical view so TipTap's update lifecycle
         // and React state stay consistent.
@@ -43,6 +66,13 @@ export default function EditorMirror({ editor, onClose }: EditorMirrorProps) {
       },
     });
     viewRef.current = view;
+    onViewReadyRef.current?.(view);
+
+    // Track focus on the mirror so the parent can route panel interactions
+    // (e.g. outline clicks, note scrolling) to whichever pane the user is in.
+    const onFocusIn = () => { onFocusRef.current?.(); };
+    view.dom.addEventListener("focusin", onFocusIn);
+    view.dom.addEventListener("mousedown", onFocusIn);
 
     const onTr = () => {
       const v = viewRef.current;
@@ -54,6 +84,9 @@ export default function EditorMirror({ editor, onClose }: EditorMirrorProps) {
 
     return () => {
       editor.off("transaction", onTr);
+      view.dom.removeEventListener("focusin", onFocusIn);
+      view.dom.removeEventListener("mousedown", onFocusIn);
+      onViewReadyRef.current?.(null);
       view.destroy();
       viewRef.current = null;
     };
@@ -61,15 +94,6 @@ export default function EditorMirror({ editor, onClose }: EditorMirrorProps) {
 
   return (
     <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
-      <button
-        onClick={onClose}
-        className="absolute top-1 right-1 z-10 p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100/80 transition-colors"
-        title="Close split"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M18 6L6 18M6 6l12 12" />
-        </svg>
-      </button>
       <div
         ref={hostRef}
         className="flex-1 overflow-y-auto bg-white min-h-0 editor-mirror"

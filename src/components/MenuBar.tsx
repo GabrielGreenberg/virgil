@@ -16,6 +16,7 @@ interface MenuBarProps {
   onOpenPreferences?: () => void;
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
+  activeSplitPane?: "top" | "bottom";
 }
 
 function Btn({
@@ -119,7 +120,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -320,12 +321,20 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <div className="shrink-0 px-1">
           <button
             onClick={onToggleEditorSplit}
-            className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
+            className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
             title={editorSplit ? "Close split editor" : "Split editor"}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="4" width="8" height="16" rx="1" />
-              <rect x="13" y="4" width="8" height="16" rx="1" />
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              {/* Shaded half indicating which pane is active */}
+              {editorSplit && activeSplitPane === "top" && (
+                <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+              )}
+              {editorSplit && activeSplitPane === "bottom" && (
+                <rect x="4" y="12" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+              )}
+              {/* Outline + single divider line */}
+              <rect x="4" y="4" width="16" height="16" rx="1.5" />
+              <line x1="4" y1="12" x2="20" y2="12" />
             </svg>
           </button>
         </div>
