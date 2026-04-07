@@ -1,26 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PanelHeader, PANEL } from "./panel-primitives";
 import type { WordCounts, SelectionCounts } from "@/hooks/useWordCount";
-import { CATEGORY_LABELS } from "@/hooks/useWordCount";
+import {
+  type Category,
+  ALL_CATEGORIES,
+  CATEGORY_LABELS,
+  useWordCountConfig,
+} from "@/hooks/useWordCountConfig";
 
 interface WordCountPanelProps {
   counts: WordCounts;
   selection: SelectionCounts | null;
 }
 
-const STORAGE_KEY = "virgil-wordcount-categories";
-const ALL_CATS = Object.keys(CATEGORY_LABELS);
-
-function loadVisible(): Set<string> {
-  if (typeof window === "undefined") return new Set(ALL_CATS);
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return new Set(JSON.parse(raw));
-  } catch {}
-  return new Set(ALL_CATS);
-}
+// Display order — same as the shared config so the menu and the
+// breakdown stay aligned.
+const ALL_CATS: Category[] = ALL_CATEGORIES;
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
@@ -32,24 +29,17 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 export default function WordCountPanel({ counts, selection }: WordCountPanelProps) {
-  const [visible, setVisible] = useState<Set<string>>(() => loadVisible());
+  const { config, setInclude } = useWordCountConfig();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify([...visible])); } catch {}
-  }, [visible]);
+  // The shared config drives both the breakdown visibility here and the
+  // per-section counts in the outline panel — "show in breakdown" and
+  // "include in count" are intentionally the same toggle now.
+  const visible = (cat: Category) => config.include[cat] ?? true;
+  const toggleCat = (cat: Category) => setInclude(cat, !visible(cat));
 
-  const toggleCat = (cat: string) => {
-    setVisible((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  };
-
-  const visibleCats = ALL_CATS.filter((c) => visible.has(c) && (counts.categories[c] ?? 0) > 0);
-  const hiddenWithCount = ALL_CATS.filter((c) => !visible.has(c) && (counts.categories[c] ?? 0) > 0);
+  const visibleCats = ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) > 0);
+  const hiddenWithCount = ALL_CATS.filter((c) => !visible(c) && (counts.categories[c] ?? 0) > 0);
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col h-full">
@@ -80,11 +70,11 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
                     className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 transition-colors flex items-center gap-2"
                   >
                     <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                      visible.has(cat)
+                      visible(cat)
                         ? "bg-[var(--accent)] border-[var(--accent)]"
                         : "border-stone-300"
                     }`}>
-                      {visible.has(cat) && (
+                      {visible(cat) && (
                         <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M3 8l3.5 3.5L13 5" />
                         </svg>
@@ -157,10 +147,10 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
         )}
 
         {/* Categories with 0 words that are visible — show muted */}
-        {ALL_CATS.filter((c) => visible.has(c) && (counts.categories[c] ?? 0) === 0).length > 0 && (
+        {ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) === 0).length > 0 && (
           <div className="px-3 py-1">
             <span className="text-[11px] text-[var(--muted)]">
-              {ALL_CATS.filter((c) => visible.has(c) && (counts.categories[c] ?? 0) === 0)
+              {ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) === 0)
                 .map((c) => CATEGORY_LABELS[c])
                 .join(", ")}
               {" — 0 words"}
