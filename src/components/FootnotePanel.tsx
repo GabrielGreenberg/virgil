@@ -206,12 +206,11 @@ function FootnotePanel({
               );
             })}
 
-            {/* Orphaned footnotes at bottom of in-text view */}
+            {/* Orphaned footnotes trail the positioned entries in in-text
+                view. Each item carries the slash-mark badge so no heading
+                is needed to distinguish them. */}
             {orphanedFootnotes.length > 0 && (
               <div className="absolute left-0 right-0 px-1 pr-4" style={{ top: (editorScrollHeight || 0) + 8 }}>
-                <div className="text-[10px] text-stone-400 uppercase tracking-wide font-medium px-1 pb-1">
-                  Unanchored
-                </div>
                 {orphanedFootnotes.map((orphan) => {
                   const preview = richJsonToPlainText(orphan.content);
                   return (
@@ -247,6 +246,82 @@ function FootnotePanel({
         ) : (
 
         <>
+        {/* Unanchored footnotes are shown at the top of the list — their
+            slash-mark "fn" badge already indicates the unanchored state,
+            so no section heading is needed. */}
+        {orphanedFootnotes.map((orphan) => {
+          const isFocused = focusedId === orphan.footnoteId;
+          return (
+          <div
+            key={orphan.footnoteId}
+            data-footnote-entry={orphan.footnoteId}
+            draggable={!isFocused}
+            onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
+            className={fnCard(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}
+          >
+            <div className={PANEL.cardInner}>
+              <div className="flex items-start gap-2.5">
+                <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
+                  <ItemMenu>
+                    <MenuDelete onClick={() => onDeleteOrphan(orphan.footnoteId)} />
+                  </ItemMenu>
+                </div>
+                {/* Orphan badge */}
+                <span className="inline-flex items-center justify-center shrink-0 mt-0.5" title="No anchor in document">
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                    <rect x="1" y="1" width="14" height="14" rx="3"
+                      stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
+                    <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
+                      fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
+                    <line x1="3" y1="13" x2="13" y2="3"
+                      stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </span>
+
+                <div className="flex-1 min-w-0">
+                  <RichTextField
+                    instanceKey={orphan.footnoteId}
+                    value={orphan.content}
+                    placeholder="Empty — drag text in or type"
+                    variant="footnote"
+                    muted
+                    onChange={(json) => handleEditOrphanContent(orphan.footnoteId, json)}
+                    onArchiveConsumed={onDropArchive}
+                    getCitationDisplayText={getCitationDisplayText}
+                    onCitationCreated={onCitationCreated}
+                    onFocusChange={(focused) => {
+                      if (focused) setFocusedId(orphan.footnoteId);
+                      else setFocusedId((curr) => (curr === orphan.footnoteId ? null : curr));
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end mt-2 ml-7">
+                <div className="flex gap-1.5 items-center">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleCopy(orphan.footnoteId, orphan.content); }}
+                    className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
+                    title="Copy to clipboard"
+                  >
+                    {copiedId === orphan.footnoteId ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="2" width="13" height="13" rx="2" />
+                        <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          );
+        })}
+
         {footnotes.map((fn) => {
           const isSelected = selectedId === fn.footnoteId;
           const isFocused = focusedId === fn.footnoteId;
@@ -338,92 +413,6 @@ function FootnotePanel({
           );
         })}
 
-        {/* Orphaned footnotes section */}
-        {orphanedFootnotes.length > 0 && (
-          <>
-            <div className="px-3 pt-3 pb-1">
-              <div className="text-[10px] text-stone-400 uppercase tracking-wide font-medium flex items-center gap-1.5">
-                <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                  <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b0b0b0" strokeWidth="1.5" fill="none" />
-                  <line x1="3" y1="13" x2="13" y2="3" stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
-                Unanchored ({orphanedFootnotes.length})
-              </div>
-            </div>
-            {orphanedFootnotes.map((orphan) => {
-              const isFocused = focusedId === orphan.footnoteId;
-              return (
-              <div
-                key={orphan.footnoteId}
-                data-footnote-entry={orphan.footnoteId}
-                draggable={!isFocused}
-                onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
-                className={fnCard(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}
-              >
-                <div className={PANEL.cardInner}>
-                  <div className="flex items-start gap-2.5">
-                    <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
-                      <ItemMenu>
-                        <MenuDelete onClick={() => onDeleteOrphan(orphan.footnoteId)} />
-                      </ItemMenu>
-                    </div>
-                    {/* Orphan badge */}
-                    <span className="inline-flex items-center justify-center shrink-0 mt-0.5" title="No anchor in document">
-                      <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                        <rect x="1" y="1" width="14" height="14" rx="3"
-                          stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
-                        <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
-                          fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
-                        <line x1="3" y1="13" x2="13" y2="3"
-                          stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-                      </svg>
-                    </span>
-
-                    <div className="flex-1 min-w-0">
-                      <RichTextField
-                        instanceKey={orphan.footnoteId}
-                        value={orphan.content}
-                        placeholder="Empty — drag text in or type"
-                        variant="footnote"
-                        muted
-                        onChange={(json) => handleEditOrphanContent(orphan.footnoteId, json)}
-                        onArchiveConsumed={onDropArchive}
-                        getCitationDisplayText={getCitationDisplayText}
-                        onCitationCreated={onCitationCreated}
-                        onFocusChange={(focused) => {
-                          if (focused) setFocusedId(orphan.footnoteId);
-                          else setFocusedId((curr) => (curr === orphan.footnoteId ? null : curr));
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-end mt-2 ml-7">
-                    <div className="flex gap-1.5 items-center">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleCopy(orphan.footnoteId, orphan.content); }}
-                        className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
-                        title="Copy to clipboard"
-                      >
-                        {copiedId === orphan.footnoteId ? (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        ) : (
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="2" y="2" width="13" height="13" rx="2" />
-                            <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              );
-            })}
-          </>
-        )}
         </>
         )}
       </div>

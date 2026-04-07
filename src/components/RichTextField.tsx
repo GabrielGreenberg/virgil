@@ -392,7 +392,7 @@ function RichTextFieldImpl({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
     >
-      {selected && <FormatToolbar editor={editor} selected />}
+      <FormatToolbar editor={editor} selected={selected} />
       <EditorContent
         editor={editor}
         // Stop card-level click + key handlers from intercepting editor input.
