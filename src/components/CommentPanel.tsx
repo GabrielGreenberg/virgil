@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { UserComment } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, findTextPosition } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
 interface CommentPanelProps {
   comments: UserComment[];
@@ -26,6 +26,7 @@ interface CommentPanelProps {
   panelSide: "left" | "right";
   viewMode: "list" | "in-text";
   onViewModeChange: (mode: "list" | "in-text") => void;
+  onScrollToPos?: (pos: number) => void;
 }
 
 export default function RevisionsPanel({
@@ -46,12 +47,32 @@ export default function RevisionsPanel({
   panelSide,
   viewMode,
   onViewModeChange,
+  onScrollToPos,
 }: CommentPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const inTextItems = useMemo(
     () => activeComments.map((c) => ({ id: c.id, pos: findTextPosition(editor, c.selectedText) })),
     [activeComments, editor]
   );
+
+  const onActivateComment = useCallback(
+    (c: UserComment) => {
+      onSelectComment(c.id);
+      onHighlight(c.selectedText);
+      const pos = findTextPosition(editor, c.selectedText);
+      if (pos > 0) onScrollToPos?.(pos);
+    },
+    [onSelectComment, onHighlight, editor, onScrollToPos],
+  );
+  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
+    useCycle(activeComments, onActivateComment);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedCommentId) return;
+    const i = activeComments.findIndex((c) => c.id === selectedCommentId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedCommentId, activeComments, cycleIdx, setCycleIdx]);
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, viewMode === "in-text"
   );
@@ -92,6 +113,13 @@ export default function RevisionsPanel({
               {showResolved ? "Hide" : "Show"} resolved ({resolvedComments.length})
             </button>
           )}
+          <PrevNextCounter
+            current={cycleIdx}
+            total={activeComments.length}
+            onPrev={cyclePrev}
+            onNext={cycleNext}
+            label="revisions"
+          />
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         </div>
       </PanelHeader>

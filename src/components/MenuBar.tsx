@@ -13,6 +13,8 @@ interface MenuBarProps {
   showLatexComments: boolean;
   onToggleLatexComments: () => void;
   onOpenPreferences?: () => void;
+  editorSplit?: boolean;
+  onToggleEditorSplit?: () => void;
 }
 
 function Btn({
@@ -116,7 +118,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -299,6 +301,22 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, showParTit
           <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
         )}
       </div>
+
+      {/* Pinned split-editor toggle — outside scroll area */}
+      {onToggleEditorSplit && (
+        <div className="shrink-0 px-1">
+          <button
+            onClick={onToggleEditorSplit}
+            className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
+            title={editorSplit ? "Close split editor" : "Split editor"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="8" height="16" rx="1" />
+              <rect x="13" y="4" width="8" height="16" rx="1" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Pinned view menu — outside scroll area */}
       <div className="shrink-0 px-2">

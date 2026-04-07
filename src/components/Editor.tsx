@@ -88,6 +88,7 @@ export interface EditorHandle {
   insertCitation: (command: string, citationId: string, displayText: string) => void;
   getActiveParagraphId: () => string | null;
   scrollToParagraphId: (uuid: string) => void;
+  scrollToPos: (pos: number) => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -1260,6 +1261,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       try {
         editor.commands.setTextSelection(targetPos);
         const coords = editor.view.coordsAtPos(targetPos);
+        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        if (scrollEl && coords) {
+          const scrollRect = scrollEl.getBoundingClientRect();
+          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
+          scrollEl.scrollTop = Math.max(0, targetY);
+        }
+      } catch { /* pos out of range */ }
+    },
+    scrollToPos(pos: number): void {
+      if (!editor) return;
+      const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
+      try {
+        editor.commands.setTextSelection(clamped);
+        const coords = editor.view.coordsAtPos(clamped);
         const scrollEl = editor.view.dom.closest(".overflow-y-auto");
         if (scrollEl && coords) {
           const scrollRect = scrollEl.getBoundingClientRect();

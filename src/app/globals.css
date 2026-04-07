@@ -716,3 +716,13 @@ body {
 .panel-container .panel-header-title {
   font-size: var(--panel-header-size, 14px);
 }
+
+/* Sidebar split — subtle ring on the focused half */
+.panel-half-focused {
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+
+/* Editor mirror — match canonical view scroll behavior */
+.editor-mirror .ProseMirror {
+  outline: none;
+}

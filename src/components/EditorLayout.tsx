@@ -38,7 +38,9 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import SearchPanel from "./SearchPanel";
-import { useViewPrefs, PanelId, Side } from "@/hooks/useViewPrefs";
+import EditorMirror from "./EditorMirror";
+import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
+import { HSplit } from "./panel-primitives";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
 import PreferencesModal from "./PreferencesModal";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -209,6 +211,16 @@ function IconSearch({ active }: { active?: boolean }) {
   );
 }
 
+function IconSplit({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="2" width="10" height="4.5" rx="1" />
+      <rect x="2" y="7.5" width="10" height="4.5" rx="1" />
+    </svg>
+  );
+}
+
 function IconWordCount({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
@@ -252,20 +264,38 @@ function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewTogg
   );
 }
 
-function ResizablePanel({
-  children,
-  side = "right",
+/**
+ * Width-resizable column wrapper for sidebar panels. Supports a single
+ * panel as a child OR a split: { top, bottom, ratio, onRatioChange }.
+ */
+function PanelColumn({
+  side,
   width,
   onWidthChange,
+  children,
+  split,
+  focusedHalf,
+  onFocusHalf,
 }: {
-  children: React.ReactNode;
-  side?: "left" | "right";
+  side: "left" | "right";
   width: number;
   onWidthChange: (w: number) => void;
+  children:
+    | React.ReactNode
+    | {
+        top: React.ReactNode;
+        bottom: React.ReactNode;
+        ratio: number;
+        onRatioChange: (r: number) => void;
+      };
+  split?: boolean;
+  focusedHalf?: "top" | "bottom";
+  onFocusHalf?: (half: "top" | "bottom") => void;
 }) {
   const dragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
+  const stackRef = useRef<HTMLDivElement>(null);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     startX.current = e.clientX;
@@ -296,11 +326,46 @@ function ResizablePanel({
     window.addEventListener("mouseup", onMouseUp);
   }, [width, side, onWidthChange]);
 
+  // Determine if children is a split spec or single ReactNode
+  const isSplitChildren = (
+    c: typeof children,
+  ): c is {
+    top: React.ReactNode;
+    bottom: React.ReactNode;
+    ratio: number;
+    onRatioChange: (r: number) => void;
+  } =>
+    !!c && typeof c === "object" && !Array.isArray(c) && "top" in (c as object) && "bottom" in (c as object);
+
   return (
     <div className="relative flex shrink-0 h-full" style={{ width }}>
-      {/* Panel content */}
+      {/* Panel content area */}
       <div className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}>
-        {children}
+        {split && isSplitChildren(children) ? (
+          <div ref={stackRef} className="flex flex-col h-full min-h-0">
+            <div
+              className={`min-h-0 overflow-hidden ${focusedHalf === "top" ? "panel-half-focused" : ""}`}
+              style={{ flex: `${children.ratio} 1 0`, minHeight: 0 }}
+              onMouseDown={() => onFocusHalf?.("top")}
+            >
+              {children.top}
+            </div>
+            <HSplit
+              ratio={children.ratio}
+              onRatioChange={children.onRatioChange}
+              containerRef={stackRef}
+            />
+            <div
+              className={`min-h-0 overflow-hidden ${focusedHalf === "bottom" ? "panel-half-focused" : ""}`}
+              style={{ flex: `${1 - children.ratio} 1 0`, minHeight: 0 }}
+              onMouseDown={() => onFocusHalf?.("bottom")}
+            >
+              {children.bottom}
+            </div>
+          </div>
+        ) : (
+          (children as React.ReactNode)
+        )}
       </div>
       {/* Edge border — continuous line */}
       <div
@@ -318,6 +383,94 @@ function ResizablePanel({
           style={{ width: 8, height: 40, borderRadius: 4 }}
           onMouseDown={onMouseDown}
         />
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * Two-pane editor split: canonical TipTap view on the left, EditorMirror
+ * on the right (sharing the same ProseMirror state). Vertical drag
+ * divider sets the ratio. Each pane has its own X close button that
+ * collapses the split.
+ */
+function SplitEditorPanes({
+  editorInstance,
+  canonical,
+  ratio,
+  onRatioChange,
+  onClose,
+}: {
+  editorInstance: Editor | null;
+  canonical: React.ReactNode;
+  ratio: number;
+  onRatioChange: (r: number) => void;
+  onClose: () => void;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const onMove = (ev: MouseEvent) => {
+        const el = containerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const r = (ev.clientX - rect.left) / rect.width;
+        onRatioChange(Math.max(0.15, Math.min(0.85, r)));
+      };
+      const onUp = () => {
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [onRatioChange],
+  );
+
+  return (
+    <div ref={containerRef} className="flex-1 flex min-w-0 min-h-0">
+      {/* Left pane — canonical TipTap view */}
+      <div
+        className="relative flex flex-col min-w-0 min-h-0"
+        style={{ flex: `${ratio} 1 0` }}
+      >
+        <button
+          onClick={onClose}
+          className="absolute top-1 right-1 z-10 p-1 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-100/80 transition-colors"
+          title="Close split"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M18 6L6 18M6 6l12 12" />
+          </svg>
+        </button>
+        {canonical}
+      </div>
+      {/* Vertical divider */}
+      <div
+        className="relative shrink-0 cursor-col-resize"
+        style={{ width: 1, background: "#e5e2dd" }}
+        onMouseDown={onMouseDown}
+      >
+        <div
+          className="absolute top-1/2 -left-[4px] cursor-col-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
+          style={{ width: 8, height: 40, borderRadius: 4, transform: "translateY(-50%)" }}
+          onMouseDown={onMouseDown}
+        />
+      </div>
+      {/* Right pane — EditorMirror */}
+      <div
+        className="flex flex-col min-w-0 min-h-0"
+        style={{ flex: `${1 - ratio} 1 0` }}
+      >
+        <EditorMirror editor={editorInstance} onClose={onClose} />
       </div>
     </div>
   );
@@ -643,7 +796,20 @@ export default function EditorLayout() {
     expandRight,
     setActiveLeft,
     setActiveRight,
+    setActiveHalf,
+    toggleSplit,
+    setSplitRatio,
   } = useViewPrefs();
+
+  // Which half (top or bottom) is currently focused on each side. Used to
+  // route strip-icon clicks when the side is split. Session-only state.
+  const [focusedHalfLeft, setFocusedHalfLeft] = useState<Half>("top");
+  const [focusedHalfRight, setFocusedHalfRight] = useState<Half>("top");
+
+  // Session-only main-editor split: when true, the editor column shows
+  // two independently-scrolling views of the same ProseMirror state.
+  const [editorSplit, setEditorSplit] = useState(false);
+  const [editorSplitRatio, setEditorSplitRatio] = useState(0.5);
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -1494,6 +1660,43 @@ export default function EditorLayout() {
     movePanel(draggedId, toSide, toIndex);
   }, [movePanel]);
 
+  // Strip-icon click handler — routes to the focused half when the side
+  // is split, otherwise behaves like the original togglePanel.
+  const handleStripClick = useCallback(
+    (id: PanelId, side: Side) => {
+      const split =
+        side === "left" ? prefs.activeLeftBottom != null : prefs.activeRightBottom != null;
+      if (!split) {
+        togglePanel(id);
+        return;
+      }
+      const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
+      const currentInFocus =
+        side === "left"
+          ? focused === "top"
+            ? prefs.activeLeft
+            : prefs.activeLeftBottom
+          : focused === "top"
+            ? prefs.activeRight
+            : prefs.activeRightBottom;
+      // Toggling: clicking the icon for what's already in the focused half
+      // closes it (sets that half to "blank" — we never want a null half
+      // when split).
+      const next: PanelId = currentInFocus === id ? "blank" : id;
+      setActiveHalf(side, focused, next);
+    },
+    [
+      togglePanel,
+      setActiveHalf,
+      prefs.activeLeft,
+      prefs.activeRight,
+      prefs.activeLeftBottom,
+      prefs.activeRightBottom,
+      focusedHalfLeft,
+      focusedHalfRight,
+    ],
+  );
+
   // Clear search highlight when the search panel is no longer visible
   const searchPanelOpen = prefs.activeLeft === "search" || prefs.activeRight === "search";
   useEffect(() => {
@@ -1539,24 +1742,21 @@ export default function EditorLayout() {
   const bibliographyPanelSide: "left" | "right" | null =
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
-  // Render a panel by its ID
-  function renderPanel(panelId: PanelId, side: Side) {
+  // Render the inner JSX for a panel by id, without any column wrapper.
+  // The caller is responsible for wrapping in <PanelColumn> (or rendering
+  // it inside a split half). The "suggestions" panel is special-cased
+  // because it manages its own layout.
+  function renderPanelInner(panelId: PanelId, side: Side): React.ReactNode {
     const meta = PANEL_META[panelId as keyof typeof PANEL_META];
-    const width = getPanelWidth(side, panelId);
-    const onWidthChange = (w: number) => setPanelWidth(side, panelId, w);
     if (!meta) return null;
+
     if (panelId === "blank") {
-      return (
-        <ResizablePanel key={`blank-${side}`} side={side} width={width} onWidthChange={onWidthChange}>
-          <div className="w-full h-full bg-[var(--background)]" />
-        </ResizablePanel>
-      );
+      return <div className="w-full h-full bg-[var(--background)]" />;
     }
 
     if (panelId === "suggestions" && hasSuggestions) {
       return (
         <SuggestionPanel
-          key={panelId}
           suggestion={currentSuggestion}
           isComplete={isComplete}
           onAct={handleAct}
@@ -1573,245 +1773,260 @@ export default function EditorLayout() {
 
     if (panelId === "todo") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <TodoPanel
-              items={todoItems}
-              onAdd={addTodo}
-              onToggle={toggleTodo}
-              onUpdate={updateTodo}
-              onUpdateNotes={updateTodoNotes}
-              onDelete={deleteTodo}
-              onArchiveDone={archiveTodos}
-            />
-        </ResizablePanel>
+        <TodoPanel
+          items={todoItems}
+          onAdd={addTodo}
+          onToggle={toggleTodo}
+          onUpdate={updateTodo}
+          onUpdateNotes={updateTodoNotes}
+          onDelete={deleteTodo}
+          onArchiveDone={archiveTodos}
+        />
       );
     }
 
     if (panelId === "outline") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <OutlinePanel
-              content={latestDoc || content}
-              onScrollTo={handleScrollToHeading}
-              onReorderBlocks={handleReorderBlocks}
-              onRenameHeading={handleRenameHeading}
-              onRenameParTitle={handleRenameParTitle}
-            />
-        </ResizablePanel>
+        <OutlinePanel
+          content={latestDoc || content}
+          onScrollTo={handleScrollToHeading}
+          onReorderBlocks={handleReorderBlocks}
+          onRenameHeading={handleRenameHeading}
+          onRenameParTitle={handleRenameParTitle}
+        />
       );
     }
 
     if (panelId === "notes") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <NotesPanel
-              notes={notes}
-              onAdd={addNote}
-              onUpdate={updateNote}
-              onDelete={deleteNote}
-              onSelectNote={setSelectedNoteId}
-              selectedNoteId={selectedNoteId}
-              cursorPos={editorInstance?.state?.selection?.from ?? 0}
-            />
-        </ResizablePanel>
+        <NotesPanel
+          notes={notes}
+          onAdd={addNote}
+          onUpdate={updateNote}
+          onDelete={deleteNote}
+          onSelectNote={setSelectedNoteId}
+          selectedNoteId={selectedNoteId}
+          cursorPos={editorInstance?.state?.selection?.from ?? 0}
+          onScrollToPos={(pos) => editorRef.current?.scrollToPos(pos)}
+        />
       );
     }
 
     if (panelId === "revisions") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <RevisionsPanel
-              comments={comments}
-              activeComments={activeComments}
-              resolvedComments={resolvedComments}
-              onResolve={resolveComment}
-              onDelete={deleteComment}
-              onUpdate={updateComment}
-              onHighlight={setCommentHighlight}
-              visible={true}
-              pendingSelectedText={pendingCommentText}
-              onSubmitNew={handleSubmitComment}
-              onCancelNew={handleCancelComment}
-              selectedCommentId={selectedCommentId}
-              onSelectComment={setSelectedCommentId}
-              editor={editorInstance}
-              panelSide={side}
-              viewMode={getPanelViewMode("revisions")}
-              onViewModeChange={(m) => setPanelViewMode("revisions", m)}
-
-              onClose={() => {
-                if (side === "left") setActiveLeft(null);
-                else setActiveRight(null);
-              }}
-            />
-        </ResizablePanel>
+        <RevisionsPanel
+          comments={comments}
+          activeComments={activeComments}
+          resolvedComments={resolvedComments}
+          onResolve={resolveComment}
+          onDelete={deleteComment}
+          onUpdate={updateComment}
+          onHighlight={setCommentHighlight}
+          visible={true}
+          pendingSelectedText={pendingCommentText}
+          onSubmitNew={handleSubmitComment}
+          onCancelNew={handleCancelComment}
+          selectedCommentId={selectedCommentId}
+          onSelectComment={setSelectedCommentId}
+          editor={editorInstance}
+          panelSide={side}
+          viewMode={getPanelViewMode("revisions")}
+          onViewModeChange={(m) => setPanelViewMode("revisions", m)}
+          onScrollToPos={(pos) => editorRef.current?.scrollToPos(pos)}
+          onClose={() => {
+            if (side === "left") setActiveLeft(null);
+            else setActiveRight(null);
+          }}
+        />
       );
     }
 
     if (panelId === "archive") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <ArchivePanel
-              snippets={sortedArchiveSnippets}
-              selectedId={selectedArchiveId}
-              onSelect={setSelectedArchiveId}
-              onInsert={handleInsertArchive}
-              onRestore={handleRestoreArchive}
-              onDelete={handleDeleteArchive}
-              onReanchor={handleReanchor}
-              onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
-              anchoredIds={anchoredIds}
-              editor={editorInstance}
-              panelSide={side}
-              viewMode={getPanelViewMode("archive")}
-              onViewModeChange={(m) => setPanelViewMode("archive", m)}
-
-            />
-        </ResizablePanel>
+        <ArchivePanel
+          snippets={sortedArchiveSnippets}
+          selectedId={selectedArchiveId}
+          onSelect={setSelectedArchiveId}
+          onInsert={handleInsertArchive}
+          onRestore={handleRestoreArchive}
+          onDelete={handleDeleteArchive}
+          onReanchor={handleReanchor}
+          onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
+          anchoredIds={anchoredIds}
+          editor={editorInstance}
+          panelSide={side}
+          viewMode={getPanelViewMode("archive")}
+          onViewModeChange={(m) => setPanelViewMode("archive", m)}
+        />
       );
     }
 
     if (panelId === "footnotes") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <FootnotePanel
-              footnotes={footnotes}
-              selectedId={selectedFootnoteId}
-              onSelect={setSelectedFootnoteId}
-              onEdit={handleEditFootnote}
-              onDelete={handleDeleteFootnote}
-              onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
-              editor={editorInstance}
-              panelSide={side}
-              viewMode={getPanelViewMode("footnotes")}
-              onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
-              orphanedFootnotes={orphanedFootnotes}
-              onDeleteOrphan={handleDeleteOrphan}
-              onEditOrphan={handleEditOrphan}
-              onReanchor={handleReanchorFootnote}
-              onAdd={handleAddFootnote}
-            />
-        </ResizablePanel>
+        <FootnotePanel
+          footnotes={footnotes}
+          selectedId={selectedFootnoteId}
+          onSelect={setSelectedFootnoteId}
+          onEdit={handleEditFootnote}
+          onDelete={handleDeleteFootnote}
+          onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
+          editor={editorInstance}
+          panelSide={side}
+          viewMode={getPanelViewMode("footnotes")}
+          onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
+          orphanedFootnotes={orphanedFootnotes}
+          onDeleteOrphan={handleDeleteOrphan}
+          onEditOrphan={handleEditOrphan}
+          onReanchor={handleReanchorFootnote}
+          onAdd={handleAddFootnote}
+        />
       );
     }
 
     if (panelId === "citations") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <CitationsPanel
-              citations={citations}
-              bibEntries={bibEntries}
-              citationStyle={citationStyle}
-              bibPackage={bibPackage}
-              bibPath={bibPath}
-              selectedId={selectedCitationId}
-              citationOrder={citationOrder}
-              onSelect={setSelectedCitationId}
-              onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
-              onUpdateCitation={updateCitation}
-              onDeleteCitation={deleteCitation}
-              onSetStyle={setCitationStyle}
-              onSetBibPackage={setBibPackage}
-              getDisplayText={getCitationDisplayText}
-              pendingCreate={pendingCitationCreate}
-              onCreateCitation={(cmd) => {
-                const ref = addCitation(cmd);
-                return ref.id;
-              }}
-              onInsertCitation={(cmd, citId, display) => {
-                editorRef.current?.insertCitation(cmd, citId, display);
-              }}
-              onClearPendingCreate={() => setPendingCitationCreate(null)}
-              onStartCreate={() => setPendingCitationCreate("\\cite")}
-              editor={editorInstance}
-              panelSide={side}
-              citationPositions={citationPositionMap}
-              viewMode={getPanelViewMode("citations")}
-              onViewModeChange={(m) => setPanelViewMode("citations", m)}
-              getFormattedBib={getFormattedBib}
-              getAnnotation={getAnnotation}
-              setAnnotation={setAnnotation}
-              onRequestReview={requestBibReview}
-              onCancelReview={cancelBibReview}
-              getReviewStatus={getBibReviewStatus}
-              onUpdateBibEntry={updateBibEntry}
-              onUpdateBibKeyAndType={updateBibKeyAndType}
-            />
-        </ResizablePanel>
+        <CitationsPanel
+          citations={citations}
+          bibEntries={bibEntries}
+          citationStyle={citationStyle}
+          bibPackage={bibPackage}
+          bibPath={bibPath}
+          selectedId={selectedCitationId}
+          citationOrder={citationOrder}
+          onSelect={setSelectedCitationId}
+          onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
+          onUpdateCitation={updateCitation}
+          onDeleteCitation={deleteCitation}
+          onSetStyle={setCitationStyle}
+          onSetBibPackage={setBibPackage}
+          getDisplayText={getCitationDisplayText}
+          pendingCreate={pendingCitationCreate}
+          onCreateCitation={(cmd) => {
+            const ref = addCitation(cmd);
+            return ref.id;
+          }}
+          onInsertCitation={(cmd, citId, display) => {
+            editorRef.current?.insertCitation(cmd, citId, display);
+          }}
+          onClearPendingCreate={() => setPendingCitationCreate(null)}
+          onStartCreate={() => setPendingCitationCreate("\\cite")}
+          editor={editorInstance}
+          panelSide={side}
+          citationPositions={citationPositionMap}
+          viewMode={getPanelViewMode("citations")}
+          onViewModeChange={(m) => setPanelViewMode("citations", m)}
+          getFormattedBib={getFormattedBib}
+          getAnnotation={getAnnotation}
+          setAnnotation={setAnnotation}
+          onRequestReview={requestBibReview}
+          onCancelReview={cancelBibReview}
+          getReviewStatus={getBibReviewStatus}
+          onUpdateBibEntry={updateBibEntry}
+          onUpdateBibKeyAndType={updateBibKeyAndType}
+        />
       );
     }
 
     if (panelId === "bibliography") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <BibliographyPanel
-              citations={citations}
-              bibEntries={bibEntries}
-              selectedBibKey={selectedBibKey}
-              onSelectBibKey={setSelectedBibKey}
-              onUpdateBibEntry={updateBibEntry}
-              onUpdateBibKeyAndType={updateBibKeyAndType}
-              getFormattedBib={getFormattedBib}
-              getAnnotation={getAnnotation}
-              setAnnotation={setAnnotation}
-              onRequestReview={requestBibReview}
-              onCancelReview={cancelBibReview}
-              getReviewStatus={getBibReviewStatus}
-              allEditorCitations={allEditorCitations}
-              onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
-              onActiveCitationChange={setBibActiveCitationId}
-              bibPackage={bibPackage}
-              onAddBibEntry={addBibEntry}
-              generalBibPath={generalBibPath}
-              onSetGeneralBibPath={setGeneralBibPath}
-              entryRequests={entryRequests}
-              onAddEntryRequest={addEntryRequest}
-              onRemoveEntryRequest={removeEntryRequest}
-            />
-        </ResizablePanel>
+        <BibliographyPanel
+          citations={citations}
+          bibEntries={bibEntries}
+          selectedBibKey={selectedBibKey}
+          onSelectBibKey={setSelectedBibKey}
+          onUpdateBibEntry={updateBibEntry}
+          onUpdateBibKeyAndType={updateBibKeyAndType}
+          getFormattedBib={getFormattedBib}
+          getAnnotation={getAnnotation}
+          setAnnotation={setAnnotation}
+          onRequestReview={requestBibReview}
+          onCancelReview={cancelBibReview}
+          getReviewStatus={getBibReviewStatus}
+          allEditorCitations={allEditorCitations}
+          onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
+          onActiveCitationChange={setBibActiveCitationId}
+          bibPackage={bibPackage}
+          onAddBibEntry={addBibEntry}
+          generalBibPath={generalBibPath}
+          onSetGeneralBibPath={setGeneralBibPath}
+          entryRequests={entryRequests}
+          onAddEntryRequest={addEntryRequest}
+          onRemoveEntryRequest={removeEntryRequest}
+        />
       );
     }
 
     if (panelId === "wordcount") {
-      return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <WordCountPanel counts={wordCounts} selection={wordSelection} />
-        </ResizablePanel>
-      );
+      return <WordCountPanel counts={wordCounts} selection={wordSelection} />;
     }
 
     if (panelId === "quotations") {
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <QuotationsPanel
-            groups={quotationGroups}
-            bibEntries={bibEntries}
-            citationStyle={citationStyle}
-            onAddGroup={addQuotationGroup}
-            onDeleteGroup={deleteQuotationGroup}
-            onUpdateGroupTitle={updateQuotationGroupTitle}
-            onAddQuotation={addQuotationToGroup}
-            onUpdateQuotation={updateQuotation}
-            onDeleteQuotation={deleteQuotation}
-            onUpdateCiteKey={updateQuotationCiteKey}
-            onUpdateNotes={updateQuotationNotes}
-          />
-        </ResizablePanel>
+        <QuotationsPanel
+          groups={quotationGroups}
+          bibEntries={bibEntries}
+          citationStyle={citationStyle}
+          onAddGroup={addQuotationGroup}
+          onDeleteGroup={deleteQuotationGroup}
+          onUpdateGroupTitle={updateQuotationGroupTitle}
+          onAddQuotation={addQuotationToGroup}
+          onUpdateQuotation={updateQuotation}
+          onDeleteQuotation={deleteQuotation}
+          onUpdateCiteKey={updateQuotationCiteKey}
+          onUpdateNotes={updateQuotationNotes}
+          onScrollToParagraph={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+        />
       );
     }
 
     if (panelId === "search") {
+      return <SearchPanel editor={editorInstance} onHighlightRange={setSearchHighlightRange} />;
+    }
+
+    return <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />;
+  }
+
+  // Render a side's panel column (single or split). Returns null if
+  // the side has nothing to show.
+  function renderPanelColumn(side: Side): React.ReactNode {
+    const top = side === "left" ? activeLeft : activeRight;
+    const bottom = side === "left" ? prefs.activeLeftBottom : prefs.activeRightBottom;
+    const ratio = side === "left" ? prefs.splitLeftRatio : prefs.splitRightRatio;
+    const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
+    const setFocused = side === "left" ? setFocusedHalfLeft : setFocusedHalfRight;
+
+    if (!top && !bottom) return null;
+
+    const width = getPanelWidth(side, top ?? "blank");
+    const onWidthChange = (w: number) => setPanelWidth(side, top ?? "blank", w);
+
+    if (bottom != null) {
+      // Split mode
       return (
-        <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-          <SearchPanel editor={editorInstance} onHighlightRange={setSearchHighlightRange} />
-        </ResizablePanel>
+        <PanelColumn
+          side={side}
+          width={width}
+          onWidthChange={onWidthChange}
+          split
+          focusedHalf={focused}
+          onFocusHalf={setFocused}
+        >
+          {{
+            top: top ? renderPanelInner(top, side) : <div className="w-full h-full bg-[var(--background)]" />,
+            bottom: renderPanelInner(bottom, side),
+            ratio,
+            onRatioChange: (r: number) => setSplitRatio(side, r),
+          }}
+        </PanelColumn>
       );
     }
 
+    // Single mode — top must be non-null because of the early return above
+    if (!top) return null;
     return (
-      <ResizablePanel key={panelId} side={side} width={width} onWidthChange={onWidthChange}>
-        <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />
-      </ResizablePanel>
+      <PanelColumn side={side} width={width} onWidthChange={onWidthChange}>
+        {renderPanelInner(top, side)}
+      </PanelColumn>
     );
   }
 
@@ -2060,14 +2275,37 @@ export default function EditorLayout() {
           >
             <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
           </button>
+          {/* Split panel toggle */}
+          <button
+            onClick={() => toggleSplit("left")}
+            className={`p-2 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+            title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+          >
+            <IconSplit active={prefs.activeLeftBottom != null} />
+          </button>
+          {/* Top/Bottom focus toggle (only when split) */}
+          {prefs.activeLeftBottom != null && (
+            <div className="flex flex-col items-stretch gap-px text-[9px] font-bold leading-none">
+              <button
+                onClick={() => setFocusedHalfLeft("top")}
+                className={`px-1 py-0.5 rounded ${focusedHalfLeft === "top" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
+                title="Focus top half"
+              >T</button>
+              <button
+                onClick={() => setFocusedHalfLeft("bottom")}
+                className={`px-1 py-0.5 rounded ${focusedHalfLeft === "bottom" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
+                title="Focus bottom half"
+              >B</button>
+            </div>
+          )}
           {/* Separator between fixed tools and movable tools */}
           <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
           {leftStripItems.map((p) => (
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={activeLeft === p.id}
-              onClick={() => togglePanel(p.id)}
+              active={activeLeft === p.id || prefs.activeLeftBottom === p.id}
+              onClick={() => handleStripClick(p.id, "left")}
               onMove={handleMove}
               side="left"
               badge={p.id === "revisions" && activeComments.length > 0}
@@ -2076,39 +2314,84 @@ export default function EditorLayout() {
           ))}
         </div>
 
-        {/* Left panel (only rendered when active) */}
-        {activeLeft && (activeLeft === "blank" || leftItems.some((p) => p.id === activeLeft)) &&
-          renderPanel(activeLeft, "left")
-        }
+        {/* Left panel column (single or split, only rendered when active) */}
+        {renderPanelColumn("left")}
 
         {/* Editor column: toolbar + content */}
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`}>
-          <MenuBar editor={editorInstance} onAddComment={handleAddComment} onArchive={handleArchive} onCreateFootnote={handleCreateFootnote} showParTitles={showParTitles} onToggleParTitles={() => setShowParTitles((p) => !p)} showLatexComments={showLatexComments} onToggleLatexComments={() => setShowLatexComments((p) => !p)} onOpenPreferences={() => setPreferencesOpen(true)} />
+          <MenuBar
+            editor={editorInstance}
+            onAddComment={handleAddComment}
+            onArchive={handleArchive}
+            onCreateFootnote={handleCreateFootnote}
+            showParTitles={showParTitles}
+            onToggleParTitles={() => setShowParTitles((p) => !p)}
+            showLatexComments={showLatexComments}
+            onToggleLatexComments={() => setShowLatexComments((p) => !p)}
+            onOpenPreferences={() => setPreferencesOpen(true)}
+            editorSplit={editorSplit}
+            onToggleEditorSplit={() => setEditorSplit((s) => !s)}
+          />
           {currentDocId && content && !docLoading ? (
-            <>
-              <VirgilEditor
-                ref={editorRef}
-                initialContent={content}
-                onUpdate={handleUpdate}
-                highlightText={highlightText}
-                highlightRange={searchHighlightRange}
-                onAddComment={handleAddComment}
-                onArchive={handleArchive}
-                onEditorReady={setEditorInstance}
-                onCitationDrop={(command) => {
-                  const display = getCitationDisplayText(command);
-                  const ref = addCitation(command);
-                  return { id: ref.id, displayText: display };
-                }}
+            editorSplit ? (
+              <SplitEditorPanes
+                editorInstance={editorInstance}
+                ratio={editorSplitRatio}
+                onRatioChange={setEditorSplitRatio}
+                onClose={() => setEditorSplit(false)}
+                canonical={
+                  <>
+                    <VirgilEditor
+                      ref={editorRef}
+                      initialContent={content}
+                      onUpdate={handleUpdate}
+                      highlightText={highlightText}
+                      highlightRange={searchHighlightRange}
+                      onAddComment={handleAddComment}
+                      onArchive={handleArchive}
+                      onEditorReady={setEditorInstance}
+                      onCitationDrop={(command) => {
+                        const display = getCitationDisplayText(command);
+                        const ref = addCitation(command);
+                        return { id: ref.id, displayText: display };
+                      }}
+                    />
+                    <NoteMarkers
+                      editor={editorInstance}
+                      notes={notes}
+                      panelSide={notesPanelSide}
+                      selectedNoteId={selectedNoteId}
+                      onSelectNote={setSelectedNoteId}
+                    />
+                  </>
+                }
               />
-              <NoteMarkers
-                editor={editorInstance}
-                notes={notes}
-                panelSide={notesPanelSide}
-                selectedNoteId={selectedNoteId}
-                onSelectNote={setSelectedNoteId}
-              />
-            </>
+            ) : (
+              <>
+                <VirgilEditor
+                  ref={editorRef}
+                  initialContent={content}
+                  onUpdate={handleUpdate}
+                  highlightText={highlightText}
+                  highlightRange={searchHighlightRange}
+                  onAddComment={handleAddComment}
+                  onArchive={handleArchive}
+                  onEditorReady={setEditorInstance}
+                  onCitationDrop={(command) => {
+                    const display = getCitationDisplayText(command);
+                    const ref = addCitation(command);
+                    return { id: ref.id, displayText: display };
+                  }}
+                />
+                <NoteMarkers
+                  editor={editorInstance}
+                  notes={notes}
+                  panelSide={notesPanelSide}
+                  selectedNoteId={selectedNoteId}
+                  onSelectNote={setSelectedNoteId}
+                />
+              </>
+            )
           ) : (
             <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
               {docLoading ? "Loading..." : ""}
@@ -2116,10 +2399,8 @@ export default function EditorLayout() {
           )}
         </div>
 
-        {/* Right panel (only rendered when active) */}
-        {activeRight && (activeRight === "blank" || rightItems.some((p) => p.id === activeRight)) &&
-          renderPanel(activeRight, "right")
-        }
+        {/* Right panel column (single or split, only rendered when active) */}
+        {renderPanelColumn("right")}
 
         {/* Right icon strip */}
         <div data-strip-side="right" className="flex flex-col items-center py-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
@@ -2143,14 +2424,37 @@ export default function EditorLayout() {
           >
             <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
           </button>
+          {/* Split panel toggle */}
+          <button
+            onClick={() => toggleSplit("right")}
+            className={`p-2 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+            title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+          >
+            <IconSplit active={prefs.activeRightBottom != null} />
+          </button>
+          {/* Top/Bottom focus toggle (only when split) */}
+          {prefs.activeRightBottom != null && (
+            <div className="flex flex-col items-stretch gap-px text-[9px] font-bold leading-none">
+              <button
+                onClick={() => setFocusedHalfRight("top")}
+                className={`px-1 py-0.5 rounded ${focusedHalfRight === "top" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
+                title="Focus top half"
+              >T</button>
+              <button
+                onClick={() => setFocusedHalfRight("bottom")}
+                className={`px-1 py-0.5 rounded ${focusedHalfRight === "bottom" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-300 hover:text-stone-600 hover:bg-stone-100"}`}
+                title="Focus bottom half"
+              >B</button>
+            </div>
+          )}
           {/* Separator between fixed tools and movable tools */}
           <div className="self-stretch -mx-1 border-t border-[var(--border)] my-0.5" />
           {rightStripItems.map((p) => (
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={activeRight === p.id}
-              onClick={() => togglePanel(p.id)}
+              active={activeRight === p.id || prefs.activeRightBottom === p.id}
+              onClick={() => handleStripClick(p.id, "right")}
               onMove={handleMove}
               side="right"
               badge={p.id === "revisions" && activeComments.length > 0}

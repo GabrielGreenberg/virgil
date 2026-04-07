@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -50,6 +50,23 @@ function FootnotePanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, viewMode === "in-text"
   );
+
+  const onActivateFootnote = useCallback(
+    (fn: FootnoteInfo) => {
+      onSelect(fn.footnoteId);
+      onScrollToMarker(fn.footnoteId);
+    },
+    [onSelect, onScrollToMarker],
+  );
+  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
+    useCycle(footnotes, onActivateFootnote);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedId) return;
+    const i = footnotes.findIndex((fn) => fn.footnoteId === selectedId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedId, footnotes, cycleIdx, setCycleIdx]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -139,6 +156,13 @@ function FootnotePanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <PanelHeader title="Footnotes" count={totalCount} onAdd={onAdd}>
+        <PrevNextCounter
+          current={cycleIdx}
+          total={footnotes.length}
+          onPrev={cyclePrev}
+          onNext={cycleNext}
+          label="anchored"
+        />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 

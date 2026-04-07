@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, useState, useRef, useEffect } from "react";
+import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -113,6 +113,77 @@ export function PanelHeader({
   );
 }
 
+/* ── Horizontal split divider ─────────────────────────────────────── */
+
+/**
+ * Horizontal draggable divider for splitting a column into top + bottom
+ * halves. Mirrors the visual language of the vertical edge handle in
+ * `ResizablePanel` (1px hairline + centered oval grip).
+ *
+ * The drag handler converts mouse Y to a 0..1 ratio against the parent
+ * container's bounding rect, clamped to `[minRatio, maxRatio]`.
+ */
+export function HSplit({
+  ratio,
+  onRatioChange,
+  containerRef,
+  minRatio = 0.15,
+  maxRatio = 0.85,
+}: {
+  ratio: number;
+  onRatioChange: (ratio: number) => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+  minRatio?: number;
+  maxRatio?: number;
+}) {
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const onMove = (ev: MouseEvent) => {
+        const el = containerRef.current;
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        const r = (ev.clientY - rect.top) / rect.height;
+        onRatioChange(Math.max(minRatio, Math.min(maxRatio, r)));
+      };
+      const onUp = () => {
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      document.body.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [containerRef, onRatioChange, minRatio, maxRatio],
+  );
+
+  return (
+    <div className="relative shrink-0" style={{ height: 1 }}>
+      <div
+        className="absolute inset-x-0 cursor-row-resize"
+        style={{ top: -3, height: 7, background: "transparent" }}
+        onMouseDown={onMouseDown}
+      />
+      <div className="absolute inset-x-0" style={{ top: 0, height: 1, background: "#e5e2dd" }} />
+      <div
+        className="absolute left-1/2 cursor-row-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
+        style={{
+          top: -4,
+          marginLeft: -20,
+          width: 40,
+          height: 8,
+          borderRadius: 4,
+        }}
+        onMouseDown={onMouseDown}
+      />
+    </div>
+  );
+}
+
 /* ── Three-dot item menu ─────────────────────────────────────────── */
 
 export function ItemMenu({
@@ -168,6 +239,114 @@ export function ItemMenu({
       )}
     </div>
   );
+}
+
+/* ── Prev/Next counter widget ─────────────────────────────────────── */
+
+/**
+ * Reusable counter + ↑/↓ navigation arrows for panel headers that step
+ * through a list of items. Generalized from SearchPanel's header.
+ *
+ *  - When `current` is null and `total > 0`: shows "N items".
+ *  - When `current` is non-null: shows "i+1 of N".
+ *  - When `total === 0`: shows "0 ${label}" with disabled buttons.
+ */
+export function PrevNextCounter({
+  current,
+  total,
+  onPrev,
+  onNext,
+  label = "items",
+}: {
+  current: number | null;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  label?: string;
+}) {
+  const counterText =
+    total === 0
+      ? `0 ${label}`
+      : current == null
+        ? `${total} ${label}`
+        : `${current + 1} of ${total}`;
+
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-[var(--muted)] tabular-nums mr-1">
+        {counterText}
+      </span>
+      <button
+        onClick={onPrev}
+        disabled={total === 0}
+        className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
+        title="Previous"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="18 15 12 9 6 15" />
+        </svg>
+      </button>
+      <button
+        onClick={onNext}
+        disabled={total === 0}
+        className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
+        title="Next"
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Tracks a current index over an array and exposes prev/next callbacks
+ * that cycle through the items, calling `onActivate` with each chosen
+ * item. Handles list shrinking by clamping the exposed index on read.
+ */
+export function useCycle<T>(
+  items: T[],
+  onActivate: (item: T, index: number) => void,
+) {
+  const [rawIdx, setIdx] = useState<number | null>(null);
+
+  // Clamp on read so the exposed value is always valid even if items shrank
+  const idx = rawIdx != null && rawIdx < items.length ? rawIdx : null;
+
+  const next = useCallback(() => {
+    if (items.length === 0) return;
+    const n = idx == null ? 0 : (idx + 1) % items.length;
+    setIdx(n);
+    onActivate(items[n], n);
+  }, [items, idx, onActivate]);
+
+  const prev = useCallback(() => {
+    if (items.length === 0) return;
+    const p = idx == null ? items.length - 1 : (idx - 1 + items.length) % items.length;
+    setIdx(p);
+    onActivate(items[p], p);
+  }, [items, idx, onActivate]);
+
+  return { idx, setIdx, next, prev };
 }
 
 /** Standard menu item for delete actions inside ItemMenu. */

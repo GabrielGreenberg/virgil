@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
 import type { QuotationGroup, Quotation, BibEntry } from "@/lib/types";
-import { panelCard, PANEL, Chevron, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
 
@@ -456,6 +456,7 @@ export interface QuotationsPanelProps {
   onDeleteQuotation: (groupId: string, qId: string) => void;
   onUpdateCiteKey: (groupId: string, key: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
+  onScrollToParagraph?: (uuid: string) => void;
 }
 
 export default function QuotationsPanel({
@@ -468,6 +469,7 @@ export default function QuotationsPanel({
   onDeleteQuotation,
   onUpdateCiteKey,
   onUpdateNotes,
+  onScrollToParagraph,
 }: QuotationsPanelProps) {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
 
@@ -476,9 +478,40 @@ export default function QuotationsPanel({
     setSelectedGroupId(g.id);
   }, [onAddGroup]);
 
+  // Anchored groups (with paragraphId) for prev/next cycling
+  const anchoredGroups = useMemo(
+    () => groups.filter((g) => g.paragraphId),
+    [groups],
+  );
+
+  const onActivateGroup = useCallback(
+    (g: QuotationGroup) => {
+      setSelectedGroupId(g.id);
+      if (g.paragraphId) onScrollToParagraph?.(g.paragraphId);
+    },
+    [onScrollToParagraph],
+  );
+  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
+    useCycle(anchoredGroups, onActivateGroup);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedGroupId) return;
+    const i = anchoredGroups.findIndex((g) => g.id === selectedGroupId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedGroupId, anchoredGroups, cycleIdx, setCycleIdx]);
+
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations" count={groups.length} />
+      <PanelHeader title="Quotations" count={groups.length}>
+        <PrevNextCounter
+          current={cycleIdx}
+          total={anchoredGroups.length}
+          onPrev={cyclePrev}
+          onNext={cycleNext}
+          label="anchored"
+        />
+      </PanelHeader>
 
       <div className={PANEL.list}>
         {groups.length === 0 ? (

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useCallback, useMemo, memo } from "react";
+import { useState, useCallback, useMemo, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, useCycle } from "./panel-primitives";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -46,6 +46,29 @@ function ArchivePanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, viewMode === "in-text"
   );
+
+  // Anchored snippets in document order, for prev/next cycling
+  const anchoredSnippets = useMemo(() => {
+    if (!anchoredIds) return [];
+    return snippets.filter((s) => anchoredIds.has(s.id));
+  }, [snippets, anchoredIds]);
+
+  const onActivateSnippet = useCallback(
+    (s: ArchivedSnippet) => {
+      onSelect(s.id);
+      onScrollToMarker?.(s.id);
+    },
+    [onSelect, onScrollToMarker],
+  );
+  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
+    useCycle(anchoredSnippets, onActivateSnippet);
+
+  // Sync external selection back to cycle index
+  useEffect(() => {
+    if (!selectedId) return;
+    const i = anchoredSnippets.findIndex((s) => s.id === selectedId);
+    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
+  }, [selectedId, anchoredSnippets, cycleIdx, setCycleIdx]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -80,6 +103,13 @@ function ArchivePanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <PanelHeader title="Archived Text" count={snippets.length}>
+        <PrevNextCounter
+          current={cycleIdx}
+          total={anchoredSnippets.length}
+          onPrev={cyclePrev}
+          onNext={cycleNext}
+          label="anchored"
+        />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 
