@@ -1244,9 +1244,14 @@ export default function EditorLayout() {
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
-      // Reference line: a bit below the top of the editor viewport so
-      // a heading is still "active" when its text is partly visible.
-      const referenceY = scrollRect.top + 40;
+      // Reference line: the vertical middle of the editor viewport. A
+      // heading/parTitle becomes "active" once it has scrolled past
+      // this midline. Using the middle (instead of just under the top)
+      // matches the natural reading focus and makes click-to-scroll
+      // align cleanly: scrollToHeading uses block:"center", so the
+      // jumped-to heading lands on the reference line and the dot
+      // animates straight to it.
+      const referenceY = scrollRect.top + scrollRect.height / 2;
 
       const stack: { level: number; text: string }[] = [];
       let lastCrossedStack: { level: number; text: string }[] = [];
