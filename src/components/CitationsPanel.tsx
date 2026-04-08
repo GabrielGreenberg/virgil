@@ -3,12 +3,16 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { BibEntry, CitationRef } from "@/lib/types";
-import { formatMinimalCitation } from "@/lib/bib-parser";
+import {
+  formatMinimalCitation,
+  parseCiteCommand,
+  serializeCiteCommand,
+} from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
-import CitationBuilder from "./CitationBuilder";
+import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -112,6 +116,8 @@ export function CitationCard({
 }: CitationCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
+  const editWrapperRef = useRef<HTMLDivElement>(null);
+  const builderHandleRef = useRef<CitationBuilderHandle>(null);
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -147,6 +153,25 @@ export function CitationCard({
     [cit.id, onUpdateCitation],
   );
 
+  // Click-outside auto-save: when the builder is open and the user clicks
+  // anywhere outside the edit wrapper, commit the current builder state
+  // (if it's a valid, non-empty command) and close the editor. The Save
+  // and Cancel buttons inside the builder remain available and take
+  // precedence since they live inside the wrapper.
+  useEffect(() => {
+    if (!isEditing) return;
+    const handler = (e: MouseEvent) => {
+      const wrapper = editWrapperRef.current;
+      if (!wrapper || wrapper.contains(e.target as Node)) return;
+      // Commit current builder state if it's valid (no-op if empty).
+      builderHandleRef.current?.commit();
+      setIsEditing(false);
+    };
+    // Use mousedown so we fire before focus/blur handlers inside inputs.
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isEditing]);
+
   const toggleBibKey = useCallback((key: string) => {
     setExpandedBibKey((prev) => (prev === key ? null : key));
   }, []);
@@ -154,6 +179,50 @@ export function CitationCard({
   const expandedEntry = expandedBibKey
     ? bibEntryMap.get(expandedBibKey)
     : undefined;
+
+  // Build a single-key citation command for dragging the expanded bib
+  // pod. We preserve the parent citation's command type (e.g. \citep),
+  // starred/capitalized variant, and drop any pre/post notes. If the
+  // parent command can't be parsed, fall back to a plain \cite{key}.
+  const buildSingleKeyCommand = useCallback(
+    (key: string): string => {
+      const parsed = parseCiteCommand(cit.command);
+      if (!parsed) return `\\cite{${key}}`;
+      return serializeCiteCommand(
+        {
+          type: parsed.type,
+          starred: parsed.starred,
+          capitalized: parsed.capitalized,
+          entries: [{ key }],
+        },
+        bibPackage,
+      );
+    },
+    [cit.command, bibPackage],
+  );
+
+  const handleBibPodDragStart = useCallback(
+    (e: React.DragEvent) => {
+      if (!expandedBibKey) return;
+      const cmd = buildSingleKeyCommand(expandedBibKey);
+      const display = getDisplayText(cmd);
+      e.dataTransfer.setData("text/plain", cmd);
+      e.dataTransfer.setData(
+        "application/x-virgil-citation",
+        JSON.stringify({ command: cmd, bibKey: expandedBibKey }),
+      );
+      e.dataTransfer.effectAllowed = "copy";
+      const ghost = document.createElement("div");
+      ghost.textContent =
+        display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
+      ghost.style.cssText =
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 10, 14);
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    },
+    [expandedBibKey, buildSingleKeyCommand, getDisplayText],
+  );
 
   return (
     <div
@@ -167,8 +236,9 @@ export function CitationCard({
     >
       <div className={PANEL.cardInner}>
         {isEditing ? (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div ref={editWrapperRef} onClick={(e) => e.stopPropagation()}>
             <CitationBuilder
+              ref={builderHandleRef}
               initialCommand={cit.command}
               bibPackage={bibPackage}
               bibEntries={bibEntries}
@@ -230,17 +300,21 @@ export function CitationCard({
               })}
             </div>
 
-            {/* LaTeX command — click to enter edit mode */}
-            <div
-              className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-pointer truncate"
+            {/* LaTeX command */}
+            <div className="text-xs font-mono text-stone-500 mb-0.5 truncate">
+              {cit.command}
+            </div>
+            {/* Edit button — opens the CitationBuilder for this citation. */}
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 setIsEditing(true);
               }}
-              title="Click to edit citation"
+              className="text-xs text-stone-400 hover:text-stone-600 underline mb-1.5"
+              title="Edit citation"
             >
-              {cit.command}
-            </div>
+              Edit
+            </button>
 
             {/* Missing keys */}
             {cit.keys
@@ -251,9 +325,17 @@ export function CitationCard({
                 </div>
               ))}
 
-            {/* Expanded bibliography pod */}
+            {/* Expanded bibliography pod — draggable, drops as a
+                single-key citation for the key the user selected (not
+                the parent multi-key command, and not the full bib card). */}
             {expandedEntry && (
-              <div className="mt-2 border-t border-stone-100 pt-2">
+              <div
+                draggable
+                onDragStart={handleBibPodDragStart}
+                onClick={(e) => e.stopPropagation()}
+                className="mt-2 rounded-md border border-stone-200 bg-stone-50/40 p-2 cursor-grab active:cursor-grabbing"
+                title="Drag to insert this citation"
+              >
                 <BibEntryCard
                   entry={expandedEntry}
                   isSelected={false}
