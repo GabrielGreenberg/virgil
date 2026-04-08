@@ -1211,6 +1211,10 @@ export default function EditorLayout() {
   // last one whose top is above (or at) a reference line just below
   // the toolbar. Recomputes on scroll, doc change, and resize.
   const [currentSectionPath, setCurrentSectionPath] = useState<string[]>([]);
+  // Top-level block index of the paragraph/list whose parTitle the
+  // reader has most recently scrolled past within the current section.
+  // Resets whenever a new heading is crossed. null when none.
+  const [currentParTitleIndex, setCurrentParTitleIndex] = useState<number | null>(null);
   useEffect(() => {
     if (!editorInstance) return;
     const view = editorInstance.view;
@@ -1227,8 +1231,12 @@ export default function EditorLayout() {
 
       const stack: { level: number; text: string }[] = [];
       let lastCrossedStack: { level: number; text: string }[] = [];
+      // Track the last parTitle paragraph whose top has scrolled past
+      // the reference line, within the current section scope. Reset
+      // whenever a heading is crossed.
+      let activeParTitleIdx: number | null = null;
 
-      doc.forEach((node, offset) => {
+      doc.forEach((node, offset, index) => {
         if (node.type.name === "heading" && node.attrs?.level) {
           const level = node.attrs.level as number;
           // Measure where this heading is on screen
@@ -1251,6 +1259,31 @@ export default function EditorLayout() {
             }
             stack.push({ level, text: node.textContent || "Untitled" });
             lastCrossedStack = [...stack];
+            // New section scope — clear any active parTitle from the
+            // previous section so we re-scan within this one.
+            activeParTitleIdx = null;
+          }
+          return;
+        }
+
+        // Paragraph/list with a parTitle — track the most recent one
+        // above the reference line inside the current section.
+        if (
+          (node.type.name === "paragraph" ||
+            node.type.name === "bulletList" ||
+            node.type.name === "orderedList") &&
+          node.attrs?.parTitle
+        ) {
+          let top: number | null = null;
+          try {
+            const coords = view.coordsAtPos(offset + 1);
+            top = coords.top;
+          } catch {
+            top = null;
+          }
+          if (top == null) return;
+          if (top <= referenceY) {
+            activeParTitleIdx = index;
           }
         }
       });
@@ -1262,6 +1295,9 @@ export default function EditorLayout() {
         }
         return path;
       });
+      setCurrentParTitleIndex((prev) =>
+        prev === activeParTitleIdx ? prev : activeParTitleIdx,
+      );
     };
 
     // Initial + event-driven recompute. Throttle scroll via RAF.
@@ -2366,6 +2402,7 @@ export default function EditorLayout() {
           onRenameHeading={handleRenameHeading}
           onRenameParTitle={handleRenameParTitle}
           activeSectionPath={currentSectionPath}
+          activeParTitleIndex={currentParTitleIndex}
         />
       );
     }

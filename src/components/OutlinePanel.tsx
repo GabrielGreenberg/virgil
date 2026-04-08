@@ -5,7 +5,6 @@ import type { JSONContent } from "@tiptap/react";
 import {
   type Category,
   ALL_CATEGORIES,
-  CATEGORY_LABELS,
   useWordCountConfig,
 } from "@/hooks/useWordCountConfig";
 
@@ -25,9 +24,13 @@ interface OutlinePanelProps {
   onRenameHeading?: (blockIndex: number, newText: string) => void;
   onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
   /** Heading chain currently visible in the editor viewport. The last
-      entry is the closest enclosing heading; every entry gets a red
-      dot marker in the outline. */
+      entry is the closest enclosing heading. Empty means the reader
+      is in the Document start region. */
   activeSectionPath?: string[];
+  /** Top-level block index of the paragraph/list whose parTitle the
+      reader is currently reading, or null if none. Used to move the
+      red dot onto a paragraph row when par titles are enabled. */
+  activeParTitleIndex?: number | null;
 }
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
@@ -250,6 +253,8 @@ function OutlineNode({
   sectionWordCount,
   perSectionCounts,
   activeSectionPath,
+  activeParTitleIndex,
+  parTitleDotActive,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -262,6 +267,10 @@ function OutlineNode({
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
   activeSectionPath?: string[];
+  activeParTitleIndex?: number | null;
+  /** True when an active parTitle row is currently eligible to take
+      the red dot away from any section heading. */
+  parTitleDotActive: boolean;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
@@ -269,11 +278,14 @@ function OutlineNode({
   const isCollapsed = collapsed.has(node.heading.id);
   // Is this heading the *innermost* active one? (last entry in the
   // chain). We mark only the deepest active heading with a red dot,
-  // since the breadcrumb above already shows the full chain.
+  // since the breadcrumb above already shows the full chain. The dot
+  // moves off the heading entirely when a parTitle is the current
+  // reading target (parTitleDotActive && showTitles).
   const isActive =
     activeSectionPath != null &&
     activeSectionPath.length > 0 &&
-    activeSectionPath[activeSectionPath.length - 1] === node.heading.text;
+    activeSectionPath[activeSectionPath.length - 1] === node.heading.text &&
+    !(parTitleDotActive && showTitles);
 
   return (
     <div>
@@ -340,16 +352,28 @@ function OutlineNode({
 
       {!isCollapsed && hasTitles && (
         <div>
-          {node.heading.parTitles.map((pt, i) => (
-            <div
-              key={`pt-${i}`}
-              className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#c45a5a] truncate"
-              style={{ paddingLeft: `${(depth + 1) * 16 + 24}px`, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
-              onClick={() => onScrollTo(pt.index)}
-            >
-              {pt.title}
-            </div>
-          ))}
+          {node.heading.parTitles.map((pt, i) => {
+            const isParActive =
+              showTitles &&
+              activeParTitleIndex != null &&
+              pt.index === activeParTitleIndex;
+            return (
+              <div
+                key={`pt-${i}`}
+                className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#c45a5a] truncate"
+                style={{ paddingLeft: `${(depth + 1) * 16 + 24}px`, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
+                onClick={() => onScrollTo(pt.index)}
+              >
+                {pt.title}
+                {isParActive && (
+                  <span
+                    className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
+                    title="Currently on screen"
+                  />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -369,6 +393,8 @@ function OutlineNode({
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
               activeSectionPath={activeSectionPath}
+              activeParTitleIndex={activeParTitleIndex}
+              parTitleDotActive={parTitleDotActive}
             />
           ))}
         </div>
@@ -823,7 +849,7 @@ function saveOutlinePrefs(
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath, activeParTitleIndex }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
@@ -832,7 +858,9 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
-  const { config: wcConfig, setInclude: setWcInclude } = useWordCountConfig();
+  // Per-section counts inherit the shared Word Count config — the
+  // outline view menu no longer exposes category toggles of its own.
+  const { config: wcConfig } = useWordCountConfig();
 
   // Load persisted prefs on mount
   useEffect(() => {
@@ -899,6 +927,24 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       return next;
     });
   }, []);
+
+  // Is the reader currently in the Document start region (before any
+  // heading)? When true, the red dot lives on the top "Document start"
+  // / "Title" row of the outline.
+  const isDocumentStartActive =
+    !activeSectionPath || activeSectionPath.length === 0;
+
+  // Is a parTitle row eligible to take the red dot? True only when
+  // parTitles are shown AND the reader is inside a paragraph whose
+  // parTitle is present somewhere in the outline (i.e., under a
+  // heading). When true, the innermost heading yields its dot to the
+  // matching parTitle row so we only ever draw one dot.
+  const parTitleDotActive = useMemo(() => {
+    if (!showTitles || activeParTitleIndex == null) return false;
+    return headings.some((h) =>
+      h.parTitles.some((pt) => pt.index === activeParTitleIndex),
+    );
+  }, [showTitles, activeParTitleIndex, headings]);
 
   const collapseAll = useCallback(() => {
     setCollapsed(new Set(headings.filter((h, i) => {
@@ -987,23 +1033,6 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   <span>Show word count</span>
                   <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
                 </button>
-                <div className="border-t border-stone-100 my-1" />
-                <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
-                  Include in count
-                </div>
-                {ALL_CATEGORIES.map((cat) => {
-                  const checked = wcConfig.include[cat];
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setWcInclude(cat, !checked)}
-                      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                    >
-                      <span>{CATEGORY_LABELS[cat]}</span>
-                      <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
-                    </button>
-                  );
-                })}
               </div>
             )}
           </div>
@@ -1028,6 +1057,12 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               </>
             ) : (
               <span className="italic text-stone-400">Document start</span>
+            )}
+            {isDocumentStartActive && (
+              <span
+                className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
+                title="Currently on screen"
+              />
             )}
           </div>
           {showWordCount && (
@@ -1066,6 +1101,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
               activeSectionPath={activeSectionPath}
+              activeParTitleIndex={activeParTitleIndex}
+              parTitleDotActive={parTitleDotActive}
             />
           ))
         )}
