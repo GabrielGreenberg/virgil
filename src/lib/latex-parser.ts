@@ -516,7 +516,8 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const env = beginMatch[1];
       const optArg = beginMatch[2] || "";
       ctx.pos += beginMatch[0].length;
-      const envEnd = ctx.src.indexOf(`\\end{${env}}`, ctx.pos);
+      // Find the matching \end{env}, accounting for nested \begin{env}/\end{env}
+      const envEnd = findMatchingEnd(ctx.src, ctx.pos, env);
       const envContent =
         envEnd !== -1
           ? ctx.src.slice(ctx.pos, envEnd)
@@ -693,24 +694,114 @@ function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
   return { text, uuid: null };
 }
 
+/**
+ * Find the position (index of "\") of the \end{env} that matches the
+ * already-opened \begin{env} just before `startPos`. Returns -1 if no
+ * matching close is found. Properly handles nested \begin{env}…\end{env}.
+ */
+function findMatchingEnd(src: string, startPos: number, env: string): number {
+  const beginTok = `\\begin{${env}}`;
+  const endTok = `\\end{${env}}`;
+  let depth = 1;
+  let pos = startPos;
+  while (pos < src.length) {
+    const nextBegin = src.indexOf(beginTok, pos);
+    const nextEnd = src.indexOf(endTok, pos);
+    if (nextEnd === -1) return -1;
+    if (nextBegin !== -1 && nextBegin < nextEnd) {
+      depth++;
+      pos = nextBegin + beginTok.length;
+    } else {
+      depth--;
+      if (depth === 0) return nextEnd;
+      pos = nextEnd + endTok.length;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Split list-environment content into individual item slices, respecting
+ * nested itemize/enumerate environments. Each returned string is the text
+ * between an `\item` and the next sibling `\item` (or end of content),
+ * with surrounding whitespace trimmed.
+ */
+function splitListItems(content: string): string[] {
+  const items: string[] = [];
+  let pos = 0;
+  // Index where the current item's body starts (-1 = before any \item)
+  let currentStart = -1;
+  while (pos < content.length) {
+    // Skip past nested list environments — \item markers inside them
+    // belong to the inner list, not the current one.
+    if (content.startsWith("\\begin{itemize}", pos)) {
+      pos += "\\begin{itemize}".length;
+      const inner = findMatchingEnd(content, pos, "itemize");
+      pos = inner === -1 ? content.length : inner + "\\end{itemize}".length;
+      continue;
+    }
+    if (content.startsWith("\\begin{enumerate}", pos)) {
+      pos += "\\begin{enumerate}".length;
+      const inner = findMatchingEnd(content, pos, "enumerate");
+      pos = inner === -1 ? content.length : inner + "\\end{enumerate}".length;
+      continue;
+    }
+    // Look for \item at depth 0 (must be word-boundary so \items etc. don't match)
+    if (content.startsWith("\\item", pos)) {
+      const after = content[pos + 5];
+      if (after === undefined || /[\s\W]/.test(after)) {
+        if (currentStart >= 0) {
+          items.push(content.slice(currentStart, pos).trim());
+        }
+        pos += 5;
+        // Consume the optional [label] argument and trailing whitespace
+        while (pos < content.length && /[ \t]/.test(content[pos])) pos++;
+        if (content[pos] === "[") {
+          const close = content.indexOf("]", pos);
+          if (close !== -1) pos = close + 1;
+        }
+        while (pos < content.length && /[ \t]/.test(content[pos])) pos++;
+        currentStart = pos;
+        continue;
+      }
+    }
+    pos++;
+  }
+  if (currentStart >= 0) {
+    items.push(content.slice(currentStart).trim());
+  }
+  return items;
+}
+
 function parseList(content: string, type: string): JSONContent {
   const items: JSONContent[] = [];
-  const itemRegex = /\\item\s*/g;
-  let match;
-  const positions: number[] = [];
+  const itemTexts = splitListItems(content);
 
-  while ((match = itemRegex.exec(content)) !== null) {
-    positions.push(match.index + match[0].length);
+  for (const itemText of itemTexts) {
+    // Parse the item body as a block sequence so nested itemize/enumerate
+    // become real list nodes, not unknown commands. parseBody emits
+    // paragraphs for plain text and bulletList/orderedList for nested envs.
+    const itemDoc: JSONContent = { type: "listItem", content: [] };
+    const itemCtx: ParseContext = { pos: 0, src: itemText };
+    parseBody(itemCtx, itemDoc);
+
+    // The listItem schema requires "paragraph block*" — ensure the first
+    // child is a paragraph. parseBody can produce a leading non-paragraph
+    // (e.g. when an item starts with a nested list and no inline text).
+    if (!itemDoc.content || itemDoc.content.length === 0) {
+      itemDoc.content = [{ type: "paragraph" }];
+    } else if (itemDoc.content[0].type !== "paragraph") {
+      itemDoc.content.unshift({ type: "paragraph" });
+    }
+
+    items.push(itemDoc);
   }
 
-  for (let i = 0; i < positions.length; i++) {
-    const start = positions[i];
-    const end = i + 1 < positions.length ? positions[i + 1] - 6 : content.length; // approximate
-    const itemText = content.slice(start, end).trim();
-    const itemContent = parseInlineContent(itemText);
+  // Empty list — keep at least one empty item so the schema is valid
+  if (items.length === 0) {
     items.push({
       type: "listItem",
-      content: [{ type: "paragraph", content: itemContent }],
+      content: [{ type: "paragraph" }],
     });
   }
 

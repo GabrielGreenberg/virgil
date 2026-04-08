@@ -55,7 +55,7 @@ function escapeLatex(text: string): string {
     .replace(/\^/g, "\\textasciicircum{}");
 }
 
-function serializeNode(node: JSONContent, insideList = false): string {
+function serializeNode(node: JSONContent, insideList = false, listDepth = 0): string {
   switch (node.type) {
     case "doc":
       return (node.content || []).map((n) => serializeNode(n)).join("");
@@ -102,25 +102,44 @@ function serializeNode(node: JSONContent, insideList = false): string {
     }
 
     case "bulletList": {
-      const items = (node.content || []).map((n) => serializeNode(n)).join("");
+      const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `\\begin{itemize}\n${items}\\end{itemize}${anchor}\n\n`;
+      const indent = "  ".repeat(listDepth);
+      // Top-level list gets surrounding blank lines; nested lists do not.
+      const trailing = listDepth === 0 ? "\n\n" : "\n";
+      return `${indent}\\begin{itemize}\n${items}${indent}\\end{itemize}${anchor}${trailing}`;
     }
 
     case "orderedList": {
-      const items = (node.content || []).map((n) => serializeNode(n)).join("");
+      const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `\\begin{enumerate}\n${items}\\end{enumerate}${anchor}\n\n`;
+      const indent = "  ".repeat(listDepth);
+      const trailing = listDepth === 0 ? "\n\n" : "\n";
+      return `${indent}\\begin{enumerate}\n${items}${indent}\\end{enumerate}${anchor}${trailing}`;
     }
 
     case "listItem": {
-      const inner = (node.content || [])
-        .map((n) => serializeNode(n, true))
+      // The schema is "paragraph block*" — first child is the inline body,
+      // any further children are block-level (typically nested lists).
+      const indent = "  ".repeat(listDepth + 1);
+      const children = node.content || [];
+      const head = children[0];
+      const tail = children.slice(1);
+      const headText =
+        head && head.type === "paragraph"
+          ? (head.content || []).map(serializeInline).join("")
+          : "";
+      // Serialize trailing block children (nested lists, etc.) with bumped depth
+      const tailText = tail
+        .map((n) => serializeNode(n, false, listDepth + 1))
         .join("")
-        .trim();
-      return `  \\item ${inner}\n`;
+        .replace(/\n+$/, ""); // strip trailing blank lines from nested blocks
+      if (tailText) {
+        return `${indent}\\item ${headText}\n${tailText}\n`;
+      }
+      return `${indent}\\item ${headText}\n`;
     }
 
     case "horizontalRule":
