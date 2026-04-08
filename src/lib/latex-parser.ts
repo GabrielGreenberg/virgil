@@ -749,7 +749,12 @@ function readParagraph(ctx: ParseContext): string {
           rest
         )
       ) {
-        break;
+        // Don't break if the previous content ends with \\ (a hardBreak
+        // continuation from shift+enter). Otherwise multi-line LaTeX joined by
+        // soft line breaks would get split into separate paragraphs on reload.
+        if (!/\\\\\s*$/.test(result)) {
+          break;
+        }
       }
     }
 
