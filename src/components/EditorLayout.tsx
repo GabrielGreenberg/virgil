@@ -48,6 +48,7 @@ import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
 import PreferencesModal from "./PreferencesModal";
+import AIWindow from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useWordCount } from "@/hooks/useWordCount";
 import WordCountPanel from "./WordCountPanel";
@@ -774,6 +775,7 @@ export default function EditorLayout() {
     resolveRevision,
     reopenRevision,
     deleteRevision,
+    refresh: refreshRevisions,
   } = useRevisions(currentDocId);
   const activeRevisionsCount =
     generalRevisions.filter((r) => !r.resolved).length +
@@ -837,8 +839,21 @@ export default function EditorLayout() {
   } = useCitations(currentDocId);
 
   const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
-  const { requestReview: requestBibReview, cancelRequest: cancelBibReview, getRequestStatus: getBibReviewStatus } = useBibReview(currentDocId);
-  const { generalBibPath, entryRequests, setGeneralBibPath, addEntryRequest, removeEntryRequest } = useBibSettings(currentDocId);
+  const {
+    requests: bibReviewRequests,
+    requestReview: requestBibReview,
+    cancelRequest: cancelBibReview,
+    getRequestStatus: getBibReviewStatus,
+    refresh: refreshBibReview,
+  } = useBibReview(currentDocId);
+  const {
+    generalBibPath,
+    entryRequests,
+    setGeneralBibPath,
+    addEntryRequest,
+    removeEntryRequest,
+    refresh: refreshBibSettings,
+  } = useBibSettings(currentDocId);
 
   const {
     prefs,
@@ -882,6 +897,7 @@ export default function EditorLayout() {
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const { prefs: editorPrefs, updatePref, resetAll: resetPrefs } = usePreferences();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2941,9 +2957,9 @@ export default function EditorLayout() {
               at the center. Cardinal lines span 20 units (2→22);
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
-            onClick={() => { /* AI request hook — wire up later */ }}
-            className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"
-            title="AI request"
+            onClick={() => setAiWindowOpen(true)}
+            className={`p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"}`}
+            title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <g transform="rotate(15 12 12)">
@@ -3303,6 +3319,26 @@ export default function EditorLayout() {
           onClose={() => setPreferencesOpen(false)}
         />
       )}
+      <AIWindow
+        open={aiWindowOpen}
+        onClose={() => setAiWindowOpen(false)}
+        bibReviewRequests={bibReviewRequests}
+        bibEntryRequests={entryRequests}
+        generalRevisions={generalRevisions}
+        textRevisions={textRevisions}
+        users={revisionUsers}
+        bibEntries={bibEntries}
+        requestBibReview={requestBibReview}
+        cancelBibReview={cancelBibReview}
+        addEntryRequest={addEntryRequest}
+        removeEntryRequest={removeEntryRequest}
+        addGeneralRevision={addGeneralRevision}
+        refreshAll={() => {
+          refreshBibReview();
+          refreshBibSettings();
+          refreshRevisions();
+        }}
+      />
       {confirmDialog}
     </div>
   );

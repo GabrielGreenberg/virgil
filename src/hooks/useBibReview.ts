@@ -103,5 +103,17 @@ export function useBibReview(docId: string | null) {
     });
   }, [persist]);
 
-  return { requestReview, cancelRequest, getRequestStatus, clearRequest };
+  const refresh = useCallback(() => {
+    const id = docIdRef.current;
+    if (id) fetchState(id);
+  }, [fetchState]);
+
+  return {
+    requests: state.requests,
+    requestReview,
+    cancelRequest,
+    getRequestStatus,
+    clearRequest,
+    refresh,
+  };
 }
