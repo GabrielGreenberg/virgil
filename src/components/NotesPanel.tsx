@@ -2,8 +2,8 @@
 
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
-import type { UserNote } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import type { UserNote, AiRequest } from "@/lib/types";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import RichTextField from "./RichTextField";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 
@@ -21,6 +21,10 @@ interface NotesPanelProps {
   getCitationDisplayText?: (command: string) => string;
   /** Called when the user drops a brand-new citation into a note. */
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  aiRequests?: AiRequest[];
+  onAddAiRequest?: () => void;
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
 }
 
 function NoteCard({
@@ -136,10 +140,19 @@ export default function NotesPanel({
   onScrollToPos,
   getCitationDisplayText,
   onCitationCreated,
+  aiRequests,
+  onAddAiRequest,
+  onUpdateAiRequestText,
+  onDeleteAiRequest,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => a.anchorPos - b.anchorPos),
     [notes],
+  );
+
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "note"),
+    [aiRequests],
   );
 
   const onActivateNote = useCallback(
@@ -160,7 +173,12 @@ export default function NotesPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Notes" count={notes.length} onAdd={() => onAdd(cursorPos)}>
+      <PanelHeader
+        title="Notes"
+        count={notes.length}
+        onAdd={() => onAdd(cursorPos)}
+        onAiRequest={onAddAiRequest}
+      >
         <PrevNextCounter
           current={idx}
           total={sortedNotes.length}
@@ -171,7 +189,7 @@ export default function NotesPanel({
       </PanelHeader>
 
       <div className={PANEL.list}>
-        {sortedNotes.length === 0 && (
+        {sortedNotes.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No notes yet. Click &quot;Add Note&quot; to create one at the current cursor position.
           </div>
@@ -191,6 +209,20 @@ export default function NotesPanel({
             onCitationCreated={onCitationCreated}
           />
         ))}
+
+        {myAiRequests.length > 0 && (
+          <>
+            <AiRequestsSectionHeader count={myAiRequests.length} />
+            {myAiRequests.map((req) => (
+              <AiRequestCard
+                key={req.id}
+                request={req}
+                onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                onDelete={() => onDeleteAiRequest?.(req.id)}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

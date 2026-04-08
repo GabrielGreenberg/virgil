@@ -6,6 +6,7 @@ import type {
   Reference,
   Quote,
   BibEntry,
+  AiRequest,
 } from "@/lib/types";
 import {
   panelCard,
@@ -17,6 +18,8 @@ import {
   PrevNextCounter,
   TargetIcon,
   useCycle,
+  AiRequestCard,
+  AiRequestsSectionHeader,
 } from "./panel-primitives";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
@@ -665,6 +668,10 @@ export interface QuotationsPanelProps {
   selectedGroupId?: string | null;
   onSelectGroup?: (groupId: string | null) => void;
   onScrollToParagraph?: (uuid: string) => void;
+  aiRequests?: AiRequest[];
+  onAddAiRequest?: () => void;
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
 }
 
 export default function QuotationsPanel({
@@ -683,7 +690,15 @@ export default function QuotationsPanel({
   selectedGroupId: controlledSelectedGroupId,
   onSelectGroup,
   onScrollToParagraph,
+  aiRequests,
+  onAddAiRequest,
+  onUpdateAiRequestText,
+  onDeleteAiRequest,
 }: QuotationsPanelProps) {
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "quotation"),
+    [aiRequests],
+  );
   const [internalSelectedGroupId, setInternalSelectedGroupId] = useState<
     string | null
   >(null);
@@ -742,7 +757,11 @@ export default function QuotationsPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations" onAdd={handleAdd}>
+      <PanelHeader
+        title="Quotations"
+        onAdd={handleAdd}
+        onAiRequest={onAddAiRequest}
+      >
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredGroups.length}
@@ -753,30 +772,46 @@ export default function QuotationsPanel({
       </PanelHeader>
 
       <div className={PANEL.list} ref={listRef}>
-        {groups.length === 0 ? (
+        {groups.length === 0 && myAiRequests.length === 0 ? (
           <div className={PANEL.empty}>
             No quotations yet. Add a group to start collecting references.
           </div>
         ) : (
-          groups.map((group) => (
-            <QuotationGroupCard
-              key={group.id}
-              group={group}
-              bibEntries={bibEntries}
-              bibPackage={bibPackage}
-              selected={selectedGroupId === group.id}
-              onSelect={() => setSelectedGroupId(group.id)}
-              onDelete={() => onDeleteGroup(group.id)}
-              onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
-              onUpdateGroupTitle={onUpdateGroupTitle}
-              onAddReference={onAddReference}
-              onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
-              onAddQuote={onAddQuote}
-              onUpdateQuote={onUpdateQuote}
-              onDeleteQuote={onDeleteQuote}
-              onUpdateNotes={onUpdateNotes}
-            />
-          ))
+          <>
+            {groups.map((group) => (
+              <QuotationGroupCard
+                key={group.id}
+                group={group}
+                bibEntries={bibEntries}
+                bibPackage={bibPackage}
+                selected={selectedGroupId === group.id}
+                onSelect={() => setSelectedGroupId(group.id)}
+                onDelete={() => onDeleteGroup(group.id)}
+                onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
+                onUpdateGroupTitle={onUpdateGroupTitle}
+                onAddReference={onAddReference}
+                onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
+                onAddQuote={onAddQuote}
+                onUpdateQuote={onUpdateQuote}
+                onDeleteQuote={onDeleteQuote}
+                onUpdateNotes={onUpdateNotes}
+              />
+            ))}
+
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
     </div>

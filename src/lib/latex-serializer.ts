@@ -165,6 +165,14 @@ function serializeNode(node: JSONContent, insideList = false, listDepth = 0): st
     case "citation":
       return node.attrs?.command || "";
 
+    case "aiRequestMarker": {
+      const kind = String(node.attrs?.kind || "footnote");
+      const text = String(node.attrs?.text || "")
+        .replace(/\r?\n/g, " ")
+        .trim();
+      return `% AI request (${kind}): ${text}\n`;
+    }
+
     case "hardBreak":
       return "\\\\\n";
 
@@ -192,6 +200,18 @@ function serializeInline(node: JSONContent): string {
   }
   if (node.type === "citation") {
     return node.attrs?.command || "";
+  }
+  if (node.type === "aiRequestMarker") {
+    // AI request markers are placeholders. Emit them as a LaTeX comment
+    // so they round-trip through the .tex file without breaking the
+    // surrounding inline text. LaTeX comments swallow the newline that
+    // follows them, so we add a space prefix to keep adjacent words from
+    // concatenating in the rendered output.
+    const kind = String(node.attrs?.kind || "footnote");
+    const text = String(node.attrs?.text || "")
+      .replace(/\r?\n/g, " ")
+      .trim();
+    return ` % AI request (${kind}): ${text}\n`;
   }
   if (node.type === "hardBreak") {
     return "\\\\\n";
@@ -281,6 +301,7 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "footnote") return richJsonToPlainText(normalizeRichContent(node.attrs?.content));
   if (node.type === "hardBreak") return " ";
   if (node.type === "archiveMarker") return "";
+  if (node.type === "aiRequestMarker") return "";
   if (!node.content) return "";
   const sep = node.type === "bulletList" || node.type === "orderedList" ? "; " : "";
   return node.content.map(extractPlainText).join(sep);

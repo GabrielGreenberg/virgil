@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from "react";
 import type { Editor } from "@tiptap/react";
-import type { BibEntry, CitationRef } from "@/lib/types";
+import type { BibEntry, CitationRef, AiRequest } from "@/lib/types";
 import {
   formatMinimalCitation,
   parseCiteCommand,
@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
 
@@ -53,6 +53,10 @@ interface CitationsPanelProps {
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  aiRequests?: AiRequest[];
+  onAddAiRequest?: () => void;
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
 }
 
 const STYLES = [
@@ -456,7 +460,12 @@ function CitationsPanel({
   viewMode: toggleViewMode, onViewModeChange: handleToggleViewMode,
   getFormattedBib, getAnnotation, setAnnotation, onRequestReview, onCancelReview,
   getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
+  aiRequests, onAddAiRequest, onUpdateAiRequestText, onDeleteAiRequest,
 }: CitationsPanelProps) {
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "citation"),
+    [aiRequests],
+  );
   const inTextItems = useMemo(
     () => citations.map((c) => ({ id: c.id, pos: citationPositions.get(c.id) ?? 0 })),
     [citations, citationPositions]
@@ -582,7 +591,11 @@ function CitationsPanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       {/* Header */}
-      <PanelHeader title="Citations" onAdd={() => { onStartCreate(); }}>
+      <PanelHeader
+        title="Citations"
+        onAdd={() => { onStartCreate(); }}
+        onAiRequest={onAddAiRequest}
+      >
         <div className="flex items-center gap-1.5">
           <PrevNextCounter
             current={cycleIdx}
@@ -680,23 +693,39 @@ function CitationsPanel({
             })}
           </div>
         ) : (
-          visibleCitations.map((cit) => {
-            const isSelected = selectedId === cit.id;
-            return (
-              <CitationCard
-                key={cit.id}
-                citation={cit}
-                isSelected={isSelected}
-                isAnchored={anchoredIds.has(cit.id)}
-                onSelect={() => {
-                  onSelect(isSelected ? null : cit.id);
-                  panelScrollRef.current?.focus();
-                }}
-                onJump={() => jumpToCitation(cit.id)}
-                {...sharedCardProps}
-              />
-            );
-          })
+          <>
+            {visibleCitations.map((cit) => {
+              const isSelected = selectedId === cit.id;
+              return (
+                <CitationCard
+                  key={cit.id}
+                  citation={cit}
+                  isSelected={isSelected}
+                  isAnchored={anchoredIds.has(cit.id)}
+                  onSelect={() => {
+                    onSelect(isSelected ? null : cit.id);
+                    panelScrollRef.current?.focus();
+                  }}
+                  onJump={() => jumpToCitation(cit.id)}
+                  {...sharedCardProps}
+                />
+              );
+            })}
+
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+          </>
         )}
       </div>
     </div>

@@ -140,6 +140,29 @@ export interface TodoState {
   items: TodoItem[];
 }
 
+// --- AI Requests (unified parallel store across panels) ---
+
+export type AiRequestKind =
+  | "footnote"
+  | "note"
+  | "quotation"
+  | "citation"
+  | "todo";
+
+export interface AiRequest {
+  id: string;
+  kind: AiRequestKind;
+  text: string;
+  createdAt: string;
+  status: "draft" | "submitted" | "complete";
+  // Reserved for the AI fulfillment follow-up. Unused in this PR.
+  resultId?: string;
+}
+
+export interface AiRequestsState {
+  requests: AiRequest[];
+}
+
 // --- Citations ---
 
 export interface BibEntry {

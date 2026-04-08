@@ -12,7 +12,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
@@ -716,6 +716,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LatexComment,
       ArchiveMarker,
       Citation,
+      AiRequestMarker,
       LatexCommandMark,
       TitleField,
       LabelHandler,
@@ -731,6 +732,31 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-20 py-10",
       },
       handleDrop(view, event) {
+        // --- AI request marker drop (from any panel's AiRequestCard) ---
+        const aiReqData = event.dataTransfer?.getData("application/x-virgil-ai-request");
+        if (aiReqData) {
+          event.preventDefault();
+          try {
+            const { requestId, kind, text } = JSON.parse(aiReqData) as {
+              requestId?: string;
+              kind?: string;
+              text?: string;
+            };
+            if (!requestId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+            const node = view.state.schema.nodes.aiRequestMarker.create({
+              requestId,
+              kind: kind || "footnote",
+              text: text || "",
+            });
+            const tr = view.state.tr.insert(pos.pos, node);
+            view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
         // --- Quotation drop (from QuotationsPanel) ---
         const quotData = event.dataTransfer?.getData("application/x-virgil-quotation");
         if (quotData) {

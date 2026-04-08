@@ -352,7 +352,11 @@ function BibliographyPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Bibliography" onAdd={() => setAddMenuOpen((o) => !o)}>
+      <PanelHeader
+        title="Bibliography"
+        onAdd={() => setAddMenuOpen((o) => !o)}
+        onAiRequest={handleOpenRequestForm}
+      >
         <PrevNextCounter
           current={selectedIdx >= 0 ? selectedIdx : null}
           total={sortedEntries.length}
