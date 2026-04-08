@@ -270,11 +270,12 @@ export function PrevNextCounter({
   onNext: () => void;
   label?: string;
 }) {
+  const suffix = label ? ` ${label}` : "";
   const counterText =
     total === 0
-      ? `0 ${label}`
+      ? `0${suffix}`
       : current == null
-        ? `${total} ${label}`
+        ? `${total}${suffix}`
         : `${current + 1} of ${total}`;
 
   return (
@@ -397,9 +398,8 @@ export function TargetIcon({
       title={title}
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <circle cx="12" cy="12" r="5" />
-        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+        <circle cx="12" cy="12" r="10.5" />
+        <circle cx="12" cy="12" r="4" />
       </svg>
     </button>
   );

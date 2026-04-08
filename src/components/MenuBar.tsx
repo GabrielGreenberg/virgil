@@ -316,9 +316,10 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         )}
       </div>
 
-      {/* Pinned split-editor toggle — outside scroll area */}
-      {onToggleEditorSplit && (
-        <div className="shrink-0 px-1">
+      {/* Pinned right-side controls — split toggle + view menu grouped
+          together, flush against the right edge of the menubar. */}
+      <div className="shrink-0 flex items-center pl-1 pr-2">
+        {onToggleEditorSplit && (
           <button
             onClick={onToggleEditorSplit}
             className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
@@ -337,12 +338,8 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
               <line x1="4" y1="12" x2="20" y2="12" />
             </svg>
           </button>
-        </div>
-      )}
-
-      {/* Pinned view menu — outside scroll area */}
-      <div className="shrink-0 px-2">
-        <div className="relative" ref={viewMenuRef}>
+        )}
+        <div className="relative -ml-1.5" ref={viewMenuRef}>
           <button
             onClick={() => setViewMenuOpen(!viewMenuOpen)}
             className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"

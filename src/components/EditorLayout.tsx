@@ -39,7 +39,10 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import SearchPanel from "./SearchPanel";
-import OmniViewPanel, { type OmniSection } from "./OmniViewPanel";
+import OmniViewPanel, { type OmniItem } from "./OmniViewPanel";
+import { CitationCard } from "./CitationsPanel";
+import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
+import { QuotationGroupCard } from "./QuotationsPanel";
 import EditorMirror from "./EditorMirror";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
@@ -239,17 +242,17 @@ function IconWordCount({ active }: { active?: boolean }) {
   );
 }
 
-// OmniView icon: same square as the blank panel button, but with a
-// few horizontal "lines" written inside to signal "all panel content".
+// OmniView icon: rounded square with three equal-length horizontal
+// lines inside, signaling "all panel content threaded together".
 function IconOmni({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c}
       strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" />
-      <line x1="3" y1="4.25" x2="11" y2="4.25" />
-      <line x1="3" y1="7" x2="11" y2="7" />
-      <line x1="3" y1="9.75" x2="8.5" y2="9.75" />
+      <line x1="3.25" y1="4" x2="10.75" y2="4" />
+      <line x1="3.25" y1="7" x2="10.75" y2="7" />
+      <line x1="3.25" y1="10" x2="10.75" y2="10" />
     </svg>
   );
 }
@@ -1182,6 +1185,103 @@ export default function EditorLayout() {
     };
   }, [selectedBibKey, allEditorCitations]);
 
+  // Persistent highlight sync: whenever a citation card is selected in
+  // the Citations panel or OmniView, mirror that selection onto the
+  // citation node(s) in the editor with the `citation-highlight-bib`
+  // class. The highlight stays on until a different citation is
+  // selected or the selection is cleared. There can be multiple DOM
+  // nodes for the same citation id if the editor is split.
+  useEffect(() => {
+    if (!selectedCitationId) return;
+    const els = Array.from(
+      document.querySelectorAll(
+        `[data-citation-id="${selectedCitationId}"]`,
+      ),
+    ) as HTMLElement[];
+    for (const el of els) el.classList.add("citation-highlight-bib");
+    return () => {
+      for (const el of els) el.classList.remove("citation-highlight-bib");
+    };
+  }, [selectedCitationId, allEditorCitations]);
+
+  // Current-section breadcrumb: tracks the heading chain of whatever
+  // the reader is currently looking at — i.e., the topmost heading
+  // above the visible viewport. Headings are collected from the doc,
+  // their viewport-relative positions are measured, and we pick the
+  // last one whose top is above (or at) a reference line just below
+  // the toolbar. Recomputes on scroll, doc change, and resize.
+  const [currentSectionPath, setCurrentSectionPath] = useState<string[]>([]);
+  useEffect(() => {
+    if (!editorInstance) return;
+    const view = editorInstance.view;
+    const scrollEl = view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+    if (!scrollEl) return;
+
+    const compute = () => {
+      const doc = editorInstance.state.doc;
+      // Collect all top-level headings with their text + level + DOM top
+      const scrollRect = scrollEl.getBoundingClientRect();
+      // Reference line: a bit below the top of the editor viewport so
+      // a heading is still "active" when its text is partly visible.
+      const referenceY = scrollRect.top + 40;
+
+      const stack: { level: number; text: string }[] = [];
+      let lastCrossedStack: { level: number; text: string }[] = [];
+
+      doc.forEach((node, offset) => {
+        if (node.type.name === "heading" && node.attrs?.level) {
+          const level = node.attrs.level as number;
+          // Measure where this heading is on screen
+          let headingTop: number | null = null;
+          try {
+            const coords = view.coordsAtPos(offset + 1);
+            headingTop = coords.top;
+          } catch {
+            headingTop = null;
+          }
+          if (headingTop == null) return;
+
+          // If the heading has scrolled past the reference line (its
+          // top is above the reference), include it in the active
+          // stack. Otherwise stop scanning — later headings haven't
+          // been reached yet.
+          if (headingTop <= referenceY) {
+            while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+              stack.pop();
+            }
+            stack.push({ level, text: node.textContent || "Untitled" });
+            lastCrossedStack = [...stack];
+          }
+        }
+      });
+
+      const path = lastCrossedStack.map((s) => s.text);
+      setCurrentSectionPath((prev) => {
+        if (prev.length === path.length && prev.every((v, i) => v === path[i])) {
+          return prev;
+        }
+        return path;
+      });
+    };
+
+    // Initial + event-driven recompute. Throttle scroll via RAF.
+    let raf = 0;
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    compute();
+    scrollEl.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    editorInstance.on("update", schedule);
+    return () => {
+      cancelAnimationFrame(raf);
+      scrollEl.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      editorInstance.off("update", schedule);
+    };
+  }, [editorInstance]);
+
   // Derive footnotes list from editor state (sorted by document position)
   const footnotes = useMemo(() => {
     return editorRef.current?.getFootnotes() ?? [];
@@ -1504,8 +1604,29 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-note-drop", handler);
   }, [updateNotePosition]);
 
+  // When the user clicks a linking element in the editor, route the
+  // scroll target based on whether OmniView is currently visible. If a
+  // card with `data-omni-entry="${key}"` exists in the DOM, OmniView is
+  // active AND displaying this kind of pod — scroll there. Otherwise
+  // the caller falls back to the specialized panel.
+  //
+  // This is purely a DOM presence check, so it automatically handles
+  // every case (left omni, right omni, both, neither) without the
+  // callers needing to know about panel placement.
+  const tryScrollOmniEntry = useCallback((key: string): boolean => {
+    const entry = document.querySelector(`[data-omni-entry="${key}"]`);
+    if (!entry) return false;
+    requestAnimationFrame(() => {
+      entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+    });
+    return true;
+  }, []);
+
   const handleQuotationMarkerClick = useCallback(
     (groupId: string) => {
+      setSelectedQuotationGroupId(groupId);
+      // Route to OmniView if it has a card for this group
+      if (tryScrollOmniEntry(`qu:${groupId}`)) return;
       const p = prefsRef.current;
       const placement = p.placements.find((pl) => pl.id === "quotations");
       if (placement?.side === "left") {
@@ -1513,13 +1634,16 @@ export default function EditorLayout() {
       } else {
         if (p.activeRight !== "quotations") setActiveRight("quotations");
       }
-      setSelectedQuotationGroupId(groupId);
     },
-    [setActiveLeft, setActiveRight]
+    [setActiveLeft, setActiveRight, tryScrollOmniEntry]
   );
 
   const handleNoteMarkerClick = useCallback(
     (noteId: string) => {
+      const nextSelected = selectedNoteId === noteId ? null : noteId;
+      setSelectedNoteId(nextSelected);
+      // Route to OmniView if selecting (not deselecting) and it has a card
+      if (nextSelected && tryScrollOmniEntry(`nt:${noteId}`)) return;
       const p = prefsRef.current;
       const placement = p.placements.find((pl) => pl.id === "notes");
       if (placement?.side === "left") {
@@ -1527,9 +1651,8 @@ export default function EditorLayout() {
       } else {
         if (p.activeRight !== "notes") setActiveRight("notes");
       }
-      setSelectedNoteId(selectedNoteId === noteId ? null : noteId);
     },
-    [setActiveLeft, setActiveRight, selectedNoteId]
+    [setActiveLeft, setActiveRight, selectedNoteId, tryScrollOmniEntry]
   );
 
   const handleEditFootnote = useCallback((id: string, newContent: JSONContent) => {
@@ -1585,6 +1708,8 @@ export default function EditorLayout() {
       const detail = (e as CustomEvent).detail;
       if (detail?.archiveId) {
         setSelectedArchiveId(detail.archiveId);
+        // Route to OmniView if it has a card for this archive snippet
+        if (tryScrollOmniEntry(`ar:${detail.archiveId}`)) return;
         // Force-open archive panel (don't toggle if already open)
         const p = prefsRef.current;
         const archivePlacement = p.placements.find((pl) => pl.id === "archive");
@@ -1602,7 +1727,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-archive-click", handler);
     return () => window.removeEventListener("virgil-archive-click", handler);
-  }, [setActiveLeft, setActiveRight]);
+  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
 
   // Listen for footnote marker clicks from the editor
   useEffect(() => {
@@ -1610,6 +1735,8 @@ export default function EditorLayout() {
       const detail = (e as CustomEvent).detail;
       if (detail?.footnoteId) {
         setSelectedFootnoteId(detail.footnoteId);
+        // Route to OmniView if it has a card for this footnote
+        if (tryScrollOmniEntry(`fn:${detail.footnoteId}`)) return;
         const p = prefsRef.current;
         const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
         if (fnPlacement?.side === "left") {
@@ -1625,7 +1752,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [setActiveLeft, setActiveRight]);
+  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
 
   // Listen for orphaned footnotes (deleted from editor but preserved in panel)
   useEffect(() => {
@@ -1682,6 +1809,8 @@ export default function EditorLayout() {
       const detail = (e as CustomEvent).detail;
       if (detail?.citationId) {
         setSelectedCitationId(detail.citationId);
+        // Route to OmniView if it has a card for this citation
+        if (tryScrollOmniEntry(`ci:${detail.citationId}`)) return;
         const p = prefsRef.current;
         const citPlacement = p.placements.find((pl) => pl.id === "citations");
         if (citPlacement?.side === "left") {
@@ -1698,7 +1827,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-citation-click", handler);
     return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [setActiveLeft, setActiveRight]);
+  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
 
   // Listen for bare \cite input rule → open panel with new-cite form
   useEffect(() => {
@@ -2236,6 +2365,7 @@ export default function EditorLayout() {
           onReorderBlocks={handleReorderBlocks}
           onRenameHeading={handleRenameHeading}
           onRenameParTitle={handleRenameParTitle}
+          activeSectionPath={currentSectionPath}
         />
       );
     }
@@ -2430,47 +2560,166 @@ export default function EditorLayout() {
     }
 
     if (panelId === "omni") {
-      // OmniView — aggregates a side's panels into one stacked view.
-      // Each section is rendered by calling back into renderPanelInner
-      // for the child panel id, so all props and functionality match
-      // the standalone panel exactly. Left shows reference tools;
-      // right shows writing/workflow tools.
-      const childIds: PanelId[] =
-        side === "left"
-          ? ["footnotes", "citations", "quotations"]
-          : ["notes", "revisions", "cutter", "archive"];
-      const labelFor = (id: PanelId): string => {
-        if (id === "cutter") return "Cuts";
-        return PANEL_META[id]?.label ?? id;
+      // OmniView — threads pods from several panels into one unified
+      // list. Each card is rendered by instantiating the actual panel
+      // card component (CitationCard, FootnoteCard, etc.) so it looks
+      // and behaves identically to the native panel. In in-text mode
+      // each card is positioned by its doc location.
+      const items: OmniItem[] = [];
+
+      // Resolve a paragraph UUID to its doc position (used by
+      // quotation groups, which anchor by paragraphId not pos).
+      const findParagraphPos = (uuid: string | null): number | null => {
+        if (!uuid || !editorInstance) return null;
+        let result: number | null = null;
+        editorInstance.state.doc.descendants((node, pos) => {
+          if (result != null) return false;
+          if (node.attrs?.uuid === uuid) {
+            result = pos;
+            return false;
+          }
+          return true;
+        });
+        return result;
       };
-      const countFor = (id: PanelId): number | undefined => {
-        switch (id) {
-          case "footnotes":
-            return footnotes.length + orphanedFootnotes.length;
-          case "citations":
-            return citations.length;
-          case "quotations":
-            return quotationGroups.length;
-          case "notes":
-            return notes.length;
-          case "revisions":
-            return (
-              generalRevisions.filter((r) => !r.resolved).length +
-              textRevisions.filter((r) => !r.resolved).length
-            );
-          case "archive":
-            return sortedArchiveSnippets.length;
-          default:
-            return undefined;
+
+      if (side === "left") {
+        // Footnotes (anchored)
+        for (const fn of footnotes) {
+          const isSelected = selectedFootnoteId === fn.footnoteId;
+          items.push({
+            id: `fn:${fn.footnoteId}`,
+            pos: fn.pos,
+            content: (
+              <FootnoteCard
+                key={`fn:${fn.footnoteId}`}
+                footnote={fn}
+                isSelected={isSelected}
+                onSelect={() =>
+                  setSelectedFootnoteId(isSelected ? null : fn.footnoteId)
+                }
+                onJump={() => editorRef.current?.scrollToFootnote(fn.footnoteId)}
+                onEdit={(json) => handleEditFootnote(fn.footnoteId, json)}
+                onDelete={() => handleDeleteFootnote(fn.footnoteId)}
+                getCitationDisplayText={getCitationDisplayText}
+                onCitationCreated={handleCitationCreated}
+                extraDataAttrs={{ "data-omni-entry": `fn:${fn.footnoteId}` }}
+              />
+            ),
+          });
         }
-      };
-      const sections: OmniSection[] = childIds.map((id) => ({
-        id,
-        label: labelFor(id),
-        count: countFor(id),
-        render: () => renderPanelInner(id, side),
-      }));
-      return <OmniViewPanel side={side} sections={sections} />;
+        // Footnotes (orphaned — no doc anchor)
+        for (const orphan of orphanedFootnotes) {
+          items.push({
+            id: `fn:${orphan.footnoteId}`,
+            pos: null,
+            content: (
+              <OrphanedFootnoteCard
+                key={`fn:${orphan.footnoteId}`}
+                orphan={orphan}
+                onEdit={(json) => handleEditOrphan(orphan.footnoteId, json)}
+                onDelete={() => handleDeleteOrphan(orphan.footnoteId)}
+                getCitationDisplayText={getCitationDisplayText}
+                onCitationCreated={handleCitationCreated}
+                extraDataAttrs={{ "data-omni-entry": `fn:${orphan.footnoteId}` }}
+              />
+            ),
+          });
+        }
+        // Citations
+        for (const cit of citations) {
+          const pos = citationPositionMap.get(cit.id) ?? null;
+          const isSelected = selectedCitationId === cit.id;
+          items.push({
+            id: `ci:${cit.id}`,
+            pos,
+            content: (
+              <CitationCard
+                key={`ci:${cit.id}`}
+                citation={cit}
+                isSelected={isSelected}
+                bibEntries={bibEntries}
+                bibPackage={bibPackage}
+                getDisplayText={getCitationDisplayText}
+                onSelect={() =>
+                  setSelectedCitationId(isSelected ? null : cit.id)
+                }
+                onJump={() => {
+                  // Target button: ensure selection (which triggers
+                  // the persistent highlight sync) and then scroll the
+                  // editor to the citation node.
+                  setSelectedCitationId(cit.id);
+                  editorRef.current?.scrollToCitation(cit.id);
+                }}
+                onUpdateCitation={updateCitation}
+                getFormattedBib={getFormattedBib}
+                getAnnotation={getAnnotation}
+                setAnnotation={setAnnotation}
+                onRequestReview={requestBibReview}
+                onCancelReview={cancelBibReview}
+                getReviewStatus={getBibReviewStatus}
+                onUpdateBibEntry={updateBibEntry}
+                onUpdateBibKeyAndType={updateBibKeyAndType}
+                extraDataAttrs={{ "data-omni-entry": `ci:${cit.id}` }}
+              />
+            ),
+          });
+        }
+        // Quotation groups
+        for (const group of quotationGroups) {
+          const pos = findParagraphPos(group.paragraphId);
+          const isSelected = selectedQuotationGroupId === group.id;
+          items.push({
+            id: `qu:${group.id}`,
+            pos,
+            content: (
+              <div
+                key={`qu:${group.id}`}
+                data-omni-entry={`qu:${group.id}`}
+              >
+                <QuotationGroupCard
+                  group={group}
+                  bibEntries={bibEntries}
+                  selected={isSelected}
+                  onSelect={() =>
+                    setSelectedQuotationGroupId(isSelected ? null : group.id)
+                  }
+                  onDelete={() => deleteQuotationGroup(group.id)}
+                  onJump={
+                    group.paragraphId
+                      ? () =>
+                          editorRef.current?.scrollToParagraphId(
+                            group.paragraphId!,
+                          )
+                      : undefined
+                  }
+                  onUpdateGroupTitle={updateQuotationGroupTitle}
+                  onAddReference={addQuotationReference}
+                  onDeleteReference={deleteQuotationReference}
+                  onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
+                  onAddQuote={addQuotationQuote}
+                  onUpdateQuote={updateQuotationQuote}
+                  onDeleteQuote={deleteQuotationQuote}
+                  onUpdateNotes={updateQuotationNotes}
+                />
+              </div>
+            ),
+          });
+        }
+      }
+      // Right side: card extraction for notes/revisions/archive is
+      // not yet done, so the right-side OmniView is empty for now.
+
+      const omniKey = `omni:${side}`;
+      return (
+        <OmniViewPanel
+          side={side}
+          items={items}
+          viewMode={getPanelViewMode(omniKey)}
+          onViewModeChange={(m) => setPanelViewMode(omniKey, m)}
+          editor={editorInstance}
+        />
+      );
     }
 
     return <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />;
@@ -2630,6 +2879,25 @@ export default function EditorLayout() {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </button>
+          {/* AI request — sun-star: eight equal-length rays meeting
+              at the center. Cardinal lines span 20 units (2→22);
+              diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
+          <button
+            onClick={() => { /* AI request hook — wire up later */ }}
+            className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"
+            title="AI request"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <g transform="rotate(15 12 12)">
+                {/* Cardinals */}
+                <line x1="12" y1="2" x2="12" y2="22" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                {/* Diagonals (length 10 each half = matches cardinals) */}
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+                <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
+              </g>
             </svg>
           </button>
           <button
@@ -2885,6 +3153,25 @@ export default function EditorLayout() {
               {docLoading ? "Loading..." : ""}
             </div>
           )}
+          {/* Section breadcrumb stripe — tracks the topmost heading
+              currently visible in the editor viewport. Anchored to
+              the bottom of the editor column. */}
+          <div className="shrink-0 flex items-center px-3 py-0.5 border-t border-[var(--border)] bg-stone-50/40">
+            <span className="text-[11px] text-[var(--muted-light)] truncate">
+              {currentSectionPath.length === 0 ? (
+                <span className="italic">Document start</span>
+              ) : (
+                currentSectionPath.map((t, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="mx-1 text-[var(--muted-light)]">›</span>}
+                    <span className={i === currentSectionPath.length - 1 ? "font-semibold text-[var(--muted)]" : ""}>
+                      {t}
+                    </span>
+                  </span>
+                ))
+              )}
+            </span>
+          </div>
         </div>
 
         {/* Right panel column (single or split, only rendered when active) */}

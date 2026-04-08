@@ -34,6 +34,292 @@ interface FootnotePanelProps {
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
 }
 
+/* ── Shared helpers ──────────────────────────────────────────────── */
+
+function footnoteCardClass(selected: boolean, extra?: string) {
+  return `rounded-lg border transition-colors overflow-hidden ${
+    selected
+      ? "bg-[#b45757] border-[#9a3c3c] shadow-sm"
+      : "bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50"
+  }${extra ? ` ${extra}` : ""}`;
+}
+
+function startFootnoteDrag(
+  e: React.DragEvent,
+  footnoteId: string,
+  content: unknown,
+  isOrphan: boolean,
+) {
+  const normalized = normalizeRichContent(content);
+  const plain = richJsonToPlainText(normalized);
+  e.dataTransfer.setData("text/plain", plain);
+  e.dataTransfer.setData(
+    "application/x-virgil-footnote",
+    JSON.stringify({ footnoteId, content: normalized, isOrphan }),
+  );
+  e.dataTransfer.effectAllowed = "move";
+  const ghost = document.createElement("div");
+  ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
+  ghost.style.cssText =
+    "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef2f2;border:1px solid #b45757;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 10, 14);
+  requestAnimationFrame(() => document.body.removeChild(ghost));
+}
+
+function onDropArchive(archiveId: string) {
+  window.dispatchEvent(
+    new CustomEvent("virgil-footnote-consumed-archive", {
+      detail: { archiveId },
+    }),
+  );
+}
+
+function CopyButton({
+  content,
+  selected,
+}: {
+  content: unknown;
+  selected: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(richJsonToPlainText(content)).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      });
+    },
+    [content],
+  );
+  return (
+    <button
+      onClick={handleCopy}
+      className={`p-1 rounded transition-colors ${selected ? "text-white/60 hover:text-white hover:bg-white/10" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
+      title="Copy to clipboard"
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="20 6 9 17 4 12" />
+        </svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="2" width="13" height="13" rx="2" />
+          <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
+/* ── FootnoteCard (anchored) ─────────────────────────────────────── */
+
+export interface FootnoteCardProps {
+  footnote: FootnoteInfo;
+  isSelected: boolean;
+  onSelect: () => void;
+  onJump: () => void;
+  onEdit: (json: JSONContent) => void;
+  onDelete: () => void;
+  getCitationDisplayText?: (command: string) => string;
+  onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  /** Extra class names appended to the card wrapper (e.g. in-text view). */
+  wrapperClassName?: string;
+  /** Inline style on the card wrapper (used by in-text view positioning). */
+  wrapperStyle?: React.CSSProperties;
+  /** Extra data-* attributes on the card wrapper (e.g. data-omni-entry). */
+  extraDataAttrs?: Record<string, string>;
+}
+
+export function FootnoteCard({
+  footnote: fn,
+  isSelected,
+  onSelect,
+  onJump,
+  onEdit,
+  onDelete,
+  getCitationDisplayText,
+  onCitationCreated,
+  wrapperClassName,
+  wrapperStyle,
+  extraDataAttrs,
+}: FootnoteCardProps) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  const handleEdit = useCallback(
+    (json: JSONContent) => onEdit(normalizeRichContent(json)),
+    [onEdit],
+  );
+
+  return (
+    <div
+      data-footnote-entry={fn.footnoteId}
+      {...(extraDataAttrs || {})}
+      draggable={!isFocused}
+      onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
+      className={`${footnoteCardClass(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={wrapperStyle}
+      onClick={onSelect}
+    >
+      <div className={PANEL.cardInner}>
+        <div className="flex items-start gap-2.5">
+          {/* Top-right controls: target (when selected) + three-dot menu */}
+          <div
+            className="absolute top-2 right-2 flex items-center gap-0.5"
+            draggable={false}
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
+            {isSelected && (
+              <TargetIcon
+                onClick={onJump}
+                title="Jump to footnote marker"
+                className="text-white/80 hover:text-white hover:bg-white/15"
+              />
+            )}
+            <ItemMenu>
+              <MenuDelete onClick={onDelete} />
+            </ItemMenu>
+          </div>
+          {/* Number badge */}
+          <span className="inline-flex items-center shrink-0 mt-0.5">
+            <span
+              className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold transition-colors"
+              style={{
+                background: isSelected ? "rgba(255,255,255,0.25)" : "#fef2f2",
+                color: isSelected ? "#fff" : "#b45757",
+                border: isSelected
+                  ? "1.5px solid rgba(255,255,255,0.5)"
+                  : "1.5px solid #b45757",
+              }}
+            >
+              {fn.number}
+            </span>
+          </span>
+
+          <div className="flex-1 min-w-0">
+            <RichTextField
+              instanceKey={fn.footnoteId}
+              value={fn.content}
+              placeholder="Empty footnote"
+              variant="footnote"
+              selected={isSelected}
+              onChange={handleEdit}
+              onArchiveConsumed={onDropArchive}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
+              onFocusChange={setIsFocused}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end mt-2 ml-6">
+          <div className="flex gap-1.5 items-center">
+            <CopyButton content={fn.content} selected={isSelected} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── OrphanedFootnoteCard ────────────────────────────────────────── */
+
+export interface OrphanedFootnoteCardProps {
+  orphan: OrphanedFootnote;
+  onEdit: (json: JSONContent) => void;
+  onDelete: () => void;
+  getCitationDisplayText?: (command: string) => string;
+  onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  wrapperClassName?: string;
+  wrapperStyle?: React.CSSProperties;
+  extraDataAttrs?: Record<string, string>;
+}
+
+export function OrphanedFootnoteCard({
+  orphan,
+  onEdit,
+  onDelete,
+  getCitationDisplayText,
+  onCitationCreated,
+  wrapperClassName,
+  wrapperStyle,
+  extraDataAttrs,
+}: OrphanedFootnoteCardProps) {
+  const [isFocused, setIsFocused] = useState(false);
+
+  const handleEdit = useCallback(
+    (json: JSONContent) => onEdit(normalizeRichContent(json)),
+    [onEdit],
+  );
+
+  return (
+    <div
+      data-footnote-entry={orphan.footnoteId}
+      {...(extraDataAttrs || {})}
+      draggable={!isFocused}
+      onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
+      className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={wrapperStyle}
+    >
+      <div className={PANEL.cardInner}>
+        <div className="flex items-start gap-2.5">
+          <div
+            className="absolute top-2 right-2"
+            draggable={false}
+            onDragStart={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+            }}
+          >
+            <ItemMenu>
+              <MenuDelete onClick={onDelete} />
+            </ItemMenu>
+          </div>
+          {/* Orphan badge */}
+          <span
+            className="inline-flex items-center justify-center shrink-0 mt-0.5"
+            title="No anchor in document"
+          >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="3"
+                stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
+              <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
+                fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
+              <line x1="3" y1="13" x2="13" y2="3"
+                stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+          </span>
+
+          <div className="flex-1 min-w-0">
+            <RichTextField
+              instanceKey={orphan.footnoteId}
+              value={orphan.content}
+              placeholder="Empty — drag text in or type"
+              variant="footnote"
+              muted
+              onChange={handleEdit}
+              onArchiveConsumed={onDropArchive}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
+              onFocusChange={setIsFocused}
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end mt-2 ml-7">
+          <div className="flex gap-1.5 items-center">
+            <CopyButton content={orphan.content} selected={false} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // FootnotePanel
 // ─────────────────────────────────────────────────────────────────────────────
@@ -74,85 +360,27 @@ function FootnotePanel({
   const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
     useCycle(footnotes, onActivateFootnote);
 
-  // Sync external selection back to cycle index
+  // Sync external selection back to cycle index — including deselect
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      if (cycleIdx != null) setCycleIdx(null);
+      return;
+    }
     const i = footnotes.findIndex((fn) => fn.footnoteId === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, footnotes, cycleIdx, setCycleIdx]);
-
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [focusedId, setFocusedId] = useState<string | null>(null);
-
-  const handleCopy = useCallback((id: string, content: unknown) => {
-    navigator.clipboard.writeText(richJsonToPlainText(content)).then(() => {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId((prev) => prev === id ? null : prev), 1500);
-    });
-  }, []);
-
-  const handleEditAnchored = useCallback(
-    (id: string, json: JSONContent) => {
-      onEdit(id, normalizeRichContent(json));
-    },
-    [onEdit],
-  );
-
-  const handleEditOrphanContent = useCallback(
-    (id: string, json: JSONContent) => {
-      onEditOrphan(id, normalizeRichContent(json));
-    },
-    [onEditOrphan],
-  );
-
-  const onDropArchive = useCallback((archiveId: string) => {
-    window.dispatchEvent(
-      new CustomEvent("virgil-footnote-consumed-archive", {
-        detail: { archiveId },
-      }),
-    );
-  }, []);
-
-  const handleDragStart = useCallback(
-    (e: React.DragEvent, footnoteId: string, content: unknown, isOrphan: boolean) => {
-      const normalized = normalizeRichContent(content);
-      const plain = richJsonToPlainText(normalized);
-      e.dataTransfer.setData("text/plain", plain);
-      e.dataTransfer.setData(
-        "application/x-virgil-footnote",
-        JSON.stringify({ footnoteId, content: normalized, isOrphan }),
-      );
-      e.dataTransfer.effectAllowed = "move";
-      const ghost = document.createElement("div");
-      ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-      ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef2f2;border:1px solid #b45757;border-radius:4px;font-size:12px;color:#7f1d1d;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 10, 14);
-      requestAnimationFrame(() => document.body.removeChild(ghost));
-    },
-    [],
-  );
-
-  // Footnote-specific card class with prominent red selection
-  const fnCard = (selected: boolean, extra?: string) =>
-    `rounded-lg border transition-colors overflow-hidden ${
-      selected
-        ? "bg-[#b45757] border-[#9a3c3c] shadow-sm"
-        : "bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50"
-    }${extra ? ` ${extra}` : ""}`;
 
   const totalCount = footnotes.length + orphanedFootnotes.length;
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Footnotes" count={totalCount} onAdd={onAdd}>
+      <PanelHeader title="Footnotes" onAdd={onAdd}>
         <PrevNextCounter
           current={cycleIdx}
           total={footnotes.length}
           onPrev={cyclePrev}
           onNext={cycleNext}
-          label="anchored"
+          label=""
         />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
@@ -178,7 +406,7 @@ function FootnotePanel({
                   key={fn.footnoteId}
                   data-footnote-entry={fn.footnoteId}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, fn.footnoteId, fn.content, false)}
+                  onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
                   className={`absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
                     selectedId === fn.footnoteId
                       ? "bg-red-50/60 border-l-2 border-l-[#b45757] border-b-stone-300"
@@ -220,7 +448,7 @@ function FootnotePanel({
                       key={orphan.footnoteId}
                       data-footnote-entry={orphan.footnoteId}
                       draggable
-                      onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
+                      onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
                       className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-stone-50 transition-colors"
                     >
                       <div className="flex items-start gap-2">
@@ -246,173 +474,35 @@ function FootnotePanel({
             )}
           </div>
         ) : (
+          <>
+            {/* Unanchored footnotes are shown at the top of the list — their
+                slash-mark "fn" badge already indicates the unanchored state,
+                so no section heading is needed. */}
+            {orphanedFootnotes.map((orphan) => (
+              <OrphanedFootnoteCard
+                key={orphan.footnoteId}
+                orphan={orphan}
+                onEdit={(json) => onEditOrphan(orphan.footnoteId, json)}
+                onDelete={() => onDeleteOrphan(orphan.footnoteId)}
+                getCitationDisplayText={getCitationDisplayText}
+                onCitationCreated={onCitationCreated}
+              />
+            ))}
 
-        <>
-        {/* Unanchored footnotes are shown at the top of the list — their
-            slash-mark "fn" badge already indicates the unanchored state,
-            so no section heading is needed. */}
-        {orphanedFootnotes.map((orphan) => {
-          const isFocused = focusedId === orphan.footnoteId;
-          return (
-          <div
-            key={orphan.footnoteId}
-            data-footnote-entry={orphan.footnoteId}
-            draggable={!isFocused}
-            onDragStart={(e) => handleDragStart(e, orphan.footnoteId, orphan.content, true)}
-            className={fnCard(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}
-          >
-            <div className={PANEL.cardInner}>
-              <div className="flex items-start gap-2.5">
-                <div className="absolute top-2 right-2" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
-                  <ItemMenu>
-                    <MenuDelete onClick={() => onDeleteOrphan(orphan.footnoteId)} />
-                  </ItemMenu>
-                </div>
-                {/* Orphan badge */}
-                <span className="inline-flex items-center justify-center shrink-0 mt-0.5" title="No anchor in document">
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                    <rect x="1" y="1" width="14" height="14" rx="3"
-                      stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
-                    <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
-                      fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
-                    <line x1="3" y1="13" x2="13" y2="3"
-                      stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                </span>
-
-                <div className="flex-1 min-w-0">
-                  <RichTextField
-                    instanceKey={orphan.footnoteId}
-                    value={orphan.content}
-                    placeholder="Empty — drag text in or type"
-                    variant="footnote"
-                    muted
-                    onChange={(json) => handleEditOrphanContent(orphan.footnoteId, json)}
-                    onArchiveConsumed={onDropArchive}
-                    getCitationDisplayText={getCitationDisplayText}
-                    onCitationCreated={onCitationCreated}
-                    onFocusChange={(focused) => {
-                      if (focused) setFocusedId(orphan.footnoteId);
-                      else setFocusedId((curr) => (curr === orphan.footnoteId ? null : curr));
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end mt-2 ml-7">
-                <div className="flex gap-1.5 items-center">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleCopy(orphan.footnoteId, orphan.content); }}
-                    className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
-                    title="Copy to clipboard"
-                  >
-                    {copiedId === orphan.footnoteId ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="2" y="2" width="13" height="13" rx="2" />
-                        <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-                      </svg>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-          );
-        })}
-
-        {footnotes.map((fn) => {
-          const isSelected = selectedId === fn.footnoteId;
-          const isFocused = focusedId === fn.footnoteId;
-
-          return (
-            <div
-              key={fn.footnoteId}
-              data-footnote-entry={fn.footnoteId}
-              draggable={!isFocused}
-              onDragStart={(e) => handleDragStart(e, fn.footnoteId, fn.content, false)}
-              className={fnCard(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}
-              onClick={() => onSelect(isSelected ? null : fn.footnoteId)}
-            >
-              <div className={PANEL.cardInner}>
-                <div className="flex items-start gap-2.5">
-                  {/* Top-right controls: target (when selected) + three-dot menu */}
-                  <div className="absolute top-2 right-2 flex items-center gap-0.5" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
-                    {isSelected && (
-                      <TargetIcon
-                        onClick={() => onScrollToMarker(fn.footnoteId)}
-                        title="Jump to footnote marker"
-                        className="text-white/80 hover:text-white hover:bg-white/15"
-                      />
-                    )}
-                    <ItemMenu>
-                      <MenuDelete onClick={() => onDelete(fn.footnoteId)} />
-                    </ItemMenu>
-                  </div>
-                  {/* Number badge */}
-                  <span
-                    className="inline-flex items-center shrink-0 mt-0.5"
-                  >
-                    <span
-                      className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold transition-colors"
-                      style={{
-                        background: isSelected ? "rgba(255,255,255,0.25)" : "#fef2f2",
-                        color: isSelected ? "#fff" : "#b45757",
-                        border: isSelected ? "1.5px solid rgba(255,255,255,0.5)" : "1.5px solid #b45757",
-                      }}
-                    >
-                      {fn.number}
-                    </span>
-                  </span>
-
-                  <div className="flex-1 min-w-0">
-                    <RichTextField
-                      instanceKey={fn.footnoteId}
-                      value={fn.content}
-                      placeholder="Empty footnote"
-                      variant="footnote"
-                      selected={isSelected}
-                      onChange={(json) => handleEditAnchored(fn.footnoteId, json)}
-                      onArchiveConsumed={onDropArchive}
-                      getCitationDisplayText={getCitationDisplayText}
-                      onCitationCreated={onCitationCreated}
-                      onFocusChange={(focused) => {
-                        if (focused) setFocusedId(fn.footnoteId);
-                        else setFocusedId((curr) => (curr === fn.footnoteId ? null : curr));
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end mt-2 ml-6">
-                  <div className="flex gap-1.5 items-center">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleCopy(fn.footnoteId, fn.content); }}
-                      className={`p-1 rounded transition-colors ${isSelected ? "text-white/60 hover:text-white hover:bg-white/10" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
-                      title="Copy to clipboard"
-                    >
-                      {copiedId === fn.footnoteId ? (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="2" y="2" width="13" height="13" rx="2" />
-                          <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-
-        </>
+            {footnotes.map((fn) => (
+              <FootnoteCard
+                key={fn.footnoteId}
+                footnote={fn}
+                isSelected={selectedId === fn.footnoteId}
+                onSelect={() => onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)}
+                onJump={() => onScrollToMarker(fn.footnoteId)}
+                onEdit={(json) => onEdit(fn.footnoteId, json)}
+                onDelete={() => onDelete(fn.footnoteId)}
+                getCitationDisplayText={getCitationDisplayText}
+                onCitationCreated={onCitationCreated}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>

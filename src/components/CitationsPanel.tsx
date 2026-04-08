@@ -58,6 +58,227 @@ const BIB_PACKAGES = [
   { value: "natbib", label: "natbib" },
 ];
 
+/* ── CitationCard ─────────────────────────────────────────────────
+   Standalone card component used by CitationsPanel's list and by
+   OmniView. Keeps its own edit/expand state so multiple instances
+   (e.g. one per citation in the panel list) are independent.
+*/
+
+export interface CitationCardProps {
+  citation: CitationRef;
+  isSelected: boolean;
+  bibEntries: BibEntry[];
+  bibPackage: string;
+  getDisplayText: (command: string) => string;
+  onSelect: () => void;
+  onJump: () => void;
+  onUpdateCitation: (id: string, command: string) => void;
+  getFormattedBib: (entry: BibEntry) => string;
+  getAnnotation: (key: string) => string;
+  setAnnotation: (key: string, text: string) => void;
+  onRequestReview: (bibKey: string, type: "fields" | "notes", requestNotes?: string) => void;
+  onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
+  getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
+  onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
+  onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  /** Extra class names appended to the card wrapper (used by in-text view). */
+  wrapperClassName?: string;
+  /** Inline style on the card wrapper (used by in-text view positioning). */
+  wrapperStyle?: React.CSSProperties;
+  /** Extra data-* attributes on the card wrapper (e.g. data-omni-entry). */
+  extraDataAttrs?: Record<string, string>;
+}
+
+export function CitationCard({
+  citation: cit,
+  isSelected,
+  bibEntries,
+  bibPackage,
+  getDisplayText,
+  onSelect,
+  onJump,
+  onUpdateCitation,
+  getFormattedBib,
+  getAnnotation,
+  setAnnotation,
+  onRequestReview,
+  onCancelReview,
+  getReviewStatus,
+  onUpdateBibEntry,
+  onUpdateBibKeyAndType,
+  wrapperClassName,
+  wrapperStyle,
+  extraDataAttrs,
+}: CitationCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
+
+  const bibEntryMap = useMemo(
+    () => new Map(bibEntries.map((e) => [e.key, e])),
+    [bibEntries],
+  );
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      const display = getDisplayText(cit.command);
+      e.dataTransfer.setData("text/plain", cit.command);
+      e.dataTransfer.setData(
+        "application/x-virgil-citation",
+        JSON.stringify({ command: cit.command, citationId: cit.id }),
+      );
+      e.dataTransfer.effectAllowed = "copy";
+      const ghost = document.createElement("div");
+      ghost.textContent =
+        display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
+      ghost.style.cssText =
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 10, 14);
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    },
+    [cit, getDisplayText],
+  );
+
+  const handleBuilderEdit = useCallback(
+    (command: string) => {
+      onUpdateCitation(cit.id, command);
+      setIsEditing(false);
+    },
+    [cit.id, onUpdateCitation],
+  );
+
+  const toggleBibKey = useCallback((key: string) => {
+    setExpandedBibKey((prev) => (prev === key ? null : key));
+  }, []);
+
+  const expandedEntry = expandedBibKey
+    ? bibEntryMap.get(expandedBibKey)
+    : undefined;
+
+  return (
+    <div
+      data-citation-entry={cit.id}
+      {...(extraDataAttrs || {})}
+      draggable={!isEditing}
+      onDragStart={handleDragStart}
+      className={`group ${panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={wrapperStyle}
+      onClick={onSelect}
+    >
+      <div className={PANEL.cardInner}>
+        {isEditing ? (
+          <div onClick={(e) => e.stopPropagation()}>
+            <CitationBuilder
+              initialCommand={cit.command}
+              bibPackage={bibPackage}
+              bibEntries={bibEntries}
+              getDisplayText={getDisplayText}
+              onSave={handleBuilderEdit}
+              onCancel={() => setIsEditing(false)}
+              saveLabel="Save"
+            />
+          </div>
+        ) : (
+          <>
+            {/* Target icon: always rendered, greyed out on hover, full
+                color when the card is selected. Hidden entirely when
+                neither hovered nor selected.
+                Opacity (not color class) is used for the greyed-out
+                state so it wins against TargetIcon's base color. */}
+            <div
+              className={`absolute top-1.5 right-1.5 transition-opacity ${
+                isSelected
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+              }`}
+              draggable={false}
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+            >
+              <TargetIcon onClick={onJump} title="Jump to citation" />
+            </div>
+            {/* Citation key buttons */}
+            <div
+              className={`flex flex-wrap gap-1.5 mb-2 pr-7`}
+            >
+              {cit.keys.map((key) => {
+                const entry = bibEntryMap.get(key);
+                const isActive = expandedBibKey === key;
+                const label = entry
+                  ? formatMinimalCitation(key, bibEntries)
+                  : key;
+                return (
+                  <button
+                    key={key}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleBibKey(key);
+                    }}
+                    className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
+                      !entry
+                        ? "border-dashed border-red-300 text-red-400 bg-red-50/50"
+                        : isActive
+                          ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
+                          : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* LaTeX command — click to enter edit mode */}
+            <div
+              className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-pointer truncate"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditing(true);
+              }}
+              title="Click to edit citation"
+            >
+              {cit.command}
+            </div>
+
+            {/* Missing keys */}
+            {cit.keys
+              .filter((k) => !bibEntryMap.has(k))
+              .map((k) => (
+                <div key={k} className="text-xs text-red-400 mb-1">
+                  Key not found in .bib: <span className="font-mono">{k}</span>
+                </div>
+              ))}
+
+            {/* Expanded bibliography pod */}
+            {expandedEntry && (
+              <div className="mt-2 border-t border-stone-100 pt-2">
+                <BibEntryCard
+                  entry={expandedEntry}
+                  isSelected={false}
+                  onClick={() => {}}
+                  getFormattedBib={getFormattedBib}
+                  getAnnotation={getAnnotation}
+                  setAnnotation={setAnnotation}
+                  onRequestReview={onRequestReview}
+                  onCancelReview={onCancelReview}
+                  getReviewStatus={getReviewStatus}
+                  onUpdateBibEntry={onUpdateBibEntry}
+                  onUpdateBibKeyAndType={onUpdateBibKeyAndType}
+                  bibPackage={bibPackage}
+                  bibEntries={bibEntries}
+                  compact
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CitationsPanel({
   citations, bibEntries, citationStyle, bibPackage, bibPath, selectedId, citationOrder,
   onSelect, onScrollToMarker, onUpdateCitation, onDeleteCitation, onSetStyle, onSetBibPackage,
@@ -74,11 +295,8 @@ function CitationsPanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, toggleViewMode === "in-text"
   );
-  const [editingCitationId, setEditingCitationId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  // Per-citation: which bib key's pod is expanded (null = none)
-  const [expandedBibKeys, setExpandedBibKeys] = useState<Record<string, string | null>>({});
 
   // `panelScrollRef` doubles as the keyboard-focus target and the handle we use
   // to scroll the selected card into view. It's always attached to the outer
@@ -112,35 +330,22 @@ function CitationsPanel({
     onClearPendingCreate();
   };
 
-  const handleBuilderEdit = (command: string) => {
-    if (editingCitationId) {
-      onUpdateCitation(editingCitationId, command);
-      setEditingCitationId(null);
-    }
-  };
-
   const visibleCitations = orderedCitations;
 
-  // Jump to a citation node in the editor and briefly highlight it.
-  // Used by the per-card target button and arrow-key navigation.
+  // Target-button action: select the citation (which triggers the
+  // persistent highlight sync in EditorLayout) and jump the editor to
+  // its node. Card click-to-select alone does not jump — it only
+  // highlights — per the sync rules.
   const jumpToCitation = useCallback(
     (id: string) => {
+      onSelect(id);
       onScrollToMarker(id);
-      const el = document.querySelector(
-        `[data-citation-id="${id}"]`,
-      ) as HTMLElement | null;
-      if (!el) return;
-      el.classList.add("citation-highlight-bib");
-      window.setTimeout(() => {
-        el.classList.remove("citation-highlight-bib");
-      }, 1600);
     },
-    [onScrollToMarker],
+    [onSelect, onScrollToMarker],
   );
 
   const onActivateCitation = useCallback(
     (cit: CitationRef) => {
-      onSelect(cit.id);
       jumpToCitation(cit.id);
       // Scroll the selected card into view within the panel list
       requestAnimationFrame(() => {
@@ -150,14 +355,18 @@ function CitationsPanel({
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     },
-    [onSelect, jumpToCitation, panelScrollRef],
+    [jumpToCitation, panelScrollRef],
   );
   const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
     useCycle(orderedCitations, onActivateCitation);
 
-  // Sync external selection back to cycle index
+  // Sync external selection back to cycle index — including deselect
+  // (clears the cycle so the counter shows the plain total again).
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId) {
+      if (cycleIdx != null) setCycleIdx(null);
+      return;
+    }
     const i = orderedCitations.findIndex((c) => c.id === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, orderedCitations, cycleIdx, setCycleIdx]);
@@ -177,139 +386,34 @@ function CitationsPanel({
     [orderedCitations, cycleNext, cyclePrev],
   );
 
-
-  const bibEntryMap = useMemo(
-    () => new Map(bibEntries.map((e) => [e.key, e])),
-    [bibEntries]
-  );
-
-  const handleCiteDragStart = useCallback((e: React.DragEvent, cit: CitationRef) => {
-    const display = getDisplayText(cit.command);
-    e.dataTransfer.setData("text/plain", cit.command);
-    e.dataTransfer.setData("application/x-virgil-citation", JSON.stringify({ command: cit.command, citationId: cit.id }));
-    e.dataTransfer.effectAllowed = "copy";
-    const ghost = document.createElement("div");
-    ghost.textContent = display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
-    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 10, 14);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }, [getDisplayText]);
-
-  const toggleBibKey = (citId: string, key: string) => {
-    setExpandedBibKeys((prev) => ({
-      ...prev,
-      [citId]: prev[citId] === key ? null : key,
-    }));
-  };
-
-  /* ── Shared card content (used in both views) ──────────────────── */
-  const renderCardContent = (cit: CitationRef, isSelected: boolean) => {
-    // Edit mode: show full builder
-    if (editingCitationId === cit.id) {
-      return (
-        <div onClick={(e) => e.stopPropagation()}>
-          <CitationBuilder
-            initialCommand={cit.command}
-            bibPackage={bibPackage}
-            bibEntries={bibEntries}
-            getDisplayText={getDisplayText}
-            onSave={handleBuilderEdit}
-            onCancel={() => setEditingCitationId(null)}
-            saveLabel="Save"
-          />
-        </div>
-      );
-    }
-
-    const expandedKey = expandedBibKeys[cit.id] ?? null;
-    const expandedEntry = expandedKey ? bibEntryMap.get(expandedKey) : undefined;
-
-    return (
-      <>
-        {/* Target icon when selected — uses jumpToCitation so the jump also
-            briefly highlights the citation node in the editor. */}
-        {isSelected && (
-          <div className="absolute top-1.5 right-1.5" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
-            <TargetIcon onClick={() => jumpToCitation(cit.id)} title="Jump to citation" />
-          </div>
-        )}
-        {/* Citation key buttons */}
-        <div className={`flex flex-wrap gap-1.5 mb-2${isSelected ? " pr-7" : ""}`}>
-          {cit.keys.map((key) => {
-            const entry = bibEntryMap.get(key);
-            const isActive = expandedKey === key;
-            const label = entry ? formatMinimalCitation(key, bibEntries) : key;
-            return (
-              <button
-                key={key}
-                onClick={(e) => { e.stopPropagation(); toggleBibKey(cit.id, key); }}
-                className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
-                  !entry
-                    ? "border-dashed border-red-300 text-red-400 bg-red-50/50"
-                    : isActive
-                    ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
-                    : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* LaTeX command — click to enter edit mode */}
-        <div
-          className="text-xs font-mono text-stone-500 mb-1.5 hover:text-stone-700 cursor-pointer truncate"
-          onClick={(e) => { e.stopPropagation(); setEditingCitationId(cit.id); }}
-          title="Click to edit citation"
-        >
-          {cit.command}
-        </div>
-
-        {/* Missing keys */}
-        {cit.keys.filter((k) => !bibEntryMap.has(k)).map((k) => (
-          <div key={k} className="text-xs text-red-400 mb-1">
-            Key not found in .bib: <span className="font-mono">{k}</span>
-          </div>
-        ))}
-
-        {/* Expanded bibliography pod */}
-        {expandedEntry && (
-          <div className="mt-2 border-t border-stone-100 pt-2">
-            <BibEntryCard
-              entry={expandedEntry}
-              isSelected={false}
-              onClick={() => {}}
-              getFormattedBib={getFormattedBib}
-              getAnnotation={getAnnotation}
-              setAnnotation={setAnnotation}
-              onRequestReview={onRequestReview}
-              onCancelReview={onCancelReview}
-              getReviewStatus={getReviewStatus}
-              onUpdateBibEntry={onUpdateBibEntry}
-              onUpdateBibKeyAndType={onUpdateBibKeyAndType}
-              bibPackage={bibPackage}
-              bibEntries={bibEntries}
-              compact
-            />
-          </div>
-        )}
-      </>
-    );
+  // Shared card props derived from panel props — avoids repeating the
+  // long bib-card pass-through list in both view-mode branches.
+  const sharedCardProps = {
+    bibEntries,
+    bibPackage,
+    getDisplayText,
+    onUpdateCitation,
+    getFormattedBib,
+    getAnnotation,
+    setAnnotation,
+    onRequestReview,
+    onCancelReview,
+    getReviewStatus,
+    onUpdateBibEntry,
+    onUpdateBibKeyAndType,
   };
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       {/* Header */}
-      <PanelHeader title="Citations" count={citations.length} onAdd={() => { onStartCreate(); }}>
+      <PanelHeader title="Citations" onAdd={() => { onStartCreate(); }}>
         <div className="flex items-center gap-1.5">
           <PrevNextCounter
             current={cycleIdx}
             total={orderedCitations.length}
             onPrev={cyclePrev}
             onNext={cycleNext}
-            label="citations"
+            label=""
           />
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
           <div className="relative" ref={menuRef}>
@@ -382,22 +486,19 @@ function CitationsPanel({
               if (top === undefined) return null;
               const isSelected = selectedId === cit.id;
               return (
-                <div
+                <CitationCard
                   key={cit.id}
-                  data-citation-entry={cit.id}
-                  draggable
-                  onDragStart={(e) => handleCiteDragStart(e, cit)}
-                  className={`absolute left-2 right-2 ${panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")} in-text-connector in-text-connector-${panelSide}`}
-                  style={{ top }}
-                  onClick={() => {
+                  citation={cit}
+                  isSelected={isSelected}
+                  onSelect={() => {
                     onSelect(isSelected ? null : cit.id);
                     panelScrollRef.current?.focus();
                   }}
-                >
-                  <div className={PANEL.cardInner}>
-                    {renderCardContent(cit, isSelected)}
-                  </div>
-                </div>
+                  onJump={() => jumpToCitation(cit.id)}
+                  wrapperClassName={`absolute left-2 right-2 in-text-connector in-text-connector-${panelSide}`}
+                  wrapperStyle={{ top }}
+                  {...sharedCardProps}
+                />
               );
             })}
           </div>
@@ -405,21 +506,17 @@ function CitationsPanel({
           visibleCitations.map((cit) => {
             const isSelected = selectedId === cit.id;
             return (
-              <div
+              <CitationCard
                 key={cit.id}
-                data-citation-entry={cit.id}
-                draggable
-                onDragStart={(e) => handleCiteDragStart(e, cit)}
-                className={panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}
-                onClick={() => {
+                citation={cit}
+                isSelected={isSelected}
+                onSelect={() => {
                   onSelect(isSelected ? null : cit.id);
                   panelScrollRef.current?.focus();
                 }}
-              >
-                <div className={PANEL.cardInner}>
-                  {renderCardContent(cit, isSelected)}
-                </div>
-              </div>
+                onJump={() => jumpToCitation(cit.id)}
+                {...sharedCardProps}
+              />
             );
           })
         )}

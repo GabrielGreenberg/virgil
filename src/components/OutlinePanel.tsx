@@ -24,6 +24,10 @@ interface OutlinePanelProps {
   onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
   onRenameHeading?: (blockIndex: number, newText: string) => void;
   onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
+  /** Heading chain currently visible in the editor viewport. The last
+      entry is the closest enclosing heading; every entry gets a red
+      dot marker in the outline. */
+  activeSectionPath?: string[];
 }
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
@@ -245,6 +249,7 @@ function OutlineNode({
   showWordCount,
   sectionWordCount,
   perSectionCounts,
+  activeSectionPath,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -256,11 +261,19 @@ function OutlineNode({
   showWordCount: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
+  activeSectionPath?: string[];
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
   const hasChildren = hasSubHeadings || hasTitles;
   const isCollapsed = collapsed.has(node.heading.id);
+  // Is this heading the *innermost* active one? (last entry in the
+  // chain). We mark only the deepest active heading with a red dot,
+  // since the breadcrumb above already shows the full chain.
+  const isActive =
+    activeSectionPath != null &&
+    activeSectionPath.length > 0 &&
+    activeSectionPath[activeSectionPath.length - 1] === node.heading.text;
 
   return (
     <div>
@@ -306,6 +319,12 @@ function OutlineNode({
           >
             {node.heading.text}
           </span>
+          {isActive && (
+            <span
+              className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
+              title="Currently on screen"
+            />
+          )}
           {showLabels && node.heading.label && (
             <div className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate">
               {node.heading.label}
@@ -349,6 +368,7 @@ function OutlineNode({
               showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
+              activeSectionPath={activeSectionPath}
             />
           ))}
         </div>
@@ -803,7 +823,7 @@ function saveOutlinePrefs(
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
@@ -1045,6 +1065,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
+              activeSectionPath={activeSectionPath}
             />
           ))
         )}

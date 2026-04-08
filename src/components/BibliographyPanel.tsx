@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { PANEL, PanelHeader } from "./panel-primitives";
+import { PANEL, PanelHeader, PrevNextCounter } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 
 interface BibliographyPanelProps {
@@ -323,7 +323,14 @@ function BibliographyPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Bibliography" count={sortedEntries.length} onAdd={() => setAddMenuOpen((o) => !o)}>
+      <PanelHeader title="Bibliography" onAdd={() => setAddMenuOpen((o) => !o)}>
+        <PrevNextCounter
+          current={selectedIdx >= 0 ? selectedIdx : null}
+          total={sortedEntries.length}
+          onPrev={goPrev}
+          onNext={goNext}
+          label=""
+        />
         <div className="flex items-center gap-1">
           {/* Add menu dropdown (button is in PanelHeader via onAdd) */}
           <div className="relative" ref={addMenuRef}>

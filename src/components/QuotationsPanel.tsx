@@ -449,7 +449,7 @@ function CollapsibleNotes({
 
 /* ── Group Card ──────────────────────────────────────────────────── */
 
-function GroupCard({
+export function QuotationGroupCard({
   group,
   bibEntries,
   selected,
@@ -676,22 +676,25 @@ export default function QuotationsPanel({
   const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
     useCycle(anchoredGroups, onActivateGroup);
 
-  // Sync external selection back to cycle index
+  // Sync external selection back to cycle index — including deselect
   useEffect(() => {
-    if (!selectedGroupId) return;
+    if (!selectedGroupId) {
+      if (cycleIdx != null) setCycleIdx(null);
+      return;
+    }
     const i = anchoredGroups.findIndex((g) => g.id === selectedGroupId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedGroupId, anchoredGroups, cycleIdx, setCycleIdx]);
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations" count={groups.length}>
+      <PanelHeader title="Quotations">
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredGroups.length}
           onPrev={cyclePrev}
           onNext={cycleNext}
-          label="anchored"
+          label=""
         />
       </PanelHeader>
 
@@ -702,7 +705,7 @@ export default function QuotationsPanel({
           </div>
         ) : (
           groups.map((group) => (
-            <GroupCard
+            <QuotationGroupCard
               key={group.id}
               group={group}
               bibEntries={bibEntries}

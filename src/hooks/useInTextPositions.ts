@@ -178,14 +178,39 @@ export function useInTextPositions(
     scrollEl?.addEventListener("scroll", onUpdate, { passive: true });
     window.addEventListener("resize", onUpdate);
 
+    // Watch for panel-side size changes — e.g. when a card expands its
+    // bibliography pod, the entry height grows and we need to reflow
+    // the absolute positions so the cards below don't get overlapped.
+    // We observe each entry element individually so adding/removing
+    // entries doesn't require re-running the observer setup.
+    let resizeObs: ResizeObserver | null = null;
+    let mutObs: MutationObserver | null = null;
+    const panelEl = panelScrollRef.current;
+    if (panelEl && typeof ResizeObserver !== "undefined") {
+      resizeObs = new ResizeObserver(onUpdate);
+      const observeEntries = () => {
+        resizeObs?.disconnect();
+        panelEl.querySelectorAll(`[${entryAttr}]`).forEach((el) => {
+          resizeObs!.observe(el);
+        });
+      };
+      observeEntries();
+      // Re-observe whenever entries are added/removed from the DOM
+      // (happens when the items prop changes).
+      mutObs = new MutationObserver(observeEntries);
+      mutObs.observe(panelEl, { childList: true, subtree: true });
+    }
+
     return () => {
       cancelAnimationFrame(rafRef.current);
       editor.off("update", onUpdate);
       editor.off("selectionUpdate", onUpdate);
       scrollEl?.removeEventListener("scroll", onUpdate);
       window.removeEventListener("resize", onUpdate);
+      resizeObs?.disconnect();
+      mutObs?.disconnect();
     };
-  }, [editor, compute, enabled]);
+  }, [editor, compute, enabled, entryAttr]);
 
   // Bidirectional scroll sync
   useEffect(() => {
