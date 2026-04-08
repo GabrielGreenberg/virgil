@@ -41,8 +41,15 @@ const BIBLATEX_TYPES = [
   { value: "parencite", label: "\\parencite", desc: "(Author, Year)" },
   { value: "cite", label: "\\cite", desc: "Author Year" },
   { value: "footcite", label: "\\footcite", desc: "[fn: Author, Year]" },
+  { value: "smartcite", label: "\\smartcite", desc: "(Author, Year)" },
+  { value: "fullcite", label: "\\fullcite", desc: "Full bibliography entry" },
+  { value: "footfullcite", label: "\\footfullcite", desc: "[fn: full entry]" },
   { value: "citeauthor", label: "\\citeauthor", desc: "Author" },
   { value: "citeyear", label: "\\citeyear", desc: "Year" },
+  { value: "citetitle", label: "\\citetitle", desc: "Title" },
+  { value: "citedate", label: "\\citedate", desc: "Date" },
+  { value: "citeurl", label: "\\citeurl", desc: "URL" },
+  { value: "nocite", label: "\\nocite", desc: "(no inline output)" },
 ];
 
 /* ── Key search dropdown ──────────────────────────────────────────── */
@@ -256,7 +263,10 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
-        <label className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none">
+        <label
+          className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none"
+          title="Full author list (e.g. \citet*)"
+        >
           <input
             type="checkbox"
             checked={starred}
@@ -264,6 +274,18 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
             className="rounded border-stone-300"
           />
           <span className="font-mono">*</span>
+        </label>
+        <label
+          className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none"
+          title="Capitalize first letter for sentence start (e.g. \Citet)"
+        >
+          <input
+            type="checkbox"
+            checked={capitalized}
+            onChange={(e) => setCapitalized(e.target.checked)}
+            className="rounded border-stone-300"
+          />
+          <span className="font-mono">Aa</span>
         </label>
       </div>
 
