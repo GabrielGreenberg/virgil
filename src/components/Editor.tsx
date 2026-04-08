@@ -712,8 +712,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     content: initialContent,
     editorProps: {
       attributes: {
+        // px-20 (80px) leaves room for the 72px marginalia gutter plus a
+        // small breathing gap. Must stay >= MARGINALIA_GUTTER_WIDTH so
+        // gutter icons don't overlap the text column.
         class:
-          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-16 py-10",
+          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-20 py-10",
       },
       handleDrop(view, event) {
         // --- Quotation drop (from QuotationsPanel) ---
@@ -1585,7 +1588,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div className="flex-1 overflow-y-auto bg-white min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-white min-h-0">
         <EditorContent editor={editor} />
       </div>
     </div>

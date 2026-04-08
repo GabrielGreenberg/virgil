@@ -197,9 +197,15 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
 
 /** Number of icon columns per row in the gutter grid */
 export const MARGINALIA_COLS = 3;
-/** Width of one gutter (left or right), in pixels */
-export const MARGINALIA_GUTTER_WIDTH = 48;
 /** Size of an individual marker button */
 export const MARGINALIA_ICON_SIZE = 22;
 /** Vertical spacing between rows */
 export const MARGINALIA_ROW_GAP = 2;
+/**
+ * Width of one gutter (left or right), in pixels.
+ * Sized to fit MARGINALIA_COLS columns exactly so markers never overflow
+ * the gutter and cause horizontal scroll. The editor column's side padding
+ * must be at least this wide.
+ */
+export const MARGINALIA_GUTTER_WIDTH =
+  MARGINALIA_COLS * (MARGINALIA_ICON_SIZE + MARGINALIA_ROW_GAP);
