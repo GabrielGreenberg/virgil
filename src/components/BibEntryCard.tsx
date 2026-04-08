@@ -202,7 +202,9 @@ export default function BibEntryCard({
   };
 
   const hasOccCounter = occurrenceInfo && occurrenceInfo.total > 1;
-  const showTargetIcon = isSelected && !!onJump && !compact;
+  // Target icon is always rendered (when the entry is cited) so its
+  // hover/selected opacity states can fade in/out without layout shift.
+  const showTargetIcon = !!onJump && !compact;
   // Reserve right padding so text doesn't run under top-right widgets.
   const pr = showTargetIcon
     ? (hasOccCounter ? "pr-24" : "pr-8")
@@ -210,7 +212,8 @@ export default function BibEntryCard({
 
   const content = (
     <>
-      {/* Top-right widgets: target icon (when selected) + occurrence counter */}
+      {/* Top-right widgets: target icon (greyed on hover, full on select)
+          + occurrence counter (always visible when applicable) */}
       {(showTargetIcon || hasOccCounter) && (
         <div
           className="absolute top-2 right-2 flex items-center gap-1"
@@ -219,7 +222,15 @@ export default function BibEntryCard({
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         >
           {showTargetIcon && (
-            <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+            <div
+              className={`transition-opacity ${
+                isSelected
+                  ? "opacity-100"
+                  : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+              }`}
+            >
+              <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+            </div>
           )}
           {hasOccCounter && (
             <div className="flex items-center gap-0.5 text-xs text-stone-400">
@@ -431,7 +442,7 @@ export default function BibEntryCard({
       data-bib-entry={entry.key}
       draggable
       onDragStart={handleDragStart}
-      className={panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}
+      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}`}
       onClick={onClick}
     >
       <div className={PANEL.cardInner}>

@@ -292,6 +292,35 @@ function BibliographyPanel({
     } catch { /* cancelled */ }
   }, [onSetGeneralBibPath]);
 
+  // Export only the cited entries to a downloadable .bib file.
+  // Uses each entry's raw BibTeX source so the output is a clean, parseable
+  // .bib file without any lossy round-tripping.
+  const handleExportCited = useCallback(() => {
+    setMenuOpen(false);
+    const seen = new Set<string>();
+    const cited = bibEntries.filter((e) => {
+      if (!citedKeys.has(e.key) || seen.has(e.key)) return false;
+      seen.add(e.key);
+      return true;
+    });
+    if (cited.length === 0) return;
+    cited.sort((a, b) => {
+      const authorA = (a.fields.author || a.key).toLowerCase();
+      const authorB = (b.fields.author || b.key).toLowerCase();
+      return authorA.localeCompare(authorB);
+    });
+    const content = cited.map((e) => e.raw).filter(Boolean).join("\n\n") + "\n";
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "cited.bib";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [bibEntries, citedKeys]);
+
   const handleAddFromGeneralBib = useCallback(() => {
     setAddMenuOpen(false);
     setShowRequestForm(false);
@@ -382,6 +411,10 @@ function BibliographyPanel({
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
+                {/* Display section */}
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">
+                  Display
+                </div>
                 <button
                   className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
                   onClick={() => { setFilter("cited"); setMenuOpen(false); }}
@@ -393,8 +426,29 @@ function BibliographyPanel({
                   className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
                   onClick={() => { setFilter("all"); setMenuOpen(false); }}
                 >
-                  <span>All bibliography</span>
+                  <span>Full bibliography</span>
                   <span className="text-[var(--accent)]">{filter === "all" ? "✓" : ""}</span>
+                </button>
+
+                {/* Divider */}
+                <div className="my-1 border-t border-stone-200" />
+
+                {/* Export command */}
+                <button
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
+                    citedKeys.size > 0
+                      ? "text-stone-700 hover:bg-stone-50"
+                      : "text-stone-300 cursor-not-allowed"
+                  }`}
+                  onClick={citedKeys.size > 0 ? handleExportCited : undefined}
+                  title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Export cited.bib
                 </button>
 
                 {/* Divider */}
