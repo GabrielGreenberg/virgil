@@ -91,17 +91,34 @@ export function useCitations(docId: string | null) {
   }, []);
 
   const addCitation = useCallback(
-    (command: string, existingId?: string): CitationRef => {
+    (command: string, existingId?: string, markUnanchored?: boolean): CitationRef => {
       const parsed = parseCiteCommand(command);
       const ref: CitationRef = {
         id: existingId || uuid(),
         command,
         keys: parsed?.keys || [],
         createdAt: new Date().toISOString(),
+        ...(markUnanchored ? { unanchored: true as const } : {}),
       };
       setState((prev) => {
-        // Don't add if already exists
-        if (prev.citations.some((c) => c.id === ref.id)) return prev;
+        const existing = prev.citations.find((c) => c.id === ref.id);
+        if (existing) {
+          // Entry already in state. If we're (re)anchoring an
+          // unanchored entry — i.e. dragging an unanchored card into
+          // the editor — clear the unanchored flag so syncFromEditor
+          // won't resurrect it on next reload.
+          if (existing.unanchored && !markUnanchored) {
+            const next = {
+              ...prev,
+              citations: prev.citations.map((c) =>
+                c.id === ref.id ? { ...c, unanchored: undefined } : c,
+              ),
+            };
+            persistState(next);
+            return next;
+          }
+          return prev;
+        }
         const next = { ...prev, citations: [...prev.citations, ref] };
         persistState(next);
         return next;
@@ -260,7 +277,11 @@ export function useCitations(docId: string | null) {
     [state.citationStyle]
   );
 
-  /** Replace all citations from editor state (source of truth on load) */
+  /** Sync anchored citations from the editor while preserving unanchored
+   *  panel-only citations. The editor regenerates citation ids on each
+   *  parse, so prev anchored ids never match new editor ids — they must
+   *  be dropped. Only entries explicitly flagged with `unanchored` are
+   *  carried forward. */
   const syncFromEditor = useCallback(
     (editorCitations: Array<{ citationId: string; command: string }>) => {
       const refs: CitationRef[] = editorCitations.map((ec) => {
@@ -273,7 +294,8 @@ export function useCitations(docId: string | null) {
         };
       });
       setState((prev) => {
-        const next = { ...prev, citations: refs };
+        const unanchored = prev.citations.filter((c) => c.unanchored === true);
+        const next = { ...prev, citations: [...refs, ...unanchored] };
         persistState(next);
         return next;
       });

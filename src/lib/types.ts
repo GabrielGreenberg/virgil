@@ -154,6 +154,13 @@ export interface CitationRef {
   command: string; // full LaTeX command, e.g. "\citep[see][ch.2]{jones1990,smith2001}"
   keys: string[]; // extracted cite keys
   createdAt: string;
+  /** When true, this citation has no corresponding node in the editor —
+   *  the user created it via the panel + button and may later drag it
+   *  into the document to anchor it. Anchored citations omit this flag.
+   *  Persisted alongside the rest of the citation state so an unanchored
+   *  card survives across reloads (the editor regenerates anchored ids
+   *  on every parse, so we can only carry forward entries flagged here). */
+  unanchored?: boolean;
 }
 
 export interface CitationsState {
