@@ -898,6 +898,11 @@ export default function EditorLayout() {
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
+  // Whether the in-flight pending create should be inserted into the
+  // editor on save ("anchored", from the \cite typing rule) or kept as
+  // a panel-only card the user can later drag into the document
+  // ("unanchored", from the panel + button).
+  const [pendingCitationMode, setPendingCitationMode] = useState<"anchored" | "unanchored">("anchored");
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
 
   // Lifted view modes — persist across panel re-mounts and across sessions
@@ -1176,13 +1181,14 @@ export default function EditorLayout() {
   }, [bibEntries, editorInstance, getCitationDisplayText]);
 
   // Sync citation nodes from editor into citations state on load.
-  // Editor is source of truth (IDs are regenerated each parse).
+  // Editor is source of truth (IDs are regenerated each parse), so we
+  // always run sync — even when there are zero editor citations — so
+  // stale anchored ids from a previous session get dropped (only
+  // explicitly-unanchored entries survive the merge).
   useEffect(() => {
     if (!editorInstance) return;
     const editorCits = editorRef.current?.getCitations() ?? [];
-    if (editorCits.length > 0) {
-      syncCitationsFromEditor(editorCits);
-    }
+    syncCitationsFromEditor(editorCits);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance]);
 
@@ -1733,6 +1739,29 @@ export default function EditorLayout() {
     [getCitationDisplayText, addCitation],
   );
 
+  // Citation drop into the main editor. Two flavours:
+  //  • new citation (no id, or id already anchored elsewhere) → mint a
+  //    fresh ref and insert
+  //  • dragging an unanchored citation card from the panel → reuse its
+  //    existing id so the panel card transitions to "anchored" instead
+  //    of leaving a duplicate behind
+  const handleCitationDrop = useCallback(
+    (command: string, citationId?: string) => {
+      const display = getCitationDisplayText(command);
+      let targetId: string | undefined;
+      if (citationId) {
+        const editorCits = editorRef.current?.getCitations() ?? [];
+        const alreadyAnchored = editorCits.some(
+          (c) => c.citationId === citationId,
+        );
+        if (!alreadyAnchored) targetId = citationId;
+      }
+      const ref = addCitation(command, targetId);
+      return { id: ref.id, displayText: display };
+    },
+    [getCitationDisplayText, addCitation],
+  );
+
   const handleDeleteFootnote = useCallback((id: string) => {
     suppressOrphanRef.current.add(id);
     editorRef.current?.deleteFootnote(id);
@@ -1894,6 +1923,7 @@ export default function EditorLayout() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.partial) {
+        setPendingCitationMode("anchored");
         setPendingCitationCreate(detail.partial);
         const p = prefsRef.current;
         const citPlacement = p.placements.find((pl) => pl.id === "citations");
@@ -2534,15 +2564,25 @@ export default function EditorLayout() {
           onSetBibPackage={setBibPackage}
           getDisplayText={getCitationDisplayText}
           pendingCreate={pendingCitationCreate}
+          pendingCreateMode={pendingCitationMode}
           onCreateCitation={(cmd) => {
-            const ref = addCitation(cmd);
+            const ref = addCitation(
+              cmd,
+              undefined,
+              pendingCitationMode === "unanchored",
+            );
             return ref.id;
           }}
           onInsertCitation={(cmd, citId, display) => {
             editorRef.current?.insertCitation(cmd, citId, display);
           }}
           onClearPendingCreate={() => setPendingCitationCreate(null)}
-          onStartCreate={() => setPendingCitationCreate("\\cite")}
+          onStartCreate={() => {
+            // Panel + button creates an unanchored citation; user can
+            // drag it into the editor later to anchor it.
+            setPendingCitationMode("unanchored");
+            setPendingCitationCreate("\\cite");
+          }}
           editor={editorInstance}
           panelSide={side}
           citationPositions={citationPositionMap}
@@ -2699,6 +2739,7 @@ export default function EditorLayout() {
                 key={`ci:${cit.id}`}
                 citation={cit}
                 isSelected={isSelected}
+                isAnchored={pos !== null}
                 bibEntries={bibEntries}
                 bibPackage={bibPackage}
                 getDisplayText={getCitationDisplayText}
@@ -3171,11 +3212,7 @@ export default function EditorLayout() {
                       onAddComment={handleAddComment}
                       onArchive={handleArchive}
                       onEditorReady={setEditorInstance}
-                      onCitationDrop={(command) => {
-                        const display = getCitationDisplayText(command);
-                        const ref = addCitation(command);
-                        return { id: ref.id, displayText: display };
-                      }}
+                      onCitationDrop={handleCitationDrop}
                       onConfirmFootnoteMove={confirmFootnoteMove}
                     />
                     <Marginalia
@@ -3197,11 +3234,7 @@ export default function EditorLayout() {
                   onAddComment={handleAddComment}
                   onArchive={handleArchive}
                   onEditorReady={setEditorInstance}
-                  onCitationDrop={(command) => {
-                    const display = getCitationDisplayText(command);
-                    const ref = addCitation(command);
-                    return { id: ref.id, displayText: display };
-                  }}
+                  onCitationDrop={handleCitationDrop}
                   onConfirmFootnoteMove={confirmFootnoteMove}
                 />
                 <Marginalia

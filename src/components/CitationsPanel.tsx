@@ -31,6 +31,10 @@ interface CitationsPanelProps {
   getDisplayText: (command: string) => string;
   // New citation creation
   pendingCreate: string | null;
+  /** "anchored" inserts into the editor at cursor on save (used when
+   *  the editor input rule fires); "unanchored" creates a panel-only
+   *  citation that the user can later drag into the editor to anchor. */
+  pendingCreateMode: "anchored" | "unanchored";
   onCreateCitation: (command: string) => string;
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
@@ -85,6 +89,10 @@ export interface CitationCardProps {
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  /** Whether this citation has a corresponding node in the editor.
+   *  Unanchored citations show with a dashed border + reduced opacity
+   *  and can be dragged into the editor to anchor them. */
+  isAnchored?: boolean;
   /** Extra class names appended to the card wrapper (used by in-text view). */
   wrapperClassName?: string;
   /** Inline style on the card wrapper (used by in-text view positioning). */
@@ -110,12 +118,14 @@ export function CitationCard({
   getReviewStatus,
   onUpdateBibEntry,
   onUpdateBibKeyAndType,
+  isAnchored = true,
   wrapperClassName,
   wrapperStyle,
   extraDataAttrs,
 }: CitationCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const editWrapperRef = useRef<HTMLDivElement>(null);
   const builderHandleRef = useRef<CitationBuilderHandle>(null);
 
@@ -204,6 +214,10 @@ export function CitationCard({
   const handleBibPodDragStart = useCallback(
     (e: React.DragEvent) => {
       if (!expandedBibKey) return;
+      // Stop propagation so the parent card's drag handler doesn't also
+      // fire and overwrite the dataTransfer with the multi-key parent
+      // citation. The expanded bib pod must drag *only* its own key.
+      e.stopPropagation();
       const cmd = buildSingleKeyCommand(expandedBibKey);
       const display = getDisplayText(cmd);
       e.dataTransfer.setData("text/plain", cmd);
@@ -224,15 +238,85 @@ export function CitationCard({
     [expandedBibKey, buildSingleKeyCommand, getDisplayText],
   );
 
+  // Drop handler: when a bibliography card (or expanded bib pod) is
+  // dropped onto this citation card, append its key to this citation's
+  // command. The drop data follows the same `application/x-virgil-citation`
+  // shape used by other drag sources, with `bibKey` set on bib drops.
+  const handleCardDragOver = useCallback((e: React.DragEvent) => {
+    // Look at types only (Chrome doesn't expose dataTransfer.getData here).
+    if (!e.dataTransfer.types.includes("application/x-virgil-citation")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    if (!isDropTarget) setIsDropTarget(true);
+  }, [isDropTarget]);
+
+  const handleCardDragLeave = useCallback((e: React.DragEvent) => {
+    // currentTarget = the card; relatedTarget = where pointer moved to.
+    // Only clear when leaving the card entirely, not when moving between
+    // children.
+    const next = e.relatedTarget as Node | null;
+    if (next && (e.currentTarget as Node).contains(next)) return;
+    setIsDropTarget(false);
+  }, []);
+
+  const handleCardDrop = useCallback(
+    (e: React.DragEvent) => {
+      const data = e.dataTransfer.getData("application/x-virgil-citation");
+      if (!data) return;
+      let parsed: { command?: string; bibKey?: string; citationId?: string };
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        return;
+      }
+      // Only react to bib-entry / bib-pod drops; ignore drops from other
+      // citation cards (those carry a citationId, no bibKey).
+      if (!parsed.bibKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDropTarget(false);
+
+      const current = parseCiteCommand(cit.command);
+      if (!current) return;
+      // Don't add a key that's already present.
+      if (current.entries.some((en) => en.key === parsed.bibKey)) return;
+      const newCommand = serializeCiteCommand(
+        {
+          type: current.type,
+          starred: current.starred,
+          capitalized: current.capitalized,
+          entries: [...current.entries, { key: parsed.bibKey! }],
+        },
+        bibPackage,
+      );
+      onUpdateCitation(cit.id, newCommand);
+    },
+    [cit.id, cit.command, bibPackage, onUpdateCitation],
+  );
+
+  // Compose the card class. Unanchored citations get a dashed border
+  // and slightly muted appearance so they're visually distinct from
+  // the in-text anchored ones. The drop-target ring overrides those
+  // borders while a bib drag hovers.
+  const stateClass = isDropTarget
+    ? "ring-2 ring-amber-300 ring-offset-0"
+    : !isAnchored
+      ? "border-dashed opacity-80"
+      : "";
+
   return (
     <div
       data-citation-entry={cit.id}
       {...(extraDataAttrs || {})}
       draggable={!isEditing}
       onDragStart={handleDragStart}
-      className={`group ${panelCard(isSelected, "cursor-pointer cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      onDragOver={handleCardDragOver}
+      onDragLeave={handleCardDragLeave}
+      onDrop={handleCardDrop}
+      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
       onClick={onSelect}
+      title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
     >
       <div className={PANEL.cardInner}>
         {isEditing ? (
@@ -300,21 +384,24 @@ export function CitationCard({
               })}
             </div>
 
-            {/* LaTeX command */}
-            <div className="text-xs font-mono text-stone-500 mb-0.5 truncate">
-              {cit.command}
+            {/* LaTeX command + Edit button on the same row. The command
+                truncates with ellipsis when long; the Edit button is a
+                small chip pinned to the right edge. */}
+            <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
+              <div className="text-xs font-mono text-stone-500 truncate flex-1 min-w-0">
+                {cit.command}
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditing(true);
+                }}
+                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-stone-200 text-stone-400 hover:text-stone-600 hover:bg-stone-100 hover:border-stone-300 transition-colors flex-shrink-0"
+                title="Edit citation"
+              >
+                Edit
+              </button>
             </div>
-            {/* Edit button — opens the CitationBuilder for this citation. */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsEditing(true);
-              }}
-              className="text-xs text-stone-400 hover:text-stone-600 underline mb-1.5"
-              title="Edit citation"
-            >
-              Edit
-            </button>
 
             {/* Missing keys */}
             {cit.keys
@@ -364,7 +451,7 @@ export function CitationCard({
 function CitationsPanel({
   citations, bibEntries, citationStyle, bibPackage, bibPath, selectedId, citationOrder,
   onSelect, onScrollToMarker, onUpdateCitation, onDeleteCitation, onSetStyle, onSetBibPackage,
-  getDisplayText, pendingCreate, onCreateCitation, onInsertCitation, onClearPendingCreate, onStartCreate,
+  getDisplayText, pendingCreate, pendingCreateMode, onCreateCitation, onInsertCitation, onClearPendingCreate, onStartCreate,
   editor, panelSide, citationPositions,
   viewMode: toggleViewMode, onViewModeChange: handleToggleViewMode,
   getFormattedBib, getAnnotation, setAnnotation, onRequestReview, onCancelReview,
@@ -407,10 +494,17 @@ function CitationsPanel({
 
   const handleBuilderCreate = (command: string) => {
     const id = onCreateCitation(command);
-    const display = getDisplayText(command);
-    onInsertCitation(command, id, display);
+    if (pendingCreateMode === "anchored") {
+      const display = getDisplayText(command);
+      onInsertCitation(command, id, display);
+    }
     onClearPendingCreate();
   };
+
+  // Set of ids that have a corresponding citation node in the editor.
+  // Anything in `citations` whose id is missing here is unanchored —
+  // i.e. created via the panel + button and not yet dragged into text.
+  const anchoredIds = useMemo(() => new Set(citationOrder), [citationOrder]);
 
   const visibleCitations = orderedCitations;
 
@@ -572,6 +666,7 @@ function CitationsPanel({
                   key={cit.id}
                   citation={cit}
                   isSelected={isSelected}
+                  isAnchored={anchoredIds.has(cit.id)}
                   onSelect={() => {
                     onSelect(isSelected ? null : cit.id);
                     panelScrollRef.current?.focus();
@@ -592,6 +687,7 @@ function CitationsPanel({
                 key={cit.id}
                 citation={cit}
                 isSelected={isSelected}
+                isAnchored={anchoredIds.has(cit.id)}
                 onSelect={() => {
                   onSelect(isSelected ? null : cit.id);
                   panelScrollRef.current?.focus();
