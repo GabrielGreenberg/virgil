@@ -161,10 +161,9 @@ export function FootnoteCard({
       style={wrapperStyle}
       onClick={onSelect}
     >
-      {/* Header row: number badge on the left, target + three-dot menu on
-          the right. A horizontal divider directly below runs edge-to-edge
-          under the whole header so the body beneath gets the full card
-          width for its text. */}
+      {/* Header row: a single bar holding the number badge, copy button,
+          three-dot menu, and target icon. A divider below separates this
+          control bar from the body text, which spans the full card width. */}
       <div className="flex items-center gap-2 px-3 py-2">
         <span
           className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
@@ -177,6 +176,26 @@ export function FootnoteCard({
           {fn.number}
         </span>
         <div className="flex-1" />
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <CopyButton content={fn.content} />
+        </div>
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} />
+          </ItemMenu>
+        </div>
         <div
           className={`transition-opacity ${
             isSelected
@@ -191,25 +210,13 @@ export function FootnoteCard({
         >
           <TargetIcon onClick={onJump} title="Jump to footnote marker" />
         </div>
-        <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
       </div>
       <div
         className={`border-t ${isSelected ? "border-amber-200" : "border-stone-100"}`}
       />
 
-      {/* Body: left-justified rich text field spanning the full card width,
-          with the copy button in a thin footer row beneath it. */}
-      <div className="px-3 pt-1.5 pb-1">
+      {/* Body: left-justified rich text field spanning the full card width. */}
+      <div className="px-3 pt-1.5 pb-2">
         <RichTextField
           instanceKey={fn.footnoteId}
           value={fn.content}
@@ -221,9 +228,6 @@ export function FootnoteCard({
           onCitationCreated={onCitationCreated}
           onFocusChange={setIsFocused}
         />
-        <div className="flex items-center justify-end">
-          <CopyButton content={fn.content} />
-        </div>
       </div>
     </div>
   );
@@ -268,9 +272,9 @@ export function OrphanedFootnoteCard({
       className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
     >
-      {/* Header row: orphan badge + three-dot menu, divider below.
-          Matches the anchored footnote layout so both card variants share
-          the same header → divider → body structure. */}
+      {/* Header row: a single bar holding the orphan badge, copy button,
+          and three-dot menu. Matches the anchored footnote layout so both
+          card variants share the same header → divider → body structure. */}
       <div className="flex items-center gap-2 px-3 py-2">
         <span
           className="inline-flex items-center justify-center shrink-0"
@@ -317,6 +321,15 @@ export function OrphanedFootnoteCard({
             e.preventDefault();
           }}
         >
+          <CopyButton content={orphan.content} />
+        </div>
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
           <ItemMenu>
             <MenuDelete onClick={onDelete} />
           </ItemMenu>
@@ -324,7 +337,7 @@ export function OrphanedFootnoteCard({
       </div>
       <div className="border-t border-stone-100" />
 
-      <div className="px-3 pt-1.5 pb-1">
+      <div className="px-3 pt-1.5 pb-2">
         <RichTextField
           instanceKey={orphan.footnoteId}
           value={orphan.content}
@@ -337,9 +350,6 @@ export function OrphanedFootnoteCard({
           onCitationCreated={onCitationCreated}
           onFocusChange={setIsFocused}
         />
-        <div className="flex items-center justify-end">
-          <CopyButton content={orphan.content} />
-        </div>
       </div>
     </div>
   );
@@ -395,6 +405,22 @@ function FootnotePanel({
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, footnotes, cycleIdx, setCycleIdx]);
 
+  // Arrow-key navigation — mirrors CitationsPanel's pattern so users can
+  // step through anchored footnotes from the keyboard.
+  const handleNavKeys = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (footnotes.length === 0) return;
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        cycleNext();
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        cyclePrev();
+      }
+    },
+    [footnotes, cycleNext, cyclePrev],
+  );
+
   const totalCount = footnotes.length + orphanedFootnotes.length;
 
   return (
@@ -412,7 +438,9 @@ function FootnotePanel({
 
       <div
         ref={viewMode === "in-text" ? panelScrollRef : undefined}
-        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
+        tabIndex={0}
+        onKeyDown={handleNavKeys}
+        className={`${viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list} focus:outline-none`}
       >
         {totalCount === 0 && (
           <div className={PANEL.empty}>
