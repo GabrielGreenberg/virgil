@@ -213,10 +213,34 @@ function CiteKeyAutocomplete({
 
 /* ── Single Quote Entry (text + page only — no title) ────────────── */
 
+/**
+ * Build a citation command for the given cite key + optional page. The
+ * command format matches the document's bib package (natbib → \citep,
+ * biblatex → \parencite). Returns an empty string if no citeKey is set.
+ */
+function buildQuoteCitationCommand(
+  citeKey: string,
+  page: string,
+  bibPackage: string,
+): string {
+  const key = citeKey.trim();
+  if (!key) return "";
+  const cmd = bibPackage === "natbib" ? "citep" : "parencite";
+  const p = page.trim();
+  const postnote = p
+    ? /^[0-9ivxlcdmIVXLCDM]/.test(p)
+      ? `p.~${p}`
+      : p
+    : "";
+  return postnote ? `\\${cmd}[${postnote}]{${key}}` : `\\${cmd}{${key}}`;
+}
+
 const QuoteEntry = memo(function QuoteEntry({
   quote,
   groupId,
   referenceId,
+  citeKey,
+  bibPackage,
   canDelete,
   onUpdate,
   onDelete,
@@ -224,6 +248,8 @@ const QuoteEntry = memo(function QuoteEntry({
   quote: Quote;
   groupId: string;
   referenceId: string;
+  citeKey: string;
+  bibPackage: string;
   canDelete: boolean;
   onUpdate: (
     groupId: string,
@@ -258,8 +284,41 @@ const QuoteEntry = memo(function QuoteEntry({
   useEffect(() => { setText(quote.text); }, [quote.text]);
   useEffect(() => { setPage(quote.page); }, [quote.page]);
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      // Don't initiate a drag when the user is interacting with a form
+      // control (textarea/input/button) inside the pod
+      const target = e.target as HTMLElement;
+      if (target.closest("input, textarea, button")) {
+        e.preventDefault();
+        return;
+      }
+      // Stop propagation so the enclosing group card's drag handler
+      // (which drops a paragraph anchor) doesn't also fire
+      e.stopPropagation();
+      const command = buildQuoteCitationCommand(citeKey, page, bibPackage);
+      e.dataTransfer.effectAllowed = "copy";
+      e.dataTransfer.setData(
+        "application/x-virgil-quote",
+        JSON.stringify({
+          quoteText: text,
+          command,
+        }),
+      );
+      // Plain-text fallback — quoted text with citation marker
+      const fallback = command ? `"${text}" ${command}` : `"${text}"`;
+      e.dataTransfer.setData("text/plain", fallback);
+    },
+    [text, citeKey, page, bibPackage],
+  );
+
   return (
-    <div className={`${PANEL.subpodWhite} p-3`}>
+    <div
+      className={`${PANEL.subpodWhite} p-3 cursor-grab active:cursor-grabbing`}
+      draggable
+      onDragStart={handleDragStart}
+      title="Drag to insert quote with citation"
+    >
       {/* Quote text */}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
@@ -295,15 +354,14 @@ const QuoteEntry = memo(function QuoteEntry({
   );
 });
 
-/* ── Reference Sub-pod (citeKey + nested quotes) ─────────────────── */
+/* ── Reference block (flat: citeKey + quote pods, no enclosing sub-pod) ── */
 
 const ReferenceBlock = memo(function ReferenceBlock({
   reference,
   groupId,
   bibEntries,
-  canDelete,
+  bibPackage,
   onUpdateCiteKey,
-  onDelete,
   onAddQuote,
   onUpdateQuote,
   onDeleteQuote,
@@ -311,9 +369,8 @@ const ReferenceBlock = memo(function ReferenceBlock({
   reference: Reference;
   groupId: string;
   bibEntries: BibEntry[];
-  canDelete: boolean;
+  bibPackage: string;
   onUpdateCiteKey: (groupId: string, referenceId: string, key: string) => void;
-  onDelete: (groupId: string, referenceId: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
     groupId: string,
@@ -336,29 +393,22 @@ const ReferenceBlock = memo(function ReferenceBlock({
   );
 
   return (
-    <div className={`${PANEL.subpod} space-y-2`}>
-      {/* Reference header — formatted citation + delete */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          {matchedEntry ? (
-            <>
-              <p className="text-xs font-medium text-stone-700">
-                {formatMinimalCitation(matchedEntry)}
+    <div className="space-y-2">
+      {/* Reference header — formatted citation, flat (no pod, no three-dots) */}
+      <div className="min-w-0">
+        {matchedEntry ? (
+          <>
+            <p className="text-xs font-medium text-stone-700">
+              {formatMinimalCitation(matchedEntry)}
+            </p>
+            {cleanTitle && (
+              <p className="text-[11px] text-stone-500 leading-snug mt-0.5">
+                {cleanTitle}
               </p>
-              {cleanTitle && (
-                <p className="text-[11px] text-stone-500 leading-snug mt-0.5">
-                  {cleanTitle}
-                </p>
-              )}
-            </>
-          ) : (
-            <p className="text-xs text-stone-400 italic">No reference selected</p>
-          )}
-        </div>
-        {canDelete && (
-          <ItemMenu>
-            <MenuDelete onClick={() => onDelete(groupId, reference.id)} label="Delete reference" />
-          </ItemMenu>
+            )}
+          </>
+        ) : (
+          <p className="text-xs text-stone-400 italic">No reference selected</p>
         )}
       </div>
 
@@ -369,7 +419,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
         onChange={handleCiteKeyChange}
       />
 
-      {/* Nested quotes */}
+      {/* Quote pods — each draggable onto the editor */}
       <div className="space-y-1.5">
         {reference.quotes.map((q) => (
           <QuoteEntry
@@ -377,6 +427,8 @@ const ReferenceBlock = memo(function ReferenceBlock({
             quote={q}
             groupId={groupId}
             referenceId={reference.id}
+            citeKey={reference.citeKey}
+            bibPackage={bibPackage}
             canDelete={reference.quotes.length > 1}
             onUpdate={onUpdateQuote}
             onDelete={onDeleteQuote}
@@ -452,13 +504,13 @@ function CollapsibleNotes({
 export function QuotationGroupCard({
   group,
   bibEntries,
+  bibPackage,
   selected,
   onSelect,
   onDelete,
   onJump,
   onUpdateGroupTitle,
   onAddReference,
-  onDeleteReference,
   onUpdateReferenceCiteKey,
   onAddQuote,
   onUpdateQuote,
@@ -467,13 +519,13 @@ export function QuotationGroupCard({
 }: {
   group: QuotationGroup;
   bibEntries: BibEntry[];
+  bibPackage: string;
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onJump?: () => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
-  onDeleteReference: (groupId: string, referenceId: string) => void;
   onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
@@ -548,17 +600,19 @@ export function QuotationGroupCard({
           </div>
         </div>
 
-        {/* References */}
-        <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+        {/* References — flat, separated by a thin divider when multiple */}
+        <div
+          className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"
+          onClick={(e) => e.stopPropagation()}
+        >
           {group.references.map((r) => (
             <ReferenceBlock
               key={r.id}
               reference={r}
               groupId={group.id}
               bibEntries={bibEntries}
-              canDelete={group.references.length > 1}
+              bibPackage={bibPackage}
               onUpdateCiteKey={onUpdateReferenceCiteKey}
-              onDelete={onDeleteReference}
               onAddQuote={onAddQuote}
               onUpdateQuote={onUpdateQuote}
               onDeleteQuote={onDeleteQuote}
@@ -591,12 +645,12 @@ export function QuotationGroupCard({
 export interface QuotationsPanelProps {
   groups: QuotationGroup[];
   bibEntries: BibEntry[];
+  bibPackage: string;
   citationStyle: string;
   onAddGroup: () => QuotationGroup;
   onDeleteGroup: (groupId: string) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
-  onDeleteReference: (groupId: string, referenceId: string) => void;
   onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
@@ -616,11 +670,11 @@ export interface QuotationsPanelProps {
 export default function QuotationsPanel({
   groups,
   bibEntries,
+  bibPackage,
   onAddGroup,
   onDeleteGroup,
   onUpdateGroupTitle,
   onAddReference,
-  onDeleteReference,
   onUpdateReferenceCiteKey,
   onAddQuote,
   onUpdateQuote,
@@ -688,7 +742,7 @@ export default function QuotationsPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Quotations">
+      <PanelHeader title="Quotations" onAdd={handleAdd}>
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredGroups.length}
@@ -709,13 +763,13 @@ export default function QuotationsPanel({
               key={group.id}
               group={group}
               bibEntries={bibEntries}
+              bibPackage={bibPackage}
               selected={selectedGroupId === group.id}
               onSelect={() => setSelectedGroupId(group.id)}
               onDelete={() => onDeleteGroup(group.id)}
               onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
               onUpdateGroupTitle={onUpdateGroupTitle}
               onAddReference={onAddReference}
-              onDeleteReference={onDeleteReference}
               onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
               onAddQuote={onAddQuote}
               onUpdateQuote={onUpdateQuote}
@@ -724,14 +778,6 @@ export default function QuotationsPanel({
             />
           ))
         )}
-
-        {/* Add group button */}
-        <button
-          onClick={handleAdd}
-          className="w-full py-2.5 text-xs font-medium text-amber-600 hover:text-amber-700 hover:bg-amber-50/50 rounded-lg border border-dashed border-stone-300 hover:border-amber-400 transition-colors"
-        >
-          + Add group
-        </button>
       </div>
     </div>
   );

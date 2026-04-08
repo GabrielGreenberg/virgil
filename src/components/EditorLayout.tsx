@@ -2556,12 +2556,12 @@ export default function EditorLayout() {
         <QuotationsPanel
           groups={quotationGroups}
           bibEntries={bibEntries}
+          bibPackage={bibPackage}
           citationStyle={citationStyle}
           onAddGroup={addQuotationGroup}
           onDeleteGroup={deleteQuotationGroup}
           onUpdateGroupTitle={updateQuotationGroupTitle}
           onAddReference={addQuotationReference}
-          onDeleteReference={deleteQuotationReference}
           onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
           onAddQuote={addQuotationQuote}
           onUpdateQuote={updateQuotationQuote}
@@ -2699,6 +2699,7 @@ export default function EditorLayout() {
                 <QuotationGroupCard
                   group={group}
                   bibEntries={bibEntries}
+                  bibPackage={bibPackage}
                   selected={isSelected}
                   onSelect={() =>
                     setSelectedQuotationGroupId(isSelected ? null : group.id)
@@ -2714,7 +2715,6 @@ export default function EditorLayout() {
                   }
                   onUpdateGroupTitle={updateQuotationGroupTitle}
                   onAddReference={addQuotationReference}
-                  onDeleteReference={deleteQuotationReference}
                   onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
                   onAddQuote={addQuotationQuote}
                   onUpdateQuote={updateQuotationQuote}
