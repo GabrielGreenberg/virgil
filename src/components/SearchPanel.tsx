@@ -156,15 +156,28 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
       const before = docText.slice(Math.max(0, matchStart - CTX), matchStart);
       const after = docText.slice(matchEnd, matchEnd + CTX);
 
-      // Map text offset → ProseMirror position
+      // Map text offset → ProseMirror position. Mirror prosemirror's
+      // textBetween logic exactly: the block separator is inserted before
+      // every textblock except the first one. Counting every block node
+      // (as a previous version did) over-counts container blocks like
+      // bulletList/listItem and shifts the highlight a few chars off the
+      // real match.
       let pmFrom = 0;
       let pmTo = 0;
       let textOffset = 0;
+      let seenFirstTextblock = false;
       let foundFrom = false;
       let foundTo = false;
 
       editor.state.doc.descendants((node, nodePos) => {
         if (foundTo) return false;
+        if (node.isTextblock) {
+          if (seenFirstTextblock) {
+            textOffset += 1; // \n separator
+          } else {
+            seenFirstTextblock = true;
+          }
+        }
         if (node.isText) {
           const len = (node.text || "").length;
           if (!foundFrom && textOffset + len > matchStart) {
@@ -176,8 +189,6 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
             foundTo = true;
           }
           textOffset += len;
-        } else if (node.isBlock && textOffset > 0) {
-          textOffset += 1; // \n separator
         }
         return true;
       });
