@@ -1,9 +1,26 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useCallback,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import type { BibEntry } from "@/lib/types";
 import type { ParsedCiteKey } from "@/lib/bib-parser";
 import { parseCiteCommand, serializeCiteCommand, formatMinimalCitation } from "@/lib/bib-parser";
+
+/** Imperative handle exposed to parents — used to commit current state
+ *  when dismissed by click-outside rather than a Save/Cancel button. */
+export interface CitationBuilderHandle {
+  /** Commit the current command via onSave if valid; no-op otherwise. */
+  commit: () => void;
+  /** Whether the current command differs from the initial command. */
+  isDirty: () => boolean;
+}
 
 /* ── Command type options per package ─────────────────────────────── */
 
@@ -126,7 +143,7 @@ interface BuilderEntry {
 let _entryIdCounter = 0;
 function nextEntryId() { return `be_${++_entryIdCounter}`; }
 
-export default function CitationBuilder({
+const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(function CitationBuilder({
   initialCommand,
   bibPackage,
   bibEntries,
@@ -134,7 +151,7 @@ export default function CitationBuilder({
   onSave,
   onCancel,
   saveLabel = "Add citation",
-}: CitationBuilderProps) {
+}, ref) {
   const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
 
   // Parse initial command (if editing)
@@ -208,6 +225,21 @@ export default function CitationBuilder({
   const handleSave = () => {
     if (command) onSave(command);
   };
+
+  // Expose an imperative commit() so parents can save the current state
+  // on click-outside (no Save/Cancel button press required). The handle
+  // object is refreshed whenever `command` or `onSave` changes, so
+  // `commit()` always reflects the latest builder state.
+  useImperativeHandle(
+    ref,
+    () => ({
+      commit: () => {
+        if (command && command !== initialCommand) onSave(command);
+      },
+      isDirty: () => !!command && command !== initialCommand,
+    }),
+    [command, initialCommand, onSave],
+  );
 
   const isNatbib = bibPackage === "natbib";
 
@@ -331,4 +363,6 @@ export default function CitationBuilder({
       </div>
     </div>
   );
-}
+});
+
+export default CitationBuilder;
