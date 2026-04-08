@@ -10,16 +10,22 @@ export function useBibSettings(docId: string | null) {
   const [state, setState] = useState<BibSettings>(EMPTY);
   const docIdRef = useRef(docId);
 
+  const fetchState = useCallback(() => {
+    const id = docIdRef.current;
+    if (!id) return;
+    fetch(`/api/bib-settings?docId=${id}`)
+      .then((r) => r.json())
+      .then((data: BibSettings) => {
+        if (docIdRef.current === id) setState(data ?? EMPTY);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     docIdRef.current = docId;
     if (!docId) { setState(EMPTY); return; }
-    fetch(`/api/bib-settings?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: BibSettings) => {
-        if (docIdRef.current === docId) setState(data ?? EMPTY);
-      })
-      .catch(() => {});
-  }, [docId]);
+    fetchState();
+  }, [docId, fetchState]);
 
   const persist = useCallback(async (s: BibSettings) => {
     const id = docIdRef.current;
@@ -71,5 +77,6 @@ export function useBibSettings(docId: string | null) {
     setGeneralBibPath,
     addEntryRequest,
     removeEntryRequest,
+    refresh: fetchState,
   };
 }
