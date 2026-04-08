@@ -56,6 +56,14 @@ interface EditorProps {
   onArchive?: () => void;
   onEditorReady?: (editor: Editor) => void;
   onCitationDrop?: (command: string, citationId?: string) => { id: string; displayText: string } | null;
+  /**
+   * Called when the user drops an anchored footnote from the panel back
+   * into the document. Resolving `true` causes the move to go through;
+   * `false` cancels. Used to surface an in-app confirmation dialog
+   * instead of the native `window.confirm`. When omitted, Editor falls
+   * back to the native dialog.
+   */
+  onConfirmFootnoteMove?: () => Promise<boolean>;
 }
 
 export interface FootnoteInfo {
@@ -142,7 +150,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -152,6 +160,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
+  // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
+  // closure always sees the current value without needing to reattach.
+  const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
+  onConfirmFootnoteMoveRef.current = onConfirmFootnoteMove;
 
   const ParagraphWithTitle = Paragraph.extend({
     addAttributes() {
@@ -882,49 +894,71 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           event.preventDefault();
           try {
             const { footnoteId, content, isOrphan } = JSON.parse(fnData);
-            if (!isOrphan) {
-              const confirmed = window.confirm(
-                "This will move the footnote from its current position in the document. Continue?"
-              );
-              if (!confirmed) return true;
-            }
 
+            // Capture the drop target position synchronously — once we
+            // return from handleDrop, the native drop event is gone and
+            // we can't call view.posAtCoords with clientX/Y anymore.
             const coords = { left: event.clientX, top: event.clientY };
             const pos = view.posAtCoords(coords);
             if (!pos) return true;
+            const dropPos = pos.pos;
 
-            let tr = view.state.tr;
-
-            if (!isOrphan) {
-              let oldPos: number | null = null;
-              view.state.doc.descendants((node, npos) => {
-                if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
-                  oldPos = npos;
-                  return false;
+            // Apply the move against the editor's current state. Called
+            // either immediately (orphan) or after the user confirms in
+            // the in-app dialog (anchored footnote). Since the confirm
+            // dialog is modal, the doc can't have drifted in between.
+            const performMove = () => {
+              let tr = view.state.tr;
+              if (!isOrphan) {
+                let oldPos: number | null = null;
+                view.state.doc.descendants((node, npos) => {
+                  if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
+                    oldPos = npos;
+                    return false;
+                  }
+                  return true;
+                });
+                if (oldPos != null) {
+                  tr = tr.delete(oldPos, oldPos + 1);
                 }
-                return true;
+              }
+              const mappedPos = tr.mapping.map(dropPos);
+              const newNode = view.state.schema.nodes.footnote.create({
+                footnoteId,
+                content,
+                number: 0,
               });
-              if (oldPos != null) {
-                tr = tr.delete(oldPos, oldPos + 1);
+              tr = tr.insert(mappedPos, newNode);
+              view.dispatch(tr);
+
+              setTimeout(() => {
+                window.dispatchEvent(
+                  new CustomEvent("virgil-footnote-panel-dropped", {
+                    detail: { footnoteId, isOrphan },
+                  })
+                );
+              }, 0);
+            };
+
+            if (isOrphan) {
+              performMove();
+            } else {
+              const requestConfirm = onConfirmFootnoteMoveRef.current;
+              if (requestConfirm) {
+                // Fire-and-forget: the drop event is already prevented,
+                // so we can safely do async work and dispatch the move
+                // when the user resolves the dialog.
+                requestConfirm().then((ok) => {
+                  if (ok) performMove();
+                }).catch(() => { /* swallow: user cancelled */ });
+              } else if (
+                window.confirm(
+                  "This will move the footnote from its current position in the document. Continue?",
+                )
+              ) {
+                performMove();
               }
             }
-
-            const mappedPos = tr.mapping.map(pos.pos);
-            const newNode = view.state.schema.nodes.footnote.create({
-              footnoteId,
-              content,
-              number: 0,
-            });
-            tr = tr.insert(mappedPos, newNode);
-            view.dispatch(tr);
-
-            setTimeout(() => {
-              window.dispatchEvent(
-                new CustomEvent("virgil-footnote-panel-dropped", {
-                  detail: { footnoteId, isOrphan },
-                })
-              );
-            }, 0);
           } catch { /* ignore bad data */ }
           return true;
         }
