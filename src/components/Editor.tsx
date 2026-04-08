@@ -790,6 +790,61 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
+        // --- Quote drop (from QuotationsPanel — individual quote pod) ---
+        // Inserts the quoted text wrapped in curly quotes followed by a
+        // citation node for the quote's cite key + page number. Uses the
+        // same onCitationDrop callback to register the citation in the
+        // side panel store.
+        const quoteData = event.dataTransfer?.getData("application/x-virgil-quote");
+        if (quoteData) {
+          event.preventDefault();
+          try {
+            const { quoteText, command } = JSON.parse(quoteData) as {
+              quoteText?: string;
+              command?: string;
+            };
+            const text = (quoteText ?? "").trim();
+            if (!text) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const pos = view.posAtCoords(coords);
+            if (!pos) return true;
+
+            const schema = view.state.schema;
+            const opening = `\u201C${text}`;
+            const closing = `\u201D`;
+
+            // Build the nodes array in insertion order so a single
+            // tr.insert call can place everything atomically — avoids
+            // position-tracking bugs when combining text + atoms.
+            const nodes: PMNode[] = [];
+            nodes.push(schema.text(opening));
+
+            if (command && onCitationDropRef.current) {
+              const result = onCitationDropRef.current(command);
+              if (result) {
+                // Text up through the closing quote, followed by a
+                // space, then the citation atom.
+                nodes.push(schema.text(`${closing} `));
+                nodes.push(
+                  schema.nodes.citation.create({
+                    citationId: result.id,
+                    command,
+                    displayText: result.displayText,
+                  }),
+                );
+              } else {
+                nodes.push(schema.text(closing));
+              }
+            } else {
+              nodes.push(schema.text(closing));
+            }
+
+            const tr = view.state.tr.insert(pos.pos, nodes);
+            view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
         // --- Note drop (from NotesPanel) ---
         // Inserts the note's body inline at the drop point. The note still
         // exists in the side panel — this is a "stamp it into the text" copy.
