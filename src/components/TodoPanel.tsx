@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { TodoItem } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, Chevron, ItemMenu, MenuDelete } from "./panel-primitives";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import type { TodoItem, AiRequest } from "@/lib/types";
+import { panelCard, PANEL, PanelHeader, Chevron, ItemMenu, MenuDelete, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -12,6 +12,10 @@ interface TodoPanelProps {
   onUpdateNotes: (id: string, notes: string) => void;
   onDelete: (id: string) => void;
   onArchiveDone: () => void;
+  aiRequests?: AiRequest[];
+  onAddAiRequest?: () => void;
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
 }
 
 function TodoRow({
@@ -158,6 +162,10 @@ export default function TodoPanel({
   onUpdateNotes,
   onDelete,
   onArchiveDone,
+  aiRequests,
+  onAddAiRequest,
+  onUpdateAiRequestText,
+  onDeleteAiRequest,
 }: TodoPanelProps) {
   const [newText, setNewText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -173,9 +181,19 @@ export default function TodoPanel({
   const pending = items.filter((i) => !i.done);
   const done = items.filter((i) => i.done);
 
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "todo"),
+    [aiRequests],
+  );
+
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Todo List" count={pending.length} onAdd={() => inputRef.current?.focus()} />
+      <PanelHeader
+        title="Todo List"
+        count={pending.length}
+        onAdd={() => inputRef.current?.focus()}
+        onAiRequest={onAddAiRequest}
+      />
 
       {/* Add input */}
       <div className="px-4 py-2.5 border-b border-[var(--border-light)]">
@@ -200,7 +218,7 @@ export default function TodoPanel({
 
       {/* Items */}
       <div className={PANEL.list}>
-        {items.length === 0 && (
+        {items.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No tasks yet.
           </div>
@@ -217,6 +235,20 @@ export default function TodoPanel({
             onDelete={onDelete}
           />
         ))}
+
+        {myAiRequests.length > 0 && (
+          <>
+            <AiRequestsSectionHeader count={myAiRequests.length} />
+            {myAiRequests.map((req) => (
+              <AiRequestCard
+                key={req.id}
+                request={req}
+                onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                onDelete={() => onDeleteAiRequest?.(req.id)}
+              />
+            ))}
+          </>
+        )}
       </div>
 
       {/* Archive bar at bottom */}

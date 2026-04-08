@@ -22,6 +22,7 @@
  */
 
 import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
+import type { AiRequest, AiRequestKind } from "@/lib/types";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -79,11 +80,18 @@ export function PanelHeader({
   title,
   count,
   onAdd,
+  onAiRequest,
   children,
 }: {
   title: string;
   count?: number;
   onAdd?: () => void;
+  /**
+   * When provided, renders a small star button next to the "+" button
+   * that creates a new AI request (or opens a request form, depending
+   * on the panel). Uses the same sun-star icon as the editor toolbar.
+   */
+  onAiRequest?: () => void;
   children?: ReactNode;
 }) {
   return (
@@ -107,8 +115,175 @@ export function PanelHeader({
           </svg>
         </button>
       )}
+      {onAiRequest && (
+        <button
+          onClick={onAiRequest}
+          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+          title="New AI request"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <g transform="rotate(15 12 12)">
+              <line x1="12" y1="2" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
+            </g>
+          </svg>
+        </button>
+      )}
       <div className="flex-1" />
       {children}
+    </div>
+  );
+}
+
+/* ── AI request card ───────────────────────────────────────────────── */
+
+const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
+  footnote: "footnote",
+  note: "note",
+  quotation: "quotation",
+  citation: "citation",
+  todo: "todo",
+};
+
+/**
+ * Draft card holding a free-text AI request the user can later have
+ * fulfilled. The card is draggable into the editor — drop produces an
+ * `aiRequestMarker` placeholder node.
+ *
+ * Local behavior: the textarea is uncontrolled and only fires
+ * `onChangeText` on blur to keep typing snappy without re-rendering the
+ * whole panel on every keystroke.
+ */
+export function AiRequestCard({
+  request,
+  onChangeText,
+  onDelete,
+}: {
+  request: AiRequest;
+  onChangeText: (text: string) => void;
+  onDelete: () => void;
+}) {
+  const [draft, setDraft] = useState(request.text);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync external updates (e.g. AI fulfillment) into the local draft.
+  useEffect(() => {
+    setDraft(request.text);
+  }, [request.text, request.id]);
+
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
+
+  const handleBlur = useCallback(() => {
+    if (draft !== request.text) onChangeText(draft);
+  }, [draft, request.text, onChangeText]);
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      const payload = JSON.stringify({
+        requestId: request.id,
+        kind: request.kind,
+        text: draft,
+      });
+      e.dataTransfer.setData("application/x-virgil-ai-request", payload);
+      const truncated = draft.length > 80 ? draft.slice(0, 80) + "\u2026" : draft;
+      e.dataTransfer.setData(
+        "text/plain",
+        `[AI ${request.kind} request: ${truncated || "(empty)"}]`,
+      );
+      e.dataTransfer.effectAllowed = "copy";
+      const ghost = document.createElement("div");
+      ghost.textContent = `★ ${truncated || "AI " + request.kind + " request"}`;
+      ghost.style.cssText =
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;font-size:12px;color:#92400e;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, 10, 14);
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    },
+    [request.id, request.kind, draft],
+  );
+
+  const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
+
+  return (
+    <div
+      data-ai-request-id={request.id}
+      draggable
+      onDragStart={handleDragStart}
+      className="group rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2 cursor-grab active:cursor-grabbing hover:border-amber-300 transition-colors"
+    >
+      <div className="flex items-start gap-2">
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 shrink-0 mt-0.5 text-amber-600"
+          title={`AI ${kindLabel} request`}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <g transform="rotate(15 12 12)">
+              <line x1="12" y1="2" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
+            </g>
+          </svg>
+        </span>
+        <textarea
+          ref={taRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleBlur}
+          onMouseDown={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+          draggable={false}
+          placeholder={`Describe what you want the AI to ${
+            request.kind === "todo" ? "do" : "find or write"
+          }\u2026`}
+          className="flex-1 min-w-0 resize-none bg-transparent text-xs text-stone-700 placeholder:text-stone-400 focus:outline-none leading-snug font-serif"
+          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+          rows={1}
+        />
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="text-stone-400 hover:text-stone-600 shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Delete request"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div className="text-[10px] text-stone-400 mt-1 flex items-center gap-1.5 pl-7">
+        <span>{kindLabel}</span>
+        {request.status === "submitted" && (
+          <span className="inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            Pending
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Header label for the "Pending AI requests" section that panels render
+ * above their AiRequestCard list. Mirrors the bibliography precedent.
+ */
+export function AiRequestsSectionHeader({ count }: { count: number }) {
+  return (
+    <div className="text-[10px] font-medium text-stone-500 uppercase tracking-wide px-2 mb-1.5 mt-2 pt-2 border-t border-stone-200">
+      Pending AI requests ({count})
     </div>
   );
 }

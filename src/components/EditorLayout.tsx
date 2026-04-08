@@ -23,6 +23,7 @@ import { useDocument } from "@/hooks/useDocument";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
+import { useAiRequests } from "@/hooks/useAiRequests";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
@@ -809,6 +810,13 @@ export default function EditorLayout() {
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
   } = useTodos(currentDocId);
+
+  const {
+    requests: aiRequests,
+    addRequest: addAiRequest,
+    updateRequestText: updateAiRequestText,
+    deleteRequest: deleteAiRequest,
+  } = useAiRequests(currentDocId);
 
   const {
     snippets: archiveSnippets,
@@ -2408,6 +2416,10 @@ export default function EditorLayout() {
           onUpdateNotes={updateTodoNotes}
           onDelete={deleteTodo}
           onArchiveDone={archiveTodos}
+          aiRequests={aiRequests}
+          onAddAiRequest={() => addAiRequest("todo")}
+          onUpdateAiRequestText={updateAiRequestText}
+          onDeleteAiRequest={deleteAiRequest}
         />
       );
     }
@@ -2440,6 +2452,10 @@ export default function EditorLayout() {
           onScrollToPos={handleScrollToPos}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
+          aiRequests={aiRequests}
+          onAddAiRequest={() => addAiRequest("note")}
+          onUpdateAiRequestText={updateAiRequestText}
+          onDeleteAiRequest={deleteAiRequest}
         />
       );
     }
@@ -2507,6 +2523,10 @@ export default function EditorLayout() {
           onAdd={handleAddFootnote}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
+          aiRequests={aiRequests}
+          onAddAiRequest={() => addAiRequest("footnote")}
+          onUpdateAiRequestText={updateAiRequestText}
+          onDeleteAiRequest={deleteAiRequest}
         />
       );
     }
@@ -2551,6 +2571,10 @@ export default function EditorLayout() {
           getReviewStatus={getBibReviewStatus}
           onUpdateBibEntry={updateBibEntry}
           onUpdateBibKeyAndType={updateBibKeyAndType}
+          aiRequests={aiRequests}
+          onAddAiRequest={() => addAiRequest("citation")}
+          onUpdateAiRequestText={updateAiRequestText}
+          onDeleteAiRequest={deleteAiRequest}
         />
       );
     }
@@ -2607,6 +2631,10 @@ export default function EditorLayout() {
           selectedGroupId={selectedQuotationGroupId}
           onSelectGroup={setSelectedQuotationGroupId}
           onScrollToParagraph={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+          aiRequests={aiRequests}
+          onAddAiRequest={() => addAiRequest("quotation")}
+          onUpdateAiRequestText={updateAiRequestText}
+          onDeleteAiRequest={deleteAiRequest}
         />
       );
     }

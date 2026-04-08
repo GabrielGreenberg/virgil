@@ -3,10 +3,10 @@
 import { useState, useCallback, useEffect, useMemo, memo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "./Editor";
-import type { OrphanedFootnote } from "@/lib/types";
+import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -32,6 +32,11 @@ interface FootnotePanelProps {
   getCitationDisplayText?: (command: string) => string;
   /** Called when the user drops a brand-new citation into a footnote. */
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  /** Unified AI request store + mutators (filtered to "footnote" kind). */
+  aiRequests?: AiRequest[];
+  onAddAiRequest?: () => void;
+  onUpdateAiRequestText?: (id: string, text: string) => void;
+  onDeleteAiRequest?: (id: string) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -366,7 +371,15 @@ function FootnotePanel({
   onAdd,
   getCitationDisplayText,
   onCitationCreated,
+  aiRequests,
+  onAddAiRequest,
+  onUpdateAiRequestText,
+  onDeleteAiRequest,
 }: FootnotePanelProps) {
+  const myAiRequests = useMemo(
+    () => (aiRequests ?? []).filter((r) => r.kind === "footnote"),
+    [aiRequests],
+  );
   const inTextItems = useMemo(
     () => footnotes.map((fn) => ({ id: fn.footnoteId, pos: fn.pos })),
     [footnotes]
@@ -399,7 +412,11 @@ function FootnotePanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Footnotes" onAdd={onAdd}>
+      <PanelHeader
+        title="Footnotes"
+        onAdd={onAdd}
+        onAiRequest={onAddAiRequest}
+      >
         <PrevNextCounter
           current={cycleIdx}
           total={footnotes.length}
@@ -533,6 +550,20 @@ function FootnotePanel({
                 onCitationCreated={onCitationCreated}
               />
             ))}
+
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
           </>
         )}
       </div>

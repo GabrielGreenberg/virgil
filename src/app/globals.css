@@ -411,6 +411,42 @@ body {
   background: #fde8e8;
 }
 
+/* AI request marker — placeholder chip dropped from a draft AI request card */
+.ai-request-marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.78em;
+  line-height: 1.2;
+  color: #92400e;
+  background: rgba(254, 243, 199, 0.6);
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 1px 5px 1px 4px;
+  margin: 0 1px;
+  cursor: pointer;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  vertical-align: baseline;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.ai-request-marker:hover {
+  background: rgba(254, 243, 199, 0.95);
+  border-color: #f59e0b;
+}
+
+.ai-request-marker-star {
+  font-size: 0.85em;
+  color: #d97706;
+  line-height: 1;
+}
+
+.ai-request-marker-label {
+  font-style: italic;
+  font-size: 0.95em;
+}
+
 /* In-text connector lines are now drawn via InTextConnectors SVG component */
 
 /* Note markers (green N in editor gutter) */
