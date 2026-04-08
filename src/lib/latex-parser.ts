@@ -1,6 +1,7 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
+import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
 
 interface ParseContext {
   pos: number;
@@ -177,38 +178,45 @@ function parseInlineContent(text: string): JSONContent[] {
       }
 
       // Citation commands: natbib (\cite, \citet, \citep, etc.) and biblatex (\textcite, \parencite, \cites, etc.)
-      // Longer names must come first to avoid partial matches
-      const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite)(\*?)/);
+      // Longer names must come first to avoid partial matches.
+      // CITE_NAMES_RE is shared with bib-parser.ts and tiptap-extensions.ts.
+      const citeMatch = rest.match(CITE_NAMES_RE_INLINE);
       if (citeMatch) {
         flush();
         let pos = i + citeMatch[0].length;
         let fullCmd = citeMatch[0];
         const cmdLower = citeMatch[1].toLowerCase();
-        const isMultiCite = cmdLower.endsWith("s") && ["cites", "textcites", "parencites", "autocites", "footcites"].includes(cmdLower);
-
-        // Consume optional [...] arguments (up to 2)
-        for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
-          const closeBracket = text.indexOf("]", pos);
-          if (closeBracket !== -1) {
-            fullCmd += text.slice(pos, closeBracket + 1);
-            pos = closeBracket + 1;
-          } else {
-            break;
-          }
-        }
+        const isMultiCite =
+          cmdLower.endsWith("s") &&
+          MULTI_CITE_NAMES.has(cmdLower);
 
         if (isMultiCite) {
-          // Biblatex multi-cite: \cites{key1}{key2}{key3} — consume all consecutive {key} groups
+          // Biblatex multi-cite: \cites[pre1][post1]{key1}[pre2][post2]{key2}
+          // Consume groups of optional [pre][post] followed by {key}.
           let found = false;
-          while (pos < text.length && text[pos] === "{") {
-            const inner = extractBraced(text, pos);
-            if (inner !== null) {
-              fullCmd += "{" + inner.content + "}";
-              pos = inner.end;
-              found = true;
-            } else {
-              break;
+          while (pos < text.length) {
+            const savedPos = pos;
+            // Optional [pre][post] before this key
+            let bracketsStr = "";
+            for (let bcount = 0; bcount < 2 && pos < text.length && text[pos] === "["; bcount++) {
+              const closeBracket = text.indexOf("]", pos);
+              if (closeBracket === -1) break;
+              bracketsStr += text.slice(pos, closeBracket + 1);
+              pos = closeBracket + 1;
             }
+            // Mandatory {key}
+            if (pos < text.length && text[pos] === "{") {
+              const inner = extractBraced(text, pos);
+              if (inner !== null) {
+                fullCmd += bracketsStr + "{" + inner.content + "}";
+                pos = inner.end;
+                found = true;
+                continue;
+              }
+            }
+            // No key after optional brackets — restore and stop
+            pos = savedPos;
+            break;
           }
           if (found) {
             nodes.push({
@@ -223,7 +231,17 @@ function parseInlineContent(text: string): JSONContent[] {
             continue;
           }
         } else {
-          // Single {keys} argument (natbib comma-separated or biblatex single key)
+          // Single-key form (natbib or biblatex singular):
+          // \cmd[pre][post]{keys}
+          for (let optCount = 0; optCount < 2 && pos < text.length && text[pos] === "["; optCount++) {
+            const closeBracket = text.indexOf("]", pos);
+            if (closeBracket !== -1) {
+              fullCmd += text.slice(pos, closeBracket + 1);
+              pos = closeBracket + 1;
+            } else {
+              break;
+            }
+          }
           if (pos < text.length && text[pos] === "{") {
             const inner = extractBraced(text, pos);
             if (inner !== null) {

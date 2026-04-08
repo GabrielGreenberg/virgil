@@ -5,6 +5,7 @@ import {
   richJsonToPlainText,
   normalizeRichContent,
 } from "@/lib/footnote-content";
+import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
 let _pendingAutoFocusComment = false;
@@ -756,15 +757,8 @@ export const ArchiveMarker = Node.create({
 });
 
 // --- Citation (inline atom, rendered with lemon-yellow highlight + left bar) ---
-
-// Citation command names: natbib + biblatex (longer names first to avoid partial match)
-const CITE_CMDS = "Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite";
-const CITE_RE_FULL = new RegExp(
-  `\\\\(${CITE_CMDS})(\\*?)(?:\\[([^\\]]*)\\])?(?:\\[([^\\]]*)\\])?(\\{[^}]+\\}(?:\\{[^}]+\\})*)$`
-);
-const CITE_RE_BARE = new RegExp(
-  `\\\\(${CITE_CMDS})(\\*?)$`
-);
+// Citation regexes are defined in @/lib/cite-commands so the parser, the
+// tiptap input rule, and the bib formatter all agree on the supported set.
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
