@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -36,12 +36,13 @@ interface FootnotePanelProps {
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
+/**
+ * Footnote cards use the shared `panelCard` amber highlight language,
+ * matching citation cards. The red palette is reserved for the small
+ * numbered badge that identifies footnotes as a category.
+ */
 function footnoteCardClass(selected: boolean, extra?: string) {
-  return `rounded-lg border transition-colors overflow-hidden ${
-    selected
-      ? "bg-[#b45757] border-[#9a3c3c] shadow-sm"
-      : "bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50"
-  }${extra ? ` ${extra}` : ""}`;
+  return panelCard(selected, extra);
 }
 
 function startFootnoteDrag(
@@ -77,10 +78,8 @@ function onDropArchive(archiveId: string) {
 
 function CopyButton({
   content,
-  selected,
 }: {
   content: unknown;
-  selected: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(
@@ -96,7 +95,7 @@ function CopyButton({
   return (
     <button
       onClick={handleCopy}
-      className={`p-1 rounded transition-colors ${selected ? "text-white/60 hover:text-white hover:bg-white/10" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
+      className="p-1 rounded transition-colors text-stone-400 hover:text-stone-600 hover:bg-stone-100"
       title="Copy to clipboard"
     >
       {copied ? (
@@ -158,68 +157,72 @@ export function FootnoteCard({
       {...(extraDataAttrs || {})}
       draggable={!isFocused}
       onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
-      className={`${footnoteCardClass(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      className={`group ${footnoteCardClass(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
       onClick={onSelect}
     >
-      <div className={PANEL.cardInner}>
-        <div className="flex items-start gap-2.5">
-          {/* Top-right controls: target (when selected) + three-dot menu */}
-          <div
-            className="absolute top-2 right-2 flex items-center gap-0.5"
-            draggable={false}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-          >
-            {isSelected && (
-              <TargetIcon
-                onClick={onJump}
-                title="Jump to footnote marker"
-                className="text-white/80 hover:text-white hover:bg-white/15"
-              />
-            )}
-            <ItemMenu>
-              <MenuDelete onClick={onDelete} />
-            </ItemMenu>
-          </div>
-          {/* Number badge */}
-          <span className="inline-flex items-center shrink-0 mt-0.5">
-            <span
-              className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold transition-colors"
-              style={{
-                background: isSelected ? "rgba(255,255,255,0.25)" : "#fef2f2",
-                color: isSelected ? "#fff" : "#b45757",
-                border: isSelected
-                  ? "1.5px solid rgba(255,255,255,0.5)"
-                  : "1.5px solid #b45757",
-              }}
-            >
-              {fn.number}
-            </span>
-          </span>
-
-          <div className="flex-1 min-w-0">
-            <RichTextField
-              instanceKey={fn.footnoteId}
-              value={fn.content}
-              placeholder="Empty footnote"
-              variant="footnote"
-              selected={isSelected}
-              onChange={handleEdit}
-              onArchiveConsumed={onDropArchive}
-              getCitationDisplayText={getCitationDisplayText}
-              onCitationCreated={onCitationCreated}
-              onFocusChange={setIsFocused}
-            />
-          </div>
+      {/* Header row: number badge on the left, target + three-dot menu on
+          the right. A horizontal divider directly below runs edge-to-edge
+          under the whole header so the body beneath gets the full card
+          width for its text. */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
+          style={{
+            background: "#fef2f2",
+            color: "#b45757",
+            border: "1.5px solid #b45757",
+          }}
+        >
+          {fn.number}
+        </span>
+        <div className="flex-1" />
+        <div
+          className={`transition-opacity ${
+            isSelected
+              ? "opacity-100"
+              : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+          }`}
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <TargetIcon onClick={onJump} title="Jump to footnote marker" />
         </div>
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} />
+          </ItemMenu>
+        </div>
+      </div>
+      <div
+        className={`border-t ${isSelected ? "border-amber-200" : "border-stone-100"}`}
+      />
 
-        <div className="flex items-center justify-end mt-2 ml-6">
-          <div className="flex gap-1.5 items-center">
-            <CopyButton content={fn.content} selected={isSelected} />
-          </div>
+      {/* Body: left-justified rich text field spanning the full card width,
+          with the copy button in a thin footer row beneath it. */}
+      <div className="px-3 pt-1.5 pb-1">
+        <RichTextField
+          instanceKey={fn.footnoteId}
+          value={fn.content}
+          placeholder="Empty footnote"
+          variant="footnote"
+          onChange={handleEdit}
+          onArchiveConsumed={onDropArchive}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={onCitationCreated}
+          onFocusChange={setIsFocused}
+        />
+        <div className="flex items-center justify-end">
+          <CopyButton content={fn.content} />
         </div>
       </div>
     </div>
@@ -265,55 +268,77 @@ export function OrphanedFootnoteCard({
       className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
     >
-      <div className={PANEL.cardInner}>
-        <div className="flex items-start gap-2.5">
-          <div
-            className="absolute top-2 right-2"
-            draggable={false}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-          >
-            <ItemMenu>
-              <MenuDelete onClick={onDelete} />
-            </ItemMenu>
-          </div>
-          {/* Orphan badge */}
-          <span
-            className="inline-flex items-center justify-center shrink-0 mt-0.5"
-            title="No anchor in document"
-          >
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3"
-                stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
-              <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600"
-                fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
-              <line x1="3" y1="13" x2="13" y2="3"
-                stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-          </span>
-
-          <div className="flex-1 min-w-0">
-            <RichTextField
-              instanceKey={orphan.footnoteId}
-              value={orphan.content}
-              placeholder="Empty — drag text in or type"
-              variant="footnote"
-              muted
-              onChange={handleEdit}
-              onArchiveConsumed={onDropArchive}
-              getCitationDisplayText={getCitationDisplayText}
-              onCitationCreated={onCitationCreated}
-              onFocusChange={setIsFocused}
+      {/* Header row: orphan badge + three-dot menu, divider below.
+          Matches the anchored footnote layout so both card variants share
+          the same header → divider → body structure. */}
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span
+          className="inline-flex items-center justify-center shrink-0"
+          title="No anchor in document"
+        >
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <rect
+              x="1"
+              y="1"
+              width="14"
+              height="14"
+              rx="3"
+              stroke="#b0b0b0"
+              strokeWidth="1.5"
+              fill="#f5f5f4"
             />
-          </div>
+            <text
+              x="8"
+              y="11.5"
+              textAnchor="middle"
+              fontSize="9"
+              fontWeight="600"
+              fill="#b0b0b0"
+              fontFamily="var(--font-sans), sans-serif"
+            >
+              fn
+            </text>
+            <line
+              x1="3"
+              y1="13"
+              x2="13"
+              y2="3"
+              stroke="#b0b0b0"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+        <div className="flex-1" />
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} />
+          </ItemMenu>
         </div>
+      </div>
+      <div className="border-t border-stone-100" />
 
-        <div className="flex items-center justify-end mt-2 ml-7">
-          <div className="flex gap-1.5 items-center">
-            <CopyButton content={orphan.content} selected={false} />
-          </div>
+      <div className="px-3 pt-1.5 pb-1">
+        <RichTextField
+          instanceKey={orphan.footnoteId}
+          value={orphan.content}
+          placeholder="Empty — drag text in or type"
+          variant="footnote"
+          muted
+          onChange={handleEdit}
+          onArchiveConsumed={onDropArchive}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={onCitationCreated}
+          onFocusChange={setIsFocused}
+        />
+        <div className="flex items-center justify-end">
+          <CopyButton content={orphan.content} />
         </div>
       </div>
     </div>
@@ -407,19 +432,25 @@ function FootnotePanel({
                   data-footnote-entry={fn.footnoteId}
                   draggable
                   onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
-                  className={`absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
+                  className={`group absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
                     selectedId === fn.footnoteId
-                      ? "bg-red-50/60 border-l-2 border-l-[#b45757] border-b-stone-300"
+                      ? "bg-amber-50/60 border-l-2 border-l-amber-300 border-b-stone-300"
                       : "border-b-stone-300 hover:bg-stone-50"
                   }`}
                   style={{ top }}
                   onClick={() => onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)}
                 >
-                  {selectedId === fn.footnoteId && (
-                    <div className="absolute top-1 right-1" draggable={false} onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}>
-                      <TargetIcon onClick={() => onScrollToMarker(fn.footnoteId)} title="Jump to footnote marker" />
-                    </div>
-                  )}
+                  <div
+                    className={`absolute top-1 right-1 transition-opacity ${
+                      selectedId === fn.footnoteId
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+                    }`}
+                    draggable={false}
+                    onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                  >
+                    <TargetIcon onClick={() => onScrollToMarker(fn.footnoteId)} title="Jump to footnote marker" />
+                  </div>
                   <div className="flex items-start gap-2">
                     <span className="inline-flex items-center shrink-0 mt-0.5">
                       <span className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold"

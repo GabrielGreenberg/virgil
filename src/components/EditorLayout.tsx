@@ -48,6 +48,7 @@ import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
 import PreferencesModal from "./PreferencesModal";
+import { useConfirmDialog } from "./ConfirmDialog";
 import { useWordCount } from "@/hooks/useWordCount";
 import WordCountPanel from "./WordCountPanel";
 import { serializeToLatex } from "@/lib/latex-serializer";
@@ -718,6 +719,24 @@ function StripButton({
 }
 
 export default function EditorLayout() {
+  // In-app confirmation dialog — replaces native window.confirm for
+  // workflows that benefit from a styled, app-themed modal (e.g.
+  // confirming a footnote move on drop). Mount `confirmDialog` once at
+  // the layout root so any descendant caller can await `confirm(...)`.
+  const { confirm: runConfirm, dialog: confirmDialog } = useConfirmDialog();
+  const confirmFootnoteMove = useCallback(
+    () =>
+      runConfirm({
+        title: "Move footnote?",
+        message:
+          "This will move the footnote from its current position in the document to where you dropped it.",
+        confirmLabel: "Move",
+        cancelLabel: "Cancel",
+        tone: "danger",
+      }),
+    [runConfirm],
+  );
+
   const {
     docs,
     openTabs,
@@ -3115,6 +3134,7 @@ export default function EditorLayout() {
                         const ref = addCitation(command);
                         return { id: ref.id, displayText: display };
                       }}
+                      onConfirmFootnoteMove={confirmFootnoteMove}
                     />
                     <Marginalia
                       editor={editorInstance}
@@ -3140,6 +3160,7 @@ export default function EditorLayout() {
                     const ref = addCitation(command);
                     return { id: ref.id, displayText: display };
                   }}
+                  onConfirmFootnoteMove={confirmFootnoteMove}
                 />
                 <Marginalia
                   editor={editorInstance}
@@ -3245,6 +3266,7 @@ export default function EditorLayout() {
           onClose={() => setPreferencesOpen(false)}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }
