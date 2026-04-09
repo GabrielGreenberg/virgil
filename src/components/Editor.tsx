@@ -1426,6 +1426,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const viewBottom = viewTop + scrollEl.clientHeight;
       const scrollRect = scrollEl.getBoundingClientRect();
 
+      // If scrolled to the very top (title area visible), return sentinel
+      if (viewTop < 10) return "__DOC_TOP__";
+
       // Helper: get the UUID of a node (paragraph, bulletList, orderedList)
       const getUuid = (node: any): string | null => node.attrs?.uuid || null;
       const hasParagraphUuid = (node: any): boolean => {

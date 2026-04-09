@@ -1156,6 +1156,11 @@ export default function EditorLayout() {
   }, [currentDocId]);
 
   const scrollToParagraph = useCallback((uuid: string) => {
+    // Sentinel for document top / title area
+    if (uuid === "__DOC_TOP__") {
+      editorRef.current?.scrollToHeading(-1);
+      return;
+    }
     if (codeView) {
       codeEditorHandleRef.current?.scrollToParagraphId?.(uuid);
     } else {
