@@ -12,7 +12,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
@@ -64,6 +64,8 @@ interface EditorProps {
    * back to the native dialog.
    */
   onConfirmFootnoteMove?: () => Promise<boolean>;
+  /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
+  anchoredUuidsRef?: React.RefObject<Set<string>>;
 }
 
 export interface FootnoteInfo {
@@ -150,7 +152,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -723,6 +725,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       TitleField,
       LabelHandler,
       EmptyParagraphTitleCleaner,
+      ...(anchoredUuidsRef
+        ? [MarginaliaAnchorGuard.configure({ anchoredUuidsRef })]
+        : []),
     ],
     content: initialContent,
     editorProps: {
@@ -755,6 +760,55 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             });
             const tr = view.state.tr.insert(pos.pos, node);
             view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Marginalia move (drag a gutter icon to a new paragraph) ---
+        const margData = event.dataTransfer?.getData("application/x-virgil-marginalia-move");
+        if (margData) {
+          event.preventDefault();
+          try {
+            const { type, entityId, currentParagraphId } = JSON.parse(margData);
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true;
+            const $pos = view.state.doc.resolve(posResult.pos);
+            let paragraphId: string | null = null;
+            for (let depth = $pos.depth; depth >= 0; depth--) {
+              const node = $pos.node(depth);
+              const name = node.type.name;
+              if (
+                name === "paragraph" ||
+                name === "heading" ||
+                name === "bulletList" ||
+                name === "orderedList"
+              ) {
+                if (node.attrs?.uuid) {
+                  paragraphId = node.attrs.uuid as string;
+                } else {
+                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
+                  const newUuid = Math.random().toString(16).slice(2, 10);
+                  try {
+                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
+                      ...node.attrs,
+                      uuid: newUuid,
+                    });
+                    tr.setMeta("addToHistory", false);
+                    view.dispatch(tr);
+                    paragraphId = newUuid;
+                  } catch { /* ignore */ }
+                }
+                break;
+              }
+            }
+            if (paragraphId && paragraphId !== currentParagraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-marginalia-reanchor", {
+                  detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
+                })
+              );
+            }
           } catch { /* ignore bad data */ }
           return true;
         }

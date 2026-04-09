@@ -862,14 +862,14 @@ export default function QuotationsPanel({
 
   // Anchored groups (with paragraphId) for prev/next cycling
   const anchoredGroups = useMemo(
-    () => groups.filter((g) => g.paragraphId),
+    () => groups.filter((g) => g.paragraphIds.length > 0),
     [groups],
   );
 
   const onActivateGroup = useCallback(
     (g: QuotationGroup) => {
       setSelectedGroupId(g.id);
-      if (g.paragraphId) onScrollToParagraph?.(g.paragraphId);
+      if (g.paragraphIds.length > 0) onScrollToParagraph?.(g.paragraphIds[0]);
     },
     [onScrollToParagraph, setSelectedGroupId],
   );
@@ -932,7 +932,7 @@ export default function QuotationsPanel({
                 selected={selectedGroupId === group.id}
                 onSelect={() => setSelectedGroupId(group.id)}
                 onDelete={() => onDeleteGroup(group.id)}
-                onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
+                onJump={group.paragraphIds.length > 0 ? () => onScrollToParagraph?.(group.paragraphIds[0]) : undefined}
                 onUpdateGroupTitle={onUpdateGroupTitle}
                 onAddReference={onAddReference}
                 onDeleteReference={onDeleteReference}

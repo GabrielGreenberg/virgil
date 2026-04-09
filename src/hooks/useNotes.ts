@@ -27,11 +27,20 @@ export function useNotes(docId: string | null) {
         //   - missing `title`  → coerce to ""
         //   - HTML string body → convert to JSONContent
         const migrated: NotesState = {
-          notes: data.notes.map((n) => ({
-            ...n,
-            title: typeof n.title === "string" ? n.title : "",
-            content: normalizeRichContent(n.content),
-          })),
+          notes: data.notes.map((n) => {
+            const raw = n as UserNote & { anchorPos?: number };
+            return {
+              ...raw,
+              title: typeof raw.title === "string" ? raw.title : "",
+              content: normalizeRichContent(raw.content),
+              // Migrate legacy single anchorPos → anchorPositions array
+              anchorPositions: Array.isArray(raw.anchorPositions)
+                ? raw.anchorPositions
+                : typeof raw.anchorPos === "number"
+                  ? [raw.anchorPos]
+                  : [0],
+            };
+          }) as UserNote[],
         };
         setState(migrated);
       })
@@ -54,7 +63,7 @@ export function useNotes(docId: string | null) {
         id: uuid(),
         title: "",
         content: content ?? emptyRichContent(),
-        anchorPos,
+        anchorPositions: [anchorPos],
         createdAt: new Date().toISOString(),
       };
       setState((prev) => {
@@ -97,12 +106,31 @@ export function useNotes(docId: string | null) {
     [persist]
   );
 
-  const updateNotePosition = useCallback(
+  const addNoteAnchor = useCallback(
     (id: string, anchorPos: number) => {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
-            n.id === id ? { ...n, anchorPos } : n
+            n.id === id && !n.anchorPositions.includes(anchorPos)
+              ? { ...n, anchorPositions: [...n.anchorPositions, anchorPos] }
+              : n
+          ),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist]
+  );
+
+  const removeNoteAnchor = useCallback(
+    (id: string, anchorPos: number) => {
+      setState((prev) => {
+        const newState = {
+          notes: prev.notes.map((n) =>
+            n.id === id
+              ? { ...n, anchorPositions: n.anchorPositions.filter((p) => p !== anchorPos) }
+              : n
           ),
         };
         persist(newState);
@@ -130,7 +158,8 @@ export function useNotes(docId: string | null) {
     addNote,
     updateNote,
     updateNoteTitle,
-    updateNotePosition,
+    addNoteAnchor,
+    removeNoteAnchor,
     deleteNote,
   };
 }

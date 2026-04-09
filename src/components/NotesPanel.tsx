@@ -146,7 +146,7 @@ export default function NotesPanel({
   onDeleteAiRequest,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
-    () => [...notes].sort((a, b) => a.anchorPos - b.anchorPos),
+    () => [...notes].sort((a, b) => (a.anchorPositions[0] ?? 0) - (b.anchorPositions[0] ?? 0)),
     [notes],
   );
 
@@ -158,7 +158,7 @@ export default function NotesPanel({
   const onActivateNote = useCallback(
     (note: UserNote) => {
       onSelectNote(note.id);
-      onScrollToPos?.(note.anchorPos);
+      if (note.anchorPositions[0] != null) onScrollToPos?.(note.anchorPositions[0]);
     },
     [onSelectNote, onScrollToPos],
   );
@@ -218,7 +218,7 @@ export default function NotesPanel({
             onUpdateTitle={onUpdateTitle}
             onDelete={onDelete}
             onSelect={onSelectNote}
-            onJump={onScrollToPos ? () => onScrollToPos(note.anchorPos) : undefined}
+            onJump={onScrollToPos && note.anchorPositions[0] != null ? () => onScrollToPos(note.anchorPositions[0]) : undefined}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
           />

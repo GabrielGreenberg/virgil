@@ -78,7 +78,7 @@ export function useQuotations(docId: string | null) {
         id: uuid(),
         title: "",
         references: [makeReference("", [makeQuote(init?.text ?? "")])],
-        paragraphId: init?.paragraphId ?? null,
+        paragraphIds: init?.paragraphId ? [init.paragraphId] : [],
         notes: "",
         createdAt: new Date().toISOString(),
       };
@@ -117,9 +117,23 @@ export function useQuotations(docId: string | null) {
     [updateGroup]
   );
 
-  const setParagraphId = useCallback(
-    (groupId: string, paragraphId: string | null) => {
-      updateGroup(groupId, (g) => ({ ...g, paragraphId }));
+  const addParagraphId = useCallback(
+    (groupId: string, paragraphId: string) => {
+      updateGroup(groupId, (g) =>
+        g.paragraphIds.includes(paragraphId)
+          ? g
+          : { ...g, paragraphIds: [...g.paragraphIds, paragraphId] }
+      );
+    },
+    [updateGroup]
+  );
+
+  const removeParagraphId = useCallback(
+    (groupId: string, paragraphId: string) => {
+      updateGroup(groupId, (g) => ({
+        ...g,
+        paragraphIds: g.paragraphIds.filter((id) => id !== paragraphId),
+      }));
     },
     [updateGroup]
   );
@@ -220,7 +234,8 @@ export function useQuotations(docId: string | null) {
     deleteGroup,
     updateGroupTitle,
     updateNotes,
-    setParagraphId,
+    addParagraphId,
+    removeParagraphId,
     addReference,
     deleteReference,
     updateReferenceCiteKey,

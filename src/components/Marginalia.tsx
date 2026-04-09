@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useEffect, useRef, useMemo, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { useMarginalia } from "@/hooks/useMarginalia";
@@ -92,8 +92,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     // Group by `${paragraphId}|${side}` to assign indices
     const counters = new Map<string, number>();
     for (const m of markers) {
-      const top = positions.get(m.paragraphId);
-      if (top == null) continue; // paragraph not yet known
+      const pos = positions.get(m.paragraphId);
+      if (pos == null) continue; // paragraph not yet known
       const meta = MARKER_META[m.type];
       // Determine side: explicit override, else current panel side, else default
       const dockedSide = panelSides[meta.panelId];
@@ -102,10 +102,146 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       const key = `${m.paragraphId}|${side}`;
       const idx = counters.get(key) ?? 0;
       counters.set(key, idx + 1);
-      result.push({ ...m, side, paragraphTop: top, index: idx });
+      result.push({ ...m, side, paragraphTop: pos.top, index: idx });
     }
     return result;
   }, [markers, positions, panelSides]);
+
+  // Keep a ref to positions so the imperative drag handler can read it
+  const positionsRef = useRef(positions);
+  positionsRef.current = positions;
+
+  // Imperative vertical drop indicator for paragraph-linking drags
+  // (marginalia gutter icons, quotation panel, note panel).
+  useEffect(() => {
+    if (!scrollEl || !editor) return;
+    let indicator: HTMLDivElement | null = null;
+    let rafId = 0;
+    const editorDom = editor.view?.dom as HTMLElement | null;
+
+    // All MIME types that represent a paragraph-level link/anchor drop
+    const PARAGRAPH_DRAG_TYPES = [
+      "application/x-virgil-marginalia-move",
+      "application/x-virgil-quotation",
+      "application/x-virgil-note",
+    ];
+
+    const isParagraphDrag = (dt: DataTransfer | null) =>
+      dt != null && PARAGRAPH_DRAG_TYPES.some((t) => dt.types.includes(t));
+
+    // Hide the ProseMirror dropcursor element by adding a class to it directly
+    const hideDropCursor = () => {
+      // The dropcursor is appended as a sibling or child of the editor's
+      // parent — find it by its known class names and hide it.
+      const parent = editorDom?.parentElement;
+      if (!parent) return;
+      parent.querySelectorAll(".prosemirror-dropcursor-block, .prosemirror-dropcursor-inline")
+        .forEach((el) => el.classList.add("marginalia-drag-hidden"));
+    };
+    const restoreDropCursor = () => {
+      const parent = editorDom?.parentElement;
+      if (!parent) return;
+      parent.querySelectorAll(".marginalia-drag-hidden")
+        .forEach((el) => el.classList.remove("marginalia-drag-hidden"));
+    };
+
+    const showIndicator = (paragraphId: string, side: "left" | "right") => {
+      const pos = positionsRef.current.get(paragraphId);
+      if (!pos) { hideIndicator(); return; }
+      if (!indicator) {
+        indicator = document.createElement("div");
+        indicator.className = "marginalia-drop-indicator";
+        Object.assign(indicator.style, {
+          position: "absolute",
+          width: "2px",
+          background: "var(--accent, #b45757)",
+          pointerEvents: "none",
+          zIndex: "20",
+          borderRadius: "1px",
+          transition: "top 0.08s ease, height 0.08s ease",
+        });
+        scrollEl.appendChild(indicator);
+      }
+      indicator.style.top = `${pos.top}px`;
+      indicator.style.height = `${pos.height}px`;
+      indicator.style[side] = `${MARGINALIA_GUTTER_WIDTH}px`;
+      indicator.style[side === "left" ? "right" : "left"] = "";
+      // Suppress horizontal drop cursor
+      hideDropCursor();
+    };
+
+    const hideIndicator = () => {
+      if (indicator) {
+        indicator.remove();
+        indicator = null;
+      }
+      restoreDropCursor();
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      if (!isParagraphDrag(e.dataTransfer)) return;
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        // Use Y-coordinate matching against the positions map so the
+        // indicator works from anywhere in the horizontal band (margins,
+        // gutters, text area — not just over the editor text).
+        const scrollRect = scrollEl.getBoundingClientRect();
+        const yInScroll = e.clientY - scrollRect.top + scrollEl.scrollTop;
+        const side = e.clientX < scrollRect.left + scrollRect.width / 2 ? "left" : "right";
+
+        let bestId: string | null = null;
+        let bestDist = Infinity;
+        for (const [id, pos] of positionsRef.current) {
+          if (yInScroll >= pos.top && yInScroll <= pos.top + pos.height) {
+            bestId = id;
+            break;
+          }
+          const mid = pos.top + pos.height / 2;
+          const dist = Math.abs(yInScroll - mid);
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestId = id;
+          }
+        }
+
+        if (bestId) {
+          showIndicator(bestId, side);
+        } else {
+          hideIndicator();
+        }
+      });
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      if (!scrollEl.contains(e.relatedTarget as Node)) {
+        cancelAnimationFrame(rafId);
+        hideIndicator();
+      }
+    };
+
+    const onDragEnd = () => {
+      cancelAnimationFrame(rafId);
+      hideIndicator();
+    };
+
+    const onDrop = () => {
+      cancelAnimationFrame(rafId);
+      hideIndicator();
+    };
+
+    scrollEl.addEventListener("dragover", onDragOver);
+    scrollEl.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("dragend", onDragEnd);
+    scrollEl.addEventListener("drop", onDrop);
+    return () => {
+      cancelAnimationFrame(rafId);
+      hideIndicator();
+      scrollEl.removeEventListener("dragover", onDragOver);
+      scrollEl.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("dragend", onDragEnd);
+      scrollEl.removeEventListener("drop", onDrop);
+    };
+  }, [scrollEl, editor]);
 
   if (!scrollEl) return null;
   if (positioned.length === 0) return null;
@@ -157,8 +293,9 @@ function Gutter({
           <button
             key={`${m.type}:${m.id}`}
             type="button"
+            draggable
             data-marginalia-marker={`${m.type}:${m.id}`}
-            className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded transition-colors"
+            className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded transition-colors focus:outline-2 focus:outline-offset-1 focus:outline-[var(--accent)]"
             style={{
               left: xOffset,
               top: yOffset,
@@ -167,7 +304,7 @@ function Gutter({
               color: meta.color,
               background: m.selected ? meta.selectedBg : meta.bg,
               border: `1.5px solid ${meta.border}`,
-              cursor: "pointer",
+              cursor: "grab",
               padding: 0,
               lineHeight: 1,
             }}
@@ -176,6 +313,29 @@ function Gutter({
               e.preventDefault();
               e.stopPropagation();
               m.onClick?.();
+            }}
+            onKeyDown={(e) => {
+              if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
+                e.preventDefault();
+                e.stopPropagation();
+                m.onDelete();
+                (e.target as HTMLElement).blur();
+              }
+            }}
+            onDragStart={(e) => {
+              e.dataTransfer.effectAllowed = "move";
+              e.dataTransfer.setData(
+                "application/x-virgil-marginalia-move",
+                JSON.stringify({
+                  type: m.type,
+                  entityId: m.entityId,
+                  currentParagraphId: m.paragraphId,
+                })
+              );
+              (e.target as HTMLElement).style.opacity = "0.4";
+            }}
+            onDragEnd={(e) => {
+              (e.target as HTMLElement).style.opacity = "";
             }}
           >
             {meta.icon}

@@ -455,47 +455,49 @@ export function PrevNextCounter({
 
   return (
     <div className="flex items-center gap-1">
-      <span className="text-xs text-[var(--muted)] tabular-nums mr-1">
+      <span className="text-xs text-[var(--muted)] tabular-nums">
         {counterText}
       </span>
-      <button
-        onClick={onPrev}
-        disabled={total === 0}
-        className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
-        title="Previous"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      <div className="flex flex-col -space-y-0.5">
+        <button
+          onClick={onPrev}
+          disabled={total === 0}
+          className="p-0 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30 leading-none"
+          title="Previous"
         >
-          <polyline points="18 15 12 9 6 15" />
-        </svg>
-      </button>
-      <button
-        onClick={onNext}
-        disabled={total === 0}
-        className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30"
-        title="Next"
-      >
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="18 15 12 9 6 15" />
+          </svg>
+        </button>
+        <button
+          onClick={onNext}
+          disabled={total === 0}
+          className="p-0 rounded text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100 transition-colors disabled:opacity-30 leading-none"
+          title="Next"
         >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
-      </button>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

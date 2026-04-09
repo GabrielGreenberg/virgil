@@ -114,6 +114,7 @@ export function FootnoteCard({
   extraDataAttrs,
 }: FootnoteCardProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
 
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
@@ -130,8 +131,8 @@ export function FootnoteCard({
       style={wrapperStyle}
       onClick={onSelect}
     >
-      {/* Header row: number badge, target icon, and three-dot menu. */}
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* Header row: number badge, format toolbar, and three-dot menu. */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <span
           className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
           style={{
@@ -142,21 +143,8 @@ export function FootnoteCard({
         >
           {fn.number}
         </span>
+        <div ref={setToolbarTarget} className="flex items-center" />
         <div className="flex-1" />
-        <div
-          className={`transition-opacity ${
-            isSelected
-              ? "opacity-100"
-              : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
-          }`}
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <TargetIcon onClick={onJump} title="Jump to footnote marker" />
-        </div>
         <div
           draggable={false}
           onDragStart={(e) => {
@@ -185,6 +173,7 @@ export function FootnoteCard({
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
           onFocusChange={setIsFocused}
+          toolbarPortalTarget={toolbarTarget}
         />
       </div>
     </div>
@@ -215,6 +204,7 @@ export function OrphanedFootnoteCard({
   extraDataAttrs,
 }: OrphanedFootnoteCardProps) {
   const [isFocused, setIsFocused] = useState(false);
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
 
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
@@ -230,8 +220,8 @@ export function OrphanedFootnoteCard({
       className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
     >
-      {/* Header row: orphan badge and three-dot menu. */}
-      <div className="flex items-center gap-2 px-3 py-2">
+      {/* Header row: orphan badge, format toolbar, and three-dot menu. */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
         <span
           className="inline-flex items-center justify-center shrink-0"
           title="No anchor in document"
@@ -269,6 +259,7 @@ export function OrphanedFootnoteCard({
             />
           </svg>
         </span>
+        <div ref={setToolbarTarget} className="flex items-center" />
         <div className="flex-1" />
         <div
           draggable={false}
@@ -296,6 +287,7 @@ export function OrphanedFootnoteCard({
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
           onFocusChange={setIsFocused}
+          toolbarPortalTarget={toolbarTarget}
         />
       </div>
     </div>

@@ -13,8 +13,10 @@ import type { PanelId } from "@/hooks/useViewPrefs";
 export type MarkerType = "quote" | "note" | "archive" | "revision" | "cut";
 
 export interface MarginaliaMarker {
-  /** Stable per-marker id (e.g. quotation group id, note id) */
+  /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */
   id: string;
+  /** Original entity id (e.g. quotation group id, note id) when id is a composite key */
+  entityId: string;
   /** Marker category — drives icon/color */
   type: MarkerType;
   /** Paragraph UUID this marker is anchored to */
@@ -25,6 +27,8 @@ export interface MarginaliaMarker {
   selected?: boolean;
   /** Click handler — typically opens the panel and selects the item */
   onClick?: () => void;
+  /** Remove this anchor (not the underlying data) */
+  onDelete?: () => void;
   /** Tooltip text */
   title?: string;
 }
@@ -196,7 +200,7 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
 };
 
 /** Number of icon columns per row in the gutter grid */
-export const MARGINALIA_COLS = 3;
+export const MARGINALIA_COLS = 2;
 /** Size of an individual marker button */
 export const MARGINALIA_ICON_SIZE = 22;
 /** Vertical spacing between rows */

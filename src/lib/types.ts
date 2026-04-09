@@ -210,7 +210,7 @@ export interface UserNote {
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;
-  anchorPos: number; // document position the note is tied to
+  anchorPositions: number[]; // document positions the note is tied to
   createdAt: string;
 }
 
@@ -281,7 +281,7 @@ export interface QuotationGroup {
   id: string;
   title: string;
   references: Reference[];
-  paragraphId: string | null;
+  paragraphIds: string[];
   notes: string;
   createdAt: string;
 }

@@ -1,6 +1,7 @@
 import { Node, Mark, mergeAttributes, Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
+import type { MutableRefObject } from "react";
 import {
   richJsonToPlainText,
   normalizeRichContent,
@@ -1203,5 +1204,74 @@ export const AiRequestMarker = Node.create({
         },
       };
     };
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MarginaliaAnchorGuard — prevents paragraph deletion from orphaning
+// margin elements. When a UUID-bearing paragraph vanishes and it has
+// marginalia anchored to it, the plugin re-inserts an empty paragraph
+// with the same UUID so the margin elements stay visible.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const MarginaliaAnchorGuard = Extension.create<{
+  anchoredUuidsRef: MutableRefObject<Set<string>>;
+}>({
+  name: "marginaliaAnchorGuard",
+
+  addOptions() {
+    return {
+      anchoredUuidsRef: { current: new Set() } as MutableRefObject<Set<string>>,
+    };
+  },
+
+  addProseMirrorPlugins() {
+    const { anchoredUuidsRef } = this.options;
+    return [
+      new Plugin({
+        key: new PluginKey("marginaliaAnchorGuard"),
+        appendTransaction(transactions, oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          const anchored = anchoredUuidsRef.current;
+          if (anchored.size === 0) return null;
+
+          // Collect UUIDs in old and new states
+          const oldUuids = new Set<string>();
+          oldState.doc.descendants((node) => {
+            const uuid = node.attrs?.uuid as string | undefined;
+            if (uuid) oldUuids.add(uuid);
+            return true;
+          });
+
+          const newUuids = new Set<string>();
+          newState.doc.descendants((node) => {
+            const uuid = node.attrs?.uuid as string | undefined;
+            if (uuid) newUuids.add(uuid);
+            return true;
+          });
+
+          // Find anchored UUIDs that vanished
+          const vanished: string[] = [];
+          for (const uuid of oldUuids) {
+            if (!newUuids.has(uuid) && anchored.has(uuid)) {
+              vanished.push(uuid);
+            }
+          }
+          if (vanished.length === 0) return null;
+
+          // Re-insert empty paragraphs at the end of the document
+          const tr = newState.tr;
+          const paraType = newState.schema.nodes.paragraph;
+          if (!paraType) return null;
+
+          for (const uuid of vanished) {
+            const emptyPara = paraType.create({ uuid });
+            tr.insert(tr.doc.content.size, emptyPara);
+          }
+          tr.setMeta("addToHistory", false);
+          return tr.steps.length > 0 ? tr : null;
+        },
+      }),
+    ];
   },
 });

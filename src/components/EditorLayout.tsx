@@ -806,7 +806,8 @@ export default function EditorLayout() {
     addNote,
     updateNote,
     updateNoteTitle,
-    updateNotePosition,
+    addNoteAnchor,
+    removeNoteAnchor,
     deleteNote,
   } = useNotes(docIdForHooks);
   const {
@@ -815,7 +816,8 @@ export default function EditorLayout() {
     deleteGroup: deleteQuotationGroup,
     updateGroupTitle: updateQuotationGroupTitle,
     updateNotes: updateQuotationNotes,
-    setParagraphId: setQuotationParagraphId,
+    addParagraphId: addQuotationParagraphId,
+    removeParagraphId: removeQuotationParagraphId,
     addReference: addQuotationReference,
     deleteReference: deleteQuotationReference,
     updateReferenceCiteKey: updateQuotationReferenceCiteKey,
@@ -1763,13 +1765,13 @@ export default function EditorLayout() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.groupId && detail?.paragraphId) {
-        setQuotationParagraphId(detail.groupId, detail.paragraphId);
+        addQuotationParagraphId(detail.groupId, detail.paragraphId);
         setSelectedQuotationGroupId(detail.groupId);
       }
     };
     window.addEventListener("virgil-quotation-drop", handler);
     return () => window.removeEventListener("virgil-quotation-drop", handler);
-  }, [setQuotationParagraphId]);
+  }, [addQuotationParagraphId]);
 
   // Listen for note drops onto paragraphs — re-anchor the note to the
   // dropped doc position. Marginalia derives the paragraphId on its own.
@@ -1777,13 +1779,105 @@ export default function EditorLayout() {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail?.noteId && typeof detail.anchorPos === "number") {
-        updateNotePosition(detail.noteId, detail.anchorPos);
+        addNoteAnchor(detail.noteId, detail.anchorPos);
         setSelectedNoteId(detail.noteId);
       }
     };
     window.addEventListener("virgil-note-drop", handler);
     return () => window.removeEventListener("virgil-note-drop", handler);
-  }, [updateNotePosition]);
+  }, [addNoteAnchor]);
+
+  // Listen for marginalia reanchor events (dragging a gutter icon to a new paragraph)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { type, entityId, oldParagraphId, newParagraphId } = (e as CustomEvent).detail;
+      if (!type || !entityId || !newParagraphId) return;
+
+      if (type === "quote") {
+        removeQuotationParagraphId(entityId, oldParagraphId);
+        addQuotationParagraphId(entityId, newParagraphId);
+      } else if (type === "note") {
+        // Resolve old and new paragraph positions for the note anchor
+        const ed = editorRef.current?.getEditor();
+        if (!ed) return;
+        const doc = ed.state.doc;
+        // Find the note and its anchor for the old paragraph
+        const note = notes.find((n) => n.id === entityId);
+        if (!note) return;
+        // Find the anchorPos that maps to oldParagraphId
+        let oldAnchorPos: number | null = null;
+        for (const pos of note.anchorPositions) {
+          if (pos < 0 || pos > doc.content.size) continue;
+          const $p = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
+          for (let d = $p.depth; d >= 0; d--) {
+            const anc = $p.node(d);
+            if (["paragraph", "heading", "bulletList", "orderedList"].includes(anc.type.name)) {
+              if (anc.attrs?.uuid === oldParagraphId) {
+                oldAnchorPos = pos;
+              }
+              break;
+            }
+          }
+          if (oldAnchorPos !== null) break;
+        }
+        // Find the start position of the new paragraph
+        let newAnchorPos: number | null = null;
+        doc.descendants((node, nodePos) => {
+          if (newAnchorPos !== null) return false;
+          if (["paragraph", "heading", "bulletList", "orderedList"].includes(node.type.name) && node.attrs?.uuid === newParagraphId) {
+            newAnchorPos = nodePos + 1;
+            return false;
+          }
+          return true;
+        });
+        if (oldAnchorPos !== null) removeNoteAnchor(entityId, oldAnchorPos);
+        if (newAnchorPos !== null) addNoteAnchor(entityId, newAnchorPos);
+      } else if (type === "archive") {
+        // Move archive marker inline node to the new paragraph
+        const ed = editorRef.current?.getEditor();
+        if (!ed) return;
+        const doc = ed.state.doc;
+        // Find the archiveMarker node in the old paragraph
+        let markerPos: number | null = null;
+        let markerNode: typeof doc | null = null;
+        doc.descendants((node, pos) => {
+          if (markerPos !== null) return false;
+          if (node.type.name === "archiveMarker" && node.attrs?.archiveId === entityId) {
+            // Check if it's in the old paragraph
+            const $p = doc.resolve(pos);
+            for (let d = $p.depth; d >= 0; d--) {
+              if ($p.node(d).attrs?.uuid === oldParagraphId) {
+                markerPos = pos;
+                markerNode = node;
+                return false;
+              }
+            }
+          }
+          return true;
+        });
+        // Find the start of the new paragraph
+        let newParaPos: number | null = null;
+        doc.descendants((node, pos) => {
+          if (newParaPos !== null) return false;
+          if (["paragraph", "heading", "bulletList", "orderedList"].includes(node.type.name) && node.attrs?.uuid === newParagraphId) {
+            newParaPos = pos + 1;
+            return false;
+          }
+          return true;
+        });
+        if (markerPos !== null && markerNode && newParaPos !== null) {
+          const { tr } = ed.state;
+          tr.delete(markerPos, markerPos + (markerNode as unknown as { nodeSize: number }).nodeSize);
+          // Adjust newParaPos if it was after the deleted position
+          const adjustedPos = newParaPos > markerPos ? newParaPos - (markerNode as unknown as { nodeSize: number }).nodeSize : newParaPos;
+          tr.insert(adjustedPos, markerNode);
+          ed.view.dispatch(tr);
+        }
+      }
+    };
+    window.addEventListener("virgil-marginalia-reanchor", handler);
+    return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
+  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -2385,53 +2479,60 @@ export default function EditorLayout() {
     void editorDocVersion;
     const result: MarginaliaMarker[] = [];
 
-    // Quotation markers — anchored by paragraphId
+    // Quotation markers — one marker per paragraphId (multi-anchor)
     for (const g of quotationGroups) {
-      if (!g.paragraphId) continue;
-      result.push({
-        id: g.id,
-        type: "quote",
-        paragraphId: g.paragraphId,
-        selected: selectedQuotationGroupId === g.id,
-        title: g.title || g.references[0]?.citeKey || "Quotation",
-        onClick: () => handleQuotationMarkerClick(g.id),
-      });
+      if (g.paragraphIds.length === 0) continue;
+      for (const pid of g.paragraphIds) {
+        result.push({
+          id: `${g.id}:${pid}`,
+          entityId: g.id,
+          type: "quote",
+          paragraphId: pid,
+          selected: selectedQuotationGroupId === g.id,
+          title: g.title || g.references[0]?.citeKey || "Quotation",
+          onClick: () => handleQuotationMarkerClick(g.id),
+          onDelete: () => removeQuotationParagraphId(g.id, pid),
+        });
+      }
     }
 
-    // Note markers — derive paragraphId from anchorPos via the editor
+    // Note markers — one marker per anchorPosition (multi-anchor)
     if (editorInstance) {
       const doc = editorInstance.state.doc;
       for (const n of notes) {
-        if (n.anchorPos < 0 || n.anchorPos > doc.content.size) continue;
-        const $pos = doc.resolve(Math.min(Math.max(n.anchorPos, 0), doc.content.size));
-        let paragraphId: string | null = null;
-        for (let depth = $pos.depth; depth >= 0; depth--) {
-          const ancestor = $pos.node(depth);
-          const name = ancestor.type.name;
-          if (
-            name === "paragraph" ||
-            name === "heading" ||
-            name === "bulletList" ||
-            name === "orderedList"
-          ) {
-            paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
-            // If the enclosing paragraph has no uuid, assign one so the
-            // marker can anchor to it.
-            if (!paragraphId) {
-              paragraphId = editorRef.current?.ensureParagraphUuid(n.anchorPos) ?? null;
+        for (const anchorPos of n.anchorPositions) {
+          if (anchorPos < 0 || anchorPos > doc.content.size) continue;
+          const $pos = doc.resolve(Math.min(Math.max(anchorPos, 0), doc.content.size));
+          let paragraphId: string | null = null;
+          for (let depth = $pos.depth; depth >= 0; depth--) {
+            const ancestor = $pos.node(depth);
+            const name = ancestor.type.name;
+            if (
+              name === "paragraph" ||
+              name === "heading" ||
+              name === "bulletList" ||
+              name === "orderedList"
+            ) {
+              paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
+              if (!paragraphId) {
+                paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
+              }
+              break;
             }
-            break;
           }
+          if (!paragraphId) continue;
+          const capturedAnchorPos = anchorPos;
+          result.push({
+            id: `${n.id}:${paragraphId}`,
+            entityId: n.id,
+            type: "note",
+            paragraphId,
+            selected: selectedNoteId === n.id,
+            title: "Note",
+            onClick: () => handleNoteMarkerClick(n.id),
+            onDelete: () => removeNoteAnchor(n.id, capturedAnchorPos),
+          });
         }
-        if (!paragraphId) continue;
-        result.push({
-          id: n.id,
-          type: "note",
-          paragraphId,
-          selected: selectedNoteId === n.id,
-          title: "Note",
-          onClick: () => handleNoteMarkerClick(n.id),
-        });
       }
 
       // Archive markers — walk the doc to find each archiveMarker node and
@@ -2460,8 +2561,10 @@ export default function EditorLayout() {
           }
         }
         if (!paragraphId) return true;
+        const capturedPos = pos;
         result.push({
-          id: archiveId,
+          id: `${archiveId}:${paragraphId}`,
+          entityId: archiveId,
           type: "archive",
           paragraphId,
           selected: selectedArchiveId === archiveId,
@@ -2469,6 +2572,20 @@ export default function EditorLayout() {
           onClick: () => {
             setSelectedArchiveId(archiveId);
             editorRef.current?.scrollToArchiveMarker(archiveId);
+          },
+          onDelete: () => {
+            // Delete the inline archiveMarker node from the document
+            const ed = editorRef.current?.getEditor();
+            if (!ed) return;
+            const { tr } = ed.state;
+            ed.state.doc.descendants((node, nodePos) => {
+              if (node.type.name === "archiveMarker" && node.attrs?.archiveId === archiveId && nodePos === capturedPos) {
+                tr.delete(nodePos, nodePos + node.nodeSize);
+                return false;
+              }
+              return true;
+            });
+            if (tr.docChanged) ed.view.dispatch(tr);
           },
         });
         return true;
@@ -2479,14 +2596,25 @@ export default function EditorLayout() {
   }, [
     quotationGroups,
     selectedQuotationGroupId,
+    removeQuotationParagraphId,
     notes,
     selectedNoteId,
+    removeNoteAnchor,
     selectedArchiveId,
     editorInstance,
     editorDocVersion,
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
   ]);
+
+  // Compute the set of paragraph UUIDs that have marginalia anchored to them,
+  // used by MarginaliaAnchorGuard to preserve paragraphs on deletion.
+  const anchoredUuidsRef = useRef(new Set<string>());
+  useMemo(() => {
+    const set = new Set<string>();
+    for (const m of marginaliaMarkers) set.add(m.paragraphId);
+    anchoredUuidsRef.current = set;
+  }, [marginaliaMarkers]);
 
   // Loading
   if (filesLoading) {
@@ -2926,7 +3054,8 @@ export default function EditorLayout() {
         }
         // Quotation groups
         for (const group of quotationGroups) {
-          const pos = findParagraphPos(group.paragraphId);
+          const firstPid = group.paragraphIds[0] ?? null;
+          const pos = findParagraphPos(firstPid);
           const isSelected = selectedQuotationGroupId === group.id;
           items.push({
             id: `qu:${group.id}`,
@@ -2946,10 +3075,10 @@ export default function EditorLayout() {
                   }
                   onDelete={() => deleteQuotationGroup(group.id)}
                   onJump={
-                    group.paragraphId
+                    firstPid
                       ? () =>
                           editorRef.current?.scrollToParagraphId(
-                            group.paragraphId!,
+                            firstPid,
                           )
                       : undefined
                   }
@@ -3397,6 +3526,7 @@ export default function EditorLayout() {
                       onEditorReady={setEditorInstance}
                       onCitationDrop={handleCitationDrop}
                       onConfirmFootnoteMove={confirmFootnoteMove}
+                      anchoredUuidsRef={anchoredUuidsRef}
                     />
                     <Marginalia
                       editor={editorInstance}

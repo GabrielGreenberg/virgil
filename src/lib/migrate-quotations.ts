@@ -68,7 +68,7 @@ function migrateGroup(legacy: LegacyQuotationGroup): QuotationGroup {
     id: legacy.id,
     title,
     references: [reference],
-    paragraphId: legacy.paragraphId ?? null,
+    paragraphIds: legacy.paragraphId ? [legacy.paragraphId] : [],
     notes: legacy.notes ?? "",
     createdAt: legacy.createdAt,
   };
@@ -87,6 +87,13 @@ export function migrateQuotationsState(
   for (const g of raw.groups) {
     if (isModernGroup(g)) {
       // Defensive: ensure refs and quotes have ids and required fields.
+      // Migrate legacy `paragraphId` string → `paragraphIds` array
+      const raw = g as QuotationGroup & { paragraphId?: string | null };
+      const paragraphIds = Array.isArray(g.paragraphIds)
+        ? g.paragraphIds
+        : raw.paragraphId
+          ? [raw.paragraphId]
+          : [];
       groups.push({
         id: g.id,
         title: g.title ?? "",
@@ -99,7 +106,7 @@ export function migrateQuotationsState(
             page: q.page ?? "",
           })),
         })),
-        paragraphId: g.paragraphId ?? null,
+        paragraphIds,
         notes: g.notes ?? "",
         createdAt: g.createdAt,
       });
