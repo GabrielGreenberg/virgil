@@ -280,7 +280,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
   search: { label: "Search", icon: (a) => <IconSearch active={a} /> },
   wordcount: { label: "Word Count", icon: (a) => <IconWordCount active={a} /> },
   blank: { label: "Blank", icon: () => null },
-  omni: { label: "OmniView", icon: (a) => <IconOmni active={a} /> },
+  omni: { label: "Omni-view", icon: (a) => <IconOmni active={a} /> },
 };
 
 function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
@@ -3309,7 +3309,7 @@ export default function EditorLayout() {
             <button
               onClick={() => { setActiveLeft(activeLeft === "omni" ? null : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-              title="OmniView — show all left panels"
+              title="Omni-view — show all left panels"
             >
               <IconOmni active={activeLeft === "omni"} />
             </button>
@@ -3469,7 +3469,7 @@ export default function EditorLayout() {
             <button
               onClick={() => { setActiveRight(activeRight === "omni" ? null : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-              title="OmniView — show all right panels"
+              title="Omni-view — show all right panels"
             >
               <IconOmni active={activeRight === "omni"} />
             </button>

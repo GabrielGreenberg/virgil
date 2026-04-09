@@ -1,13 +1,13 @@
 "use client";
 
-import { useMemo, memo, type ReactNode } from "react";
+import { useMemo, memo, useState, useRef, useEffect, useCallback, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
 import { PANEL, PanelHeader } from "./panel-primitives";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 
 /**
- * The OmniView threads pods from several other panels into a single
+ * The Omni-view threads pods from several other panels into a single
  * unified list. On the left side it merges footnotes, citations and
  * quotations; on the right side it merges the corresponding writing
  * pods (notes, revisions, archive snippets, etc.).
@@ -23,6 +23,15 @@ import { useInTextPositions } from "@/hooks/useInTextPositions";
  * In in-text mode the cards are absolutely positioned so each one
  * lines up with its corresponding location in the editor.
  */
+
+/** Known item category prefixes. */
+export type OmniCategory = "fn" | "ci" | "qu";
+
+const CATEGORY_LABELS: Record<OmniCategory, string> = {
+  fn: "Footnotes",
+  ci: "Citations",
+  qu: "Quotations",
+};
 
 export interface OmniItem {
   /** Unique within the omni view (typically `${kind}:${id}`). */
@@ -43,6 +52,99 @@ interface OmniViewPanelProps {
   editor: Editor | null;
 }
 
+/** Extract the category prefix from an OmniItem id (e.g. "fn" from "fn:3"). */
+function categoryOf(id: string): OmniCategory | null {
+  const colon = id.indexOf(":");
+  if (colon === -1) return null;
+  const prefix = id.slice(0, colon);
+  return prefix in CATEGORY_LABELS ? (prefix as OmniCategory) : null;
+}
+
+/* ── Filter menu (three-dot) ────────────────────────────────────────── */
+
+function FilterMenu({
+  categories,
+  hidden,
+  onToggle,
+}: {
+  categories: OmniCategory[];
+  hidden: Set<OmniCategory>;
+  onToggle: (cat: OmniCategory) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, right: 0 });
+
+  useEffect(() => {
+    if (!open) return;
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+    }
+    const handler = (e: MouseEvent) => {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  if (categories.length === 0) return null;
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        ref={btnRef}
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+        title="Filter items"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <circle cx="12" cy="5" r="2" />
+          <circle cx="12" cy="12" r="2" />
+          <circle cx="12" cy="19" r="2" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[140px]"
+          style={{ top: pos.top, right: pos.right }}
+        >
+          {categories.map((cat) => {
+            const checked = !hidden.has(cat);
+            return (
+              <button
+                key={cat}
+                onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center gap-2"
+              >
+                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                  checked
+                    ? "bg-stone-700 border-stone-700 text-white"
+                    : "border-stone-300 bg-white"
+                }`}>
+                  {checked && (
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  )}
+                </span>
+                {CATEGORY_LABELS[cat]}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Main panel ─────────────────────────────────────────────────────── */
+
 function OmniViewPanel({
   side,
   items,
@@ -50,18 +152,50 @@ function OmniViewPanel({
   onViewModeChange,
   editor,
 }: OmniViewPanelProps) {
+  // Derive which categories exist in the current item list
+  const categories = useMemo(() => {
+    const seen = new Set<OmniCategory>();
+    for (const item of items) {
+      const cat = categoryOf(item.id);
+      if (cat) seen.add(cat);
+    }
+    // Stable order: fn, ci, qu
+    return (["fn", "ci", "qu"] as OmniCategory[]).filter((c) => seen.has(c));
+  }, [items]);
+
+  // Hidden categories (persisted per-component instance via state)
+  const [hidden, setHidden] = useState<Set<OmniCategory>>(new Set());
+
+  const toggleCategory = useCallback((cat: OmniCategory) => {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }, []);
+
+  // Filter items by visible categories
+  const visibleItems = useMemo(() => {
+    if (hidden.size === 0) return items;
+    return items.filter((item) => {
+      const cat = categoryOf(item.id);
+      return cat == null || !hidden.has(cat);
+    });
+  }, [items, hidden]);
+
   // Split into anchored (have pos) and unanchored, sorting anchored
   // in document order so the list traces the page.
   const { anchored, unanchored } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
     const unanchored: OmniItem[] = [];
-    for (const item of items) {
+    for (const item of visibleItems) {
       if (item.pos == null) unanchored.push(item);
       else anchored.push({ ...item, pos: item.pos });
     }
     anchored.sort((a, b) => a.pos - b.pos);
     return { anchored, unanchored };
-  }, [items]);
+  }, [visibleItems]);
 
   // Feed anchored items to the position hook. The hook measures each
   // rendered card's height via the data-omni-entry attribute (which
@@ -79,7 +213,8 @@ function OmniViewPanel({
 
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
-      <PanelHeader title="OmniView" count={items.length}>
+      <PanelHeader title="Omni-view">
+        <FilterMenu categories={categories} hidden={hidden} onToggle={toggleCategory} />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 
@@ -89,11 +224,13 @@ function OmniViewPanel({
           viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list
         }
       >
-        {items.length === 0 && (
+        {visibleItems.length === 0 && (
           <div className={PANEL.empty}>
-            {side === "left"
-              ? "No footnotes, citations, or quotations yet."
-              : "No notes, revisions, or archived snippets yet."}
+            {hidden.size > 0
+              ? "All item types are hidden."
+              : side === "left"
+                ? "No footnotes, citations, or quotations yet."
+                : "No notes, revisions, or archived snippets yet."}
           </div>
         )}
 
