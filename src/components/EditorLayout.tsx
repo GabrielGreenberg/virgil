@@ -3226,7 +3226,7 @@ export default function EditorLayout() {
         </div>
       ) : (
       <div ref={mainAreaRef} className="flex flex-1 overflow-hidden relative">
-        {/* Archive connector lines */}
+        {/* ── Linking lines suppressed (may re-enable later) ──
         {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
           <ArchiveConnectors
             editor={editorInstance}
@@ -3235,7 +3235,6 @@ export default function EditorLayout() {
             mainRef={mainAreaRef}
           />
         )}
-        {/* Footnote connector lines */}
         {footnotePanelSide && selectedFootnoteId && (
           <FootnoteConnectors
             editor={editorInstance}
@@ -3245,7 +3244,6 @@ export default function EditorLayout() {
             docVersion={latestDoc}
           />
         )}
-        {/* Citation connector lines (list mode: curved, page view: straight) */}
         {citationPanelSide && selectedCitationId && (
           <CitationConnectors
             editor={editorInstance}
@@ -3264,7 +3262,6 @@ export default function EditorLayout() {
             entryAttr="data-citation-entry"
           />
         )}
-        {/* Bibliography connector line — points to the active occurrence */}
         {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (
           <CitationConnectors
             editor={editorInstance}
@@ -3274,6 +3271,7 @@ export default function EditorLayout() {
             panelEntrySelector={`[data-bib-entry="${selectedBibKey}"]`}
           />
         )}
+        ── end suppressed linking lines ── */}
 
 
         {/* Left icon strip */}
