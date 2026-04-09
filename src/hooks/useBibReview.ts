@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { BibReviewState, BibReviewRequest } from "@/lib/types";
 
 const EMPTY: BibReviewState = { requests: [] };
@@ -11,8 +12,11 @@ export function useBibReview(docId: string | null) {
 
   const fetchState = useCallback(async (id: string) => {
     try {
-      const r = await fetch(`/api/bib-review?docId=${id}`);
-      const data: BibReviewState = await r.json();
+      const data = await readSidecar<BibReviewState>(
+        id,
+        "bib-review-requests.json",
+        EMPTY,
+      );
       if (docIdRef.current === id) setState(data ?? EMPTY);
     } catch {
       // ignore
@@ -39,11 +43,7 @@ export function useBibReview(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/bib-review?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "bib-review-requests.json", s);
     } catch (err) {
       console.error("Failed to save bib review requests:", err);
     }

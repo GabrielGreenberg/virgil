@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Virgil is a browser-based WYSIWYG text editor purpose-built for academic paper writing in LaTeX. It runs as a local Next.js app on the author's machine, saving all data to the local filesystem (`virgil-data/`).
+Virgil is a browser-based WYSIWYG text editor purpose-built for academic paper writing in LaTeX. It runs as a fully client-side Next.js app, saving all data to the user's own disk via the browser's File System Access API. There is no backend, no upload, no account.
 
 ## Core Design Philosophy
 
@@ -19,10 +19,10 @@ Virgil is **not** a LaTeX compiler or previewer. It is an **editing environment*
 
 ### File Management
 - **Multi-tab interface** with rounded tabs, close (X) buttons, double-click to rename
-- **Folder icon** opens a native system file dialog to import `.tex` files
-- **Plus icon** creates a new blank document
-- **Autosave** with debounced persistence to `virgil-data/doc_<id>/`
-- Each document stores: `document.json` (TipTap JSON), `editor-state.json` (cursor/selection), `comments.json`, `suggestions.json`
+- **Folder icon** opens the browser's directory picker to register an existing paper
+- **Plus icon** prompts for a paper name, then opens the directory picker to choose where to create it
+- **Autosave** with debounced persistence to the picked folder, serialized through a per-doc write queue
+- Each paper's folder contains the user's `.tex` file, optional sibling `.bib`, and a `virgil/` subdir for sidecar metadata (`virgil.json`, `editor-state.json`, `revisions.json`, `citations.json`, `notes.json`, `footnotes.json`, etc.)
 
 ### Comments System
 - **User comments**: Select text in the editor, click "+ Comment" in the toolbar, type a comment in the right panel. The selected text is highlighted while composing.
@@ -33,7 +33,7 @@ Virgil is **not** a LaTeX compiler or previewer. It is an **editing environment*
 
 ### Claude Review (Cowork Model)
 - **No API key required**. Reviews are initiated by the human operator from a Claude Code / Claude Cowork session.
-- The Claude session reads the document files from `virgil-data/`, generates suggestions, and writes them to `suggestions.json` in the same format the UI expects.
+- The Claude session reads the document files from the paper's folder on disk, generates suggestions, and writes them to `virgil/suggestions.json` in the same format the UI expects.
 - The UI picks up suggestions and presents them in a **suggestion panel** with:
   - Explanation of the suggestion
   - Original text (red, struck through)
@@ -46,24 +46,42 @@ Virgil is **not** a LaTeX compiler or previewer. It is an **editing environment*
 
 ## Architecture
 
-- **Framework**: Next.js (App Router)
+- **Framework**: Next.js 16 with `output: "export"` — fully static site, no server
 - **Editor**: TipTap (ProseMirror-based)
 - **Styling**: Tailwind CSS v4
-- **Storage**: Local filesystem via Node.js `fs` in API routes — all data lives in `virgil-data/`
-- **No database, no auth, no cloud** — this is a single-user local tool
+- **Storage**: Browser File System Access API (FSA) for the user's `.tex` and `.bib` files; IndexedDB (via `idb-keyval`) for the doc index, tab state, and folder handles
+- **Single boundary**: `src/lib/storage-fsa.ts` is the only place that touches disk; hooks call into it instead of fetching from any server
+- **Browser requirement**: Chromium-based browsers only (Chrome, Edge, Brave, Arc, Opera, Vivaldi). FSA is not implemented in Firefox or Safari.
+- **No database, no auth, no cloud, no upload** — single-user local tool, files stay on the user's disk
 
 ## File Structure
 
+Each paper lives in its own folder, picked once via the browser's directory
+picker. Virgil's metadata sits in a `virgil/` subfolder next to the `.tex`:
+
 ```
-virgil-data/
-  file-index.json          # list of all docs with metadata
-  doc_<uuid>/
-    document.json           # TipTap JSON content
-    editor-state.json       # cursor position, selection
-    comments.json           # user comments
-    suggestions.json        # Claude review suggestions
-    document.tex            # original imported .tex file (if imported)
+my-paper/
+  main.tex                 # the user's LaTeX source
+  references.bib           # optional, sibling .bib
+  virgil/
+    virgil.json            # paragraph UUID sidecar
+    editor-state.json      # cursor position, selection
+    revisions.json         # cowork dialogue (general + text revisions)
+    citations.json         # citation refs and bib package config
+    notes.json             # marginal notes
+    footnotes.json         # persistent footnote state
+    suggestions.json       # Claude review suggestions
+    quotations.json        # quotation groups
+    todos.json             # per-paper todos
+    annotations.json       # bib entry annotations
+    archive.json           # archived snippets
+    bib-settings.json      # general bib + entry requests
+    bib-review-requests.json
+    ai-requests.json       # parallel AI request store
 ```
+
+The list of registered papers, the open tabs, the active tab, and the
+opaque folder handles all live in IndexedDB under the `virgil` database.
 
 ## Visual Design
 

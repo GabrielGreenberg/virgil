@@ -4,6 +4,8 @@ import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { PANEL, PanelHeader, PrevNextCounter } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
+import { searchGeneralBib } from "@/lib/bib-search";
+import { pickGeneralBib } from "@/lib/storage-fsa";
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
@@ -27,7 +29,10 @@ interface BibliographyPanelProps {
   bibPackage?: string;
   // Add entry
   onAddBibEntry?: (entry: BibEntry) => void;
-  // General bibliography
+  // General bibliography. `generalBibPath` is now a display label only
+  // (the filename of whatever file the user picked); the actual handle
+  // is stored in IndexedDB and looked up by docId at search/read time.
+  docId: string | null;
   generalBibPath: string | null;
   onSetGeneralBibPath: (path: string | null) => void;
   // Entry requests
@@ -55,6 +60,7 @@ function BibliographyPanel({
   onActiveCitationChange,
   bibPackage,
   onAddBibEntry,
+  docId,
   generalBibPath,
   onSetGeneralBibPath,
   entryRequests,
@@ -120,19 +126,14 @@ function BibliographyPanel({
 
   // Debounced search
   useEffect(() => {
-    if (!showSearch || !generalBibPath) return;
+    if (!showSearch || !generalBibPath || !docId) return;
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim()) { setSearchResults([]); return; }
     setSearchLoading(true);
     searchTimerRef.current = setTimeout(async () => {
       try {
-        const r = await fetch("/api/bib/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ generalBibPath, query: searchQuery }),
-        });
-        const data = await r.json();
-        setSearchResults(data.results || []);
+        const data = await searchGeneralBib(docId, searchQuery);
+        setSearchResults(data?.results ?? []);
       } catch {
         setSearchResults([]);
       } finally {
@@ -140,7 +141,7 @@ function BibliographyPanel({
       }
     }, 300);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchQuery, showSearch, generalBibPath]);
+  }, [searchQuery, showSearch, generalBibPath, docId]);
 
   const keyToCitationIds = useCallback(() => {
     const map: Record<string, string[]> = {};
@@ -282,15 +283,19 @@ function BibliographyPanel({
     [sortedEntries, goNext, goPrev],
   );
 
-  // File picker for general bibliography
+  // File picker for general bibliography. Must run inside this click
+  // handler so the FSA picker has a valid user gesture.
   const handlePickGeneralBib = useCallback(async () => {
     setMenuOpen(false);
+    if (!docId) return;
     try {
-      const r = await fetch("/api/files/pick?type=bib", { method: "POST" });
-      const data = await r.json();
-      if (data.filePath) onSetGeneralBibPath(data.filePath);
-    } catch { /* cancelled */ }
-  }, [onSetGeneralBibPath]);
+      const result = await pickGeneralBib(docId);
+      if (result) onSetGeneralBibPath(result.filename);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      console.error("Failed to pick general bib:", err);
+    }
+  }, [docId, onSetGeneralBibPath]);
 
   // Export only the cited entries to a downloadable .bib file.
   // Uses each entry's raw BibTeX source so the output is a clean, parseable

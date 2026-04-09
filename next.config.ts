@@ -1,24 +1,29 @@
 import type { NextConfig } from "next";
 
+// Optional deploy-time URL prefix. Leave unset to serve from the
+// origin root (e.g. localhost:3000 or virgil.example.com); set to
+// e.g. "/tools/virgil" when copying the built site under a
+// subdirectory of another website.
+//
+// Important: changing this after launch invalidates origin-scoped
+// state (IndexedDB, FSA permission grants), so pick the final URL
+// once and stick with it.
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 const nextConfig: NextConfig = {
+  // Fully static export — no Node runtime, no API routes, no SSR.
+  // The whole storage layer runs in the browser via the FSA spec.
+  output: "export",
+
+  // Required under static export — Next's built-in image optimizer
+  // is a server feature.
+  images: { unoptimized: true },
+
+  // Honor the deploy-time prefix in URLs and asset paths.
+  basePath,
+  assetPrefix: basePath || undefined,
+
   devIndicators: false,
-  async headers() {
-    return [
-      {
-        source: "/sw.js",
-        headers: [
-          {
-            key: "Cache-Control",
-            value: "no-cache, no-store, must-revalidate",
-          },
-          {
-            key: "Content-Type",
-            value: "application/javascript; charset=utf-8",
-          },
-        ],
-      },
-    ];
-  },
 };
 
 export default nextConfig;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { AnnotationsState } from "@/lib/types";
 
 const EMPTY: AnnotationsState = {};
@@ -12,9 +13,8 @@ export function useAnnotations(docId: string | null) {
   useEffect(() => {
     docIdRef.current = docId;
     if (!docId) { setAnnotations(EMPTY); return; }
-    fetch(`/api/annotations?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: AnnotationsState) => {
+    readSidecar<AnnotationsState>(docId, "annotations.json", EMPTY)
+      .then((data) => {
         if (docIdRef.current === docId) setAnnotations(data ?? EMPTY);
       })
       .catch(() => {});
@@ -24,11 +24,7 @@ export function useAnnotations(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/annotations?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "annotations.json", s);
     } catch (err) {
       console.error("Failed to save annotations:", err);
     }

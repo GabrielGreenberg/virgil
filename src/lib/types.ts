@@ -106,18 +106,6 @@ export interface RevisionsState {
   activeUserId?: string;
 }
 
-export interface DocMeta {
-  id: string;
-  name: string;
-  createdAt: string;
-  lastModifiedAt: string;
-  sourcePath: string; // absolute path to the .tex file
-}
-
-export interface FileIndex {
-  docs: DocMeta[];
-}
-
 export interface ArchivedSnippet {
   id: string;
   text: string;

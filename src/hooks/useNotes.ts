@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { NotesState, UserNote } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
 
@@ -19,9 +20,8 @@ export function useNotes(docId: string | null) {
       return;
     }
 
-    fetch(`/api/notes?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: NotesState) => {
+    readSidecar<NotesState>(docId, "notes.json", EMPTY_STATE)
+      .then((data) => {
         if (currentDocIdRef.current !== docId || !data.notes) return;
         // Migrate legacy notes:
         //   - missing `title`  → coerce to ""
@@ -42,11 +42,7 @@ export function useNotes(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/notes?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newState),
-      });
+      await writeSidecar(id, "notes.json", newState);
     } catch (err) {
       console.error("Failed to save notes:", err);
     }

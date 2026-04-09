@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type {
+  CommentsState,
   GeneralRevision,
   RevisionTurn,
   RevisionUser,
@@ -24,6 +26,38 @@ const EMPTY_STATE: RevisionsState = {
 
 export type RevisionKind = "general" | "text";
 
+/**
+ * One-shot migration from comments.json (only used when revisions.json
+ * doesn't exist yet — the original comments.json is left untouched as a
+ * backup).
+ */
+function migrateFromComments(comments: CommentsState | null): RevisionsState | null {
+  if (!comments?.comments?.length) return null;
+  const textRevisions: TextRevision[] = comments.comments.map((c) => ({
+    id: c.id,
+    authorId: "claude",
+    createdAt: c.createdAt,
+    resolved: c.resolved,
+    selectedText: c.selectedText,
+    anchorPos: 0,
+    text: c.comment,
+    turns: [
+      {
+        id: uuid(),
+        authorId: "claude",
+        createdAt: c.createdAt,
+        text: c.comment,
+      },
+    ],
+  }));
+  return {
+    users: [...DEFAULT_USERS],
+    generalRevisions: [],
+    textRevisions,
+    activeUserId: "me",
+  };
+}
+
 export function useRevisions(docId: string | null) {
   const [state, setState] = useState<RevisionsState>(EMPTY_STATE);
   const currentDocIdRef = useRef(docId);
@@ -33,18 +67,41 @@ export function useRevisions(docId: string | null) {
       setState(EMPTY_STATE);
       return;
     }
-    fetch(`/api/revisions?docId=${id}`)
-      .then((r) => r.json())
-      .then((data: RevisionsState) => {
+    (async () => {
+      try {
+        // Read with a null sentinel so we can distinguish "missing" from
+        // "found and explicitly empty" — the migration only runs in the
+        // missing case.
+        const existing = await readSidecar<RevisionsState | null>(
+          id,
+          "revisions.json",
+          null,
+        );
         if (currentDocIdRef.current !== id) return;
-        setState({
-          users: data.users?.length ? data.users : [...DEFAULT_USERS],
-          generalRevisions: data.generalRevisions ?? [],
-          textRevisions: data.textRevisions ?? [],
-          activeUserId: data.activeUserId ?? "me",
-        });
-      })
-      .catch(() => {});
+        if (existing) {
+          setState({
+            users: existing.users?.length ? existing.users : [...DEFAULT_USERS],
+            generalRevisions: existing.generalRevisions ?? [],
+            textRevisions: existing.textRevisions ?? [],
+            activeUserId: existing.activeUserId ?? "me",
+          });
+          return;
+        }
+        // No revisions.json — try one-shot migration from comments.json.
+        const legacy = await readSidecar<CommentsState | null>(
+          id,
+          "comments.json",
+          null,
+        );
+        const migrated = migrateFromComments(legacy) ?? EMPTY_STATE;
+        if (currentDocIdRef.current !== id) return;
+        setState(migrated);
+        // Persist so subsequent loads skip the migration.
+        await writeSidecar(id, "revisions.json", migrated);
+      } catch (err) {
+        console.error("Failed to load revisions:", err);
+      }
+    })();
   }, []);
 
   useEffect(() => {
@@ -64,11 +121,7 @@ export function useRevisions(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/revisions?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newState),
-      });
+      await writeSidecar(id, "revisions.json", newState);
     } catch (err) {
       console.error("Failed to save revisions:", err);
     }

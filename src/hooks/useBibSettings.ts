@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { BibSettings, BibEntryRequest } from "@/lib/types";
 
 const EMPTY: BibSettings = { generalBibPath: null, entryRequests: [] };
@@ -13,9 +14,8 @@ export function useBibSettings(docId: string | null) {
   const fetchState = useCallback(() => {
     const id = docIdRef.current;
     if (!id) return;
-    fetch(`/api/bib-settings?docId=${id}`)
-      .then((r) => r.json())
-      .then((data: BibSettings) => {
+    readSidecar<BibSettings>(id, "bib-settings.json", EMPTY)
+      .then((data) => {
         if (docIdRef.current === id) setState(data ?? EMPTY);
       })
       .catch(() => {});
@@ -31,11 +31,7 @@ export function useBibSettings(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/bib-settings?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "bib-settings.json", s);
     } catch (err) {
       console.error("Failed to save bib settings:", err);
     }

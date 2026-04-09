@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type {
   QuotationsState,
   QuotationGroup,
@@ -35,12 +36,10 @@ export function useQuotations(docId: string | null) {
       return;
     }
 
-    fetch(`/api/quotations?docId=${docId}`)
-      .then((r) => r.json())
+    readSidecar<QuotationsState | null>(docId, "quotations.json", null)
       .then((data) => {
         if (currentDocIdRef.current === docId) {
-          // Belt-and-suspenders: route already migrates, but if a stale
-          // file slips through we still want a clean shape on the client.
+          // The migration helper handles legacy and current shapes both.
           setState(migrateQuotationsState(data));
         }
       })
@@ -51,11 +50,7 @@ export function useQuotations(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/quotations?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newState),
-      });
+      await writeSidecar(id, "quotations.json", newState);
     } catch (err) {
       console.error("Failed to save quotations:", err);
     }

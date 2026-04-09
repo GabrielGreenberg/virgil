@@ -5,6 +5,7 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
+import { readTex, writeTex } from "@/lib/storage-fsa";
 
 const virgilTheme = EditorView.theme({
   "&": {
@@ -103,12 +104,11 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
 
   // Fetch raw LaTeX on mount
   useEffect(() => {
-    fetch(`/api/document/latex?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setValue(data.latex || "");
-        latestValueRef.current = data.latex || "";
-        savedValueRef.current = data.latex || "";
+    readTex(docId)
+      .then((latexText) => {
+        setValue(latexText);
+        latestValueRef.current = latexText;
+        savedValueRef.current = latexText;
       })
       .catch(() => setValue(""));
   }, [docId]);
@@ -163,11 +163,7 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
   const persist = useCallback(async (latex: string) => {
     setSaving(true);
     try {
-      await fetch(`/api/document/latex?docId=${docId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ latex }),
-      });
+      await writeTex(docId, latex);
       savedValueRef.current = latex;
       onDirtyChange?.(false);
     } catch (err) {
@@ -182,12 +178,8 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       if (latestValueRef.current !== savedValueRef.current) {
-        // Fire-and-forget save
-        fetch(`/api/document/latex?docId=${docId}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ latex: latestValueRef.current }),
-        }).catch(() => {});
+        // Fire-and-forget save through the per-doc write queue.
+        writeTex(docId, latestValueRef.current).catch(() => {});
       }
     };
   }, [docId]);

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 
@@ -16,9 +17,8 @@ export function useFootnotes(docId: string | null) {
   useEffect(() => {
     docRef.current = docId;
     if (!docId) { setState(EMPTY); return; }
-    fetch(`/api/footnotes?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: FootnotesState) => {
+    readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
+      .then((data) => {
         if (docRef.current !== docId || !data.footnotes) return;
         // Migrate legacy footnotes that stored content as HTML strings.
         const migrated: FootnotesState = {
@@ -36,11 +36,7 @@ export function useFootnotes(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/footnotes?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "footnotes.json", s);
     } catch (err) {
       console.error("Failed to save footnotes:", err);
     }

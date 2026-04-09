@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { SuggestionsState, Suggestion } from "@/lib/types";
 
 const EMPTY_STATE: SuggestionsState = {
@@ -21,9 +22,8 @@ export function useSuggestions(docId: string | null) {
       return;
     }
 
-    fetch(`/api/suggestions?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: SuggestionsState) => {
+    readSidecar<SuggestionsState>(docId, "suggestions.json", EMPTY_STATE)
+      .then((data) => {
         if (currentDocIdRef.current === docId && data.suggestions && data.suggestions.length > 0) {
           setState(data);
         } else {
@@ -42,11 +42,7 @@ export function useSuggestions(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/suggestions?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newState),
-      });
+      await writeSidecar(id, "suggestions.json", newState);
     } catch (err) {
       console.error("Failed to save suggestions:", err);
     }

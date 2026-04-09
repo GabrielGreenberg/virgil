@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { TodoState, TodoItem } from "@/lib/types";
 
 const EMPTY: TodoState = { items: [] };
@@ -13,9 +14,8 @@ export function useTodos(docId: string | null) {
   useEffect(() => {
     docIdRef.current = docId;
     if (!docId) { setState(EMPTY); return; }
-    fetch(`/api/todos?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: TodoState) => {
+    readSidecar<TodoState>(docId, "todos.json", EMPTY)
+      .then((data) => {
         if (docIdRef.current === docId && data.items) setState(data);
       })
       .catch(() => {});
@@ -25,11 +25,7 @@ export function useTodos(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/todos?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "todos.json", s);
     } catch (err) {
       console.error("Failed to save todos:", err);
     }

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar, readBib, writeBib } from "@/lib/storage-fsa";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
   parseBibFile,
@@ -30,9 +31,8 @@ export function useCitations(docId: string | null) {
       setBibRaw("");
       return;
     }
-    fetch(`/api/citations?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: CitationsState) => {
+    readSidecar<CitationsState>(docId, "citations.json", EMPTY)
+      .then((data) => {
         if (docRef.current === docId && data.citations) setState(data);
       })
       .catch(() => {});
@@ -41,9 +41,8 @@ export function useCitations(docId: string | null) {
   // Load .bib file
   useEffect(() => {
     if (!docId) return;
-    fetch(`/api/bib?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: { bibText: string; detectedPackage?: string }) => {
+    readBib(docId)
+      .then((data) => {
         if (docRef.current === docId) {
           setBibRaw(data.bibText || "");
           if (data.bibText) {
@@ -55,7 +54,7 @@ export function useCitations(docId: string | null) {
           }
           // Auto-set bib package from tex preamble detection
           if (data.detectedPackage) {
-            setState((prev) => ({ ...prev, bibPackage: data.detectedPackage! }));
+            setState((prev) => ({ ...prev, bibPackage: data.detectedPackage }));
           }
         }
       })
@@ -66,11 +65,7 @@ export function useCitations(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/citations?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "citations.json", s);
     } catch (err) {
       console.error("Failed to save citations:", err);
     }
@@ -80,11 +75,7 @@ export function useCitations(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/bib?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bibText: text }),
-      });
+      await writeBib(id, text);
     } catch (err) {
       console.error("Failed to save bib:", err);
     }

@@ -55,6 +55,11 @@ import { useWordCount } from "@/hooks/useWordCount";
 import WordCountPanel from "./WordCountPanel";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import type { OrphanedFootnote } from "@/lib/types";
+import { hasFsaSupport } from "@/lib/fsa-support";
+import { queryRW } from "@/lib/fsa-permissions";
+import { getDocHandle } from "@/lib/doc-index";
+import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
+import { DocPermissionGate } from "./DocPermissionGate";
 
 // --- Icons ---
 function IconNotes({ active }: { active?: boolean }) {
@@ -750,10 +755,25 @@ export default function EditorLayout() {
     renameFile,
     openFile,
     closeTab,
-    openByPath,
+    openExistingFile,
   } = useFiles();
 
-  const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(currentDocId);
+  // Per-doc permission gate state. We query (without prompting) when
+  // the active doc changes; if it isn't already granted we show the
+  // gate, which calls requestRW from inside its click handler.
+  type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
+  const [docPermState, setDocPermState] = useState<DocPermState>("loading");
+  const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
+
+  // Hooks read from disk, so we gate their docId on the permission
+  // state. Until the active folder has been re-granted readwrite
+  // permission for this session, every hook sees `null` and stays in
+  // its empty state instead of crashing on NotAllowedError. The UI
+  // (tab strip, path bar) keeps using the un-gated currentDocId.
+  const docIdForHooks: string | null =
+    docPermState === "granted" ? currentDocId : null;
+
+  const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(docIdForHooks);
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -762,7 +782,7 @@ export default function EditorLayout() {
     updateSuggestionField,
     jumpToSuggestion,
     clearSuggestions,
-  } = useSuggestions(currentDocId);
+  } = useSuggestions(docIdForHooks);
   const {
     users: revisionUsers,
     activeUserId: activeRevisionUserId,
@@ -777,7 +797,7 @@ export default function EditorLayout() {
     reopenRevision,
     deleteRevision,
     refresh: refreshRevisions,
-  } = useRevisions(currentDocId);
+  } = useRevisions(docIdForHooks);
   const activeRevisionsCount =
     generalRevisions.filter((r) => !r.resolved).length +
     textRevisions.filter((r) => !r.resolved).length;
@@ -788,7 +808,7 @@ export default function EditorLayout() {
     updateNoteTitle,
     updateNotePosition,
     deleteNote,
-  } = useNotes(currentDocId);
+  } = useNotes(docIdForHooks);
   const {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
@@ -802,7 +822,7 @@ export default function EditorLayout() {
     addQuote: addQuotationQuote,
     updateQuote: updateQuotationQuote,
     deleteQuote: deleteQuotationQuote,
-  } = useQuotations(currentDocId);
+  } = useQuotations(docIdForHooks);
   const {
     items: todoItems,
     addItem: addTodo,
@@ -811,21 +831,21 @@ export default function EditorLayout() {
     updateNotes: updateTodoNotes,
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
-  } = useTodos(currentDocId);
+  } = useTodos(docIdForHooks);
 
   const {
     requests: aiRequests,
     addRequest: addAiRequest,
     updateRequestText: updateAiRequestText,
     deleteRequest: deleteAiRequest,
-  } = useAiRequests(currentDocId);
+  } = useAiRequests(docIdForHooks);
 
   const {
     snippets: archiveSnippets,
     archiveText,
     restoreSnippet,
     deleteSnippet,
-  } = useArchive(currentDocId);
+  } = useArchive(docIdForHooks);
 
   const {
     citations,
@@ -844,16 +864,16 @@ export default function EditorLayout() {
     getDisplayText: getCitationDisplayText,
     getFormattedBib,
     syncFromEditor: syncCitationsFromEditor,
-  } = useCitations(currentDocId);
+  } = useCitations(docIdForHooks);
 
-  const { getAnnotation, setAnnotation } = useAnnotations(currentDocId);
+  const { getAnnotation, setAnnotation } = useAnnotations(docIdForHooks);
   const {
     requests: bibReviewRequests,
     requestReview: requestBibReview,
     cancelRequest: cancelBibReview,
     getRequestStatus: getBibReviewStatus,
     refresh: refreshBibReview,
-  } = useBibReview(currentDocId);
+  } = useBibReview(docIdForHooks);
   const {
     generalBibPath,
     entryRequests,
@@ -861,7 +881,7 @@ export default function EditorLayout() {
     addEntryRequest,
     removeEntryRequest,
     refresh: refreshBibSettings,
-  } = useBibSettings(currentDocId);
+  } = useBibSettings(docIdForHooks);
 
   const {
     prefs,
@@ -1400,6 +1420,20 @@ export default function EditorLayout() {
   }, [archiveSnippets, latestDoc, editorInstance]);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
+  // New-doc name input shown when the user clicks +. We can't use
+  // window.prompt() here because it consumes the user gesture, and
+  // showDirectoryPicker() requires a fresh activation. Pressing Enter
+  // in this inline input is itself a real user gesture, which is what
+  // lets the picker open.
+  const [newDocName, setNewDocName] = useState<string | null>(null);
+  const newDocInputRef = useRef<HTMLInputElement>(null);
+
+  // FSA browser support — defaults to true for SSR/initial render to
+  // avoid a flash, then re-checks after mount.
+  const [fsaSupported, setFsaSupported] = useState(true);
+  useEffect(() => {
+    setFsaSupported(hasFsaSupport());
+  }, []);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -1416,6 +1450,49 @@ export default function EditorLayout() {
   useEffect(() => {
     if (editingTabId) nameInputRef.current?.focus();
   }, [editingTabId]);
+
+  useEffect(() => {
+    if (newDocName !== null) newDocInputRef.current?.focus();
+  }, [newDocName]);
+
+  // Whenever the active doc changes, look up its handle in idb and
+  // query (don't request) readwrite permission. The result drives the
+  // gate vs editor render decision below.
+  useEffect(() => {
+    if (!currentDocId) {
+      setDocPermState("no-handle");
+      setActiveDocHandle(null);
+      return;
+    }
+    let cancelled = false;
+    setDocPermState("loading");
+    (async () => {
+      try {
+        const handle = await getDocHandle(currentDocId);
+        if (cancelled) return;
+        if (!handle) {
+          setActiveDocHandle(null);
+          setDocPermState("no-handle");
+          return;
+        }
+        setActiveDocHandle(handle);
+        const state = await queryRW(handle);
+        if (cancelled) return;
+        setDocPermState(state === "granted" ? "granted" : "needs-grant");
+      } catch (err) {
+        console.error("Failed to query doc permission:", err);
+        if (!cancelled) setDocPermState("needs-grant");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDocId]);
+
+  const handleDocPermissionGranted = useCallback(() => {
+    setDocPermState("granted");
+    refetchDoc();
+  }, [refetchDoc]);
 
   const handleUpdate = useCallback(
     (doc: JSONContent) => {
@@ -2073,14 +2150,34 @@ export default function EditorLayout() {
 
   const handleNativeOpen = useCallback(async () => {
     try {
-      const res = await fetch("/api/files/pick", { method: "POST" });
-      const data = await res.json();
-      if (data.cancelled || !data.filePath) return;
-      await openByPath(data.filePath);
+      await openExistingFile();
     } catch (err) {
       console.error("Failed to open file:", err);
     }
-  }, [openByPath]);
+  }, [openExistingFile]);
+
+  const handleNewDocStart = useCallback(() => {
+    setNewDocName("");
+  }, []);
+
+  const handleNewDocSubmit = useCallback(async () => {
+    const name = (newDocName ?? "").trim();
+    if (!name) {
+      setNewDocName(null);
+      return;
+    }
+    try {
+      const meta = await createFile(name);
+      if (meta) setNewDocName(null);
+    } catch (err) {
+      console.error("Failed to create new paper:", err);
+      // Keep the input open so the user can retry or cancel.
+    }
+  }, [newDocName, createFile]);
+
+  const handleNewDocCancel = useCallback(() => {
+    setNewDocName(null);
+  }, []);
 
 
   const switchToCodeView = useCallback(() => {
@@ -2660,6 +2757,7 @@ export default function EditorLayout() {
           onActiveCitationChange={setBibActiveCitationId}
           bibPackage={bibPackage}
           onAddBibEntry={addBibEntry}
+          docId={currentDocId}
           generalBibPath={generalBibPath}
           onSetGeneralBibPath={setGeneralBibPath}
           entryRequests={entryRequests}
@@ -2919,6 +3017,10 @@ export default function EditorLayout() {
   const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
   const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
 
+  if (!fsaSupported) {
+    return <UnsupportedBrowserNotice />;
+  }
+
   return (
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Progress bar */}
@@ -2952,12 +3054,26 @@ export default function EditorLayout() {
               <IconFolder />
             </button>
             <button
-              onClick={() => createFile()}
+              onClick={handleNewDocStart}
               className="p-1 rounded text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
               title="New document"
             >
               <IconPlus />
             </button>
+            {newDocName !== null && (
+              <input
+                ref={newDocInputRef}
+                value={newDocName}
+                onChange={(e) => setNewDocName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleNewDocSubmit();
+                  else if (e.key === "Escape") handleNewDocCancel();
+                }}
+                onBlur={handleNewDocCancel}
+                placeholder="Paper name…"
+                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-white focus:outline-none focus:border-[var(--accent)]"
+              />
+            )}
           </div>
           {openTabs.map((doc) => (
             <div
@@ -3072,22 +3188,25 @@ export default function EditorLayout() {
         </div>
       </div>
 
+      {/* Per-doc permission gate. When the active doc's folder handle
+          needs a fresh readwrite grant, we replace everything below the
+          tab strip with the gate so the user clicks once and the editor
+          mounts. The tabs themselves stay visible so the user can still
+          switch papers. */}
+      {currentDoc && docPermState === "needs-grant" && activeDocHandle && (
+        <DocPermissionGate
+          docName={currentDoc.name}
+          handle={activeDocHandle}
+          onGranted={handleDocPermissionGranted}
+        />
+      )}
+
       {/* Path bar */}
-      {currentDoc && (
+      {currentDoc && docPermState === "granted" && (
         <div className="flex items-center px-3 py-0.5 border-b border-[var(--border)] bg-stone-50/40">
           <span className="text-[11px] text-[var(--muted-light)] truncate">
-            {(() => {
-              const p = currentDoc.sourcePath;
-              const parts = p.replace(/\\/g, "/").split("/");
-              const filename = parts[parts.length - 1];
-              const parentDir = parts[parts.length - 2] || "";
-              const prefix = parts.slice(0, -2).join("/") + "/";
-              return (
-                <>
-                  {prefix}<span className="font-semibold text-[var(--muted)]">{parentDir}</span>/{filename}
-                </>
-              );
-            })()}
+            <span className="font-semibold text-[var(--muted)]">{currentDoc.folderName}</span>
+            /{currentDoc.texFilename}
           </span>
           {saveLabel && (
             <span className="ml-auto text-[11px] text-[var(--muted-light)] shrink-0">{saveLabel}</span>
@@ -3096,10 +3215,10 @@ export default function EditorLayout() {
       )}
 
       {/* Main area */}
-      {codeView && currentDocId ? (
+      {currentDoc && docPermState !== "granted" ? null : codeView && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
           <CodeEditor
-            docId={currentDocId}
+            docId={currentDocId!}
             initialLine={codeViewLine}
             initialParagraphId={codeViewParagraphId}
             onReady={(handle) => { codeEditorHandleRef.current = handle; }}

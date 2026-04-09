@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent } from "@tiptap/react";
+import { readDocBundle, writeDocBundle } from "@/lib/storage-fsa";
 
 type SaveStatus = "idle" | "saving" | "saved";
+
+const DEFAULT_EDITOR_STATE = { cursorPosition: 0, selection: null, lastModified: "" };
 
 export function useDocument(docId: string | null) {
   const [content, setContent] = useState<JSONContent | null>(null);
@@ -25,11 +28,10 @@ export function useDocument(docId: string | null) {
 
     setLoading(true);
     setSaveStatus("idle");
-    fetch(`/api/document?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data) => {
+    readDocBundle(docId)
+      .then((bundle) => {
         if (currentDocIdRef.current === docId) {
-          setContent(data.content);
+          setContent(bundle.content);
           setLoading(false);
         }
       })
@@ -46,18 +48,11 @@ export function useDocument(docId: string | null) {
     if (!id) return;
     setSaveStatus("saving");
     try {
-      await fetch(`/api/document?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: doc,
-          editorState: { cursorPosition: 0, selection: null },
-        }),
-      });
+      await writeDocBundle(id, doc, DEFAULT_EDITOR_STATE);
       if (currentDocIdRef.current === id) {
         setSaveStatus("saved");
         setTimeout(() => {
-          setSaveStatus((prev) => prev === "saved" ? "idle" : prev);
+          setSaveStatus((prev) => (prev === "saved" ? "idle" : prev));
         }, 2000);
       }
     } catch (err) {
@@ -78,25 +73,24 @@ export function useDocument(docId: string | null) {
         }
       }, 1500);
     },
-    [save]
+    [save],
   );
 
   const onUpdate = useCallback(
     (doc: JSONContent) => {
       debouncedSave(doc);
     },
-    [debouncedSave]
+    [debouncedSave],
   );
 
   const refetch = useCallback(() => {
     const id = currentDocIdRef.current;
     if (!id) return;
     setLoading(true);
-    fetch(`/api/document?docId=${id}`)
-      .then((r) => r.json())
-      .then((data) => {
+    readDocBundle(id)
+      .then((bundle) => {
         if (currentDocIdRef.current === id) {
-          setContent(data.content);
+          setContent(bundle.content);
           setLoading(false);
         }
       })

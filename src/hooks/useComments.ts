@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { CommentsState, UserComment } from "@/lib/types";
 
 const EMPTY_STATE: CommentsState = { comments: [] };
@@ -17,9 +18,8 @@ export function useComments(docId: string | null) {
       return;
     }
 
-    fetch(`/api/comments?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: CommentsState) => {
+    readSidecar<CommentsState>(docId, "comments.json", EMPTY_STATE)
+      .then((data) => {
         if (currentDocIdRef.current === docId && data.comments) {
           setState(data);
         }
@@ -31,11 +31,7 @@ export function useComments(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/comments?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newState),
-      });
+      await writeSidecar(id, "comments.json", newState);
     } catch (err) {
       console.error("Failed to save comments:", err);
     }

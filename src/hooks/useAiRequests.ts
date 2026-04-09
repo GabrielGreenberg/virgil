@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { AiRequest, AiRequestKind, AiRequestsState } from "@/lib/types";
 
 const EMPTY: AiRequestsState = { requests: [] };
@@ -13,9 +14,8 @@ export function useAiRequests(docId: string | null) {
   useEffect(() => {
     docIdRef.current = docId;
     if (!docId) { setState(EMPTY); return; }
-    fetch(`/api/ai-requests?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: AiRequestsState) => {
+    readSidecar<AiRequestsState>(docId, "ai-requests.json", EMPTY)
+      .then((data) => {
         if (docIdRef.current === docId && Array.isArray(data.requests)) {
           setState(data);
         }
@@ -27,11 +27,7 @@ export function useAiRequests(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/ai-requests?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "ai-requests.json", s);
     } catch (err) {
       console.error("Failed to save ai requests:", err);
     }

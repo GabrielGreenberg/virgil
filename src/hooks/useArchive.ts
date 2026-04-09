@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
+import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 
 const EMPTY: ArchiveState = { snippets: [] };
@@ -15,9 +16,8 @@ export function useArchive(docId: string | null) {
   useEffect(() => {
     docRef.current = docId;
     if (!docId) { setState(EMPTY); return; }
-    fetch(`/api/archive?docId=${docId}`)
-      .then((r) => r.json())
-      .then((data: ArchiveState) => {
+    readSidecar<ArchiveState>(docId, "archive.json", EMPTY)
+      .then((data) => {
         if (docRef.current === docId && data.snippets) setState(data);
       })
       .catch(() => {});
@@ -27,11 +27,7 @@ export function useArchive(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      await fetch(`/api/archive?docId=${id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(s),
-      });
+      await writeSidecar(id, "archive.json", s);
     } catch (err) {
       console.error("Failed to save archive:", err);
     }
