@@ -1,0 +1,73 @@
+name: Deploy to GitHub Pages
+
+# Build the static export on every push to main and publish it to
+# GitHub Pages at https://gabrielgreenberg.github.io/virgil/.
+#
+# One-time setup: in the repo Settings → Pages, confirm "Source" is
+# set to "GitHub Actions" (the workflow below relies on that).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissions the deploy-pages action needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time — cancel any in-flight deploy when
+# a newer commit lands, but let the currently-running one finish
+# uploading before we cancel (concurrency: group without cancel-in-progress).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build static site
+        # basePath must match the URL path Pages serves us under:
+        # https://gabrielgreenberg.github.io/virgil/ → /virgil
+        run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /virgil
+
+      - name: Disable Jekyll
+        # Without this, GitHub Pages' Jekyll pipeline silently drops
+        # the _next/ directory (anything starting with _). Next does
+        # not create this file itself.
+        run: touch out/.nojekyll
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
