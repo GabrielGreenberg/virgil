@@ -13,14 +13,15 @@ import {
   PANEL,
   Chevron,
   PanelHeader,
-  ItemMenu,
-  MenuDelete,
   PrevNextCounter,
   TargetIcon,
   useCycle,
   AiRequestCard,
   AiRequestsSectionHeader,
 } from "./panel-primitives";
+import {
+  formatMinimalCitation as fmtMinCite,
+} from "@/lib/bib-parser";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
 
@@ -32,6 +33,87 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: 
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => fnRef.current(...args), delay);
   }, [delay]) as unknown as T;
+}
+
+/* ── Delete X button with local confirm popover ─────────────────── */
+
+/**
+ * A small "×" button that appears on hover of its parent (via the
+ * `group-hover` / `group/xxx` pattern). Clicking it shows a tiny
+ * confirm popover anchored near the button before actually deleting.
+ */
+function DeleteXButton({
+  onConfirm,
+  label = "Delete this item?",
+}: {
+  onConfirm: () => void;
+  label?: string;
+}) {
+  const [asking, setAsking] = useState(false);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  // Close popover on outside click
+  useEffect(() => {
+    if (!asking) return;
+    const handler = (e: MouseEvent) => {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) {
+        setAsking(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [asking]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!asking) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAsking(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [asking]);
+
+  return (
+    <div className="relative" ref={popRef}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setAsking(true);
+        }}
+        className="opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-300 hover:text-red-400 hover:bg-red-50"
+        title="Delete"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      {asking && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg p-3 min-w-[180px]">
+          <p className="text-xs text-stone-600 mb-2.5">{label}</p>
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); setAsking(false); }}
+              className="px-2 py-1 text-[11px] font-medium text-stone-600 bg-white border border-stone-200 rounded hover:bg-stone-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setAsking(false);
+                onConfirm();
+              }}
+              className="px-2 py-1 text-[11px] font-medium text-white bg-[#b45757] border border-[#9a3c3c] rounded hover:bg-[#9a3c3c] transition-colors"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ── Auto-resizing textarea ──────────────────────────────────────── */
@@ -69,21 +151,6 @@ function AutoTextarea({
       className={`w-full resize-none outline-none bg-transparent ${className ?? ""}`}
     />
   );
-}
-
-/* ── Citation format helpers ─────────────────────────────────────── */
-
-/** Minimal citation: Author (Year) */
-function formatMinimalCitation(entry: BibEntry): string {
-  const author = entry.fields.author;
-  const year = entry.fields.year;
-  if (!author && !year) return entry.key;
-  const lastName = author
-    ? author.split(",")[0].split(" and ")[0].trim().split(" ").pop() ?? author
-    : "";
-  if (lastName && year) return `${lastName} (${year})`;
-  if (lastName) return lastName;
-  return `(${year})`;
 }
 
 /* ── Cite Key Autocomplete ───────────────────────────────────────── */
@@ -317,7 +384,7 @@ const QuoteEntry = memo(function QuoteEntry({
 
   return (
     <div
-      className={`${PANEL.subpodWhite} p-3 cursor-grab active:cursor-grabbing`}
+      className={`group/card ${PANEL.subpodWhite} p-3 cursor-grab active:cursor-grabbing`}
       draggable
       onDragStart={handleDragStart}
       title="Drag to insert quote with citation"
@@ -334,9 +401,10 @@ const QuoteEntry = memo(function QuoteEntry({
           />
         </div>
         {canDelete && (
-          <ItemMenu>
-            <MenuDelete onClick={() => onDelete(groupId, referenceId, quote.id)} />
-          </ItemMenu>
+          <DeleteXButton
+            onConfirm={() => onDelete(groupId, referenceId, quote.id)}
+            label="Delete this quote?"
+          />
         )}
       </div>
 
@@ -364,7 +432,9 @@ const ReferenceBlock = memo(function ReferenceBlock({
   groupId,
   bibEntries,
   bibPackage,
+  canDelete,
   onUpdateCiteKey,
+  onDeleteReference,
   onAddQuote,
   onUpdateQuote,
   onDeleteQuote,
@@ -373,7 +443,9 @@ const ReferenceBlock = memo(function ReferenceBlock({
   groupId: string;
   bibEntries: BibEntry[];
   bibPackage: string;
+  canDelete: boolean;
   onUpdateCiteKey: (groupId: string, referenceId: string, key: string) => void;
+  onDeleteReference: (groupId: string, referenceId: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
     groupId: string,
@@ -384,6 +456,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
   onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
 }) {
   const matchedEntry = bibEntries.find((e) => e.key === reference.citeKey);
+  const [editingCiteKey, setEditingCiteKey] = useState(false);
 
   const cleanTitle = useMemo(() => {
     if (!matchedEntry?.fields.title) return null;
@@ -391,36 +464,87 @@ const ReferenceBlock = memo(function ReferenceBlock({
   }, [matchedEntry]);
 
   const handleCiteKeyChange = useCallback(
-    (key: string) => onUpdateCiteKey(groupId, reference.id, key),
+    (key: string) => {
+      onUpdateCiteKey(groupId, reference.id, key);
+      setEditingCiteKey(false);
+    },
     [onUpdateCiteKey, groupId, reference.id]
   );
 
+  // Label for the cite key chip — mirrors CitationCard's key buttons
+  const chipLabel = matchedEntry
+    ? fmtMinCite(reference.citeKey, bibEntries)
+    : reference.citeKey || "No key";
+
   return (
-    <div className="space-y-2">
-      {/* Reference header — formatted citation, flat (no pod, no three-dots) */}
-      <div className="min-w-0">
-        {matchedEntry ? (
-          <>
-            <p className="text-xs font-medium text-stone-700">
-              {formatMinimalCitation(matchedEntry)}
+    <div className="group/card space-y-2">
+      {/* Reference header — cite key chip + author info (modeled after CitationCard) */}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          {/* Cite key chip */}
+          <div className="flex flex-wrap gap-1.5 mb-1">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingCiteKey((v) => !v);
+              }}
+              className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
+                !matchedEntry
+                  ? "border-dashed border-red-300 text-red-400 bg-red-50/50"
+                  : editingCiteKey
+                    ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
+                    : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
+              }`}
+            >
+              {chipLabel}
+            </button>
+          </div>
+          {/* Author + title display */}
+          {matchedEntry && cleanTitle && (
+            <p className="text-[11px] text-stone-500 leading-snug">
+              {cleanTitle}
             </p>
-            {cleanTitle && (
-              <p className="text-[11px] text-stone-500 leading-snug mt-0.5">
-                {cleanTitle}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="text-xs text-stone-400 italic">No reference selected</p>
+          )}
+          {!matchedEntry && !reference.citeKey && (
+            <p className="text-xs text-stone-400 italic">No reference selected</p>
+          )}
+        </div>
+        {/* Delete reference X button */}
+        {canDelete && (
+          <DeleteXButton
+            onConfirm={() => onDeleteReference(groupId, reference.id)}
+            label="Delete this reference and its quotes?"
+          />
         )}
       </div>
 
-      {/* Cite key autocomplete */}
-      <CiteKeyAutocomplete
-        value={reference.citeKey}
-        bibEntries={bibEntries}
-        onChange={handleCiteKeyChange}
-      />
+      {/* Cite key autocomplete — toggled by clicking the chip */}
+      {editingCiteKey && (
+        <CiteKeyAutocomplete
+          value={reference.citeKey}
+          bibEntries={bibEntries}
+          onChange={handleCiteKeyChange}
+        />
+      )}
+
+      {/* Inline cite key display + edit button (matches CitationCard pattern) */}
+      {!editingCiteKey && reference.citeKey && (
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="text-xs font-mono text-stone-400 truncate flex-1 min-w-0">
+            {reference.citeKey}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setEditingCiteKey(true);
+            }}
+            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-stone-200 text-stone-400 hover:text-stone-600 hover:bg-stone-100 hover:border-stone-300 transition-colors flex-shrink-0"
+            title="Edit cite key"
+          >
+            Edit
+          </button>
+        </div>
+      )}
 
       {/* Quote pods — each draggable onto the editor */}
       <div className="space-y-1.5">
@@ -514,6 +638,7 @@ export function QuotationGroupCard({
   onJump,
   onUpdateGroupTitle,
   onAddReference,
+  onDeleteReference,
   onUpdateReferenceCiteKey,
   onAddQuote,
   onUpdateQuote,
@@ -529,6 +654,7 @@ export function QuotationGroupCard({
   onJump?: () => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
+  onDeleteReference: (groupId: string, referenceId: string) => void;
   onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
@@ -576,7 +702,7 @@ export function QuotationGroupCard({
 
   return (
     <div
-      className={panelCard(selected)}
+      className={`group/card ${panelCard(selected)}`}
       onClick={onSelect}
       draggable
       onDragStart={handleDragStart}
@@ -597,9 +723,10 @@ export function QuotationGroupCard({
             {selected && onJump && (
               <TargetIcon onClick={onJump} title="Jump to quotation in text" />
             )}
-            <ItemMenu>
-              <MenuDelete onClick={onDelete} label="Delete group" />
-            </ItemMenu>
+            <DeleteXButton
+              onConfirm={onDelete}
+              label="Delete this quotation group?"
+            />
           </div>
         </div>
 
@@ -615,7 +742,9 @@ export function QuotationGroupCard({
               groupId={group.id}
               bibEntries={bibEntries}
               bibPackage={bibPackage}
+              canDelete={group.references.length > 1}
               onUpdateCiteKey={onUpdateReferenceCiteKey}
+              onDeleteReference={onDeleteReference}
               onAddQuote={onAddQuote}
               onUpdateQuote={onUpdateQuote}
               onDeleteQuote={onDeleteQuote}
@@ -654,6 +783,7 @@ export interface QuotationsPanelProps {
   onDeleteGroup: (groupId: string) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
+  onDeleteReference: (groupId: string, referenceId: string) => void;
   onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
   onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
@@ -682,6 +812,7 @@ export default function QuotationsPanel({
   onDeleteGroup,
   onUpdateGroupTitle,
   onAddReference,
+  onDeleteReference,
   onUpdateReferenceCiteKey,
   onAddQuote,
   onUpdateQuote,
@@ -804,6 +935,7 @@ export default function QuotationsPanel({
                 onJump={group.paragraphId ? () => onScrollToParagraph?.(group.paragraphId!) : undefined}
                 onUpdateGroupTitle={onUpdateGroupTitle}
                 onAddReference={onAddReference}
+                onDeleteReference={onDeleteReference}
                 onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
                 onAddQuote={onAddQuote}
                 onUpdateQuote={onUpdateQuote}
