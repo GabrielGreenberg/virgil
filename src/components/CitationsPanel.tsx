@@ -607,32 +607,34 @@ function CitationsPanel({
             label=""
           />
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
-          <div className="relative" ref={menuRef}>
+          <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-48 py-1">
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Package</div>
+              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Package</div>
                 {BIB_PACKAGES.map((p) => (
                   <button key={p.value} onClick={() => { onSetBibPackage(p.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2">
-                    <span className="w-4 text-center text-stone-400">{bibPackage === p.value ? "\u2713" : ""}</span>
-                    {p.label}
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3">
+                    <span>{p.label}</span>
+                    <span className="text-[var(--accent)]">{bibPackage === p.value ? "\u2713" : ""}</span>
                   </button>
                 ))}
-                <div className="border-t border-stone-100 my-1" />
-                <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Style</div>
+                <div className="my-1 border-t border-stone-200" />
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Style</div>
                 {STYLES.map((s) => (
                   <button key={s.value} onClick={() => { onSetStyle(s.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2">
-                    <span className="w-4 text-center text-stone-400">{citationStyle === s.value ? "\u2713" : ""}</span>
-                    {s.label}
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3">
+                    <span>{s.label}</span>
+                    <span className="text-[var(--accent)]">{citationStyle === s.value ? "\u2713" : ""}</span>
                   </button>
                 ))}
               </div>

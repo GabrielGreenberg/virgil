@@ -49,7 +49,7 @@ import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
 import PreferencesModal from "./PreferencesModal";
-import AIWindow from "./AIWindow";
+import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useWordCount } from "@/hooks/useWordCount";
 import WordCountPanel from "./WordCountPanel";
@@ -926,6 +926,13 @@ export default function EditorLayout() {
   const [showLatexComments, setShowLatexComments] = useState(true);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
+  const aiDot = useMemo(() => aiRequestDotStatus({
+    bibReviewRequests,
+    bibEntryRequests: entryRequests,
+    generalRevisions,
+    textRevisions,
+    panelAiRequests: aiRequests,
+  }), [bibReviewRequests, entryRequests, generalRevisions, textRevisions, aiRequests]);
   const { prefs: editorPrefs, updatePref, resetAll: resetPrefs } = usePreferences();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3157,7 +3164,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3170,6 +3177,12 @@ export default function EditorLayout() {
                 <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
               </g>
             </svg>
+            {aiDot && (
+              <span
+                className="absolute top-0 right-0 w-2 h-2 rounded-full"
+                style={{ backgroundColor: aiDot === "red" ? "#ef4444" : "#22c55e" }}
+              />
+            )}
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}

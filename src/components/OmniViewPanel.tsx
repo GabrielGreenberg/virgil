@@ -62,12 +62,12 @@ function categoryOf(id: string): OmniCategory | null {
 
 /* ── Filter menu (three-dot) ────────────────────────────────────────── */
 
+const ALL_CATEGORIES: OmniCategory[] = ["fn", "ci", "qu"];
+
 function FilterMenu({
-  categories,
   hidden,
   onToggle,
 }: {
-  categories: OmniCategory[];
   hidden: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
 }) {
@@ -92,48 +92,36 @@ function FilterMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  if (categories.length === 0) return null;
-
   return (
-    <div className="relative shrink-0">
+    <div className="relative shrink-0 -mr-1">
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
         title="Filter items"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <circle cx="12" cy="5" r="2" />
-          <circle cx="12" cy="12" r="2" />
-          <circle cx="12" cy="19" r="2" />
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="3" r="1.5" />
+          <circle cx="8" cy="8" r="1.5" />
+          <circle cx="8" cy="13" r="1.5" />
         </svg>
       </button>
       {open && (
         <div
           ref={menuRef}
-          className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[140px]"
+          className="fixed bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
           style={{ top: pos.top, right: pos.right }}
         >
-          {categories.map((cat) => {
+          {ALL_CATEGORIES.map((cat) => {
             const checked = !hidden.has(cat);
             return (
               <button
                 key={cat}
                 onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-between gap-3"
               >
-                <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                  checked
-                    ? "bg-stone-700 border-stone-700 text-white"
-                    : "border-stone-300 bg-white"
-                }`}>
-                  {checked && (
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  )}
-                </span>
-                {CATEGORY_LABELS[cat]}
+                <span>{CATEGORY_LABELS[cat]}</span>
+                <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
               </button>
             );
           })}
@@ -214,8 +202,8 @@ function OmniViewPanel({
   return (
     <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
       <PanelHeader title="Omni-view">
-        <FilterMenu categories={categories} hidden={hidden} onToggle={toggleCategory} />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+        <FilterMenu hidden={hidden} onToggle={toggleCategory} />
       </PanelHeader>
 
       <div

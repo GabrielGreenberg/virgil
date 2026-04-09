@@ -304,6 +304,66 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
   return out;
 }
 
+/* ── Notification dot helper (used by toolbar button) ─────────────── */
+
+/**
+ * Returns the notification dot color for the AI requests toolbar icon.
+ *   - "red"   → at least one open (pending) request
+ *   - "green" → no open requests, but at least one responded (answered)
+ *   - null    → no requests, or all resolved
+ */
+export function aiRequestDotStatus(args: {
+  bibReviewRequests: BibReviewRequest[];
+  bibEntryRequests: BibEntryRequest[];
+  generalRevisions: GeneralRevision[];
+  textRevisions: TextRevision[];
+  panelAiRequests: AiRequest[];
+}): "red" | "green" | null {
+  const { bibReviewRequests, bibEntryRequests, generalRevisions, textRevisions, panelAiRequests } = args;
+
+  let hasOpen = false;
+  let hasResponded = false;
+
+  // Bib reviews: pending → open, complete → resolved
+  for (const r of bibReviewRequests) {
+    if (r.status === "pending") { hasOpen = true; break; }
+  }
+
+  // Bib entry requests: pending → open, complete → resolved
+  if (!hasOpen) {
+    for (const r of bibEntryRequests) {
+      if (r.status === "pending") { hasOpen = true; break; }
+    }
+  }
+
+  // Panel AI requests: draft/submitted → open, complete → resolved
+  if (!hasOpen) {
+    for (const r of panelAiRequests) {
+      if (r.status !== "complete") { hasOpen = true; break; }
+    }
+  }
+
+  // General revisions: !resolved + no AI turns → open, !resolved + AI turns → responded
+  for (const r of generalRevisions) {
+    if (r.resolved) continue;
+    const hasAiTurn = r.turns.length > 0 && r.turns.some((t) => t.authorId === "claude");
+    if (hasAiTurn) hasResponded = true;
+    else hasOpen = true;
+  }
+
+  // Text revisions: same logic
+  for (const r of textRevisions) {
+    if (r.resolved) continue;
+    const hasAiTurn = r.turns.length > 0 && r.turns.some((t) => t.authorId === "claude");
+    if (hasAiTurn) hasResponded = true;
+    else hasOpen = true;
+  }
+
+  if (hasOpen) return "red";
+  if (hasResponded) return "green";
+  return null;
+}
+
 /* ── Component ─────────────────────────────────────────────────────── */
 
 export interface AIWindowProps {
@@ -338,8 +398,6 @@ export interface AIWindowProps {
   refreshAll: () => void;
 }
 
-type FilterKind = "all" | AIRequestKind;
-
 export default function AIWindow({
   open,
   onClose,
@@ -359,7 +417,7 @@ export default function AIWindow({
   addGeneralRevision,
   refreshAll,
 }: AIWindowProps) {
-  const [filter, setFilter] = useState<FilterKind>("all");
+  const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<AIRequestKind>("revision-general");
   const [composerText, setComposerText] = useState("");
   const [composerBibKey, setComposerBibKey] = useState("");
@@ -418,28 +476,14 @@ export default function AIWindow({
     ],
   );
 
-  const filtered = useMemo(
-    () => (filter === "all" ? requests : requests.filter((r) => r.kind === filter)),
-    [requests, filter],
-  );
-
   const buckets = useMemo(() => {
     const sortByDate = (a: AIRequestVM, b: AIRequestVM) =>
       b.createdAt.localeCompare(a.createdAt);
     return {
-      open: filtered.filter((r) => r.status === "open").sort(sortByDate),
-      responded: filtered.filter((r) => r.status === "responded").sort(sortByDate),
-      resolved: filtered.filter((r) => r.status === "resolved").sort(sortByDate),
+      open: requests.filter((r) => r.status === "open").sort(sortByDate),
+      responded: requests.filter((r) => r.status === "responded").sort(sortByDate),
+      resolved: requests.filter((r) => r.status === "resolved").sort(sortByDate),
     };
-  }, [filtered]);
-
-  // Counts across the full (unfiltered) set, used in chip labels.
-  const totalCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: requests.length };
-    for (const k of Object.keys(KIND_META) as AIRequestKind[]) {
-      counts[k] = requests.filter((r) => r.kind === k).length;
-    }
-    return counts as Record<FilterKind, number>;
   }, [requests]);
 
   const PANEL_KIND_REVERSE: Record<string, PanelAiRequestKind> = {
@@ -471,6 +515,7 @@ export default function AIWindow({
     }
     setComposerText("");
     setComposerBibKey("");
+    setComposerOpen(false);
   }, [
     composerKind,
     composerText,
@@ -537,25 +582,111 @@ export default function AIWindow({
           </button>
         </div>
 
-        {/* Filter chips */}
-        <div className="flex items-center gap-1.5 px-5 py-2 border-b border-[var(--border)] overflow-x-auto bg-stone-50/50">
-          <FilterChip
-            label="All"
-            count={totalCounts.all}
-            active={filter === "all"}
-            onClick={() => setFilter("all")}
-          />
-          {(Object.keys(KIND_META) as AIRequestKind[]).map((k) => (
-            <FilterChip
-              key={k}
-              label={KIND_META[k].label}
-              count={totalCounts[k]}
-              active={filter === k}
-              chipFg={KIND_META[k].chipFg}
-              chipBg={KIND_META[k].chipBg}
-              onClick={() => setFilter(k)}
-            />
-          ))}
+        {/* Composer — collapsible new request form */}
+        <div className="border-b border-[var(--border)] bg-stone-50/60 px-5 py-2.5">
+          {!composerOpen ? (
+            <button
+              onClick={() => setComposerOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M12 5v14M5 12h14" />
+              </svg>
+              New request
+            </button>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
+                  New request
+                </span>
+                <select
+                  value={composerKind}
+                  onChange={(e) => {
+                    setComposerKind(e.target.value as AIRequestKind);
+                    setComposerBibKey("");
+                  }}
+                  className="text-xs bg-white border border-[var(--border)] rounded px-1.5 py-0.5 text-stone-700"
+                >
+                  <option value="revision-general">General dialogue</option>
+                  <option value="bib-entry">New bibliography entry</option>
+                  <option value="bib-fields">Bib field review</option>
+                  <option value="bib-notes">Bib notes review</option>
+                  <optgroup label="Panel requests">
+                    <option value="panel-footnote">Footnote request</option>
+                    <option value="panel-note">Note request</option>
+                    <option value="panel-citation">Citation request</option>
+                    <option value="panel-quotation">Quotation request</option>
+                    <option value="panel-todo">Todo request</option>
+                  </optgroup>
+                </select>
+                <span className="text-[11px] text-stone-400 truncate">
+                  {KIND_META[composerKind].description}
+                </span>
+              </div>
+
+              {composerNeedsBibKey && (
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-[11px] text-stone-500">Entry key</label>
+                  <input
+                    list="ai-window-bib-keys"
+                    value={composerBibKey}
+                    onChange={(e) => setComposerBibKey(e.target.value)}
+                    placeholder="e.g. smith2020"
+                    className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)]"
+                  />
+                  <datalist id="ai-window-bib-keys">
+                    {bibEntries.map((b) => (
+                      <option key={b.key} value={b.key}>
+                        {b.fields.title || b.type}
+                      </option>
+                    ))}
+                  </datalist>
+                </div>
+              )}
+
+              <div className="flex items-end gap-2">
+                <textarea
+                  value={composerText}
+                  onChange={(e) => setComposerText(e.target.value)}
+                  placeholder={
+                    composerKind === "bib-entry"
+                      ? "Describe the entry to find or create — title, authors, year, anything you remember…"
+                      : composerKind === "revision-general"
+                        ? "Ask Claude something, or describe what you'd like changed…"
+                        : "Optional notes for Claude (what to focus on)…"
+                  }
+                  rows={3}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      submitComposer();
+                    }
+                  }}
+                  className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1.5 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)] resize-none"
+                />
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={submitComposer}
+                    disabled={
+                      (composerNeedsBibKey && !composerBibKey.trim()) ||
+                      (!composerNeedsBibKey && !composerText.trim())
+                    }
+                    className="px-3 py-1.5 text-xs font-medium rounded-md border bg-stone-800 hover:bg-stone-900 text-white border-stone-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                    title="Submit (⌘↵)"
+                  >
+                    Submit
+                  </button>
+                  <button
+                    onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Body — request list */}
@@ -563,96 +694,11 @@ export default function AIWindow({
           <Bucket title="Open" status="open" items={buckets.open} />
           <Bucket title="Responded" status="responded" items={buckets.responded} />
           <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
-          {filtered.length === 0 && (
+          {requests.length === 0 && (
             <div className="text-center text-xs text-stone-400 py-8">
-              No requests yet. Use the form below to start one.
+              No requests yet. Use the form above to start one.
             </div>
           )}
-        </div>
-
-        {/* Composer */}
-        <div className="border-t border-[var(--border)] bg-stone-50/60 px-5 py-3">
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
-              New request
-            </span>
-            <select
-              value={composerKind}
-              onChange={(e) => {
-                setComposerKind(e.target.value as AIRequestKind);
-                setComposerBibKey("");
-              }}
-              className="text-xs bg-white border border-[var(--border)] rounded px-1.5 py-0.5 text-stone-700"
-            >
-              <option value="revision-general">General dialogue</option>
-              <option value="bib-entry">New bibliography entry</option>
-              <option value="bib-fields">Bib field review</option>
-              <option value="bib-notes">Bib notes review</option>
-              <optgroup label="Panel requests">
-                <option value="panel-footnote">Footnote request</option>
-                <option value="panel-note">Note request</option>
-                <option value="panel-citation">Citation request</option>
-                <option value="panel-quotation">Quotation request</option>
-                <option value="panel-todo">Todo request</option>
-              </optgroup>
-            </select>
-            <span className="text-[11px] text-stone-400 truncate">
-              {KIND_META[composerKind].description}
-            </span>
-          </div>
-
-          {composerNeedsBibKey && (
-            <div className="flex items-center gap-2 mb-2">
-              <label className="text-[11px] text-stone-500">Entry key</label>
-              <input
-                list="ai-window-bib-keys"
-                value={composerBibKey}
-                onChange={(e) => setComposerBibKey(e.target.value)}
-                placeholder="e.g. smith2020"
-                className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)]"
-              />
-              <datalist id="ai-window-bib-keys">
-                {bibEntries.map((b) => (
-                  <option key={b.key} value={b.key}>
-                    {b.fields.title || b.type}
-                  </option>
-                ))}
-              </datalist>
-            </div>
-          )}
-
-          <div className="flex items-end gap-2">
-            <textarea
-              value={composerText}
-              onChange={(e) => setComposerText(e.target.value)}
-              placeholder={
-                composerKind === "bib-entry"
-                  ? "Describe the entry to find or create — title, authors, year, anything you remember…"
-                  : composerKind === "revision-general"
-                    ? "Ask Claude something, or describe what you'd like changed…"
-                    : "Optional notes for Claude (what to focus on)…"
-              }
-              rows={3}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  submitComposer();
-                }
-              }}
-              className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1.5 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)] resize-none"
-            />
-            <button
-              onClick={submitComposer}
-              disabled={
-                (composerNeedsBibKey && !composerBibKey.trim()) ||
-                (!composerNeedsBibKey && !composerText.trim())
-              }
-              className="px-3 py-1.5 text-xs font-medium rounded-md border bg-stone-800 hover:bg-stone-900 text-white border-stone-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Submit (⌘↵)"
-            >
-              Submit
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -661,41 +707,6 @@ export default function AIWindow({
 
 /* ── Sub-components ────────────────────────────────────────────────── */
 
-function FilterChip({
-  label,
-  count,
-  active,
-  onClick,
-  chipBg,
-  chipFg,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-  chipBg?: string;
-  chipFg?: string;
-}) {
-  const style = active && chipBg && chipFg
-    ? { background: chipBg, color: chipFg, borderColor: chipFg }
-    : undefined;
-  return (
-    <button
-      onClick={onClick}
-      style={style}
-      className={`shrink-0 text-[11px] px-2 py-0.5 rounded-full border transition-colors ${
-        active
-          ? "border-stone-700 bg-stone-800 text-white"
-          : "border-[var(--border)] bg-white text-stone-500 hover:text-stone-700 hover:border-stone-300"
-      }`}
-    >
-      {label}
-      <span className={`ml-1 ${active ? "opacity-80" : "text-stone-400"}`}>
-        {count}
-      </span>
-    </button>
-  );
-}
 
 function Bucket({
   title,

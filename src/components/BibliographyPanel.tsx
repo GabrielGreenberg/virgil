@@ -406,7 +406,7 @@ function BibliographyPanel({
           </div>
 
           {/* Three-dot menu */}
-          <div className="relative" ref={menuRef}>
+          <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
               className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"

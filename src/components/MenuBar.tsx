@@ -339,37 +339,39 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
             </svg>
           </button>
         )}
-        <div className="relative -ml-1.5" ref={viewMenuRef}>
+        <div className="relative" ref={viewMenuRef}>
           <button
             onClick={() => setViewMenuOpen(!viewMenuOpen)}
             className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
             title="View options"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="8" cy="13" r="1.5" />
             </svg>
           </button>
           {viewMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-stone-200 rounded-lg shadow-lg z-50 w-52 py-1">
-              <div className="px-3 py-1.5 text-[10px] font-semibold text-stone-400 uppercase tracking-wider">Display</div>
+            <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-52 py-1">
+              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Display</div>
               <button
                 onClick={() => { onToggleParTitles(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
               >
-                <span className="w-4 text-center text-stone-400">{showParTitles ? "\u2713" : ""}</span>
-                Paragraph titles
+                <span>Paragraph titles</span>
+                <span className="text-[var(--accent)]">{showParTitles ? "\u2713" : ""}</span>
               </button>
               <button
                 onClick={() => { onToggleLatexComments(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
               >
-                <span className="w-4 text-center text-stone-400">{showLatexComments ? "\u2713" : ""}</span>
-                % comments
+                <span>% comments</span>
+                <span className="text-[var(--accent)]">{showLatexComments ? "\u2713" : ""}</span>
               </button>
-              <div className="my-1 border-t border-stone-100" />
+              <div className="my-1 border-t border-stone-200" />
               <button
                 onClick={() => { onOpenPreferences?.(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center gap-2"
               >
                 <svg className="w-4 h-4 text-stone-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
                   <circle cx="8" cy="8" r="2.5" />

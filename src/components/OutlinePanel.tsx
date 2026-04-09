@@ -1026,10 +1026,10 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               <path d="M2 9 L7 5.5 L12 9" />
             </svg>
           </button>
-          <div className="relative" ref={menuRef}>
+          <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="text-[var(--muted)] hover:text-stone-600 transition-colors p-0.5"
+              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
               title="View options"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
