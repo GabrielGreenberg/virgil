@@ -36,6 +36,8 @@ import {
   useState,
 } from "react";
 import type {
+  AiRequest,
+  AiRequestKind as PanelAiRequestKind,
   BibEntry,
   BibEntryRequest,
   BibReviewRequest,
@@ -49,7 +51,12 @@ export type AIRequestKind =
   | "bib-notes"
   | "bib-entry"
   | "revision-general"
-  | "revision-text";
+  | "revision-text"
+  | "panel-footnote"
+  | "panel-note"
+  | "panel-citation"
+  | "panel-quotation"
+  | "panel-todo";
 
 type AIRequestStatus = "open" | "responded" | "resolved";
 
@@ -108,6 +115,36 @@ const KIND_META: Record<
     chipFg: "#0f766e",
     description: "Anchored to selected text — created from the editor",
   },
+  "panel-footnote": {
+    label: "Footnote",
+    chipBg: "#fef2f2",
+    chipFg: "#b45757",
+    description: "AI request for a footnote",
+  },
+  "panel-note": {
+    label: "Note",
+    chipBg: "#f0f9ff",
+    chipFg: "#0369a1",
+    description: "AI request for a margin note",
+  },
+  "panel-citation": {
+    label: "Citation",
+    chipBg: "#fefce8",
+    chipFg: "#a16207",
+    description: "AI request for a citation",
+  },
+  "panel-quotation": {
+    label: "Quotation",
+    chipBg: "#faf5ff",
+    chipFg: "#7e22ce",
+    description: "AI request for a quotation",
+  },
+  "panel-todo": {
+    label: "Todo",
+    chipBg: "#f0fdf4",
+    chipFg: "#15803d",
+    description: "AI request for a task",
+  },
 };
 
 const STATUS_META: Record<
@@ -149,8 +186,10 @@ interface BuildArgs {
   generalRevisions: GeneralRevision[];
   textRevisions: TextRevision[];
   users: RevisionUser[];
+  panelAiRequests: AiRequest[];
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   removeEntryRequest: (id: string) => void;
+  deletePanelAiRequest: (id: string) => void;
 }
 
 function buildRequests(args: BuildArgs): AIRequestVM[] {
@@ -238,6 +277,30 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
     });
   }
 
+  const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
+    footnote: "panel-footnote",
+    note: "panel-note",
+    citation: "panel-citation",
+    quotation: "panel-quotation",
+    todo: "panel-todo",
+  };
+
+  for (const r of args.panelAiRequests) {
+    out.push({
+      id: `panel:${r.id}`,
+      kind: PANEL_KIND_MAP[r.kind],
+      status: r.status === "complete" ? "resolved" : "open",
+      label: r.kind,
+      snippet: r.text || "(empty draft)",
+      turnCount: 0,
+      createdAt: r.createdAt,
+      onCancel:
+        r.status !== "complete"
+          ? () => args.deletePanelAiRequest(r.id)
+          : undefined,
+    });
+  }
+
   return out;
 }
 
@@ -254,6 +317,11 @@ export interface AIWindowProps {
   textRevisions: TextRevision[];
   users: RevisionUser[];
   bibEntries: BibEntry[];
+
+  // Panel AI requests (useAiRequests unified store).
+  panelAiRequests: AiRequest[];
+  addPanelAiRequest: (kind: PanelAiRequestKind, text?: string) => AiRequest;
+  deletePanelAiRequest: (id: string) => void;
 
   // Mutators
   requestBibReview: (
@@ -281,6 +349,9 @@ export default function AIWindow({
   textRevisions,
   users,
   bibEntries,
+  panelAiRequests,
+  addPanelAiRequest,
+  deletePanelAiRequest,
   requestBibReview,
   cancelBibReview,
   addEntryRequest,
@@ -329,8 +400,10 @@ export default function AIWindow({
         generalRevisions,
         textRevisions,
         users,
+        panelAiRequests,
         cancelBibReview,
         removeEntryRequest,
+        deletePanelAiRequest,
       }),
     [
       bibReviewRequests,
@@ -338,8 +411,10 @@ export default function AIWindow({
       generalRevisions,
       textRevisions,
       users,
+      panelAiRequests,
       cancelBibReview,
       removeEntryRequest,
+      deletePanelAiRequest,
     ],
   );
 
@@ -360,15 +435,20 @@ export default function AIWindow({
 
   // Counts across the full (unfiltered) set, used in chip labels.
   const totalCounts = useMemo(() => {
-    return {
-      all: requests.length,
-      "bib-fields": requests.filter((r) => r.kind === "bib-fields").length,
-      "bib-notes": requests.filter((r) => r.kind === "bib-notes").length,
-      "bib-entry": requests.filter((r) => r.kind === "bib-entry").length,
-      "revision-general": requests.filter((r) => r.kind === "revision-general").length,
-      "revision-text": requests.filter((r) => r.kind === "revision-text").length,
-    } as Record<FilterKind, number>;
+    const counts: Record<string, number> = { all: requests.length };
+    for (const k of Object.keys(KIND_META) as AIRequestKind[]) {
+      counts[k] = requests.filter((r) => r.kind === k).length;
+    }
+    return counts as Record<FilterKind, number>;
   }, [requests]);
+
+  const PANEL_KIND_REVERSE: Record<string, PanelAiRequestKind> = {
+    "panel-footnote": "footnote",
+    "panel-note": "note",
+    "panel-citation": "citation",
+    "panel-quotation": "quotation",
+    "panel-todo": "todo",
+  };
 
   const submitComposer = useCallback(() => {
     const text = composerText.trim();
@@ -386,6 +466,8 @@ export default function AIWindow({
         composerKind === "bib-fields" ? "fields" : "notes",
         text || undefined,
       );
+    } else if (composerKind in PANEL_KIND_REVERSE) {
+      addPanelAiRequest(PANEL_KIND_REVERSE[composerKind], text);
     }
     setComposerText("");
     setComposerBibKey("");
@@ -396,6 +478,7 @@ export default function AIWindow({
     addGeneralRevision,
     addEntryRequest,
     requestBibReview,
+    addPanelAiRequest,
   ]);
 
   if (!open) return null;
@@ -505,6 +588,13 @@ export default function AIWindow({
               <option value="bib-entry">New bibliography entry</option>
               <option value="bib-fields">Bib field review</option>
               <option value="bib-notes">Bib notes review</option>
+              <optgroup label="Panel requests">
+                <option value="panel-footnote">Footnote request</option>
+                <option value="panel-note">Note request</option>
+                <option value="panel-citation">Citation request</option>
+                <option value="panel-quotation">Quotation request</option>
+                <option value="panel-todo">Todo request</option>
+              </optgroup>
             </select>
             <span className="text-[11px] text-stone-400 truncate">
               {KIND_META[composerKind].description}

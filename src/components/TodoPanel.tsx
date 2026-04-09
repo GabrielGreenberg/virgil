@@ -224,18 +224,6 @@ export default function TodoPanel({
           </div>
         )}
 
-        {items.map((item, i) => (
-          <TodoRow
-            key={item.id}
-            item={item}
-            index={i}
-            onToggle={onToggle}
-            onUpdate={onUpdate}
-            onUpdateNotes={onUpdateNotes}
-            onDelete={onDelete}
-          />
-        ))}
-
         {myAiRequests.length > 0 && (
           <>
             <AiRequestsSectionHeader count={myAiRequests.length} />
@@ -249,6 +237,18 @@ export default function TodoPanel({
             ))}
           </>
         )}
+
+        {items.map((item, i) => (
+          <TodoRow
+            key={item.id}
+            item={item}
+            index={i}
+            onToggle={onToggle}
+            onUpdate={onUpdate}
+            onUpdateNotes={onUpdateNotes}
+            onDelete={onDelete}
+          />
+        ))}
       </div>
 
       {/* Archive bar at bottom */}

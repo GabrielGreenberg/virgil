@@ -3513,6 +3513,9 @@ export default function EditorLayout() {
         textRevisions={textRevisions}
         users={revisionUsers}
         bibEntries={bibEntries}
+        panelAiRequests={aiRequests}
+        addPanelAiRequest={addAiRequest}
+        deletePanelAiRequest={deleteAiRequest}
         requestBibReview={requestBibReview}
         cancelBibReview={cancelBibReview}
         addEntryRequest={addEntryRequest}

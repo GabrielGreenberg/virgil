@@ -778,6 +778,20 @@ export default function QuotationsPanel({
           </div>
         ) : (
           <>
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+
             {groups.map((group) => (
               <QuotationGroupCard
                 key={group.id}
@@ -797,20 +811,6 @@ export default function QuotationsPanel({
                 onUpdateNotes={onUpdateNotes}
               />
             ))}
-
-            {myAiRequests.length > 0 && (
-              <>
-                <AiRequestsSectionHeader count={myAiRequests.length} />
-                {myAiRequests.map((req) => (
-                  <AiRequestCard
-                    key={req.id}
-                    request={req}
-                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                    onDelete={() => onDeleteAiRequest?.(req.id)}
-                  />
-                ))}
-              </>
-            )}
           </>
         )}
       </div>

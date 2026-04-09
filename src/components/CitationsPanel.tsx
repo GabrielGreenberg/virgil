@@ -694,6 +694,20 @@ function CitationsPanel({
           </div>
         ) : (
           <>
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+
             {visibleCitations.map((cit) => {
               const isSelected = selectedId === cit.id;
               return (
@@ -711,20 +725,6 @@ function CitationsPanel({
                 />
               );
             })}
-
-            {myAiRequests.length > 0 && (
-              <>
-                <AiRequestsSectionHeader count={myAiRequests.length} />
-                {myAiRequests.map((req) => (
-                  <AiRequestCard
-                    key={req.id}
-                    request={req}
-                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                    onDelete={() => onDeleteAiRequest?.(req.id)}
-                  />
-                ))}
-              </>
-            )}
           </>
         )}
       </div>

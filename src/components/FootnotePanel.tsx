@@ -551,6 +551,20 @@ function FootnotePanel({
           </div>
         ) : (
           <>
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+
             {/* Unanchored footnotes are shown at the top of the list — their
                 slash-mark "fn" badge already indicates the unanchored state,
                 so no section heading is needed. */}
@@ -578,20 +592,6 @@ function FootnotePanel({
                 onCitationCreated={onCitationCreated}
               />
             ))}
-
-            {myAiRequests.length > 0 && (
-              <>
-                <AiRequestsSectionHeader count={myAiRequests.length} />
-                {myAiRequests.map((req) => (
-                  <AiRequestCard
-                    key={req.id}
-                    request={req}
-                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                    onDelete={() => onDeleteAiRequest?.(req.id)}
-                  />
-                ))}
-              </>
-            )}
           </>
         )}
       </div>

@@ -195,6 +195,20 @@ export default function NotesPanel({
           </div>
         )}
 
+        {myAiRequests.length > 0 && (
+          <>
+            <AiRequestsSectionHeader count={myAiRequests.length} />
+            {myAiRequests.map((req) => (
+              <AiRequestCard
+                key={req.id}
+                request={req}
+                onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                onDelete={() => onDeleteAiRequest?.(req.id)}
+              />
+            ))}
+          </>
+        )}
+
         {sortedNotes.map((note) => (
           <NoteCard
             key={note.id}
@@ -209,20 +223,6 @@ export default function NotesPanel({
             onCitationCreated={onCitationCreated}
           />
         ))}
-
-        {myAiRequests.length > 0 && (
-          <>
-            <AiRequestsSectionHeader count={myAiRequests.length} />
-            {myAiRequests.map((req) => (
-              <AiRequestCard
-                key={req.id}
-                request={req}
-                onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                onDelete={() => onDeleteAiRequest?.(req.id)}
-              />
-            ))}
-          </>
-        )}
       </div>
     </div>
   );
