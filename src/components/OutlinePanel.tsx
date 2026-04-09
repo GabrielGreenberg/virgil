@@ -51,18 +51,29 @@ function getDocTitle(doc: JSONContent | null): string {
   return "";
 }
 
-function extractHeadings(doc: JSONContent | null): HeadingItem[] {
-  if (!doc || !doc.content) return [];
+interface ExtractResult {
+  headings: HeadingItem[];
+  /** Par titles that appear before the first heading (Document start region). */
+  preambleTitles: { title: string; index: number }[];
+}
+
+function extractHeadings(doc: JSONContent | null): ExtractResult {
+  if (!doc || !doc.content) return { headings: [], preambleTitles: [] };
   const headings: HeadingItem[] = [];
   let pendingTitles: { title: string; index: number }[] = [];
+  const preambleTitles: { title: string; index: number }[] = [];
 
   doc.content.forEach((node, idx) => {
     if (node.type === "heading" && node.attrs?.level) {
       // Attach any pending parTitles to the previous heading. Titles
-      // before the first heading are dropped — they belong to the
-      // "Document start" region which has no editable outline row.
-      if (pendingTitles.length > 0 && headings.length > 0) {
-        headings[headings.length - 1].parTitles.push(...pendingTitles);
+      // before the first heading go to the preamble list so they can
+      // appear under the "Document start" row.
+      if (pendingTitles.length > 0) {
+        if (headings.length > 0) {
+          headings[headings.length - 1].parTitles.push(...pendingTitles);
+        } else {
+          preambleTitles.push(...pendingTitles);
+        }
       }
       pendingTitles = [];
       headings.push({
@@ -82,10 +93,14 @@ function extractHeadings(doc: JSONContent | null): HeadingItem[] {
       pendingTitles.push({ title: node.attrs.parTitle as string, index: idx });
     }
   });
-  if (pendingTitles.length > 0 && headings.length > 0) {
-    headings[headings.length - 1].parTitles.push(...pendingTitles);
+  if (pendingTitles.length > 0) {
+    if (headings.length > 0) {
+      headings[headings.length - 1].parTitles.push(...pendingTitles);
+    } else {
+      preambleTitles.push(...pendingTitles);
+    }
   }
-  return headings;
+  return { headings, preambleTitles };
 }
 
 /* ── Tree builder (view mode) ──────────────────────────────────────── */
@@ -255,6 +270,7 @@ function OutlineNode({
   activeSectionPath,
   activeParTitleIndex,
   parTitleDotActive,
+  showPosition,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -271,6 +287,7 @@ function OutlineNode({
   /** True when an active parTitle row is currently eligible to take
       the red dot away from any section heading. */
   parTitleDotActive: boolean;
+  showPosition: boolean;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
@@ -282,6 +299,7 @@ function OutlineNode({
   // moves off the heading entirely when a parTitle is the current
   // reading target (parTitleDotActive && showTitles).
   const isActive =
+    showPosition &&
     activeSectionPath != null &&
     activeSectionPath.length > 0 &&
     activeSectionPath[activeSectionPath.length - 1] === node.heading.text &&
@@ -354,6 +372,7 @@ function OutlineNode({
         <div>
           {node.heading.parTitles.map((pt, i) => {
             const isParActive =
+              showPosition &&
               showTitles &&
               activeParTitleIndex != null &&
               pt.index === activeParTitleIndex;
@@ -395,6 +414,7 @@ function OutlineNode({
               activeSectionPath={activeSectionPath}
               activeParTitleIndex={activeParTitleIndex}
               parTitleDotActive={parTitleDotActive}
+              showPosition={showPosition}
             />
           ))}
         </div>
@@ -811,6 +831,7 @@ interface OutlinePrefs {
   showLabels: boolean;
   showTitles: boolean;
   showWordCount: boolean;
+  showPosition: boolean;
 }
 
 function loadOutlinePrefs(): OutlinePrefs {
@@ -819,6 +840,7 @@ function loadOutlinePrefs(): OutlinePrefs {
     showLabels: true,
     showTitles: true,
     showWordCount: true,
+    showPosition: true,
   };
   if (typeof window === "undefined") return defaults;
   try {
@@ -836,6 +858,7 @@ function saveOutlinePrefs(
   showLabels: boolean,
   showTitles: boolean,
   showWordCount: boolean,
+  showPosition: boolean,
 ) {
   try {
     localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify({
@@ -843,6 +866,7 @@ function saveOutlinePrefs(
       showLabels,
       showTitles,
       showWordCount,
+      showPosition,
     }));
   } catch {}
 }
@@ -854,6 +878,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
   const [showWordCount, setShowWordCount] = useState(true);
+  const [showPosition, setShowPosition] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -869,6 +894,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setShowLabels(saved.showLabels);
     setShowTitles(saved.showTitles);
     setShowWordCount(saved.showWordCount);
+    setShowPosition(saved.showPosition);
   }, []);
 
   // Mark initialized after first render with loaded state
@@ -877,8 +903,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       initialized.current = true;
       return;
     }
-    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount);
-  }, [collapsed, showLabels, showTitles, showWordCount]);
+    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount, showPosition);
+  }, [collapsed, showLabels, showTitles, showWordCount, showPosition]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -891,7 +917,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     return () => document.removeEventListener("mousedown", handleClick);
   }, [menuOpen]);
 
-  const headings = useMemo(() => extractHeadings(content), [content]);
+  const { headings, preambleTitles } = useMemo(() => extractHeadings(content), [content]);
   const tree = useMemo(() => buildTree(headings), [headings]);
   const docTitle = useMemo(() => getDocTitle(content), [content]);
 
@@ -932,7 +958,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   // heading)? When true, the red dot lives on the top "Document start"
   // / "Title" row of the outline.
   const isDocumentStartActive =
-    !activeSectionPath || activeSectionPath.length === 0;
+    showPosition && (!activeSectionPath || activeSectionPath.length === 0);
 
   // Is a parTitle row eligible to take the red dot? True only when
   // parTitles are shown AND the reader is inside a paragraph whose
@@ -940,11 +966,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   // heading). When true, the innermost heading yields its dot to the
   // matching parTitle row so we only ever draw one dot.
   const parTitleDotActive = useMemo(() => {
-    if (!showTitles || activeParTitleIndex == null) return false;
+    if (!showPosition || !showTitles || activeParTitleIndex == null) return false;
+    // Check both preamble and heading-attached par titles.
+    if (preambleTitles.some((pt) => pt.index === activeParTitleIndex)) return true;
     return headings.some((h) =>
       h.parTitles.some((pt) => pt.index === activeParTitleIndex),
     );
-  }, [showTitles, activeParTitleIndex, headings]);
+  }, [showPosition, showTitles, activeParTitleIndex, headings, preambleTitles]);
 
   const collapseAll = useCallback(() => {
     setCollapsed(new Set(headings.filter((h, i) => {
@@ -1033,6 +1061,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   <span>Show word count</span>
                   <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
                 </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  onClick={() => { setShowPosition(!showPosition); }}
+                >
+                  <span>Show current position</span>
+                  <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
+                </button>
               </div>
             )}
           </div>
@@ -1058,7 +1093,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             ) : (
               <span className="italic text-stone-400">Document start</span>
             )}
-            {isDocumentStartActive && (
+            {isDocumentStartActive && !parTitleDotActive && (
               <span
                 className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
                 title="Currently on screen"
@@ -1071,6 +1106,34 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             </span>
           )}
         </div>
+
+        {showTitles && preambleTitles.length > 0 && (
+          <div>
+            {preambleTitles.map((pt, i) => {
+              const isParActive =
+                showPosition &&
+                showTitles &&
+                activeParTitleIndex != null &&
+                pt.index === activeParTitleIndex;
+              return (
+                <div
+                  key={`preamble-pt-${i}`}
+                  className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#c45a5a] truncate"
+                  style={{ paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
+                  onClick={() => onScrollTo(pt.index)}
+                >
+                  {pt.title}
+                  {isParActive && (
+                    <span
+                      className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
+                      title="Currently on screen"
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
@@ -1103,6 +1166,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               activeSectionPath={activeSectionPath}
               activeParTitleIndex={activeParTitleIndex}
               parTitleDotActive={parTitleDotActive}
+              showPosition={showPosition}
             />
           ))
         )}
