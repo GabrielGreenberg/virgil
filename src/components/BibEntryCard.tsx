@@ -322,7 +322,7 @@ export default function BibEntryCard({
             }`}
             title={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
           >
-            {fieldsReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<span>Request review</span>)}
+            {fieldsReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0"><path d="M8 0l2 5h5l-4 3.5 1.5 5L8 10.5 3.5 13.5 5 8.5 1 5h5z"/></svg><span>Request review</span></>)}
           </button>
         </div>
 
@@ -410,7 +410,7 @@ export default function BibEntryCard({
             }`}
             title={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
           >
-            {notesReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<span>Request annotation</span>)}
+            {notesReviewStatus === "pending" ? (<><PulsingDot /><span>Requested</span></>) : (<><svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor" className="flex-shrink-0"><path d="M8 0l2 5h5l-4 3.5 1.5 5L8 10.5 3.5 13.5 5 8.5 1 5h5z"/></svg><span>Request annotation</span></>)}
           </button>
         </div>
 
