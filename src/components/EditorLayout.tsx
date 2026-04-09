@@ -987,6 +987,8 @@ export default function EditorLayout() {
     s.setProperty("--footnote-bg", deriveLight(editorPrefs.footnoteColor, 0.08));
     s.setProperty("--note-color", editorPrefs.noteColor);
     s.setProperty("--note-bg", deriveLight(editorPrefs.noteColor, 0.06));
+    s.setProperty("--par-title-size", `${editorPrefs.parTitleSize}rem`);
+    s.setProperty("--par-title-color", editorPrefs.parTitleColor);
     s.setProperty("--panel-font-size", `${editorPrefs.panelFontSize}px`);
     s.setProperty("--panel-header-size", `${editorPrefs.panelHeaderSize}px`);
   }, [editorPrefs]);

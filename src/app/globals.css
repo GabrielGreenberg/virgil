@@ -141,9 +141,9 @@ body {
 .par-title-annotation {
   display: block;
   position: relative;
-  font-size: 0.78rem;
+  font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
-  color: #c45a5a;
+  color: var(--par-title-color, #c45a5a);
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.02em;
   margin-bottom: 1px;
@@ -154,7 +154,7 @@ body {
 }
 
 .par-title-annotation:hover {
-  color: #a33;
+  filter: brightness(0.8);
 }
 
 .par-title-text:hover {
@@ -164,9 +164,9 @@ body {
 /* × delete button — to the right of title text, shown on hover */
 .par-title-delete {
   display: none;
-  font-size: 0.72rem;
+  font-size: calc(var(--par-title-size, 0.78rem) - 0.06rem);
   font-weight: 500;
-  color: #c45a5a;
+  color: var(--par-title-color, #c45a5a);
   cursor: pointer;
   user-select: none;
   margin-left: 0.4em;
@@ -175,7 +175,7 @@ body {
 
 .par-title-delete:hover {
   opacity: 1;
-  color: #a33;
+  filter: brightness(0.8);
 }
 
 .par-title-annotation:hover .par-title-delete {
@@ -186,11 +186,11 @@ body {
 .par-title-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid #c45a5a;
+  border-bottom: 1px solid var(--par-title-color, #c45a5a);
   outline: none;
-  font-size: 0.78rem;
+  font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
-  color: #c45a5a;
+  color: var(--par-title-color, #c45a5a);
   font-family: var(--font-sans), Inter, sans-serif;
   letter-spacing: 0.02em;
   padding: 0;
@@ -199,9 +199,9 @@ body {
 
 /* "+T" add label shown in gap above paragraph on hover */
 .par-title-add {
-  font-size: 0.72rem;
+  font-size: calc(var(--par-title-size, 0.78rem) - 0.06rem);
   font-weight: 500;
-  color: #c45a5a;
+  color: var(--par-title-color, #c45a5a);
   cursor: pointer;
   user-select: none;
   opacity: 0.6;
@@ -210,7 +210,7 @@ body {
 
 .par-title-add:hover {
   opacity: 1;
-  color: #a33;
+  filter: brightness(0.8);
 }
 
 /* When no title yet, hide annotation area until hover reveals +T */

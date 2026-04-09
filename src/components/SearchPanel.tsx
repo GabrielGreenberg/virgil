@@ -366,7 +366,7 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
                         <span
                           className={
                             seg.kind === "parTitle"
-                              ? "text-[#c45a5a]"
+                              ? "text-[var(--par-title-color,#c45a5a)]"
                               : seg.kind === "documentStart"
                                 ? "italic text-[var(--muted)] opacity-70"
                                 : "text-[var(--muted)]"
