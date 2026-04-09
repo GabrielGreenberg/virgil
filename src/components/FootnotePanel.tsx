@@ -81,42 +81,6 @@ function onDropArchive(archiveId: string) {
   );
 }
 
-function CopyButton({
-  content,
-}: {
-  content: unknown;
-}) {
-  const [copied, setCopied] = useState(false);
-  const handleCopy = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(richJsonToPlainText(content)).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      });
-    },
-    [content],
-  );
-  return (
-    <button
-      onClick={handleCopy}
-      className="p-1 rounded transition-colors text-stone-400 hover:text-stone-600 hover:bg-stone-100"
-      title="Copy to clipboard"
-    >
-      {copied ? (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ) : (
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="2" y="2" width="13" height="13" rx="2" />
-          <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
 /* ── FootnoteCard (anchored) ─────────────────────────────────────── */
 
 export interface FootnoteCardProps {
@@ -166,9 +130,7 @@ export function FootnoteCard({
       style={wrapperStyle}
       onClick={onSelect}
     >
-      {/* Header row: a single bar holding the number badge, copy button,
-          three-dot menu, and target icon. A divider below separates this
-          control bar from the body text, which spans the full card width. */}
+      {/* Header row: number badge, target icon, and three-dot menu. */}
       <div className="flex items-center gap-2 px-3 py-2">
         <span
           className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
@@ -182,26 +144,6 @@ export function FootnoteCard({
         </span>
         <div className="flex-1" />
         <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <CopyButton content={fn.content} />
-        </div>
-        <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
-        <div
           className={`transition-opacity ${
             isSelected
               ? "opacity-100"
@@ -214,6 +156,17 @@ export function FootnoteCard({
           }}
         >
           <TargetIcon onClick={onJump} title="Jump to footnote marker" />
+        </div>
+        <div
+          draggable={false}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+        >
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} />
+          </ItemMenu>
         </div>
       </div>
       <div
@@ -277,9 +230,7 @@ export function OrphanedFootnoteCard({
       className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
     >
-      {/* Header row: a single bar holding the orphan badge, copy button,
-          and three-dot menu. Matches the anchored footnote layout so both
-          card variants share the same header → divider → body structure. */}
+      {/* Header row: orphan badge and three-dot menu. */}
       <div className="flex items-center gap-2 px-3 py-2">
         <span
           className="inline-flex items-center justify-center shrink-0"
@@ -319,15 +270,6 @@ export function OrphanedFootnoteCard({
           </svg>
         </span>
         <div className="flex-1" />
-        <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <CopyButton content={orphan.content} />
-        </div>
         <div
           draggable={false}
           onDragStart={(e) => {
