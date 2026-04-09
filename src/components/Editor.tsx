@@ -502,6 +502,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ...this.parent?.(),
         parTitle: { default: null },
         uuid: { default: null, rendered: false },
+        listPreamble: { default: null, rendered: false },
       };
     },
     addNodeView() {
@@ -515,6 +516,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ...this.parent?.(),
         parTitle: { default: null },
         uuid: { default: null, rendered: false },
+        listPreamble: { default: null, rendered: false },
       };
     },
     addNodeView() {

@@ -104,20 +104,30 @@ function serializeNode(node: JSONContent, insideList = false, listDepth = 0): st
     case "bulletList": {
       const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
       const uuid = node.attrs?.uuid as string | null;
+      const preamble = node.attrs?.listPreamble as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const indent = "  ".repeat(listDepth);
+      const innerIndent = indent + "  ";
+      const preambleStr = preamble
+        ? preamble.split("\n").map((l) => `${innerIndent}${l}`).join("\n") + "\n"
+        : "";
       // Top-level list gets surrounding blank lines; nested lists do not.
       const trailing = listDepth === 0 ? "\n\n" : "\n";
-      return `${indent}\\begin{itemize}\n${items}${indent}\\end{itemize}${anchor}${trailing}`;
+      return `${indent}\\begin{itemize}\n${preambleStr}${items}${indent}\\end{itemize}${anchor}${trailing}`;
     }
 
     case "orderedList": {
       const items = (node.content || []).map((n) => serializeNode(n, false, listDepth)).join("");
       const uuid = node.attrs?.uuid as string | null;
+      const preamble = node.attrs?.listPreamble as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const indent = "  ".repeat(listDepth);
+      const innerIndent = indent + "  ";
+      const preambleStr = preamble
+        ? preamble.split("\n").map((l) => `${innerIndent}${l}`).join("\n") + "\n"
+        : "";
       const trailing = listDepth === 0 ? "\n\n" : "\n";
-      return `${indent}\\begin{enumerate}\n${items}${indent}\\end{enumerate}${anchor}${trailing}`;
+      return `${indent}\\begin{enumerate}\n${preambleStr}${items}${indent}\\end{enumerate}${anchor}${trailing}`;
     }
 
     case "listItem": {

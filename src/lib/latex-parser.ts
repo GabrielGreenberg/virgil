@@ -743,12 +743,18 @@ function findMatchingEnd(src: string, startPos: number, env: string): number {
  * nested itemize/enumerate environments. Each returned string is the text
  * between an `\item` and the next sibling `\item` (or end of content),
  * with surrounding whitespace trimmed.
+ *
+ * Also returns any "preamble" — content that appears before the first
+ * `\item` (e.g. `\itemsep`, `\setlength`, custom commands).  This content
+ * is invisible in the editor but preserved across round-trips.
  */
-function splitListItems(content: string): string[] {
+function splitListItems(content: string): { items: string[]; preamble: string } {
   const items: string[] = [];
   let pos = 0;
   // Index where the current item's body starts (-1 = before any \item)
   let currentStart = -1;
+  // Track where the first \item is so we can extract the preamble
+  let firstItemPos = -1;
   while (pos < content.length) {
     // Skip past nested list environments — \item markers inside them
     // belong to the inner list, not the current one.
@@ -768,6 +774,7 @@ function splitListItems(content: string): string[] {
     if (content.startsWith("\\item", pos)) {
       const after = content[pos + 5];
       if (after === undefined || /[\s\W]/.test(after)) {
+        if (firstItemPos === -1) firstItemPos = pos;
         if (currentStart >= 0) {
           items.push(content.slice(currentStart, pos).trim());
         }
@@ -788,12 +795,14 @@ function splitListItems(content: string): string[] {
   if (currentStart >= 0) {
     items.push(content.slice(currentStart).trim());
   }
-  return items;
+  // Extract preamble: everything before the first \item, trimmed
+  const preamble = firstItemPos > 0 ? content.slice(0, firstItemPos).trim() : "";
+  return { items, preamble };
 }
 
 function parseList(content: string, type: string): JSONContent {
   const items: JSONContent[] = [];
-  const itemTexts = splitListItems(content);
+  const { items: itemTexts, preamble } = splitListItems(content);
 
   for (const itemText of itemTexts) {
     // Parse the item body as a block sequence so nested itemize/enumerate
@@ -823,7 +832,11 @@ function parseList(content: string, type: string): JSONContent {
     });
   }
 
-  return { type, content: items };
+  const node: JSONContent = { type, content: items };
+  if (preamble) {
+    node.attrs = { ...node.attrs, listPreamble: preamble };
+  }
+  return node;
 }
 
 function skipWhitespace(ctx: ParseContext): void {
