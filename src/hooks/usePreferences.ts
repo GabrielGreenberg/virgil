@@ -13,6 +13,8 @@ export interface EditorPreferences {
   citationColor: string;
   footnoteColor: string;
   noteColor: string;
+  parTitleSize: number;        // rem
+  parTitleColor: string;
   panelFontSize: number;       // px
   panelHeaderSize: number;     // px
   surfaceColor: string;
@@ -29,6 +31,8 @@ export const DEFAULT_PREFS: EditorPreferences = {
   citationColor: "#6b6245",
   footnoteColor: "#b45757",
   noteColor: "#15803d",
+  parTitleSize: 0.78,
+  parTitleColor: "#c45a5a",
   panelFontSize: 13,
   panelHeaderSize: 14,
   surfaceColor: "#ffffff",

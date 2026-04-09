@@ -181,6 +181,20 @@ export default function PreferencesModal({ prefs, onUpdate, onReset, onClose }: 
             onChange={(v) => onUpdate("noteColor", v)}
           />
 
+          <SectionHeader>Paragraph titles</SectionHeader>
+          <SliderPref
+            label="Size"
+            value={prefs.parTitleSize}
+            min={0.6} max={1.0} step={0.02} unit=" rem"
+            onChange={(v) => onUpdate("parTitleSize", v)}
+          />
+          <ColorPref
+            label="Color"
+            value={prefs.parTitleColor}
+            defaultValue={DEFAULT_PREFS.parTitleColor}
+            onChange={(v) => onUpdate("parTitleColor", v)}
+          />
+
           <SectionHeader>Panels</SectionHeader>
           <SliderPref
             label="Font size"
