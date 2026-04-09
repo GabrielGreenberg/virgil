@@ -2782,6 +2782,7 @@ export default function EditorLayout() {
           onDeleteGroup={deleteQuotationGroup}
           onUpdateGroupTitle={updateQuotationGroupTitle}
           onAddReference={addQuotationReference}
+          onDeleteReference={deleteQuotationReference}
           onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
           onAddQuote={addQuotationQuote}
           onUpdateQuote={updateQuotationQuote}
@@ -2940,6 +2941,7 @@ export default function EditorLayout() {
                   }
                   onUpdateGroupTitle={updateQuotationGroupTitle}
                   onAddReference={addQuotationReference}
+                  onDeleteReference={deleteQuotationReference}
                   onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
                   onAddQuote={addQuotationQuote}
                   onUpdateQuote={updateQuotationQuote}
