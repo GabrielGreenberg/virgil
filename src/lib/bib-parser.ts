@@ -618,10 +618,21 @@ export function formatInlineCitation(
     case "citetitle": {
       // Title only. \citetitle* prints the full title; without star, biblatex
       // uses the shorttitle field if available.
+      // Typographic convention: quote marks for shorter works (articles,
+      // chapters, conference papers); italics for standalone works (books,
+      // collections, theses).
+      const QUOTED_TYPES = new Set([
+        "article", "inproceedings", "incollection", "inbook", "unpublished",
+      ]);
       const parts = resolved.map((r) => {
         if (!r.bib) return r.key;
-        if (!starred && r.bib.fields.shorttitle) return r.bib.fields.shorttitle;
-        return getTitle(r.bib);
+        const raw = !starred && r.bib.fields.shorttitle
+          ? r.bib.fields.shorttitle
+          : getTitle(r.bib);
+        if (QUOTED_TYPES.has(r.bib.type.toLowerCase())) {
+          return `\u201C${raw}\u201D`;
+        }
+        return `<i>${raw}</i>`;
       });
       return parts.join("; ");
     }

@@ -141,6 +141,7 @@ export function CitationCard({
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
       const display = getDisplayText(cit.command);
+      const plain = display.replace(/<[^>]+>/g, "");
       e.dataTransfer.setData("text/plain", cit.command);
       e.dataTransfer.setData(
         "application/x-virgil-citation",
@@ -149,7 +150,7 @@ export function CitationCard({
       e.dataTransfer.effectAllowed = "copy";
       const ghost = document.createElement("div");
       ghost.textContent =
-        display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
+        plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
       ghost.style.cssText =
         "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       document.body.appendChild(ghost);
@@ -224,6 +225,7 @@ export function CitationCard({
       e.stopPropagation();
       const cmd = buildSingleKeyCommand(expandedBibKey);
       const display = getDisplayText(cmd);
+      const plain = display.replace(/<[^>]+>/g, "");
       e.dataTransfer.setData("text/plain", cmd);
       e.dataTransfer.setData(
         "application/x-virgil-citation",
@@ -232,7 +234,7 @@ export function CitationCard({
       e.dataTransfer.effectAllowed = "copy";
       const ghost = document.createElement("div");
       ghost.textContent =
-        display.length > 80 ? display.slice(0, 80) + "\u2026" : display;
+        plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
       ghost.style.cssText =
         "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       document.body.appendChild(ghost);
