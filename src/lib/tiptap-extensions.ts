@@ -863,13 +863,22 @@ export const Citation = Node.create({
   },
 
   addNodeView() {
+    // Display text may contain <i> tags (e.g. book titles from \citetitle).
+    // Allow only safe inline formatting tags; strip everything else.
+    const setCitationHTML = (el: HTMLElement, text: string) => {
+      if (/<[ib]>/i.test(text)) {
+        el.innerHTML = text.replace(/<\/?(?!\/?[ib]>)[^>]+>/gi, "");
+      } else {
+        el.textContent = text;
+      }
+    };
     return ({ node }) => {
       const dom = document.createElement("span");
       dom.className = "citation-node";
       dom.dataset.type = "citation";
       dom.dataset.citationId = node.attrs.citationId || "";
       dom.contentEditable = "false";
-      dom.textContent = node.attrs.displayText || node.attrs.command || "";
+      setCitationHTML(dom, node.attrs.displayText || node.attrs.command || "");
 
       dom.addEventListener("click", (e: Event) => {
         e.preventDefault();
@@ -886,8 +895,7 @@ export const Citation = Node.create({
         update(updatedNode: any) {
           if (updatedNode.type.name !== "citation") return false;
           dom.dataset.citationId = updatedNode.attrs.citationId || "";
-          dom.textContent =
-            updatedNode.attrs.displayText || updatedNode.attrs.command || "";
+          setCitationHTML(dom, updatedNode.attrs.displayText || updatedNode.attrs.command || "");
           return true;
         },
       };

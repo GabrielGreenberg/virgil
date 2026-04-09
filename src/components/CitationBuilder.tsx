@@ -363,7 +363,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
       {preview && preview !== command && (
         <div className="text-xs text-stone-500 mb-2.5 truncate">
           <span className="text-stone-400">Preview:</span>{" "}
-          <span className="citation-preview">{preview}</span>
+          <span className="citation-preview" dangerouslySetInnerHTML={{ __html: preview.replace(/<\/?(?!\/?[ib]>)[^>]+>/gi, "") }} />
         </div>
       )}
 
