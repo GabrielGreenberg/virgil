@@ -187,7 +187,7 @@ export default function TodoPanel({
   );
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader
         title="Todo List"
         count={pending.length}

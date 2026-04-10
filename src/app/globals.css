@@ -11,7 +11,16 @@
   --accent: #7c5e3c;
   --accent-light: #f5f0ea;
   --header-h: 34px;
-  --header-bg: #f5f3ee;
+  /* Pod system */
+  --pod-editor: #ffffff;
+  --pod-panel: #f3f0eb;
+  --pod-toolbar: #f5f3ef;
+  --pod-dark: #eae6df;
+  --header-bg: #e8e5de;
+  --pod-radius: 8px;
+  --pod-gap: 10px;
+  --drag-highlight: #3b82f6;
+  --pod-border: 1px solid var(--border-light);
 }
 
 @theme inline {
@@ -872,4 +881,43 @@ body {
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
   outline: none;
+}
+
+/* ── Drag gap — invisible split handle with blue hover highlight ── */
+.drag-gap {
+  background: var(--background);
+  position: relative;
+  flex-shrink: 0;
+}
+.drag-gap::after {
+  content: '';
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--drag-highlight);
+}
+.drag-gap.dragging::after {
+  opacity: 0.5;
+}
+/* Vertical drag gap (col-resize — between panels and editor) */
+.drag-gap-v {
+  cursor: col-resize;
+}
+.drag-gap-v::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+/* Horizontal drag gap (row-resize — panel splits, editor splits) */
+.drag-gap-h {
+  cursor: row-resize;
+}
+.drag-gap-h::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  transform: translateY(-0.5px);
 }

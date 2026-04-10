@@ -356,7 +356,7 @@ function BibliographyPanel({
   const generalBibFilename = generalBibPath ? generalBibPath.split("/").pop() : null;
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader
         title="Bibliography"
         onAdd={() => setAddMenuOpen((o) => !o)}

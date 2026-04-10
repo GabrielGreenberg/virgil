@@ -273,7 +273,7 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
   /* ── Render ──────────────────────────────────────────────────────── */
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Search">
         {query && (
           <PrevNextCounter

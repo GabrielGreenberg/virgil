@@ -49,7 +49,7 @@ export const PANEL = {
   /** Sub-pod with white background (for rich-text editors, etc.). */
   subpodWhite: "rounded-md border border-stone-200 bg-white overflow-hidden",
   /** Standard panel header bar — height set by --header-h so all headers align. */
-  header: "px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 bg-[var(--header-bg)]",
+  header: "px-4 border-b border-[var(--border-light)] h-[var(--header-h)] shrink-0 bg-[var(--header-bg)]",
   /** Empty-state message. */
   empty: "p-6 text-center text-sm text-[var(--muted)]",
 } as const;
@@ -311,9 +311,11 @@ export function HSplit({
   minRatio?: number;
   maxRatio?: number;
 }) {
+  const gapRef = useRef<HTMLDivElement>(null);
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      gapRef.current?.classList.add("dragging");
       const onMove = (ev: MouseEvent) => {
         const el = containerRef.current;
         if (!el) return;
@@ -325,6 +327,7 @@ export function HSplit({
       const onUp = () => {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        gapRef.current?.classList.remove("dragging");
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -337,29 +340,18 @@ export function HSplit({
   );
 
   return (
-    <div className="relative shrink-0 z-10" style={{ height: 6 }}>
+    <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
       {/* Wider invisible hit target */}
       <div
         className="absolute inset-x-0 cursor-row-resize"
-        style={{ top: -4, height: 14, background: "transparent" }}
+        style={{ top: -4, bottom: -4, background: "transparent" }}
         onMouseDown={onMouseDown}
       />
-      {/* Visible bar — darker outline, white interior matching editor bg */}
+      {/* Drag gap — background-colored negative space with blue hover highlight */}
       <div
-        className="absolute inset-x-0 cursor-row-resize bg-white hover:bg-stone-50 border-y border-stone-300 transition-colors"
-        style={{ top: 0, height: 6 }}
+        ref={gapRef}
+        className="drag-gap drag-gap-h w-full h-full"
         onMouseDown={onMouseDown}
-      />
-      {/* Centered grip */}
-      <div
-        className="absolute left-1/2 cursor-row-resize bg-white border border-stone-300 hover:border-stone-400 transition-colors pointer-events-none z-20"
-        style={{
-          top: -3,
-          marginLeft: -16,
-          width: 33,
-          height: 10,
-          borderRadius: 2,
-        }}
       />
     </div>
   );

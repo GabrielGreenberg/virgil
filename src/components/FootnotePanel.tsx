@@ -371,7 +371,7 @@ function FootnotePanel({
   const totalCount = footnotes.length + orphanedFootnotes.length;
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader
         title="Footnotes"
         onAdd={onAdd}

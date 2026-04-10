@@ -654,7 +654,7 @@ export default function RevisionsPanel({
   if (!visible) return null;
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Revisions" count={activeGeneral.length + activeText.length}>
         <div className="flex items-center gap-2">
           {(resolvedGeneral.length + resolvedText.length) > 0 && (

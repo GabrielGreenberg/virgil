@@ -286,7 +286,7 @@ const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => Re
 function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
   const [viewMode, setViewMode] = useState<import("./ViewToggle").ViewMode>("list");
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col overflow-hidden h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <h3 className="text-sm font-semibold text-stone-700">{title}</h3>
         {hasViewToggle && <ViewToggle mode={viewMode} onChange={setViewMode} />}
@@ -332,6 +332,7 @@ function PanelColumn({
   const startX = useRef(0);
   const startWidth = useRef(0);
   const stackRef = useRef<HTMLDivElement>(null);
+  const gapRef = useRef<HTMLDivElement>(null);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     startX.current = e.clientX;
@@ -344,6 +345,7 @@ function PanelColumn({
         dragging.current = true;
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
+        gapRef.current?.classList.add("dragging");
       }
       if (!dragging.current) return;
       const delta = side === "right"
@@ -355,6 +357,7 @@ function PanelColumn({
       dragging.current = false;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      gapRef.current?.classList.remove("dragging");
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
@@ -373,53 +376,52 @@ function PanelColumn({
   } =>
     !!c && typeof c === "object" && !Array.isArray(c) && "top" in (c as object) && "bottom" in (c as object);
 
+  const podRadius = 'var(--pod-radius)';
+
   return (
-    <div className="relative flex shrink-0 h-full" style={{ width }}>
-      {/* Panel content area */}
-      <div className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}>
-        {split && isSplitChildren(children) ? (
-          <div ref={stackRef} className="flex flex-col h-full min-h-0">
-            <div
-              className={`min-h-0 overflow-hidden ${focusedHalf === "top" ? "panel-half-focused" : ""}`}
-              style={{ flex: `${children.ratio} 1 0`, minHeight: 0 }}
-              onMouseDown={() => onFocusHalf?.("top")}
-            >
-              {children.top}
-            </div>
-            <HSplit
-              ratio={children.ratio}
-              onRatioChange={children.onRatioChange}
-              containerRef={stackRef}
-            />
-            <div
-              className={`min-h-0 overflow-hidden ${focusedHalf === "bottom" ? "panel-half-focused" : ""}`}
-              style={{ flex: `${1 - children.ratio} 1 0`, minHeight: 0 }}
-              onMouseDown={() => onFocusHalf?.("bottom")}
-            >
-              {children.bottom}
-            </div>
+    <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)' }}>
+      {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
+      {split && isSplitChildren(children) ? (
+        /* When split, each half is its own pod so the gap reveals the canvas */
+        <div
+          ref={stackRef}
+          className={`flex-1 min-w-0 flex flex-col min-h-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
+        >
+          <div
+            className={`min-h-0 overflow-hidden ${focusedHalf === "top" ? "panel-half-focused" : ""}`}
+            style={{ flex: `${children.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            onMouseDown={() => onFocusHalf?.("top")}
+          >
+            {children.top}
           </div>
-        ) : (
-          (children as React.ReactNode)
-        )}
-      </div>
-      {/* Edge border — continuous line */}
+          <HSplit
+            ratio={children.ratio}
+            onRatioChange={children.onRatioChange}
+            containerRef={stackRef}
+          />
+          <div
+            className={`min-h-0 overflow-hidden ${focusedHalf === "bottom" ? "panel-half-focused" : ""}`}
+            style={{ flex: `${1 - children.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            onMouseDown={() => onFocusHalf?.("bottom")}
+          >
+            {children.bottom}
+          </div>
+        </div>
+      ) : (
+        <div
+          className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}
+          style={{ background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+        >
+          {(children as React.ReactNode)}
+        </div>
+      )}
+      {/* Drag gap — invisible col-resize with blue highlight on hover */}
       <div
-        className={`shrink-0 cursor-col-resize ${side === "left" ? "order-2" : "order-1"}`}
-        style={{ width: 1, background: "#e5e2dd" }}
+        ref={gapRef}
+        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2" : "order-1"}`}
+        style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />
-      {/* Oval drag handle — centered on the border line */}
-      <div
-        className={`absolute z-20 ${side === "left" ? "-right-[4px]" : "-left-[4px]"}`}
-        style={{ top: "50%", transform: "translateY(-50%)" }}
-      >
-        <div
-          className="cursor-col-resize bg-white border border-[var(--border)] hover:border-stone-400 transition-colors"
-          style={{ width: 8, height: 40, borderRadius: 4 }}
-          onMouseDown={onMouseDown}
-        />
-      </div>
     </div>
   );
 }
@@ -449,10 +451,12 @@ function SplitEditorPanes({
   onMirrorViewReady?: (view: import("prosemirror-view").EditorView | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const editorGapRef = useRef<HTMLDivElement>(null);
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
+      editorGapRef.current?.classList.add("dragging");
       const onMove = (ev: MouseEvent) => {
         const el = containerRef.current;
         if (!el) return;
@@ -464,6 +468,7 @@ function SplitEditorPanes({
       const onUp = () => {
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        editorGapRef.current?.classList.remove("dragging");
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
@@ -477,28 +482,30 @@ function SplitEditorPanes({
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-w-0 min-h-0">
-      {/* Top pane — canonical TipTap view */}
+      {/* Top pane — own white pod */}
       <div
-        className="relative flex flex-col min-w-0 min-h-0"
-        style={{ flex: `${ratio} 1 0` }}
+        className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
+        style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}
       >
         {canonical}
       </div>
-      {/* Horizontal divider */}
-      <div
-        className="relative shrink-0 cursor-row-resize bg-stone-50 hover:bg-stone-100 border-y border-stone-300 transition-colors z-10"
-        style={{ height: 6 }}
-        onMouseDown={onMouseDown}
-      >
+      {/* Drag gap — canvas shows between the two editor pods */}
+      <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
         <div
-          className="absolute left-1/2 bg-white border border-stone-300 hover:border-stone-400 transition-colors pointer-events-none z-20"
-          style={{ top: -3, height: 10, width: 33, borderRadius: 2, transform: "translateX(-50%)" }}
+          className="absolute inset-x-0 cursor-row-resize"
+          style={{ top: -4, bottom: -4, background: "transparent" }}
+          onMouseDown={onMouseDown}
+        />
+        <div
+          ref={editorGapRef}
+          className="drag-gap drag-gap-h w-full h-full"
+          onMouseDown={onMouseDown}
         />
       </div>
-      {/* Bottom pane — EditorMirror */}
+      {/* Bottom pane — own white pod */}
       <div
-        className="flex flex-col min-w-0 min-h-0"
-        style={{ flex: `${1 - ratio} 1 0` }}
+        className="flex flex-col min-w-0 min-h-0 overflow-hidden"
+        style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}
       >
         <EditorMirror
           editor={editorInstance}
@@ -902,19 +909,19 @@ export default function EditorLayout() {
     setActiveHalf,
     toggleSplit,
     setSplitRatio,
+    setEditorSplit,
+    setEditorSplitRatio,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
+
+  const editorSplit = prefs.editorSplit;
+  const editorSplitRatio = prefs.editorSplitRatio;
 
   // Which half (top or bottom) is currently focused on each side. Used to
   // route strip-icon clicks when the side is split. Session-only state.
   const [focusedHalfLeft, setFocusedHalfLeft] = useState<Half>("top");
   const [focusedHalfRight, setFocusedHalfRight] = useState<Half>("top");
-
-  // Session-only main-editor split: when true, the editor column shows
-  // two independently-scrolling views of the same ProseMirror state.
-  const [editorSplit, setEditorSplit] = useState(false);
-  const [editorSplitRatio, setEditorSplitRatio] = useState(0.5);
   // Which pane last received focus — used to route panel interactions
   // (outline clicks, note jumps, etc.) to the pane the user is in.
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
@@ -3352,18 +3359,7 @@ export default function EditorLayout() {
         />
       )}
 
-      {/* Path bar */}
-      {currentDoc && docPermState === "granted" && (
-        <div className="flex items-center px-3 py-0.5 border-b border-[var(--border)] bg-stone-50/40">
-          <span className="text-[11px] text-[var(--muted-light)] truncate">
-            <span className="font-semibold text-[var(--muted)]">{currentDoc.folderName}</span>
-            /{currentDoc.texFilename}
-          </span>
-          {saveLabel && (
-            <span className="ml-auto text-[11px] text-[var(--muted-light)] shrink-0">{saveLabel}</span>
-          )}
-        </div>
-      )}
+      {/* Path bar removed — podification */}
 
       {/* Main area */}
       {currentDoc && docPermState !== "granted" ? null : codeView && currentDocId ? (
@@ -3426,7 +3422,7 @@ export default function EditorLayout() {
 
 
         {/* Left icon strip */}
-        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 border-r border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-stone-50/30 shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
             {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
@@ -3441,13 +3437,6 @@ export default function EditorLayout() {
                   : <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
                 }
               </svg>
-            </button>
-            <button
-              onClick={() => { if (activeLeft !== "blank") setActiveLeft("blank"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-              title="Blank panel"
-            >
-              <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
             </button>
             {/* OmniView — square like Blank, but with lines inside.
                 Shows all left-side elements (footnotes, citations, quotes). */}
@@ -3487,8 +3476,16 @@ export default function EditorLayout() {
         {/* Left panel column (single or split, only rendered when active) */}
         {renderPanelColumn("left")}
 
-        {/* Editor column: toolbar + content */}
-        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`}>
+        {/* Editor column: toolbar pod + gap + editor pod + breadcrumb
+            When panels are collapsed, extra padding absorbs the space so the
+            editor pod stays roughly centered at the same width. */}
+        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`} style={{
+          paddingTop: 'var(--pod-gap)',
+          paddingBottom: 'var(--pod-gap)',
+          paddingLeft: activeLeft ? 'var(--pod-gap)' : (prefs.panelWidths.left || 320) + 6,
+          paddingRight: activeRight ? 'var(--pod-gap)' : (prefs.panelWidths.right || 320) + 6,
+        }}>
+          {/* Toolbar pod */}
           <MenuBar
             editor={editorInstance}
             onAddComment={handleAddComment}
@@ -3504,8 +3501,11 @@ export default function EditorLayout() {
             onToggleEditorSplit={() => setEditorSplit((s) => !s)}
             activeSplitPane={editorSplit ? activeSplitPane : undefined}
           />
+          {/* Gap between toolbar pod and editor pod */}
+          <div className="shrink-0" style={{ height: 'var(--pod-gap)' }} />
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
+              /* When split, each pane is its own pod so the gap reveals the canvas */
               <SplitEditorPanes
                 editorInstance={editorInstance}
                 ratio={editorSplitRatio}
@@ -3537,7 +3537,8 @@ export default function EditorLayout() {
                 }
               />
             ) : (
-              <>
+              /* Single editor — one white pod */
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
                 <VirgilEditor
                   ref={editorRef}
                   initialContent={content}
@@ -3555,17 +3556,17 @@ export default function EditorLayout() {
                   markers={marginaliaMarkers}
                   panelSides={marginaliaPanelSides}
                 />
-              </>
+              </div>
             )
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
-              {docLoading ? "Loading..." : ""}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
+              <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
+                {docLoading ? "Loading..." : ""}
+              </div>
             </div>
           )}
-          {/* Section breadcrumb stripe — tracks the topmost heading
-              currently visible in the editor viewport. Anchored to
-              the bottom of the editor column. */}
-          <div className="shrink-0 flex items-center px-3 py-0.5 border-t border-[var(--border)] bg-stone-50/40">
+          {/* Section breadcrumb — plain text on canvas, no pod */}
+          <div className="shrink-0 flex items-center px-3 py-0.5">
             <span className="text-[11px] text-[var(--muted-light)] truncate">
               {currentSectionPath.length === 0 ? (
                 <span className="italic">Document start</span>
@@ -3587,7 +3588,7 @@ export default function EditorLayout() {
         {renderPanelColumn("right")}
 
         {/* Right icon strip */}
-        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 border-l border-[var(--border)] bg-stone-50/30 shrink-0 gap-1.5">
+        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-stone-50/30 shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
             {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
@@ -3602,13 +3603,6 @@ export default function EditorLayout() {
                   : <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
                 }
               </svg>
-            </button>
-            <button
-              onClick={() => { if (activeRight !== "blank") setActiveRight("blank"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
-              title="Blank panel"
-            >
-              <div className="w-[14px] h-[14px] rounded-[2px] border-[1.5px] border-current" />
             </button>
             {/* OmniView — square like Blank, but with lines inside.
                 Shows all right-side elements (notes, revisions, cuts, archive). */}

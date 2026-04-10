@@ -24,6 +24,10 @@ export interface ViewPrefs {
   splitLeftRatio: number;
   splitRightRatio: number;
   panelWidths: Record<string, number>; // keyed by `${side}-${panelId}`
+  /** Whether the main editor is split into two panes. */
+  editorSplit: boolean;
+  /** 0..1 — top pane ratio when editor is split. */
+  editorSplitRatio: number;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -52,6 +56,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   splitLeftRatio: 0.5,
   splitRightRatio: 0.5,
   panelWidths: {},
+  editorSplit: false,
+  editorSplitRatio: 0.5,
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -259,6 +265,14 @@ export function useViewPrefs() {
       : { ...p, splitRightRatio: clamped }));
   }, [update]);
 
+  const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
+  }, [update]);
+
+  const setEditorSplitRatio = useCallback((ratio: number) => {
+    update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
+  }, [update]);
+
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
@@ -279,5 +293,7 @@ export function useViewPrefs() {
     setActiveHalf,
     toggleSplit,
     setSplitRatio,
+    setEditorSplit,
+    setEditorSplitRatio,
   };
 }

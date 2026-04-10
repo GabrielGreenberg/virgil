@@ -159,11 +159,11 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
   if (!editor) return null;
 
   return (
-    <div className="flex items-center border-b border-[var(--border)] bg-white h-[var(--header-h)] min-w-0">
+    <div className="flex items-center bg-[var(--pod-toolbar)] h-[var(--header-h)] min-w-0" style={{ borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
       {/* Scrollable toolbar region */}
       <div className="relative flex-1 min-w-0">
         {canScrollLeft && (
-          <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-white to-transparent z-10 pointer-events-none" />
+          <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[var(--pod-toolbar)] to-transparent z-10 pointer-events-none" />
         )}
         <div ref={scrollRef} className="flex items-center gap-1 overflow-x-auto px-3 toolbar-scroll [&>*]:shrink-0">
       <Btn
@@ -312,7 +312,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
 
         </div>
         {canScrollRight && (
-          <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-white to-transparent z-10 pointer-events-none" />
+          <div className="absolute right-0 top-0 bottom-0 w-6 bg-gradient-to-l from-[var(--pod-toolbar)] to-transparent z-10 pointer-events-none" />
         )}
       </div>
 
