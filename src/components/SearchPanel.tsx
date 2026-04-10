@@ -279,8 +279,6 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
           <PrevNextCounter
             current={selectedIdx}
             total={results.length}
-            onPrev={goPrev}
-            onNext={goNext}
             label="results"
           />
         )}

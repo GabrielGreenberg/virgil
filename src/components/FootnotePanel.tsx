@@ -380,8 +380,6 @@ function FootnotePanel({
         <PrevNextCounter
           current={cycleIdx}
           total={footnotes.length}
-          onPrev={cyclePrev}
-          onNext={cycleNext}
           label=""
         />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />

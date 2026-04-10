@@ -118,8 +118,6 @@ function ArchivePanel({
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredSnippets.length}
-          onPrev={cyclePrev}
-          onNext={cycleNext}
           label="anchored"
         />
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />

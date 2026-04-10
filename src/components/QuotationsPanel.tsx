@@ -896,8 +896,6 @@ export default function QuotationsPanel({
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredGroups.length}
-          onPrev={cyclePrev}
-          onNext={cycleNext}
           label=""
         />
       </PanelHeader>

@@ -310,13 +310,14 @@ function PanelColumn({
   onWidthChange,
   children,
   split,
+  collapsed,
   focusedHalf,
   onFocusHalf,
 }: {
   side: "left" | "right";
   width: number;
   onWidthChange: (w: number) => void;
-  children:
+  children?:
     | React.ReactNode
     | {
         top: React.ReactNode;
@@ -325,6 +326,7 @@ function PanelColumn({
         onRatioChange: (r: number) => void;
       };
   split?: boolean;
+  collapsed?: boolean;
   focusedHalf?: "top" | "bottom";
   onFocusHalf?: (half: "top" | "bottom") => void;
 }) {
@@ -381,30 +383,33 @@ function PanelColumn({
   return (
     <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)' }}>
       {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
-      {split && isSplitChildren(children) ? (
+      {collapsed ? (
+        /* Collapsed: empty placeholder preserving layout space */
+        <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
+      ) : split && isSplitChildren(children) ? (
         /* When split, each half is its own pod so the gap reveals the canvas */
         <div
           ref={stackRef}
           className={`flex-1 min-w-0 flex flex-col min-h-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
         >
           <div
-            className={`min-h-0 overflow-hidden ${focusedHalf === "top" ? "panel-half-focused" : ""}`}
-            style={{ flex: `${children.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            className="min-h-0 overflow-hidden"
+            style={{ flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
             onMouseDown={() => onFocusHalf?.("top")}
           >
-            {children.top}
+            {children!.top}
           </div>
           <HSplit
-            ratio={children.ratio}
-            onRatioChange={children.onRatioChange}
+            ratio={children!.ratio}
+            onRatioChange={children!.onRatioChange}
             containerRef={stackRef}
           />
           <div
-            className={`min-h-0 overflow-hidden ${focusedHalf === "bottom" ? "panel-half-focused" : ""}`}
-            style={{ flex: `${1 - children.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            className="min-h-0 overflow-hidden"
+            style={{ flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
             onMouseDown={() => onFocusHalf?.("bottom")}
           >
-            {children.bottom}
+            {children!.bottom}
           </div>
         </div>
       ) : (
@@ -415,11 +420,11 @@ function PanelColumn({
           {(children as React.ReactNode)}
         </div>
       )}
-      {/* Drag gap — invisible col-resize with blue highlight on hover */}
+      {/* Drag gap — spans full gutter between panel pod and editor pod */}
       <div
         ref={gapRef}
         className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2" : "order-1"}`}
-        style={{ width: 'var(--pod-gap)' }}
+        style={{ width: 'calc(var(--pod-gap) * 2)' }}
         onMouseDown={onMouseDown}
       />
     </div>
@@ -3121,8 +3126,8 @@ export default function EditorLayout() {
     return <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />;
   }
 
-  // Render a side's panel column (single or split). Returns null if
-  // the side has nothing to show.
+  // Render a side's panel column. Always returns a PanelColumn so the
+  // editor's flex context never changes — collapsed slots reserve space.
   function renderPanelColumn(side: Side): React.ReactNode {
     const top = side === "left" ? activeLeft : activeRight;
     const bottom = side === "left" ? prefs.activeLeftBottom : prefs.activeRightBottom;
@@ -3130,10 +3135,13 @@ export default function EditorLayout() {
     const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
     const setFocused = side === "left" ? setFocusedHalfLeft : setFocusedHalfRight;
 
-    if (!top && !bottom) return null;
-
     const width = getPanelWidth(side, top ?? "blank");
     const onWidthChange = (w: number) => setPanelWidth(side, top ?? "blank", w);
+
+    if (!top && !bottom) {
+      // Collapsed — reserve space but show nothing
+      return <PanelColumn side={side} width={width} onWidthChange={onWidthChange} collapsed />;
+    }
 
     if (bottom != null) {
       // Split mode
@@ -3156,11 +3164,10 @@ export default function EditorLayout() {
       );
     }
 
-    // Single mode — top must be non-null because of the early return above
-    if (!top) return null;
+    // Single mode
     return (
       <PanelColumn side={side} width={width} onWidthChange={onWidthChange}>
-        {renderPanelInner(top, side)}
+        {renderPanelInner(top!, side)}
       </PanelColumn>
     );
   }
@@ -3185,13 +3192,13 @@ export default function EditorLayout() {
       )}
 
       {/* Top bar: logo + tabs */}
-      <div className={`flex items-center border-b border-[var(--border)] bg-[var(--background)] ${
+      <div className={`flex items-center relative bg-white top-bar-border ${
         suggestionPanelVisible ? "mt-10" : ""
       }`}>
         {/* Logo + file buttons + tabs — all bottom-aligned */}
-        <div className="flex items-end flex-1 min-w-0 overflow-hidden gap-0.5 px-2 self-end">
+        <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
           {/* VIRGIL + file icons as first "tab-like" items */}
-          <div className="flex items-center gap-1.5 px-3 pt-2 pb-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
             <h1
               className="text-[var(--accent)] text-base font-semibold tracking-widest mr-1"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
@@ -3230,10 +3237,10 @@ export default function EditorLayout() {
           {openTabs.map((doc) => (
             <div
               key={doc.id}
-              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-2 pb-1.5 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
+              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-1 pb-1 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
                 doc.id === currentDocId
-                  ? "bg-white text-stone-800 border border-[var(--border)] border-b-white -mb-px z-10"
-                  : "bg-stone-100/60 text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+                  ? "bg-[var(--background)] text-stone-800 border border-[var(--border)] border-b-[var(--background)] -mb-px z-10"
+                  : "text-[var(--muted)] hover:bg-stone-100/60 hover:text-stone-600"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
@@ -3473,17 +3480,15 @@ export default function EditorLayout() {
           ))}
         </div>
 
-        {/* Left panel column (single or split, only rendered when active) */}
+        {/* Left panel column (always present; collapsed when inactive) */}
         {renderPanelColumn("left")}
 
-        {/* Editor column: toolbar pod + gap + editor pod + breadcrumb
-            When panels are collapsed, extra padding absorbs the space so the
-            editor pod stays roughly centered at the same width. */}
+        {/* Editor column: toolbar pod + gap + editor pod + breadcrumb.
+            Panel slots are always present in the flex layout (collapsed or not),
+            so the editor's position never changes. */}
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
-          paddingLeft: activeLeft ? 'var(--pod-gap)' : (prefs.panelWidths.left || 320) + 6,
-          paddingRight: activeRight ? 'var(--pod-gap)' : (prefs.panelWidths.right || 320) + 6,
         }}>
           {/* Toolbar pod */}
           <MenuBar
@@ -3584,7 +3589,7 @@ export default function EditorLayout() {
           </div>
         </div>
 
-        {/* Right panel column (single or split, only rendered when active) */}
+        {/* Right panel column (always present; collapsed when inactive) */}
         {renderPanelColumn("right")}
 
         {/* Right icon strip */}

@@ -365,8 +365,6 @@ function BibliographyPanel({
         <PrevNextCounter
           current={selectedIdx >= 0 ? selectedIdx : null}
           total={sortedEntries.length}
-          onPrev={goPrev}
-          onNext={goNext}
           label=""
         />
         <div className="flex items-center gap-1">

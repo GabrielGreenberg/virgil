@@ -182,8 +182,6 @@ export default function NotesPanel({
         <PrevNextCounter
           current={idx}
           total={sortedNotes.length}
-          onPrev={prev}
-          onNext={next}
           label="notes"
         />
       </PanelHeader>

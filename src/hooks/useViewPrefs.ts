@@ -20,6 +20,9 @@ export interface ViewPrefs {
   /** Bottom half — null when the side is not split. */
   activeLeftBottom: PanelId | null;
   activeRightBottom: PanelId | null;
+  /** Stashed panel state for restore on expand after collapse. */
+  _stashedLeft?: { top: PanelId; bottom: PanelId | null } | null;
+  _stashedRight?: { top: PanelId; bottom: PanelId | null } | null;
   /** 0..1 — top half height ratio when the side is split. */
   splitLeftRatio: number;
   splitRightRatio: number;
@@ -134,15 +137,28 @@ export function useViewPrefs() {
   }, [update]);
 
   const collapseLeft = useCallback(() => {
-    update((p) => ({ ...p, activeLeft: null }));
+    update((p) => ({
+      ...p,
+      _stashedLeft: p.activeLeft ? { top: p.activeLeft, bottom: p.activeLeftBottom } : null,
+      activeLeft: null,
+      activeLeftBottom: null,
+    }));
   }, [update]);
 
   const collapseRight = useCallback(() => {
-    update((p) => ({ ...p, activeRight: null }));
+    update((p) => ({
+      ...p,
+      _stashedRight: p.activeRight ? { top: p.activeRight, bottom: p.activeRightBottom } : null,
+      activeRight: null,
+      activeRightBottom: null,
+    }));
   }, [update]);
 
   const expandLeft = useCallback(() => {
     update((p) => {
+      if (p._stashedLeft) {
+        return { ...p, activeLeft: p._stashedLeft.top, activeLeftBottom: p._stashedLeft.bottom, _stashedLeft: null };
+      }
       const leftItems = p.placements.filter((pl) => pl.side === "left");
       return { ...p, activeLeft: leftItems[0]?.id || null };
     });
@@ -150,6 +166,9 @@ export function useViewPrefs() {
 
   const expandRight = useCallback(() => {
     update((p) => {
+      if (p._stashedRight) {
+        return { ...p, activeRight: p._stashedRight.top, activeRightBottom: p._stashedRight.bottom, _stashedRight: null };
+      }
       const rightItems = p.placements.filter((pl) => pl.side === "right");
       return { ...p, activeRight: rightItems[0]?.id || null };
     });

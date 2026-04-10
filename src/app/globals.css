@@ -873,9 +873,18 @@ body {
   font-size: var(--panel-header-size, 14px);
 }
 
-/* Sidebar split — subtle ring on the focused half */
-.panel-half-focused {
-  box-shadow: inset 2px 0 0 0 var(--accent);
+/* Sidebar split — no visual indicator for focused half */
+
+/* Top bar border — drawn as a pseudo-element so active tabs can overlap it */
+.top-bar-border::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+  z-index: 0;
 }
 
 /* Editor mirror — match canonical view scroll behavior */

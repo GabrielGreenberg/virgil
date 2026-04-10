@@ -602,8 +602,6 @@ function CitationsPanel({
           <PrevNextCounter
             current={cycleIdx}
             total={orderedCitations.length}
-            onPrev={cyclePrev}
-            onNext={cycleNext}
             label=""
           />
           <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
