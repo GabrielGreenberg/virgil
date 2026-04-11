@@ -292,6 +292,7 @@ export const DisplayMath = Node.create({
   addAttributes() {
     return {
       latex: { default: "" },
+      uuid: { default: null, rendered: false },
     };
   },
 
@@ -574,6 +575,7 @@ export const LatexComment = Node.create({
   addAttributes() {
     return {
       text: { default: "" },
+      uuid: { default: null, rendered: false },
     };
   },
 

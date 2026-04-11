@@ -519,11 +519,20 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
     if (rest.startsWith("\\[")) {
       const endMath = ctx.src.indexOf("\\]", ctx.pos + 2);
       if (endMath !== -1) {
+        const latex = ctx.src.slice(ctx.pos + 2, endMath).trim();
+        ctx.pos = endMath + 2;
+        // Check for trailing %!v:xxxx UUID anchor
+        let mathUuid: string | null = null;
+        const afterMath = ctx.src.slice(ctx.pos);
+        const uuidMatch = afterMath.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        if (uuidMatch) {
+          mathUuid = uuidMatch[1];
+          ctx.pos += uuidMatch[0].length;
+        }
         parent.content.push({
           type: "displayMath",
-          attrs: { latex: ctx.src.slice(ctx.pos + 2, endMath).trim() },
+          attrs: { latex, ...(mathUuid ? { uuid: mathUuid } : {}) },
         });
-        ctx.pos = endMath + 2;
         continue;
       }
     }
@@ -618,13 +627,15 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         continue;
       }
       const eol = ctx.src.indexOf("\n", ctx.pos);
-      const commentText = eol !== -1
+      const rawComment = eol !== -1
         ? ctx.src.slice(ctx.pos + 1, eol).trim()
         : ctx.src.slice(ctx.pos + 1).trim();
       ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
+      // Strip trailing %!v:xxxx UUID anchor from comment text
+      const { text: commentText, uuid: commentUuid } = stripUuidAnchor(rawComment);
       parent.content.push({
         type: "latexComment",
-        attrs: { text: commentText },
+        attrs: { text: commentText, ...(commentUuid ? { uuid: commentUuid } : {}) },
       });
       continue;
     }
