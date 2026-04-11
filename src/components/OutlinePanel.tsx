@@ -85,39 +85,35 @@ function resolvePosition(
   };
 }
 
-function PositionChevron({ label }: { label?: string }) {
+function PositionMarker({ label }: { label?: string }) {
   return (
     <span
       className="inline-flex items-center align-middle ml-1.5 text-red-500"
       title="Currently on screen"
     >
       <svg
-        width="6"
-        height="10"
-        viewBox="0 0 6 10"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+        width="7"
+        height="7"
+        viewBox="0 0 7 7"
+        fill="currentColor"
         className="shrink-0"
       >
-        <path d="M5 1 L1 5 L5 9" />
+        <rect width="7" height="7" rx="2" ry="2" />
       </svg>
       {label != null && (
-        <span className="text-[9px] font-bold leading-none -ml-px">{label}</span>
+        <span className="text-[9px] font-bold leading-none ml-1">{label}</span>
       )}
     </span>
   );
 }
 
-/** Render 0, 1, or 2 position chevrons based on which panes match. */
+/** Render 0, 1, or 2 position markers based on which panes match. */
 function PositionIndicators({ match1, match2, editorSplit }: { match1: boolean; match2: boolean; editorSplit: boolean }) {
   if (!match1 && !match2) return null;
   return (
     <>
-      {match1 && <PositionChevron label={editorSplit ? "1" : undefined} />}
-      {match2 && <PositionChevron label={editorSplit ? "2" : undefined} />}
+      {match1 && <PositionMarker label={editorSplit ? "1" : undefined} />}
+      {match2 && <PositionMarker label={editorSplit ? "2" : undefined} />}
     </>
   );
 }
