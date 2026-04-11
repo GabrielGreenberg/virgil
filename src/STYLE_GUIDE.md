@@ -87,6 +87,31 @@ Children (counters, toggles, extra buttons) are right-aligned via flex spacer.
 
 ---
 
+## Top Bar
+
+The top bar uses `--topbar-bg` (`#e5e4e1`), a warm-neutral shade close to
+panel headers (`#e8e5de`) but slightly cooler (red-blue spread 4 vs 10).
+
+### Background & Border
+- Container: `bg-[var(--topbar-bg)]`
+- Bottom border: hardcoded `#d5d3ce` in `.top-bar-border::after`
+
+### Default Icon/Text
+All non-logo elements use `text-stone-500` (not `var(--muted)`) for
+sufficient contrast on the darker background.
+
+### Hover Convention
+Buttons **lighten** on hover (opposite of white-background panels):
+- Generic buttons: `hover:bg-white/30 hover:text-[var(--accent)]`
+- AI button: `hover:bg-amber-50/50 hover:text-amber-700`
+- Never use `hover:bg-stone-100` (darkening) on the top bar
+
+### Active Tab
+Active tabs retain `bg-[var(--background)]` — the lighter surface pops
+against the darker bar.
+
+---
+
 ## Navigation Controls
 
 ### Prev/Next Chevrons
@@ -229,6 +254,7 @@ after `requestAnimationFrame`.
 | `var(--border-light)` | `#efecea` | Subtle/inner borders |
 | `var(--background)` | `#faf9f7` | Canvas background |
 | `var(--header-bg)` | `#e8e5de` | Panel header background |
+| `var(--topbar-bg)` | `#e5e4e1` | Top bar background (cooler than header) |
 | `var(--header-h)` | `34px` | Panel header height |
 
 ### Category Colors (badges, markers)
