@@ -245,8 +245,6 @@ function walkBlockJson(node: JSONContent): Record<Category, number> {
     mainText: [],
     headings: [],
     footnotes: [],
-    blockquotes: [],
-    lists: [],
     math: [],
     comments: [],
   };
@@ -282,14 +280,11 @@ function walkBlockJson(node: JSONContent): Record<Category, number> {
         collectInline(n, cats.headings);
         return;
       case "blockquote":
-        if (n.content) for (const child of n.content) walkBlock(child, "blockquotes");
+        if (n.content) for (const child of n.content) walkBlock(child, ctx);
         return;
       case "bulletList":
       case "orderedList":
-        if (n.content) {
-          const childCtx: Category = ctx === "blockquotes" ? "blockquotes" : "lists";
-          for (const child of n.content) walkBlock(child, childCtx);
-        }
+        if (n.content) for (const child of n.content) walkBlock(child, ctx);
         return;
       case "listItem":
         if (n.content) for (const child of n.content) walkBlock(child, ctx);

@@ -21,8 +21,6 @@ const CATEGORY_LABELS: Record<string, string> = {
   mainText: "Main Text",
   headings: "Headings",
   footnotes: "Footnotes",
-  blockquotes: "Block Quotes",
-  lists: "Lists",
   math: "Math",
   comments: "Comments",
 };
@@ -40,15 +38,13 @@ function countSentences(text: string): number {
   return matches ? matches.length : text.trim() ? 1 : 0;
 }
 
-type Category = "mainText" | "headings" | "footnotes" | "blockquotes" | "lists" | "math" | "comments";
+type Category = "mainText" | "headings" | "footnotes" | "math" | "comments";
 
 function walkDoc(doc: PmNode): WordCounts {
   const cats: Record<Category, string[]> = {
     mainText: [],
     headings: [],
     footnotes: [],
-    blockquotes: [],
-    lists: [],
     math: [],
     comments: [],
   };
@@ -84,12 +80,12 @@ function walkDoc(doc: PmNode): WordCounts {
         break;
 
       case "blockquote":
-        node.forEach((child) => walkBlock(child, "blockquotes"));
+        node.forEach((child) => walkBlock(child, ctx));
         break;
 
       case "bulletList":
       case "orderedList":
-        node.forEach((child) => walkBlock(child, ctx === "blockquotes" ? "blockquotes" : "lists"));
+        node.forEach((child) => walkBlock(child, ctx));
         break;
 
       case "listItem":
