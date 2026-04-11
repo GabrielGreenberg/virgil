@@ -8,7 +8,7 @@ import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
 import NotesPanel from "./NotesPanel";
-import OutlinePanel from "./OutlinePanel";
+import OutlinePanel, { type SectionPathEntry } from "./OutlinePanel";
 import TodoPanel from "./TodoPanel";
 import ArchivePanel from "./ArchivePanel";
 import ArchiveConnectors from "./ArchiveConnectors";
@@ -1314,7 +1314,7 @@ export default function EditorLayout() {
   // their viewport-relative positions are measured, and we pick the
   // last one whose top is above (or at) a reference line just below
   // the toolbar. Recomputes on scroll, doc change, and resize.
-  const [currentSectionPath, setCurrentSectionPath] = useState<string[]>([]);
+  const [currentSectionPath, setCurrentSectionPath] = useState<SectionPathEntry[]>([]);
   // Top-level block index of the paragraph/list whose parTitle the
   // reader has most recently scrolled past within the current section.
   // Resets whenever a new heading is crossed. null when none.
@@ -1338,8 +1338,8 @@ export default function EditorLayout() {
       // animates straight to it.
       const referenceY = scrollRect.top + scrollRect.height / 2;
 
-      const stack: { level: number; text: string }[] = [];
-      let lastCrossedStack: { level: number; text: string }[] = [];
+      const stack: { level: number; text: string; index: number }[] = [];
+      let lastCrossedStack: { level: number; text: string; index: number }[] = [];
       // Track the last parTitle paragraph whose top has scrolled past
       // the reference line, within the current section scope. Reset
       // whenever a heading is crossed.
@@ -1366,7 +1366,7 @@ export default function EditorLayout() {
             while (stack.length > 0 && stack[stack.length - 1].level >= level) {
               stack.pop();
             }
-            stack.push({ level, text: node.textContent || "Untitled" });
+            stack.push({ level, text: node.textContent || "Untitled", index });
             lastCrossedStack = [...stack];
             // New section scope — clear any active parTitle from the
             // previous section so we re-scan within this one.
@@ -1397,9 +1397,9 @@ export default function EditorLayout() {
         }
       });
 
-      const path = lastCrossedStack.map((s) => s.text);
+      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index }));
       setCurrentSectionPath((prev) => {
-        if (prev.length === path.length && prev.every((v, i) => v === path[i])) {
+        if (prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index)) {
           return prev;
         }
         return path;
@@ -1429,7 +1429,7 @@ export default function EditorLayout() {
 
   // Mirror (second pane) position tracking — same logic as above but
   // scoped to the mirror ProseMirror view's scroll container.
-  const [mirrorSectionPath, setMirrorSectionPath] = useState<string[]>([]);
+  const [mirrorSectionPath, setMirrorSectionPath] = useState<SectionPathEntry[]>([]);
   const [mirrorParTitleIndex, setMirrorParTitleIndex] = useState<number | null>(null);
   // Re-run when the mirror view is (re)created: we store a generation
   // counter that bumps whenever onMirrorViewReady fires.
@@ -1449,8 +1449,8 @@ export default function EditorLayout() {
       const scrollRect = scrollEl.getBoundingClientRect();
       const referenceY = scrollRect.top + scrollRect.height / 2;
 
-      const stack: { level: number; text: string }[] = [];
-      let lastCrossedStack: { level: number; text: string }[] = [];
+      const stack: { level: number; text: string; index: number }[] = [];
+      let lastCrossedStack: { level: number; text: string; index: number }[] = [];
       let activeParTitleIdx: number | null = null;
 
       doc.forEach((node, offset, index) => {
@@ -1461,7 +1461,7 @@ export default function EditorLayout() {
           if (headingTop == null) return;
           if (headingTop <= referenceY) {
             while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
-            stack.push({ level, text: node.textContent || "Untitled" });
+            stack.push({ level, text: node.textContent || "Untitled", index });
             lastCrossedStack = [...stack];
             activeParTitleIdx = null;
           }
@@ -1477,9 +1477,9 @@ export default function EditorLayout() {
         }
       });
 
-      const path = lastCrossedStack.map((s) => s.text);
+      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index }));
       setMirrorSectionPath((prev) =>
-        prev.length === path.length && prev.every((v, i) => v === path[i]) ? prev : path,
+        prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index) ? prev : path,
       );
       setMirrorParTitleIndex((prev) => (prev === activeParTitleIdx ? prev : activeParTitleIdx));
     };
@@ -3712,11 +3712,11 @@ export default function EditorLayout() {
               {currentSectionPath.length === 0 ? (
                 <span className="italic">Document start</span>
               ) : (
-                currentSectionPath.map((t, i) => (
+                currentSectionPath.map((entry, i) => (
                   <span key={i}>
                     {i > 0 && <span className="mx-1 text-[var(--muted-light)]">›</span>}
                     <span className={i === currentSectionPath.length - 1 ? "font-semibold text-[var(--muted)]" : ""}>
-                      {t}
+                      {entry.text}
                     </span>
                   </span>
                 ))
