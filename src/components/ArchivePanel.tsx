@@ -197,11 +197,12 @@ function ArchivePanel({
   }, []);
 
   const handleDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
-    e.dataTransfer.setData("text/plain", snippet.text);
+    const plain = richJsonToPlainText(snippet.content) || "";
+    e.dataTransfer.setData("text/plain", plain);
     e.dataTransfer.setData(MIME_ARCHIVE, snippet.id);
     e.dataTransfer.effectAllowed = "move";
     const ghost = document.createElement("div");
-    ghost.textContent = snippet.text.length > 80 ? snippet.text.slice(0, 80) + "\u2026" : snippet.text;
+    ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
     ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f5f5f4;border:1px solid #d6d3d1;border-radius:4px;font-size:12px;color:#44403c;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 10, 14);
