@@ -1436,6 +1436,78 @@ export default function EditorLayout() {
     };
   }, [editorInstance]);
 
+  // Mirror (second pane) position tracking — same logic as above but
+  // scoped to the mirror ProseMirror view's scroll container.
+  const [mirrorSectionPath, setMirrorSectionPath] = useState<string[]>([]);
+  const [mirrorParTitleIndex, setMirrorParTitleIndex] = useState<number | null>(null);
+  // Re-run when the mirror view is (re)created: we store a generation
+  // counter that bumps whenever onMirrorViewReady fires.
+  const [mirrorViewGen, setMirrorViewGen] = useState(0);
+  useEffect(() => {
+    const mirrorView = mirrorViewRef.current;
+    if (!editorSplit || !mirrorView) {
+      setMirrorSectionPath([]);
+      setMirrorParTitleIndex(null);
+      return;
+    }
+    const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
+    if (!scrollEl) return;
+
+    const compute = () => {
+      const doc = mirrorView.state.doc;
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const referenceY = scrollRect.top + scrollRect.height / 2;
+
+      const stack: { level: number; text: string }[] = [];
+      let lastCrossedStack: { level: number; text: string }[] = [];
+      let activeParTitleIdx: number | null = null;
+
+      doc.forEach((node, offset, index) => {
+        if (node.type.name === "heading" && node.attrs?.level) {
+          const level = node.attrs.level as number;
+          let headingTop: number | null = null;
+          try { headingTop = mirrorView.coordsAtPos(offset + 1).top; } catch { headingTop = null; }
+          if (headingTop == null) return;
+          if (headingTop <= referenceY) {
+            while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
+            stack.push({ level, text: node.textContent || "Untitled" });
+            lastCrossedStack = [...stack];
+            activeParTitleIdx = null;
+          }
+          return;
+        }
+        if (
+          (node.type.name === "paragraph" || node.type.name === "bulletList" || node.type.name === "orderedList") &&
+          node.attrs?.parTitle
+        ) {
+          let top: number | null = null;
+          try { top = mirrorView.coordsAtPos(offset + 1).top; } catch { top = null; }
+          if (top != null && top <= referenceY) activeParTitleIdx = index;
+        }
+      });
+
+      const path = lastCrossedStack.map((s) => s.text);
+      setMirrorSectionPath((prev) =>
+        prev.length === path.length && prev.every((v, i) => v === path[i]) ? prev : path,
+      );
+      setMirrorParTitleIndex((prev) => (prev === activeParTitleIdx ? prev : activeParTitleIdx));
+    };
+
+    let raf = 0;
+    const schedule = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(compute); };
+    compute();
+    scrollEl.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    // Re-compute when the doc changes (shared state with main editor).
+    editorInstance?.on("update", schedule);
+    return () => {
+      cancelAnimationFrame(raf);
+      scrollEl.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      editorInstance?.off("update", schedule);
+    };
+  }, [editorSplit, mirrorViewGen, editorInstance]);
+
   // Derive footnotes list from editor state (sorted by document position)
   const footnotes = useMemo(() => {
     return editorRef.current?.getFootnotes() ?? [];
@@ -2752,6 +2824,9 @@ export default function EditorLayout() {
           onRenameParTitle={handleRenameParTitle}
           activeSectionPath={currentSectionPath}
           activeParTitleIndex={currentParTitleIndex}
+          editorSplit={editorSplit}
+          mirrorSectionPath={mirrorSectionPath}
+          mirrorParTitleIndex={mirrorParTitleIndex}
         />
       );
     }
@@ -3533,7 +3608,7 @@ export default function EditorLayout() {
                 onRatioChange={setEditorSplitRatio}
                 onClose={() => setEditorSplit(false)}
                 onMirrorFocus={() => setActiveSplitPane("bottom")}
-                onMirrorViewReady={(v) => { mirrorViewRef.current = v; }}
+                onMirrorViewReady={(v) => { mirrorViewRef.current = v; setMirrorViewGen((n) => n + 1); }}
                 canonical={
                   <>
                     <VirgilEditor
