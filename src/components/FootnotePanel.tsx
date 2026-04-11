@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { footnoteCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -42,12 +42,11 @@ interface FootnotePanelProps {
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
 /**
- * Footnote cards use the shared `panelCard` amber highlight language,
- * matching citation cards. The red palette is reserved for the small
- * numbered badge that identifies footnotes as a category.
+ * Footnote cards use a reddish selection theme (via `footnoteCard`)
+ * that mirrors the citation amber pattern but in the footnote palette.
  */
 function footnoteCardClass(selected: boolean, extra?: string) {
-  return panelCard(selected, extra);
+  return footnoteCard(selected, extra);
 }
 
 function startFootnoteDrag(
@@ -158,7 +157,7 @@ export function FootnoteCard({
         </div>
       </div>
       <div
-        className={`border-t ${isSelected ? "border-amber-200" : "border-stone-100"}`}
+        className={`border-t ${isSelected ? "border-red-200" : "border-stone-100"}`}
       />
 
       {/* Body: left-justified rich text field spanning the full card width. */}
@@ -411,7 +410,7 @@ function FootnotePanel({
                   onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
                   className={`group absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
                     selectedId === fn.footnoteId
-                      ? "bg-amber-50/60 border-l-2 border-l-amber-300 border-b-stone-300"
+                      ? "bg-red-50/60 border-l-2 border-l-red-300 border-b-stone-300"
                       : "border-b-stone-300 hover:bg-stone-50"
                   }`}
                   style={{ top }}

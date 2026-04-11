@@ -420,6 +420,12 @@ body {
   background: #fde8e8;
 }
 
+.footnote-highlight-marker {
+  background: #fecaca;
+  box-shadow: 0 0 0 2px #b45757;
+  border-radius: 3px;
+}
+
 /* AI request marker — placeholder chip dropped from a draft AI request card */
 .ai-request-marker {
   display: inline-flex;
