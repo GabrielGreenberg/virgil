@@ -107,7 +107,7 @@ export function PanelHeader({
       {onAdd && (
         <button
           onClick={onAdd}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
           title="Add"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
