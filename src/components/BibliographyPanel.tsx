@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { PANEL, PanelHeader, PrevNextCounter } from "./panel-primitives";
+import { PANEL, PanelHeader, PrevNextCounter, clearStaleHover } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import { searchGeneralBib } from "@/lib/bib-search";
 import { pickGeneralBib } from "@/lib/storage-fsa";
@@ -275,9 +275,11 @@ function BibliographyPanel({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         goNext();
+        clearStaleHover(e.currentTarget as HTMLElement);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         goPrev();
+        clearStaleHover(e.currentTarget as HTMLElement);
       }
     },
     [sortedEntries, goNext, goPrev],

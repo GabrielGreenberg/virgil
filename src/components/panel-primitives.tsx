@@ -38,6 +38,22 @@ export function panelCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
+/**
+ * Call from arrow-key handlers to clear the stale CSS :hover on the
+ * card the mouse is still resting on. Briefly sets pointer-events:none
+ * on the container so the browser drops :hover, then restores on the
+ * next pointer movement.
+ */
+export function clearStaleHover(container: HTMLElement | null) {
+  if (!container) return;
+  container.style.pointerEvents = "none";
+  const restore = () => {
+    container.style.pointerEvents = "";
+    document.removeEventListener("pointermove", restore);
+  };
+  document.addEventListener("pointermove", restore);
+}
+
 /** Reusable class-string tokens. */
 export const PANEL = {
   /** Scrollable list container wrapping all cards. */

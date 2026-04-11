@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, clearStaleHover } from "./panel-primitives";
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 
@@ -259,12 +259,15 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         goNext();
+        clearStaleHover(listRef.current);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         goPrev();
+        clearStaleHover(listRef.current);
       } else if (e.key === "Enter") {
         e.preventDefault();
         goNext();
+        clearStaleHover(listRef.current);
       }
     },
     [results, goNext, goPrev],

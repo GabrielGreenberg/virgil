@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -360,9 +360,11 @@ function FootnotePanel({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         cycleNext();
+        clearStaleHover(e.currentTarget as HTMLElement);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         cyclePrev();
+        clearStaleHover(e.currentTarget as HTMLElement);
       }
     },
     [footnotes, cycleNext, cyclePrev],
