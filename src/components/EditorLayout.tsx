@@ -3284,7 +3284,7 @@ export default function EditorLayout() {
       )}
 
       {/* Top bar: logo + tabs */}
-      <div className={`flex items-center relative bg-white top-bar-border ${
+      <div className={`flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
         suggestionPanelVisible ? "mt-10" : ""
       }`}>
         {/* Logo + file buttons + tabs — all bottom-aligned */}
@@ -3299,14 +3299,14 @@ export default function EditorLayout() {
             </h1>
             <button
               onClick={handleNativeOpen}
-              className="p-1 rounded text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
+              className="p-1 rounded text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
               title="Open .tex file"
             >
               <IconFolder />
             </button>
             <button
               onClick={handleNewDocStart}
-              className="p-1 rounded text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
+              className="p-1 rounded text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
               title="New document"
             >
               <IconPlus />
@@ -3322,7 +3322,7 @@ export default function EditorLayout() {
                 }}
                 onBlur={handleNewDocCancel}
                 placeholder="Paper name…"
-                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-white focus:outline-none focus:border-[var(--accent)]"
+                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-white/70 focus:outline-none focus:border-[var(--accent)]"
               />
             )}
           </div>
@@ -3332,7 +3332,7 @@ export default function EditorLayout() {
               className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-1 pb-1 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
                 doc.id === currentDocId
                   ? "bg-[var(--background)] text-stone-800 border border-[var(--border)] border-b-[var(--background)] -mb-px z-10"
-                  : "text-[var(--muted)] hover:bg-stone-100/60 hover:text-stone-600"
+                  : "text-stone-500 hover:bg-white/30 hover:text-stone-700"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
@@ -3362,7 +3362,7 @@ export default function EditorLayout() {
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                className="p-0.5 rounded text-stone-400 hover:text-stone-700 hover:bg-stone-300/50 transition-all"
+                className="p-0.5 rounded text-stone-500 hover:text-stone-700 hover:bg-white/40 transition-all"
                 title="Close tab"
               >
                 <IconX />
@@ -3375,7 +3375,7 @@ export default function EditorLayout() {
           <button
             onClick={paraNavBack}
             disabled={paraHistoryRef.current.idx <= 0}
-            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
             title="Go back"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3386,7 +3386,7 @@ export default function EditorLayout() {
           <button
             onClick={paraNavForward}
             disabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
             title="Go forward"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3399,7 +3399,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-[var(--accent)]"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-500 hover:bg-amber-50/50 hover:text-amber-700"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3421,7 +3421,7 @@ export default function EditorLayout() {
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
             title={codeView ? "Visual Editor" : "Code Editor"}
           >
             {codeView ? (

@@ -17,6 +17,7 @@
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --header-bg: #e8e5de;
+  --topbar-bg: #e5e4e1;
   --pod-radius: 8px;
   --pod-gap: 10px;
   --drag-highlight: #3b82f6;
@@ -889,7 +890,7 @@ body {
   right: 0;
   bottom: 0;
   height: 1px;
-  background: var(--border);
+  background: #d5d3ce;
   z-index: 0;
 }
 
