@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
 
@@ -565,9 +565,11 @@ function CitationsPanel({
       if (e.key === "ArrowDown") {
         e.preventDefault();
         cycleNext();
+        clearStaleHover(e.currentTarget as HTMLElement);
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         cyclePrev();
+        clearStaleHover(e.currentTarget as HTMLElement);
       }
     },
     [orderedCitations, cycleNext, cyclePrev],
