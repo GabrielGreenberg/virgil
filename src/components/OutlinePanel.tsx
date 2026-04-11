@@ -17,6 +17,97 @@ interface HeadingItem {
   parTitles: { title: string; index: number }[]; // paragraph titles under this heading
 }
 
+/* ── Position indicator helpers ─────────────────────────────────────── */
+
+/** Where a pane's position chevron should appear in the outline. */
+interface ResolvedPosition {
+  headingText: string | null;
+  parTitleIndex: number | null;
+  isDocStart: boolean;
+}
+
+/**
+ * Walk the active section path and determine where the position chevron
+ * should land, bubbling up to a collapsed ancestor when the innermost
+ * heading (or its parTitle children) aren't visible.
+ */
+function resolvePosition(
+  sectionPath: string[] | undefined,
+  parTitleIndex: number | null | undefined,
+  headings: HeadingItem[],
+  collapsed: Set<string>,
+  showTitles: boolean,
+  preambleTitles: { title: string; index: number }[],
+): ResolvedPosition | null {
+  if (!sectionPath) return null;
+
+  // Document-start region (before any heading)
+  if (sectionPath.length === 0) {
+    if (showTitles && parTitleIndex != null && preambleTitles.some((pt) => pt.index === parTitleIndex)) {
+      return { headingText: null, parTitleIndex, isDocStart: false };
+    }
+    return { headingText: null, parTitleIndex: null, isDocStart: true };
+  }
+
+  // Walk from outermost to innermost — first collapsed heading wins
+  for (const text of sectionPath) {
+    const heading = headings.find((h) => h.text === text);
+    if (heading && collapsed.has(heading.id)) {
+      return { headingText: text, parTitleIndex: null, isDocStart: false };
+    }
+  }
+
+  // Nothing collapsed — check if a parTitle should take the chevron
+  if (showTitles && parTitleIndex != null) {
+    const exists =
+      preambleTitles.some((pt) => pt.index === parTitleIndex) ||
+      headings.some((h) => h.parTitles.some((pt) => pt.index === parTitleIndex));
+    if (exists) {
+      return { headingText: null, parTitleIndex, isDocStart: false };
+    }
+  }
+
+  // Default: innermost heading
+  return { headingText: sectionPath[sectionPath.length - 1], parTitleIndex: null, isDocStart: false };
+}
+
+function PositionChevron({ label }: { label?: string }) {
+  return (
+    <span
+      className="inline-flex items-center align-middle ml-1 text-red-500"
+      title="Currently on screen"
+    >
+      <svg
+        width="7"
+        height="9"
+        viewBox="0 0 7 9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0"
+      >
+        <path d="M1.5 1 L5.5 4.5 L1.5 8" />
+      </svg>
+      {label != null && (
+        <span className="text-[8px] font-bold leading-none">{label}</span>
+      )}
+    </span>
+  );
+}
+
+/** Render 0, 1, or 2 position chevrons based on which panes match. */
+function PositionIndicators({ match1, match2, editorSplit }: { match1: boolean; match2: boolean; editorSplit: boolean }) {
+  if (!match1 && !match2) return null;
+  return (
+    <>
+      {match1 && <PositionChevron label={editorSplit ? "1" : undefined} />}
+      {match2 && <PositionChevron label={editorSplit ? "2" : undefined} />}
+    </>
+  );
+}
+
 interface OutlinePanelProps {
   content: JSONContent | null;
   onScrollTo: (headingIndex: number) => void;
@@ -29,8 +120,14 @@ interface OutlinePanelProps {
   activeSectionPath?: string[];
   /** Top-level block index of the paragraph/list whose parTitle the
       reader is currently reading, or null if none. Used to move the
-      red dot onto a paragraph row when par titles are enabled. */
+      position chevron onto a paragraph row when par titles are enabled. */
   activeParTitleIndex?: number | null;
+  /** True when the editor is in split-pane mode. */
+  editorSplit?: boolean;
+  /** Heading chain for the mirror (second) pane. */
+  mirrorSectionPath?: string[];
+  /** Active parTitle index for the mirror pane. */
+  mirrorParTitleIndex?: number | null;
 }
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
@@ -267,10 +364,9 @@ function OutlineNode({
   showWordCount,
   sectionWordCount,
   perSectionCounts,
-  activeSectionPath,
-  activeParTitleIndex,
-  parTitleDotActive,
-  showPosition,
+  pos1,
+  pos2,
+  editorSplit,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -282,28 +378,16 @@ function OutlineNode({
   showWordCount: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
-  activeSectionPath?: string[];
-  activeParTitleIndex?: number | null;
-  /** True when an active parTitle row is currently eligible to take
-      the red dot away from any section heading. */
-  parTitleDotActive: boolean;
-  showPosition: boolean;
+  pos1: ResolvedPosition | null;
+  pos2: ResolvedPosition | null;
+  editorSplit: boolean;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
   const hasChildren = hasSubHeadings || hasTitles;
   const isCollapsed = collapsed.has(node.heading.id);
-  // Is this heading the *innermost* active one? (last entry in the
-  // chain). We mark only the deepest active heading with a red dot,
-  // since the breadcrumb above already shows the full chain. The dot
-  // moves off the heading entirely when a parTitle is the current
-  // reading target (parTitleDotActive && showTitles).
-  const isActive =
-    showPosition &&
-    activeSectionPath != null &&
-    activeSectionPath.length > 0 &&
-    activeSectionPath[activeSectionPath.length - 1] === node.heading.text &&
-    !(parTitleDotActive && showTitles);
+  const headingMatch1 = pos1?.headingText === node.heading.text;
+  const headingMatch2 = pos2?.headingText === node.heading.text;
 
   return (
     <div>
@@ -349,12 +433,7 @@ function OutlineNode({
           >
             {node.heading.text}
           </span>
-          {isActive && (
-            <span
-              className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
-              title="Currently on screen"
-            />
-          )}
+          <PositionIndicators match1={!!headingMatch1} match2={!!headingMatch2} editorSplit={editorSplit} />
           {showLabels && node.heading.label && (
             <div className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate">
               {node.heading.label}
@@ -371,11 +450,8 @@ function OutlineNode({
       {!isCollapsed && hasTitles && (
         <div>
           {node.heading.parTitles.map((pt, i) => {
-            const isParActive =
-              showPosition &&
-              showTitles &&
-              activeParTitleIndex != null &&
-              pt.index === activeParTitleIndex;
+            const ptMatch1 = pos1?.parTitleIndex === pt.index;
+            const ptMatch2 = pos2?.parTitleIndex === pt.index;
             return (
               <div
                 key={`pt-${i}`}
@@ -384,12 +460,7 @@ function OutlineNode({
                 onClick={() => onScrollTo(pt.index)}
               >
                 {pt.title}
-                {isParActive && (
-                  <span
-                    className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
-                    title="Currently on screen"
-                  />
-                )}
+                <PositionIndicators match1={!!ptMatch1} match2={!!ptMatch2} editorSplit={editorSplit} />
               </div>
             );
           })}
@@ -411,10 +482,9 @@ function OutlineNode({
               showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
-              activeSectionPath={activeSectionPath}
-              activeParTitleIndex={activeParTitleIndex}
-              parTitleDotActive={parTitleDotActive}
-              showPosition={showPosition}
+              pos1={pos1}
+              pos2={pos2}
+              editorSplit={editorSplit}
             />
           ))}
         </div>
@@ -873,7 +943,7 @@ function saveOutlinePrefs(
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath, activeParTitleIndex }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
@@ -954,25 +1024,19 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     });
   }, []);
 
-  // Is the reader currently in the Document start region (before any
-  // heading)? When true, the red dot lives on the top "Document start"
-  // / "Title" row of the outline.
-  const isDocumentStartActive =
-    showPosition && (!activeSectionPath || activeSectionPath.length === 0);
+  // Resolve where each pane's position chevron should appear, accounting
+  // for collapsed sections (chevron bubbles up to the visible ancestor).
+  const pos1 = useMemo(() => {
+    if (!showPosition) return null;
+    return resolvePosition(activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles);
+  }, [showPosition, activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles]);
 
-  // Is a parTitle row eligible to take the red dot? True only when
-  // parTitles are shown AND the reader is inside a paragraph whose
-  // parTitle is present somewhere in the outline (i.e., under a
-  // heading). When true, the innermost heading yields its dot to the
-  // matching parTitle row so we only ever draw one dot.
-  const parTitleDotActive = useMemo(() => {
-    if (!showPosition || !showTitles || activeParTitleIndex == null) return false;
-    // Check both preamble and heading-attached par titles.
-    if (preambleTitles.some((pt) => pt.index === activeParTitleIndex)) return true;
-    return headings.some((h) =>
-      h.parTitles.some((pt) => pt.index === activeParTitleIndex),
-    );
-  }, [showPosition, showTitles, activeParTitleIndex, headings, preambleTitles]);
+  const pos2 = useMemo(() => {
+    if (!showPosition || !editorSplit) return null;
+    return resolvePosition(mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles);
+  }, [showPosition, editorSplit, mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles]);
+
+  const isSplit = !!editorSplit;
 
   const collapseAll = useCallback(() => {
     setCollapsed(new Set(headings.filter((h, i) => {
@@ -1093,12 +1157,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             ) : (
               <span className="italic text-stone-400">Document start</span>
             )}
-            {isDocumentStartActive && !parTitleDotActive && (
-              <span
-                className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
-                title="Currently on screen"
-              />
-            )}
+            <PositionIndicators match1={!!pos1?.isDocStart} match2={!!pos2?.isDocStart} editorSplit={isSplit} />
           </div>
           {showWordCount && (
             <span className="text-[10px] text-stone-400 shrink-0 mt-0.5">
@@ -1110,11 +1169,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
         {showTitles && preambleTitles.length > 0 && (
           <div>
             {preambleTitles.map((pt, i) => {
-              const isParActive =
-                showPosition &&
-                showTitles &&
-                activeParTitleIndex != null &&
-                pt.index === activeParTitleIndex;
+              const ptMatch1 = pos1?.parTitleIndex === pt.index;
+              const ptMatch2 = pos2?.parTitleIndex === pt.index;
               return (
                 <div
                   key={`preamble-pt-${i}`}
@@ -1123,12 +1179,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   onClick={() => onScrollTo(pt.index)}
                 >
                   {pt.title}
-                  {isParActive && (
-                    <span
-                      className="inline-block align-middle ml-1.5 w-1.5 h-1.5 rounded-full bg-red-500"
-                      title="Currently on screen"
-                    />
-                  )}
+                  <PositionIndicators match1={!!ptMatch1} match2={!!ptMatch2} editorSplit={isSplit} />
                 </div>
               );
             })}
@@ -1163,10 +1214,9 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
-              activeSectionPath={activeSectionPath}
-              activeParTitleIndex={activeParTitleIndex}
-              parTitleDotActive={parTitleDotActive}
-              showPosition={showPosition}
+              pos1={pos1}
+              pos2={pos2}
+              editorSplit={isSplit}
             />
           ))
         )}
