@@ -646,13 +646,6 @@ export function QuotationGroupCard({
 
   const handleDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // Don't initiate drag from inside form controls — let the user
-      // interact with text fields normally
-      const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, button")) {
-        e.preventDefault();
-        return;
-      }
       e.dataTransfer.effectAllowed = "link";
       e.dataTransfer.setData(
         MIME_QUOTATION,
@@ -669,13 +662,28 @@ export function QuotationGroupCard({
     <div
       className={`group/card ${panelCard(selected)}`}
       onClick={onSelect}
-      draggable
-      onDragStart={handleDragStart}
       data-quotation-group-id={group.id}
     >
       <div className={PANEL.cardInner}>
         {/* Group title — one big title for the whole group */}
         <div className="flex items-start justify-between gap-2 mb-3">
+          {/* Drag handle — card-level anchor drag (marginalia) */}
+          <div
+            draggable
+            onDragStart={handleDragStart}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab active:cursor-grabbing p-1 -ml-1 mt-0.5 rounded text-stone-400 hover:text-stone-600 transition-colors shrink-0"
+            title="Drag to anchor to paragraph"
+          >
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2" />
+              <circle cx="7" cy="2" r="1.2" />
+              <circle cx="3" cy="7" r="1.2" />
+              <circle cx="7" cy="7" r="1.2" />
+              <circle cx="3" cy="12" r="1.2" />
+              <circle cx="7" cy="12" r="1.2" />
+            </svg>
+          </div>
           <input
             type="text"
             value={title}
