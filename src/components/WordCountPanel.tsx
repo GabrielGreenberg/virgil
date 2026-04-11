@@ -38,6 +38,13 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
   const visible = (cat: Category) => config.include[cat] ?? true;
   const toggleCat = (cat: Category) => setInclude(cat, !visible(cat));
 
+  const filteredTotal = ALL_CATS.reduce(
+    (sum, cat) => sum + (visible(cat) ? (counts.categories[cat] ?? 0) : 0),
+    0,
+  );
+  const filteredMinutes = Math.max(1, Math.round(filteredTotal / 225));
+  const filteredReadingTime = filteredMinutes === 1 ? "1 min" : `${filteredMinutes} min`;
+
   const visibleCats = ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) > 0);
   const hiddenWithCount = ALL_CATS.filter((c) => !visible(c) && (counts.categories[c] ?? 0) > 0);
 
@@ -49,38 +56,26 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
           <button
             onClick={() => setMenuOpen((o) => !o)}
             className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="Category settings"
+            title="View options"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5" />
+              <circle cx="8" cy="8" r="1.5" />
+              <circle cx="8" cy="13" r="1.5" />
             </svg>
           </button>
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-[9998]" onClick={() => setMenuOpen(false)} />
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[160px]">
-                <div className="px-3 py-1.5 text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
-                  Show categories
-                </div>
                 {ALL_CATS.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => toggleCat(cat)}
-                    className="w-full text-left px-3 py-1.5 text-xs hover:bg-stone-50 transition-colors flex items-center gap-2"
+                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
                   >
-                    <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                      visible(cat)
-                        ? "bg-[var(--accent)] border-[var(--accent)]"
-                        : "border-stone-300"
-                    }`}>
-                      {visible(cat) && (
-                        <svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 8l3.5 3.5L13 5" />
-                        </svg>
-                      )}
-                    </span>
-                    <span className="text-stone-700">{CATEGORY_LABELS[cat]}</span>
+                    <span>{CATEGORY_LABELS[cat]}</span>
+                    <span className="text-[var(--accent)]">{visible(cat) ? "✓" : ""}</span>
                   </button>
                 ))}
               </div>
@@ -91,28 +86,26 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
 
       <div className={PANEL.list}>
         {/* Selection counts */}
-        {selection && (
-          <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
-            <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
-              Selection
-            </div>
-            <div className="flex gap-6">
-              <Stat label="Words" value={selection.words} />
-              <Stat label="Characters" value={selection.characters} />
-            </div>
+        <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
+            Selection
           </div>
-        )}
+          <div className="flex gap-6">
+            <Stat label="Words" value={selection?.words ?? 0} />
+            <Stat label="Characters" value={selection?.characters ?? 0} />
+          </div>
+        </div>
 
         {/* Total stats */}
         <div className="px-4 py-4">
           <div className="flex justify-between gap-3">
-            <Stat label="Words" value={counts.total} />
+            <Stat label="Words" value={filteredTotal} />
             <Stat label="Characters" value={counts.characters} />
             <Stat label="Sentences" value={counts.sentences} />
           </div>
           <div className="text-center mt-2">
             <span className="text-[11px] text-[var(--muted)]">
-              ~{counts.readingTime} read
+              ~{filteredReadingTime} read
             </span>
           </div>
         </div>
@@ -127,7 +120,7 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
             </div>
             {visibleCats.map((cat, i) => {
               const wc = counts.categories[cat] ?? 0;
-              const pct = counts.total > 0 ? Math.round((wc / counts.total) * 100) : 0;
+              const pct = filteredTotal > 0 ? Math.round((wc / filteredTotal) * 100) : 0;
               return (
                 <div
                   key={cat}

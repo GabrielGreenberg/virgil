@@ -12,8 +12,6 @@ export type Category =
   | "mainText"
   | "headings"
   | "footnotes"
-  | "blockquotes"
-  | "lists"
   | "math"
   | "comments";
 
@@ -21,8 +19,6 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   mainText: "Main Text",
   headings: "Headings",
   footnotes: "Footnotes",
-  blockquotes: "Block Quotes",
-  lists: "Lists",
   math: "Math",
   comments: "Comments",
 };
@@ -31,8 +27,6 @@ export const ALL_CATEGORIES: Category[] = [
   "mainText",
   "headings",
   "footnotes",
-  "blockquotes",
-  "lists",
   "math",
   "comments",
 ];
@@ -46,8 +40,6 @@ export const DEFAULT_WORD_COUNT_CONFIG: WordCountConfig = {
     mainText: true,
     headings: true,
     footnotes: true,
-    blockquotes: true,
-    lists: true,
     math: true,
     // Comments are noise for the running total — opt-in only.
     comments: false,
