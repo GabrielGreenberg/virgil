@@ -23,6 +23,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import {
   formatMinimalCitation as fmtMinCite,
 } from "@/lib/bib-parser";
+import { MIME_QUOTE, MIME_QUOTATION } from "@/lib/marginalia";
 
 /* ── Debounce helper ─────────────────────────────────────────────── */
 
@@ -333,7 +334,7 @@ const QuoteEntry = memo(function QuoteEntry({
       const command = buildQuoteCitationCommand(citeKey, page, bibPackage);
       e.dataTransfer.effectAllowed = "copy";
       e.dataTransfer.setData(
-        "application/x-virgil-quote",
+        MIME_QUOTE,
         JSON.stringify({
           quoteText: text,
           command,
@@ -654,7 +655,7 @@ export function QuotationGroupCard({
       }
       e.dataTransfer.effectAllowed = "link";
       e.dataTransfer.setData(
-        "application/x-virgil-quotation",
+        MIME_QUOTATION,
         JSON.stringify({ groupId: group.id })
       );
       // Plain-text fallback — first quote of first reference

@@ -6,6 +6,7 @@ import type { UserNote, AiRequest } from "@/lib/types";
 import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import RichTextField from "./RichTextField";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { MIME_NOTE } from "@/lib/marginalia";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -64,7 +65,7 @@ function NoteCard({
       e.dataTransfer.effectAllowed = "copy";
       const normalized = normalizeRichContent(note.content);
       e.dataTransfer.setData(
-        "application/x-virgil-note",
+        MIME_NOTE,
         JSON.stringify({ noteId: note.id, content: normalized })
       );
       e.dataTransfer.setData("text/plain", richJsonToPlainText(normalized) || note.title || "Note");

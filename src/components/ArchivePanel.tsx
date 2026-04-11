@@ -6,6 +6,7 @@ import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { MIME_ARCHIVE, MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -88,7 +89,7 @@ function ArchivePanel({
 
   const handleDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
     e.dataTransfer.setData("text/plain", snippet.text);
-    e.dataTransfer.setData("application/x-virgil-archive-id", snippet.id);
+    e.dataTransfer.setData(MIME_ARCHIVE, snippet.id);
     e.dataTransfer.effectAllowed = "move";
     const ghost = document.createElement("div");
     ghost.textContent = snippet.text.length > 80 ? snippet.text.slice(0, 80) + "\u2026" : snippet.text;
@@ -102,7 +103,7 @@ function ArchivePanel({
   // the drop position without inserting any text.
   const handleAnchorDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
     e.stopPropagation();
-    e.dataTransfer.setData("application/x-virgil-archive-anchor-id", snippet.id);
+    e.dataTransfer.setData(MIME_ARCHIVE_ANCHOR, snippet.id);
     e.dataTransfer.effectAllowed = "link";
     const ghost = document.createElement("div");
     ghost.textContent = "\u2693 anchor";

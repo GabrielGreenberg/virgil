@@ -32,7 +32,13 @@ import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useQuotations } from "@/hooks/useQuotations";
 import Marginalia from "./Marginalia";
-import { ANCHORABLE_NODES, ANCHORABLE_ATOMS, type MarginaliaMarker } from "@/lib/marginalia";
+import {
+  isAnchorableNode,
+  isAnchorableAtom,
+  MIME_ARCHIVE,
+  MIME_ARCHIVE_ANCHOR,
+  type MarginaliaMarker,
+} from "@/lib/marginalia";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -845,6 +851,8 @@ export default function EditorLayout() {
     updateNotes: updateTodoNotes,
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
+    addParagraphId: addTodoParagraphId,
+    removeParagraphId: removeTodoParagraphId,
   } = useTodos(docIdForHooks);
 
   const {
@@ -956,6 +964,7 @@ export default function EditorLayout() {
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedQuotationGroupId, setSelectedQuotationGroupId] = useState<string | null>(null);
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
+  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
   const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
   const suppressOrphanRef = useRef<Set<string>>(new Set());
@@ -1873,6 +1882,19 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-quotation-drop", handler);
   }, [addQuotationParagraphId]);
 
+  // Listen for todo drops onto paragraphs (dispatched by Editor.tsx handleDrop)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.todoId && detail?.paragraphId) {
+        addTodoParagraphId(detail.todoId, detail.paragraphId);
+        setSelectedTodoId(detail.todoId);
+      }
+    };
+    window.addEventListener("virgil-todo-drop", handler);
+    return () => window.removeEventListener("virgil-todo-drop", handler);
+  }, [addTodoParagraphId]);
+
   // Listen for note drops onto paragraphs — re-anchor the note to the
   // dropped doc position. Marginalia derives the paragraphId on its own.
   useEffect(() => {
@@ -1896,6 +1918,9 @@ export default function EditorLayout() {
       if (type === "quote") {
         removeQuotationParagraphId(entityId, oldParagraphId);
         addQuotationParagraphId(entityId, newParagraphId);
+      } else if (type === "todo") {
+        removeTodoParagraphId(entityId, oldParagraphId);
+        addTodoParagraphId(entityId, newParagraphId);
       } else if (type === "note") {
         // Resolve old and new paragraph positions for the note anchor
         const ed = editorRef.current?.getEditor();
@@ -1911,7 +1936,7 @@ export default function EditorLayout() {
           const $p = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
           for (let d = $p.depth; d >= 0; d--) {
             const anc = $p.node(d);
-            if (ANCHORABLE_NODES.has(anc.type.name)) {
+            if (isAnchorableNode(anc.type)) {
               if (anc.attrs?.uuid === oldParagraphId) {
                 oldAnchorPos = pos;
               }
@@ -1924,8 +1949,8 @@ export default function EditorLayout() {
         let newAnchorPos: number | null = null;
         doc.descendants((node, nodePos) => {
           if (newAnchorPos !== null) return false;
-          if (ANCHORABLE_NODES.has(node.type.name) && node.attrs?.uuid === newParagraphId) {
-            newAnchorPos = ANCHORABLE_ATOMS.has(node.type.name) ? nodePos : nodePos + 1;
+          if (isAnchorableNode(node.type) && node.attrs?.uuid === newParagraphId) {
+            newAnchorPos = isAnchorableAtom(node.type) ? nodePos : nodePos + 1;
             return false;
           }
           return true;
@@ -1959,8 +1984,8 @@ export default function EditorLayout() {
         let newParaPos: number | null = null;
         doc.descendants((node, pos) => {
           if (newParaPos !== null) return false;
-          if (ANCHORABLE_NODES.has(node.type.name) && node.attrs?.uuid === newParagraphId) {
-            newParaPos = ANCHORABLE_ATOMS.has(node.type.name) ? pos : pos + 1;
+          if (isAnchorableNode(node.type) && node.attrs?.uuid === newParagraphId) {
+            newParaPos = isAnchorableAtom(node.type) ? pos : pos + 1;
             return false;
           }
           return true;
@@ -1977,7 +2002,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor]);
+  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor, addTodoParagraphId, removeTodoParagraphId]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -2261,13 +2286,13 @@ export default function EditorLayout() {
     const handleDragOver = (e: DragEvent) => {
       const types = e.dataTransfer?.types;
       if (!types) return;
-      if (types.includes("application/x-virgil-archive-anchor-id")) {
+      if (types.includes(MIME_ARCHIVE_ANCHOR)) {
         // Anchor drag: ProseMirror won't preventDefault since there's no
         // text/plain. Do it ourselves so the drop event fires.
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
         editorDom.classList.add("virgil-archive-drop-target");
-      } else if (types.includes("application/x-virgil-archive-id")) {
+      } else if (types.includes(MIME_ARCHIVE)) {
         editorDom.classList.add("virgil-archive-drop-target");
       }
     };
@@ -2281,7 +2306,7 @@ export default function EditorLayout() {
 
     const handleDrop = (e: DragEvent) => {
       editorDom.classList.remove("virgil-archive-drop-target");
-      const anchorId = e.dataTransfer?.getData("application/x-virgil-archive-anchor-id");
+      const anchorId = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
       if (anchorId) {
         // Re-anchor only — don't let ProseMirror insert any text.
         e.preventDefault();
@@ -2294,7 +2319,7 @@ export default function EditorLayout() {
         handleReanchor(anchorId, pos);
         return;
       }
-      const archiveId = e.dataTransfer?.getData("application/x-virgil-archive-id");
+      const archiveId = e.dataTransfer?.getData(MIME_ARCHIVE);
       if (archiveId) {
         // Let ProseMirror handle the text insertion; just clean up archive and marker
         setTimeout(() => {
@@ -2534,12 +2559,19 @@ export default function EditorLayout() {
         : prefs.activeRight === "cutter" || omniRight
           ? "right"
           : null;
+    const todoSide: "left" | "right" | null =
+      prefs.activeLeft === "todo"
+        ? "left"
+        : prefs.activeRight === "todo" || omniRight
+          ? "right"
+          : null;
     return {
       quotations: quotationsSide,
       notes: notesSide,
       archive: archiveSide,
       revisions: revisionsSide,
       cutter: cutterSide,
+      todo: todoSide,
     };
   }, [prefs.activeLeft, prefs.activeRight]);
 
@@ -2607,7 +2639,7 @@ export default function EditorLayout() {
           // Walk up ancestors (container nodes)
           for (let depth = $pos.depth; depth >= 0; depth--) {
             const ancestor = $pos.node(depth);
-            if (ANCHORABLE_NODES.has(ancestor.type.name)) {
+            if (isAnchorableNode(ancestor.type)) {
               paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
               if (!paragraphId) {
                 paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
@@ -2619,10 +2651,10 @@ export default function EditorLayout() {
           if (!paragraphId) {
             const after = $pos.nodeAfter;
             const before = $pos.nodeBefore;
-            if (after && ANCHORABLE_ATOMS.has(after.type.name)) {
+            if (after && isAnchorableAtom(after.type)) {
               paragraphId = (after.attrs?.uuid as string | null) ?? null;
               if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
-            } else if (before && ANCHORABLE_ATOMS.has(before.type.name)) {
+            } else if (before && isAnchorableAtom(before.type)) {
               paragraphId = (before.attrs?.uuid as string | null) ?? null;
               if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
             }
@@ -2653,7 +2685,7 @@ export default function EditorLayout() {
         let paragraphId: string | null = null;
         for (let depth = $pos.depth; depth >= 0; depth--) {
           const ancestor = $pos.node(depth);
-          if (ANCHORABLE_NODES.has(ancestor.type.name)) {
+          if (isAnchorableNode(ancestor.type)) {
             paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
             if (!paragraphId) {
               paragraphId = editorRef.current?.ensureParagraphUuid(pos) ?? null;
@@ -2693,6 +2725,23 @@ export default function EditorLayout() {
       });
     }
 
+    // Todo markers — one marker per paragraphId (same pattern as quotations)
+    for (const item of todoItems) {
+      if (!item.paragraphIds || item.paragraphIds.length === 0) continue;
+      for (const pid of item.paragraphIds) {
+        result.push({
+          id: `${item.id}:${pid}`,
+          entityId: item.id,
+          type: "todo",
+          paragraphId: pid,
+          selected: selectedTodoId === item.id,
+          title: item.text || "Todo",
+          onClick: () => setSelectedTodoId(item.id),
+          onDelete: () => removeTodoParagraphId(item.id, pid),
+        });
+      }
+    }
+
     return result;
   }, [
     quotationGroups,
@@ -2702,6 +2751,9 @@ export default function EditorLayout() {
     selectedNoteId,
     removeNoteAnchor,
     selectedArchiveId,
+    todoItems,
+    selectedTodoId,
+    removeTodoParagraphId,
     editorInstance,
     editorDocVersion,
     handleQuotationMarkerClick,

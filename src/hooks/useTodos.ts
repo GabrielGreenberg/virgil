@@ -16,7 +16,14 @@ export function useTodos(docId: string | null) {
     if (!docId) { setState(EMPTY); return; }
     readSidecar<TodoState>(docId, "todos.json", EMPTY)
       .then((data) => {
-        if (docIdRef.current === docId && data.items) setState(data);
+        if (docIdRef.current === docId && data.items) {
+          // Migrate legacy items that lack paragraphIds
+          const items = data.items.map((i) => ({
+            ...i,
+            paragraphIds: i.paragraphIds ?? [],
+          }));
+          setState({ items });
+        }
       })
       .catch(() => {});
   }, [docId]);
@@ -38,6 +45,7 @@ export function useTodos(docId: string | null) {
       notes: "",
       done: false,
       createdAt: new Date().toISOString(),
+      paragraphIds: [],
     };
     setState((prev) => {
       const next = { items: [...prev.items, item] };
@@ -97,6 +105,36 @@ export function useTodos(docId: string | null) {
     });
   }, [persist]);
 
+  const addParagraphId = useCallback((todoId: string, paragraphId: string) => {
+    setState((prev) => {
+      const next = {
+        items: prev.items.map((i) =>
+          i.id === todoId
+            ? i.paragraphIds.includes(paragraphId)
+              ? i
+              : { ...i, paragraphIds: [...i.paragraphIds, paragraphId] }
+            : i
+        ),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const removeParagraphId = useCallback((todoId: string, paragraphId: string) => {
+    setState((prev) => {
+      const next = {
+        items: prev.items.map((i) =>
+          i.id === todoId
+            ? { ...i, paragraphIds: i.paragraphIds.filter((pid) => pid !== paragraphId) }
+            : i
+        ),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
   return {
     items: state.items,
     addItem,
@@ -106,5 +144,7 @@ export function useTodos(docId: string | null) {
     deleteItem,
     reorder,
     archiveDone,
+    addParagraphId,
+    removeParagraphId,
   };
 }

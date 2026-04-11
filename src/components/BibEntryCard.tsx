@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { panelCard, PANEL, Chevron, TargetIcon } from "./panel-primitives";
+import { MIME_CITATION } from "@/lib/marginalia";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -175,7 +176,7 @@ export default function BibEntryCard({
     const cmd = `\\cite{${entry.key}}`;
     const display = bibEntries ? formatMinimalCitation(entry.key, bibEntries) : entry.key;
     e.dataTransfer.setData("text/plain", cmd);
-    e.dataTransfer.setData("application/x-virgil-citation", JSON.stringify({ command: cmd, bibKey: entry.key }));
+    e.dataTransfer.setData(MIME_CITATION, JSON.stringify({ command: cmd, bibKey: entry.key }));
     e.dataTransfer.effectAllowed = "copy";
     const ghost = document.createElement("div");
     ghost.textContent = display.length > 80 ? display.slice(0, 80) + "\u2026" : display;

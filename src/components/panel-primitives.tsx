@@ -24,6 +24,7 @@
 import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
+import { MIME_AI_REQUEST } from "@/lib/marginalia";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -218,7 +219,7 @@ export function AiRequestCard({
         kind: request.kind,
         text: draft,
       });
-      e.dataTransfer.setData("application/x-virgil-ai-request", payload);
+      e.dataTransfer.setData(MIME_AI_REQUEST, payload);
       const truncated = draft.length > 80 ? draft.slice(0, 80) + "\u2026" : draft;
       e.dataTransfer.setData(
         "text/plain",

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import { ANCHORABLE_NODES, ANCHORABLE_ATOMS } from "@/lib/marginalia";
+import { isAnchorableNode, isAnchorableAtom } from "@/lib/marginalia";
 
 export interface ParagraphPosition {
   /** Paragraph UUID */
@@ -41,13 +41,12 @@ export function useMarginalia(editor: Editor | null) {
 
     const next = new Map<string, { top: number; height: number }>();
     editor.state.doc.descendants((node, pos) => {
-      const name = node.type.name;
-      if (ANCHORABLE_NODES.has(name)) {
+      if (isAnchorableNode(node.type)) {
         const id = (node.attrs?.uuid as string | undefined) || `_pos:${pos}`;
         try {
           let top: number;
           const dom = editor.view.nodeDOM(pos) as HTMLElement | null;
-          if (ANCHORABLE_ATOMS.has(name)) {
+          if (isAnchorableAtom(node.type)) {
             // Atom nodes: pos+1 is outside the node, use DOM rect directly
             if (!dom) return true;
             top = dom.getBoundingClientRect().top - scrollRect.top + scrollEl!.scrollTop;
@@ -60,9 +59,10 @@ export function useMarginalia(editor: Editor | null) {
           next.set(id, { top, height });
         } catch { /* ignore */ }
       }
-      // Don't recurse into list items — list itself carries the uuid
-      if (name === "bulletList" || name === "orderedList") return false;
-      return true;
+      // Don't recurse into anchorable containers — they carry the uuid.
+      // (For paragraphs/headings this is a no-op since they have no block
+      // children; for lists it correctly skips listItem descendants.)
+      return !isAnchorableNode(node.type);
     });
 
     // Avoid setState if positions haven't changed
