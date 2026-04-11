@@ -3,8 +3,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
-import { panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
-import RichTextField from "./RichTextField";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 
 interface NotesPanelProps {
@@ -27,6 +26,33 @@ interface NotesPanelProps {
   onDeleteAiRequest?: (id: string) => void;
 }
 
+/* ── Shared helpers ──────────────────────────────────────────────── */
+
+function startNoteDrag(
+  e: React.DragEvent,
+  noteId: string,
+  content: unknown,
+  title: string,
+) {
+  const normalized = normalizeRichContent(content);
+  const plain = richJsonToPlainText(normalized) || title || "Note";
+  e.dataTransfer.setData("text/plain", plain);
+  e.dataTransfer.setData(
+    "application/x-virgil-note",
+    JSON.stringify({ noteId, content: normalized }),
+  );
+  e.dataTransfer.effectAllowed = "copy";
+  const ghost = document.createElement("div");
+  ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
+  ghost.style.cssText =
+    "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f0fdf4;border:1px solid #34d399;border-radius:4px;font-size:12px;color:#065f46;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 10, 14);
+  requestAnimationFrame(() => document.body.removeChild(ghost));
+}
+
+/* ── NoteCard ────────────────────────────────────────────────────── */
+
 function NoteCard({
   note,
   selected,
@@ -48,30 +74,6 @@ function NoteCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
 }) {
-
-  const handleTitleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      onUpdateTitle(note.id, e.target.value);
-    },
-    [note.id, onUpdateTitle]
-  );
-
-  // Drag handle: serialize the note JSON content into the dataTransfer so the
-  // drop target (main editor or another rich text field) can splice it inline.
-  const handleDragStart = useCallback(
-    (e: React.DragEvent<HTMLSpanElement>) => {
-      e.stopPropagation();
-      e.dataTransfer.effectAllowed = "copy";
-      const normalized = normalizeRichContent(note.content);
-      e.dataTransfer.setData(
-        "application/x-virgil-note",
-        JSON.stringify({ noteId: note.id, content: normalized })
-      );
-      e.dataTransfer.setData("text/plain", richJsonToPlainText(normalized) || note.title || "Note");
-    },
-    [note.id, note.content, note.title]
-  );
-
   const handleChange = useCallback(
     (json: JSONContent) => {
       onUpdate(note.id, normalizeRichContent(json));
@@ -80,51 +82,43 @@ function NoteCard({
   );
 
   return (
-    <div
-      className={panelCard(selected)}
+    <EditableCard
+      id={note.id}
+      selected={selected}
+      theme={CARD_THEMES.note}
+      badge={
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0"
+          style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #34d399" }}
+        >
+          N
+        </span>
+      }
+      headerContent={
+        <input
+          type="text"
+          defaultValue={note.title}
+          onChange={(e) => onUpdateTitle(note.id, e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          placeholder="Title"
+          className="flex-1 min-w-0 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
+        />
+      }
+      headerTrailing={selected && onJump ? <TargetIcon onClick={onJump} title="Jump to note anchor" /> : undefined}
       onClick={() => onSelect(selected ? null : note.id)}
-    >
-      <div className={PANEL.cardInner}>
-        <div className="flex items-center justify-between gap-1.5 mb-1">
-          <span
-            draggable
-            onDragStart={handleDragStart}
-            onClick={(e) => e.stopPropagation()}
-            className="inline-flex items-center justify-center w-5 h-5 rounded border border-emerald-400 bg-emerald-50 text-emerald-700 text-[10px] font-bold leading-none shrink-0 cursor-grab active:cursor-grabbing"
-            title="Drag into the document to insert this note's content"
-          >
-            N
-          </span>
-          <input
-            type="text"
-            defaultValue={note.title}
-            onChange={handleTitleChange}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Title"
-            className="flex-1 min-w-0 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
-          />
-          {selected && onJump && (
-            <TargetIcon onClick={onJump} title="Jump to note anchor" />
-          )}
-          <ItemMenu>
-            <MenuDelete onClick={() => onDelete(note.id)} />
-          </ItemMenu>
-        </div>
-
-        <div className="flex-1 min-w-0">
-          <RichTextField
-            instanceKey={note.id}
-            value={note.content}
-            placeholder="Write a note..."
-            variant="note"
-            selected={selected}
-            onChange={handleChange}
-            getCitationDisplayText={getCitationDisplayText}
-            onCitationCreated={onCitationCreated}
-          />
-        </div>
-      </div>
-    </div>
+      onDragStart={(e) => startNoteDrag(e, note.id, note.content, note.title)}
+      onDelete={() => onDelete(note.id)}
+      value={note.content}
+      variant="note"
+      placeholder="Write a note..."
+      onChange={handleChange}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      dataAttr={{ name: "note-entry", value: note.id }}
+    />
   );
 }
 

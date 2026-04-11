@@ -138,8 +138,8 @@ export interface EditorHandle {
   getEditor: () => Editor | null;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
-  archiveSelection: (archiveId: string) => string | null;
-  restoreArchive: (archiveId: string, text: string) => void;
+  archiveSelection: (archiveId: string) => unknown | null;
+  restoreArchive: (archiveId: string, content: unknown) => void;
   removeArchiveMarker: (archiveId: string) => void;
   scrollToArchiveMarker: (archiveId: string) => void;
   getMarkerIds: () => Set<string>;
@@ -1184,7 +1184,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         el?.scrollIntoView({ behavior: "instant", block: "center" });
       }
     },
-    archiveSelection(archiveId: string): string | null {
+    archiveSelection(archiveId: string): unknown | null {
       if (!editor) return null;
       const sel = editor.state.selection;
 
@@ -1209,7 +1209,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             }],
           })
           .run();
-        return text;
+        // Return as JSONContent doc wrapping the plain text
+        return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
       }
 
       const { from, to } = sel;
@@ -1217,6 +1218,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
       const preview = text.slice(0, 30);
+      // Capture rich content before deleting
+      const slice = editor.state.doc.slice(from, to);
+      const richContent = { type: "doc", content: slice.content.toJSON() };
       editor
         .chain()
         .focus()
@@ -1226,9 +1230,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           attrs: { archiveId, preview },
         })
         .run();
-      return text;
+      return richContent;
     },
-    restoreArchive(archiveId: string, text: string): void {
+    restoreArchive(archiveId: string, content: unknown): void {
       if (!editor) return;
       // Find the archive marker node
       let markerPos: number | null = null;
@@ -1244,15 +1248,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // Select the marker (it's an inline atom, size 1)
       editor.chain().focus().setTextSelection({ from: markerPos, to: markerPos + 1 }).run();
 
-      if (text.startsWith("% ")) {
-        // Restore as a latexComment block node
-        editor.chain().focus().deleteSelection().insertContent({
-          type: "latexComment",
-          attrs: { text: text.slice(2) },
-        }).run();
+      // Handle legacy plain-text content or rich JSONContent
+      if (typeof content === "string") {
+        if (content.startsWith("% ")) {
+          editor.chain().focus().deleteSelection().insertContent({
+            type: "latexComment",
+            attrs: { text: content.slice(2) },
+          }).run();
+        } else {
+          editor.chain().focus().insertContent(content).run();
+        }
       } else {
-        // Regular text
-        editor.chain().focus().insertContent(text).run();
+        // Rich content — insert the doc's children
+        const doc = content as { type?: string; content?: unknown[] };
+        const nodes = doc?.content ?? [];
+        editor.chain().focus().deleteSelection().insertContent(nodes).run();
       }
     },
     removeArchiveMarker(archiveId: string): void {

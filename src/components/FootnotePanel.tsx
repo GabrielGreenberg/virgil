@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo, memo } from "react";
+import { useCallback, useEffect, useMemo, memo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { footnoteCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
-import RichTextField from "./RichTextField";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -40,14 +39,6 @@ interface FootnotePanelProps {
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
-
-/**
- * Footnote cards use a reddish selection theme (via `footnoteCard`)
- * that mirrors the citation amber pattern but in the footnote palette.
- */
-function footnoteCardClass(selected: boolean, extra?: string) {
-  return footnoteCard(selected, extra);
-}
 
 function startFootnoteDrag(
   e: React.DragEvent,
@@ -112,70 +103,39 @@ export function FootnoteCard({
   wrapperStyle,
   extraDataAttrs,
 }: FootnoteCardProps) {
-  const [isFocused, setIsFocused] = useState(false);
-  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
-
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
 
   return (
-    <div
-      data-footnote-entry={fn.footnoteId}
-      {...(extraDataAttrs || {})}
-      draggable={!isFocused}
-      onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
-      className={`group ${footnoteCardClass(isSelected, isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing")}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={wrapperStyle}
-      onClick={onSelect}
-    >
-      {/* Header row: number badge, format toolbar, and three-dot menu. */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
+    <EditableCard
+      id={fn.footnoteId}
+      selected={isSelected}
+      theme={CARD_THEMES.footnote}
+      badge={
         <span
           className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
-          style={{
-            background: "#fef2f2",
-            color: "#b45757",
-            border: "1.5px solid #b45757",
-          }}
+          style={{ background: "#fef2f2", color: "#b45757", border: "1.5px solid #b45757" }}
         >
           {fn.number}
         </span>
-        <div ref={setToolbarTarget} className="flex items-center" />
-        <div className="flex-1" />
-        <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
-      </div>
-      <div
-        className={`border-t ${isSelected ? "border-red-200" : "border-stone-100"}`}
-      />
-
-      {/* Body: left-justified rich text field spanning the full card width. */}
-      <div className="px-3 pt-1.5 pb-2">
-        <RichTextField
-          instanceKey={fn.footnoteId}
-          value={fn.content}
-          placeholder="Empty footnote"
-          variant="footnote"
-          onChange={handleEdit}
-          onArchiveConsumed={onDropArchive}
-          getCitationDisplayText={getCitationDisplayText}
-          onCitationCreated={onCitationCreated}
-          onFocusChange={setIsFocused}
-          toolbarPortalTarget={toolbarTarget}
-        />
-      </div>
-    </div>
+      }
+      onClick={onSelect}
+      onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
+      onDelete={onDelete}
+      value={fn.content}
+      variant="footnote"
+      placeholder="Empty footnote"
+      onChange={handleEdit}
+      onArchiveConsumed={onDropArchive}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      dataAttr={{ name: "footnote-entry", value: fn.footnoteId }}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={wrapperClassName}
+      wrapperStyle={wrapperStyle}
+    />
   );
 }
 
@@ -202,94 +162,40 @@ export function OrphanedFootnoteCard({
   wrapperStyle,
   extraDataAttrs,
 }: OrphanedFootnoteCardProps) {
-  const [isFocused, setIsFocused] = useState(false);
-  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
-
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
 
   return (
-    <div
-      data-footnote-entry={orphan.footnoteId}
-      {...(extraDataAttrs || {})}
-      draggable={!isFocused}
-      onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
-      className={`${footnoteCardClass(false, `${isFocused ? "cursor-default" : "cursor-grab active:cursor-grabbing"} border-dashed`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={wrapperStyle}
-    >
-      {/* Header row: orphan badge, format toolbar, and three-dot menu. */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
-        <span
-          className="inline-flex items-center justify-center shrink-0"
-          title="No anchor in document"
-        >
+    <EditableCard
+      id={orphan.footnoteId}
+      selected={false}
+      theme={CARD_THEMES.footnote}
+      badge={
+        <span className="inline-flex items-center justify-center shrink-0" title="No anchor in document">
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-            <rect
-              x="1"
-              y="1"
-              width="14"
-              height="14"
-              rx="3"
-              stroke="#b0b0b0"
-              strokeWidth="1.5"
-              fill="#f5f5f4"
-            />
-            <text
-              x="8"
-              y="11.5"
-              textAnchor="middle"
-              fontSize="9"
-              fontWeight="600"
-              fill="#b0b0b0"
-              fontFamily="var(--font-sans), sans-serif"
-            >
-              fn
-            </text>
-            <line
-              x1="3"
-              y1="13"
-              x2="13"
-              y2="3"
-              stroke="#b0b0b0"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
+            <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
+            <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600" fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
+            <line x1="3" y1="13" x2="13" y2="3" stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
         </span>
-        <div ref={setToolbarTarget} className="flex items-center" />
-        <div className="flex-1" />
-        <div
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
-      </div>
-      <div className="border-t border-stone-100" />
-
-      <div className="px-3 pt-1.5 pb-2">
-        <RichTextField
-          instanceKey={orphan.footnoteId}
-          value={orphan.content}
-          placeholder="Empty — drag text in or type"
-          variant="footnote"
-          muted
-          onChange={handleEdit}
-          onArchiveConsumed={onDropArchive}
-          getCitationDisplayText={getCitationDisplayText}
-          onCitationCreated={onCitationCreated}
-          onFocusChange={setIsFocused}
-          toolbarPortalTarget={toolbarTarget}
-        />
-      </div>
-    </div>
+      }
+      onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
+      onDelete={onDelete}
+      value={orphan.content}
+      variant="footnote"
+      placeholder="Empty — drag text in or type"
+      muted
+      onChange={handleEdit}
+      onArchiveConsumed={onDropArchive}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      dataAttr={{ name: "footnote-entry", value: orphan.footnoteId }}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={`border-dashed${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      wrapperStyle={wrapperStyle}
+    />
   );
 }
 

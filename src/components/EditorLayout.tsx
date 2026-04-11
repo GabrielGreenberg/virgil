@@ -25,6 +25,7 @@ import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import { useArchive } from "@/hooks/useArchive";
+import { richJsonToPlainText } from "@/lib/footnote-content";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
@@ -857,7 +858,8 @@ export default function EditorLayout() {
 
   const {
     snippets: archiveSnippets,
-    archiveText,
+    archiveContent,
+    updateSnippet: updateArchiveSnippet,
     restoreSnippet,
     deleteSnippet,
   } = useArchive(docIdForHooks);
@@ -1756,16 +1758,22 @@ export default function EditorLayout() {
     if (!editorRef.current) return;
     const selectedText = editorRef.current.getSelectedText();
     if (!selectedText || !selectedText.trim()) return;
-    const snippet = archiveText(selectedText);
-    editorRef.current.archiveSelection(snippet.id);
-    // Ensure archive panel is open (setActiveLeft/Right are toggles, so only call if not already active)
+    // Create snippet with plain text to get an ID
+    const snippet = archiveContent(selectedText);
+    // archiveSelection deletes the selection, inserts a marker, and returns rich content
+    const richContent = editorRef.current.archiveSelection(snippet.id);
+    // Update the snippet with the captured rich content
+    if (richContent) {
+      updateArchiveSnippet(snippet.id, richContent);
+    }
+    // Ensure archive panel is open
     const archivePlacement = prefs.placements.find((p) => p.id === "archive");
     if (archivePlacement?.side === "left") {
       if (prefs.activeLeft !== "archive") setActiveLeft("archive");
     } else {
       if (prefs.activeRight !== "archive") setActiveRight("archive");
     }
-  }, [archiveText, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+  }, [archiveContent, updateArchiveSnippet, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const insertingRef = useRef(false);
   const handleInsertArchive = useCallback((id: string) => {
@@ -1773,12 +1781,12 @@ export default function EditorLayout() {
     insertingRef.current = true;
     const found = archiveSnippets.find((s) => s.id === id);
     if (found && editorRef.current) {
+      // Restore rich content at cursor position
       const editor = editorRef.current.getEditor();
       if (editor) {
-        const { from, to } = editor.state.selection;
-        const tr = editor.state.tr.insertText(found.text, from, to);
-        editor.view.dispatch(tr);
-        editor.view.focus();
+        const doc = found.content as { type?: string; content?: unknown[] } | undefined;
+        const nodes = doc?.content ?? [];
+        editor.chain().focus().insertContent(nodes).run();
       }
       editorRef.current.removeArchiveMarker(id);
       deleteSnippet(id);
@@ -1790,7 +1798,7 @@ export default function EditorLayout() {
   const handleRestoreArchive = useCallback((id: string) => {
     const snippet = restoreSnippet(id);
     if (snippet) {
-      editorRef.current?.restoreArchive(id, snippet.text);
+      editorRef.current?.restoreArchive(id, snippet.content);
     }
     setSelectedArchiveId(null);
   }, [restoreSnippet]);
@@ -1806,7 +1814,8 @@ export default function EditorLayout() {
     if (!snippet || !editorRef.current) return;
     const editor = editorRef.current.getEditor();
     if (!editor) return;
-    const preview = snippet.text.slice(0, 30);
+    const plain = richJsonToPlainText(snippet.content) || "";
+    const preview = plain.slice(0, 30);
     const chain = editor.chain().focus();
     if (typeof pos === "number") {
       chain.setTextSelection(pos);
@@ -2886,6 +2895,7 @@ export default function EditorLayout() {
           snippets={sortedArchiveSnippets}
           selectedId={selectedArchiveId}
           onSelect={setSelectedArchiveId}
+          onEdit={(id, content) => updateArchiveSnippet(id, content)}
           onInsert={handleInsertArchive}
           onRestore={handleRestoreArchive}
           onDelete={handleDeleteArchive}
@@ -2895,6 +2905,8 @@ export default function EditorLayout() {
           panelSide={side}
           viewMode={getPanelViewMode("archive")}
           onViewModeChange={(m) => setPanelViewMode("archive", m)}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={handleCitationCreated}
         />
       );
     }

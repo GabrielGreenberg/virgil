@@ -22,8 +22,10 @@
  */
 
 import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
+import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
+import RichTextField from "./RichTextField";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -36,6 +38,9 @@ const CARD_SELECTED =
 
 const CARD_SELECTED_FOOTNOTE =
   "bg-red-50/60 border-red-300 shadow-sm";
+
+const CARD_SELECTED_NOTE =
+  "bg-emerald-50/60 border-emerald-300 shadow-sm";
 
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
@@ -61,6 +66,149 @@ export function clearStaleHover(container: HTMLElement | null) {
 /** Footnote-themed card: reddish selection instead of amber. */
 export function footnoteCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED_FOOTNOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+}
+
+/** Note-themed card: emerald selection instead of amber. */
+export function noteCard(selected: boolean, extra?: string): string {
+  return `${CARD_BASE} ${selected ? CARD_SELECTED_NOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+}
+
+/* ── EditableCard — shared card for RichTextField-bearing panels ──── */
+
+/** Theme configuration for an EditableCard. */
+export interface CardTheme {
+  cardClass: (selected: boolean, extra?: string) => string;
+  separatorSelected: string;
+}
+
+/** Pre-built themes for existing card types. */
+export const CARD_THEMES = {
+  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200" },
+  note: { cardClass: noteCard, separatorSelected: "border-emerald-200" },
+  archive: { cardClass: panelCard, separatorSelected: "border-amber-200" },
+} satisfies Record<string, CardTheme>;
+
+export interface EditableCardProps {
+  /** Unique ID (used as RichTextField instanceKey). */
+  id: string;
+  selected: boolean;
+  theme: CardTheme;
+
+  /** Badge element at the left of the header row. */
+  badge: ReactNode;
+  /** Extra content between badge and toolbar target (e.g. title input). Should be flex-1 to fill space. */
+  headerContent?: ReactNode;
+  /** Content after toolbar target, before menu (e.g. TargetIcon). */
+  headerTrailing?: ReactNode;
+  /** Extra content below the RichTextField body (e.g. action buttons). */
+  footer?: ReactNode;
+
+  /** Menu items inside ItemMenu. Falls back to MenuDelete when onDelete is provided. */
+  menuContent?: ReactNode;
+  onDelete?: () => void;
+
+  onClick?: () => void;
+  /** When provided, the card is draggable (disabled while RichTextField is focused). */
+  onDragStart?: (e: React.DragEvent) => void;
+
+  // ── RichTextField props ──
+  value: unknown;
+  variant?: "footnote" | "note";
+  placeholder?: string;
+  muted?: boolean;
+  onChange: (json: JSONContent) => void;
+  onArchiveConsumed?: (archiveId: string) => void;
+  getCitationDisplayText?: (command: string) => string;
+  onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+
+  // ── Wrapper overrides ──
+  dataAttr?: { name: string; value: string };
+  extraDataAttrs?: Record<string, string>;
+  wrapperClassName?: string;
+  wrapperStyle?: React.CSSProperties;
+}
+
+/**
+ * Canonical card layout for panels with editable rich text content.
+ *
+ * Structure: header (badge + toolbar + menu) → separator → body (RichTextField) → optional footer.
+ * Internalizes focus tracking (disables drag while editing) and toolbar
+ * portal target (formats render inline in the header).
+ */
+export function EditableCard({
+  id, selected, theme,
+  badge, headerContent, headerTrailing, footer,
+  menuContent, onDelete,
+  onClick, onDragStart,
+  value, variant, placeholder, muted,
+  onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
+  dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
+}: EditableCardProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
+
+  const cursorClass = isFocused
+    ? "cursor-default"
+    : onDragStart
+      ? "cursor-grab active:cursor-grabbing"
+      : "";
+
+  const dataAttrs: Record<string, string> = {
+    ...(dataAttr ? { [`data-${dataAttr.name}`]: dataAttr.value } : {}),
+    ...(extraDataAttrs || {}),
+  };
+
+  return (
+    <div
+      {...dataAttrs}
+      draggable={onDragStart ? !isFocused : false}
+      onDragStart={onDragStart}
+      className={`group ${theme.cardClass(selected, cursorClass)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={wrapperStyle}
+      onClick={onClick}
+    >
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-1.5">
+        {badge}
+        {headerContent}
+        <div ref={setToolbarTarget} className="flex items-center" />
+        {!headerContent && <div className="flex-1" />}
+        {headerTrailing}
+        <div
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          {menuContent ?? (onDelete ? (
+            <ItemMenu><MenuDelete onClick={onDelete} /></ItemMenu>
+          ) : null)}
+        </div>
+      </div>
+
+      {/* Separator */}
+      <div className={`border-t ${selected ? theme.separatorSelected : "border-stone-100"}`} />
+
+      {/* Body */}
+      <div className="px-3 pt-1.5 pb-2">
+        <RichTextField
+          instanceKey={id}
+          value={value}
+          placeholder={placeholder}
+          variant={variant}
+          selected={selected}
+          muted={muted}
+          onChange={onChange}
+          onArchiveConsumed={onArchiveConsumed}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={onCitationCreated}
+          onFocusChange={setIsFocused}
+          toolbarPortalTarget={toolbarTarget}
+        />
+      </div>
+
+      {/* Optional footer (e.g. archive action buttons) */}
+      {footer}
+    </div>
+  );
 }
 
 /** Reusable class-string tokens. */
