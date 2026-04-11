@@ -4,8 +4,32 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { v4 as uuid } from "uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
+import { normalizeRichContent } from "@/lib/footnote-content";
 
 const EMPTY: ArchiveState = { snippets: [] };
+
+/**
+ * Migrate legacy snippets that stored a plain `text` string instead of
+ * rich `content` (Tiptap JSONContent). Returns a new array if any
+ * migration occurred, or the original if none needed.
+ */
+function migrateSnippets(snippets: ArchivedSnippet[]): ArchivedSnippet[] {
+  let changed = false;
+  const migrated = snippets.map((s) => {
+    // Legacy shape: { id, text: string, createdAt }
+    const legacy = s as ArchivedSnippet & { text?: string };
+    if (legacy.text != null && s.content == null) {
+      changed = true;
+      return {
+        id: s.id,
+        content: normalizeRichContent(legacy.text),
+        createdAt: s.createdAt,
+      };
+    }
+    return s;
+  });
+  return changed ? migrated : snippets;
+}
 
 export function useArchive(docId: string | null) {
   const [state, setState] = useState<ArchiveState>(EMPTY);
@@ -18,7 +42,15 @@ export function useArchive(docId: string | null) {
     if (!docId) { setState(EMPTY); return; }
     readSidecar<ArchiveState>(docId, "archive.json", EMPTY)
       .then((data) => {
-        if (docRef.current === docId && data.snippets) setState(data);
+        if (docRef.current === docId && data.snippets) {
+          const migrated = migrateSnippets(data.snippets);
+          const next = { snippets: migrated };
+          setState(next);
+          // Persist migration if anything changed
+          if (migrated !== data.snippets) {
+            writeSidecar(docId, "archive.json", next).catch(() => {});
+          }
+        }
       })
       .catch(() => {});
   }, [docId]);
@@ -33,10 +65,10 @@ export function useArchive(docId: string | null) {
     }
   }, []);
 
-  const archiveText = useCallback((text: string): ArchivedSnippet => {
+  const archiveContent = useCallback((content: unknown): ArchivedSnippet => {
     const snippet: ArchivedSnippet = {
       id: uuid(),
-      text,
+      content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
     };
     setState((prev) => {
@@ -45,6 +77,18 @@ export function useArchive(docId: string | null) {
       return next;
     });
     return snippet;
+  }, [persist]);
+
+  const updateSnippet = useCallback((id: string, content: unknown) => {
+    setState((prev) => {
+      const next = {
+        snippets: prev.snippets.map((s) =>
+          s.id === id ? { ...s, content: normalizeRichContent(content) } : s
+        ),
+      };
+      persist(next);
+      return next;
+    });
   }, [persist]);
 
   const restoreSnippet = useCallback((id: string): ArchivedSnippet | null => {
@@ -70,7 +114,8 @@ export function useArchive(docId: string | null) {
 
   return {
     snippets: state.snippets,
-    archiveText,
+    archiveContent,
+    updateSnippet,
     restoreSnippet,
     deleteSnippet,
   };

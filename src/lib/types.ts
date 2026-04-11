@@ -108,7 +108,9 @@ export interface RevisionsState {
 
 export interface ArchivedSnippet {
   id: string;
-  text: string;
+  /** Rich content (Tiptap JSONContent). Legacy snippets stored plain `text`;
+   *  the useArchive hook migrates them to JSONContent on load. */
+  content: unknown;
   createdAt: string;
 }
 
