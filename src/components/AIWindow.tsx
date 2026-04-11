@@ -45,6 +45,7 @@ import type {
   RevisionUser,
   TextRevision,
 } from "@/lib/types";
+import ConfirmDialog from "./ConfirmDialog";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -77,6 +78,9 @@ interface AIRequestVM {
   createdAt: string;
   // Optional: when the kind has a destructive cancel/clear action.
   onCancel?: () => void;
+  // True when the request contains user-written text (prompt confirmation
+  // before discarding).
+  hasUserText: boolean;
   // Optional: kind-specific resolved hint, e.g. resolved bibKey.
   resolvedHint?: string;
 }
@@ -212,6 +216,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
         r.status === "pending"
           ? () => args.cancelBibReview(r.bibKey, r.type)
           : undefined,
+      hasUserText: !!r.requestNotes?.trim(),
     });
   }
 
@@ -229,6 +234,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
         r.status === "pending"
           ? () => args.removeEntryRequest(r.id)
           : undefined,
+      hasUserText: !!r.description.trim(),
     });
   }
 
@@ -254,6 +260,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
       snippet: rev.text,
       turnCount: rev.turns.length,
       createdAt: rev.createdAt,
+      hasUserText: !!rev.text.trim(),
     });
   }
 
@@ -274,6 +281,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
         rev.text,
       turnCount: rev.turns.length,
       createdAt: rev.createdAt,
+      hasUserText: !!rev.text.trim(),
     });
   }
 
@@ -298,6 +306,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
         r.status !== "complete"
           ? () => args.deletePanelAiRequest(r.id)
           : undefined,
+      hasUserText: !!r.text?.trim(),
     });
   }
 
@@ -742,6 +751,16 @@ function Bucket({
 
 function RequestCard({ req }: { req: AIRequestVM }) {
   const meta = KIND_META[req.kind];
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const handleCancel = useCallback(() => {
+    if (req.hasUserText) {
+      setConfirmOpen(true);
+    } else {
+      req.onCancel?.();
+    }
+  }, [req]);
+
   return (
     <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-white hover:border-stone-300 transition-colors">
       <span
@@ -779,13 +798,21 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       </div>
       {req.onCancel && (
         <button
-          onClick={req.onCancel}
+          onClick={handleCancel}
           className="shrink-0 text-[10px] text-stone-400 hover:text-[#b45757] transition-colors px-1"
           title="Cancel this request"
         >
           ×
         </button>
       )}
+      <ConfirmDialog
+        open={confirmOpen}
+        message="This request has text. Discard it?"
+        confirmLabel="Discard"
+        tone="danger"
+        onConfirm={() => { setConfirmOpen(false); req.onCancel?.(); }}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </li>
   );
 }

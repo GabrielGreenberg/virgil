@@ -19,6 +19,7 @@ import {
   AiRequestCard,
   AiRequestsSectionHeader,
 } from "./panel-primitives";
+import ConfirmDialog from "./ConfirmDialog";
 import {
   formatMinimalCitation as fmtMinCite,
 } from "@/lib/bib-parser";
@@ -35,12 +36,13 @@ function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: 
   }, [delay]) as unknown as T;
 }
 
-/* ── Delete X button with local confirm popover ─────────────────── */
+/* ── Delete X button with confirm dialog ────────────────────────── */
 
 /**
  * A small "×" button that appears on hover of its parent (via the
- * `group-hover` / `group/xxx` pattern). Clicking it shows a tiny
- * confirm popover anchored near the button before actually deleting.
+ * `group-hover` / `group/xxx` pattern). Clicking it shows a
+ * ConfirmDialog (fixed viewport overlay) before actually deleting,
+ * so the confirmation is never clipped by scroll containers.
  */
 function DeleteXButton({
   onConfirm,
@@ -50,32 +52,9 @@ function DeleteXButton({
   label?: string;
 }) {
   const [asking, setAsking] = useState(false);
-  const popRef = useRef<HTMLDivElement>(null);
-
-  // Close popover on outside click
-  useEffect(() => {
-    if (!asking) return;
-    const handler = (e: MouseEvent) => {
-      if (popRef.current && !popRef.current.contains(e.target as Node)) {
-        setAsking(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [asking]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!asking) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setAsking(false);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [asking]);
 
   return (
-    <div className="relative" ref={popRef}>
+    <>
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -89,30 +68,15 @@ function DeleteXButton({
           <line x1="6" y1="6" x2="18" y2="18" />
         </svg>
       </button>
-      {asking && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-[var(--surface)] border border-[var(--border)] rounded-lg shadow-lg p-3 min-w-[180px]">
-          <p className="text-xs text-stone-600 mb-2.5">{label}</p>
-          <div className="flex items-center justify-end gap-1.5">
-            <button
-              onClick={(e) => { e.stopPropagation(); setAsking(false); }}
-              className="px-2 py-1 text-[11px] font-medium text-stone-600 bg-white border border-stone-200 rounded hover:bg-stone-50 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setAsking(false);
-                onConfirm();
-              }}
-              className="px-2 py-1 text-[11px] font-medium text-white bg-[#b45757] border border-[#9a3c3c] rounded hover:bg-[#9a3c3c] transition-colors"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+      <ConfirmDialog
+        open={asking}
+        message={label}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={() => { setAsking(false); onConfirm(); }}
+        onCancel={() => setAsking(false)}
+      />
+    </>
   );
 }
 

@@ -23,6 +23,7 @@
 
 import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
+import ConfirmDialog from "./ConfirmDialog";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -166,6 +167,7 @@ export function AiRequestCard({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(request.text);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync external updates (e.g. AI fulfillment) into the local draft.
@@ -251,7 +253,11 @@ export function AiRequestCard({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            onDelete();
+            if (draft.trim()) {
+              setConfirmOpen(true);
+            } else {
+              onDelete();
+            }
           }}
           onMouseDown={(e) => e.stopPropagation()}
           className="text-stone-400 hover:text-stone-600 shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -262,6 +268,14 @@ export function AiRequestCard({
             <line x1="6" y1="6" x2="18" y2="18" />
           </svg>
         </button>
+        <ConfirmDialog
+          open={confirmOpen}
+          message="This request has text. Discard it?"
+          confirmLabel="Discard"
+          tone="danger"
+          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onCancel={() => setConfirmOpen(false)}
+        />
       </div>
       <div className="text-[10px] text-stone-400 mt-1 flex items-center gap-1.5 pl-7">
         <span>{kindLabel}</span>
