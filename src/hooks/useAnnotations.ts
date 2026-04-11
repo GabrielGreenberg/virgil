@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
+import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { AnnotationsState } from "@/lib/types";
 
 const EMPTY: AnnotationsState = {};

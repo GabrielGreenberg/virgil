@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
-import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
+import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateEntityId } from "@/lib/uuid";

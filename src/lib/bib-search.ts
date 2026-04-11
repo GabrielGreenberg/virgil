@@ -7,7 +7,7 @@
  */
 
 import { parseBibFile } from "@/lib/bib-parser";
-import { readGeneralBib } from "@/lib/storage-fsa";
+import { readGeneralBib } from "@/lib/storage";
 import type { BibEntry } from "@/lib/types";
 
 interface CacheEntry {

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar, readBib, writeBib } from "@/lib/storage-fsa";
+import { readSidecar, writeSidecar, readBib, writeBib } from "@/lib/storage";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
   parseBibFile,

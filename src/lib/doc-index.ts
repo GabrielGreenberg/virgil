@@ -74,6 +74,39 @@ export async function writeIndex(idx: FsaDocIndex): Promise<void> {
 // --- Tabs ----------------------------------------------------------------
 
 export async function readTabs(): Promise<TabsState> {
+  // In dev-storage mode, auto-open the most recent local doc so the
+  // editor renders without any user interaction.
+  if (process.env.NEXT_PUBLIC_DEV_STORAGE) {
+    try {
+      const res = await fetch("/api/dev/index.json");
+      const data = (await res.json()) as {
+        docs: { id: string; lastModifiedAt: string; sourcePath: string }[];
+      };
+      // Only consider docs that live inside virgil-data/
+      const local = data.docs.filter((d) =>
+        d.sourcePath.includes("virgil-data/"),
+      );
+      local.sort(
+        (a, b) =>
+          new Date(b.lastModifiedAt).getTime() -
+          new Date(a.lastModifiedAt).getTime(),
+      );
+      // Pick the first doc whose .tex file actually exists on disk.
+      for (const doc of local) {
+        const texFile = doc.sourcePath.split("/").pop() ?? "document.tex";
+        const folder = doc.sourcePath
+          .slice(doc.sourcePath.indexOf("virgil-data/") + "virgil-data/".length)
+          .split("/")[0];
+        const probe = await fetch(`/api/dev/doc/${doc.id}/${texFile}`);
+        if (probe.ok) {
+          return { openTabIds: [doc.id], currentDocId: doc.id };
+        }
+      }
+    } catch {
+      // fall through to empty
+    }
+    return EMPTY_TABS;
+  }
   const t = await get<TabsState>(TABS_KEY, store);
   return t ?? EMPTY_TABS;
 }

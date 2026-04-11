@@ -7,7 +7,7 @@ import {
   openExistingDocFromPicker,
   renameDoc as renameDocStorage,
   deleteDocFromIndex,
-} from "@/lib/storage-fsa";
+} from "@/lib/storage";
 import { readTabs, writeTabs, type FsaDocMeta } from "@/lib/doc-index";
 
 /**

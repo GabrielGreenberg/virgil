@@ -5,7 +5,7 @@ import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
-import { readTex, writeTex } from "@/lib/storage-fsa";
+import { readTex, writeTex } from "@/lib/storage";
 
 const virgilTheme = EditorView.theme({
   "&": {

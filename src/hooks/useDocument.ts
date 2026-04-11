@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent } from "@tiptap/react";
-import { readDocBundle, writeDocBundle } from "@/lib/storage-fsa";
+import { readDocBundle, writeDocBundle } from "@/lib/storage";
 
 type SaveStatus = "idle" | "saving" | "saved";
 

@@ -10,10 +10,13 @@ import type { NextConfig } from "next";
 // once and stick with it.
 const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
+const devStorage = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
+
 const nextConfig: NextConfig = {
   // Fully static export — no Node runtime, no API routes, no SSR.
   // The whole storage layer runs in the browser via the FSA spec.
-  output: "export",
+  // Disabled in dev-storage mode so the /api/dev route works.
+  ...(devStorage ? {} : { output: "export" as const }),
 
   // Required under static export — Next's built-in image optimizer
   // is a server feature.

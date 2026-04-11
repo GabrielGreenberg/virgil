@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
+import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { AiRequest, AiRequestKind, AiRequestsState } from "@/lib/types";
 
 const EMPTY: AiRequestsState = { requests: [] };

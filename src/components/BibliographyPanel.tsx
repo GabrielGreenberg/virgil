@@ -5,7 +5,7 @@ import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { PANEL, PanelHeader, PrevNextCounter, clearStaleHover } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import { searchGeneralBib } from "@/lib/bib-search";
-import { pickGeneralBib } from "@/lib/storage-fsa";
+import { pickGeneralBib } from "@/lib/storage";
 
 interface BibliographyPanelProps {
   citations: CitationRef[];

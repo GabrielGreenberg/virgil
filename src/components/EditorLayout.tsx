@@ -1565,10 +1565,15 @@ export default function EditorLayout() {
   // Whenever the active doc changes, look up its handle in idb and
   // query (don't request) readwrite permission. The result drives the
   // gate vs editor render decision below.
+  // In dev-storage mode we skip the FSA permission dance entirely.
   useEffect(() => {
     if (!currentDocId) {
       setDocPermState("no-handle");
       setActiveDocHandle(null);
+      return;
+    }
+    if (process.env.NEXT_PUBLIC_DEV_STORAGE) {
+      setDocPermState("granted");
       return;
     }
     let cancelled = false;
