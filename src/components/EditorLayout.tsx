@@ -45,6 +45,7 @@ import { CitationCard } from "./CitationsPanel";
 import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
 import { QuotationGroupCard } from "./QuotationsPanel";
 import EditorMirror from "./EditorMirror";
+import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
 import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
@@ -330,42 +331,34 @@ function PanelColumn({
   focusedHalf?: "top" | "bottom";
   onFocusHalf?: (half: "top" | "bottom") => void;
 }) {
-  const dragging = useRef(false);
   const startX = useRef(0);
   const startWidth = useRef(0);
   const stackRef = useRef<HTMLDivElement>(null);
-  const gapRef = useRef<HTMLDivElement>(null);
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    startX.current = e.clientX;
-    startWidth.current = width;
-    dragging.current = false;
-
-    const onMouseMove = (e: MouseEvent) => {
-      const dx = Math.abs(e.clientX - startX.current);
-      if (!dragging.current && dx > 3) {
-        dragging.current = true;
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-        gapRef.current?.classList.add("dragging");
-      }
-      if (!dragging.current) return;
+  const onMove = useCallback(
+    (e: MouseEvent) => {
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
       onWidthChange(Math.max(240, Math.min(600, startWidth.current + delta)));
-    };
-    const onMouseUp = () => {
-      dragging.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      gapRef.current?.classList.remove("dragging");
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-  }, [width, side, onWidthChange]);
+    },
+    [side, onWidthChange],
+  );
+
+  const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
+    cursor: "col-resize",
+    onMove,
+    deadzone: 3,
+  });
+
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      startX.current = e.clientX;
+      startWidth.current = width;
+      gapMouseDown(e);
+    },
+    [width, gapMouseDown],
+  );
 
   // Determine if children is a split spec or single ReactNode
   const isSplitChildren = (
@@ -456,34 +449,20 @@ function SplitEditorPanes({
   onMirrorViewReady?: (view: import("prosemirror-view").EditorView | null) => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const editorGapRef = useRef<HTMLDivElement>(null);
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      editorGapRef.current?.classList.add("dragging");
-      const onMove = (ev: MouseEvent) => {
-        const el = containerRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        if (rect.height <= 0) return;
-        const r = (ev.clientY - rect.top) / rect.height;
-        onRatioChange(Math.max(0.15, Math.min(0.85, r)));
-      };
-      const onUp = () => {
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        editorGapRef.current?.classList.remove("dragging");
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+  const onMove = useCallback(
+    (ev: MouseEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const r = (ev.clientY - rect.top) / rect.height;
+      onRatioChange(Math.max(0.15, Math.min(0.85, r)));
     },
     [onRatioChange],
   );
+
+  const { gapRef: editorGapRef, onMouseDown } = useDragGap({ cursor: "row-resize", onMove });
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-w-0 min-h-0">
