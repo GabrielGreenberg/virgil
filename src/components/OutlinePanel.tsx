@@ -19,9 +19,14 @@ interface HeadingItem {
 
 /* ── Position indicator helpers ─────────────────────────────────────── */
 
+/** An entry in the section path: heading text + its top-level block index. */
+export type SectionPathEntry = { text: string; index: number };
+
 /** Where a pane's position chevron should appear in the outline. */
 interface ResolvedPosition {
   headingText: string | null;
+  /** Top-level block index of the resolved heading — unique, used for matching. */
+  headingIndex: number | null;
   parTitleIndex: number | null;
   isDocStart: boolean;
 }
@@ -32,7 +37,7 @@ interface ResolvedPosition {
  * heading (or its parTitle children) aren't visible.
  */
 function resolvePosition(
-  sectionPath: string[] | undefined,
+  sectionPath: SectionPathEntry[] | undefined,
   parTitleIndex: number | null | undefined,
   headings: HeadingItem[],
   collapsed: Set<string>,
@@ -44,16 +49,18 @@ function resolvePosition(
   // Document-start region (before any heading)
   if (sectionPath.length === 0) {
     if (showTitles && parTitleIndex != null && preambleTitles.some((pt) => pt.index === parTitleIndex)) {
-      return { headingText: null, parTitleIndex, isDocStart: false };
+      return { headingText: null, headingIndex: null, parTitleIndex, isDocStart: false };
     }
-    return { headingText: null, parTitleIndex: null, isDocStart: true };
+    return { headingText: null, headingIndex: null, parTitleIndex: null, isDocStart: true };
   }
 
-  // Walk from outermost to innermost — first collapsed heading wins
-  for (const text of sectionPath) {
-    const heading = headings.find((h) => h.text === text);
+  // Walk from outermost to innermost — first collapsed heading wins.
+  // Match by block index (unique) rather than text to handle duplicate
+  // heading names and inline non-text content (math, etc.).
+  for (const entry of sectionPath) {
+    const heading = headings.find((h) => h.index === entry.index);
     if (heading && collapsed.has(heading.id)) {
-      return { headingText: text, parTitleIndex: null, isDocStart: false };
+      return { headingText: heading.text, headingIndex: heading.index, parTitleIndex: null, isDocStart: false };
     }
   }
 
@@ -63,35 +70,42 @@ function resolvePosition(
       preambleTitles.some((pt) => pt.index === parTitleIndex) ||
       headings.some((h) => h.parTitles.some((pt) => pt.index === parTitleIndex));
     if (exists) {
-      return { headingText: null, parTitleIndex, isDocStart: false };
+      return { headingText: null, headingIndex: null, parTitleIndex, isDocStart: false };
     }
   }
 
   // Default: innermost heading
-  return { headingText: sectionPath[sectionPath.length - 1], parTitleIndex: null, isDocStart: false };
+  const innermost = sectionPath[sectionPath.length - 1];
+  const innermostHeading = headings.find((h) => h.index === innermost.index);
+  return {
+    headingText: innermostHeading?.text ?? innermost.text,
+    headingIndex: innermostHeading?.index ?? innermost.index,
+    parTitleIndex: null,
+    isDocStart: false,
+  };
 }
 
 function PositionChevron({ label }: { label?: string }) {
   return (
     <span
-      className="inline-flex items-center align-middle ml-1 text-red-500"
+      className="inline-flex items-center align-middle ml-1.5 text-red-500"
       title="Currently on screen"
     >
       <svg
-        width="7"
-        height="9"
-        viewBox="0 0 7 9"
+        width="6"
+        height="10"
+        viewBox="0 0 6 10"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2"
+        strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
         className="shrink-0"
       >
-        <path d="M1.5 1 L5.5 4.5 L1.5 8" />
+        <path d="M5 1 L1 5 L5 9" />
       </svg>
       {label != null && (
-        <span className="text-[8px] font-bold leading-none">{label}</span>
+        <span className="text-[9px] font-bold leading-none -ml-px">{label}</span>
       )}
     </span>
   );
@@ -117,7 +131,7 @@ interface OutlinePanelProps {
   /** Heading chain currently visible in the editor viewport. The last
       entry is the closest enclosing heading. Empty means the reader
       is in the Document start region. */
-  activeSectionPath?: string[];
+  activeSectionPath?: SectionPathEntry[];
   /** Top-level block index of the paragraph/list whose parTitle the
       reader is currently reading, or null if none. Used to move the
       position chevron onto a paragraph row when par titles are enabled. */
@@ -125,7 +139,7 @@ interface OutlinePanelProps {
   /** True when the editor is in split-pane mode. */
   editorSplit?: boolean;
   /** Heading chain for the mirror (second) pane. */
-  mirrorSectionPath?: string[];
+  mirrorSectionPath?: SectionPathEntry[];
   /** Active parTitle index for the mirror pane. */
   mirrorParTitleIndex?: number | null;
 }
@@ -386,8 +400,8 @@ function OutlineNode({
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
   const hasChildren = hasSubHeadings || hasTitles;
   const isCollapsed = collapsed.has(node.heading.id);
-  const headingMatch1 = pos1?.headingText === node.heading.text;
-  const headingMatch2 = pos2?.headingText === node.heading.text;
+  const headingMatch1 = pos1?.headingIndex === node.heading.index;
+  const headingMatch2 = pos2?.headingIndex === node.heading.index;
 
   return (
     <div>
