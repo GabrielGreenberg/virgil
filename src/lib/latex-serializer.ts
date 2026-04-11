@@ -1,5 +1,6 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
+import { ANCHORABLE_NODES } from "@/lib/marginalia";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 
 const PREAMBLE = `\\documentclass{article}
@@ -158,14 +159,20 @@ function serializeNode(node: JSONContent, insideList = false, listDepth = 0): st
     case "inlineMath":
       return `$${node.attrs?.latex || ""}$`;
 
-    case "displayMath":
-      return `\\[\n${node.attrs?.latex || ""}\n\\]\n\n`;
+    case "displayMath": {
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `\\[\n${node.attrs?.latex || ""}\n\\]${anchor}\n\n`;
+    }
 
     case "footnote":
       return `\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
 
-    case "latexComment":
-      return `% ${node.attrs?.text || ""}\n`;
+    case "latexComment": {
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `% ${node.attrs?.text || ""}${anchor}\n`;
+    }
 
     case "archiveMarker": {
       const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
@@ -251,11 +258,10 @@ function generateUuid(existing: Set<string>): string {
  *  Lists (bulletList, orderedList) get a single UUID for the whole list. */
 export function assignUuids(doc: JSONContent): void {
   const LIST_TYPES = new Set(["bulletList", "orderedList"]);
-  const UUID_TYPES = new Set(["paragraph", "heading", "bulletList", "orderedList"]);
   const existing = new Set<string>();
   // First pass: collect existing UUIDs
   function collect(node: JSONContent) {
-    if (UUID_TYPES.has(node.type!) && node.attrs?.uuid) {
+    if (ANCHORABLE_NODES.has(node.type!) && node.attrs?.uuid) {
       existing.add(node.attrs.uuid as string);
     }
     node.content?.forEach(collect);
@@ -298,6 +304,15 @@ export function assignUuids(doc: JSONContent): void {
       node.attrs.uuid = generateUuid(existing);
       existing.add(node.attrs.uuid as string);
     }
+    // Atom block nodes (displayMath, latexComment) always get a UUID
+    if (
+      (node.type === "displayMath" || node.type === "latexComment") &&
+      !node.attrs?.uuid
+    ) {
+      if (!node.attrs) node.attrs = {};
+      node.attrs.uuid = generateUuid(existing);
+      existing.add(node.attrs.uuid as string);
+    }
     node.content?.forEach((child) => assign(child, insideList));
   }
   assign(doc);
@@ -310,6 +325,8 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "citation") return node.attrs?.command || "";
   if (node.type === "footnote") return richJsonToPlainText(normalizeRichContent(node.attrs?.content));
   if (node.type === "hardBreak") return " ";
+  if (node.type === "displayMath") return node.attrs?.latex || "";
+  if (node.type === "latexComment") return node.attrs?.text || "";
   if (node.type === "archiveMarker") return "";
   if (node.type === "aiRequestMarker") return "";
   if (!node.content) return "";
@@ -323,7 +340,7 @@ function computeFingerprint(node: JSONContent): string {
   return text.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
-const UUID_ELIGIBLE = new Set(["paragraph", "heading", "bulletList", "orderedList"]);
+const UUID_ELIGIBLE = ANCHORABLE_NODES;
 
 /** Extract sidecar data (titles + fingerprints keyed by UUID) from the document. */
 export function extractSidecarData(doc: JSONContent): VirgilSidecar {
@@ -389,6 +406,14 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
+    }
+    // Atom block nodes
+    if (
+      (node.type === "displayMath" || node.type === "latexComment") &&
+      !node.attrs?.uuid
+    ) {
+      const fp = computeFingerprint(node);
+      if (fp) tryRestore(node, fp);
     }
     node.content?.forEach((child) => recover(child, insideList));
   }

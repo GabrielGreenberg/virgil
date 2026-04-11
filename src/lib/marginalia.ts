@@ -10,6 +10,19 @@
 
 import type { PanelId } from "@/hooks/useViewPrefs";
 
+/** All node type names that can serve as marginalia anchor targets (i.e. carry a UUID). */
+export const ANCHORABLE_NODES = new Set([
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "displayMath",
+  "latexComment",
+]);
+
+/** Subset of ANCHORABLE_NODES that are atom nodes (no interior cursor positions). */
+export const ANCHORABLE_ATOMS = new Set(["displayMath", "latexComment"]);
+
 export type MarkerType = "quote" | "note" | "archive" | "revision" | "cut";
 
 export interface MarginaliaMarker {

@@ -13,9 +13,64 @@ import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
+import { ANCHORABLE_NODES, ANCHORABLE_ATOMS } from "@/lib/marginalia";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
+
+/**
+ * Resolve a ProseMirror position to the nearest anchorable node, handling
+ * both container nodes (paragraph, heading, list) and atom blocks
+ * (displayMath, latexComment) where posAtCoords lands before/after the atom.
+ */
+function resolveAnchorableNode(
+  view: import("@tiptap/pm/view").EditorView,
+  pos: number,
+): { node: PMNode; nodePos: number } | null {
+  const $pos = view.state.doc.resolve(pos);
+  // Walk up ancestors (works for container nodes)
+  for (let depth = $pos.depth; depth >= 0; depth--) {
+    const node = $pos.node(depth);
+    if (ANCHORABLE_NODES.has(node.type.name)) {
+      const nodePos = depth === 0 ? 0 : $pos.before(depth);
+      return { node, nodePos };
+    }
+  }
+  // For atom blocks: posAtCoords lands before/after the atom
+  if ($pos.nodeAfter && ANCHORABLE_ATOMS.has($pos.nodeAfter.type.name)) {
+    return { node: $pos.nodeAfter, nodePos: pos };
+  }
+  if ($pos.nodeBefore && ANCHORABLE_ATOMS.has($pos.nodeBefore.type.name)) {
+    return { node: $pos.nodeBefore, nodePos: pos - $pos.nodeBefore.nodeSize };
+  }
+  return null;
+}
+
+/**
+ * Ensure the anchorable node at `pos` has a UUID. Assigns one if missing.
+ * Returns the UUID or null if no anchorable node was found.
+ */
+function ensureAnchorUuid(
+  view: import("@tiptap/pm/view").EditorView,
+  pos: number,
+): string | null {
+  const result = resolveAnchorableNode(view, pos);
+  if (!result) return null;
+  const { node, nodePos } = result;
+  if (node.attrs?.uuid) return node.attrs.uuid as string;
+  const newUuid = Math.random().toString(16).slice(2, 10);
+  try {
+    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
+      ...node.attrs,
+      uuid: newUuid,
+    });
+    tr.setMeta("addToHistory", false);
+    view.dispatch(tr);
+    return newUuid;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Auto-sizes an <input> to its content by measuring text in a hidden <span>.
@@ -773,35 +828,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
             if (!posResult) return true;
-            const $pos = view.state.doc.resolve(posResult.pos);
-            let paragraphId: string | null = null;
-            for (let depth = $pos.depth; depth >= 0; depth--) {
-              const node = $pos.node(depth);
-              const name = node.type.name;
-              if (
-                name === "paragraph" ||
-                name === "heading" ||
-                name === "bulletList" ||
-                name === "orderedList"
-              ) {
-                if (node.attrs?.uuid) {
-                  paragraphId = node.attrs.uuid as string;
-                } else {
-                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
-                  const newUuid = Math.random().toString(16).slice(2, 10);
-                  try {
-                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
-                      ...node.attrs,
-                      uuid: newUuid,
-                    });
-                    tr.setMeta("addToHistory", false);
-                    view.dispatch(tr);
-                    paragraphId = newUuid;
-                  } catch { /* ignore */ }
-                }
-                break;
-              }
-            }
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
             if (paragraphId && paragraphId !== currentParagraphId) {
               window.dispatchEvent(
                 new CustomEvent("virgil-marginalia-reanchor", {
@@ -823,37 +850,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
             if (!posResult) return true;
-            // Walk up to find the enclosing paragraph/heading/list and ensure
-            // it has a uuid attribute. Mirrors ensureParagraphUuid above.
-            const $pos = view.state.doc.resolve(posResult.pos);
-            let paragraphId: string | null = null;
-            for (let depth = $pos.depth; depth >= 0; depth--) {
-              const node = $pos.node(depth);
-              const name = node.type.name;
-              if (
-                name === "paragraph" ||
-                name === "heading" ||
-                name === "bulletList" ||
-                name === "orderedList"
-              ) {
-                if (node.attrs?.uuid) {
-                  paragraphId = node.attrs.uuid as string;
-                } else {
-                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
-                  const newUuid = Math.random().toString(16).slice(2, 10);
-                  try {
-                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
-                      ...node.attrs,
-                      uuid: newUuid,
-                    });
-                    tr.setMeta("addToHistory", false);
-                    view.dispatch(tr);
-                    paragraphId = newUuid;
-                  } catch { /* ignore */ }
-                }
-                break;
-              }
-            }
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
             if (paragraphId) {
               window.dispatchEvent(
                 new CustomEvent("virgil-quotation-drop", {
@@ -958,33 +955,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             const posResult = view.posAtCoords(coords);
             if (!posResult) return true;
 
-            // Walk up to the enclosing paragraph and ensure it has a uuid
-            // so the marginalia marker can anchor to it on the next render.
-            const $pos = view.state.doc.resolve(posResult.pos);
-            for (let depth = $pos.depth; depth >= 0; depth--) {
-              const node = $pos.node(depth);
-              const name = node.type.name;
-              if (
-                name === "paragraph" ||
-                name === "heading" ||
-                name === "bulletList" ||
-                name === "orderedList"
-              ) {
-                if (!node.attrs?.uuid) {
-                  const nodePos = depth === 0 ? 0 : $pos.before(depth);
-                  const newUuid = Math.random().toString(16).slice(2, 10);
-                  try {
-                    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
-                      ...node.attrs,
-                      uuid: newUuid,
-                    });
-                    tr.setMeta("addToHistory", false);
-                    view.dispatch(tr);
-                  } catch { /* ignore */ }
-                }
-                break;
-              }
-            }
+            // Ensure the drop target has a UUID for marginalia anchoring
+            ensureAnchorUuid(view, posResult.pos);
 
             const reanchorOnly = event.shiftKey;
             if (!reanchorOnly && content) {
@@ -1488,8 +1460,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // Helper: get the UUID of a node (paragraph, bulletList, orderedList)
       const getUuid = (node: any): string | null => node.attrs?.uuid || null;
       const hasParagraphUuid = (node: any): boolean => {
-        const name = node.type.name;
-        return (name === "paragraph" || name === "heading" || name === "bulletList" || name === "orderedList") && !!node.attrs?.uuid;
+        return ANCHORABLE_NODES.has(node.type.name) && !!node.attrs?.uuid;
       };
 
       // Rule 1: Find the paragraph the cursor is in
@@ -1606,37 +1577,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (!editor) return null;
       const doc = editor.state.doc;
       if (pos < 0 || pos > doc.content.size) return null;
-      const $pos = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
-      // Walk up to find the nearest paragraph/heading/list ancestor that holds a UUID.
-      for (let depth = $pos.depth; depth >= 0; depth--) {
-        const node = $pos.node(depth);
-        const name = node.type.name;
-        if (
-          name === "paragraph" ||
-          name === "heading" ||
-          name === "bulletList" ||
-          name === "orderedList"
-        ) {
-          if (node.attrs?.uuid) return node.attrs.uuid as string;
-          // Generate and apply
-          const nodePos = depth === 0 ? 0 : $pos.before(depth);
-          const newUuid = Math.random().toString(16).slice(2, 10);
-          try {
-            const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
-              ...node.attrs,
-              uuid: newUuid,
-            });
-            // Mark this transaction as a metadata-only change so persistence
-            // layers can ignore it if they want.
-            tr.setMeta("addToHistory", false);
-            editor.view.dispatch(tr);
-            return newUuid;
-          } catch {
-            return null;
-          }
-        }
-      }
-      return null;
+      const clamped = Math.min(Math.max(pos, 0), doc.content.size);
+      return ensureAnchorUuid(editor.view, clamped);
     },
     ensureActiveParagraphUuid(): string | null {
       if (!editor) return null;
@@ -1668,16 +1610,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       editor.state.doc.descendants((node, pos) => {
         const name = node.type.name;
         const id = node.attrs?.uuid as string | undefined;
-        if (
-          id &&
-          (name === "paragraph" ||
-            name === "heading" ||
-            name === "bulletList" ||
-            name === "orderedList")
-        ) {
+        if (id && ANCHORABLE_NODES.has(name)) {
           try {
-            const coords = view.coordsAtPos(pos + 1);
-            const top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+            let top: number;
+            if (ANCHORABLE_ATOMS.has(name)) {
+              const dom = view.nodeDOM(pos) as HTMLElement | null;
+              if (!dom) return true;
+              top = dom.getBoundingClientRect().top - scrollRect.top + scrollEl!.scrollTop;
+            } else {
+              const coords = view.coordsAtPos(pos + 1);
+              top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+            }
             result.push({ id, top });
           } catch { /* ignore */ }
         }

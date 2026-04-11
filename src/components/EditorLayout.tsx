@@ -32,7 +32,7 @@ import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
 import { useQuotations } from "@/hooks/useQuotations";
 import Marginalia from "./Marginalia";
-import type { MarginaliaMarker } from "@/lib/marginalia";
+import { ANCHORABLE_NODES, ANCHORABLE_ATOMS, type MarginaliaMarker } from "@/lib/marginalia";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -1823,7 +1823,7 @@ export default function EditorLayout() {
           const $p = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
           for (let d = $p.depth; d >= 0; d--) {
             const anc = $p.node(d);
-            if (["paragraph", "heading", "bulletList", "orderedList"].includes(anc.type.name)) {
+            if (ANCHORABLE_NODES.has(anc.type.name)) {
               if (anc.attrs?.uuid === oldParagraphId) {
                 oldAnchorPos = pos;
               }
@@ -1836,8 +1836,8 @@ export default function EditorLayout() {
         let newAnchorPos: number | null = null;
         doc.descendants((node, nodePos) => {
           if (newAnchorPos !== null) return false;
-          if (["paragraph", "heading", "bulletList", "orderedList"].includes(node.type.name) && node.attrs?.uuid === newParagraphId) {
-            newAnchorPos = nodePos + 1;
+          if (ANCHORABLE_NODES.has(node.type.name) && node.attrs?.uuid === newParagraphId) {
+            newAnchorPos = ANCHORABLE_ATOMS.has(node.type.name) ? nodePos : nodePos + 1;
             return false;
           }
           return true;
@@ -1871,8 +1871,8 @@ export default function EditorLayout() {
         let newParaPos: number | null = null;
         doc.descendants((node, pos) => {
           if (newParaPos !== null) return false;
-          if (["paragraph", "heading", "bulletList", "orderedList"].includes(node.type.name) && node.attrs?.uuid === newParagraphId) {
-            newParaPos = pos + 1;
+          if (ANCHORABLE_NODES.has(node.type.name) && node.attrs?.uuid === newParagraphId) {
+            newParaPos = ANCHORABLE_ATOMS.has(node.type.name) ? pos : pos + 1;
             return false;
           }
           return true;
@@ -2516,20 +2516,27 @@ export default function EditorLayout() {
           if (anchorPos < 0 || anchorPos > doc.content.size) continue;
           const $pos = doc.resolve(Math.min(Math.max(anchorPos, 0), doc.content.size));
           let paragraphId: string | null = null;
+          // Walk up ancestors (container nodes)
           for (let depth = $pos.depth; depth >= 0; depth--) {
             const ancestor = $pos.node(depth);
-            const name = ancestor.type.name;
-            if (
-              name === "paragraph" ||
-              name === "heading" ||
-              name === "bulletList" ||
-              name === "orderedList"
-            ) {
+            if (ANCHORABLE_NODES.has(ancestor.type.name)) {
               paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
               if (!paragraphId) {
                 paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
               }
               break;
+            }
+          }
+          // Atom block fallback
+          if (!paragraphId) {
+            const after = $pos.nodeAfter;
+            const before = $pos.nodeBefore;
+            if (after && ANCHORABLE_ATOMS.has(after.type.name)) {
+              paragraphId = (after.attrs?.uuid as string | null) ?? null;
+              if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
+            } else if (before && ANCHORABLE_ATOMS.has(before.type.name)) {
+              paragraphId = (before.attrs?.uuid as string | null) ?? null;
+              if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
             }
           }
           if (!paragraphId) continue;
@@ -2558,13 +2565,7 @@ export default function EditorLayout() {
         let paragraphId: string | null = null;
         for (let depth = $pos.depth; depth >= 0; depth--) {
           const ancestor = $pos.node(depth);
-          const name = ancestor.type.name;
-          if (
-            name === "paragraph" ||
-            name === "heading" ||
-            name === "bulletList" ||
-            name === "orderedList"
-          ) {
+          if (ANCHORABLE_NODES.has(ancestor.type.name)) {
             paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
             if (!paragraphId) {
               paragraphId = editorRef.current?.ensureParagraphUuid(pos) ?? null;

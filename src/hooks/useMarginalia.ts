@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { ANCHORABLE_NODES, ANCHORABLE_ATOMS } from "@/lib/marginalia";
 
 export interface ParagraphPosition {
   /** Paragraph UUID */
@@ -41,19 +42,20 @@ export function useMarginalia(editor: Editor | null) {
     const next = new Map<string, { top: number; height: number }>();
     editor.state.doc.descendants((node, pos) => {
       const name = node.type.name;
-      if (
-        name === "paragraph" ||
-        name === "heading" ||
-        name === "bulletList" ||
-        name === "orderedList"
-      ) {
-        // Use UUID if available, otherwise use a position-based key
+      if (ANCHORABLE_NODES.has(name)) {
         const id = (node.attrs?.uuid as string | undefined) || `_pos:${pos}`;
         try {
-          // pos+1 to step inside the node so coordsAtPos lands on the first line
-          const coords = editor.view.coordsAtPos(pos + 1);
-          const top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+          let top: number;
           const dom = editor.view.nodeDOM(pos) as HTMLElement | null;
+          if (ANCHORABLE_ATOMS.has(name)) {
+            // Atom nodes: pos+1 is outside the node, use DOM rect directly
+            if (!dom) return true;
+            top = dom.getBoundingClientRect().top - scrollRect.top + scrollEl!.scrollTop;
+          } else {
+            // Container nodes: step inside for first-line coordinates
+            const coords = editor.view.coordsAtPos(pos + 1);
+            top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+          }
           const height = dom ? dom.getBoundingClientRect().height : 20;
           next.set(id, { top, height });
         } catch { /* ignore */ }
