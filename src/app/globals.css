@@ -741,8 +741,8 @@ body {
 }
 
 /* Hide ProseMirror's default horizontal drop cursor during paragraph-linking drags */
-.prosemirror-dropcursor-block.marginalia-drag-hidden,
-.prosemirror-dropcursor-inline.marginalia-drag-hidden {
+.anchor-drag-active .prosemirror-dropcursor-block,
+.anchor-drag-active .prosemirror-dropcursor-inline {
   display: none !important;
 }
 

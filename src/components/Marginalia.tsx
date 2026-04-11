@@ -119,26 +119,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     if (!scrollEl || !editor) return;
     let indicator: HTMLDivElement | null = null;
     let rafId = 0;
-    const editorDom = editor.view?.dom as HTMLElement | null;
 
     // All paragraph-level anchor drags are detected via the centralized
     // isAnchorDrag helper from marginalia.ts.
-
-    // Hide the ProseMirror dropcursor element by adding a class to it directly
-    const hideDropCursor = () => {
-      // The dropcursor is appended as a sibling or child of the editor's
-      // parent — find it by its known class names and hide it.
-      const parent = editorDom?.parentElement;
-      if (!parent) return;
-      parent.querySelectorAll(".prosemirror-dropcursor-block, .prosemirror-dropcursor-inline")
-        .forEach((el) => el.classList.add("marginalia-drag-hidden"));
-    };
-    const restoreDropCursor = () => {
-      const parent = editorDom?.parentElement;
-      if (!parent) return;
-      parent.querySelectorAll(".marginalia-drag-hidden")
-        .forEach((el) => el.classList.remove("marginalia-drag-hidden"));
-    };
 
     const showIndicator = (paragraphId: string, side: "left" | "right") => {
       const pos = positionsRef.current.get(paragraphId);
@@ -161,8 +144,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       indicator.style.height = `${pos.height}px`;
       indicator.style[side] = `${MARGINALIA_GUTTER_WIDTH}px`;
       indicator.style[side === "left" ? "right" : "left"] = "";
-      // Suppress horizontal drop cursor
-      hideDropCursor();
     };
 
     const hideIndicator = () => {
@@ -170,11 +151,14 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         indicator.remove();
         indicator = null;
       }
-      restoreDropCursor();
+      scrollEl.classList.remove("anchor-drag-active");
     };
 
     const onDragOver = (e: DragEvent) => {
       if (!isAnchorDrag(e.dataTransfer)) return;
+      // Synchronously suppress ProseMirror's native dropcursor so it
+      // never renders even for a single frame.
+      scrollEl.classList.add("anchor-drag-active");
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         // Use Y-coordinate matching against the positions map so the
