@@ -270,7 +270,7 @@ function ArchivePanel({
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); onRestore(s.id); }}
-                      className="text-xs text-[var(--accent)] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded border border-stone-200 transition-colors"
+                      className="text-xs text-[var(--accent)] bg-[var(--accent-light)] hover:brightness-95 px-2 py-1 rounded border border-stone-200 transition-colors"
                       title={isAnchored
                         ? "Restore to marker position and remove from archive"
                         : "Insert at cursor and remove from archive"}

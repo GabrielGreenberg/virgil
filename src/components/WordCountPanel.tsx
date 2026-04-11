@@ -42,7 +42,7 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
   const hiddenWithCount = ALL_CATS.filter((c) => !visible(c) && (counts.categories[c] ?? 0) > 0);
 
   return (
-    <div className="w-full bg-[var(--background)] flex flex-col h-full">
+    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Word Count">
         {/* Settings gear dropdown */}
         <div className="relative">
