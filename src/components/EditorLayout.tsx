@@ -56,7 +56,9 @@ import EditorMirror from "./EditorMirror";
 import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit } from "./panel-primitives";
-import { usePreferences, deriveLight, hexToRgba } from "@/hooks/usePreferences";
+import { usePreferences } from "@/hooks/usePreferences";
+import { applyTransforms } from "@/lib/color-transforms";
+import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
@@ -937,7 +939,7 @@ export default function EditorLayout() {
     textRevisions,
     panelAiRequests: aiRequests,
   }), [bibReviewRequests, entryRequests, generalRevisions, textRevisions, aiRequests]);
-  const { prefs: editorPrefs, updatePref, resetAll: resetPrefs } = usePreferences();
+  const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
@@ -979,31 +981,28 @@ export default function EditorLayout() {
   }, []);
 
 
-  // Inject editor preferences as CSS custom properties
+  // Inject editor preferences as CSS custom properties (with global transforms)
   useEffect(() => {
     const s = document.documentElement.style;
-    s.setProperty("--editor-font-size", `${editorPrefs.editorFontSize}rem`);
-    s.setProperty("--editor-line-height", `${editorPrefs.editorLineHeight}`);
-    s.setProperty("--editor-text-color", editorPrefs.editorTextColor);
-    s.setProperty("--accent", editorPrefs.accentColor);
-    s.setProperty("--accent-light", deriveLight(editorPrefs.accentColor, 0.1));
-    s.setProperty("--background", editorPrefs.backgroundColor);
-    s.setProperty("--surface", editorPrefs.surfaceColor);
-    s.setProperty("--comment-bg", hexToRgba(editorPrefs.commentColor, 0.25));
-    s.setProperty("--comment-border", hexToRgba(editorPrefs.commentColor, 0.5));
-    s.setProperty("--latex-comment-color", editorPrefs.latexCommentColor);
-    s.setProperty("--latex-comment-bg", deriveLight(editorPrefs.latexCommentColor, 0.12));
-    s.setProperty("--citation-color", editorPrefs.citationColor);
-    s.setProperty("--citation-bg", deriveLight(editorPrefs.citationColor, 0.08));
-    s.setProperty("--footnote-color", editorPrefs.footnoteColor);
-    s.setProperty("--footnote-bg", deriveLight(editorPrefs.footnoteColor, 0.08));
-    s.setProperty("--note-color", editorPrefs.noteColor);
-    s.setProperty("--note-bg", deriveLight(editorPrefs.noteColor, 0.06));
-    s.setProperty("--par-title-size", `${editorPrefs.parTitleSize}rem`);
-    s.setProperty("--par-title-color", editorPrefs.parTitleColor);
-    s.setProperty("--panel-font-size", `${editorPrefs.panelFontSize}px`);
-    s.setProperty("--panel-header-size", `${editorPrefs.panelHeaderSize}px`);
-  }, [editorPrefs]);
+    for (const entry of PREF_TO_CSS) {
+      const raw = editorPrefs[entry.key];
+      let value: string;
+      if (entry.isColor && typeof raw === "string") {
+        value = applyTransforms(raw, editorTransforms);
+      } else if (entry.transform) {
+        value = entry.transform(raw);
+      } else {
+        value = String(raw);
+      }
+      s.setProperty(entry.cssVar, value);
+    }
+    for (const entry of DERIVED_CSS) {
+      s.setProperty(entry.cssVar, entry.compute(editorPrefs));
+    }
+    // Update browser theme-color meta tag
+    const tc = applyTransforms(editorPrefs.themeColor, editorTransforms);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
+  }, [editorPrefs, editorTransforms]);
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
@@ -3789,9 +3788,15 @@ export default function EditorLayout() {
       {preferencesOpen && (
         <PreferencesModal
           prefs={editorPrefs}
+          transforms={editorTransforms}
+          presets={editorPresets}
           onUpdate={updatePref}
+          onUpdateTransform={updateTransform}
           onReset={resetPrefs}
           onClose={() => setPreferencesOpen(false)}
+          onSavePreset={savePreset}
+          onLoadPreset={loadPreset}
+          onDeletePreset={deletePreset}
         />
       )}
       <AIWindow

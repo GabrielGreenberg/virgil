@@ -1,0 +1,258 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
+import { isLeaf } from "@/lib/preferences-tree";
+import type { EditorPreferences } from "@/hooks/usePreferences";
+import { DEFAULT_PREFS } from "@/hooks/usePreferences";
+
+// ─── Leaf Components ──────────────────────────────────────────────────────────
+
+function SliderPref({
+  label,
+  value,
+  min,
+  max,
+  step,
+  unit,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  unit: string;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        className="flex-1 h-1 accent-[var(--accent)]"
+      />
+      <span className="text-[11px] text-stone-400 w-14 text-right tabular-nums">
+        {value}{unit}
+      </span>
+    </div>
+  );
+}
+
+function ColorPref({
+  label,
+  value,
+  defaultValue,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  defaultValue: string;
+  onChange: (v: string) => void;
+}) {
+  const isDefault = value.toLowerCase() === defaultValue.toLowerCase();
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <div className="flex items-center gap-2 flex-1">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-6 h-6 rounded border border-stone-200 cursor-pointer p-0 bg-transparent"
+        />
+        <span className="text-[11px] text-stone-400 font-mono">{value}</span>
+        {!isDefault && (
+          <button
+            onClick={() => onChange(defaultValue)}
+            className="text-[10px] text-stone-400 hover:text-stone-600 underline ml-auto"
+          >
+            reset
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FontPref({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-1">
+      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 text-xs bg-white border border-stone-200 rounded px-2 py-1 text-stone-700 outline-none focus:border-[var(--accent)]"
+      >
+        {options.map((f) => (
+          <option key={f} value={f}>{f}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+// ─── Section (collapsible group) ──────────────────────────────────────────────
+
+function SectionNode({
+  group,
+  depth,
+  prefs,
+  onUpdate,
+}: {
+  group: PrefGroup;
+  depth: number;
+  prefs: EditorPreferences;
+  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
+}) {
+  const [open, setOpen] = useState(group.defaultOpen ?? false);
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 w-full text-left py-1 hover:bg-stone-50 rounded transition-colors"
+        style={{ paddingLeft: depth * 12 }}
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          className={`text-stone-400 transition-transform ${open ? "rotate-90" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+        >
+          <path d="M3 1.5l4 3.5-4 3.5" />
+        </svg>
+        <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+          {group.label}
+        </span>
+      </button>
+      {open && (
+        <div>
+          {group.children.map((child, i) => (
+            <TreeNode key={i} node={child} depth={depth + 1} prefs={prefs} onUpdate={onUpdate} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Leaf Node Renderer ───────────────────────────────────────────────────────
+
+function LeafNode({
+  leaf,
+  depth,
+  prefs,
+  onUpdate,
+}: {
+  leaf: PrefLeaf;
+  depth: number;
+  prefs: EditorPreferences;
+  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
+}) {
+  const style = { paddingLeft: depth * 12 + 14 };
+
+  if (leaf.type === "color") {
+    const l = leaf as PrefLeafColor;
+    return (
+      <div style={style}>
+        <ColorPref
+          label={l.label}
+          value={prefs[l.key] as string}
+          defaultValue={DEFAULT_PREFS[l.key] as string}
+          onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
+        />
+      </div>
+    );
+  }
+
+  if (leaf.type === "slider") {
+    const l = leaf as PrefLeafSlider;
+    return (
+      <div style={style}>
+        <SliderPref
+          label={l.label}
+          value={prefs[l.key] as number}
+          min={l.min}
+          max={l.max}
+          step={l.step}
+          unit={l.unit}
+          onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
+        />
+      </div>
+    );
+  }
+
+  if (leaf.type === "font") {
+    const l = leaf as PrefLeafFont;
+    return (
+      <div style={style}>
+        <FontPref
+          label={l.label}
+          value={prefs[l.key] as string}
+          options={l.options}
+          onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
+        />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+// ─── Generic Tree Node ────────────────────────────────────────────────────────
+
+function TreeNode({
+  node,
+  depth,
+  prefs,
+  onUpdate,
+}: {
+  node: PrefNode;
+  depth: number;
+  prefs: EditorPreferences;
+  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
+}) {
+  if (isLeaf(node)) {
+    return <LeafNode leaf={node} depth={depth} prefs={prefs} onUpdate={onUpdate} />;
+  }
+  return <SectionNode group={node as PrefGroup} depth={depth} prefs={prefs} onUpdate={onUpdate} />;
+}
+
+// ─── Public Export ────────────────────────────────────────────────────────────
+
+export default function PreferenceTree({
+  tree,
+  prefs,
+  onUpdate,
+}: {
+  tree: PrefNode[];
+  prefs: EditorPreferences;
+  onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
+}) {
+  return (
+    <div className="space-y-0.5">
+      {tree.map((node, i) => (
+        <TreeNode key={i} node={node} depth={0} prefs={prefs} onUpdate={onUpdate} />
+      ))}
+    </div>
+  );
+}
