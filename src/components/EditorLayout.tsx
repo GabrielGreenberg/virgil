@@ -1301,6 +1301,22 @@ export default function EditorLayout() {
     };
   }, [selectedCitationId, allEditorCitations]);
 
+  // Persistent highlight sync for footnotes: mirrors the citation
+  // pattern above, adding `footnote-highlight-marker` to the inline
+  // footnote marker in the editor when its card is selected.
+  useEffect(() => {
+    if (!selectedFootnoteId) return;
+    const els = Array.from(
+      document.querySelectorAll(
+        `[data-footnote-id="${selectedFootnoteId}"]`,
+      ),
+    ) as HTMLElement[];
+    for (const el of els) el.classList.add("footnote-highlight-marker");
+    return () => {
+      for (const el of els) el.classList.remove("footnote-highlight-marker");
+    };
+  }, [selectedFootnoteId]);
+
   // Current-section breadcrumb: tracks the heading chain of whatever
   // the reader is currently looking at — i.e., the topmost heading
   // above the visible viewport. Headings are collected from the doc,

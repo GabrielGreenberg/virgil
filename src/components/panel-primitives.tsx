@@ -34,6 +34,9 @@ const CARD_DEFAULT =
 const CARD_SELECTED =
   "bg-amber-50/60 border-amber-300 shadow-sm";
 
+const CARD_SELECTED_FOOTNOTE =
+  "bg-red-50/60 border-red-300 shadow-sm";
+
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
@@ -53,6 +56,11 @@ export function clearStaleHover(container: HTMLElement | null) {
     document.removeEventListener("pointermove", restore);
   };
   document.addEventListener("pointermove", restore);
+}
+
+/** Footnote-themed card: reddish selection instead of amber. */
+export function footnoteCard(selected: boolean, extra?: string): string {
+  return `${CARD_BASE} ${selected ? CARD_SELECTED_FOOTNOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
 /** Reusable class-string tokens. */
