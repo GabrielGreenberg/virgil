@@ -911,6 +911,9 @@ body {
   pointer-events: none;
   background: var(--drag-highlight);
 }
+.drag-gap.hover-preview::after {
+  opacity: 0.35;
+}
 .drag-gap.dragging::after {
   opacity: 0.5;
 }

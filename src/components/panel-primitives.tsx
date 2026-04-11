@@ -24,6 +24,7 @@
 import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
+import { useDragGap } from "@/hooks/useDragGap";
 import ConfirmDialog from "./ConfirmDialog";
 import RichTextField from "./RichTextField";
 import { MIME_AI_REQUEST } from "@/lib/marginalia";
@@ -498,33 +499,19 @@ export function HSplit({
   minRatio?: number;
   maxRatio?: number;
 }) {
-  const gapRef = useRef<HTMLDivElement>(null);
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      gapRef.current?.classList.add("dragging");
-      const onMove = (ev: MouseEvent) => {
-        const el = containerRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        if (rect.height <= 0) return;
-        const r = (ev.clientY - rect.top) / rect.height;
-        onRatioChange(Math.max(minRatio, Math.min(maxRatio, r)));
-      };
-      const onUp = () => {
-        document.body.style.cursor = "";
-        document.body.style.userSelect = "";
-        gapRef.current?.classList.remove("dragging");
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+  const onMove = useCallback(
+    (ev: MouseEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) return;
+      const r = (ev.clientY - rect.top) / rect.height;
+      onRatioChange(Math.max(minRatio, Math.min(maxRatio, r)));
     },
     [containerRef, onRatioChange, minRatio, maxRatio],
   );
+
+  const { gapRef, onMouseDown } = useDragGap({ cursor: "row-resize", onMove });
 
   return (
     <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
