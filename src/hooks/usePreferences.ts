@@ -1,55 +1,203 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
 
 export interface EditorPreferences {
+  // Editor > Body Text
   editorFontSize: number;      // rem
   editorLineHeight: number;
   editorTextColor: string;
+
+  // Editor > Headings
+  h1Color: string;
+  h2h3Color: string;
+
+  // Editor > Paragraph Titles
+  parTitleSize: number;        // rem
+  parTitleColor: string;
+
+  // Editor > Heading Annotations
+  headingAnnotationColor: string;
+  headingAnnotationBorder: string;
+
+  // Editor > Blockquotes
+  blockquoteBorder: string;
+  blockquoteText: string;
+
+  // Editor > Code & Math
+  codeBackground: string;
+  codeBlockBackground: string;
+  mathColor: string;
+  mathPrefixColor: string;
+
+  // Editor > Inline Elements
   accentColor: string;
   backgroundColor: string;
   commentColor: string;
   latexCommentColor: string;
   citationColor: string;
+  citationBorderColor: string;
   footnoteColor: string;
   noteColor: string;
-  parTitleSize: number;        // rem
-  parTitleColor: string;
+  noteMarkerBorder: string;
+
+  // Editor > AI Markers
+  aiMarkerText: string;
+  aiMarkerBg: string;
+  aiMarkerBorder: string;
+
+  // Editor > Suggestions
+  markBackground: string;
+  markBorder: string;
+
+  // Editor > LaTeX Commands
+  latexCmdColor: string;
+
+  // Panels > General
   panelFontSize: number;       // px
   panelHeaderSize: number;     // px
   surfaceColor: string;
+
+  // Panels > Chrome
+  headerBg: string;
+  podPanel: string;
+  podToolbar: string;
+  podEditor: string;
+  podDark: string;
+
+  // App Chrome
+  topbarBackground: string;
+  topbarBorder: string;
+  themeColor: string;
+
+  // Canvas & Layout
+  foreground: string;
+  borderColor: string;
+  borderLight: string;
+  mutedColor: string;
+  mutedLight: string;
+  dragHighlight: string;
+  scrollbarThumb: string;
+  scrollbarHover: string;
+
+  // Fonts
+  fontSerif: string;
+  fontSans: string;
+  fontDisplay: string;
+  fontLogo: string;
+  fontMono: string;
 }
 
 export const DEFAULT_PREFS: EditorPreferences = {
+  // Editor > Body Text
   editorFontSize: 1.05,
   editorLineHeight: 1.8,
   editorTextColor: "#2a2a2a",
+
+  // Editor > Headings
+  h1Color: "#1a1a1a",
+  h2h3Color: "#2a2a2a",
+
+  // Editor > Paragraph Titles
+  parTitleSize: 0.78,
+  parTitleColor: "#c45a5a",
+
+  // Editor > Heading Annotations
+  headingAnnotationColor: "#6b9ac4",
+  headingAnnotationBorder: "#a8c4de",
+
+  // Editor > Blockquotes
+  blockquoteBorder: "#d4cfc8",
+  blockquoteText: "#6b6560",
+
+  // Editor > Code & Math
+  codeBackground: "#f0eeeb",
+  codeBlockBackground: "#f5f3f0",
+  mathColor: "#6b4fa0",
+  mathPrefixColor: "#a090c0",
+
+  // Editor > Inline Elements
   accentColor: "#7c5e3c",
   backgroundColor: "#faf9f7",
   commentColor: "#93c5fd",
   latexCommentColor: "#7191b0",
   citationColor: "#6b6245",
+  citationBorderColor: "#e0d5a8",
   footnoteColor: "#b45757",
   noteColor: "#15803d",
-  parTitleSize: 0.78,
-  parTitleColor: "#c45a5a",
+  noteMarkerBorder: "#86efac",
+
+  // Editor > AI Markers
+  aiMarkerText: "#92400e",
+  aiMarkerBg: "#fef3c7",
+  aiMarkerBorder: "#fcd34d",
+
+  // Editor > Suggestions
+  markBackground: "#fbbf24",
+  markBorder: "#c8960e",
+
+  // Editor > LaTeX Commands
+  latexCmdColor: "#9ca3af",
+
+  // Panels > General
   panelFontSize: 13,
   panelHeaderSize: 14,
   surfaceColor: "#ffffff",
+
+  // Panels > Chrome
+  headerBg: "#e8e5de",
+  podPanel: "#f3f0eb",
+  podToolbar: "#f5f3ef",
+  podEditor: "#ffffff",
+  podDark: "#eae6df",
+
+  // App Chrome
+  topbarBackground: "#e5e4e1",
+  topbarBorder: "#d5d3ce",
+  themeColor: "#efecea",
+
+  // Canvas & Layout
+  foreground: "#1a1a1a",
+  borderColor: "#e5e2dd",
+  borderLight: "#e0ddd7",
+  mutedColor: "#8a8580",
+  mutedLight: "#b5b0aa",
+  dragHighlight: "#3b82f6",
+  scrollbarThumb: "#d4cfc8",
+  scrollbarHover: "#b5b0aa",
+
+  // Fonts
+  fontSerif: "Source Serif 4",
+  fontSans: "Inter",
+  fontDisplay: "Playfair Display",
+  fontLogo: "Cinzel",
+  fontMono: "Geist Mono",
 };
 
-const STORAGE_KEY = "virgil-editor-prefs";
+// ─── Presets ──────────────────────────────────────────────────────────────────
 
-function loadPrefs(): EditorPreferences {
-  if (typeof window === "undefined") return DEFAULT_PREFS;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_PREFS;
-    return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
-  } catch {
-    return DEFAULT_PREFS;
-  }
+export interface PreferencePreset {
+  name: string;
+  prefs: EditorPreferences;
+  transforms: GlobalTransforms;
+  createdAt: number;
+  builtIn?: boolean;
 }
+
+const PREFS_KEY = "virgil-editor-prefs";
+const TRANSFORMS_KEY = "virgil-editor-transforms";
+const PRESETS_KEY = "virgil-editor-presets";
+
+const DEFAULT_PRESET: PreferencePreset = {
+  name: "Default",
+  prefs: DEFAULT_PREFS,
+  transforms: DEFAULT_TRANSFORMS,
+  createdAt: 0,
+  builtIn: true,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Derive a light background tint from a hex color (mix with white at ~90%) */
 export function deriveLight(hex: string, opacity = 0.1): string {
@@ -68,33 +216,128 @@ export function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+// ─── Storage ──────────────────────────────────────────────────────────────────
+
+function loadPrefs(): EditorPreferences {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return DEFAULT_PREFS;
+    return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+
+function loadTransforms(): GlobalTransforms {
+  if (typeof window === "undefined") return DEFAULT_TRANSFORMS;
+  try {
+    const raw = localStorage.getItem(TRANSFORMS_KEY);
+    if (!raw) return DEFAULT_TRANSFORMS;
+    return { ...DEFAULT_TRANSFORMS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_TRANSFORMS;
+  }
+}
+
+function loadPresets(): PreferencePreset[] {
+  if (typeof window === "undefined") return [DEFAULT_PRESET];
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [DEFAULT_PRESET];
+    const parsed = JSON.parse(raw) as PreferencePreset[];
+    // Ensure Default preset is always present
+    if (!parsed.some((p) => p.builtIn)) {
+      parsed.unshift(DEFAULT_PRESET);
+    }
+    return parsed;
+  } catch {
+    return [DEFAULT_PRESET];
+  }
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
 export function usePreferences() {
   const [prefs, setPrefs] = useState<EditorPreferences>(DEFAULT_PREFS);
+  const [transforms, setTransforms] = useState<GlobalTransforms>(DEFAULT_TRANSFORMS);
+  const [presets, setPresets] = useState<PreferencePreset[]>([DEFAULT_PRESET]);
   const initialized = useRef(false);
 
   useEffect(() => {
     setPrefs(loadPrefs());
+    setTransforms(loadTransforms());
+    setPresets(loadPresets());
     initialized.current = true;
   }, []);
 
-  const persist = useCallback((newPrefs: EditorPreferences) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
-    } catch {}
+  const persistPrefs = useCallback((newPrefs: EditorPreferences) => {
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(newPrefs)); } catch {}
+  }, []);
+
+  const persistTransforms = useCallback((newT: GlobalTransforms) => {
+    try { localStorage.setItem(TRANSFORMS_KEY, JSON.stringify(newT)); } catch {}
+  }, []);
+
+  const persistPresets = useCallback((newP: PreferencePreset[]) => {
+    try { localStorage.setItem(PRESETS_KEY, JSON.stringify(newP)); } catch {}
   }, []);
 
   const updatePref = useCallback(<K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => {
     setPrefs((prev) => {
       const next = { ...prev, [key]: value };
-      persist(next);
+      persistPrefs(next);
       return next;
     });
-  }, [persist]);
+  }, [persistPrefs]);
+
+  const updateTransform = useCallback(<K extends keyof GlobalTransforms>(key: K, value: GlobalTransforms[K]) => {
+    setTransforms((prev) => {
+      const next = { ...prev, [key]: value };
+      persistTransforms(next);
+      return next;
+    });
+  }, [persistTransforms]);
 
   const resetAll = useCallback(() => {
     setPrefs(DEFAULT_PREFS);
-    persist(DEFAULT_PREFS);
-  }, [persist]);
+    setTransforms(DEFAULT_TRANSFORMS);
+    persistPrefs(DEFAULT_PREFS);
+    persistTransforms(DEFAULT_TRANSFORMS);
+  }, [persistPrefs, persistTransforms]);
 
-  return { prefs, updatePref, resetAll };
+  const savePreset = useCallback((name: string) => {
+    setPresets((prev) => {
+      const existing = prev.findIndex((p) => p.name === name && !p.builtIn);
+      const preset: PreferencePreset = { name, prefs, transforms, createdAt: Date.now() };
+      let next: PreferencePreset[];
+      if (existing >= 0) {
+        next = [...prev];
+        next[existing] = preset;
+      } else {
+        next = [...prev, preset];
+      }
+      persistPresets(next);
+      return next;
+    });
+  }, [prefs, transforms, persistPresets]);
+
+  const loadPreset = useCallback((name: string) => {
+    const preset = presets.find((p) => p.name === name);
+    if (!preset) return;
+    setPrefs({ ...DEFAULT_PREFS, ...preset.prefs });
+    setTransforms({ ...DEFAULT_TRANSFORMS, ...preset.transforms });
+    persistPrefs({ ...DEFAULT_PREFS, ...preset.prefs });
+    persistTransforms({ ...DEFAULT_TRANSFORMS, ...preset.transforms });
+  }, [presets, persistPrefs, persistTransforms]);
+
+  const deletePreset = useCallback((name: string) => {
+    setPresets((prev) => {
+      const next = prev.filter((p) => p.name !== name || p.builtIn);
+      persistPresets(next);
+      return next;
+    });
+  }, [persistPresets]);
+
+  return { prefs, transforms, presets, updatePref, updateTransform, resetAll, savePreset, loadPreset, deletePreset };
 }

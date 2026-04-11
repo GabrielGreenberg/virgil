@@ -1,22 +1,32 @@
 "use client";
 
-import { useCallback } from "react";
-import { EditorPreferences, DEFAULT_PREFS } from "@/hooks/usePreferences";
+import { useCallback, useState, useRef } from "react";
+import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences";
+import type { GlobalTransforms } from "@/lib/color-transforms";
+import { PREFERENCES_TREE } from "@/lib/preferences-tree";
+import PreferenceTree from "./PreferenceTree";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
+  transforms: GlobalTransforms;
+  presets: PreferencePreset[];
   onUpdate: <K extends keyof EditorPreferences>(key: K, value: EditorPreferences[K]) => void;
+  onUpdateTransform: <K extends keyof GlobalTransforms>(key: K, value: GlobalTransforms[K]) => void;
   onReset: () => void;
   onClose: () => void;
+  onSavePreset: (name: string) => void;
+  onLoadPreset: (name: string) => void;
+  onDeletePreset: (name: string) => void;
 }
 
-function SliderPref({
+// ─── Global Transform Slider ──────────────────────────────────────────────────
+
+function TransformSlider({
   label,
   value,
   min,
   max,
   step,
-  unit,
   onChange,
 }: {
   label: string;
@@ -24,73 +34,141 @@ function SliderPref({
   min: number;
   max: number;
   step: number;
-  unit: string;
   onChange: (v: number) => void;
 }) {
+  const rafRef = useRef<number>(0);
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => onChange(v));
+  }, [onChange]);
+
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-0.5">
+        <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-stone-400 tabular-nums w-8 text-right">{value > 0 ? `+${value}` : value}</span>
+      </div>
       <input
         type="range"
         min={min}
         max={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-1 accent-[var(--accent)]"
+        onChange={handleChange}
+        className="w-full h-1 accent-[var(--accent)]"
       />
-      <span className="text-[11px] text-stone-400 w-14 text-right tabular-nums">
-        {value}{unit}
-      </span>
     </div>
   );
 }
 
-function ColorPref({
-  label,
-  value,
-  defaultValue,
-  onChange,
+// ─── Preset Bar ───────────────────────────────────────────────────────────────
+
+function PresetBar({
+  presets,
+  onLoad,
+  onSave,
+  onDelete,
 }: {
-  label: string;
-  value: string;
-  defaultValue: string;
-  onChange: (v: string) => void;
+  presets: PreferencePreset[];
+  onLoad: (name: string) => void;
+  onSave: (name: string) => void;
+  onDelete: (name: string) => void;
 }) {
-  const isDefault = value.toLowerCase() === defaultValue.toLowerCase();
+  const [saving, setSaving] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [selected, setSelected] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleSave = useCallback(() => {
+    if (saving) {
+      const name = newName.trim();
+      if (name) {
+        onSave(name);
+        setNewName("");
+        setSaving(false);
+      }
+    } else {
+      setSaving(true);
+      setTimeout(() => inputRef.current?.focus(), 50);
+    }
+  }, [saving, newName, onSave]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") setSaving(false);
+  }, [handleSave]);
+
+  const handleSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const name = e.target.value;
+    setSelected(name);
+    if (name) onLoad(name);
+  }, [onLoad]);
+
+  const selectedPreset = presets.find((p) => p.name === selected);
+  const canDelete = selectedPreset && !selectedPreset.builtIn;
+
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
-      <div className="flex items-center gap-2 flex-1">
+    <div className="flex items-center gap-2">
+      <select
+        value={selected}
+        onChange={handleSelectChange}
+        className="flex-1 text-xs bg-white border border-stone-200 rounded px-2 py-1.5 text-stone-700 outline-none focus:border-[var(--accent)]"
+      >
+        <option value="">Load preset...</option>
+        {presets.map((p) => (
+          <option key={p.name} value={p.name}>
+            {p.name}{p.builtIn ? " (built-in)" : ""}
+          </option>
+        ))}
+      </select>
+
+      {saving ? (
         <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-7 h-7 rounded border border-stone-200 cursor-pointer p-0 bg-transparent"
+          ref={inputRef}
+          type="text"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => { if (!newName.trim()) setSaving(false); }}
+          placeholder="Preset name"
+          className="text-xs border border-stone-300 rounded px-2 py-1.5 w-28 outline-none focus:border-[var(--accent)]"
         />
-        <span className="text-[11px] text-stone-400 font-mono">{value}</span>
-        {!isDefault && (
-          <button
-            onClick={() => onChange(defaultValue)}
-            className="text-[10px] text-stone-400 hover:text-stone-600 underline ml-auto"
-          >
-            reset
-          </button>
-        )}
-      </div>
+      ) : null}
+
+      <button
+        onClick={handleSave}
+        className="text-[11px] text-stone-500 hover:text-stone-700 border border-stone-200 rounded px-2.5 py-1.5 hover:bg-stone-50 transition-colors whitespace-nowrap"
+      >
+        {saving ? "OK" : "Save"}
+      </button>
+
+      {canDelete && (
+        <button
+          onClick={() => { onDelete(selected); setSelected(""); }}
+          className="text-[11px] text-red-400 hover:text-red-600 border border-stone-200 rounded px-2 py-1.5 hover:bg-red-50 transition-colors"
+        >
+          Del
+        </button>
+      )}
     </div>
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider pt-4 pb-1.5 first:pt-0">
-      {children}
-    </div>
-  );
-}
+// ─── Main Modal ───────────────────────────────────────────────────────────────
 
-export default function PreferencesModal({ prefs, onUpdate, onReset, onClose }: PreferencesModalProps) {
+export default function PreferencesModal({
+  prefs,
+  transforms,
+  presets,
+  onUpdate,
+  onUpdateTransform,
+  onReset,
+  onClose,
+  onSavePreset,
+  onLoadPreset,
+  onDeletePreset,
+}: PreferencesModalProps) {
   const handleBackdrop = useCallback((e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
   }, [onClose]);
@@ -100,9 +178,9 @@ export default function PreferencesModal({ prefs, onUpdate, onReset, onClose }: 
       className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20"
       onClick={handleBackdrop}
     >
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[480px] max-h-[80vh] flex flex-col">
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[560px] max-h-[85vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-[var(--border)]">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
           <h2 className="text-sm font-semibold text-stone-700">Preferences</h2>
           <button
             onClick={onClose}
@@ -115,104 +193,49 @@ export default function PreferencesModal({ prefs, onUpdate, onReset, onClose }: 
           </button>
         </div>
 
-        {/* Body */}
+        {/* Presets + Global Sliders (sticky) */}
+        <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
+          <PresetBar
+            presets={presets}
+            onLoad={onLoadPreset}
+            onSave={onSavePreset}
+            onDelete={onDeletePreset}
+          />
+
+          <div className="flex items-start gap-4">
+            <TransformSlider
+              label="Contrast"
+              value={transforms.contrast}
+              min={-100}
+              max={100}
+              step={5}
+              onChange={(v) => onUpdateTransform("contrast", v)}
+            />
+            <TransformSlider
+              label="Hue"
+              value={transforms.hue}
+              min={-180}
+              max={180}
+              step={5}
+              onChange={(v) => onUpdateTransform("hue", v)}
+            />
+            <TransformSlider
+              label="Brightness"
+              value={transforms.brightness}
+              min={-50}
+              max={50}
+              step={2}
+              onChange={(v) => onUpdateTransform("brightness", v)}
+            />
+          </div>
+        </div>
+
+        {/* Tree Body */}
         <div className="flex-1 overflow-y-auto px-5 py-3">
-          <SectionHeader>Editor</SectionHeader>
-          <SliderPref
-            label="Font size"
-            value={prefs.editorFontSize}
-            min={0.85} max={1.4} step={0.05} unit=" rem"
-            onChange={(v) => onUpdate("editorFontSize", v)}
-          />
-          <SliderPref
-            label="Line height"
-            value={prefs.editorLineHeight}
-            min={1.4} max={2.4} step={0.1} unit=""
-            onChange={(v) => onUpdate("editorLineHeight", v)}
-          />
-          <ColorPref
-            label="Text color"
-            value={prefs.editorTextColor}
-            defaultValue={DEFAULT_PREFS.editorTextColor}
-            onChange={(v) => onUpdate("editorTextColor", v)}
-          />
-
-          <SectionHeader>Colors</SectionHeader>
-          <ColorPref
-            label="Accent"
-            value={prefs.accentColor}
-            defaultValue={DEFAULT_PREFS.accentColor}
-            onChange={(v) => onUpdate("accentColor", v)}
-          />
-          <ColorPref
-            label="Background"
-            value={prefs.backgroundColor}
-            defaultValue={DEFAULT_PREFS.backgroundColor}
-            onChange={(v) => onUpdate("backgroundColor", v)}
-          />
-          <ColorPref
-            label="Comment highlight"
-            value={prefs.commentColor}
-            defaultValue={DEFAULT_PREFS.commentColor}
-            onChange={(v) => onUpdate("commentColor", v)}
-          />
-          <ColorPref
-            label="LaTeX comment"
-            value={prefs.latexCommentColor}
-            defaultValue={DEFAULT_PREFS.latexCommentColor}
-            onChange={(v) => onUpdate("latexCommentColor", v)}
-          />
-          <ColorPref
-            label="Citation"
-            value={prefs.citationColor}
-            defaultValue={DEFAULT_PREFS.citationColor}
-            onChange={(v) => onUpdate("citationColor", v)}
-          />
-          <ColorPref
-            label="Footnote"
-            value={prefs.footnoteColor}
-            defaultValue={DEFAULT_PREFS.footnoteColor}
-            onChange={(v) => onUpdate("footnoteColor", v)}
-          />
-          <ColorPref
-            label="Note marker"
-            value={prefs.noteColor}
-            defaultValue={DEFAULT_PREFS.noteColor}
-            onChange={(v) => onUpdate("noteColor", v)}
-          />
-
-          <SectionHeader>Paragraph titles</SectionHeader>
-          <SliderPref
-            label="Size"
-            value={prefs.parTitleSize}
-            min={0.6} max={1.0} step={0.02} unit=" rem"
-            onChange={(v) => onUpdate("parTitleSize", v)}
-          />
-          <ColorPref
-            label="Color"
-            value={prefs.parTitleColor}
-            defaultValue={DEFAULT_PREFS.parTitleColor}
-            onChange={(v) => onUpdate("parTitleColor", v)}
-          />
-
-          <SectionHeader>Panels</SectionHeader>
-          <SliderPref
-            label="Font size"
-            value={prefs.panelFontSize}
-            min={11} max={16} step={1} unit="px"
-            onChange={(v) => onUpdate("panelFontSize", v)}
-          />
-          <SliderPref
-            label="Header size"
-            value={prefs.panelHeaderSize}
-            min={12} max={17} step={1} unit="px"
-            onChange={(v) => onUpdate("panelHeaderSize", v)}
-          />
-          <ColorPref
-            label="Panel background"
-            value={prefs.surfaceColor}
-            defaultValue={DEFAULT_PREFS.surfaceColor}
-            onChange={(v) => onUpdate("surfaceColor", v)}
+          <PreferenceTree
+            tree={PREFERENCES_TREE}
+            prefs={prefs}
+            onUpdate={onUpdate}
           />
         </div>
 

@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  /* Canvas & Layout */
   --background: #faf9f7;
   --foreground: #1a1a1a;
   --surface: #ffffff;
@@ -10,18 +11,77 @@
   --muted-light: #b5b0aa;
   --accent: #7c5e3c;
   --accent-light: #f5f0ea;
-  --header-h: 34px;
+
+  /* App Chrome */
+  --topbar-bg: #e5e4e1;
+  --topbar-border: #d5d3ce;
+  --theme-color: #efecea;
+
   /* Pod system */
   --pod-editor: #ffffff;
   --pod-panel: #f3f0eb;
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --header-bg: #e8e5de;
-  --topbar-bg: #e5e4e1;
+  --header-h: 34px;
   --pod-radius: 8px;
   --pod-gap: 10px;
-  --drag-highlight: #3b82f6;
   --pod-border: 1px solid var(--border-light);
+
+  /* Editor colors */
+  --editor-font-size: 1.05rem;
+  --editor-line-height: 1.8;
+  --editor-text-color: #2a2a2a;
+  --h1-color: #1a1a1a;
+  --h2h3-color: #2a2a2a;
+  --par-title-size: 0.78rem;
+  --par-title-color: #c45a5a;
+  --heading-annotation-color: #6b9ac4;
+  --heading-annotation-border: #a8c4de;
+  --blockquote-border: #d4cfc8;
+  --blockquote-text: #6b6560;
+  --code-bg: #f0eeeb;
+  --code-block-bg: #f5f3f0;
+  --math-color: #6b4fa0;
+  --math-prefix-color: #a090c0;
+
+  /* Inline element colors */
+  --comment-color: #93c5fd;
+  --comment-bg: rgba(147, 197, 253, 0.25);
+  --comment-border: rgba(96, 165, 250, 0.5);
+  --latex-comment-color: #7191b0;
+  --latex-comment-bg: #f0f5fa;
+  --citation-color: #6b6245;
+  --citation-bg: #fdf8e1;
+  --citation-border-color: #e0d5a8;
+  --footnote-color: #b45757;
+  --footnote-bg: #fef2f2;
+  --note-color: #15803d;
+  --note-bg: #f0fdf4;
+  --note-marker-border: #86efac;
+
+  /* AI markers */
+  --ai-marker-text: #92400e;
+  --ai-marker-bg: #fef3c7;
+  --ai-marker-border: #fcd34d;
+
+  /* Suggestions */
+  --mark-bg: #fbbf24;
+  --mark-border: #c8960e;
+
+  /* LaTeX commands */
+  --latex-cmd-color: #9ca3af;
+
+  /* Drag */
+  --drag-highlight: #3b82f6;
+
+  /* Scrollbar */
+  --scrollbar-thumb: #d4cfc8;
+  --scrollbar-hover: #b5b0aa;
+
+  /* Panel sizing */
+  --panel-font-size: 13px;
+  --panel-header-size: 14px;
 }
 
 @theme inline {
@@ -36,13 +96,13 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), "Inter", system-ui, sans-serif;
 }
 
 /* TipTap editor styles */
 .tiptap {
   outline: none;
-  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
   color: var(--editor-text-color, #2a2a2a);
 }
 
@@ -57,8 +117,8 @@ body {
   font-weight: 700;
   margin-top: 1.5em;
   margin-bottom: 0.15em;
-  color: #1a1a1a;
-  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+  color: var(--h1-color, #1a1a1a);
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
 }
 
 .tiptap h2 {
@@ -66,8 +126,8 @@ body {
   font-weight: 600;
   margin-top: 1.25em;
   margin-bottom: 0.15em;
-  color: #2a2a2a;
-  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+  color: var(--h2h3-color, #2a2a2a);
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
 }
 
 .tiptap h3 {
@@ -75,8 +135,8 @@ body {
   font-weight: 600;
   margin-top: 1em;
   margin-bottom: 0.15em;
-  color: #2a2a2a;
-  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+  color: var(--h2h3-color, #2a2a2a);
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
 }
 
 .heading-wrapper {
@@ -93,13 +153,13 @@ body {
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 400;
-  color: #6b9ac4;
-  font-family: var(--font-sans), Inter, sans-serif;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   margin-bottom: 0.4em;
   cursor: pointer;
   user-select: none;
-  border: 1px solid #a8c4de;
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: 3px;
   padding: 1px 6px;
 }
@@ -117,7 +177,7 @@ body {
   display: none;
   margin-left: 0.5em;
   cursor: pointer;
-  color: #6b9ac4;
+  color: var(--heading-annotation-color, #6b9ac4);
 }
 
 .heading-label-add:hover {
@@ -131,12 +191,12 @@ body {
 .heading-label-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid #6b9ac4;
+  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
   outline: none;
   font-size: 0.68rem;
   font-weight: 400;
-  color: #6b9ac4;
-  font-family: var(--font-sans), Inter, sans-serif;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   padding: 0;
 }
@@ -154,7 +214,7 @@ body {
   font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
   color: var(--par-title-color, #c45a5a);
-  font-family: var(--font-sans), Inter, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.02em;
   margin-bottom: 1px;
   cursor: pointer;
@@ -201,7 +261,7 @@ body {
   font-size: var(--par-title-size, 0.78rem);
   font-weight: 500;
   color: var(--par-title-color, #c45a5a);
-  font-family: var(--font-sans), Inter, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.02em;
   padding: 0;
   line-height: 1.4;
@@ -245,10 +305,10 @@ body {
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 400;
-  color: #6b9ac4;
-  font-family: var(--font-sans), Inter, sans-serif;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
-  border: 1px solid #a8c4de;
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: 3px;
   padding: 1px 6px;
   margin-bottom: 0.2em;
@@ -256,10 +316,10 @@ body {
 }
 
 .title-field-content {
-  font-family: var(--font-serif), "Source Serif 4", Georgia, serif;
+  font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
   font-size: 1.05rem;
   line-height: 1.6;
-  color: #2a2a2a;
+  color: var(--editor-text-color, #2a2a2a);
   min-height: 1.2em;
 }
 
@@ -281,26 +341,26 @@ body {
 .maketitle-line {
   flex: 1;
   height: 1px;
-  background: #a8c4de;
+  background: var(--heading-annotation-border, #a8c4de);
 }
 
 .maketitle-label {
   display: inline-block;
   font-size: 0.68rem;
   font-weight: 400;
-  color: #6b9ac4;
-  font-family: var(--font-sans), Inter, sans-serif;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
-  border: 1px solid #a8c4de;
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: 3px;
   padding: 1px 6px;
 }
 
 .tiptap blockquote {
-  border-left: 3px solid #d4cfc8;
+  border-left: 3px solid var(--blockquote-border, #d4cfc8);
   padding-left: 1em;
   margin: 1em 0;
-  color: #6b6560;
+  color: var(--blockquote-text, #6b6560);
   font-style: italic;
 }
 
@@ -332,21 +392,21 @@ body {
 /* List title wrapper already declared above with .par-title-wrapper */
 
 .tiptap pre {
-  background: #f5f3f0;
+  background: var(--code-block-bg, #f5f3f0);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 1em 0;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.875rem;
   overflow-x: auto;
 }
 
 .tiptap code {
-  background: #f0eeeb;
+  background: var(--code-bg, #f0eeeb);
   border-radius: 0.25rem;
   padding: 0.15em 0.3em;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.875em;
 }
 
@@ -359,11 +419,11 @@ body {
 /* Math nodes */
 .inline-math {
   display: inline;
-  background: #f0eeeb;
-  color: #6b4fa0;
+  background: var(--code-bg, #f0eeeb);
+  color: var(--math-color, #6b4fa0);
   border-radius: 0.25rem;
   padding: 0.1em 0.35em;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.9em;
   cursor: pointer;
 }
@@ -374,19 +434,19 @@ body {
 
 .inline-math-prefix,
 .inline-math-suffix {
-  color: #a090c0;
+  color: var(--math-prefix-color, #a090c0);
   font-size: 0.9em;
 }
 
 .display-math {
   display: block;
-  background: #f5f3f0;
-  color: #6b4fa0;
+  background: var(--code-block-bg, #f5f3f0);
+  color: var(--math-color, #6b4fa0);
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
   margin: 1em 0;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   text-align: center;
   cursor: pointer;
 }
@@ -397,7 +457,7 @@ body {
 
 .display-math-prefix,
 .display-math-suffix {
-  color: #a090c0;
+  color: var(--math-prefix-color, #a090c0);
   display: block;
   font-size: 0.85em;
 }
@@ -414,7 +474,7 @@ body {
   padding: 0 3px;
   cursor: pointer;
   font-weight: 600;
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
 }
 
 .footnote-marker:hover {
@@ -423,7 +483,7 @@ body {
 
 .footnote-highlight-marker {
   background: #fecaca;
-  box-shadow: 0 0 0 2px #b45757;
+  box-shadow: 0 0 0 2px var(--footnote-color, #b45757);
   border-radius: 3px;
 }
 
@@ -434,14 +494,14 @@ body {
   gap: 3px;
   font-size: 0.78em;
   line-height: 1.2;
-  color: #92400e;
+  color: var(--ai-marker-text, #92400e);
   background: rgba(254, 243, 199, 0.6);
-  border: 1px solid #fcd34d;
+  border: 1px solid var(--ai-marker-border, #fcd34d);
   border-radius: 4px;
   padding: 1px 5px 1px 4px;
   margin: 0 1px;
   cursor: pointer;
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
   vertical-align: baseline;
   white-space: nowrap;
   user-select: none;
@@ -474,10 +534,10 @@ body {
   height: 20px;
   font-size: 11px;
   font-weight: 700;
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
   color: var(--note-color, #15803d);
   background: var(--note-bg, #f0fdf4);
-  border: 1.5px solid #86efac;
+  border: 1.5px solid var(--note-marker-border, #86efac);
   border-radius: 3px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
@@ -495,7 +555,7 @@ body {
 
 /* Note editor (contentEditable rich text) */
 .note-editor {
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
 }
 .note-editor:empty::before {
   content: attr(data-placeholder);
@@ -518,7 +578,7 @@ body {
 
 /* Annotation editor (bibliography) */
 .annotation-editor {
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
 }
 .annotation-editor:empty::before {
   content: attr(data-placeholder);
@@ -541,7 +601,7 @@ body {
 
 /* Footnote rich text editor (contentEditable) */
 .footnote-content-editor {
-  font-family: var(--font-serif), Georgia, serif;
+  font-family: var(--font-serif-override, var(--font-serif)), Georgia, serif;
 }
 .footnote-content-editor:empty::before {
   content: attr(data-placeholder);
@@ -571,7 +631,7 @@ body {
 
 /* Footnote drop indicator */
 .footnote-card-drop-target {
-  outline: 2px dashed #b45757;
+  outline: 2px dashed var(--footnote-color, #b45757);
   outline-offset: -2px;
   background: #fff5f5;
 }
@@ -585,11 +645,11 @@ body {
   color: #44403c;
 }
 .rtf-content-footnote {
-  font-family: var(--font-serif), Georgia, serif;
+  font-family: var(--font-serif-override, var(--font-serif)), Georgia, serif;
   color: #44403c;
 }
 .rtf-content-note {
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
   color: #44403c;
 }
 .rtf-content.rtf-selected {
@@ -631,7 +691,7 @@ body {
 
 /* Drop highlight on the wrapper */
 .rtf-drop-target {
-  outline: 2px dashed #b45757;
+  outline: 2px dashed var(--footnote-color, #b45757);
   outline-offset: -2px;
   background: #fff5f5;
 }
@@ -652,14 +712,14 @@ body {
   border-radius: 0.25rem;
   padding: 0.5em 0.6em;
   font-size: 0.85rem;
-  font-family: var(--font-serif), Georgia, serif;
-  color: #2a2a2a;
+  font-family: var(--font-serif-override, var(--font-serif)), Georgia, serif;
+  color: var(--editor-text-color, #2a2a2a);
   resize: vertical;
   outline: none;
 }
 
 .footnote-editor-input:focus {
-  border-color: #b45757;
+  border-color: var(--footnote-color, #b45757);
 }
 
 /* LaTeX comments */
@@ -670,7 +730,7 @@ body {
   background: var(--latex-comment-bg, #f0f5fa);
   border-radius: 2px;
   margin: 0.5em 0;
-  font-family: var(--font-mono), monospace;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   font-style: italic;
   cursor: pointer;
@@ -682,7 +742,7 @@ body {
 }
 
 .latex-comment.selected {
-  outline: 2px solid #a8c4de;
+  outline: 2px solid var(--heading-annotation-border, #a8c4de);
   outline-offset: -1px;
   background: #e0ecf5;
 }
@@ -690,7 +750,7 @@ body {
 .latex-comment-handle {
   width: 6px;
   min-width: 6px;
-  background: #a8c4de;
+  background: var(--heading-annotation-border, #a8c4de);
   border-radius: 2px 0 0 2px;
   cursor: pointer;
   flex-shrink: 0;
@@ -712,7 +772,7 @@ body {
 }
 
 .latex-comment-prefix {
-  color: #a8c4de;
+  color: var(--heading-annotation-border, #a8c4de);
   font-style: normal;
 }
 
@@ -748,8 +808,8 @@ body {
 
 /* Unhandled LaTeX commands — grey monospace */
 .ProseMirror .latex-cmd {
-  font-family: var(--font-mono), ui-monospace, monospace !important;
-  color: #9ca3af !important;
+  font-family: var(--font-mono-override, var(--font-mono)), ui-monospace, monospace !important;
+  color: var(--latex-cmd-color, #9ca3af) !important;
   font-size: 0.9em;
 }
 
@@ -770,7 +830,7 @@ body {
   border-radius: 3px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
-  border: 1px solid #e0d5a8;
+  border: 1px solid var(--citation-border-color, #e0d5a8);
   padding: 0px 4px;
   color: var(--citation-color, #6b6245);
 }
@@ -845,12 +905,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d4cfc8;
+  background: var(--scrollbar-thumb, #d4cfc8);
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #b5b0aa;
+  background: var(--scrollbar-hover, #b5b0aa);
 }
 
 /* Toolbar horizontal scroll — hide scrollbar */
@@ -890,7 +950,7 @@ body {
   right: 0;
   bottom: 0;
   height: 1px;
-  background: #d5d3ce;
+  background: var(--topbar-border, #d5d3ce);
   z-index: 0;
 }
 
