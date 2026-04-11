@@ -18,6 +18,12 @@ const nextConfig: NextConfig = {
   // Disabled in dev-storage mode so the /api/dev route works.
   ...(devStorage ? {} : { output: "export" as const }),
 
+  // The dev API route uses .dev.ts so it's invisible during static
+  // export builds. Only include it when dev-storage is active.
+  ...(devStorage
+    ? { pageExtensions: ["tsx", "ts", "jsx", "js", "dev.ts"] }
+    : {}),
+
   // Required under static export — Next's built-in image optimizer
   // is a server feature.
   images: { unoptimized: true },

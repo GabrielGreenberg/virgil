@@ -1,8 +1,9 @@
 /**
  * Dev-only API route that serves files from `virgil-data/` on disk.
  *
- * Only active when `NEXT_PUBLIC_DEV_STORAGE=true`. In production builds
- * (`output: "export"`), this file is dead code and never ships.
+ * Only active when `NEXT_PUBLIC_DEV_STORAGE=true`. The file uses the
+ * `.dev.ts` extension so it is invisible to Next.js during production
+ * static-export builds (see pageExtensions in next.config.ts).
  *
  * Paths:
  *   GET  /api/dev/index.json          → virgil-data/index.json
@@ -75,7 +76,6 @@ export async function GET(
 
     try {
       const content = fs.readFileSync(filePath, "utf-8");
-      // Try to parse as JSON; if it works, return as JSON; otherwise text
       if (filePath.endsWith(".json")) {
         return NextResponse.json(JSON.parse(content));
       }
