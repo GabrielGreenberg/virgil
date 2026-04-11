@@ -13,6 +13,7 @@ import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
+import { MIME_CITATION } from "@/lib/marginalia";
 
 interface CitationsPanelProps {
   citations: CitationRef[];
@@ -144,7 +145,7 @@ export function CitationCard({
       const plain = display.replace(/<[^>]+>/g, "");
       e.dataTransfer.setData("text/plain", cit.command);
       e.dataTransfer.setData(
-        "application/x-virgil-citation",
+        MIME_CITATION,
         JSON.stringify({ command: cit.command, citationId: cit.id }),
       );
       e.dataTransfer.effectAllowed = "copy";
@@ -228,7 +229,7 @@ export function CitationCard({
       const plain = display.replace(/<[^>]+>/g, "");
       e.dataTransfer.setData("text/plain", cmd);
       e.dataTransfer.setData(
-        "application/x-virgil-citation",
+        MIME_CITATION,
         JSON.stringify({ command: cmd, bibKey: expandedBibKey }),
       );
       e.dataTransfer.effectAllowed = "copy";
@@ -250,7 +251,7 @@ export function CitationCard({
   // shape used by other drag sources, with `bibKey` set on bib drops.
   const handleCardDragOver = useCallback((e: React.DragEvent) => {
     // Look at types only (Chrome doesn't expose dataTransfer.getData here).
-    if (!e.dataTransfer.types.includes("application/x-virgil-citation")) return;
+    if (!e.dataTransfer.types.includes(MIME_CITATION)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
     if (!isDropTarget) setIsDropTarget(true);
@@ -267,7 +268,7 @@ export function CitationCard({
 
   const handleCardDrop = useCallback(
     (e: React.DragEvent) => {
-      const data = e.dataTransfer.getData("application/x-virgil-citation");
+      const data = e.dataTransfer.getData(MIME_CITATION);
       if (!data) return;
       let parsed: { command?: string; bibKey?: string; citationId?: string };
       try {

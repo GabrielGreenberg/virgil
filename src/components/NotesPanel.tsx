@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
 import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { MIME_NOTE } from "@/lib/marginalia";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -74,6 +75,30 @@ function NoteCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
 }) {
+
+  const handleTitleChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      onUpdateTitle(note.id, e.target.value);
+    },
+    [note.id, onUpdateTitle]
+  );
+
+  // Drag handle: serialize the note JSON content into the dataTransfer so the
+  // drop target (main editor or another rich text field) can splice it inline.
+  const handleDragStart = useCallback(
+    (e: React.DragEvent<HTMLSpanElement>) => {
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = "copy";
+      const normalized = normalizeRichContent(note.content);
+      e.dataTransfer.setData(
+        MIME_NOTE,
+        JSON.stringify({ noteId: note.id, content: normalized })
+      );
+      e.dataTransfer.setData("text/plain", richJsonToPlainText(normalized) || note.title || "Note");
+    },
+    [note.id, note.content, note.title]
+  );
+
   const handleChange = useCallback(
     (json: JSONContent) => {
       onUpdate(note.id, normalizeRichContent(json));

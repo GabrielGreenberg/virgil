@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { TodoItem, AiRequest } from "@/lib/types";
+import { MIME_TODO } from "@/lib/marginalia";
 import { panelCard, PANEL, PanelHeader, Chevron, ItemMenu, MenuDelete, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 
 interface TodoPanelProps {
@@ -60,7 +61,20 @@ function TodoRow({
   }, [notes, item.notes, item.id, onUpdateNotes]);
 
   return (
-    <div className={panelCard(false, item.done ? "opacity-60" : "")}>
+    <div
+      className={panelCard(false, item.done ? "opacity-60" : "")}
+      draggable={!editing}
+      onDragStart={(e) => {
+        if (editing) { e.preventDefault(); return; }
+        e.dataTransfer.effectAllowed = "link";
+        e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
+        e.dataTransfer.setData("text/plain", item.text);
+        (e.currentTarget as HTMLElement).style.opacity = "0.4";
+      }}
+      onDragEnd={(e) => {
+        (e.currentTarget as HTMLElement).style.opacity = "";
+      }}
+    >
       <div className={PANEL.cardInner}>
         <div className="flex items-start gap-2">
           {/* Number */}

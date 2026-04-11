@@ -10,6 +10,8 @@ import {
   MARGINALIA_GUTTER_WIDTH,
   MARGINALIA_ICON_SIZE,
   MARGINALIA_ROW_GAP,
+  MIME_MARGINALIA_MOVE,
+  isAnchorDrag,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
 import type { PanelId } from "@/hooks/useViewPrefs";
@@ -119,15 +121,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     let rafId = 0;
     const editorDom = editor.view?.dom as HTMLElement | null;
 
-    // All MIME types that represent a paragraph-level link/anchor drop
-    const PARAGRAPH_DRAG_TYPES = [
-      "application/x-virgil-marginalia-move",
-      "application/x-virgil-quotation",
-      "application/x-virgil-note",
-    ];
-
-    const isParagraphDrag = (dt: DataTransfer | null) =>
-      dt != null && PARAGRAPH_DRAG_TYPES.some((t) => dt.types.includes(t));
+    // All paragraph-level anchor drags are detected via the centralized
+    // isAnchorDrag helper from marginalia.ts.
 
     // Hide the ProseMirror dropcursor element by adding a class to it directly
     const hideDropCursor = () => {
@@ -179,7 +174,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     };
 
     const onDragOver = (e: DragEvent) => {
-      if (!isParagraphDrag(e.dataTransfer)) return;
+      if (!isAnchorDrag(e.dataTransfer)) return;
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
         // Use Y-coordinate matching against the positions map so the
@@ -325,7 +320,7 @@ function Gutter({
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData(
-                "application/x-virgil-marginalia-move",
+                MIME_MARGINALIA_MOVE,
                 JSON.stringify({
                   type: m.type,
                   entityId: m.entityId,

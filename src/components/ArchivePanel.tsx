@@ -5,11 +5,12 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
+import { MIME_ARCHIVE, MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -176,6 +177,50 @@ function ArchivePanel({
     const i = anchoredSnippets.findIndex((s) => s.id === selectedId);
     if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
   }, [selectedId, anchoredSnippets, cycleIdx, setCycleIdx]);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleCopy = useCallback((id: string, text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((prev) => prev === id ? null : prev), 1500);
+    });
+  }, []);
+
+  const handleDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
+    e.dataTransfer.setData("text/plain", snippet.text);
+    e.dataTransfer.setData(MIME_ARCHIVE, snippet.id);
+    e.dataTransfer.effectAllowed = "move";
+    const ghost = document.createElement("div");
+    ghost.textContent = snippet.text.length > 80 ? snippet.text.slice(0, 80) + "\u2026" : snippet.text;
+    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f5f5f4;border:1px solid #d6d3d1;border-radius:4px;font-size:12px;color:#44403c;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 10, 14);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }, []);
+
+  // Anchor-only drag (orphaned snippets) — drops re-anchor the snippet at
+  // the drop position without inserting any text.
+  const handleAnchorDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
+    e.stopPropagation();
+    e.dataTransfer.setData(MIME_ARCHIVE_ANCHOR, snippet.id);
+    e.dataTransfer.effectAllowed = "link";
+    const ghost = document.createElement("div");
+    ghost.textContent = "\u2693 anchor";
+    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;padding:4px 8px;background:#f0f5fa;border:1px solid #a8c1d8;border-radius:4px;font-size:11px;color:#5a7a99;font-family:var(--font-sans),sans-serif;";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 10, 10);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
+  }, []);
 
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">

@@ -26,6 +26,7 @@ import {
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateEntityId } from "@/lib/uuid";
+import { MIME_CITATION, MIME_NOTE, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -235,7 +236,7 @@ function RichTextFieldImpl({
         // and click handlers work the same as in the main editor. We always
         // resolve display text via the parent-supplied lookup, otherwise we
         // fall back to the raw \cite{} command.
-        const citData = event.dataTransfer?.getData("application/x-virgil-citation");
+        const citData = event.dataTransfer?.getData(MIME_CITATION);
         if (citData) {
           event.preventDefault();
           try {
@@ -270,7 +271,7 @@ function RichTextFieldImpl({
         }
 
         // Note drop — splice the note's body inline at the drop point.
-        const noteData = event.dataTransfer?.getData("application/x-virgil-note");
+        const noteData = event.dataTransfer?.getData(MIME_NOTE);
         if (noteData) {
           event.preventDefault();
           try {
@@ -306,14 +307,14 @@ function RichTextFieldImpl({
         }
 
         // Footnote-into-footnote: refuse to avoid creating recursive nodes.
-        if (event.dataTransfer?.types.includes("application/x-virgil-footnote")) {
+        if (event.dataTransfer?.types.includes(MIME_FOOTNOTE)) {
           event.preventDefault();
           return true;
         }
 
         // Archive snippet drop — insert as plain text and notify parent so
         // the archive panel removes the consumed snippet.
-        const archiveId = event.dataTransfer?.getData("application/x-virgil-archive-id");
+        const archiveId = event.dataTransfer?.getData(MIME_ARCHIVE);
         const text = event.dataTransfer?.getData("text/plain");
         if (archiveId && text) {
           event.preventDefault();
@@ -374,8 +375,8 @@ function RichTextFieldImpl({
 
   // Drop visual cue (handled at the wrapper, ProseMirror handles the actual drop)
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes("application/x-virgil-footnote")) return;
-    e.dataTransfer.dropEffect = e.dataTransfer.types.includes("application/x-virgil-archive-id")
+    if (e.dataTransfer.types.includes(MIME_FOOTNOTE)) return;
+    e.dataTransfer.dropEffect = e.dataTransfer.types.includes(MIME_ARCHIVE)
       ? "move"
       : "copy";
     if (!isDragOver) setIsDragOver(true);

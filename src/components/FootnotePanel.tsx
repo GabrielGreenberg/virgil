@@ -11,6 +11,8 @@ import {
   normalizeRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
+import RichTextField from "./RichTextField";
+import { MIME_FOOTNOTE } from "@/lib/marginalia";
 
 interface FootnotePanelProps {
   footnotes: FootnoteInfo[];
@@ -50,7 +52,7 @@ function startFootnoteDrag(
   const plain = richJsonToPlainText(normalized);
   e.dataTransfer.setData("text/plain", plain);
   e.dataTransfer.setData(
-    "application/x-virgil-footnote",
+    MIME_FOOTNOTE,
     JSON.stringify({ footnoteId, content: normalized, isOrphan }),
   );
   e.dataTransfer.effectAllowed = "move";

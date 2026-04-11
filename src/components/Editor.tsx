@@ -15,7 +15,18 @@ import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 
 import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
-import { ANCHORABLE_NODES, ANCHORABLE_ATOMS } from "@/lib/marginalia";
+import {
+  isAnchorableNode,
+  isAnchorableAtom,
+  MIME_MARGINALIA_MOVE,
+  MIME_QUOTATION,
+  MIME_NOTE,
+  MIME_TODO,
+  MIME_QUOTE,
+  MIME_CITATION,
+  MIME_FOOTNOTE,
+  MIME_AI_REQUEST,
+} from "@/lib/marginalia";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -34,16 +45,16 @@ function resolveAnchorableNode(
   // Walk up ancestors (works for container nodes)
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
-    if (ANCHORABLE_NODES.has(node.type.name)) {
+    if (isAnchorableNode(node.type)) {
       const nodePos = depth === 0 ? 0 : $pos.before(depth);
       return { node, nodePos };
     }
   }
   // For atom blocks: posAtCoords lands before/after the atom
-  if ($pos.nodeAfter && ANCHORABLE_ATOMS.has($pos.nodeAfter.type.name)) {
+  if ($pos.nodeAfter && isAnchorableAtom($pos.nodeAfter.type)) {
     return { node: $pos.nodeAfter, nodePos: pos };
   }
-  if ($pos.nodeBefore && ANCHORABLE_ATOMS.has($pos.nodeBefore.type.name)) {
+  if ($pos.nodeBefore && isAnchorableAtom($pos.nodeBefore.type)) {
     return { node: $pos.nodeBefore, nodePos: pos - $pos.nodeBefore.nodeSize };
   }
   return null;
@@ -820,7 +831,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       },
       handleDrop(view, event) {
         // --- AI request marker drop (from any panel's AiRequestCard) ---
-        const aiReqData = event.dataTransfer?.getData("application/x-virgil-ai-request");
+        const aiReqData = event.dataTransfer?.getData(MIME_AI_REQUEST);
         if (aiReqData) {
           event.preventDefault();
           try {
@@ -845,7 +856,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         // --- Marginalia move (drag a gutter icon to a new paragraph) ---
-        const margData = event.dataTransfer?.getData("application/x-virgil-marginalia-move");
+        const margData = event.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
         if (margData) {
           event.preventDefault();
           try {
@@ -866,7 +877,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         // --- Quotation drop (from QuotationsPanel) ---
-        const quotData = event.dataTransfer?.getData("application/x-virgil-quotation");
+        const quotData = event.dataTransfer?.getData(MIME_QUOTATION);
         if (quotData) {
           event.preventDefault();
           try {
@@ -888,7 +899,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         // --- Citation drop ---
-        const citData = event.dataTransfer?.getData("application/x-virgil-citation");
+        const citData = event.dataTransfer?.getData(MIME_CITATION);
         if (citData && onCitationDropRef.current) {
           event.preventDefault();
           try {
@@ -914,7 +925,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // citation node for the quote's cite key + page number. Uses the
         // same onCitationDrop callback to register the citation in the
         // side panel store.
-        const quoteData = event.dataTransfer?.getData("application/x-virgil-quote");
+        const quoteData = event.dataTransfer?.getData(MIME_QUOTE);
         if (quoteData) {
           event.preventDefault();
           try {
@@ -969,7 +980,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // exists in the side panel — this is a "stamp it into the text" copy.
         // Holding Shift while dropping preserves the legacy "re-anchor only"
         // behavior for users who relied on it.
-        const noteData = event.dataTransfer?.getData("application/x-virgil-note");
+        const noteData = event.dataTransfer?.getData(MIME_NOTE);
         if (noteData) {
           event.preventDefault();
           try {
@@ -1025,8 +1036,30 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
+        // --- Todo drop (from TodoPanel) ---
+        const todoData = event.dataTransfer?.getData(MIME_TODO);
+        if (todoData) {
+          event.preventDefault();
+          try {
+            const { todoId } = JSON.parse(todoData);
+            if (!todoId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true;
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
+            if (paragraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-todo-drop", {
+                  detail: { todoId, paragraphId },
+                })
+              );
+            }
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
         // --- Footnote drop (from panel) ---
-        const fnData = event.dataTransfer?.getData("application/x-virgil-footnote");
+        const fnData = event.dataTransfer?.getData(MIME_FOOTNOTE);
         if (fnData) {
           event.preventDefault();
           try {
@@ -1495,7 +1528,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // Helper: get the UUID of a node (paragraph, bulletList, orderedList)
       const getUuid = (node: any): string | null => node.attrs?.uuid || null;
       const hasParagraphUuid = (node: any): boolean => {
-        return ANCHORABLE_NODES.has(node.type.name) && !!node.attrs?.uuid;
+        return isAnchorableNode(node.type) && !!node.attrs?.uuid;
       };
 
       // Rule 1: Find the paragraph the cursor is in
@@ -1645,10 +1678,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       editor.state.doc.descendants((node, pos) => {
         const name = node.type.name;
         const id = node.attrs?.uuid as string | undefined;
-        if (id && ANCHORABLE_NODES.has(name)) {
+        if (id && isAnchorableNode(node.type)) {
           try {
             let top: number;
-            if (ANCHORABLE_ATOMS.has(name)) {
+            if (isAnchorableAtom(node.type)) {
               const dom = view.nodeDOM(pos) as HTMLElement | null;
               if (!dom) return true;
               top = dom.getBoundingClientRect().top - scrollRect.top + scrollEl!.scrollTop;

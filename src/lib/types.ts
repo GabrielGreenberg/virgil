@@ -124,6 +124,8 @@ export interface TodoItem {
   notes: string;
   done: boolean;
   createdAt: string;
+  /** Paragraph UUIDs this todo is anchored to in the editor margin. */
+  paragraphIds: string[];
 }
 
 export interface TodoState {
