@@ -25,6 +25,7 @@ import {
   LatexCommandMark,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { generateEntityId } from "@/lib/uuid";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -255,7 +256,7 @@ function RichTextFieldImpl({
                 if (created.displayText) displayText = created.displayText;
               }
             }
-            if (!resolvedId) resolvedId = crypto.randomUUID();
+            if (!resolvedId) resolvedId = generateEntityId();
 
             const node = view.state.schema.nodes.citation.create({
               citationId: resolvedId,

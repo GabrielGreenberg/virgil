@@ -8,6 +8,7 @@
 // promote those old strings to JSON the first time they're read.
 
 import type { JSONContent } from "@tiptap/react";
+import { generateEntityId } from "@/lib/uuid";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -398,7 +399,7 @@ function parseInlineLatex(text: string): JSONContent[] {
           nodes.push({
             type: "citation",
             attrs: {
-              citationId: globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2),
+              citationId: generateEntityId(),
               command: fullCmd,
               displayText: "",
             },

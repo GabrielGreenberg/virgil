@@ -1,4 +1,4 @@
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import type { QuotationGroup, QuotationsState, Reference, Quote } from "@/lib/types";
 
 /**
@@ -48,7 +48,7 @@ function isModernGroup(g: unknown): g is QuotationGroup {
  */
 function migrateGroup(legacy: LegacyQuotationGroup): QuotationGroup {
   const quotes: Quote[] = (legacy.quotations ?? []).map((q) => ({
-    id: q.id ?? uuid(),
+    id: q.id ?? generateEntityId(),
     text: q.text ?? "",
     page: q.page ?? "",
   }));
@@ -59,7 +59,7 @@ function migrateGroup(legacy: LegacyQuotationGroup): QuotationGroup {
   const title = (legacy.title && legacy.title.trim()) || firstQuoteTitle || "";
 
   const reference: Reference = {
-    id: uuid(),
+    id: generateEntityId(),
     citeKey: legacy.citeKey ?? "",
     quotes,
   };
@@ -98,10 +98,10 @@ export function migrateQuotationsState(
         id: g.id,
         title: g.title ?? "",
         references: (g.references ?? []).map((r) => ({
-          id: r.id ?? uuid(),
+          id: r.id ?? generateEntityId(),
           citeKey: r.citeKey ?? "",
           quotes: (r.quotes ?? []).map((q) => ({
-            id: q.id ?? uuid(),
+            id: q.id ?? generateEntityId(),
             text: q.text ?? "",
             page: q.page ?? "",
           })),

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { CommentsState, UserComment } from "@/lib/types";
 
@@ -40,7 +40,7 @@ export function useComments(docId: string | null) {
   const addComment = useCallback(
     (selectedText: string, comment: string) => {
       const newComment: UserComment = {
-        id: uuid(),
+        id: generateEntityId(),
         selectedText,
         comment,
         createdAt: new Date().toISOString(),

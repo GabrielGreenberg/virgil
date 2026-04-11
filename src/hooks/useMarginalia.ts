@@ -61,7 +61,7 @@ export function useMarginalia(editor: Editor | null) {
         } catch { /* ignore */ }
       }
       // Don't recurse into list items — list itself carries the uuid
-      if (name === "bulletList" || name === "orderedList") return false;
+      if (name === "bulletList" || name === "orderedList" || name === "blockquote") return false;
       return true;
     });
 

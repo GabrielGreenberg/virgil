@@ -7,6 +7,7 @@ import {
   normalizeRichContent,
 } from "@/lib/footnote-content";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
+import { generateEntityId } from "@/lib/uuid";
 
 // Flag: when a LatexComment is created via input rule, auto-focus it
 let _pendingAutoFocusComment = false;
@@ -427,7 +428,7 @@ export const Footnote = Node.create({
             const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
-            const footnoteId = crypto.randomUUID();
+            const footnoteId = generateEntityId();
             const start = from + 1 - match[0].length;
             const tr = state.tr.replaceWith(
               start,
@@ -830,7 +831,7 @@ export const Citation = Node.create({
                   start,
                   from + text.length,
                   nodeType.create({
-                    citationId: crypto.randomUUID(),
+                    citationId: generateEntityId(),
                     command,
                     displayText: "",
                   })
@@ -1018,6 +1019,7 @@ export const TitleField = Node.create({
       field: { default: "title" },
       rawPrefix: { default: null },
       isToday: { default: false },
+      uuid: { default: null, rendered: false },
     };
   },
 

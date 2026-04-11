@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 
@@ -35,7 +35,7 @@ export function useArchive(docId: string | null) {
 
   const archiveText = useCallback((text: string): ArchivedSnippet => {
     const snippet: ArchivedSnippet = {
-      id: uuid(),
+      id: generateEntityId(),
       text,
       createdAt: new Date().toISOString(),
     };

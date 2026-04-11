@@ -2,6 +2,7 @@ import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
+import { generateEntityId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 
 interface ParseContext {
   pos: number;
@@ -151,7 +152,7 @@ function parseInlineContent(text: string): JSONContent[] {
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: crypto.randomUUID(),
+              footnoteId: generateEntityId(),
             },
           });
           i = inner.end;
@@ -222,7 +223,7 @@ function parseInlineContent(text: string): JSONContent[] {
             nodes.push({
               type: "citation",
               attrs: {
-                citationId: crypto.randomUUID(),
+                citationId: generateEntityId(),
                 command: fullCmd,
                 displayText: "",
               },
@@ -249,7 +250,7 @@ function parseInlineContent(text: string): JSONContent[] {
               nodes.push({
                 type: "citation",
                 attrs: {
-                  citationId: crypto.randomUUID(),
+                  citationId: generateEntityId(),
                   command: fullCmd,
                   displayText: "",
                 },
@@ -464,7 +465,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         }
         // Check for optional %!v:xxxx UUID anchor after heading/label
         const afterLabel = ctx.src.slice(ctx.pos);
-        const uuidMatch = afterLabel.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        const uuidMatch = afterLabel.match(NODE_UUID_ANCHOR);
         let uuid: string | null = null;
         if (uuidMatch) {
           uuid = uuidMatch[1];
@@ -490,6 +491,14 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       const inner = extractBraced(ctx.src, ctx.pos);
       if (inner) {
         ctx.pos = inner.end;
+        // Check for trailing %!v:xxxx UUID anchor
+        const afterTitle = ctx.src.slice(ctx.pos);
+        const titleUuidMatch = afterTitle.match(NODE_UUID_ANCHOR);
+        let titleUuid: string | null = null;
+        if (titleUuidMatch) {
+          titleUuid = titleUuidMatch[1];
+          ctx.pos += titleUuidMatch[0].length;
+        }
         // Strip LaTeX formatting commands from content, store as rawPrefix
         let rawContent = inner.content;
         let rawPrefix = "";
@@ -507,7 +516,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         }
         parent.content.push({
           type: "titleField",
-          attrs: { field, rawPrefix: rawPrefix || null, isToday },
+          attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid: titleUuid },
           content: parseInlineContent(rawContent),
         });
         continue;
@@ -524,7 +533,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         // Check for trailing %!v:xxxx UUID anchor
         let mathUuid: string | null = null;
         const afterMath = ctx.src.slice(ctx.pos);
-        const uuidMatch = afterMath.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        const uuidMatch = afterMath.match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
           mathUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
@@ -552,26 +561,34 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       ctx.pos = envEnd !== -1 ? envEnd + `\\end{${env}}`.length : ctx.src.length;
 
       // Check for a trailing %!v:xxxx UUID anchor right after \end{env}
-      let listUuid: string | null = null;
-      if (env === "itemize" || env === "enumerate") {
+      let envUuid: string | null = null;
+      if (env === "itemize" || env === "enumerate" || env === "verbatim" || env === "quote") {
         const afterEnd = ctx.src.slice(ctx.pos);
-        const uuidMatch = afterEnd.match(/^[ \t]*%!v:([0-9a-f]{4})/);
+        const uuidMatch = afterEnd.match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
-          listUuid = uuidMatch[1];
+          envUuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
       }
 
       switch (env) {
-        case "verbatim":
-          parent.content.push({
+        case "verbatim": {
+          const codeNode: JSONContent = {
             type: "codeBlock",
             content: [{ type: "text", text: envContent.trim() }],
-          });
+          };
+          if (envUuid) {
+            codeNode.attrs = { uuid: envUuid };
+          }
+          parent.content.push(codeNode);
           break;
+        }
         case "quote":
           {
             const quoteDoc: JSONContent = { type: "blockquote", content: [] };
+            if (envUuid) {
+              quoteDoc.attrs = { uuid: envUuid };
+            }
             const quoteCtx: ParseContext = { pos: 0, src: envContent.trim() };
             parseBody(quoteCtx, quoteDoc);
             parent.content.push(quoteDoc);
@@ -579,18 +596,18 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           break;
         case "itemize": {
           const listNode = parseList(envContent, "bulletList");
-          if (listUuid) {
+          if (envUuid) {
             if (!listNode.attrs) listNode.attrs = {};
-            listNode.attrs.uuid = listUuid;
+            listNode.attrs.uuid = envUuid;
           }
           parent.content.push(listNode);
           break;
         }
         case "enumerate": {
           const listNode = parseList(envContent, "orderedList");
-          if (listUuid) {
+          if (envUuid) {
             if (!listNode.attrs) listNode.attrs = {};
-            listNode.attrs.uuid = listUuid;
+            listNode.attrs.uuid = envUuid;
           }
           parent.content.push(listNode);
           break;
@@ -716,7 +733,7 @@ function stripUuidAnchor(text: string): { text: string; uuid: string | null } {
   if (match) {
     const cleaned = text.slice(0, match.index).trimEnd();
     // Extract the last UUID from the matched markers
-    const uuids = [...match[1].matchAll(/%!v:([0-9a-f]{4})/g)];
+    const uuids = [...match[1].matchAll(new RegExp(NODE_UUID_REGEX.source, "g"))];
     const lastUuid = uuids.length > 0 ? uuids[uuids.length - 1][1] : null;
     return { text: cleaned, uuid: lastUuid };
   }

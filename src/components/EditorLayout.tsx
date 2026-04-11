@@ -33,6 +33,7 @@ import { useNotes } from "@/hooks/useNotes";
 import { useQuotations } from "@/hooks/useQuotations";
 import Marginalia from "./Marginalia";
 import { ANCHORABLE_NODES, ANCHORABLE_ATOMS, type MarginaliaMarker } from "@/lib/marginalia";
+import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -2078,7 +2079,7 @@ export default function EditorLayout() {
   }, []);
 
   const handleAddFootnote = useCallback(() => {
-    const id = crypto.randomUUID();
+    const id = generateEntityId();
     setOrphanedFootnotes((prev) => [
       ...prev,
       {

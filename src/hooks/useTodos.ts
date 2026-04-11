@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { TodoState, TodoItem } from "@/lib/types";
 
@@ -33,7 +33,7 @@ export function useTodos(docId: string | null) {
 
   const addItem = useCallback((text: string) => {
     const item: TodoItem = {
-      id: uuid(),
+      id: generateEntityId(),
       text,
       notes: "",
       done: false,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar, readBib, writeBib } from "@/lib/storage-fsa";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
@@ -85,7 +85,7 @@ export function useCitations(docId: string | null) {
     (command: string, existingId?: string, markUnanchored?: boolean): CitationRef => {
       const parsed = parseCiteCommand(command);
       const ref: CitationRef = {
-        id: existingId || uuid(),
+        id: existingId || generateEntityId(),
         command,
         keys: parsed?.keys || [],
         createdAt: new Date().toISOString(),

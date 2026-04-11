@@ -25,7 +25,7 @@
  * which the caller can surface.
  */
 
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
 import { parseLatex } from "@/lib/latex-parser";
@@ -470,7 +470,7 @@ export async function createDocFromPicker(
 
   const now = new Date().toISOString();
   const meta: FsaDocMeta = {
-    id: uuid().slice(0, 8),
+    id: generateEntityId().slice(0, 8),
     name,
     texFilename,
     folderName,
@@ -542,7 +542,7 @@ export async function openExistingDocFromPicker(): Promise<FsaDocMeta> {
 
   const now = new Date().toISOString();
   const meta: FsaDocMeta = {
-    id: uuid().slice(0, 8),
+    id: generateEntityId().slice(0, 8),
     name: docHandle.name,
     texFilename,
     folderName: docHandle.name,

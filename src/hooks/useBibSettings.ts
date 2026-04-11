@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { BibSettings, BibEntryRequest } from "@/lib/types";
 
@@ -47,7 +47,7 @@ export function useBibSettings(docId: string | null) {
 
   const addEntryRequest = useCallback((description: string) => {
     const req: BibEntryRequest = {
-      id: uuid(),
+      id: generateEntityId(),
       description,
       status: "pending",
       createdAt: new Date().toISOString(),

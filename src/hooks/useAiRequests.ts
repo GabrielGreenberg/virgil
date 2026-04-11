@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { AiRequest, AiRequestKind, AiRequestsState } from "@/lib/types";
 
@@ -35,7 +35,7 @@ export function useAiRequests(docId: string | null) {
 
   const addRequest = useCallback((kind: AiRequestKind, text = ""): AiRequest => {
     const req: AiRequest = {
-      id: uuid(),
+      id: generateEntityId(),
       kind,
       text,
       createdAt: new Date().toISOString(),

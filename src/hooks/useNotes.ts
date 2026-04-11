@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { NotesState, UserNote } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
@@ -60,7 +60,7 @@ export function useNotes(docId: string | null) {
   const addNote = useCallback(
     (anchorPos: number, content?: JSONContent) => {
       const newNote: UserNote = {
-        id: uuid(),
+        id: generateEntityId(),
         title: "",
         content: content ?? emptyRichContent(),
         anchorPositions: [anchorPos],

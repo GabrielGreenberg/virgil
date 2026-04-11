@@ -6,6 +6,8 @@ import { Heading } from "@tiptap/extension-heading";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
+import Blockquote from "@tiptap/extension-blockquote";
+import CodeBlock from "@tiptap/extension-code-block";
 import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
@@ -14,6 +16,7 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
 import { ANCHORABLE_NODES, ANCHORABLE_ATOMS } from "@/lib/marginalia";
+import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
@@ -58,7 +61,7 @@ function ensureAnchorUuid(
   if (!result) return null;
   const { node, nodePos } = result;
   if (node.attrs?.uuid) return node.attrs.uuid as string;
-  const newUuid = Math.random().toString(16).slice(2, 10);
+  const newUuid = generateNodeUuid();
   try {
     const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
       ...node.attrs,
@@ -270,7 +273,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
               // Assign UUID if setting a title and node doesn't have one yet
               if (newTitle && !attrs.uuid) {
-                attrs.uuid = Math.random().toString(16).slice(2, 6);
+                attrs.uuid = generateNodeUuid();
               }
               const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
               nodeEditor.view.dispatch(tr);
@@ -433,7 +436,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (n) {
             const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
             if (newTitle && !attrs.uuid) {
-              attrs.uuid = Math.random().toString(16).slice(2, 6);
+              attrs.uuid = generateNodeUuid();
             }
             const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
             nodeEditor.view.dispatch(tr);
@@ -578,6 +581,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     addNodeView() {
       return createListTitleNodeView("ol", "orderedList");
+    },
+  });
+
+  const BlockquoteWithUuid = Blockquote.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        uuid: { default: null, rendered: false },
+      };
+    },
+  });
+
+  const CodeBlockWithUuid = CodeBlock.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        uuid: { default: null, rendered: false },
+      };
     },
   });
 
@@ -758,11 +779,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         paragraph: false,
         bulletList: false,
         orderedList: false,
+        blockquote: false,
+        codeBlock: false,
       }),
       ParagraphWithTitle,
       HeadingWithLabel,
       BulletListWithTitle,
       OrderedListWithTitle,
+      BlockquoteWithUuid,
+      CodeBlockWithUuid,
       Placeholder.configure({
         placeholder: "Start writing...",
       }),
@@ -1343,7 +1368,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (from === to) return null;
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
-      const footnoteId = crypto.randomUUID();
+      const footnoteId = generateEntityId();
       const content: TipJSON = {
         type: "doc",
         content: [{ type: "paragraph", content: [{ type: "text", text }] }],

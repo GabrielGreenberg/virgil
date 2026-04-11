@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type {
   CommentsState,
@@ -43,7 +43,7 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
     text: c.comment,
     turns: [
       {
-        id: uuid(),
+        id: generateEntityId(),
         authorId: "claude",
         createdAt: c.createdAt,
         text: c.comment,
@@ -147,7 +147,7 @@ export function useRevisions(docId: string | null) {
 
   const addUser = useCallback(
     (name: string, color: string): RevisionUser => {
-      const u: RevisionUser = { id: uuid(), name: name.trim(), color };
+      const u: RevisionUser = { id: generateEntityId(), name: name.trim(), color };
       update((prev) => ({ ...prev, users: [...prev.users, u], activeUserId: u.id }));
       return u;
     },
@@ -162,9 +162,9 @@ export function useRevisions(docId: string | null) {
       let created: GeneralRevision | null = null;
       update((prev) => {
         const authorId = prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
         const rev: GeneralRevision = {
-          id: uuid(),
+          id: generateEntityId(),
           authorId,
           createdAt: now,
           text: trimmed,
@@ -187,9 +187,9 @@ export function useRevisions(docId: string | null) {
       let created: TextRevision | null = null;
       update((prev) => {
         const authorId = prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
         const rev: TextRevision = {
-          id: uuid(),
+          id: generateEntityId(),
           authorId,
           createdAt: now,
           resolved: false,
@@ -213,7 +213,7 @@ export function useRevisions(docId: string | null) {
       const now = new Date().toISOString();
       update((prev) => {
         const authorId = prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: uuid(), authorId, createdAt: now, text: trimmed };
+        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
         if (kind === "general") {
           return {
             ...prev,

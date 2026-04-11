@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { v4 as uuid } from "uuid";
+import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type {
   QuotationsState,
@@ -14,12 +14,12 @@ import { migrateQuotationsState } from "@/lib/migrate-quotations";
 const EMPTY_STATE: QuotationsState = { groups: [] };
 
 function makeQuote(text = "", page = ""): Quote {
-  return { id: uuid(), text, page };
+  return { id: generateEntityId(), text, page };
 }
 
 function makeReference(citeKey = "", quotes?: Quote[]): Reference {
   return {
-    id: uuid(),
+    id: generateEntityId(),
     citeKey,
     quotes: quotes && quotes.length ? quotes : [makeQuote()],
   };
@@ -75,7 +75,7 @@ export function useQuotations(docId: string | null) {
   const addGroup = useCallback(
     (init?: { text?: string; paragraphId?: string | null }) => {
       const newGroup: QuotationGroup = {
-        id: uuid(),
+        id: generateEntityId(),
         title: "",
         references: [makeReference("", [makeQuote(init?.text ?? "")])],
         paragraphIds: init?.paragraphId ? [init.paragraphId] : [],

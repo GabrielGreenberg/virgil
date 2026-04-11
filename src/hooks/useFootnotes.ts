@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import { readSidecar, writeSidecar } from "@/lib/storage-fsa";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { generateEntityId } from "@/lib/uuid";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
@@ -44,7 +45,7 @@ export function useFootnotes(docId: string | null) {
 
   const addFootnote = useCallback((content: JSONContent | string, existingId?: string): FootnoteRef => {
     const ref: FootnoteRef = {
-      id: existingId || crypto.randomUUID(),
+      id: existingId || generateEntityId(),
       content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
     };

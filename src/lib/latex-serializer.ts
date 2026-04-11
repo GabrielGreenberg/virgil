@@ -1,6 +1,7 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { ANCHORABLE_NODES } from "@/lib/marginalia";
+import { generateNodeUuid } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 
 const PREAMBLE = `\\documentclass{article}
@@ -56,15 +57,15 @@ function escapeLatex(text: string): string {
     .replace(/\^/g, "\\textasciicircum{}");
 }
 
-function serializeNode(node: JSONContent, insideList = false, listDepth = 0): string {
+function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth = 0): string {
   switch (node.type) {
     case "doc":
       return (node.content || []).map((n) => serializeNode(n)).join("");
 
     case "paragraph": {
-      if (!node.content || node.content.length === 0) return insideList ? "" : "%!v:blank\n";
+      if (!node.content || node.content.length === 0) return suppressChildUuids ? "" : "%!v:blank\n";
       const inner = (node.content || []).map(serializeInline).join("");
-      if (insideList) return inner;
+      if (suppressChildUuids) return inner;
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return inner + anchor + "\n\n";
@@ -85,21 +86,27 @@ function serializeNode(node: JSONContent, insideList = false, listDepth = 0): st
     case "titleField": {
       const field = node.attrs?.field as string;
       const rawPrefix = (node.attrs?.rawPrefix as string) || "";
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
       if (node.attrs?.isToday) {
-        return `\\${field}{\\today}\n\n`;
+        return `\\${field}{\\today}${anchor}\n\n`;
       }
       const inner = (node.content || []).map(serializeInline).join("");
-      return `\\${field}{${rawPrefix}${inner}}\n\n`;
+      return `\\${field}{${rawPrefix}${inner}}${anchor}\n\n`;
     }
 
     case "codeBlock": {
       const inner = (node.content || []).map(serializeInline).join("");
-      return `\\begin{verbatim}\n${inner}\n\\end{verbatim}\n\n`;
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `\\begin{verbatim}\n${inner}\n\\end{verbatim}${anchor}\n\n`;
     }
 
     case "blockquote": {
-      const inner = (node.content || []).map((n) => serializeNode(n)).join("");
-      return `\\begin{quote}\n${inner}\\end{quote}\n\n`;
+      const inner = (node.content || []).map((n) => serializeNode(n, true)).join("");
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `\\begin{quote}\n${inner}\\end{quote}${anchor}\n\n`;
     }
 
     case "bulletList": {
@@ -245,19 +252,12 @@ export function serializeBodyOnly(doc: JSONContent): string {
   return serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
 }
 
-function generateUuid(existing: Set<string>): string {
-  let id: string;
-  do {
-    id = Math.random().toString(16).slice(2, 6);
-  } while (existing.has(id));
-  return id;
-}
 
-/** Assign UUIDs to all non-empty paragraphs and lists that lack one. Mutates the doc in place.
- *  Skips paragraphs inside list items (they don't get individual codes).
- *  Lists (bulletList, orderedList) get a single UUID for the whole list. */
+/** Assign UUIDs to all block-level nodes that lack one. Mutates the doc in place.
+ *  Container nodes (lists, blockquote) get a single UUID — inner paragraphs are suppressed.
+ *  Headings, titleFields, atom blocks (displayMath, latexComment, codeBlock) always get a UUID. */
 export function assignUuids(doc: JSONContent): void {
-  const LIST_TYPES = new Set(["bulletList", "orderedList"]);
+  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
   const existing = new Set<string>();
   // First pass: collect existing UUIDs
   function collect(node: JSONContent) {
@@ -267,53 +267,54 @@ export function assignUuids(doc: JSONContent): void {
     node.content?.forEach(collect);
   }
   collect(doc);
-  // Second pass: assign missing UUIDs (skip paragraphs inside list items)
-  function assign(node: JSONContent, insideList = false) {
-    // Lists get a single UUID for the whole list
-    if (LIST_TYPES.has(node.type!)) {
-      if (!node.attrs?.uuid) {
-        if (!node.attrs) node.attrs = {};
-        node.attrs.uuid = generateUuid(existing);
-        existing.add(node.attrs.uuid as string);
-      }
-      // Clear stale UUIDs on paragraphs inside list items
-      node.content?.forEach((listItem) => {
-        listItem.content?.forEach((child) => {
+
+  function ensureUuid(node: JSONContent) {
+    if (!node.attrs) node.attrs = {};
+    node.attrs.uuid = generateNodeUuid(existing);
+    existing.add(node.attrs.uuid as string);
+  }
+
+  // Second pass: assign missing UUIDs (skip paragraphs inside containers)
+  function assign(node: JSONContent, insideContainer = false) {
+    // Container nodes get a single UUID; inner paragraphs are suppressed
+    if (CONTAINER_TYPES.has(node.type!)) {
+      if (!node.attrs?.uuid) ensureUuid(node);
+      // Clear stale UUIDs on paragraphs inside list items / blockquote children
+      const clearChildren = (children: JSONContent[]) => {
+        for (const child of children) {
           if (child.type === "paragraph" && child.attrs?.uuid) {
             child.attrs.uuid = null;
             child.attrs.parTitle = null;
           }
-        });
-      });
+          // For lists, walk into listItem children
+          if (child.type === "listItem" && child.content) clearChildren(child.content);
+        }
+      };
+      if (node.content) clearChildren(node.content);
       return;
     }
-    // Headings always get a UUID
-    if (node.type === "heading" && !node.attrs?.uuid) {
-      if (!node.attrs) node.attrs = {};
-      node.attrs.uuid = generateUuid(existing);
-      existing.add(node.attrs.uuid as string);
+    // Headings and titleFields always get a UUID
+    if ((node.type === "heading" || node.type === "titleField") && !node.attrs?.uuid) {
+      ensureUuid(node);
     }
+    // Non-empty paragraphs get a UUID (unless inside a container)
     if (
       node.type === "paragraph" &&
-      !insideList &&
+      !insideContainer &&
       node.content &&
       node.content.length > 0 &&
       !node.attrs?.uuid
     ) {
-      if (!node.attrs) node.attrs = {};
-      node.attrs.uuid = generateUuid(existing);
-      existing.add(node.attrs.uuid as string);
+      ensureUuid(node);
     }
-    // Atom block nodes (displayMath, latexComment) always get a UUID
+    // Atom-like block nodes always get a UUID
     if (
-      (node.type === "displayMath" || node.type === "latexComment") &&
+      (node.type === "displayMath" || node.type === "latexComment" || node.type === "codeBlock") &&
       !node.attrs?.uuid
     ) {
-      if (!node.attrs) node.attrs = {};
-      node.attrs.uuid = generateUuid(existing);
-      existing.add(node.attrs.uuid as string);
+      ensureUuid(node);
     }
-    node.content?.forEach((child) => assign(child, insideList));
+    node.content?.forEach((child) => assign(child, insideContainer));
   }
   assign(doc);
 }
@@ -365,8 +366,6 @@ export function extractSidecarData(doc: JSONContent): VirgilSidecar {
 
 /** Recover orphaned UUIDs by matching content fingerprints. Mutates doc in place. */
 export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): void {
-  const LIST_TYPES = new Set(["bulletList", "orderedList"]);
-
   // 1. Collect current UUIDs in the document
   const currentUuids = new Set<string>();
   function collectCurrent(node: JSONContent) {
@@ -389,33 +388,38 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
 
   if (orphansByFingerprint.size === 0) return;
 
+  const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
+
   // 3. Walk document for UUID-eligible nodes missing a UUID, try to recover
-  function recover(node: JSONContent, insideList = false) {
-    if (LIST_TYPES.has(node.type!)) {
+  function recover(node: JSONContent, insideContainer = false) {
+    // Container nodes: recover the container UUID, don't recurse into children
+    if (CONTAINER_TYPES.has(node.type!)) {
       if (!node.attrs?.uuid) {
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
-      return; // don't recurse into list items for recovery
+      return;
     }
+    // Headings and titleFields always recoverable
     if (
       node.type === "heading" ||
-      (node.type === "paragraph" && !insideList && node.content && node.content.length > 0)
+      node.type === "titleField" ||
+      (node.type === "paragraph" && !insideContainer && node.content && node.content.length > 0)
     ) {
       if (!node.attrs?.uuid) {
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
     }
-    // Atom block nodes
+    // Atom-like block nodes
     if (
-      (node.type === "displayMath" || node.type === "latexComment") &&
+      (node.type === "displayMath" || node.type === "latexComment" || node.type === "codeBlock") &&
       !node.attrs?.uuid
     ) {
       const fp = computeFingerprint(node);
       if (fp) tryRestore(node, fp);
     }
-    node.content?.forEach((child) => recover(child, insideList));
+    node.content?.forEach((child) => recover(child, insideContainer));
   }
 
   function tryRestore(node: JSONContent, fp: string) {

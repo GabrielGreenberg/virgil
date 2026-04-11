@@ -18,6 +18,9 @@ export const ANCHORABLE_NODES = new Set([
   "orderedList",
   "displayMath",
   "latexComment",
+  "titleField",
+  "blockquote",
+  "codeBlock",
 ]);
 
 /** Subset of ANCHORABLE_NODES that are atom nodes (no interior cursor positions). */
