@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { PanelHeader, PANEL } from "./panel-primitives";
 import type { WordCounts, SelectionCounts } from "@/hooks/useWordCount";
 import {
@@ -15,8 +14,6 @@ interface WordCountPanelProps {
   selection: SelectionCounts | null;
 }
 
-// Display order — same as the shared config so the menu and the
-// breakdown stay aligned.
 const ALL_CATS: Category[] = ALL_CATEGORIES;
 
 function Stat({ label, value }: { label: string; value: string | number }) {
@@ -30,11 +27,7 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 
 export default function WordCountPanel({ counts, selection }: WordCountPanelProps) {
   const { config, setInclude } = useWordCountConfig();
-  const [menuOpen, setMenuOpen] = useState(false);
 
-  // The shared config drives both the breakdown visibility here and the
-  // per-section counts in the outline panel — "show in breakdown" and
-  // "include in count" are intentionally the same toggle now.
   const visible = (cat: Category) => config.include[cat] ?? true;
   const toggleCat = (cat: Category) => setInclude(cat, !visible(cat));
 
@@ -45,44 +38,12 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
   const filteredMinutes = Math.max(1, Math.round(filteredTotal / 225));
   const filteredReadingTime = filteredMinutes === 1 ? "1 min" : `${filteredMinutes} min`;
 
-  const visibleCats = ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) > 0);
-  const hiddenWithCount = ALL_CATS.filter((c) => !visible(c) && (counts.categories[c] ?? 0) > 0);
+  // Show all categories that have words — both included and excluded.
+  const catsWithWords = ALL_CATS.filter((c) => (counts.categories[c] ?? 0) > 0);
 
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Word Count">
-        {/* Settings gear dropdown */}
-        <div className="relative">
-          <button
-            onClick={() => setMenuOpen((o) => !o)}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="View options"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-[9998]" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[160px]">
-                {ALL_CATS.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => toggleCat(cat)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
-                  >
-                    <span>{CATEGORY_LABELS[cat]}</span>
-                    <span className="text-[var(--accent)]">{visible(cat) ? "✓" : ""}</span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </PanelHeader>
+      <PanelHeader title="Word Count" />
 
       <div className={PANEL.list}>
         {/* Selection counts */}
@@ -110,53 +71,44 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
           </div>
         </div>
 
-        {/* Category breakdown */}
-        {visibleCats.length > 0 && (
+        {/* Category breakdown — each row is a toggle button */}
+        {catsWithWords.length > 0 && (
           <div className="rounded-lg border border-stone-200 bg-white overflow-hidden">
             <div className="px-4 py-2 border-b border-stone-100">
               <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
                 Breakdown
               </span>
             </div>
-            {visibleCats.map((cat, i) => {
+            {catsWithWords.map((cat, i) => {
               const wc = counts.categories[cat] ?? 0;
-              const pct = filteredTotal > 0 ? Math.round((wc / filteredTotal) * 100) : 0;
+              const included = visible(cat);
+              const pct = filteredTotal > 0 && included
+                ? Math.round((wc / filteredTotal) * 100)
+                : 0;
               return (
-                <div
+                <button
                   key={cat}
-                  className={`flex items-center justify-between px-4 py-2 ${
-                    i < visibleCats.length - 1 ? "border-b border-stone-50" : ""
+                  onClick={() => toggleCat(cat)}
+                  className={`w-full flex items-center justify-between px-4 py-2 transition-colors hover:bg-stone-50 ${
+                    i < catsWithWords.length - 1 ? "border-b border-stone-50" : ""
                   }`}
+                  title={included ? `Click to exclude ${CATEGORY_LABELS[cat]} from total` : `Click to include ${CATEGORY_LABELS[cat]} in total`}
                 >
-                  <span className="text-xs text-stone-600">{CATEGORY_LABELS[cat]}</span>
-                  <span className="text-xs tabular-nums text-stone-800 flex items-center gap-2">
-                    {wc}
-                    <span className="text-[10px] text-[var(--muted)] w-8 text-right">{pct}%</span>
+                  <span className={`text-xs ${included ? "text-stone-600" : "text-stone-300 line-through"}`}>
+                    {CATEGORY_LABELS[cat]}
                   </span>
-                </div>
+                  <span className={`text-xs tabular-nums flex items-center gap-2 ${included ? "text-stone-800" : "text-stone-300"}`}>
+                    {wc}
+                    {included && (
+                      <span className="text-[10px] text-[var(--muted)] w-8 text-right">{pct}%</span>
+                    )}
+                    {!included && (
+                      <span className="text-[10px] text-stone-300 w-8 text-right">off</span>
+                    )}
+                  </span>
+                </button>
               );
             })}
-          </div>
-        )}
-
-        {/* Categories with 0 words that are visible — show muted */}
-        {ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) === 0).length > 0 && (
-          <div className="px-3 py-1">
-            <span className="text-[11px] text-[var(--muted)]">
-              {ALL_CATS.filter((c) => visible(c) && (counts.categories[c] ?? 0) === 0)
-                .map((c) => CATEGORY_LABELS[c])
-                .join(", ")}
-              {" — 0 words"}
-            </span>
-          </div>
-        )}
-
-        {/* Hidden categories with content indicator */}
-        {hiddenWithCount.length > 0 && (
-          <div className="px-3 py-1">
-            <span className="text-[11px] text-[var(--muted)] italic">
-              {hiddenWithCount.length} hidden {hiddenWithCount.length === 1 ? "category has" : "categories have"} words
-            </span>
           </div>
         )}
       </div>

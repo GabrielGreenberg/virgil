@@ -251,17 +251,66 @@ function countWords(text: string): number {
  * Mirrors the PmNode walker in useWordCount.ts so the per-section outline
  * counts and the panel-level totals stay in agreement.
  */
+/**
+ * Extract plain text from `\caption{...}` commands inside raw LaTeX strings.
+ * Handles nested braces.
+ */
+function extractCaptionText(raw: string): string[] {
+  const results: string[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    const idx = raw.indexOf("\\caption", i);
+    if (idx === -1) break;
+    let pos = idx + "\\caption".length;
+    if (pos < raw.length && raw[pos] === "*") pos++;
+    if (pos < raw.length && raw[pos] === "[") {
+      const close = raw.indexOf("]", pos);
+      if (close !== -1) pos = close + 1;
+    }
+    if (pos < raw.length && raw[pos] === "{") {
+      let depth = 1;
+      const start = pos + 1;
+      pos++;
+      while (pos < raw.length && depth > 0) {
+        if (raw[pos] === "\\" && pos + 1 < raw.length) { pos += 2; continue; }
+        if (raw[pos] === "{") depth++;
+        else if (raw[pos] === "}") depth--;
+        if (depth > 0) pos++;
+      }
+      if (depth === 0) {
+        const inner = raw.slice(start, pos);
+        const plain = inner
+          .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])*\{([^}]*)\}/g, "$2")
+          .replace(/\\[a-zA-Z]+\*?/g, "")
+          .replace(/[{}]/g, "")
+          .trim();
+        if (plain) results.push(plain);
+      }
+    }
+    i = pos + 1;
+  }
+  return results;
+}
+
 function walkBlockJson(node: JSONContent): Record<Category, number> {
   const cats: Record<Category, string[]> = {
     mainText: [],
     headings: [],
     footnotes: [],
+    captions: [],
     math: [],
     comments: [],
   };
 
   const collectInline = (n: JSONContent, bucket: string[]) => {
     if (n.type === "text" && n.text) {
+      // Text marked as latexCommand is raw LaTeX — not prose.
+      // Extract any \caption{...} text into captions, skip the rest.
+      if (n.marks?.some((m) => m.type === "latexCommand")) {
+        const capts = extractCaptionText(n.text);
+        for (const c of capts) cats.captions.push(c);
+        return;
+      }
       bucket.push(n.text);
       return;
     }
