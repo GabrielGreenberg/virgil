@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import type { EditorPreferences, PreferencePreset } from "@/hooks/usePreferences";
 import type { GlobalTransforms } from "@/lib/color-transforms";
 import { PREFERENCES_TREE } from "@/lib/preferences-tree";
+import { useDragPosition } from "@/hooks/useDragPosition";
 import PreferenceTree from "./PreferenceTree";
 
 interface PreferencesModalProps {
@@ -169,85 +170,110 @@ export default function PreferencesModal({
   onLoadPreset,
   onDeletePreset,
 }: PreferencesModalProps) {
-  const handleBackdrop = useCallback((e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
-  }, [onClose]);
+  const { position, onMouseDown: onDragStart, panelRef, isDraggingRef } = useDragPosition();
+
+  // Click-outside-to-close (deferred by one frame to avoid the opening click)
+  useEffect(() => {
+    let mounted = true;
+    requestAnimationFrame(() => {
+      if (!mounted) return;
+      const handler = (e: MouseEvent) => {
+        if (isDraggingRef.current) return;
+        if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+          onClose();
+        }
+      };
+      document.addEventListener("mousedown", handler);
+      // Store cleanup for the effect teardown
+      cleanupRef.current = () => document.removeEventListener("mousedown", handler);
+    });
+    const cleanupRef = { current: () => {} };
+    return () => { mounted = false; cleanupRef.current(); };
+  }, [onClose, isDraggingRef, panelRef]);
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/20"
-      onClick={handleBackdrop}
+      ref={panelRef}
+      className="fixed z-[9999] bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[560px] max-h-[85vh] flex flex-col"
+      style={
+        position
+          ? { top: position.y, left: position.x }
+          : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+      }
     >
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[560px] max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)]">
-          <h2 className="text-sm font-semibold text-stone-700">Preferences</h2>
-          <button
-            onClick={onClose}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="Close"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M3 3l8 8M11 3l-8 8" />
-            </svg>
-          </button>
-        </div>
+      {/* Header — drag handle */}
+      <div
+        className="flex items-center justify-between px-5 py-3 border-b border-[var(--border)] select-none"
+        onMouseDown={onDragStart}
+        style={{ cursor: isDraggingRef.current ? "grabbing" : "grab" }}
+      >
+        <h2 className="text-sm font-semibold text-stone-700">Preferences</h2>
+        <button
+          onClick={onClose}
+          onMouseDown={(e) => e.stopPropagation()}
+          className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+          title="Close"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M3 3l8 8M11 3l-8 8" />
+          </svg>
+        </button>
+      </div>
 
-        {/* Presets + Global Sliders (sticky) */}
-        <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
-          <PresetBar
-            presets={presets}
-            onLoad={onLoadPreset}
-            onSave={onSavePreset}
-            onDelete={onDeletePreset}
+      {/* Presets + Global Sliders (sticky) */}
+      <div className="px-5 py-3 border-b border-[var(--border)] space-y-3 bg-[var(--surface)]">
+        <PresetBar
+          presets={presets}
+          onLoad={onLoadPreset}
+          onSave={onSavePreset}
+          onDelete={onDeletePreset}
+        />
+
+        <div className="flex items-start gap-4">
+          <TransformSlider
+            label="Contrast"
+            value={transforms.contrast}
+            min={-100}
+            max={100}
+            step={5}
+            onChange={(v) => onUpdateTransform("contrast", v)}
           />
-
-          <div className="flex items-start gap-4">
-            <TransformSlider
-              label="Contrast"
-              value={transforms.contrast}
-              min={-100}
-              max={100}
-              step={5}
-              onChange={(v) => onUpdateTransform("contrast", v)}
-            />
-            <TransformSlider
-              label="Hue"
-              value={transforms.hue}
-              min={-180}
-              max={180}
-              step={5}
-              onChange={(v) => onUpdateTransform("hue", v)}
-            />
-            <TransformSlider
-              label="Brightness"
-              value={transforms.brightness}
-              min={-50}
-              max={50}
-              step={2}
-              onChange={(v) => onUpdateTransform("brightness", v)}
-            />
-          </div>
-        </div>
-
-        {/* Tree Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          <PreferenceTree
-            tree={PREFERENCES_TREE}
-            prefs={prefs}
-            onUpdate={onUpdate}
+          <TransformSlider
+            label="Hue"
+            value={transforms.hue}
+            min={-180}
+            max={180}
+            step={5}
+            onChange={(v) => onUpdateTransform("hue", v)}
+          />
+          <TransformSlider
+            label="Brightness"
+            value={transforms.brightness}
+            min={-50}
+            max={50}
+            step={2}
+            onChange={(v) => onUpdateTransform("brightness", v)}
           />
         </div>
+      </div>
 
-        {/* Footer */}
-        <div className="px-5 py-3 border-t border-[var(--border)] flex justify-end">
-          <button
-            onClick={onReset}
-            className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
-          >
-            Reset to defaults
-          </button>
-        </div>
+      {/* Tree Body */}
+      <div className="flex-1 overflow-y-auto px-5 py-3">
+        <PreferenceTree
+          tree={PREFERENCES_TREE}
+          prefs={prefs}
+          onUpdate={onUpdate}
+        />
+      </div>
+
+      {/* Footer */}
+      <div className="px-5 py-3 border-t border-[var(--border)] flex justify-end">
+        <button
+          onClick={onReset}
+          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+        >
+          Reset to defaults
+        </button>
       </div>
     </div>
   );
