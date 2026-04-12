@@ -54,15 +54,58 @@ All panels import from this file. It exports:
 
 ---
 
-## Panel Cards
+## EditableCard
 
-- Cards use `panelCard(isSelected)` for consistent selected/hover states.
+`EditableCard` is the canonical card component for all panels with editable
+rich-text content (footnotes, notes, archive). All formatting is centralized
+here — panels pass content-specific data, not styling.
+
+### Layout
+```
+[grab handle] [badge] [title input] ... [x delete] [target icon]
+──────────────── separator ────────────────────────────────────
+[RichTextField body]                                    
+[optional footer]
+```
+
+### Opt-in features (props)
+| Prop | Effect |
+|------|--------|
+| `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
+| `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
+| `inlineDelete` | [x] button in header instead of three-dot menu |
+| `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
+
+### Selection states
+- **Selected**: colored border around whole card, tinted header (`theme.headerSelected`), **white body**
 - **Default**: `bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50`
-- **Selected**: `bg-amber-50/60 border-amber-300 shadow-sm`
-- Card content goes inside `PANEL.cardInner` (`px-4 py-3 relative min-w-0`).
-- Header rows should be **single-row** layouts (e.g. footnote cards:
-  number badge + toolbar + menu all in one row, not stacked).
-- Cards in `PANEL.list` are spaced with `space-y-2` (no `border-b` dividers).
+- Separator: `border-stone-200`, darkens to `border-stone-300` on hover
+- Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`
+- Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container)
+
+### Shared sub-components (`panel-primitives.tsx`)
+| Component | Usage |
+|-----------|-------|
+| `BadgeLabel` | Anchored badge with label (number/letter), themed colors |
+| `BadgeOrphaned` | Unanchored badge: local-color square with corner-to-corner cross, 60% opacity |
+| `CardTitleInput` | Par-title styled input (`--par-title-color`, `0.78rem`, weight 500, sans-serif) |
+| `CardTargetIcon` | Page-with-arrow icon: full opacity when selected, 60% when unselected, 30% when disabled |
+
+### Card themes (`CARD_THEMES`)
+Each theme provides: `cardClass`, `separatorSelected`, `headerSelected`,
+`badgeBg`, `badgeColor`, `badgeBorder`. Panels reference themes, never
+hardcode colors.
+
+### Delete behavior
+- [x] button and Delete/Backspace key both go through `tryDelete()`
+- If the card body has text content → shows `ConfirmDialog`
+- If empty → deletes immediately
+- The `ConfirmDialog` positions near the card (via `anchorRef`), not dead-center screen
+
+### Drag behavior
+- Grab handle uses the whole card as the drag ghost (`setDragImage`)
+- Ghost is offset below the cursor so it doesn't obscure the drop target
+- Handle darkens on card hover (`group-hover:text-stone-500`)
 
 ### Sub-pods
 Expandable sections within cards use sub-pod containers:
@@ -129,23 +172,36 @@ and `PrevNextCounter` in the header to show position. The counter shows:
 
 ---
 
-## Three-Dot Menus (ItemMenu)
+## Confirmation Dialogs
 
-Every card that supports delete/actions uses `ItemMenu`:
-- Button: vertical three dots, `p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100`
-- Dropdown: fixed-positioned `bg-white border rounded-md shadow-lg`
-- Standard delete item: `MenuDelete` (text-red-500, hover:bg-red-50)
-- Menu closes on outside click
+`ConfirmDialog` positions near the element being acted on, not dead-center
+screen. Pass `anchorRef` to position the dialog just below the triggering
+element. Without `anchorRef`, it falls back to centered (legacy behavior).
+
+```tsx
+<ConfirmDialog
+  open={confirmOpen}
+  message="This item has text. Delete it?"
+  confirmLabel="Delete"
+  tone="danger"
+  anchorRef={cardRef}    // positions near the card
+  onConfirm={...}
+  onCancel={...}
+/>
+```
 
 ---
 
 ## Target Icon (Jump to Text)
 
-Shown on **selected cards only** — clicking jumps the editor to the
-element's document anchor. The icon is a small bullseye (two concentric
-circles). It stops propagation so the parent card doesn't re-select.
+The target icon is a small page with an arrow pointing into it (18x18).
+Always visible on cards at varying opacity:
+- **Selected**: full opacity
+- **Unselected**: 60% opacity
+- **Disabled** (unanchored): 30% opacity
 
-Placement: top-right corner of the card, alongside the three-dot menu.
+Use `CardTargetIcon` from panel-primitives for consistent behavior.
+Placement: rightmost element in the card header row.
 
 ---
 
@@ -267,8 +323,11 @@ after `requestAnimationFrame`.
 | Archive | `#7191b0` | `#f0f5fa` | `#a8c1d8` |
 
 ### Selection
-Selected cards across all panels use the same amber treatment:
-`bg-amber-50/60 border-amber-300 shadow-sm`
+Selected cards have a colored border + shadow with tinted header, white body:
+- **Footnotes**: `border-red-300`, header `bg-red-50/60`
+- **Notes**: `border-emerald-300`, header `bg-emerald-50/60`
+- **Archive**: `border-amber-300`, header `bg-amber-50/60`
+Body text always stays full dark (`#44403c`), never white-on-colored.
 
 ---
 

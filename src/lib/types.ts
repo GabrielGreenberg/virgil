@@ -300,5 +300,6 @@ export interface OrphanedFootnote {
   footnoteId: string;
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   content: unknown;
+  title?: string;
   orphanedAt: string;
 }

@@ -6,12 +6,11 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
-import RichTextField from "./RichTextField";
 import { MIME_FOOTNOTE } from "@/lib/marginalia";
 
 interface FootnotePanelProps {
@@ -28,6 +27,7 @@ interface FootnotePanelProps {
   orphanedFootnotes: OrphanedFootnote[];
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: JSONContent) => void;
+  onEditOrphanTitle?: (id: string, title: string) => void;
   onAdd?: () => void;
   /** Lookup for rendering dropped/stored citations as formatted text. */
   getCitationDisplayText?: (command: string) => string;
@@ -38,6 +38,10 @@ interface FootnotePanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
+  /** Called when the user edits a footnote's title. */
+  onEditTitle?: (id: string, title: string) => void;
+  /** Called with the Tiptap editor when a footnote body gains focus (for main toolbar routing). */
+  onEditorFocus?: (editor: any) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -82,6 +86,8 @@ export interface FootnoteCardProps {
   onJump: () => void;
   onEdit: (json: JSONContent) => void;
   onDelete: () => void;
+  onEditTitle?: (title: string) => void;
+  onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   /** Extra class names appended to the card wrapper (e.g. in-text view). */
@@ -99,6 +105,8 @@ export function FootnoteCard({
   onJump,
   onEdit,
   onDelete,
+  onEditTitle,
+  onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
   wrapperClassName,
@@ -115,20 +123,19 @@ export function FootnoteCard({
       id={fn.footnoteId}
       selected={isSelected}
       theme={CARD_THEMES.footnote}
-      badge={
-        <span
-          className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0"
-          style={{ background: "#fef2f2", color: "#b45757", border: "1.5px solid #b45757" }}
-        >
-          {fn.number}
-        </span>
-      }
+      grabHandle
+      hideToolbar
+      inlineDelete
+      onEditorFocus={onEditorFocus}
+      badge={<BadgeLabel label={fn.number} theme={CARD_THEMES.footnote} />}
+      headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} />}
+      headerTrailing={<CardTargetIcon selected={isSelected} onClick={() => onJump()} title="Jump to footnote marker" />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
       onDelete={onDelete}
       value={fn.content}
       variant="footnote"
-      placeholder="Empty footnote"
+      placeholder="Text here."
       onChange={handleEdit}
       onArchiveConsumed={onDropArchive}
       getCitationDisplayText={getCitationDisplayText}
@@ -145,8 +152,12 @@ export function FootnoteCard({
 
 export interface OrphanedFootnoteCardProps {
   orphan: OrphanedFootnote;
+  isSelected?: boolean;
+  onSelect?: () => void;
   onEdit: (json: JSONContent) => void;
   onDelete: () => void;
+  onEditTitle?: (title: string) => void;
+  onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   wrapperClassName?: string;
@@ -156,8 +167,12 @@ export interface OrphanedFootnoteCardProps {
 
 export function OrphanedFootnoteCard({
   orphan,
+  isSelected = false,
+  onSelect,
   onEdit,
   onDelete,
+  onEditTitle,
+  onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
   wrapperClassName,
@@ -172,23 +187,21 @@ export function OrphanedFootnoteCard({
   return (
     <EditableCard
       id={orphan.footnoteId}
-      selected={false}
+      selected={isSelected}
       theme={CARD_THEMES.footnote}
-      badge={
-        <span className="inline-flex items-center justify-center shrink-0" title="No anchor in document">
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-            <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b0b0b0" strokeWidth="1.5" fill="#f5f5f4" />
-            <text x="8" y="11.5" textAnchor="middle" fontSize="9" fontWeight="600" fill="#b0b0b0" fontFamily="var(--font-sans), sans-serif">fn</text>
-            <line x1="3" y1="13" x2="13" y2="3" stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-        </span>
-      }
+      grabHandle
+      hideToolbar
+      inlineDelete
+      onEditorFocus={onEditorFocus}
+      badge={<BadgeOrphaned theme={CARD_THEMES.footnote} />}
+      headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} />}
+      headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
+      onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"
-      placeholder="Empty — drag text in or type"
-      muted
+      placeholder="Text here."
       onChange={handleEdit}
       onArchiveConsumed={onDropArchive}
       getCitationDisplayText={getCitationDisplayText}
@@ -219,6 +232,7 @@ function FootnotePanel({
   orphanedFootnotes,
   onDeleteOrphan,
   onEditOrphan,
+  onEditOrphanTitle,
   onAdd,
   getCitationDisplayText,
   onCitationCreated,
@@ -226,6 +240,8 @@ function FootnotePanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
+  onEditTitle,
+  onEditorFocus,
 }: FootnotePanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "footnote"),
@@ -298,6 +314,7 @@ function FootnotePanel({
         ref={viewMode === "in-text" ? panelScrollRef : undefined}
         tabIndex={0}
         onKeyDown={handleNavKeys}
+        onClick={() => onSelect(null)}
         className={`${viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list} focus:outline-none`}
       >
         {totalCount === 0 && (
@@ -413,8 +430,12 @@ function FootnotePanel({
               <OrphanedFootnoteCard
                 key={orphan.footnoteId}
                 orphan={orphan}
+                isSelected={selectedId === orphan.footnoteId}
+                onSelect={() => onSelect(selectedId === orphan.footnoteId ? null : orphan.footnoteId)}
                 onEdit={(json) => onEditOrphan(orphan.footnoteId, json)}
                 onDelete={() => onDeleteOrphan(orphan.footnoteId)}
+                onEditTitle={(title) => onEditOrphanTitle?.(orphan.footnoteId, title)}
+                onEditorFocus={onEditorFocus}
                 getCitationDisplayText={getCitationDisplayText}
                 onCitationCreated={onCitationCreated}
               />
@@ -429,6 +450,8 @@ function FootnotePanel({
                 onJump={() => onScrollToMarker(fn.footnoteId)}
                 onEdit={(json) => onEdit(fn.footnoteId, json)}
                 onDelete={() => onDelete(fn.footnoteId)}
+                onEditTitle={(title) => onEditTitle?.(fn.footnoteId, title)}
+                onEditorFocus={onEditorFocus}
                 getCitationDisplayText={getCitationDisplayText}
                 onCitationCreated={onCitationCreated}
               />

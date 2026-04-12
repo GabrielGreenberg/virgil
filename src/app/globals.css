@@ -653,7 +653,7 @@ body {
   color: #44403c;
 }
 .rtf-content.rtf-selected {
-  color: #ffffff;
+  color: #44403c;
 }
 .rtf-content.rtf-muted {
   color: #78716c;
@@ -683,10 +683,10 @@ body {
   pointer-events: none;
   float: left;
   height: 0;
-  font-style: italic;
+  font-style: normal;
 }
 .rtf-content.rtf-selected p.is-editor-empty:first-child::before {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--muted-light);
 }
 
 /* Drop highlight on the wrapper */

@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE } from "@/lib/marginalia";
 
@@ -25,6 +25,8 @@ interface NotesPanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
+  /** Called with the Tiptap editor when a note body gains focus (for main toolbar routing). */
+  onEditorFocus?: (editor: any) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -62,6 +64,7 @@ function NoteCard({
   onDelete,
   onSelect,
   onJump,
+  onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
 }: {
@@ -72,6 +75,7 @@ function NoteCard({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: () => void;
+  onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
 }) {
@@ -111,34 +115,19 @@ function NoteCard({
       id={note.id}
       selected={selected}
       theme={CARD_THEMES.note}
-      badge={
-        <span
-          className="inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold shrink-0"
-          style={{ background: "#f0fdf4", color: "#15803d", border: "1.5px solid #34d399" }}
-        >
-          N
-        </span>
-      }
-      headerContent={
-        <input
-          type="text"
-          defaultValue={note.title}
-          onChange={(e) => onUpdateTitle(note.id, e.target.value)}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          placeholder="Title"
-          className="flex-1 min-w-0 text-xs font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal"
-        />
-      }
-      headerTrailing={selected && onJump ? <TargetIcon onClick={onJump} title="Jump to note anchor" /> : undefined}
+      grabHandle
+      hideToolbar
+      inlineDelete
+      onEditorFocus={onEditorFocus}
+      badge={<BadgeLabel label="N" theme={CARD_THEMES.note} />}
+      headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} />}
+      headerTrailing={onJump ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" /> : undefined}
       onClick={() => onSelect(selected ? null : note.id)}
       onDragStart={(e) => startNoteDrag(e, note.id, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
       value={note.content}
       variant="note"
-      placeholder="Write a note..."
+      placeholder="Text here."
       onChange={handleChange}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
@@ -163,6 +152,7 @@ export default function NotesPanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
+  onEditorFocus,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => (a.anchorPositions[0] ?? 0) - (b.anchorPositions[0] ?? 0)),
@@ -205,7 +195,7 @@ export default function NotesPanel({
         />
       </PanelHeader>
 
-      <div className={PANEL.list}>
+      <div className={PANEL.list} onClick={() => onSelectNote(null)}>
         {sortedNotes.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No notes yet. Click &quot;Add Note&quot; to create one at the current cursor position.
@@ -236,6 +226,7 @@ export default function NotesPanel({
             onDelete={onDelete}
             onSelect={onSelectNote}
             onJump={onScrollToPos && note.anchorPositions[0] != null ? () => onScrollToPos(note.anchorPositions[0]) : undefined}
+            onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
           />

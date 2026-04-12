@@ -927,6 +927,9 @@ export default function EditorLayout() {
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
+  // When a panel mini-editor (e.g. footnote RichTextField) is focused,
+  // the main toolbar should route commands to it instead of the main editor.
+  const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
   const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
@@ -1306,6 +1309,15 @@ export default function EditorLayout() {
       for (const el of els) el.classList.remove("footnote-highlight-marker");
     };
   }, [selectedFootnoteId]);
+
+  // Clear the toolbar-override editor when the main editor regains focus,
+  // so the MenuBar switches back to controlling the document editor.
+  useEffect(() => {
+    if (!editorInstance) return;
+    const clearOverride = () => setOverrideEditor(null);
+    editorInstance.on("focus", clearOverride);
+    return () => { editorInstance.off("focus", clearOverride); };
+  }, [editorInstance]);
 
   // Current-section breadcrumb: tracks the heading chain of whatever
   // the reader is currently looking at — i.e., the topmost heading
@@ -2052,6 +2064,10 @@ export default function EditorLayout() {
     editorRef.current?.updateFootnoteContent(id, newContent);
   }, []);
 
+  const handleEditFootnoteTitle = useCallback((id: string, title: string) => {
+    editorRef.current?.updateFootnoteTitle(id, title);
+  }, []);
+
   // Used by the footnote/note rich-text panels when the user drops a brand-new
   // citation. Mirrors the main editor's onCitationDrop: register the
   // command in the citations store so it shows up in the side panel and
@@ -2115,6 +2131,12 @@ export default function EditorLayout() {
   const handleEditOrphan = useCallback((id: string, newContent: unknown) => {
     setOrphanedFootnotes((prev) => prev.map((o) =>
       o.footnoteId === id ? { ...o, content: newContent } : o
+    ));
+  }, []);
+
+  const handleEditOrphanTitle = useCallback((id: string, title: string) => {
+    setOrphanedFootnotes((prev) => prev.map((o) =>
+      o.footnoteId === id ? { ...o, title } : o
     ));
   }, []);
 
@@ -2895,6 +2917,7 @@ export default function EditorLayout() {
           onAddAiRequest={() => addAiRequest("note")}
           onUpdateAiRequestText={updateAiRequestText}
           onDeleteAiRequest={deleteAiRequest}
+          onEditorFocus={setOverrideEditor}
         />
       );
     }
@@ -2942,6 +2965,7 @@ export default function EditorLayout() {
           onViewModeChange={(m) => setPanelViewMode("archive", m)}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
+          onEditorFocus={setOverrideEditor}
         />
       );
     }
@@ -2962,6 +2986,7 @@ export default function EditorLayout() {
           orphanedFootnotes={orphanedFootnotes}
           onDeleteOrphan={handleDeleteOrphan}
           onEditOrphan={handleEditOrphan}
+          onEditOrphanTitle={handleEditOrphanTitle}
           onAdd={handleAddFootnote}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
@@ -2969,6 +2994,8 @@ export default function EditorLayout() {
           onAddAiRequest={() => addAiRequest("footnote")}
           onUpdateAiRequestText={updateAiRequestText}
           onDeleteAiRequest={deleteAiRequest}
+          onEditTitle={handleEditFootnoteTitle}
+          onEditorFocus={setOverrideEditor}
         />
       );
     }
@@ -3139,6 +3166,8 @@ export default function EditorLayout() {
                 onJump={() => editorRef.current?.scrollToFootnote(fn.footnoteId)}
                 onEdit={(json) => handleEditFootnote(fn.footnoteId, json)}
                 onDelete={() => handleDeleteFootnote(fn.footnoteId)}
+                onEditTitle={(title) => handleEditFootnoteTitle(fn.footnoteId, title)}
+                onEditorFocus={setOverrideEditor}
                 getCitationDisplayText={getCitationDisplayText}
                 onCitationCreated={handleCitationCreated}
                 extraDataAttrs={{ "data-omni-entry": `fn:${fn.footnoteId}` }}
@@ -3155,8 +3184,12 @@ export default function EditorLayout() {
               <OrphanedFootnoteCard
                 key={`fn:${orphan.footnoteId}`}
                 orphan={orphan}
+                isSelected={selectedFootnoteId === orphan.footnoteId}
+                onSelect={() => setSelectedFootnoteId(selectedFootnoteId === orphan.footnoteId ? null : orphan.footnoteId)}
                 onEdit={(json) => handleEditOrphan(orphan.footnoteId, json)}
                 onDelete={() => handleDeleteOrphan(orphan.footnoteId)}
+                onEditTitle={(title) => handleEditOrphanTitle(orphan.footnoteId, title)}
+                onEditorFocus={setOverrideEditor}
                 getCitationDisplayText={getCitationDisplayText}
                 onCitationCreated={handleCitationCreated}
                 extraDataAttrs={{ "data-omni-entry": `fn:${orphan.footnoteId}` }}
@@ -3632,7 +3665,7 @@ export default function EditorLayout() {
         }}>
           {/* Toolbar pod */}
           <MenuBar
-            editor={editorInstance}
+            editor={overrideEditor ?? editorInstance}
             onAddComment={handleAddComment}
             onArchive={handleArchive}
             onCreateFootnote={handleCreateFootnote}
