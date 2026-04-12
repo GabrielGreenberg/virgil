@@ -2217,6 +2217,27 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-citation-click", handler);
   }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
 
+  // Click on empty editor space → deselect all panel items.
+  // Marker click handlers call stopPropagation(), so this only fires
+  // for non-marker clicks (regular text, whitespace, etc.).
+  useEffect(() => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    const editorDom = editor.view.dom;
+    const handler = () => {
+      setSelectedCommentId(null);
+      setSelectedNoteId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedArchiveId(null);
+      setSelectedTodoId(null);
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedBibKey(null);
+    };
+    editorDom.addEventListener("click", handler);
+    return () => editorDom.removeEventListener("click", handler);
+  }, [editorInstance]);
+
   // Listen for bare \cite input rule → open panel with new-cite form
   useEffect(() => {
     const handler = (e: Event) => {
