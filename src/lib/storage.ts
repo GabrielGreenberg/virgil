@@ -31,6 +31,8 @@ export const writeBib = backend.writeBib;
 export const readGeneralBib = backend.readGeneralBib;
 export const pickGeneralBib = backend.pickGeneralBib;
 export const createDocFromPicker = backend.createDocFromPicker;
+export const pickProjectFolder = backend.pickProjectFolder;
+export const registerDocInFolder = backend.registerDocInFolder;
 export const openExistingDocFromPicker = backend.openExistingDocFromPicker;
 export const listDocs = backend.listDocs;
 export const renameDoc = backend.renameDoc;
@@ -39,4 +41,4 @@ export const flushDoc = backend.flushDoc;
 export const detectBibPackage = backend.detectBibPackage;
 
 // Re-export types (these are the same in both backends).
-export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult } from "@/lib/storage-fsa";

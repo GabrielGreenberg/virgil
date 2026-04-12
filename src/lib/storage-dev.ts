@@ -17,6 +17,7 @@ import {
   recoverOrphanedUuids,
 } from "@/lib/latex-serializer";
 import type { FsaDocMeta } from "@/lib/doc-index";
+import type { FolderPickResult } from "@/lib/storage-fsa";
 
 import {
   detectBibPackage,
@@ -258,6 +259,17 @@ export async function createDocFromPicker(
   _rawName: string,
 ): Promise<FsaDocMeta> {
   throw new Error("createDocFromPicker is not available in dev storage mode");
+}
+
+export async function pickProjectFolder(): Promise<FolderPickResult> {
+  throw new Error("pickProjectFolder is not available in dev storage mode");
+}
+
+export async function registerDocInFolder(
+  _handle: FileSystemDirectoryHandle,
+  _texFilename: string,
+): Promise<FsaDocMeta> {
+  throw new Error("registerDocInFolder is not available in dev storage mode");
 }
 
 export async function openExistingDocFromPicker(): Promise<FsaDocMeta> {

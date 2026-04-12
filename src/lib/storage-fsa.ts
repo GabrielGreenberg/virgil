@@ -486,74 +486,93 @@ export async function createDocFromPicker(
   return meta;
 }
 
-/**
- * Open an existing paper folder.
- *
- * Flow (must be invoked from a user gesture):
- *   1. User picks an existing folder via showDirectoryPicker.
- *   2. We scan it for a .tex file.
- *   3. We register the doc in idb and store its folder handle.
- *
- * If the same folder has already been opened (by display name + .tex
- * filename), we silently reuse the existing entry instead of creating
- * a duplicate.
- */
-export async function openExistingDocFromPicker(): Promise<FsaDocMeta> {
-  const docHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+// ---------------------------------------------------------------------------
+// Two-phase document opening
+// ---------------------------------------------------------------------------
 
-  // Find a .tex file inside the picked folder.
+/** Result of the first phase: the user picked a folder. */
+export interface FolderPickResult {
+  handle: FileSystemDirectoryHandle;
+  texFiles: string[];
+  folderName: string;
+}
+
+/**
+ * Phase 1 — pick a project folder and discover its .tex files.
+ * Must be called from a user gesture (showDirectoryPicker requires it).
+ */
+export async function pickProjectFolder(): Promise<FolderPickResult> {
+  const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+
   const texFiles: string[] = [];
-  for await (const entry of docHandle.values()) {
+  for await (const entry of handle.values()) {
     if (entry.kind === "file" && entry.name.endsWith(".tex")) {
       texFiles.push(entry.name);
     }
   }
   if (texFiles.length === 0) {
     throw new Error(
-      `No .tex file found in "${docHandle.name}". Pick a folder that already contains a paper.`,
+      `No .tex file found in "${handle.name}". Pick a folder that already contains a paper.`,
     );
   }
 
-  // Pick the best candidate when multiple exist.
-  let texFilename: string;
-  if (texFiles.length === 1) {
-    texFilename = texFiles[0];
-  } else {
-    const folderStem = docHandle.name;
-    texFilename =
-      texFiles.find((f) => f === `${folderStem}.tex`) ??
-      texFiles.find((f) => f === "main.tex") ??
-      texFiles.find((f) => f === "document.tex") ??
-      texFiles[0];
-  }
+  return { handle, texFiles, folderName: handle.name };
+}
 
-  // Ensure virgil/ exists for sidecar metadata.
-  await docHandle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
+/**
+ * Phase 2 — register a specific .tex file from an already-picked folder.
+ * Does NOT require a user gesture.
+ */
+export async function registerDocInFolder(
+  handle: FileSystemDirectoryHandle,
+  texFilename: string,
+): Promise<FsaDocMeta> {
+  await handle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
 
   const idx = await readIndex();
   const existing = idx.docs.find(
-    (d) => d.folderName === docHandle.name && d.texFilename === texFilename,
+    (d) => d.folderName === handle.name && d.texFilename === texFilename,
   );
   if (existing) {
-    // Re-bind the handle in case it expired in idb.
-    await setDocHandle(existing.id, docHandle);
+    await setDocHandle(existing.id, handle);
     return existing;
   }
 
   const now = new Date().toISOString();
   const meta: FsaDocMeta = {
     id: generateEntityId().slice(0, 8),
-    name: docHandle.name,
+    name: handle.name,
     texFilename,
-    folderName: docHandle.name,
+    folderName: handle.name,
     createdAt: now,
     lastModifiedAt: now,
   };
 
-  await setDocHandle(meta.id, docHandle);
+  await setDocHandle(meta.id, handle);
   idx.docs.push(meta);
   await writeIndex(idx);
   return meta;
+}
+
+/**
+ * Open an existing paper folder (convenience wrapper).
+ * Auto-selects the best .tex file when multiple exist.
+ */
+export async function openExistingDocFromPicker(): Promise<FsaDocMeta> {
+  const { handle, texFiles, folderName } = await pickProjectFolder();
+
+  let texFilename: string;
+  if (texFiles.length === 1) {
+    texFilename = texFiles[0];
+  } else {
+    texFilename =
+      texFiles.find((f) => f === `${folderName}.tex`) ??
+      texFiles.find((f) => f === "main.tex") ??
+      texFiles.find((f) => f === "document.tex") ??
+      texFiles[0];
+  }
+
+  return registerDocInFolder(handle, texFilename);
 }
 
 export async function listDocs(): Promise<FsaDocMeta[]> {
