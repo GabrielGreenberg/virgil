@@ -374,6 +374,7 @@ function Gutter({
               color: meta.color,
               background: m.selected ? meta.selectedBg : meta.bg,
               border: `1.5px solid ${meta.border}`,
+              opacity: m.muted ? 0.4 : undefined,
               cursor: "grab",
               padding: 0,
               lineHeight: 1,

@@ -2664,6 +2664,7 @@ export default function EditorLayout() {
           paragraphId: pid,
           selected: selectedTodoId === item.id,
           title: item.text || "Todo",
+          muted: item.done,
           onClick: () => setSelectedTodoId(item.id),
           onDelete: () => removeTodoParagraphId(item.id, pid),
         });
@@ -2789,6 +2790,13 @@ export default function EditorLayout() {
           onUpdateNotes={updateTodoNotes}
           onDelete={deleteTodo}
           onArchiveDone={archiveTodos}
+          selectedTodoId={selectedTodoId}
+          onSelectTodo={setSelectedTodoId}
+          onScrollToMarker={(id) => {
+            const item = todoItems.find((t) => t.id === id);
+            const pid = item?.paragraphIds[0];
+            if (pid) editorRef.current?.scrollToParagraphId(pid);
+          }}
           aiRequests={aiRequests}
           onAddAiRequest={() => addAiRequest("todo")}
           onUpdateAiRequestText={updateAiRequestText}
