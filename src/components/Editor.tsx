@@ -149,12 +149,8 @@ export interface EditorHandle {
   getEditor: () => Editor | null;
   getSelectedText: () => string;
   scrollToHeading: (blockIndex: number) => void;
-  archiveSelection: (archiveId: string) => unknown | null;
-  restoreArchive: (archiveId: string, content: unknown) => void;
-  removeArchiveMarker: (archiveId: string) => void;
-  scrollToArchiveMarker: (archiveId: string) => void;
-  getMarkerIds: () => Set<string>;
-  getMarkerOrder: () => string[];
+  archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
+  restoreArchive: (content: unknown) => void;
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
@@ -1217,9 +1213,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         el?.scrollIntoView({ behavior: "instant", block: "center" });
       }
     },
-    archiveSelection(archiveId: string): unknown | null {
+    archiveSelection(archiveId: string): { content: unknown; paragraphId: string | null } | null {
       if (!editor) return null;
       const sel = editor.state.selection;
+
+      // Helper: resolve paragraphId from a document position
+      const getParagraphId = (pos: number): string | null => {
+        const $pos = editor.state.doc.resolve(pos);
+        for (let depth = $pos.depth; depth >= 0; depth--) {
+          const node = $pos.node(depth);
+          if (isAnchorableNode(node.type)) {
+            return (node.attrs?.uuid as string | null) ?? null;
+          }
+        }
+        return null;
+      };
 
       // Handle NodeSelection on block atom nodes (e.g. latexComment)
       if (sel instanceof NodeSelection && sel.node.type.spec.atom && sel.node.type.isBlock) {
@@ -1228,63 +1236,31 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           ? `% ${node.attrs.text || ""}`
           : node.textContent || "";
         if (!text.trim()) return null;
-        const preview = text.slice(0, 30);
-        // Replace the block node with a paragraph containing the archive marker
-        editor
-          .chain()
-          .focus()
-          .deleteSelection()
-          .insertContent({
-            type: "paragraph",
-            content: [{
-              type: "archiveMarker",
-              attrs: { archiveId, preview },
-            }],
-          })
-          .run();
-        // Return as JSONContent doc wrapping the plain text
-        return { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] };
+        const paragraphId = getParagraphId(sel.from);
+        editor.chain().focus().deleteSelection().run();
+        return {
+          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
+          paragraphId,
+        };
       }
 
       const { from, to } = sel;
       if (from === to) return null;
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
-      const preview = text.slice(0, 30);
+      const paragraphId = getParagraphId(from);
       // Capture rich content before deleting
       const slice = editor.state.doc.slice(from, to);
       const richContent = { type: "doc", content: slice.content.toJSON() };
-      editor
-        .chain()
-        .focus()
-        .deleteSelection()
-        .insertContent({
-          type: "archiveMarker",
-          attrs: { archiveId, preview },
-        })
-        .run();
-      return richContent;
+      editor.chain().focus().deleteSelection().run();
+      return { content: richContent, paragraphId };
     },
-    restoreArchive(archiveId: string, content: unknown): void {
+    restoreArchive(content: unknown): void {
       if (!editor) return;
-      // Find the archive marker node
-      let markerPos: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "archiveMarker" && node.attrs.archiveId === archiveId) {
-          markerPos = pos;
-          return false;
-        }
-        return true;
-      });
-      if (markerPos === null) return;
-
-      // Select the marker (it's an inline atom, size 1)
-      editor.chain().focus().setTextSelection({ from: markerPos, to: markerPos + 1 }).run();
-
-      // Handle legacy plain-text content or rich JSONContent
+      // Insert at current cursor position
       if (typeof content === "string") {
         if (content.startsWith("% ")) {
-          editor.chain().focus().deleteSelection().insertContent({
+          editor.chain().focus().insertContent({
             type: "latexComment",
             attrs: { text: content.slice(2) },
           }).run();
@@ -1292,57 +1268,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           editor.chain().focus().insertContent(content).run();
         }
       } else {
-        // Rich content — insert the doc's children
         const doc = content as { type?: string; content?: unknown[] };
         const nodes = doc?.content ?? [];
-        editor.chain().focus().deleteSelection().insertContent(nodes).run();
+        editor.chain().focus().insertContent(nodes).run();
       }
-    },
-    removeArchiveMarker(archiveId: string): void {
-      if (!editor) return;
-      let markerPos: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "archiveMarker" && node.attrs.archiveId === archiveId) {
-          markerPos = pos;
-          return false;
-        }
-        return true;
-      });
-      if (markerPos === null) return;
-      const tr = editor.state.tr.delete(markerPos, markerPos + 1);
-      editor.view.dispatch(tr);
-    },
-    scrollToArchiveMarker(archiveId: string): void {
-      if (!editor) return;
-      // Query the DOM directly for the marker element
-      const el = editor.view.dom.querySelector(
-        `[data-archive-id="${archiveId}"]`
-      ) as HTMLElement | null;
-      if (el) {
-        el.scrollIntoView({ behavior: "instant", block: "center" });
-      }
-    },
-    getMarkerIds(): Set<string> {
-      const ids = new Set<string>();
-      if (!editor) return ids;
-      editor.state.doc.descendants((node) => {
-        if (node.type.name === "archiveMarker" && node.attrs.archiveId) {
-          ids.add(node.attrs.archiveId);
-        }
-        return true;
-      });
-      return ids;
-    },
-    getMarkerOrder(): string[] {
-      const order: string[] = [];
-      if (!editor) return order;
-      editor.state.doc.descendants((node) => {
-        if (node.type.name === "archiveMarker" && node.attrs.archiveId) {
-          order.push(node.attrs.archiveId);
-        }
-        return true;
-      });
-      return order;
     },
     getFootnotes(): FootnoteInfo[] {
       const footnotes: FootnoteInfo[] = [];

@@ -147,7 +147,7 @@ function ArchivePanel({
   onCitationCreated,
 }: ArchivePanelProps) {
   const inTextItems = useMemo(
-    () => getArchiveMarkerPositions(editor),
+    () => getArchiveMarkerPositions(editor, snippets),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor, snippets]
   );
