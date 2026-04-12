@@ -252,6 +252,36 @@ body {
   display: inline;
 }
 
+/* Drag grip — to the left of title, shown on hover over title band */
+.par-title-drag-handle {
+  position: absolute;
+  left: -16px;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+  cursor: grab;
+  color: var(--muted-light, #b5b0aa);
+  font-size: 11px;
+  user-select: none;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.par-title-annotation:hover .par-title-drag-handle {
+  opacity: 1;
+}
+
+.par-title-drag-handle:hover {
+  color: var(--muted, #8a8580);
+}
+
+.par-title-drag-handle:active {
+  cursor: grabbing;
+}
+
 /* Input field for editing title */
 .par-title-input {
   background: transparent;
