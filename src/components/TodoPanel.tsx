@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { panelCard, PANEL, PanelHeader, Chevron, ItemMenu, MenuDelete, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { CARD_THEMES, PANEL, PanelHeader, BadgeLabel, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -13,43 +13,47 @@ interface TodoPanelProps {
   onUpdateNotes: (id: string, notes: string) => void;
   onDelete: (id: string) => void;
   onArchiveDone: () => void;
+  selectedTodoId: string | null;
+  onSelectTodo: (id: string | null) => void;
+  onScrollToMarker?: (id: string) => void;
   aiRequests?: AiRequest[];
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
 }
 
+const theme = CARD_THEMES.todo;
+
 function TodoRow({
   item,
-  index,
+  selected,
   onToggle,
   onUpdate,
   onUpdateNotes,
   onDelete,
+  onSelect,
+  onJump,
+  isAnchored,
 }: {
   item: TodoItem;
-  index: number;
+  selected: boolean;
   onToggle: (id: string) => void;
   onUpdate: (id: string, text: string) => void;
   onUpdateNotes: (id: string, notes: string) => void;
   onDelete: (id: string) => void;
+  onSelect: (id: string | null) => void;
+  onJump?: () => void;
+  isAnchored: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const [notes, setNotes] = useState(item.notes);
   const inputRef = useRef<HTMLInputElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
   }, [editing]);
-
-  useEffect(() => {
-    if (expanded && item.notes === "" && notesRef.current) {
-      notesRef.current.focus();
-    }
-  }, [expanded, item.notes]);
 
   const commitEdit = () => {
     if (editText.trim()) onUpdate(item.id, editText.trim());
@@ -60,109 +64,140 @@ function TodoRow({
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
   }, [notes, item.notes, item.id, onUpdateNotes]);
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      e.stopPropagation();
+      e.dataTransfer.effectAllowed = "link";
+      e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
+      e.dataTransfer.setData("text/plain", item.text);
+      if (cardRef.current) {
+        e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+      }
+    },
+    [item.id, item.text],
+  );
+
   return (
     <div
-      className={panelCard(false, item.done ? "opacity-60" : "")}
-      draggable={!editing}
-      onDragStart={(e) => {
-        if (editing) { e.preventDefault(); return; }
-        e.dataTransfer.effectAllowed = "link";
-        e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
-        e.dataTransfer.setData("text/plain", item.text);
-        (e.currentTarget as HTMLElement).style.opacity = "0.4";
-      }}
-      onDragEnd={(e) => {
-        (e.currentTarget as HTMLElement).style.opacity = "";
+      ref={cardRef}
+      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none`}
+      tabIndex={selected ? 0 : -1}
+      onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
+      onKeyDown={(e) => {
+        if (!selected || editing) return;
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          onDelete(item.id);
+        }
       }}
     >
-      <div className={PANEL.cardInner}>
-        <div className="flex items-start gap-2">
-          {/* Number */}
-          <span className={`text-xs mt-0.5 w-4 text-right shrink-0 tabular-nums ${item.done ? "text-stone-300" : "text-stone-500"}`}>
-            {index + 1}.
-          </span>
-
-          {/* Checkbox */}
-          <button
-            onClick={() => onToggle(item.id)}
-            className="mt-0.5 shrink-0"
-          >
-            {item.done ? (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
-                <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
-              </svg>
-            )}
-          </button>
-
-          {/* Text + expand arrow */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-start gap-1">
-              {/* Chevron for notes */}
-              <button
-                onClick={() => setExpanded(!expanded)}
-                className="mt-1 p-0 text-[var(--muted-light)] hover:text-[var(--muted)] transition-colors shrink-0"
-                title={expanded ? "Collapse notes" : "Expand notes"}
-              >
-                <Chevron expanded={expanded} />
-              </button>
-
-              {editing ? (
-                <input
-                  ref={inputRef}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  onBlur={commitEdit}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitEdit();
-                    if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
-                  }}
-                  className="text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
-                  style={{ width: Math.max(editText.length + 1, 2) + "ch" }}
-                />
-              ) : (
-                <span
-                  className={`flex-1 text-sm leading-relaxed cursor-pointer ${
-                    item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium hover:underline decoration-[var(--accent)]"
-                  }`}
-                  onDoubleClick={() => { setEditText(item.text); setEditing(true); }}
-                >
-                  {item.text}
-                </span>
-              )}
-            </div>
-
-            {/* Notes (expanded) — sub-pod */}
-            {expanded && (
-              <div className={`mt-2 ${PANEL.subpod}`}>
-                <textarea
-                  ref={notesRef}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  onBlur={commitNotes}
-                  placeholder="Add notes..."
-                  className="w-full bg-transparent text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none resize-none leading-relaxed"
-                  rows={3}
-                />
-              </div>
-            )}
-
-            {/* Notes indicator when collapsed */}
-            {!expanded && item.notes && (
-              <div className="ml-5 mt-0.5 text-[10px] text-[var(--muted-light)] truncate">
-                {item.notes.slice(0, 60)}{item.notes.length > 60 ? "..." : ""}
-              </div>
-            )}
-          </div>
-
-          <ItemMenu>
-            <MenuDelete onClick={() => onDelete(item.id)} />
-          </ItemMenu>
+      {/* Header */}
+      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? ` ${theme.headerSelected}` : ""}`}>
+        {/* Grab handle — sole drag source */}
+        <div
+          draggable
+          onDragStart={handleDragStart}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+          title="Drag to anchor in text"
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2" />
+            <circle cx="7" cy="2" r="1.2" />
+            <circle cx="3" cy="7" r="1.2" />
+            <circle cx="7" cy="7" r="1.2" />
+            <circle cx="3" cy="12" r="1.2" />
+            <circle cx="7" cy="12" r="1.2" />
+          </svg>
         </div>
+
+        {/* Badge */}
+        <BadgeLabel label="T" theme={theme} />
+
+        {/* Checkbox */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggle(item.id); }}
+          className="shrink-0"
+        >
+          {item.done ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
+              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+            </svg>
+          )}
+        </button>
+
+        {/* Text */}
+        <div className="flex-1 min-w-0">
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={commitEdit}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitEdit();
+                if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
+              }}
+              className="w-full text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+            />
+          ) : (
+            <span
+              className={`block text-sm leading-relaxed truncate ${
+                item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
+              }`}
+              onDoubleClick={(e) => { e.stopPropagation(); setEditText(item.text); setEditing(true); }}
+            >
+              {item.text}
+            </span>
+          )}
+        </div>
+
+        {/* Inline delete [x] */}
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+          title="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+
+        {/* Jump target */}
+        <CardTargetIcon
+          selected={selected}
+          disabled={!isAnchored}
+          onClick={(e) => { e.stopPropagation(); onJump?.(); }}
+          title={isAnchored ? "Jump to in text" : "Not anchored in document"}
+        />
+      </div>
+
+      {/* Separator */}
+      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+
+      {/* Body — notes always visible */}
+      <div className="px-3 pt-1.5 pb-2">
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={commitNotes}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          placeholder="Notes..."
+          className="w-full bg-transparent text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none resize-none leading-relaxed"
+          rows={2}
+        />
       </div>
     </div>
   );
@@ -176,6 +211,9 @@ export default function TodoPanel({
   onUpdateNotes,
   onDelete,
   onArchiveDone,
+  selectedTodoId,
+  onSelectTodo,
+  onScrollToMarker,
   aiRequests,
   onAddAiRequest,
   onUpdateAiRequestText,
@@ -231,7 +269,7 @@ export default function TodoPanel({
       </div>
 
       {/* Items */}
-      <div className={PANEL.list}>
+      <div className={PANEL.list} onClick={() => onSelectTodo(null)}>
         {items.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No tasks yet.
@@ -252,15 +290,18 @@ export default function TodoPanel({
           </>
         )}
 
-        {items.map((item, i) => (
+        {items.map((item) => (
           <TodoRow
             key={item.id}
             item={item}
-            index={i}
+            selected={selectedTodoId === item.id}
             onToggle={onToggle}
             onUpdate={onUpdate}
             onUpdateNotes={onUpdateNotes}
             onDelete={onDelete}
+            onSelect={onSelectTodo}
+            isAnchored={item.paragraphIds.length > 0}
+            onJump={onScrollToMarker && item.paragraphIds.length > 0 ? () => onScrollToMarker(item.id) : undefined}
           />
         ))}
       </div>

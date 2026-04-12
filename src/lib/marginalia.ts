@@ -122,6 +122,8 @@ export interface MarginaliaMarker {
   onDelete?: () => void;
   /** Tooltip text */
   title?: string;
+  /** When true the marker renders at reduced opacity (e.g. done todos) */
+  muted?: boolean;
 }
 
 export interface MarkerMeta {
@@ -290,7 +292,16 @@ const TodoIcon = React.createElement(
     strokeLinejoin: "round",
   },
   React.createElement("rect", { x: 2, y: 2, width: 12, height: 12, rx: 2.5 }),
-  React.createElement("path", { d: "M5 8l2 2 4-4" })
+  React.createElement("text", {
+    x: 8,
+    y: 11.2,
+    textAnchor: "middle",
+    fontSize: 9,
+    fontWeight: 600,
+    fontFamily: "var(--font-sans), sans-serif",
+    fill: "currentColor",
+    stroke: "none",
+  }, "T")
 );
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
@@ -348,10 +359,10 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
     label: "Todo",
     panelId: "todo",
     defaultSide: "right",
-    color: "#0369a1",
-    bg: "#f0f9ff",
-    selectedBg: "#bae6fd",
-    border: "#7dd3fc",
+    color: "#44403c",
+    bg: "#f5f5f4",
+    selectedBg: "#d6d3d1",
+    border: "#a8a29e",
     icon: TodoIcon,
   },
 };

@@ -44,6 +44,9 @@ const CARD_SELECTED_FOOTNOTE =
 const CARD_SELECTED_NOTE =
   "bg-white border-emerald-300 shadow-sm";
 
+const CARD_SELECTED_TODO =
+  "bg-white border-stone-400 shadow-sm";
+
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
@@ -75,6 +78,11 @@ export function noteCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED_NOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
+/** Todo-themed card: stone/grey selection. */
+export function todoCard(selected: boolean, extra?: string): string {
+  return `${CARD_BASE} ${selected ? CARD_SELECTED_TODO : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+}
+
 /* ── EditableCard — shared card for RichTextField-bearing panels ──── */
 
 /** Theme configuration for an EditableCard. */
@@ -93,6 +101,7 @@ export const CARD_THEMES = {
   footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757" },
   note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399" },
   archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0" },
+  todo: { cardClass: todoCard, separatorSelected: "border-stone-300", headerSelected: "bg-stone-50/60", badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
