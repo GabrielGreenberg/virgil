@@ -117,7 +117,7 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
       title="No anchor in document"
     >
       <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 20 20" fill="none" preserveAspectRatio="none">
-        <line x1="0" y1="20" x2="20" y2="0" stroke={theme.badgeColor} strokeWidth="2" />
+        <line x1="4" y1="16" x2="16" y2="4" stroke={theme.badgeColor} strokeWidth="2" />
       </svg>
     </span>
   );
