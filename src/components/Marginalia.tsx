@@ -6,14 +6,18 @@ import type { Editor } from "@tiptap/react";
 import { useMarginalia } from "@/hooks/useMarginalia";
 import {
   MARKER_META,
-  MARGINALIA_COLS,
   MARGINALIA_GUTTER_WIDTH,
   MARGINALIA_ICON_SIZE,
-  MARGINALIA_ROW_GAP,
   MIME_MARGINALIA_MOVE,
+  MIME_QUOTATION,
+  MIME_NOTE,
+  MIME_TODO,
+  MIME_ARCHIVE_ANCHOR,
   isAnchorDrag,
   type MarginaliaMarker,
+  type PositionedMarker,
 } from "@/lib/marginalia";
+import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
 
 interface MarginaliaProps {
@@ -23,19 +27,6 @@ interface MarginaliaProps {
   panelSides: Partial<Record<PanelId, "left" | "right" | null>>;
 }
 
-interface PositionedMarker extends MarginaliaMarker {
-  side: "left" | "right";
-  paragraphTop: number;
-  /** Index within the paragraph's gutter on this side, 0-based */
-  index: number;
-}
-
-/**
- * Marginalia gutter — renders icon markers in two columns of width
- * MARGINALIA_GUTTER_WIDTH (one on each side of the editor column). Markers
- * are anchored to a paragraph by UUID and packed into rows of MARGINALIA_COLS
- * starting at the paragraph's first line.
- */
 /**
  * Subscribe to the editor's scroll container element via useSyncExternalStore.
  * The subscription installs a tiptap "create"/"update" listener and re-resolves
@@ -71,8 +62,14 @@ function useScrollContainer(editor: Editor | null): HTMLElement | null {
   return useSyncExternalStore(subscribe, getSnapshot, () => null);
 }
 
+/**
+ * Marginalia gutter — renders icon markers in a line-aligned grid on each
+ * side of the editor column. Each UUID-bearing text element generates an
+ * implicit 2-column grid where rows correspond to actual text lines.
+ * Markers fill left-to-right, top-to-bottom.
+ */
 export default function Marginalia({ editor, markers, panelSides }: MarginaliaProps) {
-  const positions = useMarginalia(editor);
+  const metrics = useMarginalia(editor);
   const scrollEl = useScrollContainer(editor);
 
   // Make sure the scroll container is a positioned ancestor so absolutely
@@ -87,31 +84,15 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     }
   }, [scrollEl]);
 
-  // Resolve marker side and pack into per-paragraph + per-side stacks
-  const positioned = useMemo<PositionedMarker[]>(() => {
-    if (positions.size === 0) return [];
-    const result: PositionedMarker[] = [];
-    // Group by `${paragraphId}|${side}` to assign indices
-    const counters = new Map<string, number>();
-    for (const m of markers) {
-      const pos = positions.get(m.paragraphId);
-      if (pos == null) continue; // paragraph not yet known
-      const meta = MARKER_META[m.type];
-      // Determine side: explicit override, else current panel side, else default
-      const dockedSide = panelSides[meta.panelId];
-      const side: "left" | "right" =
-        m.side ?? dockedSide ?? meta.defaultSide;
-      const key = `${m.paragraphId}|${side}`;
-      const idx = counters.get(key) ?? 0;
-      counters.set(key, idx + 1);
-      result.push({ ...m, side, paragraphTop: pos.top, index: idx });
-    }
-    return result;
-  }, [markers, positions, panelSides]);
+  // Compute line-aligned grid positions for all markers
+  const positioned = useMemo(
+    () => computeMarkerPositions(metrics, markers, panelSides),
+    [metrics, markers, panelSides],
+  );
 
-  // Keep a ref to positions so the imperative drag handler can read it
-  const positionsRef = useRef(positions);
-  positionsRef.current = positions;
+  // Keep a ref to metrics so the imperative drag handler can read it
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
 
   // Imperative vertical drop indicator for paragraph-linking drags
   // (marginalia gutter icons, quotation panel, note panel).
@@ -120,11 +101,8 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     let indicator: HTMLDivElement | null = null;
     let rafId = 0;
 
-    // All paragraph-level anchor drags are detected via the centralized
-    // isAnchorDrag helper from marginalia.ts.
-
     const showIndicator = (paragraphId: string, side: "left" | "right") => {
-      const pos = positionsRef.current.get(paragraphId);
+      const pos = metricsRef.current.get(paragraphId);
       if (!pos) { hideIndicator(); return; }
       if (!indicator) {
         indicator = document.createElement("div");
@@ -156,21 +134,18 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 
     const onDragOver = (e: DragEvent) => {
       if (!isAnchorDrag(e.dataTransfer)) return;
-      // Synchronously suppress ProseMirror's native dropcursor so it
-      // never renders even for a single frame.
+      // Signal the browser this is a valid drop target so the drop event fires
+      e.preventDefault();
       scrollEl.classList.add("anchor-drag-active");
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
-        // Use Y-coordinate matching against the positions map so the
-        // indicator works from anywhere in the horizontal band (margins,
-        // gutters, text area — not just over the editor text).
         const scrollRect = scrollEl.getBoundingClientRect();
         const yInScroll = e.clientY - scrollRect.top + scrollEl.scrollTop;
         const side = e.clientX < scrollRect.left + scrollRect.width / 2 ? "left" : "right";
 
         let bestId: string | null = null;
         let bestDist = Infinity;
-        for (const [id, pos] of positionsRef.current) {
+        for (const [id, pos] of metricsRef.current) {
           if (yInScroll >= pos.top && yInScroll <= pos.top + pos.height) {
             bestId = id;
             break;
@@ -203,9 +178,137 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       hideIndicator();
     };
 
-    const onDrop = () => {
+    /** Resolve the nearest paragraph UUID from a mouse/drag event. */
+    const resolveParagraphAt = (e: DragEvent): string | null => {
+      const scrollRect = scrollEl.getBoundingClientRect();
+      const yInScroll = e.clientY - scrollRect.top + scrollEl.scrollTop;
+      let bestId: string | null = null;
+      let bestDist = Infinity;
+      for (const [id, pos] of metricsRef.current) {
+        if (yInScroll >= pos.top && yInScroll <= pos.top + pos.height) {
+          return id;
+        }
+        const mid = pos.top + pos.height / 2;
+        const dist = Math.abs(yInScroll - mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestId = id;
+        }
+      }
+      return bestId;
+    };
+
+    const onDrop = (e: DragEvent) => {
       cancelAnimationFrame(rafId);
       hideIndicator();
+
+      // Only handle anchor drags (paragraph-level linking operations).
+      // Non-anchor drags (inline insertion) still need ProseMirror coords,
+      // so we let those fall through to the editor's own handleDrop.
+      if (!isAnchorDrag(e.dataTransfer)) return;
+
+      const paragraphId = resolveParagraphAt(e);
+      if (!paragraphId) return;
+
+      // --- Marginalia move (gutter icon re-anchor) ---
+      const margData = e.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
+      if (margData) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { type, entityId, currentParagraphId } = JSON.parse(margData);
+          if (paragraphId !== currentParagraphId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-marginalia-reanchor", {
+                detail: { type, entityId, oldParagraphId: currentParagraphId, newParagraphId: paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      // --- Quotation drop (from QuotationsPanel) ---
+      const quotData = e.dataTransfer?.getData(MIME_QUOTATION);
+      if (quotData) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { groupId } = JSON.parse(quotData);
+          if (groupId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-quotation-drop", {
+                detail: { groupId, paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      // --- Note drop (anchor-only when dropped in margin) ---
+      const noteData = e.dataTransfer?.getData(MIME_NOTE);
+      if (noteData) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { noteId } = JSON.parse(noteData);
+          if (noteId) {
+            // Resolve the paragraph's start position in the doc for the
+            // note anchor. Walk the doc to find the node with this UUID.
+            let anchorPos = 0;
+            editor.state.doc.descendants((node, pos) => {
+              if (node.attrs?.uuid === paragraphId) {
+                anchorPos = pos;
+                return false;
+              }
+              return true;
+            });
+            window.dispatchEvent(
+              new CustomEvent("virgil-note-drop", {
+                detail: { noteId, anchorPos, inserted: false },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      // --- Todo drop (from TodoPanel) ---
+      const todoData = e.dataTransfer?.getData(MIME_TODO);
+      if (todoData) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { todoId } = JSON.parse(todoData);
+          if (todoId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-todo-drop", {
+                detail: { todoId, paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
+      // --- Archive anchor drop ---
+      const archiveData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
+      if (archiveData) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const { archiveId, oldParagraphId } = JSON.parse(archiveData);
+          if (archiveId && paragraphId !== oldParagraphId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-marginalia-reanchor", {
+                detail: { type: "archive", entityId: archiveId, oldParagraphId, newParagraphId: paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
     };
 
     scrollEl.addEventListener("dragover", onDragOver);
@@ -255,18 +358,6 @@ function Gutter({
       data-marginalia-gutter={side}
     >
       {markers.map((m) => {
-        const col = m.index % MARGINALIA_COLS;
-        const row = Math.floor(m.index / MARGINALIA_COLS);
-        const xOffset =
-          side === "left"
-            ? MARGINALIA_GUTTER_WIDTH -
-              (col + 1) * (MARGINALIA_ICON_SIZE + MARGINALIA_ROW_GAP)
-            : col * (MARGINALIA_ICON_SIZE + MARGINALIA_ROW_GAP);
-        const yOffset =
-          m.paragraphTop +
-          row * (MARGINALIA_ICON_SIZE + MARGINALIA_ROW_GAP) -
-          // Slight nudge so the icon is vertically centered on the first line
-          2;
         const meta = MARKER_META[m.type];
         return (
           <button
@@ -276,8 +367,8 @@ function Gutter({
             data-marginalia-marker={`${m.type}:${m.id}`}
             className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded transition-colors focus:outline-2 focus:outline-offset-1 focus:outline-[var(--accent)]"
             style={{
-              left: xOffset,
-              top: yOffset,
+              left: m.cell.x,
+              top: m.cell.y,
               width: MARGINALIA_ICON_SIZE,
               height: MARGINALIA_ICON_SIZE,
               color: meta.color,
