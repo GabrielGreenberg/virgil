@@ -25,7 +25,6 @@ import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import { useArchive } from "@/hooks/useArchive";
-import { richJsonToPlainText } from "@/lib/footnote-content";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
@@ -849,6 +848,8 @@ export default function EditorLayout() {
     snippets: archiveSnippets,
     archiveContent,
     updateSnippet: updateArchiveSnippet,
+    addParagraphId: addArchiveParagraphId,
+    removeParagraphId: removeArchiveParagraphId,
     restoreSnippet,
     deleteSnippet,
   } = useArchive(docIdForHooks);
@@ -1504,22 +1505,35 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, editorInstance]);
 
-  // Set of archive marker IDs present in the current document
+  // Set of archive snippet IDs that have at least one paragraph anchor
   const anchoredIds = useMemo<Set<string>>(() => {
-    return editorRef.current?.getMarkerIds() ?? new Set();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, editorInstance]);
+    const ids = new Set<string>();
+    for (const s of archiveSnippets) {
+      if (s.paragraphIds.length > 0) ids.add(s.id);
+    }
+    return ids;
+  }, [archiveSnippets]);
 
-  // Snippets sorted by marker position in document (anchored first in doc order, orphaned after)
+  // Snippets sorted: anchored first (by paragraph position in doc), orphaned after
   const sortedArchiveSnippets = useMemo(() => {
-    const markerOrder = editorRef.current?.getMarkerOrder() ?? [];
-    const orderMap = new Map(markerOrder.map((id, i) => [id, i]));
+    // Build a paragraph-order map from the editor doc
+    const paragraphOrder = new Map<string, number>();
+    const ed = editorRef.current?.getEditor();
+    if (ed) {
+      let idx = 0;
+      ed.state.doc.descendants((node) => {
+        if (isAnchorableNode(node.type) && node.attrs?.uuid) {
+          paragraphOrder.set(node.attrs.uuid as string, idx++);
+        }
+        return true;
+      });
+    }
     return [...archiveSnippets].sort((a, b) => {
-      const aIdx = orderMap.get(a.id);
-      const bIdx = orderMap.get(b.id);
-      if (aIdx != null && bIdx != null) return aIdx - bIdx;
-      if (aIdx != null) return -1;
-      if (bIdx != null) return 1;
+      const aPos = a.paragraphIds.length > 0 ? paragraphOrder.get(a.paragraphIds[0]) : undefined;
+      const bPos = b.paragraphIds.length > 0 ? paragraphOrder.get(b.paragraphIds[0]) : undefined;
+      if (aPos != null && bPos != null) return aPos - bPos;
+      if (aPos != null) return -1;
+      if (bPos != null) return 1;
       return 0;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1752,11 +1766,11 @@ export default function EditorLayout() {
     if (!selectedText || !selectedText.trim()) return;
     // Create snippet with plain text to get an ID
     const snippet = archiveContent(selectedText);
-    // archiveSelection deletes the selection, inserts a marker, and returns rich content
-    const richContent = editorRef.current.archiveSelection(snippet.id);
-    // Update the snippet with the captured rich content
-    if (richContent) {
-      updateArchiveSnippet(snippet.id, richContent);
+    // archiveSelection deletes the selection and returns rich content + paragraphId
+    const result = editorRef.current.archiveSelection(snippet.id);
+    if (result) {
+      if (result.content) updateArchiveSnippet(snippet.id, result.content);
+      if (result.paragraphId) addArchiveParagraphId(snippet.id, result.paragraphId);
     }
     // Ensure archive panel is open
     const archivePlacement = prefs.placements.find((p) => p.id === "archive");
@@ -1765,7 +1779,7 @@ export default function EditorLayout() {
     } else {
       if (prefs.activeRight !== "archive") setActiveRight("archive");
     }
-  }, [archiveContent, updateArchiveSnippet, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+  }, [archiveContent, updateArchiveSnippet, addArchiveParagraphId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const insertingRef = useRef(false);
   const handleInsertArchive = useCallback((id: string) => {
@@ -1773,14 +1787,7 @@ export default function EditorLayout() {
     insertingRef.current = true;
     const found = archiveSnippets.find((s) => s.id === id);
     if (found && editorRef.current) {
-      // Restore rich content at cursor position
-      const editor = editorRef.current.getEditor();
-      if (editor) {
-        const doc = found.content as { type?: string; content?: unknown[] } | undefined;
-        const nodes = doc?.content ?? [];
-        editor.chain().focus().insertContent(nodes).run();
-      }
-      editorRef.current.removeArchiveMarker(id);
+      editorRef.current.restoreArchive(found.content);
       deleteSnippet(id);
       setSelectedArchiveId(null);
     }
@@ -1790,33 +1797,15 @@ export default function EditorLayout() {
   const handleRestoreArchive = useCallback((id: string) => {
     const snippet = restoreSnippet(id);
     if (snippet) {
-      editorRef.current?.restoreArchive(id, snippet.content);
+      editorRef.current?.restoreArchive(snippet.content);
     }
     setSelectedArchiveId(null);
   }, [restoreSnippet]);
 
   const handleDeleteArchive = useCallback((id: string) => {
-    editorRef.current?.removeArchiveMarker(id);
     deleteSnippet(id);
     setSelectedArchiveId(null);
   }, [deleteSnippet]);
-
-  const handleReanchor = useCallback((id: string, pos?: number) => {
-    const snippet = archiveSnippets.find((s) => s.id === id);
-    if (!snippet || !editorRef.current) return;
-    const editor = editorRef.current.getEditor();
-    if (!editor) return;
-    const plain = richJsonToPlainText(snippet.content) || "";
-    const preview = plain.slice(0, 30);
-    const chain = editor.chain().focus();
-    if (typeof pos === "number") {
-      chain.setTextSelection(pos);
-    }
-    chain.insertContent({
-      type: "archiveMarker",
-      attrs: { archiveId: id, preview },
-    }).run();
-  }, [archiveSnippets]);
 
   // --- Footnote handlers ---
   const handleCreateFootnote = useCallback(() => {
@@ -1951,51 +1940,13 @@ export default function EditorLayout() {
         if (oldAnchorPos !== null) removeNoteAnchor(entityId, oldAnchorPos);
         if (newAnchorPos !== null) addNoteAnchor(entityId, newAnchorPos);
       } else if (type === "archive") {
-        // Move archive marker inline node to the new paragraph
-        const ed = editorRef.current?.getEditor();
-        if (!ed) return;
-        const doc = ed.state.doc;
-        // Find the archiveMarker node in the old paragraph
-        let markerPos: number | null = null;
-        let markerNode: typeof doc | null = null;
-        doc.descendants((node, pos) => {
-          if (markerPos !== null) return false;
-          if (node.type.name === "archiveMarker" && node.attrs?.archiveId === entityId) {
-            // Check if it's in the old paragraph
-            const $p = doc.resolve(pos);
-            for (let d = $p.depth; d >= 0; d--) {
-              if ($p.node(d).attrs?.uuid === oldParagraphId) {
-                markerPos = pos;
-                markerNode = node;
-                return false;
-              }
-            }
-          }
-          return true;
-        });
-        // Find the start of the new paragraph
-        let newParaPos: number | null = null;
-        doc.descendants((node, pos) => {
-          if (newParaPos !== null) return false;
-          if (isAnchorableNode(node.type) && node.attrs?.uuid === newParagraphId) {
-            newParaPos = isAnchorableAtom(node.type) ? pos : pos + 1;
-            return false;
-          }
-          return true;
-        });
-        if (markerPos !== null && markerNode && newParaPos !== null) {
-          const { tr } = ed.state;
-          tr.delete(markerPos, markerPos + (markerNode as unknown as { nodeSize: number }).nodeSize);
-          // Adjust newParaPos if it was after the deleted position
-          const adjustedPos = newParaPos > markerPos ? newParaPos - (markerNode as unknown as { nodeSize: number }).nodeSize : newParaPos;
-          tr.insert(adjustedPos, markerNode);
-          ed.view.dispatch(tr);
-        }
+        removeArchiveParagraphId(entityId, oldParagraphId);
+        addArchiveParagraphId(entityId, newParagraphId);
       }
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor, addTodoParagraphId, removeTodoParagraphId]);
+  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -2212,7 +2163,6 @@ export default function EditorLayout() {
       const detail = (e as CustomEvent).detail;
       const archiveId = detail?.archiveId;
       if (!archiveId) return;
-      editorRef.current?.removeArchiveMarker(archiveId);
       deleteSnippet(archiveId);
     };
     window.addEventListener("virgil-footnote-consumed-archive", handler);
@@ -2267,10 +2217,9 @@ export default function EditorLayout() {
 
   // Handle drag-and-drop of archive snippets into the editor.
   // - "card" drag (application/x-virgil-archive-id): ProseMirror inserts the
-  //   text from text/plain; we then remove the marker and delete from archive.
+  //   text from text/plain; we then delete the snippet from archive.
   // - "anchor" drag (application/x-virgil-archive-anchor-id): re-anchor an
-  //   orphaned snippet by inserting an archiveMarker at the drop position.
-  //   No text is inserted and the snippet stays in archive.
+  //   orphaned snippet by setting its paragraphId to the drop paragraph.
   useEffect(() => {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
@@ -2280,8 +2229,6 @@ export default function EditorLayout() {
       const types = e.dataTransfer?.types;
       if (!types) return;
       if (types.includes(MIME_ARCHIVE_ANCHOR)) {
-        // Anchor drag: ProseMirror won't preventDefault since there's no
-        // text/plain. Do it ourselves so the drop event fires.
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
         editorDom.classList.add("virgil-archive-drop-target");
@@ -2290,7 +2237,6 @@ export default function EditorLayout() {
       }
     };
     const handleDragLeave = (e: DragEvent) => {
-      // Only remove highlight if we actually leave the editor
       const related = e.relatedTarget as Node | null;
       if (!related || !editorDom.contains(related)) {
         editorDom.classList.remove("virgil-archive-drop-target");
@@ -2301,22 +2247,19 @@ export default function EditorLayout() {
       editorDom.classList.remove("virgil-archive-drop-target");
       const anchorId = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
       if (anchorId) {
-        // Re-anchor only — don't let ProseMirror insert any text.
+        // Re-anchor: resolve drop position to a paragraph UUID
         e.preventDefault();
         e.stopPropagation();
-        let pos: number | undefined;
-        try {
-          const result = editor.view.posAtCoords({ left: e.clientX, top: e.clientY });
-          if (result) pos = result.pos;
-        } catch { /* ignore */ }
-        handleReanchor(anchorId, pos);
+        const paragraphId = editorRef.current?.ensureParagraphUuidAtCoords(e.clientX, e.clientY);
+        if (paragraphId) {
+          addArchiveParagraphId(anchorId, paragraphId);
+        }
         return;
       }
       const archiveId = e.dataTransfer?.getData(MIME_ARCHIVE);
       if (archiveId) {
-        // Let ProseMirror handle the text insertion; just clean up archive and marker
+        // Let ProseMirror handle the text insertion; just clean up archive
         setTimeout(() => {
-          editorRef.current?.removeArchiveMarker(archiveId);
           deleteSnippet(archiveId);
         }, 0);
       }
@@ -2330,7 +2273,7 @@ export default function EditorLayout() {
       editorDom.removeEventListener("dragleave", handleDragLeave);
       editorDom.removeEventListener("drop", handleDrop);
     };
-  }, [editorInstance, deleteSnippet, handleReanchor]);
+  }, [editorInstance, deleteSnippet, addArchiveParagraphId]);
 
   const pendingRevisionAnchorRef = useRef<number>(0);
 
@@ -2667,55 +2610,25 @@ export default function EditorLayout() {
         }
       }
 
-      // Archive markers — walk the doc to find each archiveMarker node and
-      // anchor a gutter icon to its containing paragraph. The inline node
-      // stays in place; this is an additional gutter indicator.
-      doc.descendants((node, pos) => {
-        if (node.type.name !== "archiveMarker") return true;
-        const archiveId = node.attrs?.archiveId as string | undefined;
-        if (!archiveId) return true;
-        const $pos = doc.resolve(pos);
-        let paragraphId: string | null = null;
-        for (let depth = $pos.depth; depth >= 0; depth--) {
-          const ancestor = $pos.node(depth);
-          if (isAnchorableNode(ancestor.type)) {
-            paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
-            if (!paragraphId) {
-              paragraphId = editorRef.current?.ensureParagraphUuid(pos) ?? null;
-            }
-            break;
-          }
+      // Archive markers — one marker per paragraphId (same pattern as quotations/todos)
+      for (const snippet of archiveSnippets) {
+        if (!snippet.paragraphIds || snippet.paragraphIds.length === 0) continue;
+        for (const pid of snippet.paragraphIds) {
+          result.push({
+            id: `${snippet.id}:${pid}`,
+            entityId: snippet.id,
+            type: "archive",
+            paragraphId: pid,
+            selected: selectedArchiveId === snippet.id,
+            title: "Archived snippet",
+            onClick: () => {
+              setSelectedArchiveId(snippet.id);
+              editorRef.current?.scrollToParagraphId(pid);
+            },
+            onDelete: () => removeArchiveParagraphId(snippet.id, pid),
+          });
         }
-        if (!paragraphId) return true;
-        const capturedPos = pos;
-        result.push({
-          id: `${archiveId}:${paragraphId}`,
-          entityId: archiveId,
-          type: "archive",
-          paragraphId,
-          selected: selectedArchiveId === archiveId,
-          title: "Archived snippet",
-          onClick: () => {
-            setSelectedArchiveId(archiveId);
-            editorRef.current?.scrollToArchiveMarker(archiveId);
-          },
-          onDelete: () => {
-            // Delete the inline archiveMarker node from the document
-            const ed = editorRef.current?.getEditor();
-            if (!ed) return;
-            const { tr } = ed.state;
-            ed.state.doc.descendants((node, nodePos) => {
-              if (node.type.name === "archiveMarker" && node.attrs?.archiveId === archiveId && nodePos === capturedPos) {
-                tr.delete(nodePos, nodePos + node.nodeSize);
-                return false;
-              }
-              return true;
-            });
-            if (tr.docChanged) ed.view.dispatch(tr);
-          },
-        });
-        return true;
-      });
+      }
     }
 
     // Todo markers — one marker per paragraphId (same pattern as quotations)
@@ -2743,7 +2656,9 @@ export default function EditorLayout() {
     notes,
     selectedNoteId,
     removeNoteAnchor,
+    archiveSnippets,
     selectedArchiveId,
+    removeArchiveParagraphId,
     todoItems,
     selectedTodoId,
     removeTodoParagraphId,
@@ -2934,7 +2849,11 @@ export default function EditorLayout() {
           onInsert={handleInsertArchive}
           onRestore={handleRestoreArchive}
           onDelete={handleDeleteArchive}
-          onScrollToMarker={(id) => editorRef.current?.scrollToArchiveMarker(id)}
+          onScrollToMarker={(id) => {
+            const snippet = archiveSnippets.find((s) => s.id === id);
+            const pid = snippet?.paragraphIds[0];
+            if (pid) editorRef.current?.scrollToParagraphId(pid);
+          }}
           anchoredIds={anchoredIds}
           editor={editorInstance}
           panelSide={side}

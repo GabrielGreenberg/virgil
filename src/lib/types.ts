@@ -112,6 +112,8 @@ export interface ArchivedSnippet {
    *  the useArchive hook migrates them to JSONContent on load. */
   content: unknown;
   createdAt: string;
+  /** Paragraph UUIDs this snippet is anchored to in the editor margin. */
+  paragraphIds: string[];
 }
 
 export interface ArchiveState {

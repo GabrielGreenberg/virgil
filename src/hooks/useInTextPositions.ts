@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import type { ArchivedSnippet } from "@/lib/types";
+import { isAnchorableNode } from "@/lib/marginalia";
 
 export interface PositionItem {
   id: string;
@@ -9,17 +11,27 @@ export interface PositionItem {
 }
 
 /**
- * Helper: extract positions for archive markers from the editor doc.
+ * Helper: extract positions for archive snippets from their paragraph anchors.
  */
-export function getArchiveMarkerPositions(editor: Editor | null): PositionItem[] {
-  if (!editor) return [];
-  const items: PositionItem[] = [];
+export function getArchiveMarkerPositions(editor: Editor | null, snippets?: ArchivedSnippet[]): PositionItem[] {
+  if (!editor || !snippets) return [];
+  // Build a map from paragraph UUID → doc position
+  const uuidToPos = new Map<string, number>();
   editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === "archiveMarker" && node.attrs.archiveId) {
-      items.push({ id: node.attrs.archiveId, pos });
+    if (isAnchorableNode(node.type) && node.attrs?.uuid) {
+      uuidToPos.set(node.attrs.uuid as string, pos);
     }
     return true;
   });
+  const items: PositionItem[] = [];
+  for (const s of snippets) {
+    if (s.paragraphIds.length > 0) {
+      const pos = uuidToPos.get(s.paragraphIds[0]);
+      if (pos !== undefined) {
+        items.push({ id: s.id, pos });
+      }
+    }
+  }
   return items;
 }
 

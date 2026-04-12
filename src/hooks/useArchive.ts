@@ -18,12 +18,15 @@ function migrateSnippets(snippets: ArchivedSnippet[]): ArchivedSnippet[] {
   const migrated = snippets.map((s) => {
     // Legacy shape: { id, text: string, createdAt }
     const legacy = s as ArchivedSnippet & { text?: string };
-    if (legacy.text != null && s.content == null) {
+    const needsTextMigration = legacy.text != null && s.content == null;
+    const needsParagraphIds = !Array.isArray(s.paragraphIds);
+    if (needsTextMigration || needsParagraphIds) {
       changed = true;
       return {
         id: s.id,
-        content: normalizeRichContent(legacy.text),
+        content: needsTextMigration ? normalizeRichContent(legacy.text!) : s.content,
         createdAt: s.createdAt,
+        paragraphIds: Array.isArray(s.paragraphIds) ? s.paragraphIds : [],
       };
     }
     return s;
@@ -70,6 +73,7 @@ export function useArchive(docId: string | null) {
       id: generateEntityId(),
       content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
+      paragraphIds: [],
     };
     setState((prev) => {
       const next = { snippets: [...prev.snippets, snippet] };
@@ -84,6 +88,34 @@ export function useArchive(docId: string | null) {
       const next = {
         snippets: prev.snippets.map((s) =>
           s.id === id ? { ...s, content: normalizeRichContent(content) } : s
+        ),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const addParagraphId = useCallback((id: string, paragraphId: string) => {
+    setState((prev) => {
+      const next = {
+        snippets: prev.snippets.map((s) =>
+          s.id === id && !s.paragraphIds.includes(paragraphId)
+            ? { ...s, paragraphIds: [...s.paragraphIds, paragraphId] }
+            : s
+        ),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const removeParagraphId = useCallback((id: string, paragraphId: string) => {
+    setState((prev) => {
+      const next = {
+        snippets: prev.snippets.map((s) =>
+          s.id === id
+            ? { ...s, paragraphIds: s.paragraphIds.filter((p) => p !== paragraphId) }
+            : s
         ),
       };
       persist(next);
@@ -116,6 +148,8 @@ export function useArchive(docId: string | null) {
     snippets: state.snippets,
     archiveContent,
     updateSnippet,
+    addParagraphId,
+    removeParagraphId,
     restoreSnippet,
     deleteSnippet,
   };
