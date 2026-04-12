@@ -88,7 +88,8 @@ function resolvePosition(
 function PositionMarker({ label }: { label?: string }) {
   return (
     <span
-      className="inline-flex items-center align-middle ml-1.5 text-red-500"
+      className="inline-flex items-center align-middle ml-1.5"
+      style={{ color: "var(--footnote-color, #b45757)" }}
       title="Currently on screen"
     >
       <svg
