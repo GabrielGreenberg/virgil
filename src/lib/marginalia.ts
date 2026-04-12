@@ -143,6 +143,46 @@ export interface MarkerMeta {
   icon: React.ReactNode;
 }
 
+// ---------------------------------------------------------------------------
+// Line-aligned margin grid types
+// ---------------------------------------------------------------------------
+
+/** Enhanced position data for a UUID-bearing anchor node */
+export interface AnchorNodeMetrics {
+  /** Paragraph UUID */
+  id: string;
+  /** Top offset (px) inside the editor's scroll container (first text line) */
+  top: number;
+  /** Total height (px) of the node element */
+  height: number;
+  /** Computed line-height (px) of this specific node type */
+  lineHeight: number;
+  /** Number of text lines this node occupies */
+  lineCount: number;
+  /** Whether this node is an atom (displayMath, latexComment) — atoms get 1 line = full height */
+  isAtom: boolean;
+}
+
+/** A fully resolved grid cell position for a single marker */
+export interface GridCell {
+  /** 0-based column within the side gutter */
+  col: number;
+  /** 0-based row corresponding to a text line */
+  row: number;
+  /** Absolute pixel X offset within the gutter div */
+  x: number;
+  /** Absolute pixel Y offset within the scroll container */
+  y: number;
+}
+
+/** A marker with its final pixel position computed by the grid algorithm */
+export interface PositionedMarker extends MarginaliaMarker {
+  side: "left" | "right";
+  cell: GridCell;
+  /** Whether this marker overflowed the grid and is clamped to the last row */
+  overflow: boolean;
+}
+
 import * as React from "react";
 
 const QuoteIcon = React.createElement(
@@ -320,13 +360,19 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
 export const MARGINALIA_COLS = 2;
 /** Size of an individual marker button */
 export const MARGINALIA_ICON_SIZE = 22;
-/** Vertical spacing between rows */
-export const MARGINALIA_ROW_GAP = 2;
+/** Horizontal spacing between columns */
+export const MARGINALIA_COL_GAP = 6;
+/** Inner padding between the icon column and the text-pod edge */
+export const MARGINALIA_INNER_PAD = 8;
+/** Outer padding between the icon column and the panel/viewport edge */
+export const MARGINALIA_OUTER_PAD = 14;
 /**
  * Width of one gutter (left or right), in pixels.
- * Sized to fit MARGINALIA_COLS columns exactly so markers never overflow
- * the gutter and cause horizontal scroll. The editor column's side padding
- * must be at least this wide.
+ * Layout: [OUTER_PAD] col col [INNER_PAD] [text edge]
+ * Must be <= the editor column's side padding (px-20 = 80px).
  */
 export const MARGINALIA_GUTTER_WIDTH =
-  MARGINALIA_COLS * (MARGINALIA_ICON_SIZE + MARGINALIA_ROW_GAP);
+  MARGINALIA_OUTER_PAD +
+  MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
+  (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP +
+  MARGINALIA_INNER_PAD;
