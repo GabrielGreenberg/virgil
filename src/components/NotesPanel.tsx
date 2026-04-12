@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE } from "@/lib/marginalia";
 
@@ -124,6 +124,7 @@ function NoteCard({
       headerTrailing={onJump ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" /> : undefined}
       onClick={() => onSelect(selected ? null : note.id)}
       onDragStart={(e) => startNoteDrag(e, note.id, note.content, note.title)}
+      onTextDragStart={(e) => startTextDrag(e, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
       value={note.content}
       variant="note"

@@ -82,6 +82,8 @@ export const MIME_ARCHIVE = "application/x-virgil-archive-id";
 export const MIME_FOOTNOTE = "application/x-virgil-footnote";
 /** Drag an AI request marker into the editor. */
 export const MIME_AI_REQUEST = "application/x-virgil-ai-request";
+/** Drag raw text content for inline insertion (no entity identity). */
+export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
 
 /**
  * All MIME types that represent paragraph-level anchor/link operations.

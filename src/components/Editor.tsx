@@ -26,6 +26,7 @@ import {
   MIME_CITATION,
   MIME_FOOTNOTE,
   MIME_AI_REQUEST,
+  MIME_TEXT_INSERT,
 } from "@/lib/marginalia";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -985,6 +986,43 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
             const tr = view.state.tr.insert(pos.pos, nodes);
             view.dispatch(tr);
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Text-only drop (from panel text handle) ---
+        // Inserts raw text content inline — no anchoring, no entity identity.
+        const textInsertData = event.dataTransfer?.getData(MIME_TEXT_INSERT);
+        if (textInsertData) {
+          event.preventDefault();
+          try {
+            const { content } = JSON.parse(textInsertData);
+            if (!content) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true;
+            const inlineJson: TipJSON[] = [];
+            const walk = (n: TipJSON | undefined) => {
+              if (!n) return;
+              if (n.type === "paragraph") {
+                if (inlineJson.length > 0) inlineJson.push({ type: "text", text: " " });
+                (n.content || []).forEach((c) => inlineJson.push(c));
+                return;
+              }
+              if (n.content) n.content.forEach(walk);
+            };
+            walk(content as TipJSON);
+            if (inlineJson.length > 0) {
+              const pmNodes = inlineJson
+                .map((j) => {
+                  try { return PMNode.fromJSON(view.state.schema, j); }
+                  catch { return null; }
+                })
+                .filter(Boolean) as PMNode[];
+              if (pmNodes.length > 0) {
+                view.dispatch(view.state.tr.insert(posResult.pos, pmNodes));
+              }
+            }
           } catch { /* ignore bad data */ }
           return true;
         }
