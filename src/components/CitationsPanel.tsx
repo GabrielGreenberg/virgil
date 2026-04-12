@@ -348,9 +348,7 @@ export function CitationCard({
                 state so it wins against TargetIcon's base color. */}
             <div
               className={`absolute top-1.5 right-1.5 transition-opacity ${
-                isSelected
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+                isSelected ? "opacity-100" : "opacity-60"
               }`}
               draggable={false}
               onDragStart={(e) => {

@@ -391,6 +391,7 @@ export const Footnote = Node.create({
       content: { default: null },
       number: { default: 1 },
       footnoteId: { default: "" },
+      title: { default: "" },
     };
   },
 

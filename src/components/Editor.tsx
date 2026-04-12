@@ -142,6 +142,7 @@ export interface FootnoteInfo {
   content: TipJSON;
   number: number;
   pos: number;
+  title?: string;
 }
 
 export interface EditorHandle {
@@ -154,6 +155,7 @@ export interface EditorHandle {
   getFootnotes: () => FootnoteInfo[];
   scrollToFootnote: (footnoteId: string) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
+  updateFootnoteTitle: (footnoteId: string, title: string) => void;
   deleteFootnote: (footnoteId: string) => void;
   createFootnoteFromSelection: () => { footnoteId: string } | null;
   renumberFootnotes: () => void;
@@ -1299,6 +1301,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             content: normalizeRichContent(node.attrs.content),
             number: node.attrs.number || 0,
             pos,
+            title: node.attrs.title || undefined,
           });
         }
         return true;
@@ -1331,6 +1334,27 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           editor.view.state.tr.setNodeMarkup(fnPos, undefined, {
             ...fnNode.attrs,
             content: newContent,
+          })
+        );
+      }
+    },
+    updateFootnoteTitle(footnoteId: string, title: string): void {
+      if (!editor) return;
+      let fnPos: number | null = null;
+      let fnNode: any = null;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
+          fnPos = pos;
+          fnNode = node;
+          return false;
+        }
+        return true;
+      });
+      if (fnPos != null && fnNode) {
+        editor.view.dispatch(
+          editor.view.state.tr.setNodeMarkup(fnPos, undefined, {
+            ...fnNode.attrs,
+            title,
           })
         );
       }

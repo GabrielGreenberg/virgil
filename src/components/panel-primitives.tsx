@@ -36,13 +36,13 @@ const CARD_BASE =
 const CARD_DEFAULT =
   "bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50";
 const CARD_SELECTED =
-  "bg-amber-50/60 border-amber-300 shadow-sm";
+  "bg-white border-amber-300 shadow-sm";
 
 const CARD_SELECTED_FOOTNOTE =
-  "bg-red-50/60 border-red-300 shadow-sm";
+  "bg-white border-red-300 shadow-sm";
 
 const CARD_SELECTED_NOTE =
-  "bg-emerald-50/60 border-emerald-300 shadow-sm";
+  "bg-white border-emerald-300 shadow-sm";
 
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
@@ -81,14 +81,112 @@ export function noteCard(selected: boolean, extra?: string): string {
 export interface CardTheme {
   cardClass: (selected: boolean, extra?: string) => string;
   separatorSelected: string;
+  headerSelected: string;
+  /** Badge colors: bg, text/stroke, border — used by badgeLabel & badgeOrphaned. */
+  badgeBg: string;
+  badgeColor: string;
+  badgeBorder: string;
 }
 
 /** Pre-built themes for existing card types. */
 export const CARD_THEMES = {
-  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200" },
-  note: { cardClass: noteCard, separatorSelected: "border-emerald-200" },
-  archive: { cardClass: panelCard, separatorSelected: "border-amber-200" },
+  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757" },
+  note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399" },
+  archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0" },
 } satisfies Record<string, CardTheme>;
+
+/* ── Shared badge classes ────────────────────────────────────────── */
+
+const BADGE_BASE = "inline-flex items-center justify-center w-5 h-5 rounded text-[10px] font-semibold shrink-0";
+
+/** Anchored badge with a label (e.g. number or letter). */
+export function BadgeLabel({ label, theme }: { label: string | number; theme: CardTheme }) {
+  return (
+    <span className={BADGE_BASE} style={{ background: theme.badgeBg, color: theme.badgeColor, border: `1.5px solid ${theme.badgeBorder}` }}>
+      {label}
+    </span>
+  );
+}
+
+/** Orphaned/unanchored badge — local color square with diagonal cross, faded. */
+export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
+  return (
+    <span
+      className={`relative ${BADGE_BASE} opacity-60`}
+      style={{ background: theme.badgeBg, border: `1.5px solid ${theme.badgeBorder}` }}
+      title="No anchor in document"
+    >
+      <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 20 20" fill="none" preserveAspectRatio="none">
+        <line x1="0" y1="20" x2="20" y2="0" stroke={theme.badgeColor} strokeWidth="2" />
+      </svg>
+    </span>
+  );
+}
+
+/* ── Title input (par-title styling) ─────────────────────────────── */
+
+const TITLE_CLASS = "flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-stone-400 placeholder:font-normal";
+const TITLE_STYLE: React.CSSProperties = {
+  fontSize: "var(--par-title-size, 0.78rem)",
+  color: "var(--par-title-color, #c45a5a)",
+  fontWeight: 500,
+  fontFamily: "var(--font-sans), Inter, sans-serif",
+  letterSpacing: "0.02em",
+};
+
+/** Standard title input for card headers. */
+export function CardTitleInput({
+  defaultValue,
+  onChange,
+  placeholder = "Title",
+  style,
+}: {
+  defaultValue?: string;
+  onChange?: (title: string) => void;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <input
+      type="text"
+      defaultValue={defaultValue ?? ""}
+      onBlur={onChange ? (e) => onChange(e.target.value) : undefined}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      placeholder={placeholder}
+      className={TITLE_CLASS}
+      style={style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE}
+    />
+  );
+}
+
+/* ── Target icon wrapper with selection-aware opacity ────────────── */
+
+/** Wraps a TargetIcon with consistent opacity: full when selected, subdued otherwise.
+ *  Pass `disabled` for unanchored items (very faint, non-functional). */
+export function CardTargetIcon({
+  selected,
+  disabled,
+  onClick,
+  title,
+}: {
+  selected: boolean;
+  disabled?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
+  return (
+    <div
+      className={`transition-opacity ${disabled ? "opacity-30" : selected ? "opacity-100" : "opacity-60"}`}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+    >
+      <TargetIcon onClick={onClick} title={title ?? (disabled ? "Not anchored in document" : "Jump to in text")} />
+    </div>
+  );
+}
 
 export interface EditableCardProps {
   /** Unique ID (used as RichTextField instanceKey). */
@@ -128,6 +226,19 @@ export interface EditableCardProps {
   extraDataAttrs?: Record<string, string>;
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
+
+  // ── Opt-in layout features ──
+  /** Render a 6-dot grip handle as the first header element.
+   *  Only the grip is draggable; the card wrapper is NOT. */
+  grabHandle?: boolean;
+  /** Suppress the FormatToolbar in the RichTextField (keyboard shortcuts still work). */
+  hideToolbar?: boolean;
+  /** Show an [x] delete button in the body area instead of the three-dot menu in the header. */
+  inlineDelete?: boolean;
+  /** Called when the RichTextField gains focus (e.g. for focus-to-select behaviour). */
+  onBodyFocus?: () => void;
+  /** Called with the Tiptap editor instance when RichTextField gains focus (for main toolbar routing). */
+  onEditorFocus?: (editor: any) => void;
 }
 
 /**
@@ -145,13 +256,61 @@ export function EditableCard({
   value, variant, placeholder, muted,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
+  grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus,
 }: EditableCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
+  /** Check whether the value has any visible text content. */
+  const hasContent = useCallback(() => {
+    if (!value) return false;
+    const walk = (node: any): boolean => {
+      if (node.text && node.text.trim()) return true;
+      if (node.content) return node.content.some(walk);
+      return false;
+    };
+    return walk(value);
+  }, [value]);
+
+  /** Delete with confirmation if there is content. */
+  const tryDelete = useCallback(() => {
+    if (!onDelete) return;
+    if (hasContent()) {
+      setConfirmOpen(true);
+    } else {
+      onDelete();
+    }
+  }, [onDelete, hasContent]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!selected || !onDelete || isFocused) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        tryDelete();
+      }
+    },
+    [selected, onDelete, isFocused, tryDelete],
+  );
+
+  const handleFocusChange = useCallback(
+    (focused: boolean, editor?: any) => {
+      setIsFocused(focused);
+      if (focused) {
+        onBodyFocus?.();
+        if (editor) onEditorFocus?.(editor);
+      }
+    },
+    [onBodyFocus, onEditorFocus],
+  );
+
+  // When grabHandle is active, only the grip is draggable — not the whole card.
+  const cardDraggable = grabHandle ? false : (onDragStart ? !isFocused : false);
   const cursorClass = isFocused
     ? "cursor-default"
-    : onDragStart
+    : (!grabHandle && onDragStart)
       ? "cursor-grab active:cursor-grabbing"
       : "";
 
@@ -160,37 +319,112 @@ export function EditableCard({
     ...(extraDataAttrs || {}),
   };
 
+  // Whether to render the three-dot menu in the header (skip when inlineDelete is on)
+  const showHeaderMenu = !inlineDelete;
+
   return (
     <div
+      ref={cardRef}
       {...dataAttrs}
-      draggable={onDragStart ? !isFocused : false}
-      onDragStart={onDragStart}
-      className={`group ${theme.cardClass(selected, cursorClass)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      draggable={cardDraggable}
+      onDragStart={!grabHandle ? onDragStart : undefined}
+      tabIndex={selected ? 0 : -1}
+      onKeyDown={handleKeyDown}
+      onFocusCapture={() => { if (!selected && onClick) onClick(); }}
+      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
-      onClick={onClick}
+      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 py-1.5">
+      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? ` ${theme.headerSelected}` : ""}`}>
+        {/* Optional grab handle — sole drag source when present */}
+        {grabHandle && onDragStart && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              onDragStart!(e);
+              // Use the whole card as the drag ghost, positioned below the cursor
+              // so it never obscures the drop target
+              if (cardRef.current) {
+                e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+            title="Drag to reorder"
+          >
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2" />
+              <circle cx="7" cy="2" r="1.2" />
+              <circle cx="3" cy="7" r="1.2" />
+              <circle cx="7" cy="7" r="1.2" />
+              <circle cx="3" cy="12" r="1.2" />
+              <circle cx="7" cy="12" r="1.2" />
+            </svg>
+          </div>
+        )}
         {badge}
         {headerContent}
-        <div ref={setToolbarTarget} className="flex items-center" />
-        {!headerContent && <div className="flex-1" />}
+        {!hideToolbar && (
+          <div ref={setToolbarTarget} className="flex items-center" />
+        )}
+        {!headerContent && !hideToolbar && <div className="flex-1" />}
+        {/* Inline [x] delete — to the left of the target icon */}
+        {inlineDelete && onDelete && (
+          <>
+            <button
+              onClick={(e) => { e.stopPropagation(); tryDelete(); }}
+              onMouseDown={(e) => e.stopPropagation()}
+              draggable={false}
+              onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+              title="Delete"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <ConfirmDialog
+              open={confirmOpen}
+              message="This item has text. Delete it?"
+              confirmLabel="Delete"
+              tone="danger"
+              anchorRef={cardRef}
+              onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+              onCancel={() => setConfirmOpen(false)}
+            />
+          </>
+        )}
         {headerTrailing}
-        <div
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        >
-          {menuContent ?? (onDelete ? (
-            <ItemMenu><MenuDelete onClick={onDelete} /></ItemMenu>
-          ) : null)}
-        </div>
+        {showHeaderMenu && (
+          <div
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            {menuContent ?? (onDelete ? (
+              <>
+                <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
+                <ConfirmDialog
+                  open={confirmOpen}
+                  message="This item has text. Delete it?"
+                  confirmLabel="Delete"
+                  tone="danger"
+                  anchorRef={cardRef}
+                  onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+                  onCancel={() => setConfirmOpen(false)}
+                />
+              </>
+            ) : null)}
+          </div>
+        )}
       </div>
 
       {/* Separator */}
-      <div className={`border-t ${selected ? theme.separatorSelected : "border-stone-100"}`} />
+      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
 
       {/* Body */}
-      <div className="px-3 pt-1.5 pb-2">
+      <div className="relative px-3 pt-1.5 pb-2">
         <RichTextField
           instanceKey={id}
           value={value}
@@ -202,8 +436,9 @@ export function EditableCard({
           onArchiveConsumed={onArchiveConsumed}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
-          onFocusChange={setIsFocused}
-          toolbarPortalTarget={toolbarTarget}
+          onFocusChange={handleFocusChange}
+          toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
+          hideToolbar={hideToolbar}
         />
       </div>
 
@@ -694,9 +929,13 @@ export function TargetIcon({
       className={`p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-white/60 transition-colors ${className ?? ""}`}
       title={title}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="10.5" />
-        <circle cx="12" cy="12" r="4" />
+      <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {/* Page outline (shifted right so arrow stem is visible) */}
+        <path d="M16 2H8a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M16 2v6h6" />
+        {/* Arrow from left into center of page */}
+        <line x1="-2" y1="15" x2="14" y2="15" />
+        <polyline points="11 12 14 15 11 18" />
       </svg>
     </button>
   );

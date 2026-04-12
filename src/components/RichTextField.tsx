@@ -34,8 +34,10 @@ interface RichTextFieldProps {
   /** Stable identifier — change it to force a remount with new content. */
   instanceKey: string;
   onChange: (json: JSONContent) => void;
-  /** Notified when the editor takes/loses focus (parent uses this to lock drag). */
-  onFocusChange?: (focused: boolean) => void;
+  /** Notified when the editor takes/loses focus (parent uses this to lock drag).
+   *  When the editor gains focus the Tiptap instance is passed so parents can
+   *  route toolbar commands to it. */
+  onFocusChange?: (focused: boolean, editor?: ReturnType<typeof import("@tiptap/react").useEditor> | null) => void;
   /** Placeholder shown when the field is empty. */
   placeholder?: string;
   /** Visual variant — affects font + color. */
@@ -58,6 +60,8 @@ interface RichTextFieldProps {
   /** When set, the format toolbar is portalled into this DOM element instead of
    *  rendering inline above the editor content. */
   toolbarPortalTarget?: HTMLElement | null;
+  /** When true, suppress the FormatToolbar entirely (keyboard shortcuts still work). */
+  hideToolbar?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,6 +161,7 @@ function RichTextFieldImpl({
   getCitationDisplayText,
   onCitationCreated,
   toolbarPortalTarget,
+  hideToolbar = false,
 }: RichTextFieldProps) {
   const onChangeRef = useRef(onChange);
   const onFocusChangeRef = useRef(onFocusChange);
@@ -339,9 +344,9 @@ function RichTextFieldImpl({
         onChangeRef.current(editor.getJSON());
       }, 250);
     },
-    onFocus: () => {
+    onFocus: ({ editor: ed }) => {
       isFocusedRef.current = true;
-      onFocusChangeRef.current?.(true);
+      onFocusChangeRef.current?.(true, ed);
     },
     onBlur: ({ editor }) => {
       isFocusedRef.current = false;
@@ -352,7 +357,7 @@ function RichTextFieldImpl({
         debounceRef.current = undefined;
         onChangeRef.current(editor.getJSON());
       }
-      onFocusChangeRef.current?.(false);
+      onFocusChangeRef.current?.(false, null);
     },
   // Re-create the editor when instanceKey changes (footnote/note ID changed
   // out from under us). This is the simplest way to keep state coherent
@@ -403,9 +408,9 @@ function RichTextFieldImpl({
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
     >
-      {toolbarPortalTarget
+      {!hideToolbar && (toolbarPortalTarget
         ? createPortal(<FormatToolbar editor={editor} selected={selected} inline />, toolbarPortalTarget)
-        : <FormatToolbar editor={editor} selected={selected} />}
+        : <FormatToolbar editor={editor} selected={selected} />)}
       <EditorContent
         editor={editor}
         // Stop card-level click + key handlers from intercepting editor input.

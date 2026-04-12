@@ -225,9 +225,7 @@ export default function BibEntryCard({
           {showTargetIcon && (
             <div
               className={`transition-opacity ${
-                isSelected
-                  ? "opacity-100"
-                  : "opacity-0 group-hover:opacity-40 hover:!opacity-100"
+                isSelected ? "opacity-100" : "opacity-60"
               }`}
             >
               <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />

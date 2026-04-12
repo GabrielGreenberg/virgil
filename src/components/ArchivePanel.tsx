@@ -5,7 +5,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, ItemMenu, MenuDelete, PrevNextCounter, TargetIcon, useCycle } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTargetIcon, TargetIcon, useCycle } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -28,6 +28,8 @@ interface ArchivePanelProps {
   onViewModeChange: (mode: "list" | "in-text") => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  /** Called with the Tiptap editor when an archive body gains focus (for main toolbar routing). */
+  onEditorFocus?: (editor: any) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -145,6 +147,7 @@ function ArchivePanel({
   onViewModeChange,
   getCitationDisplayText,
   onCitationCreated,
+  onEditorFocus,
 }: ArchivePanelProps) {
   const inTextItems = useMemo(
     () => getArchiveMarkerPositions(editor, snippets),
@@ -236,6 +239,7 @@ function ArchivePanel({
 
       <div
         ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        onClick={() => onSelect(null)}
         className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
       >
         {snippets.length === 0 && (
@@ -292,37 +296,28 @@ function ArchivePanel({
                 id={s.id}
                 selected={isSelected}
                 theme={CARD_THEMES.archive}
-                badge={
-                  <span
-                    draggable={orphaned}
-                    onDragStart={orphaned ? (e) => startAnchorDrag(e, s.id) : undefined}
-                    onClick={orphaned ? (e) => e.stopPropagation() : undefined}
-                    className={`inline-flex items-center shrink-0 ${orphaned ? "cursor-grab active:cursor-grabbing" : ""}`}
-                    title={orphaned ? "Drag onto a paragraph to re-anchor" : "Archived snippet"}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                      <rect x="1" y="1" width="14" height="14" rx="3"
-                        stroke={orphaned ? "#b0b0b0" : "#7191b0"} strokeWidth="1.5"
-                        fill={orphaned ? "#f5f5f4" : "#f0f5fa"} />
-                      <text x="8" y="12" textAnchor="middle" fontSize="10" fontWeight="600"
-                        fill={orphaned ? "#b0b0b0" : "#7191b0"}
-                        fontFamily="var(--font-sans), sans-serif">A</text>
-                      {orphaned && (
-                        <line x1="3" y1="13" x2="13" y2="3"
-                          stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
-                      )}
-                    </svg>
-                  </span>
+                grabHandle
+                hideToolbar
+                inlineDelete
+                onEditorFocus={onEditorFocus}
+                badge={orphaned
+                  ? <BadgeOrphaned theme={CARD_THEMES.archive} />
+                  : <BadgeLabel label="A" theme={CARD_THEMES.archive} />
                 }
-                headerTrailing={isSelected && isAnchored && onScrollToMarker
-                  ? <TargetIcon onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
-                  : undefined}
+                headerContent={<span className="flex-1 min-w-0" />}
+                headerTrailing={
+                  isAnchored && onScrollToMarker
+                    ? <CardTargetIcon selected={isSelected} onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
+                    : orphaned
+                      ? <CardTargetIcon selected={false} disabled onClick={() => {}} />
+                      : undefined
+                }
                 onClick={() => onSelect(isSelected ? null : s.id)}
                 onDragStart={(e) => startArchiveDrag(e, s)}
                 onDelete={() => onDelete(s.id)}
                 value={s.content}
                 variant="footnote"
-                placeholder="Empty archive snippet"
+                placeholder="Text here."
                 onChange={handleEditContent}
                 getCitationDisplayText={getCitationDisplayText}
                 onCitationCreated={onCitationCreated}

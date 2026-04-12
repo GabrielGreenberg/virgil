@@ -51,6 +51,8 @@ export interface ConfirmDialogProps {
   tone?: ConfirmTone;
   onConfirm: () => void;
   onCancel: () => void;
+  /** When provided, the dialog positions near this element instead of dead-center screen. */
+  anchorRef?: React.RefObject<HTMLElement | null>;
 }
 
 export default function ConfirmDialog({
@@ -62,12 +64,30 @@ export default function ConfirmDialog({
   tone = "default",
   onConfirm,
   onCancel,
+  anchorRef,
 }: ConfirmDialogProps) {
   const confirmBtnRef = useRef<HTMLButtonElement>(null);
+  const [anchorPos, setAnchorPos] = useState<{ top: number; left: number } | null>(null);
 
   // Focus the primary action on open, and bind ESC/Enter keyboard shortcuts.
   useEffect(() => {
     if (!open) return;
+
+    // Compute position near the anchor element if provided
+    if (anchorRef?.current) {
+      const rect = anchorRef.current.getBoundingClientRect();
+      const vw = window.innerWidth;
+      const dialogWidth = 340;
+      // Center horizontally over the anchor, clamped to viewport
+      let left = rect.left + rect.width / 2 - dialogWidth / 2;
+      left = Math.max(16, Math.min(left, vw - dialogWidth - 16));
+      // Position just below the anchor
+      const top = Math.min(rect.bottom + 8, window.innerHeight - 180);
+      setAnchorPos({ top, left });
+    } else {
+      setAnchorPos(null);
+    }
+
     // Defer to after paint so the button exists in the DOM.
     const handle = requestAnimationFrame(() => {
       confirmBtnRef.current?.focus();
@@ -90,7 +110,7 @@ export default function ConfirmDialog({
       cancelAnimationFrame(handle);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onCancel, onConfirm]);
+  }, [open, onCancel, onConfirm, anchorRef]);
 
   const handleBackdrop = useCallback(
     (e: React.MouseEvent) => {
@@ -108,14 +128,17 @@ export default function ConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/20"
+      className={`fixed inset-0 z-[10000] bg-black/20 ${anchorPos ? "" : "flex items-center justify-center"}`}
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? "confirm-dialog-title" : undefined}
       aria-describedby="confirm-dialog-message"
       onClick={handleBackdrop}
     >
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[400px] mx-4 overflow-hidden">
+      <div
+        className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[340px] mx-4 overflow-hidden"
+        style={anchorPos ? { position: "fixed", top: anchorPos.top, left: anchorPos.left, margin: 0 } : undefined}
+      >
         <div className="px-5 pt-4 pb-3">
           {title && (
             <h2
