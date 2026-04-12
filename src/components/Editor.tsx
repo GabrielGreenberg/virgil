@@ -233,6 +233,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onConfirmFootnoteMoveRef.current = onConfirmFootnoteMove;
 
   const ParagraphWithTitle = Paragraph.extend({
+    draggable: true,
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -243,6 +244,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addNodeView() {
       return ({ node, getPos, editor: nodeEditor }) => {
         let currentNode = node;
+        let dragHandleEl: HTMLElement | null = null;
 
         // Detect if this paragraph is inside a list item — skip title controls
         const pos = typeof getPos === "function" ? getPos() : null;
@@ -347,7 +349,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             wrapper.classList.remove("has-add-btn");
             titleAnnot.style.display = "block";
 
-            // Title text first, then × delete button to its right
+            // Drag grip handle — to the left of title, revealed on hover
+            const handle = document.createElement("span");
+            handle.className = "par-title-drag-handle";
+            handle.setAttribute("data-drag-handle", "");
+            handle.draggable = true;
+            handle.textContent = "\u2807";  // ⠇ braille vertical dots
+            titleAnnot.appendChild(handle);
+            dragHandleEl = handle;
+
+            // Title text, then × delete button to its right
             const span = document.createElement("span");
             span.className = "par-title-text";
             span.textContent = title;
@@ -361,6 +372,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             titleAnnot.appendChild(xBtn);
           } else {
             wrapper.classList.remove("has-title");
+            dragHandleEl = null;
 
             // Only show +T if paragraph has real text content
             const hasText = currentNode.textContent.trim().length > 0;
@@ -400,6 +412,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           dom: wrapper,
           contentDOM: p,
           stopEvent(event) {
+            // Let ProseMirror handle events from the drag grip handle
+            if (dragHandleEl && (dragHandleEl === event.target || dragHandleEl.contains(event.target as Node))) {
+              return false;
+            }
             return (
               titleAnnot === event.target || titleAnnot.contains(event.target as Node)
             );
