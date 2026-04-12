@@ -61,6 +61,7 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
+import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
 import WordCountPanel from "./WordCountPanel";
 import { serializeToLatex } from "@/lib/latex-serializer";
@@ -756,6 +757,9 @@ export default function EditorLayout() {
     openFile,
     closeTab,
     openExistingFile,
+    pendingFolderPick,
+    selectFileInFolder,
+    cancelFolderPick,
   } = useFiles();
 
   // Per-doc permission gate state. We query (without prompting) when
@@ -3381,13 +3385,17 @@ export default function EditorLayout() {
                   onClick={(e) => e.stopPropagation()}
                 />
               ) : (
-                <span
-                  className="cursor-text"
-                  title={doc.name}
+                <div
+                  className="flex flex-col cursor-text min-w-0"
                   onClick={(e) => { e.stopPropagation(); openFile(doc.id); startRename(doc.id, doc.name); }}
                 >
-                  {doc.name}
-                </span>
+                  <span className="text-sm leading-tight truncate" title={doc.folderName}>
+                    {doc.folderName}
+                  </span>
+                  <span className="text-[10px] leading-tight text-stone-400 truncate" title={doc.texFilename}>
+                    {doc.texFilename}
+                  </span>
+                </div>
               )}
               <button
                 onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
@@ -3804,6 +3812,14 @@ export default function EditorLayout() {
         }}
       />
       {confirmDialog}
+      {pendingFolderPick && (
+        <TexFilePickerModal
+          folderName={pendingFolderPick.folderName}
+          texFiles={pendingFolderPick.texFiles}
+          onSelect={selectFileInFolder}
+          onCancel={cancelFolderPick}
+        />
+      )}
     </div>
   );
 }

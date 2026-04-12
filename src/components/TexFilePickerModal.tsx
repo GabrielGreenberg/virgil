@@ -1,0 +1,109 @@
+"use client";
+
+import { useCallback, useEffect, useRef } from "react";
+
+interface TexFilePickerModalProps {
+  folderName: string;
+  texFiles: string[];
+  onSelect: (filename: string) => void;
+  onCancel: () => void;
+}
+
+/** Sort .tex files: common names first, then alphabetical. */
+function sortTexFiles(files: string[], folderName: string): string[] {
+  const priority = [`${folderName}.tex`, "main.tex", "document.tex"];
+  return [...files].sort((a, b) => {
+    const ai = priority.indexOf(a);
+    const bi = priority.indexOf(b);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a.localeCompare(b);
+  });
+}
+
+export default function TexFilePickerModal({
+  folderName,
+  texFiles,
+  onSelect,
+  onCancel,
+}: TexFilePickerModalProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const first = listRef.current?.querySelector("button");
+    first?.focus();
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const handleBackdrop = useCallback(
+    (e: React.MouseEvent) => {
+      if (e.target === e.currentTarget) onCancel();
+    },
+    [onCancel],
+  );
+
+  const sorted = sortTexFiles(texFiles, folderName);
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] bg-black/20 flex items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      onClick={handleBackdrop}
+    >
+      <div className="bg-[var(--surface,#faf9f7)] border border-[var(--border,#e5e2dd)] rounded-xl shadow-xl w-full max-w-[340px] mx-4 overflow-hidden">
+        <div className="px-5 pt-4 pb-3">
+          <h2 className="text-sm font-semibold text-stone-700 mb-0.5">
+            {folderName}
+          </h2>
+          <p className="text-xs text-stone-500">
+            Choose a file to open
+          </p>
+        </div>
+        <div ref={listRef} className="px-3 pb-3 flex flex-col gap-0.5">
+          {sorted.map((file) => (
+            <button
+              key={file}
+              onClick={() => onSelect(file)}
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-stone-700 rounded-lg hover:bg-stone-100 focus:bg-stone-100 focus:outline-none transition-colors"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-stone-400 shrink-0"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              {file}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center justify-end px-4 py-3 border-t border-[var(--border,#e5e2dd)] bg-stone-50/60">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white border border-stone-300 rounded-md hover:bg-stone-50 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

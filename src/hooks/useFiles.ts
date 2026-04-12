@@ -4,9 +4,11 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import {
   listDocs,
   createDocFromPicker,
-  openExistingDocFromPicker,
+  pickProjectFolder,
+  registerDocInFolder,
   renameDoc as renameDocStorage,
   deleteDocFromIndex,
+  type FolderPickResult,
 } from "@/lib/storage";
 import { readTabs, writeTabs, type FsaDocMeta } from "@/lib/doc-index";
 
@@ -22,6 +24,7 @@ export function useFiles() {
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pendingFolderPick, setPendingFolderPick] = useState<FolderPickResult | null>(null);
   const hydratedRef = useRef(false);
 
   // Initial load: read both the doc index and the persisted tab state.
@@ -92,25 +95,57 @@ export function useFiles() {
     }
   }, []);
 
+  /** Helper: register a doc and activate its tab. */
+  const activateDoc = useCallback((meta: FsaDocMeta) => {
+    setDocs((prev) =>
+      prev.some((d) => d.id === meta.id) ? prev : [...prev, meta],
+    );
+    setOpenTabIds((prev) =>
+      prev.includes(meta.id) ? prev : [...prev, meta.id],
+    );
+    setCurrentDocId(meta.id);
+  }, []);
+
   /**
    * Open an existing paper folder. Must be called from a user gesture.
+   * When the folder has multiple .tex files, sets `pendingFolderPick`
+   * so the UI can show a file picker modal.
    */
   const openExistingFile = useCallback(async () => {
     try {
-      const meta = await openExistingDocFromPicker();
-      setDocs((prev) =>
-        prev.some((d) => d.id === meta.id) ? prev : [...prev, meta],
-      );
-      setOpenTabIds((prev) =>
-        prev.includes(meta.id) ? prev : [...prev, meta.id],
-      );
-      setCurrentDocId(meta.id);
-      return meta;
+      const result = await pickProjectFolder();
+      if (result.texFiles.length === 1) {
+        const meta = await registerDocInFolder(result.handle, result.texFiles[0]);
+        activateDoc(meta);
+        return meta;
+      }
+      // Multiple .tex files — let the user choose via modal
+      setPendingFolderPick(result);
+      return null;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return null;
       console.error("Failed to open file:", err);
       throw err;
     }
+  }, [activateDoc]);
+
+  /** Complete a pending folder pick by choosing a specific .tex file. */
+  const selectFileInFolder = useCallback(async (texFilename: string) => {
+    if (!pendingFolderPick) return null;
+    try {
+      const meta = await registerDocInFolder(pendingFolderPick.handle, texFilename);
+      activateDoc(meta);
+      setPendingFolderPick(null);
+      return meta;
+    } catch (err) {
+      console.error("Failed to open file in folder:", err);
+      throw err;
+    }
+  }, [pendingFolderPick, activateDoc]);
+
+  /** Cancel a pending folder pick. */
+  const cancelFolderPick = useCallback(() => {
+    setPendingFolderPick(null);
   }, []);
 
   /**
@@ -154,5 +189,8 @@ export function useFiles() {
     renameFile,
     openFile,
     closeTab,
+    pendingFolderPick,
+    selectFileInFolder,
+    cancelFolderPick,
   };
 }
