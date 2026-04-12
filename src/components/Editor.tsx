@@ -351,12 +351,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             wrapper.classList.remove("has-add-btn");
             titleAnnot.style.display = "block";
 
-            // Drag grip handle — to the left of title, revealed on hover
+            // Horizontal drag grip handle — revealed on hover over title band
             const handle = document.createElement("span");
             handle.className = "par-title-drag-handle";
             handle.setAttribute("data-drag-handle", "");
             handle.draggable = true;
-            handle.textContent = "\u2807";  // ⠇ braille vertical dots
             titleAnnot.appendChild(handle);
             dragHandleEl = handle;
 
