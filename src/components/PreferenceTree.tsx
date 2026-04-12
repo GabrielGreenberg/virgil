@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { PrefNode, PrefGroup, PrefLeaf, PrefLeafColor, PrefLeafSlider, PrefLeafFont } from "@/lib/preferences-tree";
 import { isLeaf } from "@/lib/preferences-tree";
 import type { EditorPreferences } from "@/hooks/usePreferences";
@@ -8,8 +8,18 @@ import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 
 // ─── Leaf Components ──────────────────────────────────────────────────────────
 
+function PrefLabel({ label, description }: { label: string; description?: string }) {
+  return (
+    <div className="w-36 shrink-0">
+      <span className="text-xs text-stone-600">{label}</span>
+      {description && <span className="text-[10px] text-stone-400 block leading-tight">{description}</span>}
+    </div>
+  );
+}
+
 function SliderPref({
   label,
+  description,
   value,
   min,
   max,
@@ -18,6 +28,7 @@ function SliderPref({
   onChange,
 }: {
   label: string;
+  description?: string;
   value: number;
   min: number;
   max: number;
@@ -27,7 +38,7 @@ function SliderPref({
 }) {
   return (
     <div className="flex items-center gap-3 py-1">
-      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <PrefLabel label={label} description={description} />
       <input
         type="range"
         min={min}
@@ -46,19 +57,39 @@ function SliderPref({
 
 function ColorPref({
   label,
+  description,
   value,
   defaultValue,
   onChange,
 }: {
   label: string;
+  description?: string;
   value: string;
   defaultValue: string;
   onChange: (v: string) => void;
 }) {
+  const [localHex, setLocalHex] = useState(value);
+  const [invalid, setInvalid] = useState(false);
+
+  useEffect(() => { setLocalHex(value); setInvalid(false); }, [value]);
+
+  const commitHex = useCallback(() => {
+    let hex = localHex.trim();
+    if (!hex.startsWith("#")) hex = "#" + hex;
+    hex = hex.toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(hex)) {
+      setInvalid(false);
+      onChange(hex);
+    } else {
+      setInvalid(true);
+      setTimeout(() => { setLocalHex(value); setInvalid(false); }, 800);
+    }
+  }, [localHex, value, onChange]);
+
   const isDefault = value.toLowerCase() === defaultValue.toLowerCase();
   return (
     <div className="flex items-center gap-3 py-1">
-      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <PrefLabel label={label} description={description} />
       <div className="flex items-center gap-2 flex-1">
         <input
           type="color"
@@ -66,7 +97,19 @@ function ColorPref({
           onChange={(e) => onChange(e.target.value)}
           className="w-6 h-6 rounded border border-stone-200 cursor-pointer p-0 bg-transparent"
         />
-        <span className="text-[11px] text-stone-400 font-mono">{value}</span>
+        <input
+          type="text"
+          value={localHex}
+          onChange={(e) => setLocalHex(e.target.value)}
+          onBlur={commitHex}
+          onKeyDown={(e) => { if (e.key === "Enter") { e.currentTarget.blur(); } }}
+          spellCheck={false}
+          className={`text-[11px] font-mono w-[70px] px-1 py-0.5 border rounded bg-transparent outline-none ${
+            invalid
+              ? "border-red-300 text-red-500"
+              : "border-stone-200 text-stone-500 focus:border-[var(--accent)]"
+          }`}
+        />
         {!isDefault && (
           <button
             onClick={() => onChange(defaultValue)}
@@ -82,18 +125,20 @@ function ColorPref({
 
 function FontPref({
   label,
+  description,
   value,
   options,
   onChange,
 }: {
   label: string;
+  description?: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
 }) {
   return (
     <div className="flex items-center gap-3 py-1">
-      <span className="text-xs text-stone-600 w-28 shrink-0">{label}</span>
+      <PrefLabel label={label} description={description} />
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -176,6 +221,7 @@ function LeafNode({
       <div style={style}>
         <ColorPref
           label={l.label}
+          description={l.description}
           value={prefs[l.key] as string}
           defaultValue={DEFAULT_PREFS[l.key] as string}
           onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
@@ -190,6 +236,7 @@ function LeafNode({
       <div style={style}>
         <SliderPref
           label={l.label}
+          description={l.description}
           value={prefs[l.key] as number}
           min={l.min}
           max={l.max}
@@ -207,6 +254,7 @@ function LeafNode({
       <div style={style}>
         <FontPref
           label={l.label}
+          description={l.description}
           value={prefs[l.key] as string}
           options={l.options}
           onChange={(v) => onUpdate(l.key, v as EditorPreferences[typeof l.key])}
