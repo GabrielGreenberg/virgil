@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -132,6 +132,7 @@ export function FootnoteCard({
       headerTrailing={<CardTargetIcon selected={isSelected} onClick={() => onJump()} title="Jump to footnote marker" />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
+      onTextDragStart={(e) => startTextDrag(e, fn.content)}
       onDelete={onDelete}
       value={fn.content}
       variant="footnote"
@@ -198,6 +199,7 @@ export function OrphanedFootnoteCard({
       headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
+      onTextDragStart={(e) => startTextDrag(e, orphan.content)}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"

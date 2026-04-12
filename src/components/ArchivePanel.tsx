@@ -5,7 +5,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTargetIcon, TargetIcon, useCycle } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTargetIcon, TargetIcon, useCycle, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -314,6 +314,7 @@ function ArchivePanel({
                 }
                 onClick={() => onSelect(isSelected ? null : s.id)}
                 onDragStart={(e) => startArchiveDrag(e, s)}
+                onTextDragStart={(e) => startTextDrag(e, s.content)}
                 onDelete={() => onDelete(s.id)}
                 value={s.content}
                 variant="footnote"

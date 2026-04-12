@@ -103,8 +103,9 @@ hardcode colors.
 - The `ConfirmDialog` positions near the card (via `anchorRef`), not dead-center screen
 
 ### Drag behavior
-- Grab handle uses the whole card as the drag ghost (`setDragImage`)
-- Ghost is offset below the cursor so it doesn't obscure the drop target
+- **Card handle** (6-dot grip in header): Drags the card entity (footnote atom, margin note anchor, etc.). Uses the whole card as the drag ghost (`setDragImage`), offset below cursor.
+- **Text handle** (3-line icon in body gutter): Drags only the text content for inline insertion — no anchoring, no entity identity. Uses a neutral ghost (white bg, gray border). Appears on hover (`opacity-0 group-hover:opacity-60`).
+- Both handles are disabled while RichTextField is focused
 - Handle darkens on card hover (`group-hover:text-stone-500`)
 
 ### Sub-pods
