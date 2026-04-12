@@ -21,11 +21,60 @@ const CATEGORY_LABELS: Record<string, string> = {
   mainText: "Main Text",
   headings: "Headings",
   footnotes: "Footnotes",
+  captions: "Captions",
   math: "Math",
   comments: "Comments",
 };
 
 export { CATEGORY_LABELS };
+
+/**
+ * Extract plain text from `\caption{...}` commands inside raw LaTeX strings
+ * (e.g. from unknown environments like figure/table). Handles nested braces.
+ */
+function extractCaptionText(raw: string): string[] {
+  const results: string[] = [];
+  let i = 0;
+  while (i < raw.length) {
+    const idx = raw.indexOf("\\caption", i);
+    if (idx === -1) break;
+    let pos = idx + "\\caption".length;
+    // skip optional star
+    if (pos < raw.length && raw[pos] === "*") pos++;
+    // skip optional [...]
+    if (pos < raw.length && raw[pos] === "[") {
+      const close = raw.indexOf("]", pos);
+      if (close !== -1) pos = close + 1;
+    }
+    // expect {
+    if (pos < raw.length && raw[pos] === "{") {
+      let depth = 1;
+      const start = pos + 1;
+      pos++;
+      while (pos < raw.length && depth > 0) {
+        if (raw[pos] === "\\" && pos + 1 < raw.length) {
+          pos += 2; // skip escaped char
+          continue;
+        }
+        if (raw[pos] === "{") depth++;
+        else if (raw[pos] === "}") depth--;
+        if (depth > 0) pos++;
+      }
+      if (depth === 0) {
+        // Strip inner LaTeX commands to get plain text
+        const inner = raw.slice(start, pos);
+        const plain = inner
+          .replace(/\\[a-zA-Z]+\*?(\[[^\]]*\])*\{([^}]*)\}/g, "$2") // \cmd{text} → text
+          .replace(/\\[a-zA-Z]+\*?/g, "") // bare \commands
+          .replace(/[{}]/g, "") // leftover braces
+          .trim();
+        if (plain) results.push(plain);
+      }
+    }
+    i = pos + 1;
+  }
+  return results;
+}
 
 function countWords(text: string): number {
   const trimmed = text.trim();
@@ -38,19 +87,27 @@ function countSentences(text: string): number {
   return matches ? matches.length : text.trim() ? 1 : 0;
 }
 
-type Category = "mainText" | "headings" | "footnotes" | "math" | "comments";
+type Category = "mainText" | "headings" | "footnotes" | "captions" | "math" | "comments";
 
 function walkDoc(doc: PmNode): WordCounts {
   const cats: Record<Category, string[]> = {
     mainText: [],
     headings: [],
     footnotes: [],
+    captions: [],
     math: [],
     comments: [],
   };
 
   function collectInline(node: PmNode, bucket: string[]) {
     if (node.isText && node.text) {
+      // Text marked as latexCommand is raw LaTeX — not prose.
+      // Extract any \caption{...} text into captions, skip the rest.
+      if (node.marks.some((m) => m.type.name === "latexCommand")) {
+        const capts = extractCaptionText(node.text);
+        for (const c of capts) cats.captions.push(c);
+        return;
+      }
       bucket.push(node.text);
     } else if (node.type.name === "inlineMath") {
       bucket.push(node.attrs.latex || "");

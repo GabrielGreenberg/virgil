@@ -12,6 +12,7 @@ export type Category =
   | "mainText"
   | "headings"
   | "footnotes"
+  | "captions"
   | "math"
   | "comments";
 
@@ -19,6 +20,7 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   mainText: "Main Text",
   headings: "Headings",
   footnotes: "Footnotes",
+  captions: "Captions",
   math: "Math",
   comments: "Comments",
 };
@@ -27,6 +29,7 @@ export const ALL_CATEGORIES: Category[] = [
   "mainText",
   "headings",
   "footnotes",
+  "captions",
   "math",
   "comments",
 ];
@@ -40,6 +43,7 @@ export const DEFAULT_WORD_COUNT_CONFIG: WordCountConfig = {
     mainText: true,
     headings: true,
     footnotes: true,
+    captions: true,
     math: true,
     // Comments are noise for the running total — opt-in only.
     comments: false,
