@@ -25,12 +25,15 @@ import { useInTextPositions } from "@/hooks/useInTextPositions";
  */
 
 /** Known item category prefixes. */
-export type OmniCategory = "fn" | "ci" | "qu";
+export type OmniCategory = "fn" | "ci" | "qu" | "nt" | "ar" | "td";
 
 const CATEGORY_LABELS: Record<OmniCategory, string> = {
   fn: "Footnotes",
   ci: "Citations",
   qu: "Quotations",
+  nt: "Notes",
+  ar: "Archive",
+  td: "Todo",
 };
 
 export interface OmniItem {
@@ -62,7 +65,14 @@ function categoryOf(id: string): OmniCategory | null {
 
 /* ── Filter menu (three-dot) ────────────────────────────────────────── */
 
-const ALL_CATEGORIES: OmniCategory[] = ["fn", "ci", "qu"];
+const ALL_CATEGORIES: OmniCategory[] = ["fn", "ci", "qu", "nt", "ar", "td"];
+
+/** Master config: which categories belong to each side by default.
+ *  EditorLayout reads this to decide which item builders to run. */
+export const OMNI_SIDE_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
+  left: ["fn", "ci", "qu"],
+  right: ["nt", "ar", "td"],
+};
 
 function FilterMenu({
   hidden,
@@ -148,7 +158,7 @@ function OmniViewPanel({
       if (cat) seen.add(cat);
     }
     // Stable order: fn, ci, qu
-    return (["fn", "ci", "qu"] as OmniCategory[]).filter((c) => seen.has(c));
+    return ALL_CATEGORIES.filter((c) => seen.has(c));
   }, [items]);
 
   // Hidden categories (persisted per-component instance via state)
@@ -192,11 +202,32 @@ function OmniViewPanel({
     () => anchored.map((i) => ({ id: i.id, pos: i.pos })),
     [anchored],
   );
+
+  // Measure unanchored section height so scroll sync can offset past it,
+  // letting the panel scroll above the document to show unanchored items.
+  const unanchoredRef = useRef<HTMLDivElement>(null);
+  const topOffsetRef = useRef(0);
+  useEffect(() => {
+    if (viewMode !== "in-text" || unanchored.length === 0) {
+      topOffsetRef.current = 0;
+      return;
+    }
+    const el = unanchoredRef.current;
+    if (!el) { topOffsetRef.current = 0; return; }
+    const measure = () => { topOffsetRef.current = el.offsetHeight; };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [viewMode, unanchored.length]);
+
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor,
     inTextItems,
     viewMode === "in-text",
     "data-omni-entry",
+    topOffsetRef,
   );
 
   return (
@@ -218,16 +249,22 @@ function OmniViewPanel({
               ? "All item types are hidden."
               : side === "left"
                 ? "No footnotes, citations, or quotations yet."
-                : "No notes, revisions, or archived snippets yet."}
+                : "No notes, archived snippets, or todos yet."}
           </div>
         )}
 
         {viewMode === "in-text" ? (
           <>
-            {/* Anchored cards positioned over an editor-height container
-                so each card aligns with its source location. Cards are
-                rendered with pre-applied absolute positioning via the
-                wrapper props set by EditorLayout. */}
+            {unanchored.length > 0 && (
+              <div ref={unanchoredRef} className="px-2 pt-2 pb-2 space-y-2 border-b border-[var(--border)]">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1">
+                  Unanchored
+                </div>
+                {unanchored.map((item) => (
+                  <div key={item.id}>{item.content}</div>
+                ))}
+              </div>
+            )}
             <div
               className="relative"
               style={{ height: editorScrollHeight || "100%" }}
@@ -246,22 +283,9 @@ function OmniViewPanel({
                 );
               })}
             </div>
-            {unanchored.length > 0 && (
-              <div className="px-2 pt-2 pb-2 space-y-2 border-t border-[var(--border)]">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1">
-                  Unanchored
-                </div>
-                {unanchored.map((item) => (
-                  <div key={item.id}>{item.content}</div>
-                ))}
-              </div>
-            )}
           </>
         ) : (
           <>
-            {anchored.map((item) => (
-              <div key={item.id}>{item.content}</div>
-            ))}
             {unanchored.length > 0 && (
               <>
                 <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1 pt-1">
@@ -272,6 +296,9 @@ function OmniViewPanel({
                 ))}
               </>
             )}
+            {anchored.map((item) => (
+              <div key={item.id}>{item.content}</div>
+            ))}
           </>
         )}
       </div>

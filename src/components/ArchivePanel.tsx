@@ -1,16 +1,16 @@
 "use client";
 
-import { useState, useCallback, useMemo, useEffect, memo } from "react";
+import { useMemo, memo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, startTextDrag } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
-import { MIME_ARCHIVE, MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
+import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -35,98 +35,89 @@ interface ArchivePanelProps {
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
+/** Top grab bar: anchor-only drag (no inline text insertion).
+ *  NOTE: Do NOT set text/plain here — ProseMirror's default drop handler
+ *  would insert it as inline text when the Editor's handleDrop returns false
+ *  for anchor drags. */
 function startArchiveDrag(
   e: React.DragEvent,
-  snippet: ArchivedSnippet,
+  archiveId: string,
 ) {
-  const plain = richJsonToPlainText(snippet.content) || "";
-  e.dataTransfer.setData("text/plain", plain);
-  e.dataTransfer.setData("application/x-virgil-archive-id", snippet.id);
-  e.dataTransfer.effectAllowed = "move";
-  const ghost = document.createElement("div");
-  ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-  ghost.style.cssText =
-    "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f5f5f4;border:1px solid #d6d3d1;border-radius:4px;font-size:12px;color:#44403c;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 10, 14);
-  requestAnimationFrame(() => document.body.removeChild(ghost));
+  e.dataTransfer.setData(
+    MIME_ARCHIVE_ANCHOR,
+    JSON.stringify({ archiveId }),
+  );
+  e.dataTransfer.effectAllowed = "copy";
 }
 
-function startAnchorDrag(e: React.DragEvent, snippetId: string) {
-  e.stopPropagation();
-  e.dataTransfer.setData("application/x-virgil-archive-anchor-id", snippetId);
-  e.dataTransfer.effectAllowed = "link";
-  const ghost = document.createElement("div");
-  ghost.textContent = "\u2693 anchor";
-  ghost.style.cssText =
-    "position:absolute;top:-9999px;left:-9999px;padding:4px 8px;background:#f0f5fa;border:1px solid #a8c1d8;border-radius:4px;font-size:11px;color:#5a7a99;font-family:var(--font-sans),sans-serif;";
-  document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 10, 10);
-  requestAnimationFrame(() => document.body.removeChild(ghost));
-}
+/* ── ArchiveCard — reusable card for Omni-view ─────────────────── */
 
-/* ── Archive action buttons footer ───────────────────────────────── */
-
-function ArchiveFooter({
-  snippetId,
-  isAnchored,
-  content,
-  onInsert,
-  onRestore,
+export function ArchiveCard({
+  snippet,
+  selected,
+  orphaned,
+  onSelect,
+  onEdit,
+  onUpdateTitle,
+  onDelete,
+  onScrollToMarker,
+  onEditorFocus,
+  getCitationDisplayText,
+  onCitationCreated,
+  extraDataAttrs,
 }: {
-  snippetId: string;
-  isAnchored: boolean;
-  content: unknown;
-  onInsert: (id: string) => void;
-  onRestore: (id: string) => void;
+  snippet: ArchivedSnippet;
+  selected: boolean;
+  orphaned?: boolean;
+  onSelect: (id: string | null) => void;
+  onEdit: (id: string, content: JSONContent) => void;
+  onUpdateTitle: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
+  onScrollToMarker?: (id: string) => void;
+  onEditorFocus?: (editor: any) => void;
+  getCitationDisplayText?: (command: string) => string;
+  onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  extraDataAttrs?: Record<string, string>;
 }) {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = useCallback(() => {
-    const plain = richJsonToPlainText(content) || "";
-    navigator.clipboard.writeText(plain).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  }, [content]);
-
+  const isAnchored = !orphaned;
+  const handleEditContent = (json: JSONContent) => {
+    onEdit(snippet.id, normalizeRichContent(json));
+  };
   return (
-    <div className="flex items-center justify-end gap-1.5 px-3 pb-2">
-      <button
-        onClick={(e) => { e.stopPropagation(); handleCopy(); }}
-        className="p-1 text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded transition-colors"
-        title="Copy to clipboard"
-      >
-        {copied ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="2" y="2" width="13" height="13" rx="2" />
-            <path d="M19 9h1a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2v-1" />
-          </svg>
-        )}
-      </button>
-      {isAnchored && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onInsert(snippetId); }}
-          className="text-xs text-stone-500 bg-stone-100 hover:bg-stone-200 hover:text-stone-700 px-2 py-1 rounded border border-stone-200 transition-colors"
-          title="Insert at cursor and remove from archive"
-        >
-          Insert
-        </button>
-      )}
-      <button
-        onClick={(e) => { e.stopPropagation(); onRestore(snippetId); }}
-        className="text-xs text-[var(--accent)] bg-[var(--accent-light)] hover:brightness-95 px-2 py-1 rounded border border-stone-200 transition-colors"
-        title={isAnchored
-          ? "Restore to marker position and remove from archive"
-          : "Insert at cursor and remove from archive"}
-      >
-        Restore
-      </button>
-    </div>
+    <EditableCard
+      id={snippet.id}
+      selected={selected}
+      theme={CARD_THEMES.archive}
+      grabHandle
+      hideToolbar
+      inlineDelete
+      onEditorFocus={onEditorFocus}
+      badge={orphaned
+        ? <BadgeOrphaned theme={CARD_THEMES.archive} />
+        : <BadgeLabel label="A" theme={CARD_THEMES.archive} />
+      }
+      headerContent={<CardTitleInput defaultValue={snippet.title} onChange={(t) => onUpdateTitle(snippet.id, t)} theme={CARD_THEMES.archive} />}
+      headerTrailing={
+        isAnchored && onScrollToMarker
+          ? <CardTargetIcon selected={selected} onClick={() => onScrollToMarker(snippet.id)} title="Jump to archive marker" />
+          : orphaned
+            ? <CardTargetIcon selected={false} disabled onClick={() => {}} />
+            : undefined
+      }
+      onClick={() => onSelect(selected ? null : snippet.id)}
+      onDragStart={(e) => startArchiveDrag(e, snippet.id)}
+      onTextDragStart={(e) => startTextDrag(e, snippet.content)}
+      onDelete={() => onDelete(snippet.id)}
+      value={snippet.content}
+      variant="footnote"
+      placeholder="Text here."
+      onChange={handleEditContent}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      dataAttr={{ name: "archive-entry", value: snippet.id }}
+      extraDataAttrs={extraDataAttrs}
+      orphaned={orphaned}
+    />
   );
 }
 
@@ -160,82 +151,9 @@ function ArchivePanel({
     editor, inTextItems, viewMode === "in-text"
   );
 
-  // Anchored snippets in document order, for prev/next cycling
-  const anchoredSnippets = useMemo(() => {
-    if (!anchoredIds) return [];
-    return snippets.filter((s) => anchoredIds.has(s.id));
-  }, [snippets, anchoredIds]);
-
-  const onActivateSnippet = useCallback(
-    (s: ArchivedSnippet) => {
-      onSelect(s.id);
-      onScrollToMarker?.(s.id);
-    },
-    [onSelect, onScrollToMarker],
-  );
-  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
-    useCycle(anchoredSnippets, onActivateSnippet);
-
-  // Sync external selection back to cycle index
-  useEffect(() => {
-    if (!selectedId) return;
-    const i = anchoredSnippets.findIndex((s) => s.id === selectedId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedId, anchoredSnippets, cycleIdx, setCycleIdx]);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-
-  const toggleExpanded = (id: string) => {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleCopy = useCallback((id: string, text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId((prev) => prev === id ? null : prev), 1500);
-    });
-  }, []);
-
-  const handleDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
-    const plain = richJsonToPlainText(snippet.content) || "";
-    e.dataTransfer.setData("text/plain", plain);
-    e.dataTransfer.setData(MIME_ARCHIVE, snippet.id);
-    e.dataTransfer.effectAllowed = "move";
-    const ghost = document.createElement("div");
-    ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f5f5f4;border:1px solid #d6d3d1;border-radius:4px;font-size:12px;color:#44403c;font-family:Georgia,serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 10, 14);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }, []);
-
-  // Anchor-only drag (orphaned snippets) — drops re-anchor the snippet at
-  // the drop position without inserting any text.
-  const handleAnchorDragStart = useCallback((e: React.DragEvent, snippet: ArchivedSnippet) => {
-    e.stopPropagation();
-    e.dataTransfer.setData(MIME_ARCHIVE_ANCHOR, snippet.id);
-    e.dataTransfer.effectAllowed = "link";
-    const ghost = document.createElement("div");
-    ghost.textContent = "\u2693 anchor";
-    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;padding:4px 8px;background:#f0f5fa;border:1px solid #a8c1d8;border-radius:4px;font-size:11px;color:#5a7a99;font-family:var(--font-sans),sans-serif;";
-    document.body.appendChild(ghost);
-    e.dataTransfer.setDragImage(ghost, 10, 10);
-    requestAnimationFrame(() => document.body.removeChild(ghost));
-  }, []);
-
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Archived Text" count={snippets.length}>
-        <PrevNextCounter
-          current={cycleIdx}
-          total={anchoredSnippets.length}
-          label="anchored"
-        />
+      <PanelHeader title="Archived Text">
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
       </PanelHeader>
 
@@ -283,61 +201,22 @@ function ArchivePanel({
             })}
           </div>
         ) : (
-          snippets.map((s) => {
-            const isSelected = selectedId === s.id;
-            const orphaned = anchoredIds && !anchoredIds.has(s.id);
-            const isAnchored = !orphaned;
-
-            const handleEditContent = (json: JSONContent) => {
-              onEdit(s.id, normalizeRichContent(json));
-            };
-
-            return (
-              <EditableCard
-                key={s.id}
-                id={s.id}
-                selected={isSelected}
-                theme={CARD_THEMES.archive}
-                grabHandle
-                hideToolbar
-                inlineDelete
-                onEditorFocus={onEditorFocus}
-                badge={orphaned
-                  ? <BadgeOrphaned theme={CARD_THEMES.archive} />
-                  : <BadgeLabel label="A" theme={CARD_THEMES.archive} />
-                }
-                headerContent={<CardTitleInput defaultValue={s.title} onChange={(t) => onUpdateTitle(s.id, t)} theme={CARD_THEMES.archive} />}
-                headerTrailing={
-                  isAnchored && onScrollToMarker
-                    ? <CardTargetIcon selected={isSelected} onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
-                    : orphaned
-                      ? <CardTargetIcon selected={false} disabled onClick={() => {}} />
-                      : undefined
-                }
-                onClick={() => onSelect(isSelected ? null : s.id)}
-                onDragStart={(e) => startArchiveDrag(e, s)}
-                onTextDragStart={(e) => startTextDrag(e, s.content)}
-                onDelete={() => onDelete(s.id)}
-                value={s.content}
-                variant="footnote"
-                placeholder="Text here."
-                onChange={handleEditContent}
-                getCitationDisplayText={getCitationDisplayText}
-                onCitationCreated={onCitationCreated}
-                footer={
-                  <ArchiveFooter
-                    snippetId={s.id}
-                    isAnchored={isAnchored}
-                    content={s.content}
-                    onInsert={onInsert}
-                    onRestore={onRestore}
-                  />
-                }
-                dataAttr={{ name: "archive-entry", value: s.id }}
-                orphaned={orphaned}
-              />
-            );
-          })
+          snippets.map((s) => (
+            <ArchiveCard
+              key={s.id}
+              snippet={s}
+              selected={selectedId === s.id}
+              orphaned={anchoredIds ? !anchoredIds.has(s.id) : undefined}
+              onSelect={onSelect}
+              onEdit={onEdit}
+              onUpdateTitle={onUpdateTitle}
+              onDelete={onDelete}
+              onScrollToMarker={onScrollToMarker}
+              onEditorFocus={onEditorFocus}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
+            />
+          ))
         )}
       </div>
     </div>

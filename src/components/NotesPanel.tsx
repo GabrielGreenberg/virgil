@@ -47,7 +47,7 @@ function startNoteDrag(
 
 /* ── NoteCard ────────────────────────────────────────────────────── */
 
-function NoteCard({
+export function NoteCard({
   note,
   selected,
   onUpdate,
@@ -58,6 +58,7 @@ function NoteCard({
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
+  extraDataAttrs,
 }: {
   note: UserNote;
   selected: boolean;
@@ -69,6 +70,7 @@ function NoteCard({
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
+  extraDataAttrs?: Record<string, string>;
 }) {
 
   const handleTitleChange = useCallback(
@@ -117,6 +119,7 @@ function NoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
+      extraDataAttrs={extraDataAttrs}
     />
   );
 }

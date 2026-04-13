@@ -7,10 +7,10 @@ import MenuBar from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
-import NotesPanel from "./NotesPanel";
+import NotesPanel, { NoteCard } from "./NotesPanel";
 import OutlinePanel, { type SectionPathEntry } from "./OutlinePanel";
-import TodoPanel from "./TodoPanel";
-import ArchivePanel from "./ArchivePanel";
+import TodoPanel, { TodoRow } from "./TodoPanel";
+import ArchivePanel, { ArchiveCard } from "./ArchivePanel";
 import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "./FootnotePanel";
 import FootnoteConnectors from "./FootnoteConnectors";
@@ -46,7 +46,7 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import SearchPanel from "./SearchPanel";
-import OmniViewPanel, { type OmniItem } from "./OmniViewPanel";
+import OmniViewPanel, { type OmniItem, OMNI_SIDE_CATEGORIES } from "./OmniViewPanel";
 import { CitationCard } from "./CitationsPanel";
 import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
 import { QuotationGroupCard } from "./QuotationsPanel";
@@ -262,6 +262,16 @@ function IconWordCount({ active }: { active?: boolean }) {
 
 // OmniView icon: rounded square with three equal-length horizontal
 // lines inside, signaling "all panel content threaded together".
+function IconBlank({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c}
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" />
+    </svg>
+  );
+}
+
 function IconOmni({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
@@ -321,6 +331,7 @@ function PanelColumn({
   children,
   split,
   collapsed,
+  blank,
   focusedHalf,
   onFocusHalf,
 }: {
@@ -337,6 +348,7 @@ function PanelColumn({
       };
   split?: boolean;
   collapsed?: boolean;
+  blank?: boolean;
   focusedHalf?: "top" | "bottom";
   onFocusHalf?: (half: "top" | "bottom") => void;
 }) {
@@ -417,7 +429,7 @@ function PanelColumn({
       ) : (
         <div
           className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}
-          style={{ background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+          style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
         >
           {(children as React.ReactNode)}
         </div>
@@ -1940,7 +1952,9 @@ export default function EditorLayout() {
   // every case (left omni, right omni, both, neither) without the
   // callers needing to know about panel placement.
   const tryScrollOmniEntry = useCallback((key: string): boolean => {
-    const entry = document.querySelector(`[data-omni-entry="${key}"]`);
+    // Use starts-with selector so multi-paragraph instances (e.g. "nt:id@0")
+    // are found when searching for the base key ("nt:id").
+    const entry = document.querySelector(`[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`);
     if (!entry) return false;
     requestAnimationFrame(() => {
       entry.scrollIntoView({ behavior: "instant", block: "nearest" });
@@ -1979,6 +1993,22 @@ export default function EditorLayout() {
       }
     },
     [setActiveLeft, setActiveRight, selectedNoteId, tryScrollOmniEntry]
+  );
+
+  const handleTodoMarkerClick = useCallback(
+    (todoId: string) => {
+      const nextSelected = selectedTodoId === todoId ? null : todoId;
+      setSelectedTodoId(nextSelected);
+      if (nextSelected && tryScrollOmniEntry(`td:${todoId}`)) return;
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "todo");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "todo") setActiveLeft("todo");
+      } else {
+        if (p.activeRight !== "todo") setActiveRight("todo");
+      }
+    },
+    [setActiveLeft, setActiveRight, selectedTodoId, tryScrollOmniEntry]
   );
 
   const handleEditFootnote = useCallback((id: string, newContent: JSONContent) => {
@@ -2243,9 +2273,7 @@ export default function EditorLayout() {
       if (!types) return;
       if (types.includes(MIME_ARCHIVE_ANCHOR)) {
         e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = "link";
-        editorDom.classList.add("virgil-archive-drop-target");
-      } else if (types.includes(MIME_ARCHIVE)) {
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
         editorDom.classList.add("virgil-archive-drop-target");
       }
     };
@@ -2258,15 +2286,19 @@ export default function EditorLayout() {
 
     const handleDrop = (e: DragEvent) => {
       editorDom.classList.remove("virgil-archive-drop-target");
-      const anchorId = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
-      if (anchorId) {
+      const anchorData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
+      if (anchorData) {
         // Re-anchor: resolve drop position to a paragraph UUID
         e.preventDefault();
         e.stopPropagation();
-        const paragraphId = editorRef.current?.ensureParagraphUuidAtCoords(e.clientX, e.clientY);
-        if (paragraphId) {
-          addArchiveParagraphId(anchorId, paragraphId);
-        }
+        try {
+          const { archiveId } = JSON.parse(anchorData);
+          if (!archiveId) return;
+          const paragraphId = editorRef.current?.ensureParagraphUuidAtCoords(e.clientX, e.clientY);
+          if (paragraphId) {
+            addArchiveParagraphId(archiveId, paragraphId);
+          }
+        } catch { /* ignore */ }
         return;
       }
       const archiveId = e.dataTransfer?.getData(MIME_ARCHIVE);
@@ -2626,7 +2658,7 @@ export default function EditorLayout() {
           selected: selectedTodoId === item.id,
           title: item.text || "Todo",
           muted: item.done,
-          onClick: () => setSelectedTodoId(item.id),
+          onClick: () => handleTodoMarkerClick(item.id),
           onDelete: () => removeTodoParagraphId(item.id, pid),
         });
       }
@@ -2649,6 +2681,7 @@ export default function EditorLayout() {
     editorDocVersion,
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
+    handleTodoMarkerClick,
   ]);
 
   // Compute the set of paragraph UUIDs that have marginalia anchored to them,
@@ -2731,8 +2764,8 @@ export default function EditorLayout() {
           onAct={handleAct}
           onUpdateField={updateSuggestionField}
           onClose={() => {
-            if (side === "left") setActiveLeft(null);
-            else setActiveRight(null);
+            if (side === "left") setActiveLeft("blank");
+            else setActiveRight("blank");
             clearSuggestions();
           }}
           visible={true}
@@ -3035,8 +3068,11 @@ export default function EditorLayout() {
         return result;
       };
 
-      if (side === "left") {
-        // Footnotes (anchored)
+      // Which categories does this side show? Driven by OMNI_SIDE_CATEGORIES.
+      const sideCats = new Set(OMNI_SIDE_CATEGORIES[side]);
+
+      // --- Footnotes (fn) — single-position items from the editor node ---
+      if (sideCats.has("fn")) {
         for (const fn of footnotes) {
           const isSelected = selectedFootnoteId === fn.footnoteId;
           items.push({
@@ -3062,7 +3098,7 @@ export default function EditorLayout() {
             ),
           });
         }
-        // Footnotes (orphaned — no doc anchor)
+        // Orphaned footnotes (no doc anchor)
         for (const orphan of orphanedFootnotes) {
           items.push({
             id: `fn:${orphan.footnoteId}`,
@@ -3084,7 +3120,10 @@ export default function EditorLayout() {
             ),
           });
         }
-        // Citations
+      }
+
+      // --- Citations (ci) — single-position items ---
+      if (sideCats.has("ci")) {
         for (const cit of citations) {
           const pos = citationPositionMap.get(cit.id) ?? null;
           const isSelected = selectedCitationId === cit.id;
@@ -3104,9 +3143,6 @@ export default function EditorLayout() {
                   setSelectedCitationId(isSelected ? null : cit.id)
                 }
                 onJump={() => {
-                  // Target button: ensure selection (which triggers
-                  // the persistent highlight sync) and then scroll the
-                  // editor to the citation node.
                   setSelectedCitationId(cit.id);
                   editorRef.current?.scrollToCitation(cit.id);
                 }}
@@ -3124,52 +3160,242 @@ export default function EditorLayout() {
             ),
           });
         }
-        // Quotation groups
+      }
+
+      // --- Quotation groups (qu) — multi-paragraph: one item per paragraphId ---
+      if (sideCats.has("qu")) {
         for (const group of quotationGroups) {
-          const firstPid = group.paragraphIds[0] ?? null;
-          const pos = findParagraphPos(firstPid);
+          const pids = group.paragraphIds;
           const isSelected = selectedQuotationGroupId === group.id;
-          items.push({
-            id: `qu:${group.id}`,
-            pos,
-            content: (
-              <div
-                key={`qu:${group.id}`}
-                data-omni-entry={`qu:${group.id}`}
-              >
-                <QuotationGroupCard
-                  group={group}
-                  bibEntries={bibEntries}
-                  bibPackage={bibPackage}
-                  selected={isSelected}
-                  onSelect={() =>
-                    setSelectedQuotationGroupId(isSelected ? null : group.id)
-                  }
-                  onDelete={() => deleteQuotationGroup(group.id)}
-                  onJump={
-                    firstPid
-                      ? () =>
-                          editorRef.current?.scrollToParagraphId(
-                            firstPid,
-                          )
-                      : undefined
-                  }
-                  onUpdateGroupTitle={updateQuotationGroupTitle}
-                  onAddReference={addQuotationReference}
-                  onDeleteReference={deleteQuotationReference}
-                  onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
-                  onAddQuote={addQuotationQuote}
-                  onUpdateQuote={updateQuotationQuote}
-                  onDeleteQuote={deleteQuotationQuote}
-                  onUpdateNotes={updateQuotationNotes}
-                />
-              </div>
-            ),
-          });
+          if (pids.length === 0) {
+            items.push({
+              id: `qu:${group.id}`,
+              pos: null,
+              content: (
+                <div key={`qu:${group.id}`} data-omni-entry={`qu:${group.id}`}>
+                  <QuotationGroupCard
+                    group={group}
+                    bibEntries={bibEntries}
+                    bibPackage={bibPackage}
+                    selected={isSelected}
+                    onSelect={() => setSelectedQuotationGroupId(isSelected ? null : group.id)}
+                    onDelete={() => deleteQuotationGroup(group.id)}
+                    onUpdateGroupTitle={updateQuotationGroupTitle}
+                    onAddReference={addQuotationReference}
+                    onDeleteReference={deleteQuotationReference}
+                    onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
+                    onAddQuote={addQuotationQuote}
+                    onUpdateQuote={updateQuotationQuote}
+                    onDeleteQuote={deleteQuotationQuote}
+                    onUpdateNotes={updateQuotationNotes}
+                  />
+                </div>
+              ),
+            });
+          } else {
+            for (let pi = 0; pi < pids.length; pi++) {
+              const pid = pids[pi];
+              const pos = findParagraphPos(pid);
+              const suffix = pids.length > 1 ? `@${pi}` : "";
+              const omniId = `qu:${group.id}${suffix}`;
+              items.push({
+                id: omniId,
+                pos,
+                content: (
+                  <div key={omniId} data-omni-entry={omniId}>
+                    <QuotationGroupCard
+                      group={group}
+                      bibEntries={bibEntries}
+                      bibPackage={bibPackage}
+                      selected={isSelected}
+                      onSelect={() => setSelectedQuotationGroupId(isSelected ? null : group.id)}
+                      onDelete={() => deleteQuotationGroup(group.id)}
+                      onJump={() => editorRef.current?.scrollToParagraphId(pid)}
+                      onUpdateGroupTitle={updateQuotationGroupTitle}
+                      onAddReference={addQuotationReference}
+                      onDeleteReference={deleteQuotationReference}
+                      onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
+                      onAddQuote={addQuotationQuote}
+                      onUpdateQuote={updateQuotationQuote}
+                      onDeleteQuote={deleteQuotationQuote}
+                      onUpdateNotes={updateQuotationNotes}
+                    />
+                  </div>
+                ),
+              });
+            }
+          }
         }
       }
-      // Right side: card extraction for notes/revisions/archive is
-      // not yet done, so the right-side OmniView is empty for now.
+
+      // --- Notes (nt) — multi-paragraph: one item per paragraphId ---
+      if (sideCats.has("nt")) {
+        for (const note of notes) {
+          const pids = note.paragraphIds;
+          const isSelected = selectedNoteId === note.id;
+          if (pids.length === 0) {
+            items.push({
+              id: `nt:${note.id}`,
+              pos: null,
+              content: (
+                <NoteCard
+                  key={`nt:${note.id}`}
+                  note={note}
+                  selected={isSelected}
+                  onUpdate={updateNote}
+                  onUpdateTitle={updateNoteTitle}
+                  onDelete={deleteNote}
+                  onSelect={setSelectedNoteId}
+                  onEditorFocus={setOverrideEditor}
+                  getCitationDisplayText={getCitationDisplayText}
+                  onCitationCreated={handleCitationCreated}
+                  extraDataAttrs={{ "data-omni-entry": `nt:${note.id}` }}
+                />
+              ),
+            });
+          } else {
+            for (let pi = 0; pi < pids.length; pi++) {
+              const pid = pids[pi];
+              const pos = findParagraphPos(pid);
+              const suffix = pids.length > 1 ? `@${pi}` : "";
+              const omniId = `nt:${note.id}${suffix}`;
+              items.push({
+                id: omniId,
+                pos,
+                content: (
+                  <NoteCard
+                    key={omniId}
+                    note={note}
+                    selected={isSelected}
+                    onUpdate={updateNote}
+                    onUpdateTitle={updateNoteTitle}
+                    onDelete={deleteNote}
+                    onSelect={setSelectedNoteId}
+                    onJump={() => editorRef.current?.scrollToParagraphId(pid)}
+                    onEditorFocus={setOverrideEditor}
+                    getCitationDisplayText={getCitationDisplayText}
+                    onCitationCreated={handleCitationCreated}
+                    extraDataAttrs={{ "data-omni-entry": omniId }}
+                  />
+                ),
+              });
+            }
+          }
+        }
+      }
+
+      // --- Archive snippets (ar) — multi-paragraph: one item per paragraphId ---
+      if (sideCats.has("ar")) {
+        for (const snippet of sortedArchiveSnippets) {
+          const orphaned = anchoredIds && !anchoredIds.has(snippet.id);
+          const isSelected = selectedArchiveId === snippet.id;
+          const pids = snippet.paragraphIds ?? [];
+          if (orphaned || pids.length === 0) {
+            items.push({
+              id: `ar:${snippet.id}`,
+              pos: null,
+              content: (
+                <ArchiveCard
+                  key={`ar:${snippet.id}`}
+                  snippet={snippet}
+                  selected={isSelected}
+                  orphaned={orphaned}
+                  onSelect={setSelectedArchiveId}
+                  onEdit={(id, content) => updateArchiveSnippet(id, content)}
+                  onUpdateTitle={updateArchiveSnippetTitle}
+                  onDelete={handleDeleteArchive}
+                  onEditorFocus={setOverrideEditor}
+                  getCitationDisplayText={getCitationDisplayText}
+                  onCitationCreated={handleCitationCreated}
+                  extraDataAttrs={{ "data-omni-entry": `ar:${snippet.id}` }}
+                />
+              ),
+            });
+          } else {
+            for (let pi = 0; pi < pids.length; pi++) {
+              const pid = pids[pi];
+              const pos = findParagraphPos(pid);
+              const suffix = pids.length > 1 ? `@${pi}` : "";
+              const omniId = `ar:${snippet.id}${suffix}`;
+              items.push({
+                id: omniId,
+                pos,
+                content: (
+                  <ArchiveCard
+                    key={omniId}
+                    snippet={snippet}
+                    selected={isSelected}
+                    onSelect={setSelectedArchiveId}
+                    onEdit={(id, content) => updateArchiveSnippet(id, content)}
+                    onUpdateTitle={updateArchiveSnippetTitle}
+                    onDelete={handleDeleteArchive}
+                    onScrollToMarker={() => editorRef.current?.scrollToParagraphId(pid)}
+                    onEditorFocus={setOverrideEditor}
+                    getCitationDisplayText={getCitationDisplayText}
+                    onCitationCreated={handleCitationCreated}
+                    extraDataAttrs={{ "data-omni-entry": omniId }}
+                  />
+                ),
+              });
+            }
+          }
+        }
+      }
+
+      // --- Todo items (td) — multi-paragraph: one item per paragraphId ---
+      if (sideCats.has("td")) {
+        for (const item of todoItems) {
+          const pids = item.paragraphIds;
+          const isAnchored = pids.length > 0;
+          const isSelected = selectedTodoId === item.id;
+          if (!isAnchored) {
+            items.push({
+              id: `td:${item.id}`,
+              pos: null,
+              content: (
+                <TodoRow
+                  key={`td:${item.id}`}
+                  item={item}
+                  selected={isSelected}
+                  onToggle={toggleTodo}
+                  onUpdate={updateTodo}
+                  onUpdateNotes={updateTodoNotes}
+                  onDelete={deleteTodo}
+                  onSelect={setSelectedTodoId}
+                  isAnchored={false}
+                  extraDataAttrs={{ "data-omni-entry": `td:${item.id}` }}
+                />
+              ),
+            });
+          } else {
+            for (let pi = 0; pi < pids.length; pi++) {
+              const pid = pids[pi];
+              const pos = findParagraphPos(pid);
+              const suffix = pids.length > 1 ? `@${pi}` : "";
+              const omniId = `td:${item.id}${suffix}`;
+              items.push({
+                id: omniId,
+                pos,
+                content: (
+                  <TodoRow
+                    key={omniId}
+                    item={item}
+                    selected={isSelected}
+                    onToggle={toggleTodo}
+                    onUpdate={updateTodo}
+                    onUpdateNotes={updateTodoNotes}
+                    onDelete={deleteTodo}
+                    onSelect={setSelectedTodoId}
+                    isAnchored={true}
+                    onJump={() => editorRef.current?.scrollToParagraphId(pid)}
+                    extraDataAttrs={{ "data-omni-entry": omniId }}
+                  />
+                ),
+              });
+            }
+          }
+        }
+      }
 
       const omniKey = `omni:${side}`;
       return (
@@ -3199,8 +3425,8 @@ export default function EditorLayout() {
     const onWidthChange = (w: number) => setPanelWidth(side, top ?? "blank", w);
 
     if (!top && !bottom) {
-      // Collapsed — reserve space but show nothing
-      return <PanelColumn side={side} width={width} onWidthChange={onWidthChange} collapsed />;
+      // Fully collapsed — column gone, text extends to strip edge
+      return null;
     }
 
     if (bottom != null) {
@@ -3226,7 +3452,7 @@ export default function EditorLayout() {
 
     // Single mode
     return (
-      <PanelColumn side={side} width={width} onWidthChange={onWidthChange}>
+      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank"}>
         {renderPanelInner(top!, side)}
       </PanelColumn>
     );
@@ -3305,7 +3531,7 @@ export default function EditorLayout() {
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
               <div className="flex flex-col min-w-0">
-                <span className="text-sm leading-none truncate pt-[1px]" title={doc.folderName}>
+                <span className="text-sm leading-none truncate pt-[3px]" title={doc.folderName}>
                   {doc.folderName}
                 </span>
                 <span className="text-[10px] leading-none text-stone-400 truncate mt-[2px]" title={doc.texFilename}>
@@ -3489,10 +3715,18 @@ export default function EditorLayout() {
                 }
               </svg>
             </button>
+            {/* Blank — panel column stays (reserving space) but shows no content */}
+            <button
+              onClick={() => { activeLeft === "blank" ? collapseLeft() : expandLeft(); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="Blank — reserve panel space without content"
+            >
+              <IconBlank active={activeLeft === "blank"} />
+            </button>
             {/* OmniView — square like Blank, but with lines inside.
                 Shows all left-side elements (footnotes, citations, quotes). */}
             <button
-              onClick={() => { setActiveLeft(activeLeft === "omni" ? null : "omni"); }}
+              onClick={() => { setActiveLeft(activeLeft === "omni" ? "blank" : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
               title="Omni-view — show all left panels"
             >
@@ -3653,10 +3887,18 @@ export default function EditorLayout() {
                 }
               </svg>
             </button>
+            {/* Blank — panel column stays (reserving space) but shows no content */}
+            <button
+              onClick={() => { activeRight === "blank" ? collapseRight() : expandRight(); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              title="Blank — reserve panel space without content"
+            >
+              <IconBlank active={activeRight === "blank"} />
+            </button>
             {/* OmniView — square like Blank, but with lines inside.
                 Shows all right-side elements (notes, revisions, cuts, archive). */}
             <button
-              onClick={() => { setActiveRight(activeRight === "omni" ? null : "omni"); }}
+              onClick={() => { setActiveRight(activeRight === "omni" ? "blank" : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
               title="Omni-view — show all right panels"
             >

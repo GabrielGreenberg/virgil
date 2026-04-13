@@ -83,7 +83,11 @@ export function useInTextPositions(
   editor: Editor | null,
   items: PositionItem[],
   enabled: boolean,
-  entryAttr: string = "data-citation-entry"
+  entryAttr: string = "data-citation-entry",
+  /** Ref whose `.current` holds the pixel height of content above the
+   *  positioned container (e.g. an unanchored section). The scroll sync
+   *  offsets by this amount so the panel can scroll above the document. */
+  topOffsetRef?: { current: number },
 ) {
   const [positions, setPositions] = useState<Map<string, number>>(new Map());
   const [editorScrollHeight, setEditorScrollHeight] = useState(0);
@@ -240,14 +244,17 @@ export function useInTextPositions(
       const syncEditorToPanel = () => {
         if (syncingRef.current) return;
         syncingRef.current = true;
-        panelEl.scrollTop = editorScrollEl.scrollTop;
+        const offset = topOffsetRef?.current ?? 0;
+        panelEl.scrollTop = editorScrollEl.scrollTop + offset;
         requestAnimationFrame(() => { syncingRef.current = false; });
       };
 
       const syncPanelToEditor = () => {
         if (syncingRef.current) return;
         syncingRef.current = true;
-        editorScrollEl.scrollTop = panelEl.scrollTop;
+        const offset = topOffsetRef?.current ?? 0;
+        // When the panel is in the "above document" zone, pin editor to top
+        editorScrollEl.scrollTop = Math.max(0, panelEl.scrollTop - offset);
         requestAnimationFrame(() => { syncingRef.current = false; });
       };
 
@@ -255,7 +262,10 @@ export function useInTextPositions(
       panelEl.addEventListener("scroll", syncPanelToEditor, { passive: true });
 
       // Initial sync — retry a few times to handle late DOM layout
-      const doSync = () => { panelEl.scrollTop = editorScrollEl.scrollTop; };
+      const doSync = () => {
+        const offset = topOffsetRef?.current ?? 0;
+        panelEl.scrollTop = editorScrollEl.scrollTop + offset;
+      };
       doSync();
       const t1 = setTimeout(doSync, 100);
       const t2 = setTimeout(doSync, 300);

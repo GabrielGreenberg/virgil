@@ -129,11 +129,11 @@ export function useViewPrefs() {
   }, [persist]);
 
   const setActiveLeft = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeLeft: p.activeLeft === id ? null : id }));
+    update((p) => ({ ...p, activeLeft: p.activeLeft === id ? "blank" : id }));
   }, [update]);
 
   const setActiveRight = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeRight: p.activeRight === id ? null : id }));
+    update((p) => ({ ...p, activeRight: p.activeRight === id ? "blank" : id }));
   }, [update]);
 
   const collapseLeft = useCallback(() => {
@@ -155,23 +155,11 @@ export function useViewPrefs() {
   }, [update]);
 
   const expandLeft = useCallback(() => {
-    update((p) => {
-      if (p._stashedLeft) {
-        return { ...p, activeLeft: p._stashedLeft.top, activeLeftBottom: p._stashedLeft.bottom, _stashedLeft: null };
-      }
-      const leftItems = p.placements.filter((pl) => pl.side === "left");
-      return { ...p, activeLeft: leftItems[0]?.id || null };
-    });
+    update((p) => ({ ...p, activeLeft: "blank", activeLeftBottom: null }));
   }, [update]);
 
   const expandRight = useCallback(() => {
-    update((p) => {
-      if (p._stashedRight) {
-        return { ...p, activeRight: p._stashedRight.top, activeRightBottom: p._stashedRight.bottom, _stashedRight: null };
-      }
-      const rightItems = p.placements.filter((pl) => pl.side === "right");
-      return { ...p, activeRight: rightItems[0]?.id || null };
-    });
+    update((p) => ({ ...p, activeRight: "blank", activeRightBottom: null }));
   }, [update]);
 
   const togglePanel = useCallback((id: PanelId) => {
@@ -179,9 +167,9 @@ export function useViewPrefs() {
       const placement = p.placements.find((pl) => pl.id === id);
       if (!placement) return p;
       if (placement.side === "left") {
-        return { ...p, activeLeft: p.activeLeft === id ? null : id };
+        return { ...p, activeLeft: p.activeLeft === id ? "blank" : id };
       } else {
-        return { ...p, activeRight: p.activeRight === id ? null : id };
+        return { ...p, activeRight: p.activeRight === id ? "blank" : id };
       }
     });
   }, [update]);

@@ -24,7 +24,7 @@ interface TodoPanelProps {
 
 const theme = CARD_THEMES.todo;
 
-function TodoRow({
+export function TodoRow({
   item,
   selected,
   onToggle,
@@ -34,6 +34,7 @@ function TodoRow({
   onSelect,
   onJump,
   isAnchored,
+  extraDataAttrs,
 }: {
   item: TodoItem;
   selected: boolean;
@@ -44,6 +45,7 @@ function TodoRow({
   onSelect: (id: string | null) => void;
   onJump?: () => void;
   isAnchored: boolean;
+  extraDataAttrs?: Record<string, string>;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
@@ -82,6 +84,7 @@ function TodoRow({
   return (
     <div
       ref={cardRef}
+      {...(extraDataAttrs || {})}
       className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none${!isAnchored ? " border-dashed" : ""}`}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
