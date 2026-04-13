@@ -237,7 +237,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
           }
         }
         // If still synthetic after the walk, bail
-        if (resolvedId.startsWith("_pos:")) return;
+        if (!resolvedId || resolvedId.startsWith("_pos:")) return;
       }
 
       const paragraphId = resolvedId;
