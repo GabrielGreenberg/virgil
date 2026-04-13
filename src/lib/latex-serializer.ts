@@ -259,14 +259,26 @@ export function serializeBodyOnly(doc: JSONContent): string {
 export function assignUuids(doc: JSONContent): void {
   const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
   const existing = new Set<string>();
-  // First pass: collect existing UUIDs
-  function collect(node: JSONContent) {
+
+  // First pass: collect existing UUIDs and detect duplicates.
+  // If the same UUID appears on multiple nodes (e.g. from a bad recovery),
+  // only the first node keeps it — the rest get cleared so pass 2 assigns
+  // fresh unique UUIDs.
+  const seen = new Set<string>();
+  function dedup(node: JSONContent) {
     if (ANCHORABLE_NODES.has(node.type!) && node.attrs?.uuid) {
-      existing.add(node.attrs.uuid as string);
+      const uuid = node.attrs.uuid as string;
+      if (seen.has(uuid)) {
+        // Duplicate — clear so it gets a fresh UUID in pass 2
+        node.attrs.uuid = null;
+      } else {
+        seen.add(uuid);
+        existing.add(uuid);
+      }
     }
-    node.content?.forEach(collect);
+    node.content?.forEach(dedup);
   }
-  collect(doc);
+  dedup(doc);
 
   function ensureUuid(node: JSONContent) {
     if (!node.attrs) node.attrs = {};
@@ -366,6 +378,7 @@ export function extractSidecarData(doc: JSONContent): VirgilSidecar {
 
 /** Recover orphaned UUIDs by matching content fingerprints. Mutates doc in place. */
 export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): void {
+  if (!sidecar?.paragraphs) return;
   // 1. Collect current UUIDs in the document
   const currentUuids = new Set<string>();
   function collectCurrent(node: JSONContent) {

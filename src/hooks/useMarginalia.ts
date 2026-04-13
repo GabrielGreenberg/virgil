@@ -48,18 +48,19 @@ export function useMarginalia(editor: Editor | null) {
           const dom = editor.view.nodeDOM(pos) as HTMLElement | null;
           if (!dom) return true;
 
+          const domRect = dom.getBoundingClientRect();
+          const domTop = domRect.top - scrollRect.top + scrollEl!.scrollTop;
+          const height = domRect.height;
+
+          // `top` = first text line (for icon positioning in the grid)
+          // `domTop` = element boundary (for hit-testing in drop resolution)
           let top: number;
           if (isAtom) {
-            top =
-              dom.getBoundingClientRect().top -
-              scrollRect.top +
-              scrollEl!.scrollTop;
+            top = domTop;
           } else {
             const coords = editor.view.coordsAtPos(pos + 1);
             top = coords.top - scrollRect.top + scrollEl!.scrollTop;
           }
-
-          const height = dom.getBoundingClientRect().height;
 
           let lineHeight: number;
           let lineCount: number;
@@ -93,7 +94,7 @@ export function useMarginalia(editor: Editor | null) {
             lineCount = Math.max(1, Math.round(contentHeight / lineHeight));
           }
 
-          next.set(id, { id, top, height, lineHeight, lineCount, isAtom });
+          next.set(id, { id, top, domTop, height, lineHeight, lineCount, isAtom });
         } catch {
           /* ignore */
         }
@@ -110,6 +111,7 @@ export function useMarginalia(editor: Editor | null) {
         if (
           !p ||
           p.top !== v.top ||
+          p.domTop !== v.domTop ||
           p.height !== v.height ||
           p.lineHeight !== v.lineHeight ||
           p.lineCount !== v.lineCount
@@ -130,7 +132,16 @@ export function useMarginalia(editor: Editor | null) {
     }
     if (!dom) return;
 
-    const onUpdate = () => {
+    // Editor document changes (new UUIDs, paragraph edits) must recompute
+    // synchronously so that markers referencing freshly-assigned UUIDs can
+    // find their metrics in the same React render cycle. Scroll and resize
+    // events are debounced via rAF since they don't change UUID keys.
+    const onDocUpdate = () => {
+      cancelAnimationFrame(rafRef.current);
+      compute();
+    };
+
+    const onLayoutChange = () => {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(compute);
     };
@@ -138,19 +149,19 @@ export function useMarginalia(editor: Editor | null) {
     // Initial compute (debounced once for layout stabilization)
     rafRef.current = requestAnimationFrame(compute);
 
-    editor.on("update", onUpdate);
-    editor.on("selectionUpdate", onUpdate);
+    editor.on("update", onDocUpdate);
+    editor.on("selectionUpdate", onLayoutChange);
 
     const scrollEl = dom.closest(".overflow-y-auto");
-    scrollEl?.addEventListener("scroll", onUpdate, { passive: true });
-    window.addEventListener("resize", onUpdate);
+    scrollEl?.addEventListener("scroll", onLayoutChange, { passive: true });
+    window.addEventListener("resize", onLayoutChange);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      editor.off("update", onUpdate);
-      editor.off("selectionUpdate", onUpdate);
-      scrollEl?.removeEventListener("scroll", onUpdate);
-      window.removeEventListener("resize", onUpdate);
+      editor.off("update", onDocUpdate);
+      editor.off("selectionUpdate", onLayoutChange);
+      scrollEl?.removeEventListener("scroll", onLayoutChange);
+      window.removeEventListener("resize", onLayoutChange);
     };
   }, [editor, compute]);
 

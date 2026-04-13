@@ -128,7 +128,7 @@ export function FootnoteCard({
       inlineDelete
       onEditorFocus={onEditorFocus}
       badge={<BadgeLabel label={fn.number} theme={CARD_THEMES.footnote} />}
-      headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} />}
+      headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} theme={CARD_THEMES.footnote} />}
       headerTrailing={<CardTargetIcon selected={isSelected} onClick={() => onJump()} title="Jump to footnote marker" />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
@@ -195,7 +195,7 @@ export function OrphanedFootnoteCard({
       inlineDelete
       onEditorFocus={onEditorFocus}
       badge={<BadgeOrphaned theme={CARD_THEMES.footnote} />}
-      headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} />}
+      headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} theme={CARD_THEMES.footnote} />}
       headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}

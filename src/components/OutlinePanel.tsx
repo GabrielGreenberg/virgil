@@ -510,7 +510,7 @@ function OutlineNode({
             return (
               <div
                 key={`pt-${i}`}
-                className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[var(--par-title-color,#c45a5a)] truncate"
+                className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#857070] truncate"
                 style={{ paddingLeft: `${(depth + 1) * 16 + 24}px`, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
                 onClick={() => onScrollTo(pt.index)}
               >
@@ -789,7 +789,7 @@ function EditablePod({
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-[11px] text-[var(--par-title-color,#c45a5a)]" : "text-sm text-stone-800"
+              isParTitle ? "text-[11px] text-[#857070]" : "text-sm text-stone-800"
             }`}
           />
         ) : (
@@ -797,7 +797,7 @@ function EditablePod({
             onClick={() => { setEditText(pod.text); setEditing(true); }}
             className={`flex-1 min-w-0 truncate cursor-text ${
               isParTitle
-                ? "text-[11px] text-[var(--par-title-color,#c45a5a)]"
+                ? "text-[11px] text-[#857070]"
                 : pod.level === 1
                   ? "text-sm font-semibold text-stone-800"
                   : pod.level === 2
@@ -1229,7 +1229,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               return (
                 <div
                   key={`preamble-pt-${i}`}
-                  className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#c45a5a] truncate"
+                  className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#857070] truncate"
                   style={{ paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
                   onClick={() => onScrollTo(pt.index)}
                 >

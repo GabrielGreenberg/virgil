@@ -26,19 +26,21 @@ export function useNotes(docId: string | null) {
         // Migrate legacy notes:
         //   - missing `title`  → coerce to ""
         //   - HTML string body → convert to JSONContent
+        //   - anchorPositions (old number[]) → paragraphIds (string[])
+        //     Legacy positions are dropped — notes that still have numeric
+        //     anchors will appear un-anchored until re-dropped. This is safe
+        //     because numeric positions are unstable across edits anyway.
         const migrated: NotesState = {
           notes: data.notes.map((n) => {
-            const raw = n as UserNote & { anchorPos?: number };
+            const raw = n as UserNote & { anchorPos?: number; anchorPositions?: number[] };
             return {
-              ...raw,
+              id: raw.id,
               title: typeof raw.title === "string" ? raw.title : "",
               content: normalizeRichContent(raw.content),
-              // Migrate legacy single anchorPos → anchorPositions array
-              anchorPositions: Array.isArray(raw.anchorPositions)
-                ? raw.anchorPositions
-                : typeof raw.anchorPos === "number"
-                  ? [raw.anchorPos]
-                  : [0],
+              createdAt: raw.createdAt,
+              paragraphIds: Array.isArray(raw.paragraphIds)
+                ? raw.paragraphIds
+                : [], // drop legacy numeric anchors
             };
           }) as UserNote[],
         };
@@ -58,12 +60,12 @@ export function useNotes(docId: string | null) {
   }, []);
 
   const addNote = useCallback(
-    (anchorPos: number, content?: JSONContent) => {
+    (paragraphId: string | null, content?: JSONContent) => {
       const newNote: UserNote = {
         id: generateEntityId(),
         title: "",
         content: content ?? emptyRichContent(),
-        anchorPositions: [anchorPos],
+        paragraphIds: paragraphId ? [paragraphId] : [],
         createdAt: new Date().toISOString(),
       };
       setState((prev) => {
@@ -106,13 +108,13 @@ export function useNotes(docId: string | null) {
     [persist]
   );
 
-  const addNoteAnchor = useCallback(
-    (id: string, anchorPos: number) => {
+  const addNoteParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
-            n.id === id && !n.anchorPositions.includes(anchorPos)
-              ? { ...n, anchorPositions: [...n.anchorPositions, anchorPos] }
+            n.id === id && !n.paragraphIds.includes(paragraphId)
+              ? { ...n, paragraphIds: [...n.paragraphIds, paragraphId] }
               : n
           ),
         };
@@ -123,13 +125,13 @@ export function useNotes(docId: string | null) {
     [persist]
   );
 
-  const removeNoteAnchor = useCallback(
-    (id: string, anchorPos: number) => {
+  const removeNoteParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
             n.id === id
-              ? { ...n, anchorPositions: n.anchorPositions.filter((p) => p !== anchorPos) }
+              ? { ...n, paragraphIds: n.paragraphIds.filter((p) => p !== paragraphId) }
               : n
           ),
         };
@@ -158,8 +160,8 @@ export function useNotes(docId: string | null) {
     addNote,
     updateNote,
     updateNoteTitle,
-    addNoteAnchor,
-    removeNoteAnchor,
+    addNoteParagraphId,
+    removeNoteParagraphId,
     deleteNote,
   };
 }

@@ -14,7 +14,6 @@ import {
   serializeToLatex,
   assignUuids,
   extractSidecarData,
-  recoverOrphanedUuids,
 } from "@/lib/latex-serializer";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult } from "@/lib/storage-fsa";
@@ -171,6 +170,17 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   ]);
 
   const content = parseLatex(latex, sidecar);
+  // Assign UUIDs immediately on load so every paragraph is addressable
+  // from the moment the editor opens (no waiting for the first save).
+  // Also persist back to disk so the .tex file stays in sync.
+  assignUuids(content);
+  const newSidecar = extractSidecarData(content);
+  const newLatex = serializeToLatex(content);
+  // Fire-and-forget write — don't block the editor from opening.
+  Promise.all([
+    putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
+    putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+  ]).catch(() => {});
   return { content, editorState };
 }
 
@@ -188,7 +198,8 @@ export async function writeDocBundle(
     `${API}/doc/${docId}/virgil/virgil.json`,
     DEFAULT_SIDECAR,
   );
-  recoverOrphanedUuids(content, existingSidecar);
+  // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
+  // Lost UUIDs get fresh ones via assignUuids instead.
   assignUuids(content);
 
   const newSidecar = extractSidecarData(content);

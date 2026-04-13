@@ -33,7 +33,6 @@ import {
   serializeToLatex,
   assignUuids,
   extractSidecarData,
-  recoverOrphanedUuids,
 } from "@/lib/latex-serializer";
 import {
   readIndex,
@@ -223,6 +222,9 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
   );
 
   const content = parseLatex(latex, sidecar);
+  // Assign UUIDs immediately on load so every paragraph is addressable
+  // from the moment the editor opens (no waiting for the first save).
+  assignUuids(content);
   return { content, editorState };
 }
 
@@ -244,7 +246,8 @@ export async function writeDocBundle(
       "virgil.json",
       DEFAULT_SIDECAR,
     );
-    recoverOrphanedUuids(content, existingSidecar);
+    // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
+    // Lost UUIDs get fresh ones via assignUuids instead.
     assignUuids(content);
 
     const newSidecar = extractSidecarData(content);

@@ -9,14 +9,13 @@ import { MIME_NOTE } from "@/lib/marginalia";
 
 interface NotesPanelProps {
   notes: UserNote[];
-  onAdd: (anchorPos: number, content?: JSONContent) => UserNote;
+  onAdd: () => UserNote;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
-  cursorPos: number;
-  onScrollToPos?: (pos: number) => void;
+  onScrollToParagraphId?: (uuid: string) => void;
   /** Lookup for rendering dropped/stored citations as formatted text. */
   getCitationDisplayText?: (command: string) => string;
   /** Called when the user drops a brand-new citation into a note. */
@@ -31,27 +30,18 @@ interface NotesPanelProps {
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
+/** Top grab bar: anchor-only drag (no inline text insertion). */
 function startNoteDrag(
   e: React.DragEvent,
   noteId: string,
-  content: unknown,
   title: string,
 ) {
-  const normalized = normalizeRichContent(content);
-  const plain = richJsonToPlainText(normalized) || title || "Note";
-  e.dataTransfer.setData("text/plain", plain);
+  e.dataTransfer.setData("text/plain", title || "Note");
   e.dataTransfer.setData(
     "application/x-virgil-note",
-    JSON.stringify({ noteId, content: normalized }),
+    JSON.stringify({ noteId }),
   );
   e.dataTransfer.effectAllowed = "copy";
-  const ghost = document.createElement("div");
-  ghost.textContent = plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-  ghost.style.cssText =
-    "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#f0fdf4;border:1px solid #34d399;border-radius:4px;font-size:12px;color:#065f46;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 10, 14);
-  requestAnimationFrame(() => document.body.removeChild(ghost));
 }
 
 /* ── NoteCard ────────────────────────────────────────────────────── */
@@ -87,22 +77,6 @@ function NoteCard({
     [note.id, onUpdateTitle]
   );
 
-  // Drag handle: serialize the note JSON content into the dataTransfer so the
-  // drop target (main editor or another rich text field) can splice it inline.
-  const handleDragStart = useCallback(
-    (e: React.DragEvent<HTMLSpanElement>) => {
-      e.stopPropagation();
-      e.dataTransfer.effectAllowed = "copy";
-      const normalized = normalizeRichContent(note.content);
-      e.dataTransfer.setData(
-        MIME_NOTE,
-        JSON.stringify({ noteId: note.id, content: normalized })
-      );
-      e.dataTransfer.setData("text/plain", richJsonToPlainText(normalized) || note.title || "Note");
-    },
-    [note.id, note.content, note.title]
-  );
-
   const handleChange = useCallback(
     (json: JSONContent) => {
       onUpdate(note.id, normalizeRichContent(json));
@@ -120,14 +94,14 @@ function NoteCard({
       inlineDelete
       onEditorFocus={onEditorFocus}
       badge={<BadgeLabel label="N" theme={CARD_THEMES.note} />}
-      headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} />}
+      headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} theme={CARD_THEMES.note} />}
       headerTrailing={onJump ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" /> : undefined}
       onClick={() => onSelect(selected ? null : note.id)}
-      onDragStart={(e) => startNoteDrag(e, note.id, note.content, note.title)}
+      onDragStart={(e) => startNoteDrag(e, note.id, note.title)}
       onTextDragStart={(e) => startTextDrag(e, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
       value={note.content}
-      variant="note"
+      variant="footnote"
       placeholder="Text here."
       onChange={handleChange}
       getCitationDisplayText={getCitationDisplayText}
@@ -145,8 +119,7 @@ export default function NotesPanel({
   onDelete,
   onSelectNote,
   selectedNoteId,
-  cursorPos,
-  onScrollToPos,
+  onScrollToParagraphId,
   getCitationDisplayText,
   onCitationCreated,
   aiRequests,
@@ -156,7 +129,10 @@ export default function NotesPanel({
   onEditorFocus,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
-    () => [...notes].sort((a, b) => (a.anchorPositions[0] ?? 0) - (b.anchorPositions[0] ?? 0)),
+    () => [...notes].sort((a, b) => {
+      // Sort by creation date; notes without anchors sort last
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }),
     [notes],
   );
 
@@ -168,9 +144,10 @@ export default function NotesPanel({
   const onActivateNote = useCallback(
     (note: UserNote) => {
       onSelectNote(note.id);
-      if (note.anchorPositions[0] != null) onScrollToPos?.(note.anchorPositions[0]);
+      const firstPid = note.paragraphIds[0];
+      if (firstPid) onScrollToParagraphId?.(firstPid);
     },
-    [onSelectNote, onScrollToPos],
+    [onSelectNote, onScrollToParagraphId],
   );
   const { idx, next, prev, setIdx } = useCycle(sortedNotes, onActivateNote);
 
@@ -186,7 +163,7 @@ export default function NotesPanel({
       <PanelHeader
         title="Notes"
         count={notes.length}
-        onAdd={() => onAdd(cursorPos)}
+        onAdd={() => onAdd()}
         onAiRequest={onAddAiRequest}
       >
         <PrevNextCounter
@@ -226,7 +203,7 @@ export default function NotesPanel({
             onUpdateTitle={onUpdateTitle}
             onDelete={onDelete}
             onSelect={onSelectNote}
-            onJump={onScrollToPos && note.anchorPositions[0] != null ? () => onScrollToPos(note.anchorPositions[0]) : undefined}
+            onJump={onScrollToParagraphId && note.paragraphIds[0] ? () => onScrollToParagraphId(note.paragraphIds[0]) : undefined}
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}

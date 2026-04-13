@@ -14,9 +14,11 @@ import {
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
   isAnchorDrag,
+  isAnchorableNode,
   type MarginaliaMarker,
   type PositionedMarker,
 } from "@/lib/marginalia";
+import { generateNodeUuid } from "@/lib/uuid";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
 
@@ -100,6 +102,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
     if (!scrollEl || !editor) return;
     let indicator: HTMLDivElement | null = null;
     let rafId = 0;
+    // The paragraph UUID currently highlighted by the indicator.
+    // onDrop uses this directly — whatever the bar shows is what gets the drop.
+    let indicatedParagraphId: string | null = null;
 
     const showIndicator = (paragraphId: string, side: "left" | "right") => {
       const pos = metricsRef.current.get(paragraphId);
@@ -118,10 +123,11 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         });
         scrollEl.appendChild(indicator);
       }
-      indicator.style.top = `${pos.top}px`;
+      indicator.style.top = `${pos.domTop}px`;
       indicator.style.height = `${pos.height}px`;
       indicator.style[side] = `${MARGINALIA_GUTTER_WIDTH}px`;
       indicator.style[side === "left" ? "right" : "left"] = "";
+      indicatedParagraphId = paragraphId;
     };
 
     const hideIndicator = () => {
@@ -129,6 +135,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         indicator.remove();
         indicator = null;
       }
+      indicatedParagraphId = null;
       scrollEl.classList.remove("anchor-drag-active");
     };
 
@@ -146,12 +153,15 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         let bestId: string | null = null;
         let bestDist = Infinity;
         for (const [id, pos] of metricsRef.current) {
-          if (yInScroll >= pos.top && yInScroll <= pos.top + pos.height) {
+          if (yInScroll >= pos.domTop && yInScroll <= pos.domTop + pos.height) {
             bestId = id;
             break;
           }
-          const mid = pos.top + pos.height / 2;
-          const dist = Math.abs(yInScroll - mid);
+          // Use nearest-edge distance (not midpoint) so gaps between
+          // elements resolve to the closer edge, not the closer center.
+          const distTop = Math.abs(yInScroll - pos.domTop);
+          const distBottom = Math.abs(yInScroll - (pos.domTop + pos.height));
+          const dist = Math.min(distTop, distBottom);
           if (dist < bestDist) {
             bestDist = dist;
             bestId = id;
@@ -178,27 +188,9 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       hideIndicator();
     };
 
-    /** Resolve the nearest paragraph UUID from a mouse/drag event. */
-    const resolveParagraphAt = (e: DragEvent): string | null => {
-      const scrollRect = scrollEl.getBoundingClientRect();
-      const yInScroll = e.clientY - scrollRect.top + scrollEl.scrollTop;
-      let bestId: string | null = null;
-      let bestDist = Infinity;
-      for (const [id, pos] of metricsRef.current) {
-        if (yInScroll >= pos.top && yInScroll <= pos.top + pos.height) {
-          return id;
-        }
-        const mid = pos.top + pos.height / 2;
-        const dist = Math.abs(yInScroll - mid);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestId = id;
-        }
-      }
-      return bestId;
-    };
-
     const onDrop = (e: DragEvent) => {
+      // Capture the indicated paragraph BEFORE hideIndicator clears it.
+      const targetId = indicatedParagraphId;
       cancelAnimationFrame(rafId);
       hideIndicator();
 
@@ -207,14 +199,54 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       // so we let those fall through to the editor's own handleDrop.
       if (!isAnchorDrag(e.dataTransfer)) return;
 
-      const paragraphId = resolveParagraphAt(e);
-      if (!paragraphId) return;
+      // Use whatever paragraph the indicator bar was showing — this is what
+      // the user sees and expects the drop to target.
+      let resolvedId = targetId;
+      if (!resolvedId) return;
+
+      // For synthetic "_pos:NNN" IDs (nodes without UUIDs), assign a UUID
+      // so all downstream stores get a stable string key.
+      if (resolvedId.startsWith("_pos:")) {
+        const rawPos = parseInt(resolvedId.slice(5), 10);
+        if (isNaN(rawPos)) return;
+        const doc = editor.state.doc;
+        if (rawPos < 0 || rawPos >= doc.content.size) return;
+        const $p = doc.resolve(rawPos);
+        for (let d = $p.depth; d >= 0; d--) {
+          const node = $p.node(d);
+          if (isAnchorableNode(node.type)) {
+            if (node.attrs?.uuid) {
+              resolvedId = node.attrs.uuid;
+            } else {
+              // Collect existing UUIDs to guarantee uniqueness
+              const existing = new Set<string>();
+              doc.descendants((n) => {
+                if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
+              });
+              const nodePos = d === 0 ? 0 : $p.before(d);
+              const newUuid = generateNodeUuid(existing);
+              const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
+                ...node.attrs,
+                uuid: newUuid,
+              });
+              tr.setMeta("addToHistory", false);
+              editor.view.dispatch(tr);
+              resolvedId = newUuid;
+            }
+            break;
+          }
+        }
+        // If still synthetic after the walk, bail
+        if (resolvedId.startsWith("_pos:")) return;
+      }
+
+      const paragraphId = resolvedId;
+      e.preventDefault();
+      e.stopPropagation();
 
       // --- Marginalia move (gutter icon re-anchor) ---
       const margData = e.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
       if (margData) {
-        e.preventDefault();
-        e.stopPropagation();
         try {
           const { type, entityId, currentParagraphId } = JSON.parse(margData);
           if (paragraphId !== currentParagraphId) {
@@ -231,8 +263,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       // --- Quotation drop (from QuotationsPanel) ---
       const quotData = e.dataTransfer?.getData(MIME_QUOTATION);
       if (quotData) {
-        e.preventDefault();
-        e.stopPropagation();
         try {
           const { groupId } = JSON.parse(quotData);
           if (groupId) {
@@ -246,27 +276,15 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         return;
       }
 
-      // --- Note drop (anchor-only when dropped in margin) ---
+      // --- Note drop (anchor to paragraph) ---
       const noteData = e.dataTransfer?.getData(MIME_NOTE);
       if (noteData) {
-        e.preventDefault();
-        e.stopPropagation();
         try {
           const { noteId } = JSON.parse(noteData);
           if (noteId) {
-            // Resolve the paragraph's start position in the doc for the
-            // note anchor. Walk the doc to find the node with this UUID.
-            let anchorPos = 0;
-            editor.state.doc.descendants((node, pos) => {
-              if (node.attrs?.uuid === paragraphId) {
-                anchorPos = pos;
-                return false;
-              }
-              return true;
-            });
             window.dispatchEvent(
               new CustomEvent("virgil-note-drop", {
-                detail: { noteId, anchorPos, inserted: false },
+                detail: { noteId, paragraphId },
               })
             );
           }
@@ -277,8 +295,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       // --- Todo drop (from TodoPanel) ---
       const todoData = e.dataTransfer?.getData(MIME_TODO);
       if (todoData) {
-        e.preventDefault();
-        e.stopPropagation();
         try {
           const { todoId } = JSON.parse(todoData);
           if (todoId) {
@@ -295,8 +311,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       // --- Archive anchor drop ---
       const archiveData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
       if (archiveData) {
-        e.preventDefault();
-        e.stopPropagation();
         try {
           const { archiveId, oldParagraphId } = JSON.parse(archiveData);
           if (archiveId && paragraphId !== oldParagraphId) {

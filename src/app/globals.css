@@ -141,12 +141,14 @@ body {
 
 .heading-wrapper {
   display: block;
+  margin-top: 1.8em;
 }
 
 .heading-wrapper h1,
 .heading-wrapper h2,
 .heading-wrapper h3 {
-  margin-bottom: 0.1em;
+  margin-top: 0.2em;
+  margin-bottom: -0.1em;
 }
 
 .heading-annotation {
@@ -156,7 +158,7 @@ body {
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
-  margin-bottom: 0.4em;
+  margin-bottom: 1.2em;
   cursor: pointer;
   user-select: none;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
@@ -252,45 +254,48 @@ body {
   display: inline;
 }
 
-/* Horizontal drag grip — inline before title text, shown on hover over title band */
-.par-title-drag-handle {
-  display: inline-flex;
-  flex-direction: column;
+/* Invisible hover bridge — extends the wrapper's pointer-event area into the
+   left margin so the mouse can travel from the text column to the drag handle
+   without crossing a dead zone that would drop the hover state. */
+.par-title-wrapper::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: 0;
+  width: 30px;
+  height: 100%;
+}
+
+/* 6-dot drag grip — absolutely positioned in left margin, shown on hover */
+.par-drag-handle {
+  position: absolute;
+  left: -24px;
+  top: 2px;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 2px;
-  width: 18px;
-  height: 10px;
-  margin-right: 4px;
-  vertical-align: middle;
+  width: 20px;
+  height: 16px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
   cursor: grab;
   user-select: none;
+  color: var(--muted-light, #b5b0aa);
 }
 
-.par-title-drag-handle::before,
-.par-title-drag-handle::after {
-  content: "";
-  display: block;
-  width: 100%;
-  height: 1.5px;
-  border-radius: 1px;
-  background: var(--muted-light, #b5b0aa);
-  transition: background 0.15s;
+.par-drag-handle:hover {
+  color: var(--muted, #8a8580);
 }
 
-.par-title-wrapper:hover .par-title-drag-handle,
-.par-title-annotation:hover .par-title-drag-handle {
-  opacity: 1;
-}
-
-.par-title-drag-handle:hover::before,
-.par-title-drag-handle:hover::after {
-  background: var(--muted, #8a8580);
-}
-
-.par-title-drag-handle:active {
+.par-drag-handle:active {
   cursor: grabbing;
+}
+
+.par-title-wrapper.has-text.hovered > .par-drag-handle,
+.par-title-wrapper.has-text:hover > .par-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* Input field for editing title */

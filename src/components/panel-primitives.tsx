@@ -113,14 +113,16 @@ export interface CardTheme {
   badgeBg: string;
   badgeColor: string;
   badgeBorder: string;
+  /** Title input color for CardTitleInput. */
+  titleColor: string;
 }
 
 /** Pre-built themes for existing card types. */
 export const CARD_THEMES = {
-  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757" },
-  note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399" },
-  archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0" },
-  todo: { cardClass: todoCard, separatorSelected: "border-stone-300", headerSelected: "bg-stone-50/60", badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e" },
+  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
+  note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
+  archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
+  todo: { cardClass: todoCard, separatorSelected: "border-stone-300", headerSelected: "bg-stone-50/60", badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -168,12 +170,17 @@ export function CardTitleInput({
   onChange,
   placeholder = "Title",
   style,
+  theme,
 }: {
   defaultValue?: string;
   onChange?: (title: string) => void;
   placeholder?: string;
   style?: React.CSSProperties;
+  theme?: CardTheme;
 }) {
+  const merged = theme
+    ? { ...TITLE_STYLE, color: theme.titleColor, ...style }
+    : style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE;
   return (
     <input
       type="text"
@@ -185,7 +192,7 @@ export function CardTitleInput({
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       placeholder={placeholder}
       className={TITLE_CLASS}
-      style={style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE}
+      style={merged}
     />
   );
 }
@@ -462,13 +469,16 @@ export function EditableCard({
             draggable={!isFocused}
             onDragStart={(e) => { onTextDragStart(e); }}
             onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing pt-1 -ml-1 rounded text-stone-300 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity shrink-0"
+            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
             title="Drag text into document"
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
-              <line x1="2" y1="4" x2="14" y2="4" />
-              <line x1="2" y1="8" x2="14" y2="8" />
-              <line x1="2" y1="12" x2="10" y2="12" />
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2" />
+              <circle cx="7" cy="2" r="1.2" />
+              <circle cx="3" cy="7" r="1.2" />
+              <circle cx="7" cy="7" r="1.2" />
+              <circle cx="3" cy="12" r="1.2" />
+              <circle cx="7" cy="12" r="1.2" />
             </svg>
           </div>
         )}

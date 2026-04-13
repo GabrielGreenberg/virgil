@@ -34,7 +34,6 @@ import { useQuotations } from "@/hooks/useQuotations";
 import Marginalia from "./Marginalia";
 import {
   isAnchorableNode,
-  isAnchorableAtom,
   MIME_ARCHIVE,
   MIME_ARCHIVE_ANCHOR,
   type MarginaliaMarker,
@@ -810,8 +809,8 @@ export default function EditorLayout() {
     addNote,
     updateNote,
     updateNoteTitle,
-    addNoteAnchor,
-    removeNoteAnchor,
+    addNoteParagraphId,
+    removeNoteParagraphId,
     deleteNote,
   } = useNotes(docIdForHooks);
   const {
@@ -1893,19 +1892,18 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-todo-drop", handler);
   }, [addTodoParagraphId]);
 
-  // Listen for note drops onto paragraphs — re-anchor the note to the
-  // dropped doc position. Marginalia derives the paragraphId on its own.
+  // Listen for note drops onto paragraphs — anchor the note to the paragraph UUID.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.noteId && typeof detail.anchorPos === "number") {
-        addNoteAnchor(detail.noteId, detail.anchorPos);
+      if (detail?.noteId && detail?.paragraphId) {
+        addNoteParagraphId(detail.noteId, detail.paragraphId);
         setSelectedNoteId(detail.noteId);
       }
     };
     window.addEventListener("virgil-note-drop", handler);
     return () => window.removeEventListener("virgil-note-drop", handler);
-  }, [addNoteAnchor]);
+  }, [addNoteParagraphId]);
 
   // Listen for marginalia reanchor events (dragging a gutter icon to a new paragraph)
   useEffect(() => {
@@ -1920,41 +1918,8 @@ export default function EditorLayout() {
         removeTodoParagraphId(entityId, oldParagraphId);
         addTodoParagraphId(entityId, newParagraphId);
       } else if (type === "note") {
-        // Resolve old and new paragraph positions for the note anchor
-        const ed = editorRef.current?.getEditor();
-        if (!ed) return;
-        const doc = ed.state.doc;
-        // Find the note and its anchor for the old paragraph
-        const note = notes.find((n) => n.id === entityId);
-        if (!note) return;
-        // Find the anchorPos that maps to oldParagraphId
-        let oldAnchorPos: number | null = null;
-        for (const pos of note.anchorPositions) {
-          if (pos < 0 || pos > doc.content.size) continue;
-          const $p = doc.resolve(Math.min(Math.max(pos, 0), doc.content.size));
-          for (let d = $p.depth; d >= 0; d--) {
-            const anc = $p.node(d);
-            if (isAnchorableNode(anc.type)) {
-              if (anc.attrs?.uuid === oldParagraphId) {
-                oldAnchorPos = pos;
-              }
-              break;
-            }
-          }
-          if (oldAnchorPos !== null) break;
-        }
-        // Find the start position of the new paragraph
-        let newAnchorPos: number | null = null;
-        doc.descendants((node, nodePos) => {
-          if (newAnchorPos !== null) return false;
-          if (isAnchorableNode(node.type) && node.attrs?.uuid === newParagraphId) {
-            newAnchorPos = isAnchorableAtom(node.type) ? nodePos : nodePos + 1;
-            return false;
-          }
-          return true;
-        });
-        if (oldAnchorPos !== null) removeNoteAnchor(entityId, oldAnchorPos);
-        if (newAnchorPos !== null) addNoteAnchor(entityId, newAnchorPos);
+        removeNoteParagraphId(entityId, oldParagraphId);
+        addNoteParagraphId(entityId, newParagraphId);
       } else if (type === "archive") {
         removeArchiveParagraphId(entityId, oldParagraphId);
         addArchiveParagraphId(entityId, newParagraphId);
@@ -1962,7 +1927,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [notes, addQuotationParagraphId, removeQuotationParagraphId, addNoteAnchor, removeNoteAnchor, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId]);
+  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -2558,8 +2523,8 @@ export default function EditorLayout() {
     };
   }, [prefs.activeLeft, prefs.activeRight]);
 
-  // Track editor doc version so we re-resolve note anchorPos → paragraphId
-  // whenever the document changes (paragraph positions/uuids may shift).
+  // Bump a version counter on editor updates so marginalia markers recompute
+  // (quotation/archive/todo markers depend on paragraph visibility metrics).
   const [editorDocVersion, setEditorDocVersion] = useState(0);
   useEffect(() => {
     if (!editorInstance) return;
@@ -2594,7 +2559,7 @@ export default function EditorLayout() {
     void editorDocVersion;
     const result: MarginaliaMarker[] = [];
 
-    // Quotation markers — one marker per paragraphId (multi-anchor)
+    // Quotation markers — one marker per paragraphId
     for (const g of quotationGroups) {
       if (g.paragraphIds.length === 0) continue;
       for (const pid of g.paragraphIds) {
@@ -2611,74 +2576,44 @@ export default function EditorLayout() {
       }
     }
 
-    // Note markers — one marker per anchorPosition (multi-anchor)
-    if (editorInstance) {
-      const doc = editorInstance.state.doc;
-      for (const n of notes) {
-        for (const anchorPos of n.anchorPositions) {
-          if (anchorPos < 0 || anchorPos > doc.content.size) continue;
-          const $pos = doc.resolve(Math.min(Math.max(anchorPos, 0), doc.content.size));
-          let paragraphId: string | null = null;
-          // Walk up ancestors (container nodes)
-          for (let depth = $pos.depth; depth >= 0; depth--) {
-            const ancestor = $pos.node(depth);
-            if (isAnchorableNode(ancestor.type)) {
-              paragraphId = (ancestor.attrs?.uuid as string | null) ?? null;
-              if (!paragraphId) {
-                paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
-              }
-              break;
-            }
-          }
-          // Atom block fallback
-          if (!paragraphId) {
-            const after = $pos.nodeAfter;
-            const before = $pos.nodeBefore;
-            if (after && isAnchorableAtom(after.type)) {
-              paragraphId = (after.attrs?.uuid as string | null) ?? null;
-              if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
-            } else if (before && isAnchorableAtom(before.type)) {
-              paragraphId = (before.attrs?.uuid as string | null) ?? null;
-              if (!paragraphId) paragraphId = editorRef.current?.ensureParagraphUuid(anchorPos) ?? null;
-            }
-          }
-          if (!paragraphId) continue;
-          const capturedAnchorPos = anchorPos;
-          result.push({
-            id: `${n.id}:${paragraphId}`,
-            entityId: n.id,
-            type: "note",
-            paragraphId,
-            selected: selectedNoteId === n.id,
-            title: "Note",
-            onClick: () => handleNoteMarkerClick(n.id),
-            onDelete: () => removeNoteAnchor(n.id, capturedAnchorPos),
-          });
-        }
-      }
-
-      // Archive markers — one marker per paragraphId (same pattern as quotations/todos)
-      for (const snippet of archiveSnippets) {
-        if (!snippet.paragraphIds || snippet.paragraphIds.length === 0) continue;
-        for (const pid of snippet.paragraphIds) {
-          result.push({
-            id: `${snippet.id}:${pid}`,
-            entityId: snippet.id,
-            type: "archive",
-            paragraphId: pid,
-            selected: selectedArchiveId === snippet.id,
-            title: "Archived snippet",
-            onClick: () => {
-              setSelectedArchiveId(snippet.id);
-              editorRef.current?.scrollToParagraphId(pid);
-            },
-            onDelete: () => removeArchiveParagraphId(snippet.id, pid),
-          });
-        }
+    // Note markers — one marker per paragraphId (same pattern as quotations)
+    for (const n of notes) {
+      if (n.paragraphIds.length === 0) continue;
+      for (const pid of n.paragraphIds) {
+        result.push({
+          id: `${n.id}:${pid}`,
+          entityId: n.id,
+          type: "note",
+          paragraphId: pid,
+          selected: selectedNoteId === n.id,
+          title: n.title || "Note",
+          onClick: () => handleNoteMarkerClick(n.id),
+          onDelete: () => removeNoteParagraphId(n.id, pid),
+        });
       }
     }
 
-    // Todo markers — one marker per paragraphId (same pattern as quotations)
+    // Archive markers — one marker per paragraphId
+    for (const snippet of archiveSnippets) {
+      if (!snippet.paragraphIds || snippet.paragraphIds.length === 0) continue;
+      for (const pid of snippet.paragraphIds) {
+        result.push({
+          id: `${snippet.id}:${pid}`,
+          entityId: snippet.id,
+          type: "archive",
+          paragraphId: pid,
+          selected: selectedArchiveId === snippet.id,
+          title: "Archived snippet",
+          onClick: () => {
+            setSelectedArchiveId(snippet.id);
+            editorRef.current?.scrollToParagraphId(pid);
+          },
+          onDelete: () => removeArchiveParagraphId(snippet.id, pid),
+        });
+      }
+    }
+
+    // Todo markers — one marker per paragraphId
     for (const item of todoItems) {
       if (!item.paragraphIds || item.paragraphIds.length === 0) continue;
       for (const pid of item.paragraphIds) {
@@ -2703,14 +2638,13 @@ export default function EditorLayout() {
     removeQuotationParagraphId,
     notes,
     selectedNoteId,
-    removeNoteAnchor,
+    removeNoteParagraphId,
     archiveSnippets,
     selectedArchiveId,
     removeArchiveParagraphId,
     todoItems,
     selectedTodoId,
     removeTodoParagraphId,
-    editorInstance,
     editorDocVersion,
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
@@ -2851,14 +2785,16 @@ export default function EditorLayout() {
       return (
         <NotesPanel
           notes={notes}
-          onAdd={addNote}
+          onAdd={() => {
+            const pid = editorRef.current?.ensureActiveParagraphUuid() ?? null;
+            return addNote(pid);
+          }}
           onUpdate={updateNote}
           onUpdateTitle={updateNoteTitle}
           onDelete={deleteNote}
           onSelectNote={setSelectedNoteId}
           selectedNoteId={selectedNoteId}
-          cursorPos={editorInstance?.state?.selection?.from ?? 0}
-          onScrollToPos={handleScrollToPos}
+          onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
           aiRequests={aiRequests}
@@ -3362,41 +3298,21 @@ export default function EditorLayout() {
           {openTabs.map((doc) => (
             <div
               key={doc.id}
-              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-1 pb-1 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
+              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
                 doc.id === currentDocId
                   ? "bg-[var(--background)] text-stone-800 border border-[var(--border)] border-b-[var(--background)] -mb-px z-10"
                   : "text-stone-500 hover:bg-white/30 hover:text-stone-700"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
-              {editingTabId === doc.id ? (
-                <input
-                  ref={nameInputRef}
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  onBlur={finishRename}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { e.preventDefault(); finishRename(); }
-                    if (e.key === "Escape") setEditingTabId(null);
-                  }}
-                  size={Math.max(1, nameInput.length)}
-                  className="text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 px-0"
-                  style={{ width: `${Math.max(20, nameInput.length * 7.5 + 8)}px` }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ) : (
-                <div
-                  className="flex flex-col cursor-text min-w-0"
-                  onClick={(e) => { e.stopPropagation(); openFile(doc.id); startRename(doc.id, doc.name); }}
-                >
-                  <span className="text-sm leading-tight truncate" title={doc.folderName}>
-                    {doc.folderName}
-                  </span>
-                  <span className="text-[10px] leading-tight text-stone-400 truncate" title={doc.texFilename}>
-                    {doc.texFilename}
-                  </span>
-                </div>
-              )}
+              <div className="flex flex-col min-w-0">
+                <span className="text-sm leading-none truncate pt-[1px]" title={doc.folderName}>
+                  {doc.folderName}
+                </span>
+                <span className="text-[10px] leading-none text-stone-400 truncate mt-[2px]" title={doc.texFilename}>
+                  {doc.texFilename}
+                </span>
+              </div>
               <button
                 onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
                 className="p-0.5 rounded text-stone-500 hover:text-stone-700 hover:bg-white/40 transition-all"

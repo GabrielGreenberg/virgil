@@ -155,8 +155,10 @@ export interface MarkerMeta {
 export interface AnchorNodeMetrics {
   /** Paragraph UUID */
   id: string;
-  /** Top offset (px) inside the editor's scroll container (first text line) */
+  /** Top of the first text line (px) — used for icon positioning in the grid */
   top: number;
+  /** Top of the full DOM element (px) — used for hit-testing in drop resolution */
+  domTop: number;
   /** Total height (px) of the node element */
   height: number;
   /** Computed line-height (px) of this specific node type */

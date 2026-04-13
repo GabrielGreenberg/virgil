@@ -216,7 +216,7 @@ export interface UserNote {
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;
-  anchorPositions: number[]; // document positions the note is tied to
+  paragraphIds: string[]; // paragraph UUIDs the note is anchored to
   createdAt: string;
 }
 

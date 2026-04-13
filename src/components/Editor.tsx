@@ -43,7 +43,7 @@ function resolveAnchorableNode(
   pos: number,
 ): { node: PMNode; nodePos: number } | null {
   const $pos = view.state.doc.resolve(pos);
-  // Walk up ancestors (works for container nodes)
+  // Walk up ancestors (works when cursor is inside an anchorable node)
   for (let depth = $pos.depth; depth >= 0; depth--) {
     const node = $pos.node(depth);
     if (isAnchorableNode(node.type)) {
@@ -51,11 +51,11 @@ function resolveAnchorableNode(
       return { node, nodePos };
     }
   }
-  // For atom blocks: posAtCoords lands before/after the atom
-  if ($pos.nodeAfter && isAnchorableAtom($pos.nodeAfter.type)) {
+  // Fallback: check adjacent nodes (e.g. pos 0 is before the first heading)
+  if ($pos.nodeAfter && isAnchorableNode($pos.nodeAfter.type)) {
     return { node: $pos.nodeAfter, nodePos: pos };
   }
-  if ($pos.nodeBefore && isAnchorableAtom($pos.nodeBefore.type)) {
+  if ($pos.nodeBefore && isAnchorableNode($pos.nodeBefore.type)) {
     return { node: $pos.nodeBefore, nodePos: pos - $pos.nodeBefore.nodeSize };
   }
   return null;
@@ -63,6 +63,7 @@ function resolveAnchorableNode(
 
 /**
  * Ensure the anchorable node at `pos` has a UUID. Assigns one if missing.
+ * Collects all existing UUIDs in the document to avoid collisions.
  * Returns the UUID or null if no anchorable node was found.
  */
 function ensureAnchorUuid(
@@ -73,7 +74,12 @@ function ensureAnchorUuid(
   if (!result) return null;
   const { node, nodePos } = result;
   if (node.attrs?.uuid) return node.attrs.uuid as string;
-  const newUuid = generateNodeUuid();
+  // Collect existing UUIDs to guarantee uniqueness
+  const existing = new Set<string>();
+  view.state.doc.descendants((n) => {
+    if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
+  });
+  const newUuid = generateNodeUuid(existing);
   try {
     const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
       ...node.attrs,
@@ -277,6 +283,32 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const p = document.createElement("p");
         wrapper.appendChild(p);
 
+        // 6-dot drag grip — positioned in left margin, shown on hover for paragraphs with text
+        const SVG_NS = "http://www.w3.org/2000/svg";
+        const dragHandle = document.createElement("div");
+        dragHandle.className = "par-drag-handle";
+        dragHandle.setAttribute("data-drag-handle", "");
+        dragHandle.draggable = true;
+        const svg = document.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("width", "14");
+        svg.setAttribute("height", "10");
+        svg.setAttribute("viewBox", "0 0 14 10");
+        svg.setAttribute("fill", "currentColor");
+        for (const [cx, cy] of [[2,3],[7,3],[12,3],[2,7],[7,7],[12,7]]) {
+          const c = document.createElementNS(SVG_NS, "circle");
+          c.setAttribute("cx", String(cx));
+          c.setAttribute("cy", String(cy));
+          c.setAttribute("r", "1.2");
+          svg.appendChild(c);
+        }
+        dragHandle.appendChild(svg);
+        wrapper.appendChild(dragHandle);
+        dragHandleEl = dragHandle;
+
+        // Hover detection is handled by editor-level mouseover delegation
+        // (see useEffect below) — per-wrapper listeners don't work reliably
+        // inside contentEditable.
+
         function setTitle(newTitle: string | null) {
           const pos = typeof getPos === "function" ? getPos() : null;
           if (pos != null) {
@@ -347,18 +379,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           const title = currentNode.attrs.parTitle as string | null;
           titleAnnot.innerHTML = "";
 
+          // Toggle has-text for drag handle visibility
+          const hasText = currentNode.textContent.trim().length > 0;
+          wrapper.classList.toggle("has-text", hasText);
+
           if (title) {
             wrapper.classList.add("has-title");
             wrapper.classList.remove("has-add-btn");
             titleAnnot.style.display = "block";
-
-            // Horizontal drag grip handle — revealed on hover over title band
-            const handle = document.createElement("span");
-            handle.className = "par-title-drag-handle";
-            handle.setAttribute("data-drag-handle", "");
-            handle.draggable = true;
-            titleAnnot.appendChild(handle);
-            dragHandleEl = handle;
 
             // Title text, then × delete button to its right
             const span = document.createElement("span");
@@ -374,10 +402,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             titleAnnot.appendChild(xBtn);
           } else {
             wrapper.classList.remove("has-title");
-            dragHandleEl = null;
 
-            // Only show +T if paragraph has real text content
-            const hasText = currentNode.textContent.trim().length > 0;
             if (hasText) {
               wrapper.classList.add("has-add-btn");
               titleAnnot.style.display = "block";
@@ -425,6 +450,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           ignoreMutation(mutation) {
             if (titleAnnot.contains(mutation.target)) return true;
             if (mutation.target === wrapper) return true;
+            if (dragHandle.contains(mutation.target)) return true;
             return false;
           },
           update(updatedNode) {
@@ -869,15 +895,22 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
+        // All paragraph-level anchor drags (notes, quotations, todos,
+        // marginalia moves) are handled exclusively by Marginalia.tsx,
+        // which uses the visible drop indicator to determine the target.
+        // Returning false tells ProseMirror to ignore the drop, letting
+        // the event bubble to the Marginalia scroll-container handler.
+        if (isAnchorDrag(event.dataTransfer)) return false;
+
         // --- Marginalia move (drag a gutter icon to a new paragraph) ---
         const margData = event.dataTransfer?.getData(MIME_MARGINALIA_MOVE);
         if (margData) {
-          event.preventDefault();
           try {
             const { type, entityId, currentParagraphId } = JSON.parse(margData);
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
-            if (!posResult) return true;
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
             const paragraphId = ensureAnchorUuid(view, posResult.pos);
             if (paragraphId && paragraphId !== currentParagraphId) {
               window.dispatchEvent(
@@ -893,13 +926,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // --- Quotation drop (from QuotationsPanel) ---
         const quotData = event.dataTransfer?.getData(MIME_QUOTATION);
         if (quotData) {
-          event.preventDefault();
           try {
             const { groupId } = JSON.parse(quotData);
             if (!groupId) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
-            if (!posResult) return true;
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
             const paragraphId = ensureAnchorUuid(view, posResult.pos);
             if (paragraphId) {
               window.dispatchEvent(
@@ -1027,62 +1060,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
 
         // --- Note drop (from NotesPanel) ---
-        // Inserts the note's body inline at the drop point. The note still
-        // exists in the side panel — this is a "stamp it into the text" copy.
-        // Holding Shift while dropping preserves the legacy "re-anchor only"
-        // behavior for users who relied on it.
+        // Anchors the note to the paragraph at the drop point.
         const noteData = event.dataTransfer?.getData(MIME_NOTE);
         if (noteData) {
-          event.preventDefault();
           try {
-            const parsed = JSON.parse(noteData);
-            const { noteId, content } = parsed;
+            const { noteId } = JSON.parse(noteData);
             if (!noteId) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
-            if (!posResult) return true;
-
-            // Ensure the drop target has a UUID for marginalia anchoring
-            ensureAnchorUuid(view, posResult.pos);
-
-            const reanchorOnly = event.shiftKey;
-            if (!reanchorOnly && content) {
-              // Insert the note body inline. The content is a JSONContent doc;
-              // pull out its inline children so we don't drop a fresh paragraph
-              // boundary in the middle of the target paragraph. Paragraphs in
-              // the source become space-separated runs.
-              try {
-                const inlineJson: TipJSON[] = [];
-                const walk = (n: TipJSON | undefined) => {
-                  if (!n) return;
-                  if (n.type === "paragraph") {
-                    if (inlineJson.length > 0) inlineJson.push({ type: "text", text: " " });
-                    (n.content || []).forEach((c) => inlineJson.push(c));
-                    return;
-                  }
-                  if (n.content) n.content.forEach(walk);
-                };
-                walk(content as TipJSON);
-                if (inlineJson.length > 0) {
-                  const pmNodes = inlineJson
-                    .map((j) => {
-                      try { return PMNode.fromJSON(view.state.schema, j); }
-                      catch { return null; }
-                    })
-                    .filter(Boolean) as PMNode[];
-                  if (pmNodes.length > 0) {
-                    const tr = view.state.tr.insert(posResult.pos, pmNodes);
-                    view.dispatch(tr);
-                  }
-                }
-              } catch { /* fall through to anchor-only */ }
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
+            if (paragraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-note-drop", {
+                  detail: { noteId, paragraphId },
+                })
+              );
             }
-
-            window.dispatchEvent(
-              new CustomEvent("virgil-note-drop", {
-                detail: { noteId, anchorPos: posResult.pos, inserted: !reanchorOnly && !!content },
-              })
-            );
           } catch { /* ignore bad data */ }
           return true;
         }
@@ -1090,13 +1085,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // --- Todo drop (from TodoPanel) ---
         const todoData = event.dataTransfer?.getData(MIME_TODO);
         if (todoData) {
-          event.preventDefault();
           try {
             const { todoId } = JSON.parse(todoData);
             if (!todoId) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
-            if (!posResult) return true;
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
             const paragraphId = ensureAnchorUuid(view, posResult.pos);
             if (paragraphId) {
               window.dispatchEvent(
@@ -1196,6 +1191,31 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   useEffect(() => {
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
+
+  // Paragraph drag-handle hover: delegate from the editor root so that hover
+  // detection works reliably inside contentEditable (CSS :hover and per-wrapper
+  // mouseenter/mouseleave are unreliable when the target is an editable <p>).
+  useEffect(() => {
+    const dom = editor?.view?.dom;
+    if (!dom) return;
+    let prev: Element | null = null;
+    const onOver = (e: Event) => {
+      const target = e.target as HTMLElement;
+      const wrapper = target.closest?.(".par-title-wrapper");
+      if (wrapper === prev) return;
+      if (prev) prev.classList.remove("hovered");
+      if (wrapper && wrapper.classList.contains("has-text")) {
+        wrapper.classList.add("hovered");
+      }
+      prev = wrapper;
+    };
+    const onLeave = () => {
+      if (prev) { prev.classList.remove("hovered"); prev = null; }
+    };
+    dom.addEventListener("mouseover", onOver);
+    dom.addEventListener("mouseleave", onLeave);
+    return () => { dom.removeEventListener("mouseover", onOver); dom.removeEventListener("mouseleave", onLeave); };
+  }, [editor]);
 
   useImperativeHandle(ref, () => ({
     replaceText(oldText: string, newText: string): boolean {
