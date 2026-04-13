@@ -27,6 +27,7 @@ import {
   MIME_FOOTNOTE,
   MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
+  isAnchorDrag,
 } from "@/lib/marginalia";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
