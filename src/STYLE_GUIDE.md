@@ -74,6 +74,7 @@ here — panels pass content-specific data, not styling.
 | `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
 | `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
 | `inlineDelete` | [x] button in header instead of three-dot menu |
+| `orphaned` | Adds `border-dashed` to card wrapper for unanchored items |
 | `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
 
 ### Selection states
@@ -90,6 +91,17 @@ here — panels pass content-specific data, not styling.
 | `BadgeOrphaned` | Unanchored badge: local-color square with corner-to-corner cross, 60% opacity |
 | `CardTitleInput` | Par-title styled input (`--par-title-color`, `0.78rem`, weight 500, sans-serif) |
 | `CardTargetIcon` | Page-with-arrow icon: full opacity when selected, 60% when unselected, 30% when disabled |
+
+### Unanchored (orphaned) cards
+When an item has no paragraph anchor (`paragraphIds` is empty), use this
+three-part pattern — all centralized via EditableCard and shared primitives:
+1. **`orphaned` prop on EditableCard** — adds `border-dashed` to the wrapper
+2. **`BadgeOrphaned` as the badge** — the panel passes this instead of `BadgeLabel`
+3. **`CardTargetIcon` with `disabled`** — greyed-out, non-clickable jump icon
+
+Panels detect orphaned state from their data (`paragraphIds.length === 0`)
+and pass the appropriate props. TodoRow (which doesn't use EditableCard)
+applies `border-dashed` directly and swaps `BadgeLabel`/`BadgeOrphaned`.
 
 ### Card themes (`CARD_THEMES`)
 Each theme provides: `cardClass`, `separatorSelected`, `headerSelected`,

@@ -46,17 +46,6 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
       <PanelHeader title="Word Count" />
 
       <div className={PANEL.list}>
-        {/* Selection counts */}
-        <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
-            Selection
-          </div>
-          <div className="flex gap-6">
-            <Stat label="Words" value={selection?.words ?? 0} />
-            <Stat label="Characters" value={selection?.characters ?? 0} />
-          </div>
-        </div>
-
         {/* Total stats */}
         <div className="px-4 py-4">
           <div className="flex justify-between gap-3">
@@ -68,6 +57,17 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
             <span className="text-[11px] text-[var(--muted)]">
               ~{filteredReadingTime} read
             </span>
+          </div>
+        </div>
+
+        {/* Selection counts */}
+        <div className="rounded-lg border border-[var(--accent)]/30 bg-[var(--accent-light)] px-4 py-3">
+          <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
+            Selection
+          </div>
+          <div className="flex gap-6">
+            <Stat label="Words" value={selection?.words ?? 0} />
+            <Stat label="Characters" value={selection?.characters ?? 0} />
           </div>
         </div>
 
@@ -89,22 +89,30 @@ export default function WordCountPanel({ counts, selection }: WordCountPanelProp
                 <button
                   key={cat}
                   onClick={() => toggleCat(cat)}
-                  className={`w-full flex items-center justify-between px-4 py-2 transition-colors hover:bg-stone-50 ${
+                  className={`w-full flex items-center gap-2.5 px-4 py-2 transition-colors hover:bg-stone-50 ${
                     i < catsWithWords.length - 1 ? "border-b border-stone-50" : ""
                   }`}
-                  title={included ? `Click to exclude ${CATEGORY_LABELS[cat]} from total` : `Click to include ${CATEGORY_LABELS[cat]} in total`}
+                  title={included ? `Exclude ${CATEGORY_LABELS[cat]} from total` : `Include ${CATEGORY_LABELS[cat]} in total`}
                 >
-                  <span className={`text-xs ${included ? "text-stone-600" : "text-stone-300 line-through"}`}>
+                  {/* Checkbox */}
+                  {included ? (
+                    <svg className="shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <rect x="1" y="1" width="14" height="14" rx="3" fill="var(--accent)" stroke="var(--accent)" strokeWidth="1.5" />
+                      <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  ) : (
+                    <svg className="shrink-0" width="14" height="14" viewBox="0 0 16 16" fill="none">
+                      <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+                    </svg>
+                  )}
+                  <span className={`text-xs flex-1 text-left ${included ? "text-stone-600" : "text-stone-400"}`}>
                     {CATEGORY_LABELS[cat]}
                   </span>
-                  <span className={`text-xs tabular-nums flex items-center gap-2 ${included ? "text-stone-800" : "text-stone-300"}`}>
+                  <span className={`text-xs tabular-nums ${included ? "text-stone-800" : "text-stone-300"}`}>
                     {wc}
-                    {included && (
-                      <span className="text-[10px] text-[var(--muted)] w-8 text-right">{pct}%</span>
-                    )}
-                    {!included && (
-                      <span className="text-[10px] text-stone-300 w-8 text-right">off</span>
-                    )}
+                  </span>
+                  <span className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-stone-300"}`}>
+                    {included ? `${pct}%` : "off"}
                   </span>
                 </button>
               );

@@ -273,6 +273,11 @@ export interface EditableCardProps {
   hideToolbar?: boolean;
   /** Show an [x] delete button in the body area instead of the three-dot menu in the header. */
   inlineDelete?: boolean;
+  /** When true, the card gets a dashed border to indicate it is not anchored
+   *  in the document. Panels should pass the appropriate badge (BadgeOrphaned)
+   *  and a disabled CardTargetIcon separately — this prop only controls the
+   *  card wrapper styling. */
+  orphaned?: boolean;
   /** Called when the RichTextField gains focus (e.g. for focus-to-select behaviour). */
   onBodyFocus?: () => void;
   /** Called with the Tiptap editor instance when RichTextField gains focus (for main toolbar routing). */
@@ -294,7 +299,7 @@ export function EditableCard({
   value, variant, placeholder, muted,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
-  grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus,
+  grabHandle, hideToolbar, inlineDelete, orphaned, onBodyFocus, onEditorFocus,
 }: EditableCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
@@ -369,7 +374,7 @@ export function EditableCard({
       tabIndex={selected ? 0 : -1}
       onKeyDown={handleKeyDown}
       onFocusCapture={() => { if (!selected && onClick) onClick(); }}
-      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${orphaned ? " border-dashed" : ""}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
     >

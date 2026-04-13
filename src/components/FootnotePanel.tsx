@@ -210,7 +210,8 @@ export function OrphanedFootnoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: orphan.footnoteId }}
       extraDataAttrs={extraDataAttrs}
-      wrapperClassName={`border-dashed${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      orphaned
+      wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
     />
   );

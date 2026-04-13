@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { CARD_THEMES, PANEL, PanelHeader, BadgeLabel, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { CARD_THEMES, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -64,23 +64,25 @@ function TodoRow({
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
   }, [notes, item.notes, item.id, onUpdateNotes]);
 
+  /** Anchor-only drag — do NOT set text/plain here; ProseMirror's default
+   *  drop handler would insert it as inline text when handleDrop returns
+   *  false for anchor drags. */
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
       e.stopPropagation();
       e.dataTransfer.effectAllowed = "link";
       e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
-      e.dataTransfer.setData("text/plain", item.text);
       if (cardRef.current) {
         e.dataTransfer.setDragImage(cardRef.current, 20, -10);
       }
     },
-    [item.id, item.text],
+    [item.id],
   );
 
   return (
     <div
       ref={cardRef}
-      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none`}
+      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none${!isAnchored ? " border-dashed" : ""}`}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
       onKeyDown={(e) => {
@@ -112,7 +114,10 @@ function TodoRow({
         </div>
 
         {/* Badge */}
-        <BadgeLabel label="T" theme={theme} />
+        {isAnchored
+          ? <BadgeLabel label="T" theme={theme} />
+          : <BadgeOrphaned theme={theme} />
+        }
 
         {/* Checkbox */}
         <button

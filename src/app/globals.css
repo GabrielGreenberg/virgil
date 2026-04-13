@@ -266,16 +266,24 @@ body {
   height: 100%;
 }
 
-/* 6-dot drag grip — absolutely positioned in left margin, shown on hover */
+/* Container for paragraph body + drag handle. The handle is positioned
+   relative to this container so it aligns with the first text line,
+   not the title annotation above. */
+.par-body-container {
+  position: relative;
+}
+
+/* 6-dot drag grip — vertical orientation, positioned just left of paragraph text.
+   Sticks slightly into the margin gutter but stays clear of marginalia icons. */
 .par-drag-handle {
   position: absolute;
-  left: -24px;
-  top: 2px;
+  left: -14px;
+  top: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 16px;
+  width: 12px;
+  height: 20px;
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s;
@@ -292,10 +300,18 @@ body {
   cursor: grabbing;
 }
 
-.par-title-wrapper.has-text.hovered > .par-drag-handle,
-.par-title-wrapper.has-text:hover > .par-drag-handle {
+.par-title-wrapper.has-text.hovered .par-drag-handle,
+.par-title-wrapper.has-text:hover .par-drag-handle {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Card outline when dragging a paragraph via its grip handle */
+.par-title-wrapper.dragging {
+  outline: 1.5px solid var(--border, #d6d3d1);
+  outline-offset: 4px;
+  border-radius: 6px;
+  background: var(--background, #fff);
 }
 
 /* Input field for editing title */

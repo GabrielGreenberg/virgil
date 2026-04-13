@@ -851,6 +851,7 @@ export default function EditorLayout() {
     snippets: archiveSnippets,
     archiveContent,
     updateSnippet: updateArchiveSnippet,
+    updateSnippetTitle: updateArchiveSnippetTitle,
     addParagraphId: addArchiveParagraphId,
     removeParagraphId: removeArchiveParagraphId,
     restoreSnippet,
@@ -2785,10 +2786,7 @@ export default function EditorLayout() {
       return (
         <NotesPanel
           notes={notes}
-          onAdd={() => {
-            const pid = editorRef.current?.ensureActiveParagraphUuid() ?? null;
-            return addNote(pid);
-          }}
+          onAdd={() => addNote(null)}
           onUpdate={updateNote}
           onUpdateTitle={updateNoteTitle}
           onDelete={deleteNote}
@@ -2838,6 +2836,7 @@ export default function EditorLayout() {
           selectedId={selectedArchiveId}
           onSelect={setSelectedArchiveId}
           onEdit={(id, content) => updateArchiveSnippet(id, content)}
+          onUpdateTitle={updateArchiveSnippetTitle}
           onInsert={handleInsertArchive}
           onRestore={handleRestoreArchive}
           onDelete={handleDeleteArchive}

@@ -280,22 +280,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         titleAnnot.contentEditable = "false";
         wrapper.appendChild(titleAnnot);
 
-        // Paragraph content
+        // Paragraph content — wrapped in a relative container so the drag
+        // handle can be positioned next to the first text line, not the title.
+        const pContainer = document.createElement("div");
+        pContainer.className = "par-body-container";
         const p = document.createElement("p");
-        wrapper.appendChild(p);
+        pContainer.appendChild(p);
 
-        // 6-dot drag grip — positioned in left margin, shown on hover for paragraphs with text
+        // 6-dot drag grip — vertical orientation, positioned just left of paragraph text
         const SVG_NS = "http://www.w3.org/2000/svg";
         const dragHandle = document.createElement("div");
         dragHandle.className = "par-drag-handle";
         dragHandle.setAttribute("data-drag-handle", "");
         dragHandle.draggable = true;
         const svg = document.createElementNS(SVG_NS, "svg");
-        svg.setAttribute("width", "14");
-        svg.setAttribute("height", "10");
-        svg.setAttribute("viewBox", "0 0 14 10");
+        svg.setAttribute("width", "10");
+        svg.setAttribute("height", "14");
+        svg.setAttribute("viewBox", "0 0 10 14");
         svg.setAttribute("fill", "currentColor");
-        for (const [cx, cy] of [[2,3],[7,3],[12,3],[2,7],[7,7],[12,7]]) {
+        for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
           const c = document.createElementNS(SVG_NS, "circle");
           c.setAttribute("cx", String(cx));
           c.setAttribute("cy", String(cy));
@@ -303,8 +306,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           svg.appendChild(c);
         }
         dragHandle.appendChild(svg);
-        wrapper.appendChild(dragHandle);
+        pContainer.appendChild(dragHandle);
+        wrapper.appendChild(pContainer);
         dragHandleEl = dragHandle;
+
+        // Card outline on mousedown (not dragstart) for immediate feedback
+        dragHandle.addEventListener("mousedown", () => {
+          wrapper.classList.add("dragging");
+        });
+        dragHandle.addEventListener("dragend", () => {
+          wrapper.classList.remove("dragging");
+        });
+        dragHandle.addEventListener("mouseup", () => {
+          wrapper.classList.remove("dragging");
+        });
 
         // Hover detection is handled by editor-level mouseover delegation
         // (see useEffect below) — per-wrapper listeners don't work reliably
@@ -869,6 +884,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // gutter icons don't overlap the text column.
         class:
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-20 py-10",
+      },
+      handleDOMEvents: {
+        // Only allow node drags that originate from an explicit drag handle.
+        // ProseMirror's `draggable: true` on paragraph nodes otherwise lets
+        // drags start from margin/padding areas of the wrapper, causing
+        // inadvertent paragraph moves.
+        dragstart(view, event) {
+          const target = event.target as HTMLElement;
+          if (target.closest("[data-drag-handle]")) return false; // allow
+          // If the drag started on the paragraph wrapper but NOT inside
+          // the content <p> or a drag handle, it's an inadvertent node
+          // drag from margins/padding — cancel it.
+          const nodeView = target.closest(".par-title-wrapper");
+          if (nodeView && !target.closest("p")) {
+            event.preventDefault();
+            return true; // handled — suppress
+          }
+          return false;
+        },
       },
       handleDrop(view, event) {
         // --- AI request marker drop (from any panel's AiRequestCard) ---

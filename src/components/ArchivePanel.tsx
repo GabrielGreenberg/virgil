@@ -5,7 +5,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTargetIcon, TargetIcon, useCycle, startTextDrag } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, panelCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -17,6 +17,7 @@ interface ArchivePanelProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onEdit: (id: string, content: JSONContent) => void;
+  onUpdateTitle: (id: string, title: string) => void;
   onInsert: (id: string) => void;
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
@@ -136,6 +137,7 @@ function ArchivePanel({
   selectedId,
   onSelect,
   onEdit,
+  onUpdateTitle,
   onInsert,
   onRestore,
   onDelete,
@@ -304,7 +306,7 @@ function ArchivePanel({
                   ? <BadgeOrphaned theme={CARD_THEMES.archive} />
                   : <BadgeLabel label="A" theme={CARD_THEMES.archive} />
                 }
-                headerContent={<span className="flex-1 min-w-0" />}
+                headerContent={<CardTitleInput defaultValue={s.title} onChange={(t) => onUpdateTitle(s.id, t)} theme={CARD_THEMES.archive} />}
                 headerTrailing={
                   isAnchored && onScrollToMarker
                     ? <CardTargetIcon selected={isSelected} onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
@@ -332,7 +334,7 @@ function ArchivePanel({
                   />
                 }
                 dataAttr={{ name: "archive-entry", value: s.id }}
-                wrapperClassName={orphaned ? "border-dashed" : undefined}
+                orphaned={orphaned}
               />
             );
           })

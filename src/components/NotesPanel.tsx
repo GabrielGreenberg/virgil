@@ -3,7 +3,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE } from "@/lib/marginalia";
 
@@ -30,13 +30,14 @@ interface NotesPanelProps {
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
 
-/** Top grab bar: anchor-only drag (no inline text insertion). */
+/** Top grab bar: anchor-only drag (no inline text insertion).
+ *  NOTE: Do NOT set text/plain here — ProseMirror's default drop handler
+ *  would insert it as inline text when the Editor's handleDrop returns false
+ *  for anchor drags. */
 function startNoteDrag(
   e: React.DragEvent,
   noteId: string,
-  title: string,
 ) {
-  e.dataTransfer.setData("text/plain", title || "Note");
   e.dataTransfer.setData(
     "application/x-virgil-note",
     JSON.stringify({ noteId }),
@@ -84,6 +85,8 @@ function NoteCard({
     [note.id, onUpdate]
   );
 
+  const isOrphaned = note.paragraphIds.length === 0;
+
   return (
     <EditableCard
       id={note.id}
@@ -92,12 +95,19 @@ function NoteCard({
       grabHandle
       hideToolbar
       inlineDelete
+      orphaned={isOrphaned}
       onEditorFocus={onEditorFocus}
-      badge={<BadgeLabel label="N" theme={CARD_THEMES.note} />}
+      badge={isOrphaned
+        ? <BadgeOrphaned theme={CARD_THEMES.note} />
+        : <BadgeLabel label="N" theme={CARD_THEMES.note} />
+      }
       headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} theme={CARD_THEMES.note} />}
-      headerTrailing={onJump ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" /> : undefined}
+      headerTrailing={onJump
+        ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" />
+        : <CardTargetIcon selected={false} disabled onClick={() => {}} />
+      }
       onClick={() => onSelect(selected ? null : note.id)}
-      onDragStart={(e) => startNoteDrag(e, note.id, note.title)}
+      onDragStart={(e) => startNoteDrag(e, note.id)}
       onTextDragStart={(e) => startTextDrag(e, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
       value={note.content}

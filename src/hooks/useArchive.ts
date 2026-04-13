@@ -20,10 +20,12 @@ function migrateSnippets(snippets: ArchivedSnippet[]): ArchivedSnippet[] {
     const legacy = s as ArchivedSnippet & { text?: string };
     const needsTextMigration = legacy.text != null && s.content == null;
     const needsParagraphIds = !Array.isArray(s.paragraphIds);
-    if (needsTextMigration || needsParagraphIds) {
+    const needsTitle = typeof s.title !== "string";
+    if (needsTextMigration || needsParagraphIds || needsTitle) {
       changed = true;
       return {
         id: s.id,
+        title: typeof s.title === "string" ? s.title : "",
         content: needsTextMigration ? normalizeRichContent(legacy.text!) : s.content,
         createdAt: s.createdAt,
         paragraphIds: Array.isArray(s.paragraphIds) ? s.paragraphIds : [],
@@ -71,6 +73,7 @@ export function useArchive(docId: string | null) {
   const archiveContent = useCallback((content: unknown): ArchivedSnippet => {
     const snippet: ArchivedSnippet = {
       id: generateEntityId(),
+      title: "",
       content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
       paragraphIds: [],
@@ -88,6 +91,18 @@ export function useArchive(docId: string | null) {
       const next = {
         snippets: prev.snippets.map((s) =>
           s.id === id ? { ...s, content: normalizeRichContent(content) } : s
+        ),
+      };
+      persist(next);
+      return next;
+    });
+  }, [persist]);
+
+  const updateSnippetTitle = useCallback((id: string, title: string) => {
+    setState((prev) => {
+      const next = {
+        snippets: prev.snippets.map((s) =>
+          s.id === id ? { ...s, title } : s
         ),
       };
       persist(next);
@@ -148,6 +163,7 @@ export function useArchive(docId: string | null) {
     snippets: state.snippets,
     archiveContent,
     updateSnippet,
+    updateSnippetTitle,
     addParagraphId,
     removeParagraphId,
     restoreSnippet,
