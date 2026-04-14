@@ -556,9 +556,9 @@ body {
   gap: 3px;
   font-size: 0.78em;
   line-height: 1.2;
-  color: var(--ai-marker-text, #92400e);
-  background: rgba(254, 243, 199, 0.6);
-  border: 1px solid var(--ai-marker-border, #fcd34d);
+  color: var(--ai-marker-text, #0c4a6e);
+  background: rgba(224, 242, 254, 0.6);
+  border: 1px solid var(--ai-marker-border, #7dd3fc);
   border-radius: 4px;
   padding: 1px 5px 1px 4px;
   margin: 0 1px;
@@ -570,13 +570,13 @@ body {
 }
 
 .ai-request-marker:hover {
-  background: rgba(254, 243, 199, 0.95);
-  border-color: #f59e0b;
+  background: rgba(224, 242, 254, 0.95);
+  border-color: #38bdf8;
 }
 
 .ai-request-marker-star {
   font-size: 0.85em;
-  color: #d97706;
+  color: #0ea5e9;
   line-height: 1;
 }
 

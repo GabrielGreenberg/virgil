@@ -3,6 +3,8 @@
 import { memo, useState, useRef, useEffect, useCallback } from "react";
 import { Editor } from "@tiptap/react";
 
+export type MarginaliaType = "quote" | "note" | "archive" | "todo";
+
 interface MenuBarProps {
   editor: Editor | null;
   onAddComment?: () => void;
@@ -17,6 +19,10 @@ interface MenuBarProps {
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
   activeSplitPane?: "top" | "bottom";
+  showMarginalia: boolean;
+  onToggleMarginalia: () => void;
+  hiddenMarginaliaTypes: Set<MarginaliaType>;
+  onToggleMarginaliaType: (type: MarginaliaType) => void;
 }
 
 function Btn({
@@ -120,7 +126,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -368,6 +374,27 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                 <span>% comments</span>
                 <span className="text-[var(--accent)]">{showLatexComments ? "\u2713" : ""}</span>
               </button>
+              <button
+                onClick={() => onToggleMarginalia()}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+              >
+                <span>Show marginalia</span>
+                <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
+              </button>
+              {showMarginalia && (
+                <>
+                  {(["quote", "note", "archive", "todo"] as const).map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => onToggleMarginaliaType(type)}
+                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                    >
+                      <span>{type === "quote" ? "Quotations" : type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}</span>
+                      <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
+                    </button>
+                  ))}
+                </>
+              )}
               <div className="my-1 border-t border-stone-200" />
               <button
                 onClick={() => { onOpenPreferences?.(); setViewMenuOpen(false); }}

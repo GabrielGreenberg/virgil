@@ -321,13 +321,6 @@ const QuoteEntry = memo(function QuoteEntry({
 
   const handleDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // Don't initiate a drag when the user is interacting with a form
-      // control (textarea/input/button) inside the pod
-      const target = e.target as HTMLElement;
-      if (target.closest("input, textarea, button")) {
-        e.preventDefault();
-        return;
-      }
       // Stop propagation so the enclosing group card's drag handler
       // (which drops a paragraph anchor) doesn't also fire
       e.stopPropagation();
@@ -347,15 +340,37 @@ const QuoteEntry = memo(function QuoteEntry({
     [text, citeKey, page, bibPackage],
   );
 
+  const podRef = useRef<HTMLDivElement>(null);
+
   return (
     <div
-      className={`group/card ${PANEL.subpodWhite} p-3 cursor-grab active:cursor-grabbing`}
-      draggable
-      onDragStart={handleDragStart}
-      title="Drag to insert quote with citation"
+      ref={podRef}
+      className={`group/card ${PANEL.subpodWhite} p-3`}
+      title="Drag handle to insert quote with citation"
     >
       {/* Quote text */}
       <div className="flex items-start gap-2">
+        <div
+          draggable
+          onDragStart={(e) => {
+            handleDragStart(e);
+            if (podRef.current) {
+              e.dataTransfer.setDragImage(podRef.current, 20, -10);
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-stone-300 group-hover/card:text-stone-500 transition-colors shrink-0"
+          title="Drag quote into document"
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2" />
+            <circle cx="7" cy="2" r="1.2" />
+            <circle cx="3" cy="7" r="1.2" />
+            <circle cx="7" cy="7" r="1.2" />
+            <circle cx="3" cy="12" r="1.2" />
+            <circle cx="7" cy="12" r="1.2" />
+          </svg>
+        </div>
         <div className="flex-1 min-w-0">
           <AutoTextarea
             value={text}
@@ -658,51 +673,105 @@ export function QuotationGroupCard({
     [group.id, group.references]
   );
 
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const tryDelete = useCallback(() => {
+    setConfirmOpen(true);
+  }, []);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!selected) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        const el = document.activeElement;
+        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable)) return;
+        e.preventDefault();
+        tryDelete();
+      }
+    },
+    [selected, tryDelete],
+  );
+
   return (
     <div
-      className={`group/card ${panelCard(selected)}`}
-      onClick={onSelect}
+      ref={cardRef}
+      className={`group ${panelCard(selected)} focus:outline-none`}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
       data-quotation-group-id={group.id}
+      tabIndex={selected ? 0 : -1}
+      onFocusCapture={() => { if (!selected) onSelect(); }}
+      onKeyDown={handleKeyDown}
     >
-      <div className={PANEL.cardInner}>
-        {/* Group title — one big title for the whole group */}
-        <div className="flex items-start justify-between gap-2 mb-3">
-          {/* Drag handle — card-level anchor drag (marginalia) */}
-          <div
-            draggable
-            onDragStart={handleDragStart}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-1 -ml-1 mt-0.5 rounded text-stone-400 hover:text-stone-600 transition-colors shrink-0"
-            title="Drag to anchor to paragraph"
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="Group title..."
-            className="flex-1 text-base font-semibold text-stone-800 bg-transparent outline-none placeholder:text-stone-300 placeholder:font-normal border-b border-transparent focus:border-stone-200 pb-0.5"
-          />
-          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            {selected && onJump && (
-              <TargetIcon onClick={onJump} title="Jump to quotation in text" />
-            )}
-            <DeleteXButton
-              onConfirm={onDelete}
-              label="Delete this quotation group?"
-            />
-          </div>
+      {/* Header */}
+      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? " bg-amber-50/60" : ""}`}>
+        {/* Grab handle — card-level anchor drag (marginalia) */}
+        <div
+          draggable
+          onDragStart={(e) => {
+            handleDragStart(e);
+            if (cardRef.current) {
+              e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+            }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+          title="Drag to anchor to paragraph"
+        >
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+            <circle cx="3" cy="2" r="1.2" />
+            <circle cx="7" cy="2" r="1.2" />
+            <circle cx="3" cy="7" r="1.2" />
+            <circle cx="7" cy="7" r="1.2" />
+            <circle cx="3" cy="12" r="1.2" />
+            <circle cx="7" cy="12" r="1.2" />
+          </svg>
         </div>
+        <input
+          type="text"
+          value={title}
+          onChange={handleTitleChange}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          placeholder="Group title..."
+          className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-stone-400 placeholder:font-normal"
+          style={{ fontSize: "var(--par-title-size, 0.78rem)", color: "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
+        />
+        {/* Inline delete */}
+        <button
+          onClick={(e) => { e.stopPropagation(); tryDelete(); }}
+          onMouseDown={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+          title="Delete"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+        <ConfirmDialog
+          open={confirmOpen}
+          message="Delete this quotation group?"
+          confirmLabel="Delete"
+          tone="danger"
+          anchorRef={cardRef}
+          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+        {onJump && (
+          <TargetIcon onClick={onJump} title="Jump to quotation in text" />
+        )}
+      </div>
 
+      {/* Separator */}
+      <div className={`border-t transition-colors ${selected ? "border-amber-200" : "border-stone-200 group-hover:border-stone-300"}`} />
+
+      {/* Body */}
+      <div className="relative px-3 pt-1.5 pb-2">
         {/* References — flat, separated by a thin divider when multiple */}
         <div
           className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"

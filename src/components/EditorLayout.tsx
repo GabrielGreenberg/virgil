@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
-import MenuBar from "./MenuBar";
+import MenuBar, { type MarginaliaType } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
@@ -46,7 +46,7 @@ import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
 import SearchPanel from "./SearchPanel";
-import OmniViewPanel, { type OmniItem, OMNI_SIDE_CATEGORIES } from "./OmniViewPanel";
+import OmniViewPanel, { type OmniItem, type OmniCategory, PANEL_TO_CATEGORY, DEFAULT_OMNI_CATEGORIES } from "./OmniViewPanel";
 import { CitationCard } from "./CitationsPanel";
 import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
 import { QuotationGroupCard } from "./QuotationsPanel";
@@ -950,6 +950,34 @@ export default function EditorLayout() {
   const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
+
+  // Marginalia visibility — persisted
+  const [showMarginalia, setShowMarginalia] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { const v = localStorage.getItem("virgil-show-marginalia"); return v !== "false"; } catch { return true; }
+  });
+  const [hiddenMarginaliaTypes, setHiddenMarginaliaTypes] = useState<Set<MarginaliaType>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = localStorage.getItem("virgil-hidden-marginalia-types");
+      return raw ? new Set(JSON.parse(raw) as MarginaliaType[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const toggleMarginalia = useCallback(() => {
+    setShowMarginalia((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("virgil-show-marginalia", String(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const toggleMarginaliaType = useCallback((type: MarginaliaType) => {
+    setHiddenMarginaliaTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(type)) next.delete(type); else next.add(type);
+      try { localStorage.setItem("virgil-hidden-marginalia-types", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const aiDot = useMemo(() => aiRequestDotStatus({
@@ -1000,6 +1028,45 @@ export default function EditorLayout() {
     });
   }, []);
 
+  // Persisted omni-view category preferences per side
+  const [omniCategories, setOmniCategories] = useState<Record<"left" | "right", OmniCategory[]>>(() => {
+    if (typeof window === "undefined") return DEFAULT_OMNI_CATEGORIES;
+    try {
+      const raw = localStorage.getItem("virgil-omni-categories");
+      if (!raw) return DEFAULT_OMNI_CATEGORIES;
+      const parsed = JSON.parse(raw);
+      return {
+        left: Array.isArray(parsed.left) ? parsed.left : DEFAULT_OMNI_CATEGORIES.left,
+        right: Array.isArray(parsed.right) ? parsed.right : DEFAULT_OMNI_CATEGORIES.right,
+      };
+    } catch { return DEFAULT_OMNI_CATEGORIES; }
+  });
+  const getOmniEnabled = useCallback((side: "left" | "right") => new Set(omniCategories[side]), [omniCategories]);
+  const toggleOmniCategory = useCallback((side: "left" | "right", cat: OmniCategory) => {
+    setOmniCategories((prev) => {
+      const list = prev[side];
+      const next = list.includes(cat) ? list.filter((c) => c !== cat) : [...list, cat];
+      const updated = { ...prev, [side]: next };
+      try { localStorage.setItem("virgil-omni-categories", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  // Derive which strip side each category's native panel lives on
+  const categorySides = useMemo(() => {
+    const result = {} as Record<OmniCategory, "left" | "right">;
+    for (const p of prefs.placements) {
+      const cat = PANEL_TO_CATEGORY[p.id];
+      if (cat) result[cat] = p.side;
+    }
+    // Ensure all categories have a side (fallback to defaults)
+    for (const [, cat] of Object.entries(PANEL_TO_CATEGORY)) {
+      if (!(cat in result)) {
+        result[cat] = DEFAULT_OMNI_CATEGORIES.left.includes(cat) ? "left" : "right";
+      }
+    }
+    return result;
+  }, [prefs.placements]);
 
   // Inject editor preferences as CSS custom properties (with global transforms)
   useEffect(() => {
@@ -2684,8 +2751,16 @@ export default function EditorLayout() {
     handleTodoMarkerClick,
   ]);
 
+  // Filter marginalia by visibility settings
+  const visibleMarginaliaMarkers = useMemo(() => {
+    if (!showMarginalia) return [];
+    if (hiddenMarginaliaTypes.size === 0) return marginaliaMarkers;
+    return marginaliaMarkers.filter((m) => !hiddenMarginaliaTypes.has(m.type as MarginaliaType));
+  }, [marginaliaMarkers, showMarginalia, hiddenMarginaliaTypes]);
+
   // Compute the set of paragraph UUIDs that have marginalia anchored to them,
   // used by MarginaliaAnchorGuard to preserve paragraphs on deletion.
+  // Use the full unfiltered list so hiding markers doesn't lose anchors.
   const anchoredUuidsRef = useRef(new Set<string>());
   useMemo(() => {
     const set = new Set<string>();
@@ -3068,11 +3143,8 @@ export default function EditorLayout() {
         return result;
       };
 
-      // Which categories does this side show? Driven by OMNI_SIDE_CATEGORIES.
-      const sideCats = new Set(OMNI_SIDE_CATEGORIES[side]);
-
       // --- Footnotes (fn) — single-position items from the editor node ---
-      if (sideCats.has("fn")) {
+      {
         for (const fn of footnotes) {
           const isSelected = selectedFootnoteId === fn.footnoteId;
           items.push({
@@ -3123,7 +3195,7 @@ export default function EditorLayout() {
       }
 
       // --- Citations (ci) — single-position items ---
-      if (sideCats.has("ci")) {
+      {
         for (const cit of citations) {
           const pos = citationPositionMap.get(cit.id) ?? null;
           const isSelected = selectedCitationId === cit.id;
@@ -3163,7 +3235,7 @@ export default function EditorLayout() {
       }
 
       // --- Quotation groups (qu) — multi-paragraph: one item per paragraphId ---
-      if (sideCats.has("qu")) {
+      {
         for (const group of quotationGroups) {
           const pids = group.paragraphIds;
           const isSelected = selectedQuotationGroupId === group.id;
@@ -3229,7 +3301,7 @@ export default function EditorLayout() {
       }
 
       // --- Notes (nt) — multi-paragraph: one item per paragraphId ---
-      if (sideCats.has("nt")) {
+      {
         for (const note of notes) {
           const pids = note.paragraphIds;
           const isSelected = selectedNoteId === note.id;
@@ -3285,7 +3357,7 @@ export default function EditorLayout() {
       }
 
       // --- Archive snippets (ar) — multi-paragraph: one item per paragraphId ---
-      if (sideCats.has("ar")) {
+      {
         for (const snippet of sortedArchiveSnippets) {
           const orphaned = anchoredIds && !anchoredIds.has(snippet.id);
           const isSelected = selectedArchiveId === snippet.id;
@@ -3343,7 +3415,7 @@ export default function EditorLayout() {
       }
 
       // --- Todo items (td) — multi-paragraph: one item per paragraphId ---
-      if (sideCats.has("td")) {
+      {
         for (const item of todoItems) {
           const pids = item.paragraphIds;
           const isAnchored = pids.length > 0;
@@ -3405,6 +3477,9 @@ export default function EditorLayout() {
           viewMode={getPanelViewMode(omniKey)}
           onViewModeChange={(m) => setPanelViewMode(omniKey, m)}
           editor={editorInstance}
+          enabledCategories={getOmniEnabled(side)}
+          onToggleCategory={(cat) => toggleOmniCategory(side, cat)}
+          categorySides={categorySides}
         />
       );
     }
@@ -3523,9 +3598,9 @@ export default function EditorLayout() {
           {openTabs.map((doc) => (
             <div
               key={doc.id}
-              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative ${
+              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative border border-[var(--topbar-border,#d5d3ce)] ${
                 doc.id === currentDocId
-                  ? "bg-[var(--background)] text-stone-800 border border-[var(--border)] border-b-[var(--background)] -mb-px z-10"
+                  ? "bg-[var(--background)] text-stone-800 border-b-[var(--background)] -mb-px z-10"
                   : "text-stone-500 hover:bg-white/30 hover:text-stone-700"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
@@ -3577,7 +3652,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-500 hover:bg-amber-50/50 hover:text-amber-700"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-500 hover:bg-sky-50/50 hover:text-sky-600"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3783,6 +3858,10 @@ export default function EditorLayout() {
             editorSplit={editorSplit}
             onToggleEditorSplit={() => setEditorSplit((s) => !s)}
             activeSplitPane={editorSplit ? activeSplitPane : undefined}
+            showMarginalia={showMarginalia}
+            onToggleMarginalia={toggleMarginalia}
+            hiddenMarginaliaTypes={hiddenMarginaliaTypes}
+            onToggleMarginaliaType={toggleMarginaliaType}
           />
           {/* Gap between toolbar pod and editor pod */}
           <div className="shrink-0" style={{ height: 'var(--pod-gap)' }} />
@@ -3813,7 +3892,7 @@ export default function EditorLayout() {
                     />
                     <Marginalia
                       editor={editorInstance}
-                      markers={marginaliaMarkers}
+                      markers={visibleMarginaliaMarkers}
                       panelSides={marginaliaPanelSides}
                     />
                   </>
@@ -3836,7 +3915,7 @@ export default function EditorLayout() {
                 />
                 <Marginalia
                   editor={editorInstance}
-                  markers={marginaliaMarkers}
+                  markers={visibleMarginaliaMarkers}
                   panelSides={marginaliaPanelSides}
                 />
               </div>

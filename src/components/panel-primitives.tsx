@@ -592,7 +592,7 @@ export function PanelHeader({
       {onAiRequest && (
         <button
           onClick={onAiRequest}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-amber-600 hover:bg-amber-50 transition-colors"
+          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
           title="New AI request"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -677,7 +677,7 @@ export function AiRequestCard({
       const ghost = document.createElement("div");
       ghost.textContent = `★ ${truncated || "AI " + request.kind + " request"}`;
       ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:4px;font-size:12px;color:#92400e;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:6px 10px;background:#e0f2fe;border:1px solid #7dd3fc;border-radius:4px;font-size:12px;color:#0c4a6e;font-family:var(--font-sans),system-ui,sans-serif;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       document.body.appendChild(ghost);
       e.dataTransfer.setDragImage(ghost, 10, 14);
       requestAnimationFrame(() => document.body.removeChild(ghost));
@@ -692,11 +692,11 @@ export function AiRequestCard({
       data-ai-request-id={request.id}
       draggable
       onDragStart={handleDragStart}
-      className="group rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2 cursor-grab active:cursor-grabbing hover:border-amber-300 transition-colors"
+      className="group rounded-lg border border-sky-200 bg-sky-50/40 px-3 py-2 cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors"
     >
       <div className="flex items-start gap-2">
         <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0 mt-0.5 text-amber-600"
+          className="inline-flex items-center justify-center w-5 h-5 shrink-0 mt-0.5 text-sky-500"
           title={`AI ${kindLabel} request`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -754,7 +754,7 @@ export function AiRequestCard({
         <span>{kindLabel}</span>
         {request.status === "submitted" && (
           <span className="inline-flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
             Pending
           </span>
         )}
@@ -975,7 +975,8 @@ export function MenuDelete({ onClick, label }: { onClick: () => void; label?: st
  * The button stops propagation so parent card click handlers don't also
  * fire their own select behavior.
  */
-export function TargetIcon({
+/** Target icon with a file/page shape and an arrow pointing into it. */
+export function TargetFileIcon({
   onClick,
   title = "Jump to in text",
   className,
@@ -1000,6 +1001,36 @@ export function TargetIcon({
         {/* Arrow from left into center of page */}
         <line x1="-2" y1="15" x2="14" y2="15" />
         <polyline points="11 12 14 15 11 18" />
+      </svg>
+    </button>
+  );
+}
+
+/** Target icon with a rounded pod/card shape and an arrow pointing into it. */
+export function TargetIcon({
+  onClick,
+  title = "Jump to in text",
+  className,
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title?: string;
+  className?: string;
+}) {
+  return (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className={`p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-white/60 transition-colors ${className ?? ""}`}
+      title={title}
+    >
+      <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        {/* Rounded pod/card outline (same bounding box as the file icon) */}
+        <rect x="6" y="2" width="16" height="20" rx="3" ry="3" />
+        {/* Arrow from left into center of pod */}
+        <line x1="-2" y1="12" x2="14" y2="12" />
+        <polyline points="11 9 14 12 11 15" />
       </svg>
     </button>
   );

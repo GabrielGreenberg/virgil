@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, memo, useState, useRef, useEffect, useCallback, type ReactNode } from "react";
+import { useMemo, memo, useState, useRef, useEffect, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
 import { PANEL, PanelHeader } from "./panel-primitives";
 import ViewToggle from "./ViewToggle";
@@ -53,6 +53,12 @@ interface OmniViewPanelProps {
   onViewModeChange: (mode: "list" | "in-text") => void;
   /** Editor instance — required for in-text view positioning. */
   editor: Editor | null;
+  /** Which categories this side currently shows. */
+  enabledCategories: Set<OmniCategory>;
+  /** Toggle a category on/off for this side. */
+  onToggleCategory: (cat: OmniCategory) => void;
+  /** Which strip side each category's native panel lives on. */
+  categorySides: Record<OmniCategory, "left" | "right">;
 }
 
 /** Extract the category prefix from an OmniItem id (e.g. "fn" from "fn:3"). */
@@ -67,19 +73,30 @@ function categoryOf(id: string): OmniCategory | null {
 
 const ALL_CATEGORIES: OmniCategory[] = ["fn", "ci", "qu", "nt", "ar", "td"];
 
-/** Master config: which categories belong to each side by default.
- *  EditorLayout reads this to decide which item builders to run. */
-export const OMNI_SIDE_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
+/** Maps strip panel ids to omni-view category prefixes. */
+export const PANEL_TO_CATEGORY: Record<string, OmniCategory> = {
+  footnotes: "fn",
+  citations: "ci",
+  quotations: "qu",
+  notes: "nt",
+  archive: "ar",
+  todo: "td",
+};
+
+/** Default enabled categories when no persisted state exists. */
+export const DEFAULT_OMNI_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
   left: ["fn", "ci", "qu"],
   right: ["nt", "ar", "td"],
 };
 
 function FilterMenu({
-  hidden,
+  enabled,
   onToggle,
+  categorySides,
 }: {
-  hidden: Set<OmniCategory>;
+  enabled: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
+  categorySides: Record<OmniCategory, "left" | "right">;
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -102,6 +119,21 @@ function FilterMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
+  // Group categories by their strip side
+  const leftCats = ALL_CATEGORIES.filter((c) => categorySides[c] === "left");
+  const rightCats = ALL_CATEGORIES.filter((c) => categorySides[c] === "right");
+
+  const renderRow = (cat: OmniCategory) => (
+    <button
+      key={cat}
+      onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
+      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-between gap-3"
+    >
+      <span>{CATEGORY_LABELS[cat]}</span>
+      <span className="text-[var(--accent)]">{enabled.has(cat) ? "✓" : ""}</span>
+    </button>
+  );
+
   return (
     <div className="relative shrink-0 -mr-1">
       <button
@@ -122,19 +154,23 @@ function FilterMenu({
           className="fixed bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
           style={{ top: pos.top, right: pos.right }}
         >
-          {ALL_CATEGORIES.map((cat) => {
-            const checked = !hidden.has(cat);
-            return (
-              <button
-                key={cat}
-                onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-between gap-3"
-              >
-                <span>{CATEGORY_LABELS[cat]}</span>
-                <span className="text-[var(--accent)]">{checked ? "✓" : ""}</span>
-              </button>
-            );
-          })}
+          {leftCats.length > 0 && (
+            <>
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                Left-side tools
+              </div>
+              {leftCats.map(renderRow)}
+            </>
+          )}
+          {rightCats.length > 0 && (
+            <>
+              {leftCats.length > 0 && <div className="my-1 border-t border-stone-100" />}
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+                Right-side tools
+              </div>
+              {rightCats.map(renderRow)}
+            </>
+          )}
         </div>
       )}
     </div>
@@ -149,38 +185,17 @@ function OmniViewPanel({
   viewMode,
   onViewModeChange,
   editor,
+  enabledCategories,
+  onToggleCategory,
+  categorySides,
 }: OmniViewPanelProps) {
-  // Derive which categories exist in the current item list
-  const categories = useMemo(() => {
-    const seen = new Set<OmniCategory>();
-    for (const item of items) {
-      const cat = categoryOf(item.id);
-      if (cat) seen.add(cat);
-    }
-    // Stable order: fn, ci, qu
-    return ALL_CATEGORIES.filter((c) => seen.has(c));
-  }, [items]);
-
-  // Hidden categories (persisted per-component instance via state)
-  const [hidden, setHidden] = useState<Set<OmniCategory>>(new Set());
-
-  const toggleCategory = useCallback((cat: OmniCategory) => {
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
-      return next;
-    });
-  }, []);
-
-  // Filter items by visible categories
+  // Filter items by enabled categories
   const visibleItems = useMemo(() => {
-    if (hidden.size === 0) return items;
     return items.filter((item) => {
       const cat = categoryOf(item.id);
-      return cat == null || !hidden.has(cat);
+      return cat == null || enabledCategories.has(cat);
     });
-  }, [items, hidden]);
+  }, [items, enabledCategories]);
 
   // Split into anchored (have pos) and unanchored, sorting anchored
   // in document order so the list traces the page.
@@ -234,7 +249,7 @@ function OmniViewPanel({
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Omni-view">
         <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-        <FilterMenu hidden={hidden} onToggle={toggleCategory} />
+        <FilterMenu enabled={enabledCategories} onToggle={onToggleCategory} categorySides={categorySides} />
       </PanelHeader>
 
       <div
@@ -245,11 +260,9 @@ function OmniViewPanel({
       >
         {visibleItems.length === 0 && (
           <div className={PANEL.empty}>
-            {hidden.size > 0
-              ? "All item types are hidden."
-              : side === "left"
-                ? "No footnotes, citations, or quotations yet."
-                : "No notes, archived snippets, or todos yet."}
+            {enabledCategories.size === 0
+              ? "No item types selected — use the filter menu."
+              : "No items to show yet."}
           </div>
         )}
 

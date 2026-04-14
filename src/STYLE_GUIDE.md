@@ -159,7 +159,7 @@ sufficient contrast on the darker background.
 ### Hover Convention
 Buttons **lighten** on hover (opposite of white-background panels):
 - Generic buttons: `hover:bg-white/30 hover:text-[var(--accent)]`
-- AI button: `hover:bg-amber-50/50 hover:text-amber-700`
+- AI button: `hover:bg-sky-50/50 hover:text-sky-600`
 - Never use `hover:bg-stone-100` (darkening) on the top bar
 
 ### Active Tab
@@ -291,7 +291,7 @@ p-6 text-center text-sm text-[var(--muted)]
 
 Panels that support AI-assisted content creation include:
 - `AiRequestsSectionHeader` — thin uppercase label with count
-- `AiRequestCard` — amber-tinted draggable card with star icon
+- `AiRequestCard` — sky-blue-tinted draggable card with star icon
 
 AI request cards appear at the top of the list, before the panel's own items.
 
@@ -304,7 +304,7 @@ Draggable items use custom ghost images matching their category color:
 - **Notes**: emerald tones
 - **Citations**: amber/yellow tones
 - **Archive**: `#f5f5f4` bg, `#d6d3d1` border (stone)
-- **AI requests**: `#fef3c7` bg, `#fcd34d` border (amber)
+- **AI requests**: `#e0f2fe` bg, `#7dd3fc` border (sky blue)
 
 Ghost elements are appended to body, positioned offscreen, and removed
 after `requestAnimationFrame`.
