@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect, memo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import {
   type Category,
   ALL_CATEGORIES,
   useWordCountConfig,
 } from "@/hooks/useWordCountConfig";
+import type { FocusState } from "@/hooks/useFocusMode";
+import { sectionRange } from "@/hooks/useFocusMode";
 
 interface HeadingItem {
   id: string;
@@ -85,37 +87,123 @@ function resolvePosition(
   };
 }
 
-function PositionMarker({ label }: { label?: string }) {
+/** Convert a resolved position into the data-outline-pos attribute value. */
+function posToAttr(pos: ResolvedPosition | null): string | null {
+  if (!pos) return null;
+  if (pos.isDocStart) return "docstart";
+  if (pos.parTitleIndex != null) return `pt-${pos.parTitleIndex}`;
+  return `h-${pos.headingIndex}`;
+}
+
+/** Thin lozenge that slides along the left gutter of the outline. */
+function PositionLozenge({ scrollRef, attr, color }: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  attr: string | null;
+  color: string;
+}) {
+  const [pos, setPos] = useState<{ y: number; h: number } | null>(null);
+
+  const measure = useCallback(() => {
+    if (!attr || !scrollRef.current) { setPos(null); return; }
+    const el = scrollRef.current.querySelector(`[data-outline-pos="${attr}"]`) as HTMLElement | null;
+    if (!el) { setPos(null); return; }
+    setPos({ y: el.offsetTop, h: el.offsetHeight });
+  }, [attr, scrollRef]);
+
+  useEffect(() => { measure(); }, [measure]);
+
+  // Remeasure on container resize or any child layout changes (e.g. focus
+  // mode toggling position/z-index on rows shifts offsetTop values).
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(scrollRef.current);
+    const mo = new MutationObserver(() => requestAnimationFrame(measure));
+    mo.observe(scrollRef.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    return () => { ro.disconnect(); mo.disconnect(); };
+  }, [scrollRef, measure]);
+
+  if (!pos) return null;
+
   return (
-    <span
-      className="inline-flex items-center align-middle ml-1.5"
-      style={{ color: "var(--footnote-color, #b45757)" }}
-      title="Currently on screen"
-    >
-      <svg
-        width="7"
-        height="7"
-        viewBox="0 0 7 7"
-        fill="currentColor"
-        className="shrink-0"
-      >
-        <rect width="7" height="7" rx="2" ry="2" />
-      </svg>
-      {label != null && (
-        <span className="text-[9px] font-bold leading-none ml-1">{label}</span>
-      )}
-    </span>
+    <div
+      style={{
+        position: "absolute",
+        left: 3,
+        top: 0,
+        width: 3,
+        borderRadius: 1.5,
+        background: color,
+        opacity: 0.7,
+        transform: `translateY(${pos.y}px)`,
+        height: pos.h,
+        transition: "transform 250ms ease-out, height 250ms ease-out, opacity 200ms ease",
+        pointerEvents: "none",
+        zIndex: 10,
+      }}
+    />
   );
 }
 
-/** Render 0, 1, or 2 position markers based on which panes match. */
-function PositionIndicators({ match1, match2, editorSplit }: { match1: boolean; match2: boolean; editorSplit: boolean }) {
-  if (!match1 && !match2) return null;
+/** Inline label: shows existing label (click to edit) or a "+" on hover to create one. */
+function InlineLabel({ label, onCommit }: { label: string | null; onCommit: (value: string | null) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(label ?? "");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) {
+      setText(label ?? "");
+      // Focus after React renders the input
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [editing, label]);
+
+  const commit = () => {
+    const trimmed = text.trim();
+    onCommit(trimmed || null);
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        onBlur={commit}
+        onClick={(e) => e.stopPropagation()}
+        className="text-[11px] text-blue-500 leading-tight mt-0.5 bg-transparent outline-none border-b border-blue-400 w-full"
+        placeholder="label key"
+      />
+    );
+  }
+
+  if (label) {
+    return (
+      <div
+        className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate cursor-text hover:underline"
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        title="Click to edit label"
+      >
+        {label}
+      </div>
+    );
+  }
+
+  // No label — show "+" on hover (parent row has `group` class)
   return (
-    <>
-      {match1 && <PositionMarker label={editorSplit ? "1" : undefined} />}
-      {match2 && <PositionMarker label={editorSplit ? "2" : undefined} />}
-    </>
+    <span
+      className="text-[11px] text-blue-400 leading-tight mt-0.5 pl-[1px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
+      onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+      title="Add label"
+    >
+      +
+    </span>
   );
 }
 
@@ -125,6 +213,7 @@ interface OutlinePanelProps {
   onReorderBlocks?: (fromIndex: number, count: number, toIndex: number) => void;
   onRenameHeading?: (blockIndex: number, newText: string) => void;
   onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
+  onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
   /** Heading chain currently visible in the editor viewport. The last
       entry is the closest enclosing heading. Empty means the reader
       is in the Document start region. */
@@ -139,6 +228,15 @@ interface OutlinePanelProps {
   mirrorSectionPath?: SectionPathEntry[];
   /** Active parTitle index for the mirror pane. */
   mirrorParTitleIndex?: number | null;
+  /** Focus mode state — null when feature not wired. */
+  focusState?: FocusState | null;
+  /** Callbacks for focus mode. */
+  onFocusActivate?: () => void;
+  onFocusDeactivate?: () => void;
+  onFocusToggleLock?: () => void;
+  onFocusMoveTo?: (blockIndex: number) => void;
+  onFocusExpandTo?: (blockIndex: number) => void;
+  onFocusSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
 }
 
 /* ── Doc text extraction ───────────────────────────────────────────── */
@@ -165,7 +263,7 @@ interface ExtractResult {
   preambleTitles: { title: string; index: number }[];
 }
 
-function extractHeadings(doc: JSONContent | null): ExtractResult {
+export function extractHeadings(doc: JSONContent | null): ExtractResult {
   if (!doc || !doc.content) return { headings: [], preambleTitles: [] };
   const headings: HeadingItem[] = [];
   let pendingTitles: { title: string; index: number }[] = [];
@@ -384,12 +482,12 @@ function walkBlockJson(node: JSONContent): Record<Category, number> {
  * Precompute per-block category word counts so per-heading section sums
  * are O(blocks) instead of O(blocks × headings).
  */
-function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
+export function buildPerBlockCounts(doc: JSONContent | null): Record<Category, number>[] {
   if (!doc?.content) return [];
   return doc.content.map((node) => walkBlockJson(node));
 }
 
-function sumIncludedWords(
+export function sumIncludedWords(
   perBlock: Record<Category, number>[],
   fromIdx: number,
   toIdx: number, // exclusive
@@ -419,9 +517,10 @@ function OutlineNode({
   showWordCount,
   sectionWordCount,
   perSectionCounts,
-  pos1,
-  pos2,
-  editorSplit,
+  onUpdateLabel,
+  focusState,
+  onFocusMoveTo,
+  onFocusExpandTo,
 }: {
   node: TreeNode;
   collapsed: Set<string>;
@@ -433,23 +532,40 @@ function OutlineNode({
   showWordCount: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
-  pos1: ResolvedPosition | null;
-  pos2: ResolvedPosition | null;
-  editorSplit: boolean;
+  onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
+  focusState?: FocusState | null;
+  onFocusMoveTo?: (blockIndex: number) => void;
+  onFocusExpandTo?: (blockIndex: number) => void;
 }) {
   const hasSubHeadings = node.children.length > 0;
   const hasTitles = showTitles && node.heading.parTitles.length > 0;
   const hasChildren = hasSubHeadings || hasTitles;
   const isCollapsed = collapsed.has(node.heading.id);
-  const headingMatch1 = pos1?.headingIndex === node.heading.index;
-  const headingMatch2 = pos2?.headingIndex === node.heading.index;
+
+  const isFocusEditing = focusState?.active && !focusState.locked;
+  const isOutsideFocus = focusState?.active
+    ? node.heading.index < focusState.startBlockIndex || node.heading.index > focusState.endBlockIndex
+    : false;
+
+  const handleRowClick = (blockIndex: number) => (e: React.MouseEvent) => {
+    if (isFocusEditing && onFocusMoveTo && onFocusExpandTo) {
+      if (e.shiftKey) {
+        onFocusExpandTo(blockIndex);
+      } else {
+        onFocusMoveTo(blockIndex);
+      }
+    } else {
+      onScrollTo(blockIndex);
+    }
+  };
 
   return (
     <div>
       <div
-        className="flex items-start gap-1 group cursor-pointer hover:bg-stone-50 rounded transition-colors"
-        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4 }}
-        onClick={() => onScrollTo(node.heading.index)}
+        data-outline-pos={`h-${node.heading.index}`}
+        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover:bg-stone-50"}`}
+        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: isOutsideFocus ? undefined : "relative", zIndex: isOutsideFocus ? undefined : 5 }}
+        onClick={handleRowClick(node.heading.index)}
       >
         {hasChildren ? (
           <button
@@ -488,11 +604,11 @@ function OutlineNode({
           >
             {node.heading.text}
           </span>
-          <PositionIndicators match1={!!headingMatch1} match2={!!headingMatch2} editorSplit={editorSplit} />
-          {showLabels && node.heading.label && (
-            <div className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate">
-              {node.heading.label}
-            </div>
+          {showLabels && onUpdateLabel && (
+            <InlineLabel
+              label={node.heading.label}
+              onCommit={(val) => onUpdateLabel(node.heading.index, val)}
+            />
           )}
         </div>
         {showWordCount && (
@@ -505,17 +621,27 @@ function OutlineNode({
       {!isCollapsed && hasTitles && (
         <div>
           {node.heading.parTitles.map((pt, i) => {
-            const ptMatch1 = pos1?.parTitleIndex === pt.index;
-            const ptMatch2 = pos2?.parTitleIndex === pt.index;
+            const ptOutside = focusState?.active
+              ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
+              : false;
             return (
               <div
                 key={`pt-${i}`}
-                className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#857070] truncate"
-                style={{ paddingLeft: `${(depth + 1) * 16 + 24}px`, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
-                onClick={() => onScrollTo(pt.index)}
+                data-outline-pos={`pt-${pt.index}`}
+                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover:bg-stone-50"}`}
+                style={{
+                  paddingLeft: `${(depth + 1) * 16 + 24}px`,
+                  paddingRight: 8,
+                  paddingTop: 2,
+                  paddingBottom: 2,
+                  opacity: ptOutside ? 0.3 : 1,
+                  transition: "opacity 200ms ease",
+                  position: ptOutside ? undefined : "relative",
+                  zIndex: ptOutside ? undefined : 5,
+                }}
+                onClick={handleRowClick(pt.index)}
               >
                 {pt.title}
-                <PositionIndicators match1={!!ptMatch1} match2={!!ptMatch2} editorSplit={editorSplit} />
               </div>
             );
           })}
@@ -537,9 +663,10 @@ function OutlineNode({
               showWordCount={showWordCount}
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
-              pos1={pos1}
-              pos2={pos2}
-              editorSplit={editorSplit}
+              onUpdateLabel={onUpdateLabel}
+              focusState={focusState}
+              onFocusMoveTo={onFocusMoveTo}
+              onFocusExpandTo={onFocusExpandTo}
             />
           ))}
         </div>
@@ -808,11 +935,6 @@ function EditablePod({
             {pod.text}
           </span>
         )}
-        {!isParTitle && pod.blockCount > 1 && (
-          <span className="text-[10px] text-stone-400 shrink-0">
-            {pod.blockCount}
-          </span>
-        )}
       </div>
       {dropPosition === "below" && (
         <div className="absolute bottom-0 left-2 right-2 h-[2px] bg-[var(--accent)] rounded-full z-10 translate-y-1/2" />
@@ -996,9 +1118,211 @@ function saveOutlinePrefs(
   } catch {}
 }
 
+/* ── Focus band overlay ──────────────────────────────────────────── */
+
+function FocusBand({
+  scrollRef,
+  focusState,
+  headings,
+  preambleTitles,
+  totalBlocks,
+  onSnapBoundary,
+}: {
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  focusState: FocusState;
+  headings: HeadingItem[];
+  preambleTitles: { title: string; index: number }[];
+  totalBlocks: number;
+  onSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
+}) {
+  const [band, setBand] = useState<{ top: number; height: number } | null>(null);
+  const draggingRef = useRef<{ edge: "top" | "bottom" } | null>(null);
+
+  // Collect all outline row block indices for resolving drag targets
+  const allRowAttrs = useMemo(() => {
+    const attrs: { attr: string; blockIndex: number }[] = [];
+    // docstart represents block 0
+    attrs.push({ attr: "docstart", blockIndex: 0 });
+    for (const pt of preambleTitles) {
+      attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index });
+    }
+    for (const h of headings) {
+      attrs.push({ attr: `h-${h.index}`, blockIndex: h.index });
+      for (const pt of h.parTitles) {
+        attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index });
+      }
+    }
+    return attrs;
+  }, [headings, preambleTitles]);
+
+  // Measure band position from DOM
+  const measure = useCallback(() => {
+    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+
+    // Find the first outline row >= startBlockIndex
+    let topEl: HTMLElement | null = null;
+    let botEl: HTMLElement | null = null;
+
+    for (const r of allRowAttrs) {
+      if (r.blockIndex >= focusState.startBlockIndex && !topEl) {
+        topEl = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
+      }
+      if (r.blockIndex >= focusState.startBlockIndex && r.blockIndex <= focusState.endBlockIndex) {
+        botEl = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
+      }
+    }
+
+    if (!topEl || !botEl) { setBand(null); return; }
+    const top = topEl.offsetTop;
+    const height = botEl.offsetTop + botEl.offsetHeight - top;
+    setBand({ top, height });
+  }, [scrollRef, allRowAttrs, focusState.startBlockIndex, focusState.endBlockIndex]);
+
+  useEffect(() => { measure(); }, [measure]);
+
+  // Remeasure on resize
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(scrollRef.current);
+    return () => ro.disconnect();
+  }, [scrollRef, measure]);
+
+  // Handle drag
+  useEffect(() => {
+    if (!onSnapBoundary || focusState.locked) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!draggingRef.current || !scrollRef.current) return;
+      const container = scrollRef.current;
+      const rect = container.getBoundingClientRect();
+      const y = e.clientY - rect.top + container.scrollTop;
+
+      // Find closest outline row
+      let closest: { blockIndex: number; dist: number } | null = null;
+      for (const r of allRowAttrs) {
+        if (r.blockIndex < 0) continue;
+        const el = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
+        if (!el) continue;
+        const mid = el.offsetTop + el.offsetHeight / 2;
+        const dist = Math.abs(y - mid);
+        if (!closest || dist < closest.dist) {
+          closest = { blockIndex: r.blockIndex, dist };
+        }
+      }
+      if (closest) {
+        onSnapBoundary(draggingRef.current.edge, closest.blockIndex);
+      }
+    };
+
+    const handleMouseUp = () => {
+      draggingRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [onSnapBoundary, focusState.locked, scrollRef, allRowAttrs]);
+
+  const startDrag = (edge: "top" | "bottom") => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    draggingRef.current = { edge };
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  if (!band) return null;
+
+  return (
+    <>
+      {/* Highlight band — light yellow */}
+      <div
+        style={{
+          position: "absolute",
+          left: 2,
+          right: 2,
+          top: band.top,
+          height: band.height,
+          background: "#fef9c3",
+          opacity: 0.55,
+          borderRadius: 6,
+          pointerEvents: "none",
+          zIndex: 3,
+          transition: "top 200ms ease, height 200ms ease",
+        }}
+      />
+      {/* Border */}
+      <div
+        style={{
+          position: "absolute",
+          left: 2,
+          right: 2,
+          top: band.top,
+          height: band.height,
+          border: "1.5px solid #d4aa17",
+          opacity: 0.5,
+          borderRadius: 6,
+          pointerEvents: "none",
+          zIndex: 4,
+          transition: "top 200ms ease, height 200ms ease",
+        }}
+      />
+      {/* Top handle */}
+      {!focusState.locked && (
+        <div
+          onMouseDown={startDrag("top")}
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: band.top - 5,
+            width: 10,
+            height: 10,
+            marginLeft: -5,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            border: "2px solid white",
+            cursor: "ns-resize",
+            zIndex: 6,
+            transition: "top 200ms ease",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+          }}
+        />
+      )}
+      {/* Bottom handle */}
+      {!focusState.locked && (
+        <div
+          onMouseDown={startDrag("bottom")}
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: band.top + band.height - 5,
+            width: 10,
+            height: 10,
+            marginLeft: -5,
+            borderRadius: "50%",
+            background: "var(--accent)",
+            border: "2px solid white",
+            cursor: "ns-resize",
+            zIndex: 6,
+            transition: "top 200ms ease",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
@@ -1007,6 +1331,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
   // Per-section counts inherit the shared Word Count config — the
   // outline view menu no longer exposes category toggles of its own.
@@ -1081,15 +1406,40 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
 
   // Resolve where each pane's position chevron should appear, accounting
   // for collapsed sections (chevron bubbles up to the visible ancestor).
+  // When focus is active, clamp the position to the focused range so the
+  // indicator never sits on a grayed-out section.
+  const clampToFocus = useCallback((pos: ResolvedPosition | null): ResolvedPosition | null => {
+    if (!pos || !focusState?.active) return pos;
+    // Determine the block index the position points at
+    const blockIdx = pos.parTitleIndex ?? pos.headingIndex;
+    if (blockIdx == null) {
+      // docstart — clamp to first focused heading
+      const first = headings.find((h) => h.index >= focusState.startBlockIndex && h.index <= focusState.endBlockIndex);
+      if (first) return { headingText: first.text, headingIndex: first.index, parTitleIndex: null, isDocStart: false };
+      return pos;
+    }
+    if (blockIdx < focusState.startBlockIndex) {
+      const first = headings.find((h) => h.index >= focusState.startBlockIndex && h.index <= focusState.endBlockIndex);
+      if (first) return { headingText: first.text, headingIndex: first.index, parTitleIndex: null, isDocStart: false };
+    }
+    if (blockIdx > focusState.endBlockIndex) {
+      const last = [...headings].reverse().find((h) => h.index >= focusState.startBlockIndex && h.index <= focusState.endBlockIndex);
+      if (last) return { headingText: last.text, headingIndex: last.index, parTitleIndex: null, isDocStart: false };
+    }
+    return pos;
+  }, [focusState, headings]);
+
   const pos1 = useMemo(() => {
     if (!showPosition) return null;
-    return resolvePosition(activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles);
-  }, [showPosition, activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles]);
+    const raw = resolvePosition(activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles);
+    return clampToFocus(raw);
+  }, [showPosition, activeSectionPath, activeParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
 
   const pos2 = useMemo(() => {
     if (!showPosition || !editorSplit) return null;
-    return resolvePosition(mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles);
-  }, [showPosition, editorSplit, mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles]);
+    const raw = resolvePosition(mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles);
+    return clampToFocus(raw);
+  }, [showPosition, editorSplit, mirrorSectionPath, mirrorParTitleIndex, headings, collapsed, showTitles, preambleTitles, clampToFocus]);
 
   const isSplit = !!editorSplit;
 
@@ -1112,14 +1462,65 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
           {onReorderBlocks && (
             <button
-              onClick={() => setEditMode(!editMode)}
+              onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
               className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
                 editMode
                   ? "bg-[var(--accent)] text-white"
-                  : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
+                  : focusState?.active
+                    ? "text-stone-300 cursor-not-allowed"
+                    : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
               }`}
+              title={focusState?.active ? "Exit Focus to use Edit" : undefined}
             >
               Edit
+            </button>
+          )}
+          {onFocusActivate && (
+            <button
+              onClick={() => {
+                if (editMode) return;
+                if (focusState?.active) {
+                  onFocusDeactivate?.();
+                } else {
+                  onFocusActivate();
+                }
+              }}
+              className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+                focusState?.active
+                  ? "bg-[var(--accent)] text-white"
+                  : editMode
+                    ? "text-stone-300 cursor-not-allowed"
+                    : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
+              }`}
+              title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
+            >
+              Focus
+            </button>
+          )}
+          {focusState?.active && onFocusToggleLock && (
+            <button
+              onClick={onFocusToggleLock}
+              className={`p-0.5 rounded-md transition-colors ${
+                focusState.locked
+                  ? "text-[var(--accent)]"
+                  : "text-[var(--muted)] hover:text-stone-600"
+              }`}
+              title={focusState.locked ? "Unlock focus (adjust selection)" : "Lock focus (hide other content)"}
+            >
+              {focusState.locked ? (
+                /* Locked: closed shackle, filled body */
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
+                  <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+                  <circle cx="8" cy="10.5" r="1" fill="var(--header-bg)" stroke="none" />
+                </svg>
+              ) : (
+                /* Unlocked: same shackle shifted left — right leg in body, left leg free */
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="7" width="10" height="7" rx="1.5" />
+                  <path d="M1 7V5a3 3 0 0 1 6 0v2" />
+                </svg>
+              )}
             </button>
           )}
         </div>
@@ -1193,54 +1594,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
-        {/* Fixed top row — always visible, both modes. Not draggable.
-            Also acts as the column header for the word count column via
-            the "words" label on the right. */}
-        <div
-          className="flex items-start gap-1 cursor-pointer hover:bg-stone-50 rounded transition-colors"
-          style={{ paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4 }}
-          onClick={() => onScrollTo(-1)}
-        >
-          <span className="w-4 shrink-0" />
-          <div className="min-w-0 flex-1 text-sm leading-snug truncate">
-            {docTitle ? (
-              <>
-                <span className="font-normal text-stone-400">Title: </span>
-                <span className="font-semibold text-stone-800">{docTitle}</span>
-              </>
-            ) : (
-              <span className="italic text-stone-400">Document start</span>
-            )}
-            <PositionIndicators match1={!!pos1?.isDocStart} match2={!!pos2?.isDocStart} editorSplit={isSplit} />
-          </div>
-          {showWordCount && (
-            <span className="text-[10px] text-stone-400 shrink-0 mt-0.5">
-              words
-            </span>
-          )}
-        </div>
-
-        {showTitles && preambleTitles.length > 0 && (
-          <div>
-            {preambleTitles.map((pt, i) => {
-              const ptMatch1 = pos1?.parTitleIndex === pt.index;
-              const ptMatch2 = pos2?.parTitleIndex === pt.index;
-              return (
-                <div
-                  key={`preamble-pt-${i}`}
-                  className="cursor-pointer hover:bg-stone-50 rounded transition-colors text-[11px] text-[#857070] truncate"
-                  style={{ paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2 }}
-                  onClick={() => onScrollTo(pt.index)}
-                >
-                  {pt.title}
-                  <PositionIndicators match1={!!ptMatch1} match2={!!ptMatch2} editorSplit={isSplit} />
-                </div>
-              );
-            })}
-          </div>
-        )}
-
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
             headings={headings}
@@ -1251,29 +1605,125 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onRenameHeading={onRenameHeading}
             onRenameParTitle={onRenameParTitle}
           />
-        ) : tree.length === 0 ? (
-          <div className="p-6 text-center text-[var(--muted)] text-sm">
-            No sections found. Use the Section dropdown in the toolbar to add headings.
-          </div>
         ) : (
-          tree.map((node) => (
-            <OutlineNode
-              key={node.heading.id}
-              node={node}
-              collapsed={collapsed}
-              onToggle={toggleNode}
-              onScrollTo={onScrollTo}
-              depth={0}
-              showLabels={showLabels}
-              showTitles={showTitles}
-              showWordCount={showWordCount}
-              sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
-              perSectionCounts={perSectionCounts}
-              pos1={pos1}
-              pos2={pos2}
-              editorSplit={isSplit}
-            />
-          ))
+          <div className="bg-white rounded-lg border border-stone-200 pt-1 pb-3 relative">
+            {/* Focus band overlay — only in unlocked mode */}
+            {focusState?.active && !focusState.locked && (
+              <FocusBand
+                scrollRef={scrollRef}
+                focusState={focusState}
+                headings={headings}
+                preambleTitles={preambleTitles}
+                totalBlocks={totalBlocks}
+                onSnapBoundary={onFocusSnapBoundary}
+              />
+            )}
+            {/* Position lozenge(s) — absolutely positioned, slides to current row */}
+            {showPosition && (
+              <>
+                <PositionLozenge scrollRef={scrollRef} attr={posToAttr(pos1)} color="var(--footnote-color, #b45757)" />
+                {isSplit && <PositionLozenge scrollRef={scrollRef} attr={posToAttr(pos2)} color="#5b8a72" />}
+              </>
+            )}
+
+            {/* Fixed top row — document start / title */}
+            <div
+              data-outline-pos="docstart"
+              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover:bg-stone-50"}`}
+              style={{
+                paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
+                opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
+                transition: "opacity 200ms ease",
+                position: focusState?.active && !(0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? "relative" : undefined,
+                zIndex: focusState?.active && !(0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 5 : undefined,
+              }}
+              onClick={(e) => {
+                if (focusState?.active && !focusState.locked && onFocusMoveTo) {
+                  if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(0);
+                  else onFocusMoveTo(0);
+                } else {
+                  onScrollTo(-1);
+                }
+              }}
+            >
+              <span className="w-4 shrink-0" />
+              <div className="min-w-0 flex-1 text-sm leading-snug truncate">
+                {docTitle ? (
+                  <>
+                    <span className="font-normal text-stone-400">Title: </span>
+                    <span className="font-semibold text-stone-800">{docTitle}</span>
+                  </>
+                ) : (
+                  <span className="italic text-stone-400">Document start</span>
+                )}
+              </div>
+              {showWordCount && (
+                <span className="text-[10px] text-stone-400 shrink-0 mt-0.5">
+                  words
+                </span>
+              )}
+            </div>
+
+            {showTitles && preambleTitles.length > 0 && (
+              <div>
+                {preambleTitles.map((pt, i) => {
+                  const ptOutside = focusState?.active
+                    ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
+                    : false;
+                  return (
+                    <div
+                      key={`preamble-pt-${i}`}
+                      data-outline-pos={`pt-${pt.index}`}
+                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover:bg-stone-50"}`}
+                      style={{
+                        paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
+                        opacity: ptOutside ? 0.3 : 1,
+                        transition: "opacity 200ms ease",
+                        position: ptOutside ? undefined : "relative",
+                        zIndex: ptOutside ? undefined : 5,
+                      }}
+                      onClick={(e) => {
+                        if (focusState?.active && !focusState.locked && onFocusMoveTo) {
+                          if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(pt.index);
+                          else onFocusMoveTo(pt.index);
+                        } else {
+                          onScrollTo(pt.index);
+                        }
+                      }}
+                    >
+                      {pt.title}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {tree.length === 0 ? (
+              <div className="p-6 text-center text-[var(--muted)] text-sm">
+                No sections found. Use the Section dropdown in the toolbar to add headings.
+              </div>
+            ) : (
+              tree.map((node) => (
+                <OutlineNode
+                  key={node.heading.id}
+                  node={node}
+                  collapsed={collapsed}
+                  onToggle={toggleNode}
+                  onScrollTo={onScrollTo}
+                  depth={0}
+                  showLabels={showLabels}
+                  showTitles={showTitles}
+                  showWordCount={showWordCount}
+                  sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
+                  perSectionCounts={perSectionCounts}
+                  onUpdateLabel={onUpdateLabel}
+                  focusState={focusState}
+                  onFocusMoveTo={onFocusMoveTo}
+                  onFocusExpandTo={onFocusExpandTo}
+                />
+              ))
+            )}
+          </div>
         )}
       </div>
     </div>

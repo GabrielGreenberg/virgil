@@ -8,7 +8,7 @@ import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
 import NotesPanel, { NoteCard } from "./NotesPanel";
-import OutlinePanel, { type SectionPathEntry } from "./OutlinePanel";
+import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "./OutlinePanel";
 import TodoPanel, { TodoRow } from "./TodoPanel";
 import ArchivePanel, { ArchiveCard } from "./ArchivePanel";
 import ArchiveConnectors from "./ArchiveConnectors";
@@ -62,7 +62,9 @@ import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
 import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
+import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import WordCountPanel from "./WordCountPanel";
+import { useFocusMode, sectionRange } from "@/hooks/useFocusMode";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import type { OrphanedFootnote } from "@/lib/types";
 import { hasFsaSupport } from "@/lib/fsa-support";
@@ -395,7 +397,7 @@ function PanelColumn({
   const podRadius = 'var(--pod-radius)';
 
   return (
-    <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)' }}>
+    <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
       {collapsed ? (
         /* Collapsed: empty placeholder preserving layout space */
@@ -408,7 +410,7 @@ function PanelColumn({
         >
           <div
             className="min-h-0 overflow-hidden"
-            style={{ flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            style={{ flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("top")}
           >
             {children!.top}
@@ -420,7 +422,7 @@ function PanelColumn({
           />
           <div
             className="min-h-0 overflow-hidden"
-            style={{ flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+            style={{ flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("bottom")}
           >
             {children!.bottom}
@@ -429,7 +431,7 @@ function PanelColumn({
       ) : (
         <div
           className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}
-          style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)' }}
+          style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
         >
           {(children as React.ReactNode)}
         </div>
@@ -438,7 +440,7 @@ function PanelColumn({
       <div
         ref={gapRef}
         className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2" : "order-1"}`}
-        style={{ width: 'calc(var(--pod-gap) * 2)' }}
+        style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />
     </div>
@@ -490,7 +492,7 @@ function SplitEditorPanes({
       {/* Top pane — own white pod */}
       <div
         className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
-        style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}
+        style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         {canonical}
       </div>
@@ -510,7 +512,7 @@ function SplitEditorPanes({
       {/* Bottom pane — own white pod */}
       <div
         className="flex flex-col min-w-0 min-h-0 overflow-hidden"
-        style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}
+        style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         <EditorMirror
           editor={editorInstance}
@@ -948,6 +950,8 @@ export default function EditorLayout() {
   // the main toolbar should route commands to it instead of the main editor.
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
   const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
+  const focusMode = useFocusMode();
+  const { config: focusWcConfig } = useWordCountConfig();
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
 
@@ -1403,6 +1407,76 @@ export default function EditorLayout() {
     return () => { editorInstance.off("focus", clearOverride); };
   }, [editorInstance]);
 
+  // ── Focus mode: inject a <style> tag to hide/dim editor blocks ───
+  // ProseMirror's DOM reconciliation strips classes and inline styles
+  // from its managed nodes. A <style> tag with nth-child selectors is
+  // immune to this since PM doesn't touch <style> elements.
+  const focusStyleRef = useRef<HTMLStyleElement | null>(null);
+  const focusStateRef = useRef(focusMode.state);
+  focusStateRef.current = focusMode.state;
+
+  useEffect(() => {
+    const fs = focusMode.state;
+
+    // Remove previous style tag
+    if (focusStyleRef.current) {
+      focusStyleRef.current.remove();
+      focusStyleRef.current = null;
+    }
+
+    if (!fs.active || !editorInstance) return;
+
+    const style = document.createElement("style");
+    style.setAttribute("data-virgil-focus", "true");
+
+    // Build CSS rules using nth-child to target blocks outside the range
+    const rules: string[] = [];
+    const selector = ".tiptap > *";
+    const totalChildren = editorInstance.view.dom.children.length;
+
+    for (let i = 0; i < totalChildren; i++) {
+      const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
+      if (outside) {
+        const nth = i + 1; // nth-child is 1-based
+        if (fs.locked) {
+          rules.push(`.tiptap > :nth-child(${nth}) { display: none !important; }`);
+        } else {
+          rules.push(`.tiptap > :nth-child(${nth}) { opacity: 0.25 !important; pointer-events: none !important; }`);
+        }
+      }
+    }
+
+    style.textContent = rules.join("\n");
+    document.head.appendChild(style);
+    focusStyleRef.current = style;
+
+    // When locking, move cursor into visible range if needed
+    if (fs.locked) {
+      const doc = editorInstance.view.state.doc;
+      const { from } = editorInstance.view.state.selection;
+      let firstVisiblePos = 0;
+      let selBlockIdx = 0;
+      let needsMove = false;
+      doc.forEach((node, offset) => {
+        if (selBlockIdx === fs.startBlockIndex) firstVisiblePos = offset + 1;
+        if (from >= offset && from < offset + node.nodeSize) {
+          if (selBlockIdx < fs.startBlockIndex || selBlockIdx > fs.endBlockIndex) needsMove = true;
+        }
+        selBlockIdx++;
+      });
+      if (needsMove) {
+        try { editorInstance.commands.setTextSelection(firstVisiblePos); } catch {}
+      }
+    }
+
+    return () => {
+      if (focusStyleRef.current) {
+        focusStyleRef.current.remove();
+        focusStyleRef.current = null;
+      }
+    };
+  }, [editorInstance, focusMode.state]);
+
   // Current-section breadcrumb: tracks the heading chain of whatever
   // the reader is currently looking at — i.e., the topmost heading
   // above the visible viewport. Headings are collected from the doc,
@@ -1440,7 +1514,14 @@ export default function EditorLayout() {
       // whenever a heading is crossed.
       let activeParTitleIdx: number | null = null;
 
+      // When focus is locked, skip blocks outside the focus range — their
+      // DOM nodes are hidden and would report bogus viewport positions.
+      const fs = focusStateRef.current;
+      const skipHidden = fs.active && fs.locked;
+
       doc.forEach((node, offset, index) => {
+        if (skipHidden && (index < fs.startBlockIndex || index > fs.endBlockIndex)) return;
+
         if (node.type.name === "heading" && node.attrs?.level) {
           const level = node.attrs.level as number;
           // Measure where this heading is on screen
@@ -1723,6 +1804,35 @@ export default function EditorLayout() {
     [onUpdate]
   );
 
+  // ── Focus mode helpers ─────────────────────────────────────────────
+  const docForOutline = latestDoc || content;
+  const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
+  const outlineTotalBlocks = useMemo(() => docForOutline?.content?.length ?? 0, [docForOutline]);
+
+  const handleFocusActivate = useCallback(() => {
+    focusMode.activate(outlineHeadings, outlineTotalBlocks);
+  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+
+  const handleFocusMoveTo = useCallback((blockIndex: number) => {
+    focusMode.moveTo(blockIndex, outlineHeadings, outlineTotalBlocks);
+  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+
+  const handleFocusExpandTo = useCallback((blockIndex: number) => {
+    focusMode.expandTo(blockIndex, outlineHeadings, outlineTotalBlocks);
+  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+
+  const handleFocusSnapBoundary = useCallback((edge: "top" | "bottom", blockIndex: number) => {
+    focusMode.snapBoundary(edge, blockIndex, outlineHeadings, outlineTotalBlocks);
+  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+
+  // Focus word count: sum per-block counts within the focused range
+  const focusWordCount = useMemo(() => {
+    if (!focusMode.state.active) return null;
+    const perBlock = buildPerBlockCounts(docForOutline);
+    const words = sumIncludedWords(perBlock, focusMode.state.startBlockIndex, focusMode.state.endBlockIndex + 1, focusWcConfig.include);
+    return { words };
+  }, [focusMode.state, docForOutline, focusWcConfig.include]);
+
   const handleScrollToHeading = useCallback((blockIndex: number) => {
     // If the split is open and the bottom pane is active, scroll the mirror
     // view; otherwise fall back to the canonical editor's scroll behavior.
@@ -1825,6 +1935,22 @@ export default function EditorLayout() {
         const from = offset + 1; // inside the heading node
         const to = offset + node.nodeSize - 1; // end of heading content
         const tr = editor.state.tr.delete(from, to).insertText(newText, from);
+        editor.view.dispatch(tr);
+      }
+      idx++;
+    });
+  }, []);
+
+  const handleUpdateLabel = useCallback((blockIndex: number, newLabel: string | null) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    let idx = 0;
+    editor.state.doc.forEach((node, offset) => {
+      if (idx === blockIndex && node.type.name === "heading") {
+        const tr = editor.state.tr.setNodeMarkup(offset, undefined, {
+          ...node.attrs,
+          label: newLabel && newLabel.trim() ? newLabel.trim() : null,
+        });
         editor.view.dispatch(tr);
       }
       idx++;
@@ -2881,11 +3007,19 @@ export default function EditorLayout() {
           onReorderBlocks={handleReorderBlocks}
           onRenameHeading={handleRenameHeading}
           onRenameParTitle={handleRenameParTitle}
+          onUpdateLabel={handleUpdateLabel}
           activeSectionPath={currentSectionPath}
           activeParTitleIndex={currentParTitleIndex}
           editorSplit={editorSplit}
           mirrorSectionPath={mirrorSectionPath}
           mirrorParTitleIndex={mirrorParTitleIndex}
+          focusState={focusMode.state}
+          onFocusActivate={handleFocusActivate}
+          onFocusDeactivate={focusMode.deactivate}
+          onFocusToggleLock={focusMode.toggleLock}
+          onFocusMoveTo={handleFocusMoveTo}
+          onFocusExpandTo={handleFocusExpandTo}
+          onFocusSnapBoundary={handleFocusSnapBoundary}
         />
       );
     }
@@ -3084,7 +3218,7 @@ export default function EditorLayout() {
     }
 
     if (panelId === "wordcount") {
-      return <WordCountPanel counts={wordCounts} selection={wordSelection} />;
+      return <WordCountPanel counts={wordCounts} selection={wordSelection} focusCounts={focusWordCount} />;
     }
 
     if (panelId === "quotations") {
@@ -3792,7 +3926,7 @@ export default function EditorLayout() {
             </button>
             {/* Blank — panel column stays (reserving space) but shows no content */}
             <button
-              onClick={() => { activeLeft === "blank" ? collapseLeft() : expandLeft(); }}
+              onClick={() => { if (activeLeft !== "blank") expandLeft(); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
               title="Blank — reserve panel space without content"
             >
@@ -3842,6 +3976,8 @@ export default function EditorLayout() {
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
+          paddingLeft: 4,
+          paddingRight: 4,
         }}>
           {/* Toolbar pod */}
           <MenuBar
@@ -3900,7 +4036,7 @@ export default function EditorLayout() {
               />
             ) : (
               /* Single editor — one white pod */
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
                 <VirgilEditor
                   ref={editorRef}
                   initialContent={content}
@@ -3921,7 +4057,7 @@ export default function EditorLayout() {
               </div>
             )
           ) : (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
               <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
                 {docLoading ? "Loading..." : ""}
               </div>
@@ -3968,7 +4104,7 @@ export default function EditorLayout() {
             </button>
             {/* Blank — panel column stays (reserving space) but shows no content */}
             <button
-              onClick={() => { activeRight === "blank" ? collapseRight() : expandRight(); }}
+              onClick={() => { if (activeRight !== "blank") expandRight(); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
               title="Blank — reserve panel space without content"
             >

@@ -27,6 +27,8 @@
   --pod-radius: 8px;
   --pod-gap: 10px;
   --pod-border: 1px solid var(--border-light);
+  --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
+  --pod-shadow-light: 0 1px 5px rgba(0,0,0,0.09), 0 0 2px rgba(0,0,0,0.05);
 
   /* Editor colors */
   --editor-font-size: 1.05rem;
@@ -1023,7 +1025,7 @@ body {
 
 /* ── Drag gap — invisible split handle with blue hover highlight ── */
 .drag-gap {
-  background: var(--background);
+  background: transparent;
   position: relative;
   flex-shrink: 0;
 }
