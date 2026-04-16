@@ -456,7 +456,7 @@ function PanelColumn({
 function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[] }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     const scrollEl = ref.current?.parentElement?.querySelector(".overflow-y-auto") as HTMLElement | null;
