@@ -75,12 +75,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const level = (node.attrs?.level as number) || 1;
       const label = node.attrs?.label as string | null;
       const uuid = node.attrs?.uuid as string | null;
+      const numbered = node.attrs?.numbered;
       const inner = (node.content || []).map(serializeInline).join("");
-      const commands = ["\\section", "\\subsection", "\\subsubsection"];
-      const cmd = commands[Math.min(level - 1, 2)];
+      const commands = ["\\chapter", "\\section", "\\subsection", "\\subsubsection"];
+      const cmd = commands[Math.min(level - 1, 3)];
+      const star = numbered === false ? "*" : "";
       const labelStr = label ? `\n\\label{${label}}` : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      return `${cmd}{${inner}}${labelStr}${anchor}\n\n`;
+      return `${cmd}${star}{${inner}}${labelStr}${anchor}\n\n`;
     }
 
     case "titleField": {
@@ -189,6 +191,9 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "citation":
       return node.attrs?.command || "";
 
+    case "labelRef":
+      return `\\ref{${node.attrs?.label || ""}}`;
+
     case "aiRequestMarker": {
       const kind = String(node.attrs?.kind || "footnote");
       const text = String(node.attrs?.text || "")
@@ -224,6 +229,9 @@ function serializeInline(node: JSONContent): string {
   }
   if (node.type === "citation") {
     return node.attrs?.command || "";
+  }
+  if (node.type === "labelRef") {
+    return `\\ref{${node.attrs?.label || ""}}`;
   }
   if (node.type === "aiRequestMarker") {
     // AI request markers are placeholders. Emit them as a LaTeX comment

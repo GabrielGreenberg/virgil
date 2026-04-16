@@ -1,6 +1,7 @@
 import { Node, Mark, mergeAttributes, Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
+import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import type { MutableRefObject } from "react";
 import {
   richJsonToPlainText,
@@ -186,6 +187,86 @@ function editableAtomView({
 
 // --- Inline Math ---
 
+// --- Virgil command registry (type \command + Enter to execute) ---
+
+interface VirgilCommand {
+  /** The command name without backslash (e.g. "section") */
+  name: string;
+  /** Action to run. The typed text has already been deleted from the doc. */
+  action: (view: EditorView, cmdText: string) => void;
+}
+
+const VIRGIL_COMMANDS: VirgilCommand[] = [
+  {
+    name: "chapter",
+    action: (view) => {
+      const { state } = view;
+      const heading = state.schema.nodes.heading;
+      if (heading) {
+        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 1, numbered: true });
+        view.dispatch(tr);
+      }
+    },
+  },
+  {
+    name: "section",
+    action: (view) => {
+      const { state } = view;
+      const heading = state.schema.nodes.heading;
+      if (heading) {
+        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 2, numbered: true });
+        view.dispatch(tr);
+      }
+    },
+  },
+  {
+    name: "subsection",
+    action: (view) => {
+      const { state } = view;
+      const heading = state.schema.nodes.heading;
+      if (heading) {
+        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 3, numbered: true });
+        view.dispatch(tr);
+      }
+    },
+  },
+  {
+    name: "subsubsection",
+    action: (view) => {
+      const { state } = view;
+      const heading = state.schema.nodes.heading;
+      if (heading) {
+        const tr = state.tr.setBlockType(state.selection.from, state.selection.to, heading, { level: 4, numbered: true });
+        view.dispatch(tr);
+      }
+    },
+  },
+  {
+    name: "ref",
+    action: () => {
+      window.dispatchEvent(new CustomEvent("virgil-ref-create"));
+    },
+  },
+  {
+    name: "cite",
+    action: () => {
+      _pendingCitationCreate = "\\cite";
+      window.dispatchEvent(
+        new CustomEvent("virgil-citation-create", { detail: { partial: "\\cite" } }),
+      );
+    },
+  },
+  {
+    name: "footnote",
+    action: () => {
+      window.dispatchEvent(new CustomEvent("virgil-footnote-input"));
+    },
+  },
+];
+
+// Build a lookup map for fast matching
+const COMMAND_MAP = new Map(VIRGIL_COMMANDS.map((c) => [c.name, c]));
+
 // --- LaTeX Command mark (grey monospace for unhandled commands) ---
 
 export const LatexCommandMark = Mark.create({
@@ -203,6 +284,122 @@ export const LatexCommandMark = Mark.create({
         class: "latex-cmd",
       }),
       0,
+    ];
+  },
+
+  addProseMirrorPlugins() {
+    const markType = this.type;
+
+    /** Match a full LaTeX command span: \cmd*?[opt]{arg}{arg} — same as the parser. */
+    function matchCommandLength(text: string, start: number): number {
+      let i = start;
+      // \
+      if (i >= text.length || text[i] !== "\\") return 0;
+      i++;
+      // command name: [a-zA-Z]+
+      const nameStart = i;
+      while (i < text.length && /[a-zA-Z]/.test(text[i])) i++;
+      if (i === nameStart) return i - start; // just "\" alone
+      // optional *
+      if (i < text.length && text[i] === "*") i++;
+      // optional [...] args
+      while (i < text.length && text[i] === "[") {
+        const close = text.indexOf("]", i);
+        if (close === -1) break;
+        i = close + 1;
+      }
+      // up to 2 {braced} args — include unclosed braces (user still typing)
+      let braces = 0;
+      while (i < text.length && text[i] === "{" && braces < 2) {
+        let depth = 0;
+        let closed = false;
+        for (let j = i; j < text.length; j++) {
+          if (text[j] === "{") depth++;
+          else if (text[j] === "}") { depth--; if (depth === 0) { i = j + 1; braces++; closed = true; break; } }
+        }
+        if (!closed) { i = text.length; break; } // unclosed — include to end (typing in progress)
+      }
+      return i - start;
+    }
+
+    function buildDecorations(doc: any): DecorationSet {
+      const decos: Decoration[] = [];
+      doc.descendants((node: any, pos: number) => {
+        if (!node.isText || !node.text) return;
+        // Skip if the entire node already has the latexCommand mark
+        if (node.marks.some((m: any) => m.type === markType)) return;
+
+        const text = node.text as string;
+        for (let i = 0; i < text.length; i++) {
+          if (text[i] !== "\\") continue;
+          // Skip \\ (double backslash)
+          if (i > 0 && text[i - 1] === "\\") { i++; continue; }
+          const len = matchCommandLength(text, i);
+          if (len > 0) {
+            decos.push(Decoration.inline(pos + i, pos + i + len, { class: "latex-cmd" }));
+            i += len - 1; // advance past the match
+          }
+        }
+      });
+      return DecorationSet.create(doc, decos);
+    }
+
+    return [
+      // Live decoration for \commands while typing
+      new Plugin({
+        key: new PluginKey("latexCmdDecorations"),
+        state: {
+          init(_config, state) {
+            return buildDecorations(state.doc);
+          },
+          apply(tr, oldSet) {
+            if (!tr.docChanged) return oldSet.map(tr.mapping, tr.doc);
+            return buildDecorations(tr.doc);
+          },
+        },
+        props: {
+          decorations(state) {
+            return this.getState(state);
+          },
+        },
+      }),
+      // Virgil command execution on Enter
+      new Plugin({
+        key: new PluginKey("virgilCommands"),
+        props: {
+          handleKeyDown(view, event) {
+            if (event.key !== "Enter") return false;
+            const { state } = view;
+            const { from } = state.selection;
+            if (from !== state.selection.to) return false; // collapsed cursor only
+
+            const $from = state.doc.resolve(from);
+            const textBefore = $from.parent.textBetween(
+              Math.max(0, $from.parentOffset - 40),
+              $from.parentOffset,
+              undefined,
+              "\ufffc",
+            );
+
+            // Match \commandname at end of text before cursor
+            const cmdMatch = textBefore.match(/\\([a-zA-Z]+)$/);
+            if (!cmdMatch) return false;
+
+            const cmd = COMMAND_MAP.get(cmdMatch[1]);
+            if (!cmd) return false;
+
+            // Delete the typed \command text
+            const cmdLen = cmdMatch[0].length;
+            const deleteFrom = from - cmdLen;
+            const tr = state.tr.delete(deleteFrom, from);
+            view.dispatch(tr);
+
+            // Run the command action
+            cmd.action(view, cmdMatch[0]);
+            return true;
+          },
+        },
+      }),
     ];
   },
 });
@@ -901,6 +1098,67 @@ export const Citation = Node.create({
           if (updatedNode.type.name !== "citation") return false;
           dom.dataset.citationId = updatedNode.attrs.citationId || "";
           setCitationHTML(dom, updatedNode.attrs.displayText || updatedNode.attrs.command || "");
+          return true;
+        },
+      };
+    };
+  },
+});
+
+/** \ref{label} — inline cross-reference rendered as a clickable pod. */
+export const LabelRef = Node.create({
+  name: "labelRef",
+  group: "inline",
+  inline: true,
+  atom: true,
+
+  addAttributes() {
+    return {
+      label: { default: "" },
+      displayText: { default: "" },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: 'span[data-type="label-ref"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "label-ref",
+        class: "label-ref-node",
+      }),
+      HTMLAttributes.displayText || "??",
+    ];
+  },
+
+  addNodeView() {
+    return ({ node }) => {
+      const dom = document.createElement("span");
+      dom.className = "label-ref-node";
+      dom.dataset.type = "label-ref";
+      dom.dataset.label = node.attrs.label || "";
+      dom.contentEditable = "false";
+      dom.textContent = node.attrs.displayText || "??";
+
+      dom.addEventListener("click", (e: Event) => {
+        e.preventDefault();
+        e.stopPropagation();
+        window.dispatchEvent(
+          new CustomEvent("virgil-label-ref-click", {
+            detail: { label: node.attrs.label },
+          })
+        );
+      });
+
+      return {
+        dom,
+        update(updatedNode: any) {
+          if (updatedNode.type.name !== "labelRef") return false;
+          dom.dataset.label = updatedNode.attrs.label || "";
+          dom.textContent = updatedNode.attrs.displayText || "??";
           return true;
         },
       };

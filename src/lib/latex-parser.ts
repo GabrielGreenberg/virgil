@@ -267,6 +267,21 @@ function parseInlineContent(text: string): JSONContent[] {
         continue;
       }
 
+      // \ref{key} — cross-reference to a \label
+      const refMatch = rest.match(/^\\ref\{/);
+      if (refMatch) {
+        flush();
+        const inner = extractBraced(text, i + refMatch[0].length - 1);
+        if (inner) {
+          nodes.push({
+            type: "labelRef",
+            attrs: { label: inner.content, displayText: "" },
+          });
+          i = inner.end;
+          continue;
+        }
+      }
+
       // Common text commands
       const textCmdMatch = rest.match(/^\\(ldots|dots|LaTeX|TeX)\b/);
       if (textCmdMatch) {
@@ -397,6 +412,12 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // Number footnotes sequentially
   numberFootnotes(doc);
 
+  // Assign hierarchical section numbers
+  numberHeadings(doc);
+
+  // Resolve \ref{} display text from heading labels
+  resolveRefs(doc);
+
   // Merge sidecar titles into paragraph nodes by UUID
   if (sidecar) {
     mergeSidecarTitles(doc, sidecar);
@@ -431,6 +452,63 @@ function numberFootnotes(node: JSONContent): void {
   walk(node);
 }
 
+/** Assign hierarchical section numbers (e.g. "1", "2.3", "2.3.1") to heading nodes. */
+function numberHeadings(node: JSONContent): void {
+  // First pass: find the highest heading level used (chapter=1, section=2, …)
+  let topLevel = 5;
+  function findTop(n: JSONContent) {
+    if (n.type === "heading" && n.attrs?.numbered !== false) {
+      const lvl = (n.attrs?.level as number) || 2;
+      if (lvl < topLevel) topLevel = lvl;
+    }
+    n.content?.forEach(findTop);
+  }
+  findTop(node);
+  if (topLevel > 4) return; // no numbered headings
+
+  const counters = [0, 0, 0, 0]; // indices 0–3 → levels 1–4
+
+  function walk(n: JSONContent) {
+    if (n.type === "heading") {
+      if (n.attrs?.numbered !== false) {
+        const lvl = (n.attrs?.level as number) || 2;
+        const idx = lvl - 1;
+        counters[idx]++;
+        for (let i = idx + 1; i < 4; i++) counters[i] = 0;
+        const parts: number[] = [];
+        for (let i = topLevel - 1; i <= idx; i++) parts.push(counters[i]);
+        n.attrs = { ...n.attrs, sectionNumber: parts.join(".") };
+      } else {
+        n.attrs = { ...n.attrs, sectionNumber: null };
+      }
+    }
+    n.content?.forEach(walk);
+  }
+  walk(node);
+}
+
+/** Resolve \ref{label} nodes: build label→sectionNumber map from headings, then fill displayText. */
+function resolveRefs(node: JSONContent): void {
+  const labelMap = new Map<string, string>();
+  // Collect labels from headings
+  function collect(n: JSONContent) {
+    if (n.type === "heading" && n.attrs?.label && n.attrs?.sectionNumber) {
+      labelMap.set(n.attrs.label as string, n.attrs.sectionNumber as string);
+    }
+    n.content?.forEach(collect);
+  }
+  collect(node);
+  // Fill displayText on labelRef nodes
+  function fill(n: JSONContent) {
+    if (n.type === "labelRef" && n.attrs?.label) {
+      const num = labelMap.get(n.attrs.label as string);
+      n.attrs = { ...n.attrs, displayText: num || "??" };
+    }
+    n.content?.forEach(fill);
+  }
+  fill(node);
+}
+
 const seenTitleFields = new Set<string>();
 
 function parseBody(ctx: ParseContext, parent: JSONContent): void {
@@ -442,15 +520,18 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     const rest = ctx.src.slice(ctx.pos);
 
-    // \section{...}
-    const sectionMatch = rest.match(/^\\(section|subsection|subsubsection)\{/);
+    // \chapter{...}, \section{...}, \section*{...}, etc.
+    const sectionMatch = rest.match(/^\\(chapter|section|subsection|subsubsection)(\*?)\{/);
     if (sectionMatch) {
       const level =
-        sectionMatch[1] === "section"
+        sectionMatch[1] === "chapter"
           ? 1
-          : sectionMatch[1] === "subsection"
+          : sectionMatch[1] === "section"
             ? 2
-            : 3;
+            : sectionMatch[1] === "subsection"
+              ? 3
+              : 4;
+      const numbered = sectionMatch[2] !== "*";
       ctx.pos += sectionMatch[0].length - 1; // position at {
       const inner = extractBraced(ctx.src, ctx.pos);
       if (inner) {
@@ -471,7 +552,7 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
           uuid = uuidMatch[1];
           ctx.pos += uuidMatch[0].length;
         }
-        const attrs: Record<string, unknown> = { level, label };
+        const attrs: Record<string, unknown> = { level, label, numbered };
         if (uuid) attrs.uuid = uuid;
         parent.content.push({
           type: "heading",
@@ -895,7 +976,7 @@ function readParagraph(ctx: ParseContext): string {
     if (ctx.src[ctx.pos] === "\\" && result.trim()) {
       const rest = ctx.src.slice(ctx.pos);
       if (
-        /^\\(section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par)\b/.test(
+        /^\\(chapter|section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par)\b/.test(
           rest
         )
       ) {

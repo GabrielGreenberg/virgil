@@ -141,6 +141,15 @@ body {
   font-family: var(--font-serif-override, var(--font-serif)), "Source Serif 4", Georgia, serif;
 }
 
+.tiptap h1[data-section-number]::before,
+.tiptap h2[data-section-number]::before,
+.tiptap h3[data-section-number]::before,
+.tiptap h4[data-section-number]::before {
+  content: attr(data-section-number) "\00a0\00a0";
+  color: var(--muted, #8a8580);
+  font-weight: inherit;
+}
+
 .heading-wrapper {
   display: block;
   margin-top: 1.8em;
@@ -917,6 +926,171 @@ body {
 
 .citation-node-text {
   /* text flows inline with body */
+}
+
+.label-ref-node {
+  display: inline;
+  background: #f0f0ee;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  border: 1px solid #d5d3ce;
+  padding: 0px 4px;
+  color: #555;
+}
+
+.label-ref-node:hover {
+  background: #fef3c3;
+  border-color: #d4a843;
+  color: #4a3f20;
+}
+
+.label-ref-node.label-ref-active {
+  background: #fef08a;
+  border-color: #d4a843;
+  box-shadow: 0 0 0 2px #d4a843;
+  color: #4a3f20;
+}
+
+/* ── LabelRef Popover ── */
+
+.label-ref-popover {
+  background: var(--surface, #fff);
+  border: 2px solid #d4a843;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(212, 168, 67, 0.25), 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: visible;
+  font-size: 0.82rem;
+}
+
+.label-ref-popover-pod {
+  padding: 8px 12px;
+}
+
+.label-ref-popover-pod + .label-ref-popover-pod {
+  border-top: 1px solid var(--border-light, #efecea);
+}
+
+/* Top pod: target heading */
+.label-ref-popover-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.label-ref-popover-target:hover {
+  background: var(--accent-light, #f5f0ea);
+}
+
+.label-ref-popover-type {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--muted, #8a8580);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.label-ref-popover-title {
+  color: var(--foreground, #1a1a1a);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.label-ref-popover-unresolved {
+  color: var(--muted, #8a8580);
+  font-style: italic;
+}
+
+/* Bottom pod: label */
+.label-ref-popover-label-display {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.label-ref-popover-label-display:hover {
+  background: var(--accent-light, #f5f0ea);
+  margin: -4px -8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+
+.label-ref-popover-label-key {
+  font-size: 0.7rem;
+  color: var(--muted, #8a8580);
+}
+
+.label-ref-popover-label-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  color: var(--foreground, #1a1a1a);
+}
+
+/* Edit mode */
+.label-ref-popover-edit {
+  position: relative;
+}
+
+.label-ref-popover-input {
+  width: 100%;
+  border: 1px solid var(--border, #e5e2dd);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  outline: none;
+  background: var(--surface, #fff);
+  color: var(--foreground, #1a1a1a);
+}
+
+.label-ref-popover-input:focus {
+  border-color: var(--accent, #7c5e3c);
+  box-shadow: 0 0 0 2px rgba(124, 94, 60, 0.15);
+}
+
+/* Dropdown */
+.label-ref-popover-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e5e2dd);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 180px;
+  overflow-y: auto;
+  z-index: 1001;
+}
+
+.label-ref-popover-option {
+  padding: 5px 8px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.label-ref-popover-option:hover {
+  background: var(--accent-light, #f5f0ea);
+}
+
+.label-ref-popover-option.current {
+  background: #f0f0ee;
+}
+
+.label-ref-option-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.76rem;
+  color: var(--foreground, #1a1a1a);
+}
+
+.label-ref-option-info {
+  font-size: 0.66rem;
+  color: var(--muted, #8a8580);
+  white-space: nowrap;
 }
 
 .citation-preview {

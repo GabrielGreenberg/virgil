@@ -78,6 +78,7 @@ export function useDocument(docId: string | null) {
 
   const onUpdate = useCallback(
     (doc: JSONContent) => {
+      setContent(doc);
       debouncedSave(doc);
     },
     [debouncedSave],

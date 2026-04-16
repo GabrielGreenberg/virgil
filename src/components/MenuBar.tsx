@@ -15,6 +15,8 @@ interface MenuBarProps {
   onToggleParTitles: () => void;
   showLatexComments: boolean;
   onToggleLatexComments: () => void;
+  showSectionIndicator: boolean;
+  onToggleSectionIndicator: () => void;
   onOpenPreferences?: () => void;
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
@@ -53,9 +55,10 @@ function Btn({
 
 const BLOCK_TYPES = [
   { value: "0", label: "Body text" },
-  { value: "1", label: "Section" },
-  { value: "2", label: "Subsection" },
-  { value: "3", label: "Subsubsection" },
+  { value: "1", label: "Chapter" },
+  { value: "2", label: "Section" },
+  { value: "3", label: "Subsection" },
+  { value: "4", label: "Subsubsection" },
 ];
 
 function BlockTypeDropdown({ editor }: { editor: Editor }) {
@@ -69,7 +72,9 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
       ? "2"
       : editor.isActive("heading", { level: 3 })
         ? "3"
-        : "0";
+        : editor.isActive("heading", { level: 4 })
+          ? "4"
+          : "0";
 
   useEffect(() => {
     if (!open) return;
@@ -107,7 +112,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
                 if (bt.value === "0") {
                   if (editor.isActive("heading")) editor.chain().focus().setParagraph().run();
                 } else {
-                  const level = parseInt(bt.value) as 1 | 2 | 3;
+                  const level = parseInt(bt.value) as 1 | 2 | 3 | 4;
                   editor.chain().focus().toggleHeading({ level }).run();
                 }
                 setOpen(false);
@@ -126,8 +131,9 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -165,7 +171,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
   if (!editor) return null;
 
   return (
-    <div className="flex items-center bg-[var(--pod-toolbar)] h-[var(--header-h)] min-w-0" style={{ borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)' }}>
+    <div className="flex items-center bg-[var(--pod-toolbar)] h-[var(--header-h)] min-w-0" style={{ borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
       {/* Scrollable toolbar region */}
       <div className="relative flex-1 min-w-0">
         {canScrollLeft && (
@@ -375,15 +381,32 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                 <span className="text-[var(--accent)]">{showLatexComments ? "\u2713" : ""}</span>
               </button>
               <button
-                onClick={() => onToggleMarginalia()}
+                onClick={() => { onToggleSectionIndicator(); setViewMenuOpen(false); }}
                 className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
               >
-                <span>Show marginalia</span>
-                <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
+                <span>Current section</span>
+                <span className="text-[var(--accent)]">{showSectionIndicator ? "\u2713" : ""}</span>
               </button>
-              {showMarginalia && (
+              <div className="my-1 border-t border-stone-200" />
+              <button
+                onClick={() => setMarginaliaExpanded((p) => !p)}
+                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+              >
+                <span>Marginalia</span>
+                <svg className="w-3 h-3 text-stone-400 transition-transform" style={{ transform: marginaliaExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2.5 1L5.5 4L2.5 7" />
+                </svg>
+              </button>
+              {marginaliaExpanded && (
                 <>
-                  {(["quote", "note", "archive", "todo"] as const).map((type) => (
+                  <button
+                    onClick={() => onToggleMarginalia()}
+                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  >
+                    <span>Show marginalia</span>
+                    <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
+                  </button>
+                  {showMarginalia && (["quote", "note", "archive", "todo"] as const).map((type) => (
                     <button
                       key={type}
                       onClick={() => onToggleMarginaliaType(type)}

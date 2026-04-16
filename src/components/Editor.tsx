@@ -12,9 +12,9 @@ import { mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
-import { NodeSelection } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -675,6 +675,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ...this.parent?.(),
         label: { default: null },
         uuid: { default: null, rendered: false },
+        numbered: { default: true, rendered: false },
+        sectionNumber: { default: null, rendered: false },
       };
     },
     renderHTML({ HTMLAttributes, node }) {
@@ -683,13 +685,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     addNodeView() {
       return ({ node, getPos, editor: nodeEditor }) => {
-        const TYPE_NAMES = ["Section", "Subsection", "Subsubsection"];
+        const TYPE_NAMES = ["Chapter", "Section", "Subsection", "Subsubsection"];
         let currentNode = node;
 
         const wrapper = document.createElement("div");
         wrapper.className = "heading-wrapper";
 
         const h = document.createElement(`h${node.attrs.level}`) as HTMLHeadingElement;
+        if (node.attrs.numbered !== false && node.attrs.sectionNumber) {
+          h.dataset.sectionNumber = node.attrs.sectionNumber;
+        }
         wrapper.appendChild(h);
 
         const annot = document.createElement("div");
@@ -698,7 +703,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         wrapper.appendChild(annot);
 
         function getTypeName(n: typeof node) {
-          return TYPE_NAMES[Math.min((n.attrs.level as number) - 1, 2)];
+          return TYPE_NAMES[Math.min((n.attrs.level as number) - 1, 3)];
         }
 
         function enterEditMode(targetSpan: HTMLElement) {
@@ -760,11 +765,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         function renderAnnot() {
           const typeName = getTypeName(currentNode);
+          const isNumbered = currentNode.attrs.numbered !== false;
+          const secNum = currentNode.attrs.sectionNumber as string | null;
           const label = currentNode.attrs.label as string | null;
           annot.innerHTML = "";
 
           const typeSpan = document.createElement("span");
-          typeSpan.textContent = typeName;
+          if (isNumbered && secNum) {
+            typeSpan.textContent = `${typeName} ${secNum}`;
+          } else if (!isNumbered) {
+            typeSpan.textContent = `${typeName}*`;
+          } else {
+            typeSpan.textContent = typeName;
+          }
           annot.appendChild(typeSpan);
 
           if (label) {
@@ -830,6 +843,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (updatedNode.type.name !== "heading") return false;
             if (updatedNode.attrs.level !== currentNode.attrs.level) return false;
             currentNode = updatedNode;
+            // Keep section number in sync for CSS ::before
+            if (updatedNode.attrs.numbered !== false && updatedNode.attrs.sectionNumber) {
+              h.dataset.sectionNumber = updatedNode.attrs.sectionNumber;
+            } else {
+              delete h.dataset.sectionNumber;
+            }
             // Don't overwrite annot if an input is active
             if (!annot.querySelector("input")) renderAnnot();
             return true;
@@ -837,7 +856,91 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         };
       };
     },
-  }).configure({ levels: [1, 2, 3] });
+    addProseMirrorPlugins() {
+      return [
+        ...(this.parent?.() || []),
+        new Plugin({
+          key: new PluginKey("sectionNumbers"),
+          appendTransaction(transactions, _oldState, newState) {
+            if (!transactions.some((tr) => tr.docChanged)) return null;
+
+            // Collect heading positions & attrs
+            const headings: { pos: number; level: number; numbered: boolean; cur: string | null }[] = [];
+            newState.doc.descendants((nd, pos) => {
+              if (nd.type.name === "heading") {
+                headings.push({
+                  pos,
+                  level: nd.attrs.level,
+                  numbered: nd.attrs.numbered !== false,
+                  cur: nd.attrs.sectionNumber,
+                });
+              }
+            });
+            if (headings.length === 0) return null;
+
+            // Find top-level among numbered headings
+            let topLevel = 5;
+            for (const h of headings) {
+              if (h.numbered && h.level < topLevel) topLevel = h.level;
+            }
+
+            const counters = [0, 0, 0, 0];
+            const updates: { pos: number; num: string | null }[] = [];
+
+            for (const h of headings) {
+              if (h.numbered && topLevel <= 4) {
+                const idx = h.level - 1;
+                counters[idx]++;
+                for (let i = idx + 1; i < 4; i++) counters[i] = 0;
+                const parts: number[] = [];
+                for (let i = topLevel - 1; i <= idx; i++) parts.push(counters[i]);
+                const num = parts.join(".");
+                if (num !== h.cur) updates.push({ pos: h.pos, num });
+              } else if (h.cur !== null) {
+                updates.push({ pos: h.pos, num: null });
+              }
+            }
+
+            // Build label→number map and check labelRef nodes
+            const labelMap = new Map<string, string>();
+            for (const h of headings) {
+              if (h.numbered && topLevel <= 4) {
+                const nd = newState.doc.nodeAt(h.pos);
+                const label = nd?.attrs.label as string | null;
+                // Use the computed number (from updates or current)
+                const upd = updates.find((u) => u.pos === h.pos);
+                const num = upd ? upd.num : h.cur;
+                if (label && num) labelMap.set(label, num);
+              }
+            }
+
+            // Check labelRef nodes for stale displayText
+            const refUpdates: { pos: number; display: string }[] = [];
+            newState.doc.descendants((nd, pos) => {
+              if (nd.type.name === "labelRef") {
+                const resolved = labelMap.get(nd.attrs.label) || "??";
+                if (nd.attrs.displayText !== resolved) {
+                  refUpdates.push({ pos, display: resolved });
+                }
+              }
+            });
+
+            if (updates.length === 0 && refUpdates.length === 0) return null;
+            const tr = newState.tr;
+            for (const { pos, num } of updates) {
+              const nd = newState.doc.nodeAt(pos);
+              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, sectionNumber: num });
+            }
+            for (const { pos, display } of refUpdates) {
+              const nd = newState.doc.nodeAt(pos);
+              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, displayText: display });
+            }
+            return tr;
+          },
+        }),
+      ];
+    },
+  }).configure({ levels: [1, 2, 3, 4] });
 
   const editor = useEditor({
     extensions: [
@@ -867,6 +970,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LatexComment,
       ArchiveMarker,
       Citation,
+      LabelRef,
       AiRequestMarker,
       LatexCommandMark,
       TitleField,

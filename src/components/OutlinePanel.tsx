@@ -15,6 +15,7 @@ interface HeadingItem {
   level: number;
   text: string;
   label: string | null;
+  sectionNumber: string | null;
   index: number; // top-level block index in doc.content
   parTitles: { title: string; index: number }[]; // paragraph titles under this heading
 }
@@ -287,6 +288,7 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
         level: node.attrs.level as number,
         text: extractText(node) || "Untitled",
         label: (node.attrs.label as string) || null,
+        sectionNumber: (node.attrs.sectionNumber as string) || null,
         index: idx,
         parTitles: [],
       });
@@ -515,6 +517,7 @@ function OutlineNode({
   showLabels,
   showTitles,
   showWordCount,
+  showNumbers,
   sectionWordCount,
   perSectionCounts,
   onUpdateLabel,
@@ -530,6 +533,7 @@ function OutlineNode({
   showLabels: boolean;
   showTitles: boolean;
   showWordCount: boolean;
+  showNumbers: boolean;
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
   onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
@@ -602,6 +606,9 @@ function OutlineNode({
                   : "text-stone-600"
             }`}
           >
+            {showNumbers && node.heading.sectionNumber && (
+              <span className="text-stone-400 font-normal">{node.heading.sectionNumber}{"\u00a0\u00a0"}</span>
+            )}
             {node.heading.text}
           </span>
           {showLabels && onUpdateLabel && (
@@ -661,6 +668,7 @@ function OutlineNode({
               showLabels={showLabels}
               showTitles={showTitles}
               showWordCount={showWordCount}
+              showNumbers={showNumbers}
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
               onUpdateLabel={onUpdateLabel}
@@ -1079,6 +1087,7 @@ interface OutlinePrefs {
   showTitles: boolean;
   showWordCount: boolean;
   showPosition: boolean;
+  showNumbers: boolean;
 }
 
 function loadOutlinePrefs(): OutlinePrefs {
@@ -1088,6 +1097,7 @@ function loadOutlinePrefs(): OutlinePrefs {
     showTitles: true,
     showWordCount: true,
     showPosition: true,
+    showNumbers: false,
   };
   if (typeof window === "undefined") return defaults;
   try {
@@ -1106,6 +1116,7 @@ function saveOutlinePrefs(
   showTitles: boolean,
   showWordCount: boolean,
   showPosition: boolean,
+  showNumbers: boolean,
 ) {
   try {
     localStorage.setItem(OUTLINE_STORAGE_KEY, JSON.stringify({
@@ -1114,6 +1125,7 @@ function saveOutlinePrefs(
       showTitles,
       showWordCount,
       showPosition,
+      showNumbers,
     }));
   } catch {}
 }
@@ -1328,6 +1340,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   const [showTitles, setShowTitles] = useState(true);
   const [showWordCount, setShowWordCount] = useState(true);
   const [showPosition, setShowPosition] = useState(true);
+  const [showNumbers, setShowNumbers] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1345,6 +1358,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setShowTitles(saved.showTitles);
     setShowWordCount(saved.showWordCount);
     setShowPosition(saved.showPosition);
+    setShowNumbers(saved.showNumbers);
   }, []);
 
   // Mark initialized after first render with loaded state
@@ -1353,8 +1367,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       initialized.current = true;
       return;
     }
-    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount, showPosition);
-  }, [collapsed, showLabels, showTitles, showWordCount, showPosition]);
+    saveOutlinePrefs(collapsed, showLabels, showTitles, showWordCount, showPosition, showNumbers);
+  }, [collapsed, showLabels, showTitles, showWordCount, showPosition, showNumbers]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -1562,6 +1576,13 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
                 <button
                   className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  onClick={() => { setShowNumbers(!showNumbers); }}
+                >
+                  <span>Show section numbers</span>
+                  <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
                   onClick={() => { setShowLabels(!showLabels); }}
                 >
                   <span>Show labels</span>
@@ -1714,6 +1735,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   showLabels={showLabels}
                   showTitles={showTitles}
                   showWordCount={showWordCount}
+                  showNumbers={showNumbers}
                   sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
                   perSectionCounts={perSectionCounts}
                   onUpdateLabel={onUpdateLabel}

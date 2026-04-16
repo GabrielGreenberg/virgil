@@ -60,6 +60,7 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
+import LabelRefPopover, { type LabelInfo } from "./LabelRefPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
@@ -449,6 +450,54 @@ function PanelColumn({
 
 
 /**
+ * Floating section-path lozenge that appears at the top of an editor pane
+ * on scroll, then fades out after a short idle period.
+ */
+function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    const scrollEl = ref.current?.parentElement?.querySelector(".overflow-y-auto") as HTMLElement | null;
+    if (!scrollEl) return;
+
+    const onScroll = () => {
+      setVisible(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setVisible(false), 1800);
+    };
+
+    scrollEl.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scrollEl.removeEventListener("scroll", onScroll);
+      clearTimeout(timerRef.current);
+    };
+  }, []);
+
+  const show = visible && sectionPath.length > 0;
+
+  return (
+    <div
+      ref={ref}
+      className="absolute top-1 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-opacity duration-300"
+      style={{ opacity: show ? 1 : 0 }}
+    >
+      <div className="px-3 py-0.5 rounded-full text-[11px] font-medium backdrop-blur-sm shadow-sm whitespace-nowrap max-w-[320px] truncate" style={{ background: 'var(--background)', color: '#44403c', border: '1px solid var(--border-light)' }}>
+        {sectionPath.map((entry, i) => (
+          <span key={i}>
+            {i > 0 && <span className="mx-1 opacity-50">›</span>}
+            <span className={i === sectionPath.length - 1 ? "font-semibold" : "opacity-80"}>
+              {entry.text}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * Two-pane editor split: canonical TipTap view on the left, EditorMirror
  * on the right (sharing the same ProseMirror state). Vertical drag
  * divider sets the ratio. Each pane has its own X close button that
@@ -462,6 +511,9 @@ function SplitEditorPanes({
   onClose,
   onMirrorFocus,
   onMirrorViewReady,
+  sectionPath,
+  mirrorSectionPath,
+  showSectionIndicator,
 }: {
   editorInstance: Editor | null;
   canonical: React.ReactNode;
@@ -470,6 +522,9 @@ function SplitEditorPanes({
   onClose: () => void;
   onMirrorFocus?: () => void;
   onMirrorViewReady?: (view: import("prosemirror-view").EditorView | null) => void;
+  sectionPath: SectionPathEntry[];
+  mirrorSectionPath: SectionPathEntry[];
+  showSectionIndicator: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -495,6 +550,7 @@ function SplitEditorPanes({
         style={{ flex: `${ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         {canonical}
+        {showSectionIndicator && <SectionLozenge sectionPath={sectionPath} />}
       </div>
       {/* Drag gap — canvas shows between the two editor pods */}
       <div className="relative shrink-0 z-10" style={{ height: 'var(--pod-gap)' }}>
@@ -511,7 +567,7 @@ function SplitEditorPanes({
       </div>
       {/* Bottom pane — own white pod */}
       <div
-        className="flex flex-col min-w-0 min-h-0 overflow-hidden"
+        className="relative flex flex-col min-w-0 min-h-0 overflow-hidden"
         style={{ flex: `${1 - ratio} 1 0`, background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}
       >
         <EditorMirror
@@ -520,6 +576,7 @@ function SplitEditorPanes({
           onFocus={onMirrorFocus}
           onViewReady={onMirrorViewReady}
         />
+        {showSectionIndicator && <SectionLozenge sectionPath={mirrorSectionPath} />}
       </div>
     </div>
   );
@@ -982,6 +1039,19 @@ export default function EditorLayout() {
       return next;
     });
   }, []);
+  // Section indicator lozenge visibility — persisted
+  const [showSectionIndicator, setShowSectionIndicator] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { const v = localStorage.getItem("virgil-show-section-indicator"); return v !== "false"; } catch { return true; }
+  });
+  const toggleSectionIndicator = useCallback(() => {
+    setShowSectionIndicator((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("virgil-show-section-indicator", String(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const aiDot = useMemo(() => aiRequestDotStatus({
@@ -1006,6 +1076,10 @@ export default function EditorLayout() {
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
+
+  // ── LabelRef popover state ──
+  const [activeRefLabel, setActiveRefLabel] = useState<string | null>(null);
+  const [activeRefRect, setActiveRefRect] = useState<DOMRect | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
   // Whether the in-flight pending create should be inserted into the
@@ -2410,6 +2484,116 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-citation-click", handler);
   }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
 
+  // Listen for \ref node clicks → open the LabelRef popover
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.label) return;
+      const el = document.querySelector(
+        `.label-ref-node[data-label="${detail.label}"]`,
+      ) as HTMLElement | null;
+      if (el) {
+        setActiveRefLabel(detail.label);
+        setActiveRefRect(el.getBoundingClientRect());
+      }
+    };
+    window.addEventListener("virgil-label-ref-click", handler);
+    return () => window.removeEventListener("virgil-label-ref-click", handler);
+  }, []);
+
+  // Highlight the active \ref node with yellow while the popover is open
+  useEffect(() => {
+    if (!activeRefLabel) return;
+    const els = document.querySelectorAll(
+      `.label-ref-node[data-label="${activeRefLabel}"]`,
+    );
+    for (const el of els) el.classList.add("label-ref-active");
+    return () => {
+      for (const el of els) el.classList.remove("label-ref-active");
+    };
+  }, [activeRefLabel]);
+
+  // ── LabelRef popover helpers ──
+  const gatherLabels = useCallback((): LabelInfo[] => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return [];
+    const result: LabelInfo[] = [];
+    editor.state.doc.descendants((nd) => {
+      if (nd.type.name === "heading" && nd.attrs.label) {
+        const titleParts: string[] = [];
+        nd.content.forEach((child) => {
+          if (child.isText && child.text) titleParts.push(child.text);
+        });
+        result.push({
+          label: nd.attrs.label,
+          title: titleParts.join("") || "(untitled)",
+          sectionNumber: nd.attrs.sectionNumber || "?",
+          level: nd.attrs.level,
+        });
+      }
+    });
+    return result;
+  }, []);
+
+  const handleRefChangeLabel = useCallback(
+    (oldLabel: string, newLabel: string) => {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return;
+      editor.state.doc.descendants((nd, pos) => {
+        if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
+          let display = "??";
+          editor.state.doc.descendants((h) => {
+            if (h.type.name === "heading" && h.attrs.label === newLabel && h.attrs.sectionNumber) {
+              display = h.attrs.sectionNumber;
+            }
+          });
+          const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
+            ...nd.attrs,
+            label: newLabel,
+            displayText: display,
+          });
+          editor.view.dispatch(tr);
+          return false;
+        }
+        return true;
+      });
+      setActiveRefLabel(newLabel);
+    },
+    [],
+  );
+
+  const handleRefJump = useCallback((label: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    let targetPos = -1;
+    editor.state.doc.descendants((nd, pos) => {
+      if (nd.type.name === "heading" && nd.attrs.label === label) {
+        targetPos = pos + 1;
+        return false;
+      }
+      return true;
+    });
+    if (targetPos >= 0) {
+      editor.chain().focus().setTextSelection(targetPos).scrollIntoView().run();
+    }
+  }, []);
+
+  const handleInsertRef = useCallback((newLabel: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    // Resolve display text from heading labels
+    let display = "??";
+    editor.state.doc.descendants((h) => {
+      if (h.type.name === "heading" && h.attrs.label === newLabel && h.attrs.sectionNumber) {
+        display = h.attrs.sectionNumber;
+      }
+    });
+    editor.chain().focus().insertContent({
+      type: "labelRef",
+      attrs: { label: newLabel, displayText: display },
+    }).run();
+  }, []);
+
   // Click on empty editor space → deselect all panel items.
   // Marker click handlers call stopPropagation(), so this only fires
   // for non-marker clicks (regular text, whitespace, etc.).
@@ -2449,6 +2633,53 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-citation-create", handler);
     return () => window.removeEventListener("virgil-citation-create", handler);
+  }, [setActiveLeft, setActiveRight]);
+
+  // Listen for \ref command → open ref-create popover at cursor
+  useEffect(() => {
+    const handler = () => {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return;
+      // Get the cursor position in screen coords for the popover
+      const { from } = editor.state.selection;
+      const coords = editor.view.coordsAtPos(from);
+      const rect = new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top);
+      setActiveRefLabel(""); // empty label = new ref, triggers popover in create mode
+      setActiveRefRect(rect);
+    };
+    window.addEventListener("virgil-ref-create", handler);
+    return () => window.removeEventListener("virgil-ref-create", handler);
+  }, []);
+
+  // Listen for \footnote command → create empty footnote at cursor
+  useEffect(() => {
+    const handler = () => {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return;
+      const footnoteId = generateEntityId();
+      const content = { type: "doc", content: [{ type: "paragraph" }] };
+      editor
+        .chain()
+        .focus()
+        .insertContent({ type: "footnote", attrs: { footnoteId, content, number: 0 } })
+        .run();
+      // Renumber all footnotes
+      editorRef.current?.renumberFootnotes();
+      // Open footnotes panel and select the new one
+      const p = prefsRef.current;
+      const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
+      if (fnPlacement?.side === "left") {
+        if (p.activeLeft !== "footnotes") setActiveLeft("footnotes");
+      } else {
+        if (p.activeRight !== "footnotes") setActiveRight("footnotes");
+      }
+      setSelectedFootnoteId(footnoteId);
+      window.dispatchEvent(
+        new CustomEvent("virgil-footnote-created", { detail: { footnoteId, content } }),
+      );
+    };
+    window.addEventListener("virgil-footnote-input", handler);
+    return () => window.removeEventListener("virgil-footnote-input", handler);
   }, [setActiveLeft, setActiveRight]);
 
   // Handle drag-and-drop of archive snippets into the editor.
@@ -3990,6 +4221,8 @@ export default function EditorLayout() {
             onToggleParTitles={() => setShowParTitles((p) => !p)}
             showLatexComments={showLatexComments}
             onToggleLatexComments={() => setShowLatexComments((p) => !p)}
+            showSectionIndicator={showSectionIndicator}
+            onToggleSectionIndicator={toggleSectionIndicator}
             onOpenPreferences={() => setPreferencesOpen(true)}
             editorSplit={editorSplit}
             onToggleEditorSplit={() => setEditorSplit((s) => !s)}
@@ -4011,6 +4244,9 @@ export default function EditorLayout() {
                 onClose={() => setEditorSplit(false)}
                 onMirrorFocus={() => setActiveSplitPane("bottom")}
                 onMirrorViewReady={(v) => { mirrorViewRef.current = v; setMirrorViewGen((n) => n + 1); }}
+                sectionPath={currentSectionPath}
+                mirrorSectionPath={mirrorSectionPath}
+                showSectionIndicator={showSectionIndicator}
                 canonical={
                   <>
                     <VirgilEditor
@@ -4036,7 +4272,7 @@ export default function EditorLayout() {
               />
             ) : (
               /* Single editor — one white pod */
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
                 <VirgilEditor
                   ref={editorRef}
                   initialContent={content}
@@ -4054,6 +4290,7 @@ export default function EditorLayout() {
                   markers={visibleMarginaliaMarkers}
                   panelSides={marginaliaPanelSides}
                 />
+                {showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
               </div>
             )
           ) : (
@@ -4063,23 +4300,6 @@ export default function EditorLayout() {
               </div>
             </div>
           )}
-          {/* Section breadcrumb — plain text on canvas, no pod */}
-          <div className="shrink-0 flex items-center px-3 py-0.5">
-            <span className="text-[11px] text-[var(--muted-light)] truncate">
-              {currentSectionPath.length === 0 ? (
-                <span className="italic">Document start</span>
-              ) : (
-                currentSectionPath.map((entry, i) => (
-                  <span key={i}>
-                    {i > 0 && <span className="mx-1 text-[var(--muted-light)]">›</span>}
-                    <span className={i === currentSectionPath.length - 1 ? "font-semibold text-[var(--muted)]" : ""}>
-                      {entry.text}
-                    </span>
-                  </span>
-                ))
-              )}
-            </span>
-          </div>
         </div>
 
         {/* Right panel column (always present; collapsed when inactive) */}
@@ -4184,6 +4404,20 @@ export default function EditorLayout() {
         }}
       />
       {confirmDialog}
+      {activeRefLabel != null && activeRefRect && (
+        <LabelRefPopover
+          label={activeRefLabel}
+          anchorRect={activeRefRect}
+          labels={gatherLabels()}
+          onChangeLabel={handleRefChangeLabel}
+          onJumpToLabel={handleRefJump}
+          onInsertRef={handleInsertRef}
+          onClose={() => {
+            setActiveRefLabel(null);
+            setActiveRefRect(null);
+          }}
+        />
+      )}
       {pendingFolderPick && (
         <TexFilePickerModal
           folderName={pendingFolderPick.folderName}
