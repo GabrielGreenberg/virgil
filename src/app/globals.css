@@ -1192,6 +1192,35 @@ body {
   z-index: 0;
 }
 
+/* ── Apple/Chrome-style tab swoop ──
+   Active tab widens at the bottom with a concave hook on each side so it
+   cups into the page. Each pseudo sits just outside the tab at its
+   bottom corner; the radial mask centers its circle on the corner
+   FARTHEST from the tab, so everything inside the circle is transparent
+   (topbar shows through) and only a thin curved sliver adjacent to the
+   tab is filled with page color — forming the concave hook. */
+.browser-tab-swoop::before,
+.browser-tab-swoop::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  background: var(--background);
+  pointer-events: none;
+  z-index: 11;
+}
+.browser-tab-swoop::before {
+  left: -10px;
+  -webkit-mask: radial-gradient(circle 10px at top left, transparent 0 10px, #000 10.5px);
+          mask: radial-gradient(circle 10px at top left, transparent 0 10px, #000 10.5px);
+}
+.browser-tab-swoop::after {
+  right: -10px;
+  -webkit-mask: radial-gradient(circle 10px at top right, transparent 0 10px, #000 10.5px);
+          mask: radial-gradient(circle 10px at top right, transparent 0 10px, #000 10.5px);
+}
+
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
   outline: none;
