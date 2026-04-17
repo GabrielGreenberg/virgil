@@ -267,6 +267,9 @@ const VIRGIL_COMMANDS: VirgilCommand[] = [
 // Build a lookup map for fast matching
 const COMMAND_MAP = new Map(VIRGIL_COMMANDS.map((c) => [c.name, c]));
 
+/** Names of all native Virgil commands (without the leading backslash). */
+export const VIRGIL_COMMAND_NAMES: readonly string[] = VIRGIL_COMMANDS.map((c) => c.name);
+
 // --- LaTeX Command mark (grey monospace for unhandled commands) ---
 
 export const LatexCommandMark = Mark.create({
