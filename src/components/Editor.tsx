@@ -1938,7 +1938,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0 hide-scrollbar">
         <EditorContent editor={editor} />
       </div>
     </div>
