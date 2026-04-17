@@ -107,8 +107,11 @@ export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlai
 /** Theme configuration for an EditableCard. */
 export interface CardTheme {
   cardClass: (selected: boolean, extra?: string) => string;
-  separatorSelected: string;
+  /** Always-on header tint (shown even when unselected). */
+  headerDefault: string;
+  /** Intensified header tint on selection. */
   headerSelected: string;
+  separatorSelected: string;
   /** Badge colors: bg, text/stroke, border — used by badgeLabel & badgeOrphaned. */
   badgeBg: string;
   badgeColor: string;
@@ -119,10 +122,14 @@ export interface CardTheme {
 
 /** Pre-built themes for existing card types. */
 export const CARD_THEMES = {
-  footnote: { cardClass: footnoteCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
-  note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
-  archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
-  todo: { cardClass: todoCard, separatorSelected: "border-stone-300", headerSelected: "bg-stone-50/60", badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  footnote:  { cardClass: footnoteCard, headerDefault: "bg-red-50/30",     headerSelected: "bg-red-50/60",     separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
+  note:      { cardClass: noteCard,     headerDefault: "bg-emerald-50/30", headerSelected: "bg-emerald-50/60", separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
+  archive:   { cardClass: panelCard,    headerDefault: "bg-amber-50/30",   headerSelected: "bg-amber-50/60",   separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
+  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-50/50",   headerSelected: "bg-stone-100/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/50",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
+  citation:  { cardClass: panelCard,    headerDefault: "bg-[#fef3c3]/40",  headerSelected: "bg-[#fef3c3]",     separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
+  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-50/40",   headerSelected: "bg-stone-100/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-50/40",     headerSelected: "bg-sky-50/80",     separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -379,7 +386,7 @@ export function EditableCard({
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? ` ${theme.headerSelected}` : ""}`}>
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
         {/* Optional grab handle — sole drag source when present */}
         {grabHandle && onDragStart && (
           <div
@@ -686,17 +693,19 @@ export function AiRequestCard({
   );
 
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
+  const theme = CARD_THEMES.aiRequest;
 
   return (
     <div
       data-ai-request-id={request.id}
       draggable
       onDragStart={handleDragStart}
-      className="group rounded-lg border border-sky-200 bg-sky-50/40 px-3 py-2 cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors"
+      className="group rounded-lg border border-sky-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors"
     >
-      <div className="flex items-start gap-2">
+      {/* Header: star + kind label + status + inline delete */}
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
         <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0 mt-0.5 text-sky-500"
+          className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
           title={`AI ${kindLabel} request`}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -708,21 +717,14 @@ export function AiRequestCard({
             </g>
           </svg>
         </span>
-        <textarea
-          ref={taRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onMouseDown={(e) => e.stopPropagation()}
-          onDragStart={(e) => e.stopPropagation()}
-          draggable={false}
-          placeholder={`Describe what you want the AI to ${
-            request.kind === "todo" ? "do" : "find or write"
-          }\u2026`}
-          className="flex-1 min-w-0 resize-none bg-transparent text-xs text-stone-700 placeholder:text-stone-400 focus:outline-none leading-snug font-serif"
-          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-          rows={1}
-        />
+        <span className="text-xs font-medium text-sky-800 truncate">AI {kindLabel} request</span>
+        {request.status === "submitted" && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 shrink-0">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+            Pending
+          </span>
+        )}
+        <div className="flex-1" />
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -750,14 +752,27 @@ export function AiRequestCard({
           onCancel={() => setConfirmOpen(false)}
         />
       </div>
-      <div className="text-[10px] text-stone-400 mt-1 flex items-center gap-1.5 pl-7">
-        <span>{kindLabel}</span>
-        {request.status === "submitted" && (
-          <span className="inline-flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-            Pending
-          </span>
-        )}
+
+      {/* Separator */}
+      <div className="border-t border-sky-200/70" />
+
+      {/* Body: auto-grow textarea */}
+      <div className="bg-sky-50/20 px-3 py-2">
+        <textarea
+          ref={taRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={handleBlur}
+          onMouseDown={(e) => e.stopPropagation()}
+          onDragStart={(e) => e.stopPropagation()}
+          draggable={false}
+          placeholder={`Describe what you want the AI to ${
+            request.kind === "todo" ? "do" : "find or write"
+          }\u2026`}
+          className="w-full resize-none bg-transparent text-xs text-stone-700 placeholder:text-stone-400 focus:outline-none leading-snug font-serif"
+          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+          rows={1}
+        />
       </div>
     </div>
   );

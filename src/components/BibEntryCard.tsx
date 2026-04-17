@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron, TargetIcon } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, TargetIcon, CARD_THEMES } from "./panel-primitives";
 import { MIME_CITATION } from "@/lib/marginalia";
 
 export interface BibEntryCardProps {
@@ -206,60 +206,14 @@ export default function BibEntryCard({
   // Target icon is always rendered (when the entry is cited) so its
   // hover/selected opacity states can fade in/out without layout shift.
   const showTargetIcon = !!onJump && !compact;
-  // Reserve right padding so text doesn't run under top-right widgets.
-  const pr = showTargetIcon
-    ? (hasOccCounter ? "pr-24" : "pr-8")
-    : (hasOccCounter ? "pr-16" : "");
 
-  const content = (
+  // Header: author · year · title (single line, truncates).
+  const headerText = [author, year, title].filter(Boolean).join(" · ");
+
+  const bodyContent = (
     <>
-      {/* Top-right widgets: target icon (greyed on hover, full on select)
-          + occurrence counter (always visible when applicable) */}
-      {(showTargetIcon || hasOccCounter) && (
-        <div
-          className="absolute top-2 right-2 flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-        >
-          {showTargetIcon && (
-            <div
-              className={`transition-opacity ${
-                isSelected ? "opacity-100" : "opacity-60"
-              }`}
-            >
-              <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
-            </div>
-          )}
-          {hasOccCounter && (
-            <div className="flex items-center gap-0.5 text-xs text-stone-400">
-              <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-stone-600 px-0.5" title="Previous occurrence">&#x25B2;</button>
-              <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
-              <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-stone-600 px-0.5" title="Next occurrence">&#x25BC;</button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Author · Year */}
-      {(author || year) && (
-        <div className={`text-sm text-stone-800 ${pr}`}>
-          {author && <span className="font-semibold">{author}</span>}
-          {author && year && <span className="text-stone-400 mx-1.5">&middot;</span>}
-          {year && <span className="font-semibold">{year}</span>}
-        </div>
-      )}
-
-      {/* Title */}
-      {title && (
-        <div className={`text-sm font-semibold italic text-stone-700 mt-0.5 leading-snug ${pr}`}>
-          {title}
-        </div>
-      )}
-
-      {/* Remaining publication details (excludes author/year/title already shown above) */}
+      {/* Remaining publication details (excludes author/year/title already shown in header) */}
       {(() => {
-        const skip = new Set(["author", "year", "date", "title", "abstract"]);
         const parts: string[] = [];
         const f = entry.fields;
         if (f.journal) parts.push(`<i>${f.journal}</i>`);
@@ -276,7 +230,7 @@ export default function BibEntryCard({
         if (parts.length === 0) return null;
         return (
           <div
-            className={`text-xs text-stone-500 leading-relaxed mt-1.5 break-words overflow-hidden ${pr}`}
+            className="text-xs text-stone-500 leading-relaxed break-words overflow-hidden"
             style={{ overflowWrap: "anywhere" }}
             dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
           />
@@ -433,8 +387,21 @@ export default function BibEntryCard({
   );
 
   if (compact) {
-    return <div className="relative">{content}</div>;
+    // Embedded use (inside a CitationCard expansion) — no outer wrapper, no header.
+    // Show the author/year/title inline at the top of the body.
+    return (
+      <div className="relative">
+        {headerText && (
+          <div className="text-sm text-stone-800 font-semibold mb-1.5 leading-snug">
+            {headerText}
+          </div>
+        )}
+        {bodyContent}
+      </div>
+    );
   }
+
+  const theme = CARD_THEMES.bib;
 
   return (
     <div
@@ -444,8 +411,45 @@ export default function BibEntryCard({
       className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}`}
       onClick={onClick}
     >
+      {/* Header: author · year · title + target icon + occurrence counter */}
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}>
+        <div className="flex-1 min-w-0 text-sm text-stone-800 truncate" title={headerText}>
+          {author && <span className="font-semibold">{author}</span>}
+          {author && year && <span className="text-stone-400 mx-1.5">&middot;</span>}
+          {year && <span className="font-semibold">{year}</span>}
+          {(author || year) && title && <span className="text-stone-400 mx-1.5">&middot;</span>}
+          {title && <span className="italic text-stone-700">{title}</span>}
+        </div>
+        {hasOccCounter && (
+          <div
+            className="flex items-center gap-0.5 text-xs text-stone-400 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-stone-600 px-0.5" title="Previous occurrence">&#x25B2;</button>
+            <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
+            <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-stone-600 px-0.5" title="Next occurrence">&#x25BC;</button>
+          </div>
+        )}
+        {showTargetIcon && (
+          <div
+            className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
+            onClick={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+          </div>
+        )}
+      </div>
+
+      {/* Separator */}
+      <div className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+
+      {/* Body */}
       <div className={PANEL.cardInner}>
-        {content}
+        {bodyContent}
       </div>
     </div>
   );

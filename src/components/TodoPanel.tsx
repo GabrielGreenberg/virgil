@@ -97,7 +97,7 @@ export function TodoRow({
       }}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? ` ${theme.headerSelected}` : ""}`}>
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
         {/* Grab handle — sole drag source */}
         <div
           draggable

@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, CARD_THEMES } from "./panel-primitives";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
 import { MIME_CITATION } from "@/lib/marginalia";
@@ -325,8 +325,8 @@ export function CitationCard({
       onClick={onSelect}
       title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
     >
-      <div className={PANEL.cardInner}>
-        {isEditing ? (
+      {isEditing ? (
+        <div className={PANEL.cardInner}>
           <div ref={editWrapperRef} onClick={(e) => e.stopPropagation()}>
             <CitationBuilder
               ref={builderHandleRef}
@@ -339,29 +339,12 @@ export function CitationCard({
               saveLabel="Save"
             />
           </div>
-        ) : (
-          <>
-            {/* Target icon: always rendered, greyed out on hover, full
-                color when the card is selected. Hidden entirely when
-                neither hovered nor selected.
-                Opacity (not color class) is used for the greyed-out
-                state so it wins against TargetIcon's base color. */}
-            <div
-              className={`absolute top-1.5 right-1.5 transition-opacity ${
-                isSelected ? "opacity-100" : "opacity-60"
-              }`}
-              draggable={false}
-              onDragStart={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-            >
-              <TargetIcon onClick={onJump} title="Jump to citation" />
-            </div>
-            {/* Citation key buttons */}
-            <div
-              className={`flex flex-wrap gap-1.5 mb-2 pr-7`}
-            >
+        </div>
+      ) : (
+        <>
+          {/* Header: bib-key chips + target icon trailing */}
+          <div className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? CARD_THEMES.citation.headerSelected : CARD_THEMES.citation.headerDefault}`}>
+            <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
                 const entry = bibEntryMap.get(key);
                 const isActive = expandedBibKey === key;
@@ -388,11 +371,24 @@ export function CitationCard({
                 );
               })}
             </div>
+            <div
+              className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
+              draggable={false}
+              onDragStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+            >
+              <TargetIcon onClick={onJump} title="Jump to citation" />
+            </div>
+          </div>
 
-            {/* LaTeX command + Edit button on the same row. The command
-                truncates with ellipsis when long; the Edit button is a
-                small chip pinned to the right edge. */}
-            <div className="flex items-center gap-1.5 mb-1.5 min-w-0">
+          {/* Separator */}
+          <div className={`border-t transition-colors ${isSelected ? CARD_THEMES.citation.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+
+          {/* Body: command preview + edit, missing-key warnings, expanded bib pod */}
+          <div className={PANEL.cardInner}>
+            <div className="flex items-center gap-1.5 min-w-0">
               <div className="text-xs font-mono text-stone-500 truncate flex-1 min-w-0">
                 {cit.command}
               </div>
@@ -412,7 +408,7 @@ export function CitationCard({
             {cit.keys
               .filter((k) => !bibEntryMap.has(k))
               .map((k) => (
-                <div key={k} className="text-xs text-red-400 mb-1">
+                <div key={k} className="text-xs text-red-400 mt-1">
                   Key not found in .bib: <span className="font-mono">{k}</span>
                 </div>
               ))}
@@ -446,9 +442,9 @@ export function CitationCard({
                 />
               </div>
             )}
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -78,11 +78,12 @@ here — panels pass content-specific data, not styling.
 | `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
 
 ### Selection states
-- **Selected**: colored border around whole card, tinted header (`theme.headerSelected`), **white body**
-- **Default**: `bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50`
-- Separator: `border-stone-200`, darkens to `border-stone-300` on hover
-- Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`
-- Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container)
+- **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
+- **Selected**: colored border around whole card, intensified header (`theme.headerSelected`), white body.
+- **Default**: `bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50`, plus the always-on `theme.headerDefault` tint on the header row.
+- Separator: `border-stone-200`, darkens to `border-stone-300` on hover; selected cards use `theme.separatorSelected`.
+- Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`.
+- Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container).
 
 ### Shared sub-components (`panel-primitives.tsx`)
 | Component | Usage |
@@ -104,9 +105,22 @@ and pass the appropriate props. TodoRow (which doesn't use EditableCard)
 applies `border-dashed` directly and swaps `BadgeLabel`/`BadgeOrphaned`.
 
 ### Card themes (`CARD_THEMES`)
-Each theme provides: `cardClass`, `separatorSelected`, `headerSelected`,
-`badgeBg`, `badgeColor`, `badgeBorder`. Panels reference themes, never
-hardcode colors.
+Each theme provides: `cardClass`, `headerDefault`, `headerSelected`,
+`separatorSelected`, `badgeBg`, `badgeColor`, `badgeBorder`, `titleColor`.
+Panels reference themes, never hardcode colors.
+
+Available themes:
+- `footnote` — reddish
+- `note` — emerald
+- `archive` — amber/blue-grey
+- `todo` — stone/grey
+- `bib` — warm tan (bibliography entries)
+- `citation` — warmer yellow (in-text citations)
+- `comment` — neutral stone (revisions/comments)
+- `aiRequest` — sky (AI request drafts)
+
+`headerDefault` is roughly half the opacity of `headerSelected` so that
+selection intensifies the header rather than introducing it.
 
 ### Delete behavior
 - [x] button and Delete/Backspace key both go through `tryDelete()`
