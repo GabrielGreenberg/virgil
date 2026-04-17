@@ -2,8 +2,6 @@
 
 import { useMemo, memo, useState, useRef, useEffect, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
-import { PANEL, PanelHeader } from "./panel-primitives";
-import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 
 /**
@@ -17,11 +15,9 @@ import { useInTextPositions } from "@/hooks/useInTextPositions";
  * builds these by instantiating the extracted card components
  * (CitationCard, FootnoteCard, QuotationGroupCard, …).
  *
- * In list mode the cards are shown in document order (anchored first,
- * sorted by `pos`; unanchored grouped at the bottom).
- *
- * In in-text mode the cards are absolutely positioned so each one
- * lines up with its corresponding location in the editor.
+ * Cards are absolutely positioned so each one lines up with its
+ * corresponding location in the editor. Unanchored items stack at the
+ * top of the column.
  */
 
 /** Known item category prefixes. */
@@ -49,9 +45,7 @@ export interface OmniItem {
 interface OmniViewPanelProps {
   side: "left" | "right";
   items: OmniItem[];
-  viewMode: "list" | "in-text";
-  onViewModeChange: (mode: "list" | "in-text") => void;
-  /** Editor instance — required for in-text view positioning. */
+  /** Editor instance — required for in-text positioning. */
   editor: Editor | null;
   /** Which categories this side currently shows. */
   enabledCategories: Set<OmniCategory>;
@@ -182,8 +176,6 @@ function FilterMenu({
 function OmniViewPanel({
   side,
   items,
-  viewMode,
-  onViewModeChange,
   editor,
   enabledCategories,
   onToggleCategory,
@@ -223,7 +215,7 @@ function OmniViewPanel({
   const unanchoredRef = useRef<HTMLDivElement>(null);
   const topOffsetRef = useRef(0);
   useEffect(() => {
-    if (viewMode !== "in-text" || unanchored.length === 0) {
+    if (unanchored.length === 0) {
       topOffsetRef.current = 0;
       return;
     }
@@ -235,85 +227,60 @@ function OmniViewPanel({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [viewMode, unanchored.length]);
+  }, [unanchored.length]);
 
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor,
     inTextItems,
-    viewMode === "in-text",
+    true,
     "data-omni-entry",
     topOffsetRef,
   );
 
   return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Omni-view">
-        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+    <div className="relative w-full h-full">
+      <div className="absolute top-1 -right-1 z-10">
         <FilterMenu enabled={enabledCategories} onToggle={onToggleCategory} categorySides={categorySides} />
-      </PanelHeader>
-
+      </div>
       <div
-        ref={viewMode === "in-text" ? panelScrollRef : undefined}
-        className={
-          viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list
-        }
+        ref={panelScrollRef}
+        className="w-full h-full overflow-y-auto hide-scrollbar"
       >
         {visibleItems.length === 0 && (
-          <div className={PANEL.empty}>
+          <div className="text-center text-stone-400 text-xs px-3 py-6">
             {enabledCategories.size === 0
               ? "No item types selected — use the filter menu."
               : "No items to show yet."}
           </div>
         )}
-
-        {viewMode === "in-text" ? (
-          <>
-            {unanchored.length > 0 && (
-              <div ref={unanchoredRef} className="px-2 pt-2 pb-2 space-y-2 border-b border-[var(--border)]">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1">
-                  Unanchored
-                </div>
-                {unanchored.map((item) => (
-                  <div key={item.id}>{item.content}</div>
-                ))}
-              </div>
-            )}
-            <div
-              className="relative"
-              style={{ height: editorScrollHeight || "100%" }}
-            >
-              {anchored.map((item) => {
-                const top = positions.get(item.id);
-                if (top === undefined) return null;
-                return (
-                  <div
-                    key={item.id}
-                    className="absolute left-2 right-2"
-                    style={{ top }}
-                  >
-                    {item.content}
-                  </div>
-                );
-              })}
+        {unanchored.length > 0 && (
+          <div ref={unanchoredRef} className="px-2 pt-2 pb-2 space-y-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1">
+              Unanchored
             </div>
-          </>
-        ) : (
-          <>
-            {unanchored.length > 0 && (
-              <>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1 pt-1">
-                  Unanchored
-                </div>
-                {unanchored.map((item) => (
-                  <div key={item.id}>{item.content}</div>
-                ))}
-              </>
-            )}
-            {anchored.map((item) => (
+            {unanchored.map((item) => (
               <div key={item.id}>{item.content}</div>
             ))}
-          </>
+          </div>
         )}
+        <div
+          className="relative"
+          style={{ height: editorScrollHeight || "100%" }}
+        >
+          {anchored.map((item) => {
+            const top = positions.get(item.id);
+            if (top === undefined) return null;
+            return (
+              <div
+                key={item.id}
+                className="absolute left-2 right-2"
+                style={{ top }}
+              >
+                {item.content}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

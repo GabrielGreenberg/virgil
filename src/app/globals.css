@@ -1159,6 +1159,14 @@ body {
   display: none;
 }
 
+/* Scroll container with no visible scrollbar — interaction via wheel/trackpad */
+.hide-scrollbar {
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* View toggles — hide paragraph titles */
 .hide-par-titles .par-title-annotation,
 .hide-par-titles .par-title-annotation {

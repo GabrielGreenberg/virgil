@@ -502,7 +502,7 @@ function PanelColumn({
         </div>
       ) : (
         <div
-          className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}
+          className={`flex-1 min-w-0 panel-container ${blank ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-2"}`}
           style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
         >
           {(children as React.ReactNode)}
@@ -3935,13 +3935,10 @@ export default function EditorLayout() {
         }
       }
 
-      const omniKey = `omni:${side}`;
       return (
         <OmniViewPanel
           side={side}
           items={items}
-          viewMode={getPanelViewMode(omniKey)}
-          onViewModeChange={(m) => setPanelViewMode(omniKey, m)}
           editor={editorInstance}
           enabledCategories={getOmniEnabled(side)}
           onToggleCategory={(cat) => toggleOmniCategory(side, cat)}
@@ -3991,9 +3988,10 @@ export default function EditorLayout() {
       );
     }
 
-    // Single mode
+    // Single mode. Omni-view renders chromeless — no pod background/border —
+    // so its cards float directly on the blank canvas behind the panels.
     return (
-      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank"}>
+      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank" || top === "omni"}>
         {renderPanelInner(top!, side)}
       </PanelColumn>
     );
