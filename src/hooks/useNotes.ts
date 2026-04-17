@@ -41,6 +41,8 @@ export function useNotes(docId: string | null) {
               paragraphIds: Array.isArray(raw.paragraphIds)
                 ? raw.paragraphIds
                 : [], // drop legacy numeric anchors
+              anchorId: typeof raw.anchorId === "string" ? raw.anchorId : undefined,
+              anchorText: typeof raw.anchorText === "string" ? raw.anchorText : undefined,
             };
           }) as UserNote[],
         };
@@ -60,13 +62,19 @@ export function useNotes(docId: string | null) {
   }, []);
 
   const addNote = useCallback(
-    (paragraphId: string | null, content?: JSONContent) => {
+    (
+      paragraphId: string | null,
+      content?: JSONContent,
+      anchor?: { anchorId: string; anchorText: string },
+    ) => {
       const newNote: UserNote = {
         id: generateEntityId(),
         title: "",
         content: content ?? emptyRichContent(),
         paragraphIds: paragraphId ? [paragraphId] : [],
         createdAt: new Date().toISOString(),
+        anchorId: anchor?.anchorId,
+        anchorText: anchor?.anchorText,
       };
       setState((prev) => {
         const newState = { notes: [...prev.notes, newNote] };
@@ -77,6 +85,49 @@ export function useNotes(docId: string | null) {
     },
     [persist]
   );
+
+  const setNoteAnchor = useCallback(
+    (id: string, anchorId: string, anchorText: string) => {
+      setState((prev) => {
+        const newState = {
+          notes: prev.notes.map((n) =>
+            n.id === id ? { ...n, anchorId, anchorText } : n,
+          ),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist],
+  );
+
+  const clearNoteAnchor = useCallback(
+    (anchorId: string) => {
+      setState((prev) => {
+        if (!prev.notes.some((n) => n.anchorId === anchorId)) return prev;
+        const newState = {
+          notes: prev.notes.map((n) =>
+            n.anchorId === anchorId ? { ...n, anchorId: undefined } : n,
+          ),
+        };
+        persist(newState);
+        return newState;
+      });
+    },
+    [persist],
+  );
+
+  // Orphan listener — when the mark vanishes from the doc, clear the dead id
+  // on the matching note (keep the note; it becomes un-anchored).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      if (kind !== "note" || !anchorId) return;
+      clearNoteAnchor(anchorId);
+    };
+    window.addEventListener("virgil-anchor-orphaned", handler);
+    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
+  }, [clearNoteAnchor]);
 
   const updateNote = useCallback(
     (id: string, content: JSONContent) => {
@@ -163,5 +214,7 @@ export function useNotes(docId: string | null) {
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,
+    setNoteAnchor,
+    clearNoteAnchor,
   };
 }

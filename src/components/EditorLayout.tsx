@@ -3,11 +3,14 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
+import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
 import NotesPanel, { NoteCard } from "./NotesPanel";
+import CutterPanel from "./CutterPanel";
+import SelectionChip from "./SelectionChip";
 import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "./OutlinePanel";
 import TodoPanel, { TodoRow } from "./TodoPanel";
 import ArchivePanel, { ArchiveCard } from "./ArchivePanel";
@@ -30,14 +33,17 @@ import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
 import { useNotes } from "@/hooks/useNotes";
+import { useCutter } from "@/hooks/useCutter";
 import { useQuotations } from "@/hooks/useQuotations";
 import Marginalia from "./Marginalia";
 import {
   isAnchorableNode,
   MIME_ARCHIVE,
   MIME_ARCHIVE_ANCHOR,
+  MARKER_META,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
+import { createLinkedAnchor, removeLinkedAnchor, reanchorByText } from "@/lib/linked-anchors";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -937,6 +943,7 @@ export default function EditorLayout() {
     addUser: addRevisionUser,
     addGeneralRevision,
     addTextRevision,
+    setRevisionAnchor,
     addTurn: addRevisionTurn,
     resolveRevision,
     reopenRevision,
@@ -954,7 +961,18 @@ export default function EditorLayout() {
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,
+    setNoteAnchor,
   } = useNotes(docIdForHooks);
+  const {
+    cuts,
+    addCut,
+    updateCut,
+    updateCutTitle,
+    addCutParagraphId,
+    removeCutParagraphId,
+    deleteCut,
+  } = useCutter(docIdForHooks);
+  const [selectedCutId, setSelectedCutId] = useState<string | null>(null);
   const {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
@@ -1126,16 +1144,25 @@ export default function EditorLayout() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
+  const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
 
   useEffect(() => {
     if (!versionOpen) return;
-    const close = () => setVersionOpen(false);
+    const close = () => { setVersionOpen(false); setCommandsPopoutOpen(false); };
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
     return () => {
       window.clearTimeout(id);
       window.removeEventListener("click", close);
     };
   }, [versionOpen]);
+
+  const insertVirgilCommand = useCallback((name: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    editor.chain().focus().insertContent(`\\${name}`).run();
+    setVersionOpen(false);
+    setCommandsPopoutOpen(false);
+  }, []);
   const aiDot = useMemo(() => aiRequestDotStatus({
     bibReviewRequests,
     bibEntryRequests: entryRequests,
@@ -1158,6 +1185,14 @@ export default function EditorLayout() {
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
+  // Linked-anchor activation (shared by Notes / Revisions / Cutter).
+  //   activeAnchorId  — sticky, set on click of gutter icon or panel card
+  //   hoveredAnchorId — transient, set on hover
+  //   activeAnchorKind — drives the highlight color via MARKER_META
+  // Effective anchor = hovered ?? active.
+  const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
+  const [hoveredAnchorId, setHoveredAnchorId] = useState<string | null>(null);
+  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cut" | null>(null);
 
   // ── LabelRef popover state ──
   const [activeRefLabel, setActiveRefLabel] = useState<string | null>(null);
@@ -2285,11 +2320,14 @@ export default function EditorLayout() {
       } else if (type === "archive") {
         removeArchiveParagraphId(entityId, oldParagraphId);
         addArchiveParagraphId(entityId, newParagraphId);
+      } else if (type === "cut") {
+        removeCutParagraphId(entityId, oldParagraphId);
+        addCutParagraphId(entityId, newParagraphId);
       }
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId]);
+  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId, addCutParagraphId, removeCutParagraphId]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -2340,6 +2378,18 @@ export default function EditorLayout() {
     (noteId: string) => {
       const nextSelected = selectedNoteId === noteId ? null : noteId;
       setSelectedNoteId(nextSelected);
+      // Also drive the linked-anchor highlight if the note has one.
+      const note = notes.find((n) => n.id === noteId);
+      const anchorId = note?.anchorId;
+      if (anchorId) {
+        if (nextSelected) {
+          setActiveAnchorId(anchorId);
+          setActiveAnchorKind("note");
+        } else {
+          setActiveAnchorId(null);
+          setActiveAnchorKind(null);
+        }
+      }
       // Route to OmniView if selecting (not deselecting) and it has a card
       if (nextSelected && tryScrollOmniEntry(`nt:${noteId}`)) return;
       const p = prefsRef.current;
@@ -2350,8 +2400,157 @@ export default function EditorLayout() {
         if (p.activeRight !== "notes") setActiveRight("notes");
       }
     },
-    [setActiveLeft, setActiveRight, selectedNoteId, tryScrollOmniEntry]
+    [setActiveLeft, setActiveRight, selectedNoteId, notes, tryScrollOmniEntry]
   );
+
+  const handleHoverNote = useCallback(
+    (noteId: string | null) => {
+      if (!noteId) {
+        setHoveredAnchorId(null);
+        return;
+      }
+      const note = notes.find((n) => n.id === noteId);
+      if (note?.anchorId) {
+        setHoveredAnchorId(note.anchorId);
+        setActiveAnchorKind("note");
+      }
+    },
+    [notes],
+  );
+
+  // Create a linked note from the current selection. Toolbar button +
+  // selection-chip drop both go through this.
+  const handleAddNoteFromSelection = useCallback(() => {
+    const ed = editorRef.current?.getEditor();
+    if (!ed || !editorRef.current) return;
+    const { from, to } = ed.state.selection;
+    if (from === to) return;
+    const paragraphId = editorRef.current.ensureParagraphUuid(from);
+    const record = createLinkedAnchor(ed, "note");
+    if (!record) return;
+    const note = addNote(
+      paragraphId,
+      undefined,
+      { anchorId: record.anchorId, anchorText: record.text },
+    );
+    setSelectedNoteId(note.id);
+    const placement = prefs.placements.find((p) => p.id === "notes");
+    if (placement?.side === "left") {
+      if (prefs.activeLeft !== "notes") setActiveLeft("notes");
+    } else {
+      if (prefs.activeRight !== "notes") setActiveRight("notes");
+    }
+  }, [addNote, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+
+  // Create a linked note from an arbitrary range (used by the selection chip
+  // when dropped on the Notes panel — selection may no longer be live).
+  const handleDropSelectionOnNotes = useCallback(
+    (payload: { from: number; to: number; selectedText: string }) => {
+      const ed = editorRef.current?.getEditor();
+      if (!ed || !editorRef.current) return;
+      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
+      const record = createLinkedAnchor(ed, "note", { from: payload.from, to: payload.to });
+      if (!record) return;
+      const note = addNote(
+        paragraphId,
+        undefined,
+        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
+      );
+      setSelectedNoteId(note.id);
+    },
+    [addNote],
+  );
+
+  // --- Cutter handlers ---
+  const handleCutMarkerClick = useCallback(
+    (cutId: string) => {
+      const nextSelected = selectedCutId === cutId ? null : cutId;
+      setSelectedCutId(nextSelected);
+      const cut = cuts.find((c) => c.id === cutId);
+      const anchorId = cut?.anchorId;
+      if (anchorId) {
+        if (nextSelected) {
+          setActiveAnchorId(anchorId);
+          setActiveAnchorKind("cut");
+        } else {
+          setActiveAnchorId(null);
+          setActiveAnchorKind(null);
+        }
+      }
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "cutter");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "cutter") setActiveLeft("cutter");
+      } else {
+        if (p.activeRight !== "cutter") setActiveRight("cutter");
+      }
+    },
+    [cuts, selectedCutId, setActiveLeft, setActiveRight],
+  );
+
+  const handleHoverCut = useCallback(
+    (cutId: string | null) => {
+      if (!cutId) { setHoveredAnchorId(null); return; }
+      const cut = cuts.find((c) => c.id === cutId);
+      if (cut?.anchorId) {
+        setHoveredAnchorId(cut.anchorId);
+        setActiveAnchorKind("cut");
+      }
+    },
+    [cuts],
+  );
+
+  const handleCutSelection = useCallback(() => {
+    const ed = editorRef.current?.getEditor();
+    if (!ed || !editorRef.current) return;
+    const { from, to } = ed.state.selection;
+    if (from === to) return;
+    const paragraphId = editorRef.current.ensureParagraphUuid(from);
+    const record = createLinkedAnchor(ed, "cut");
+    if (!record) return;
+    const cut = addCut(
+      paragraphId,
+      undefined,
+      { anchorId: record.anchorId, anchorText: record.text },
+    );
+    setSelectedCutId(cut.id);
+    const placement = prefs.placements.find((p) => p.id === "cutter");
+    if (placement?.side === "left") {
+      if (prefs.activeLeft !== "cutter") setActiveLeft("cutter");
+    } else {
+      if (prefs.activeRight !== "cutter") setActiveRight("cutter");
+    }
+  }, [addCut, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+
+  const handleDropSelectionOnCutter = useCallback(
+    (payload: { from: number; to: number; selectedText: string }) => {
+      const ed = editorRef.current?.getEditor();
+      if (!ed || !editorRef.current) return;
+      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
+      const record = createLinkedAnchor(ed, "cut", { from: payload.from, to: payload.to });
+      if (!record) return;
+      const cut = addCut(
+        paragraphId,
+        undefined,
+        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
+      );
+      setSelectedCutId(cut.id);
+    },
+    [addCut],
+  );
+
+  // Listen for cut drops onto paragraphs (dispatched by Editor.tsx handleDrop / Marginalia)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.cutId && detail?.paragraphId) {
+        addCutParagraphId(detail.cutId, detail.paragraphId);
+        setSelectedCutId(detail.cutId);
+      }
+    };
+    window.addEventListener("virgil-cut-drop", handler);
+    return () => window.removeEventListener("virgil-cut-drop", handler);
+  }, [addCutParagraphId]);
 
   const handleTodoMarkerClick = useCallback(
     (todoId: string) => {
@@ -2845,12 +3044,18 @@ export default function EditorLayout() {
     };
   }, [editorInstance, deleteSnippet, addArchiveParagraphId]);
 
-  const pendingRevisionAnchorRef = useRef<number>(0);
+  const pendingRevisionAnchorIdRef = useRef<string | null>(null);
 
   const handleAddComment = useCallback(() => {
     const selectedText = editorRef.current?.getSelectedText();
     if (!selectedText || selectedText.trim().length === 0) return;
-    pendingRevisionAnchorRef.current = editorInstance?.state?.selection?.from ?? 0;
+    const ed = editorRef.current?.getEditor();
+    if (ed) {
+      const record = createLinkedAnchor(ed, "revision");
+      pendingRevisionAnchorIdRef.current = record?.anchorId ?? null;
+    } else {
+      pendingRevisionAnchorIdRef.current = null;
+    }
     setPendingCommentText(selectedText);
     // Ensure revisions panel is open (setActiveLeft/Right are toggles, so only call if not already active)
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
@@ -2859,19 +3064,26 @@ export default function EditorLayout() {
     } else {
       if (prefs.activeRight !== "revisions") setActiveRight("revisions");
     }
-  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight, editorInstance]);
+  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const handleSubmitComment = useCallback(
     (comment: string) => {
       if (pendingCommentText && comment.trim()) {
-        addTextRevision(pendingCommentText, pendingRevisionAnchorRef.current, comment.trim());
+        addTextRevision(pendingCommentText, pendingRevisionAnchorIdRef.current, comment.trim());
       }
+      pendingRevisionAnchorIdRef.current = null;
       setPendingCommentText(null);
     },
     [addTextRevision, pendingCommentText]
   );
 
   const handleCancelComment = useCallback(() => {
+    // If we created an anchor mark for this pending revision and the user
+    // cancels, tear down the mark so we don't leave an orphan behind.
+    const ed = editorRef.current?.getEditor();
+    const id = pendingRevisionAnchorIdRef.current;
+    if (ed && id) removeLinkedAnchor(ed, id);
+    pendingRevisionAnchorIdRef.current = null;
     setPendingCommentText(null);
   }, []);
 
@@ -3147,6 +3359,17 @@ export default function EditorLayout() {
           title: n.title || "Note",
           onClick: () => handleNoteMarkerClick(n.id),
           onDelete: () => removeNoteParagraphId(n.id, pid),
+          anchorId: n.anchorId,
+          onHover: n.anchorId
+            ? (hovering: boolean) => {
+                if (hovering) {
+                  setHoveredAnchorId(n.anchorId!);
+                  setActiveAnchorKind("note");
+                } else {
+                  setHoveredAnchorId(null);
+                }
+              }
+            : undefined,
         });
       }
     }
@@ -3167,6 +3390,102 @@ export default function EditorLayout() {
             editorRef.current?.scrollToParagraphId(pid);
           },
           onDelete: () => removeArchiveParagraphId(snippet.id, pid),
+        });
+      }
+    }
+
+    // Text revision markers — one marker per anchored revision. The
+    // paragraph uuid is resolved live from the mark's range; if the mark
+    // is gone the revision becomes orphaned and gets no marker.
+    const ed = editorRef.current?.getEditor();
+    if (ed) {
+      for (const r of textRevisions) {
+        if (r.resolved || !r.anchorId) continue;
+        // Find paragraphId by walking to the containing anchorable node
+        let paragraphId: string | null = null;
+        try {
+          ed.state.doc.descendants((node, pos) => {
+            if (paragraphId) return false;
+            if (node.isText) {
+              const hasMark = node.marks.some(
+                (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === r.anchorId,
+              );
+              if (hasMark) {
+                const $p = ed.state.doc.resolve(pos);
+                for (let d = $p.depth; d >= 0; d--) {
+                  const n = $p.node(d);
+                  if (n.attrs?.uuid) { paragraphId = n.attrs.uuid as string; return false; }
+                }
+              }
+            }
+            return true;
+          });
+        } catch { /* ignore */ }
+        if (!paragraphId) continue;
+        result.push({
+          id: `${r.id}:${paragraphId}`,
+          entityId: r.id,
+          type: "revision",
+          paragraphId,
+          selected: selectedCommentId === r.id,
+          title: r.selectedText || "Revision",
+          anchorId: r.anchorId,
+          onClick: () => {
+            const nextSelected = selectedCommentId === r.id ? null : r.id;
+            setSelectedCommentId(nextSelected);
+            if (nextSelected && r.anchorId) {
+              setActiveAnchorId(r.anchorId);
+              setActiveAnchorKind("revision");
+            } else {
+              setActiveAnchorId(null);
+              setActiveAnchorKind(null);
+            }
+            const p = prefsRef.current;
+            const placement = p.placements.find((pl) => pl.id === "revisions");
+            if (placement?.side === "left") {
+              if (p.activeLeft !== "revisions") setActiveLeft("revisions");
+            } else {
+              if (p.activeRight !== "revisions") setActiveRight("revisions");
+            }
+          },
+          onHover: r.anchorId
+            ? (hovering: boolean) => {
+                if (hovering) {
+                  setHoveredAnchorId(r.anchorId!);
+                  setActiveAnchorKind("revision");
+                } else {
+                  setHoveredAnchorId(null);
+                }
+              }
+            : undefined,
+        });
+      }
+    }
+
+    // Cut markers — one per paragraphId
+    for (const c of cuts) {
+      if (c.paragraphIds.length === 0) continue;
+      for (const pid of c.paragraphIds) {
+        result.push({
+          id: `${c.id}:${pid}`,
+          entityId: c.id,
+          type: "cut",
+          paragraphId: pid,
+          selected: selectedCutId === c.id,
+          title: c.title || "Cut",
+          onClick: () => handleCutMarkerClick(c.id),
+          onDelete: () => removeCutParagraphId(c.id, pid),
+          anchorId: c.anchorId,
+          onHover: c.anchorId
+            ? (hovering: boolean) => {
+                if (hovering) {
+                  setHoveredAnchorId(c.anchorId!);
+                  setActiveAnchorKind("cut");
+                } else {
+                  setHoveredAnchorId(null);
+                }
+              }
+            : undefined,
         });
       }
     }
@@ -3207,7 +3526,58 @@ export default function EditorLayout() {
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleTodoMarkerClick,
+    textRevisions,
+    selectedCommentId,
+    setActiveLeft,
+    setActiveRight,
+    cuts,
+    selectedCutId,
+    removeCutParagraphId,
+    handleCutMarkerClick,
   ]);
+
+  // Effective linked-anchor activation: hovered takes priority over sticky-active.
+  const effectiveAnchorId = hoveredAnchorId ?? activeAnchorId;
+  const effectiveAnchorColor = activeAnchorKind ? MARKER_META[activeAnchorKind].selectedBg : null;
+
+  // Re-apply linked-anchor marks on load. Each sidecar stores (anchorId, anchorText);
+  // we walk the doc and try to re-attach each mark via text search. For legacy
+  // text revisions that have `selectedText` but no `anchorId`, we do a best-
+  // effort reanchor and persist the resulting anchorId back onto the revision.
+  // Guarded on docIdForHooks so we only run once per open document.
+  const anchorsAppliedDocRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editorInstance || !editorRef.current || !docIdForHooks) return;
+    if (anchorsAppliedDocRef.current === docIdForHooks) return;
+    anchorsAppliedDocRef.current = docIdForHooks;
+    const records: Array<{ anchorId: string; kind: "note" | "revision" | "cut"; text: string }> = [];
+    for (const n of notes) {
+      if (n.anchorId && n.anchorText) {
+        records.push({ anchorId: n.anchorId, kind: "note", text: n.anchorText });
+      }
+    }
+    for (const r of textRevisions) {
+      if (r.anchorId && r.selectedText) {
+        records.push({ anchorId: r.anchorId, kind: "revision", text: r.selectedText });
+      }
+    }
+    for (const c of cuts) {
+      if (c.anchorId && c.anchorText) {
+        records.push({ anchorId: c.anchorId, kind: "cut", text: c.anchorText });
+      }
+    }
+    if (records.length > 0) {
+      editorRef.current.applyLinkedAnchors(records);
+    }
+
+    // Legacy text revisions: no anchorId yet, only selectedText. Try to
+    // reanchor by searching for that text; on success, persist the new id.
+    for (const r of textRevisions) {
+      if (r.anchorId || !r.selectedText) continue;
+      const rec = reanchorByText(editorInstance, "revision", r.selectedText);
+      if (rec) setRevisionAnchor(r.id, rec.anchorId);
+    }
+  }, [editorInstance, docIdForHooks, notes, textRevisions, cuts, setRevisionAnchor]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {
@@ -3374,6 +3744,8 @@ export default function EditorLayout() {
           onUpdateAiRequestText={updateAiRequestText}
           onDeleteAiRequest={deleteAiRequest}
           onEditorFocus={setOverrideEditor}
+          onHoverNote={handleHoverNote}
+          onDropSelection={handleDropSelectionOnNotes}
         />
       );
     }
@@ -3399,6 +3771,22 @@ export default function EditorLayout() {
           selectedRevisionId={selectedCommentId}
           onSelectRevision={setSelectedCommentId}
           onHighlight={setCommentHighlight}
+          onHoverRevision={(id) => {
+            if (!id) { setHoveredAnchorId(null); return; }
+            const r = textRevisions.find((x) => x.id === id);
+            if (r?.anchorId) {
+              setHoveredAnchorId(r.anchorId);
+              setActiveAnchorKind("revision");
+            }
+          }}
+          onDropSelection={(payload) => {
+            const ed = editorRef.current?.getEditor();
+            if (!ed || !editorRef.current) return;
+            const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
+            if (!record) return;
+            pendingRevisionAnchorIdRef.current = record.anchorId;
+            setPendingCommentText(payload.selectedText || record.text);
+          }}
         />
       );
     }
@@ -3950,7 +4338,24 @@ export default function EditorLayout() {
       );
     }
 
-    return <PlaceholderPanel title={meta.label} hasViewToggle={panelId === "cutter"} />;
+    if (panelId === "cutter") {
+      return (
+        <CutterPanel
+          cuts={cuts}
+          onAdd={() => addCut(null)}
+          onUpdate={updateCut}
+          onUpdateTitle={updateCutTitle}
+          onDelete={deleteCut}
+          onSelect={setSelectedCutId}
+          selectedId={selectedCutId}
+          onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+          onHoverCut={handleHoverCut}
+          onDropSelection={handleDropSelectionOnCutter}
+        />
+      );
+    }
+
+    return <PlaceholderPanel title={meta.label} hasViewToggle={false} />;
   }
 
   // Render a side's panel column. Always returns a PanelColumn so the
@@ -4125,11 +4530,47 @@ export default function EditorLayout() {
             </svg>
             {versionOpen && (
               <div
-                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 px-3 py-2 whitespace-nowrap text-left"
+                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 whitespace-nowrap text-left min-w-[160px]"
                 onClick={(e) => e.stopPropagation()}
+                onMouseLeave={() => setCommandsPopoutOpen(false)}
               >
-                <div className="font-medium text-stone-600 mb-0.5">Version</div>
-                <div>Virgil v{APP_VERSION}</div>
+                <div className="px-3 py-2">
+                  <div className="font-medium text-stone-600 mb-0.5">Version</div>
+                  <div>Virgil v{APP_VERSION}</div>
+                </div>
+                <div className="border-t border-stone-200" />
+                <div
+                  className="relative flex items-center justify-between px-3 py-2 cursor-default hover:bg-stone-50"
+                  onMouseEnter={() => setCommandsPopoutOpen(true)}
+                >
+                  <span className="font-medium text-stone-600">Commands</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  {commandsPopoutOpen && (
+                    <div
+                      className="absolute right-full top-0 mr-1 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 py-1 min-w-[160px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {VIRGIL_COMMAND_NAMES.map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => insertVirgilCommand(name)}
+                          className="block w-full text-left px-3 py-1 font-mono text-stone-700 hover:bg-stone-100"
+                        >
+                          {`\\${name}`}
+                        </button>
+                      ))}
+                      <div className="border-t border-stone-200 mt-1 pt-1.5 pb-1 px-3 text-[10px] text-stone-400 flex items-center gap-1">
+                        <span>Type text +</span>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 10 4 15 9 20" />
+                          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </button>
@@ -4338,6 +4779,8 @@ export default function EditorLayout() {
             onArchive={handleArchive}
             onCreateFootnote={handleCreateFootnote}
             onQuoteSelection={handleQuoteSelection}
+            onAddNote={handleAddNoteFromSelection}
+            onCutSelection={handleCutSelection}
             showParTitles={showParTitles}
             onToggleParTitles={() => setShowParTitles((p) => !p)}
             showLatexComments={showLatexComments}
@@ -4382,12 +4825,15 @@ export default function EditorLayout() {
                       onCitationDrop={handleCitationDrop}
                       onConfirmFootnoteMove={confirmFootnoteMove}
                       anchoredUuidsRef={anchoredUuidsRef}
+                      activeAnchorId={effectiveAnchorId}
+                      activeAnchorColor={effectiveAnchorColor}
                     />
                     <Marginalia
                       editor={editorInstance}
                       markers={visibleMarginaliaMarkers}
                       panelSides={marginaliaPanelSides}
                     />
+                    <SelectionChip editor={editorInstance} />
                   </>
                 }
               />
@@ -4405,12 +4851,15 @@ export default function EditorLayout() {
                   onEditorReady={setEditorInstance}
                   onCitationDrop={handleCitationDrop}
                   onConfirmFootnoteMove={confirmFootnoteMove}
+                  activeAnchorId={effectiveAnchorId}
+                  activeAnchorColor={effectiveAnchorColor}
                 />
                 <Marginalia
                   editor={editorInstance}
                   markers={visibleMarginaliaMarkers}
                   panelSides={marginaliaPanelSides}
                 />
+                <SelectionChip editor={editorInstance} />
                 {showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
               </div>
             )

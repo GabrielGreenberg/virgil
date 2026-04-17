@@ -94,7 +94,8 @@ export interface TextRevision {
   createdAt: string;
   resolved: boolean;
   selectedText: string;
-  anchorPos: number;
+  /** Linked-anchor id for the selected range. Missing if anchor is lost. */
+  anchorId?: string;
   text: string;
   turns: RevisionTurn[];
 }
@@ -220,10 +221,33 @@ export interface UserNote {
   content: unknown;
   paragraphIds: string[]; // paragraph UUIDs the note is anchored to
   createdAt: string;
+  /** When the note was created from a text selection, its linked-anchor id. */
+  anchorId?: string;
+  /** Snapshot of the originally selected text, used to re-anchor on load. */
+  anchorText?: string;
 }
 
 export interface NotesState {
   notes: UserNote[];
+}
+
+// --- Cutter ---
+
+export interface CutItem {
+  id: string;
+  title: string;
+  /** Tiptap JSONContent — the cut text body (editable once on the card). */
+  content: unknown;
+  paragraphIds: string[];
+  createdAt: string;
+  /** Linked-anchor id when the cut was created from a text selection. */
+  anchorId?: string;
+  /** Snapshot of the originally selected text, used to re-anchor on load. */
+  anchorText?: string;
+}
+
+export interface CutterState {
+  cuts: CutItem[];
 }
 
 // --- Annotations ---

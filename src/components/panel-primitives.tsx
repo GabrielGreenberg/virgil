@@ -48,6 +48,9 @@ const CARD_SELECTED_NOTE =
 const CARD_SELECTED_TODO =
   "bg-white border-stone-400 shadow-sm";
 
+const CARD_SELECTED_CUT =
+  "bg-white border-red-300 shadow-sm";
+
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
@@ -82,6 +85,11 @@ export function noteCard(selected: boolean, extra?: string): string {
 /** Todo-themed card: stone/grey selection. */
 export function todoCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED_TODO : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+}
+
+/** Cutter-themed card: red selection (matches MARKER_META.cut). */
+export function cutCard(selected: boolean, extra?: string): string {
+  return `${CARD_BASE} ${selected ? CARD_SELECTED_CUT : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
 /* ── Text-only drag helper ──────────────────────────────────────── */
@@ -123,6 +131,7 @@ export const CARD_THEMES = {
   note: { cardClass: noteCard, separatorSelected: "border-emerald-200", headerSelected: "bg-emerald-50/60", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
   archive: { cardClass: panelCard, separatorSelected: "border-amber-200", headerSelected: "bg-amber-50/60", badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
   todo: { cardClass: todoCard, separatorSelected: "border-stone-300", headerSelected: "bg-stone-50/60", badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  cut: { cardClass: cutCard, separatorSelected: "border-red-200", headerSelected: "bg-red-50/60", badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -282,6 +291,8 @@ export interface EditableCardProps {
   onBodyFocus?: () => void;
   /** Called with the Tiptap editor instance when RichTextField gains focus (for main toolbar routing). */
   onEditorFocus?: (editor: any) => void;
+  /** Mouse-hover hook. Fires on mouseenter (true) and mouseleave (false). */
+  onHoverChange?: (hovering: boolean) => void;
 }
 
 /**
@@ -299,7 +310,7 @@ export function EditableCard({
   value, variant, placeholder, muted,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
-  grabHandle, hideToolbar, inlineDelete, orphaned, onBodyFocus, onEditorFocus,
+  grabHandle, hideToolbar, inlineDelete, orphaned, onBodyFocus, onEditorFocus, onHoverChange,
 }: EditableCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
@@ -377,6 +388,8 @@ export function EditableCard({
       className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${orphaned ? " border-dashed" : ""}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >
       {/* Header */}
       <div className={`flex items-center gap-2 px-3 py-1.5${selected ? ` ${theme.headerSelected}` : ""}`}>

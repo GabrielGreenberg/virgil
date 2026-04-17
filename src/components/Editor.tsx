@@ -14,7 +14,8 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard } from "@/lib/tiptap-extensions";
+import { reanchorByText, resolveAnchorRange, type LinkedAnchorKind } from "@/lib/linked-anchors";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -27,6 +28,7 @@ import {
   MIME_FOOTNOTE,
   MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
+  MIME_CUT,
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
@@ -143,6 +145,13 @@ interface EditorProps {
   onConfirmFootnoteMove?: () => Promise<boolean>;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
+  /**
+   * Currently active linked-anchor id. When set, the mark for that id is
+   * highlighted. Takes priority over `highlightText` but not `highlightRange`.
+   */
+  activeAnchorId?: string | null;
+  /** Color token used for the active anchor highlight. Defaults to yellow. */
+  activeAnchorColor?: string | null;
 }
 
 export interface FootnoteInfo {
@@ -189,6 +198,14 @@ export interface EditorHandle {
   getParagraphPositions: () => Array<{ id: string; top: number }>;
   /** Scroll to a raw doc position (used by panel prev/next navigation). */
   scrollToPos: (pos: number) => void;
+  /**
+   * Re-apply linked-anchor marks from sidecar records. Called after load
+   * and whenever the editor is first ready. Uses text-snapshot search via
+   * `reanchorByText` — records whose text isn't found are skipped.
+   */
+  applyLinkedAnchors: (
+    records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }>,
+  ) => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -227,13 +244,17 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef, activeAnchorId, activeAnchorColor },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
   highlightTextRef.current = highlightText;
   const highlightRangeRef = useRef(highlightRange);
   highlightRangeRef.current = highlightRange;
+  const activeAnchorIdRef = useRef(activeAnchorId);
+  activeAnchorIdRef.current = activeAnchorId;
+  const activeAnchorColorRef = useRef(activeAnchorColor);
+  activeAnchorColorRef.current = activeAnchorColor;
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
@@ -973,6 +994,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       LabelRef,
       AiRequestMarker,
       LatexCommandMark,
+      LinkedAnchor,
+      LinkedAnchorGuard,
       TitleField,
       LabelHandler,
       EmptyParagraphTitleCleaner,
@@ -1214,6 +1237,28 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               window.dispatchEvent(
                 new CustomEvent("virgil-note-drop", {
                   detail: { noteId, paragraphId },
+                })
+              );
+            }
+          } catch { /* ignore bad data */ }
+          return true;
+        }
+
+        // --- Cut drop (from CutterPanel) ---
+        const cutData = event.dataTransfer?.getData(MIME_CUT);
+        if (cutData) {
+          try {
+            const { cutId } = JSON.parse(cutData);
+            if (!cutId) return true;
+            const coords = { left: event.clientX, top: event.clientY };
+            const posResult = view.posAtCoords(coords);
+            if (!posResult) return true; // no preventDefault → Marginalia handles
+            event.preventDefault();
+            const paragraphId = ensureAnchorUuid(view, posResult.pos);
+            if (paragraphId) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-cut-drop", {
+                  detail: { cutId, paragraphId },
                 })
               );
             }
@@ -1877,6 +1922,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
       } catch { /* pos out of range */ }
     },
+    applyLinkedAnchors(records): void {
+      if (!editor) return;
+      // Skip records whose anchor id is already present (already marked).
+      const present = new Set<string>();
+      editor.state.doc.descendants((node) => {
+        if (!node.isText) return true;
+        for (const m of node.marks) {
+          if (m.type.name === "linkedAnchor" && m.attrs.anchorId) {
+            present.add(m.attrs.anchorId as string);
+          }
+        }
+        return true;
+      });
+      for (const rec of records) {
+        if (!rec.anchorId || !rec.text) continue;
+        if (present.has(rec.anchorId)) continue;
+        reanchorByText(editor, rec.kind, rec.text, rec.anchorId);
+      }
+    },
   }), [editor]);
 
   const applyHighlight = useCallback(() => {
@@ -1907,6 +1971,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return;
     }
 
+    // Linked-anchor highlight — driven by hover/click of margin icon or card.
+    // Does NOT scroll (avoids jumping the viewport every time the user hovers).
+    const anchorId = activeAnchorIdRef.current;
+    if (anchorId) {
+      const anchorRange = resolveAnchorRange(editor, anchorId);
+      if (anchorRange) {
+        try {
+          editor
+            .chain()
+            .setTextSelection(anchorRange)
+            .setHighlight({ color: activeAnchorColorRef.current || "#fbbf2480" })
+            .setTextSelection(anchorRange.from)
+            .run();
+        } catch { /* pos out of range */ }
+        return;
+      }
+    }
+
     // Text-based highlight (from revisions/suggestions)
     if (!highlightTextRef.current) return;
 
@@ -1933,8 +2015,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   useEffect(() => {
     highlightTextRef.current = highlightText;
     highlightRangeRef.current = highlightRange;
+    activeAnchorIdRef.current = activeAnchorId;
+    activeAnchorColorRef.current = activeAnchorColor;
     applyHighlight();
-  }, [highlightText, highlightRange, applyHighlight]);
+  }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
