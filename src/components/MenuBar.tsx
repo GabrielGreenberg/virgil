@@ -25,6 +25,10 @@ interface MenuBarProps {
   onToggleMarginalia: () => void;
   hiddenMarginaliaTypes: Set<MarginaliaType>;
   onToggleMarginaliaType: (type: MarginaliaType) => void;
+  onParaNavBack?: () => void;
+  onParaNavForward?: () => void;
+  paraNavBackDisabled?: boolean;
+  paraNavForwardDisabled?: boolean;
 }
 
 function Btn({
@@ -131,7 +135,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
@@ -178,6 +182,37 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[var(--pod-toolbar)] to-transparent z-10 pointer-events-none" />
         )}
         <div ref={scrollRef} className="flex items-center gap-1 overflow-x-auto px-3 toolbar-scroll [&>*]:shrink-0">
+      {(onParaNavBack || onParaNavForward) && (
+        <>
+          {onParaNavBack && (
+            <button
+              onClick={onParaNavBack}
+              disabled={paraNavBackDisabled}
+              className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
+              title="Go back"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="19" y1="12" x2="5" y2="12" />
+                <polyline points="12 19 5 12 12 5" />
+              </svg>
+            </button>
+          )}
+          {onParaNavForward && (
+            <button
+              onClick={onParaNavForward}
+              disabled={paraNavForwardDisabled}
+              className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
+              title="Go forward"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
+            </button>
+          )}
+          <div className="w-px h-4 bg-[var(--border)] mx-1" />
+        </>
+      )}
       <Btn
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
