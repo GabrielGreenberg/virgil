@@ -1203,22 +1203,22 @@ body {
 .browser-tab-swoop::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
+  bottom: 1px;
+  width: 13px;
+  height: 12px;
   background: var(--background);
   pointer-events: none;
   z-index: 11;
 }
 .browser-tab-swoop::before {
-  left: -10px;
-  -webkit-mask: radial-gradient(circle 10px at top left, transparent 0 10px, #000 10.5px);
-          mask: radial-gradient(circle 10px at top left, transparent 0 10px, #000 10.5px);
+  left: -12px;
+  -webkit-mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
+          mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
 }
 .browser-tab-swoop::after {
-  right: -10px;
-  -webkit-mask: radial-gradient(circle 10px at top right, transparent 0 10px, #000 10.5px);
-          mask: radial-gradient(circle 10px at top right, transparent 0 10px, #000 10.5px);
+  right: -12px;
+  -webkit-mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
+          mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
 }
 
 /* Editor mirror — match canonical view scroll behavior */
