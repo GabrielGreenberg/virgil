@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
-import type { ArchivedSnippet } from "@/lib/types";
 import { isAnchorableNode } from "@/lib/marginalia";
 
 export interface PositionItem {
@@ -11,11 +10,15 @@ export interface PositionItem {
 }
 
 /**
- * Helper: extract positions for archive snippets from their paragraph anchors.
+ * Helper: extract positions for items anchored to paragraphs by UUID.
+ * Works for any item shape that has `id` and `paragraphIds[]` — uses the
+ * first paragraph anchor to resolve a doc position.
  */
-export function getArchiveMarkerPositions(editor: Editor | null, snippets?: ArchivedSnippet[]): PositionItem[] {
-  if (!editor || !snippets) return [];
-  // Build a map from paragraph UUID → doc position
+export function getParagraphAnchorPositions(
+  editor: Editor | null,
+  items?: Array<{ id: string; paragraphIds: string[] }>,
+): PositionItem[] {
+  if (!editor || !items) return [];
   const uuidToPos = new Map<string, number>();
   editor.state.doc.descendants((node, pos) => {
     if (isAnchorableNode(node.type) && node.attrs?.uuid) {
@@ -23,17 +26,16 @@ export function getArchiveMarkerPositions(editor: Editor | null, snippets?: Arch
     }
     return true;
   });
-  const items: PositionItem[] = [];
-  for (const s of snippets) {
-    if (s.paragraphIds.length > 0) {
-      const pos = uuidToPos.get(s.paragraphIds[0]);
-      if (pos !== undefined) {
-        items.push({ id: s.id, pos });
-      }
+  const out: PositionItem[] = [];
+  for (const it of items) {
+    if (it.paragraphIds.length > 0) {
+      const pos = uuidToPos.get(it.paragraphIds[0]);
+      if (pos !== undefined) out.push({ id: it.id, pos });
     }
   }
-  return items;
+  return out;
 }
+
 
 /**
  * Helper: find approximate document position for a text snippet.

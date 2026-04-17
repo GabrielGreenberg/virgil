@@ -4,8 +4,8 @@ import { useMemo, memo } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
-import { useInTextPositions, getArchiveMarkerPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
+import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
+import { CARD_THEMES, EditableCard, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -143,7 +143,7 @@ function ArchivePanel({
   onEditorFocus,
 }: ArchivePanelProps) {
   const inTextItems = useMemo(
-    () => getArchiveMarkerPositions(editor, snippets),
+    () => getParagraphAnchorPositions(editor, snippets),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor, snippets]
   );
@@ -154,7 +154,11 @@ function ArchivePanel({
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Archived Text">
-        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end">
+            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+          </div>
+        </ItemMenu>
       </PanelHeader>
 
       <div

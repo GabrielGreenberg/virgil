@@ -6,7 +6,7 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { CARD_THEMES, EditableCard, ItemMenu, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -310,7 +310,11 @@ function FootnotePanel({
           total={footnotes.length}
           label=""
         />
-        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end">
+            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+          </div>
+        </ItemMenu>
       </PanelHeader>
 
       <div

@@ -601,7 +601,6 @@ function CitationsPanel({
             total={orderedCitations.length}
             label=""
           />
-          <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
           <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
@@ -615,6 +614,10 @@ function CitationsPanel({
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
+                <div className="px-3 py-1.5 flex items-center justify-end">
+                  <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
+                </div>
+                <div className="my-1 border-t border-stone-200" />
                 <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Package</div>
                 {BIB_PACKAGES.map((p) => (
                   <button key={p.value} onClick={() => { onSetBibPackage(p.value); setMenuOpen(false); }}
