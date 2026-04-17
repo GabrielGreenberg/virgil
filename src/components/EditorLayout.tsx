@@ -3577,6 +3577,10 @@ export default function EditorLayout() {
           onAddAiRequest={() => addAiRequest("quotation")}
           onUpdateAiRequestText={updateAiRequestText}
           onDeleteAiRequest={deleteAiRequest}
+          editor={editorInstance}
+          panelSide={side}
+          viewMode={getPanelViewMode("quotations")}
+          onViewModeChange={(m) => setPanelViewMode("quotations", m)}
         />
       );
     }

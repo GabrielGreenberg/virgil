@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
+import type { Editor } from "@tiptap/react";
 import type {
   QuotationGroup,
   Reference,
@@ -12,6 +13,7 @@ import {
   panelCard,
   PANEL,
   Chevron,
+  ItemMenu,
   PanelHeader,
   PrevNextCounter,
   TargetIcon,
@@ -19,6 +21,8 @@ import {
   AiRequestCard,
   AiRequestsSectionHeader,
 } from "./panel-primitives";
+import ViewToggle from "./ViewToggle";
+import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
 import ConfirmDialog from "./ConfirmDialog";
 import {
   formatMinimalCitation as fmtMinCite,
@@ -844,6 +848,10 @@ export interface QuotationsPanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
+  viewMode: "list" | "in-text";
+  onViewModeChange: (mode: "list" | "in-text") => void;
+  editor: Editor | null;
+  panelSide: "left" | "right";
 }
 
 export default function QuotationsPanel({
@@ -867,6 +875,10 @@ export default function QuotationsPanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
+  viewMode,
+  onViewModeChange,
+  editor,
+  panelSide,
 }: QuotationsPanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "quotation"),
@@ -908,6 +920,18 @@ export default function QuotationsPanel({
     [groups],
   );
 
+  const inTextItems = useMemo(
+    () => getParagraphAnchorPositions(editor, anchoredGroups),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, anchoredGroups],
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor,
+    inTextItems,
+    viewMode === "in-text",
+    "data-quotation-group-id",
+  );
+
   const onActivateGroup = useCallback(
     (g: QuotationGroup) => {
       setSelectedGroupId(g.id);
@@ -940,12 +964,52 @@ export default function QuotationsPanel({
           total={anchoredGroups.length}
           label=""
         />
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end">
+            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+          </div>
+        </ItemMenu>
       </PanelHeader>
 
-      <div className={PANEL.list} ref={listRef}>
+      <div
+        ref={viewMode === "in-text" ? panelScrollRef : listRef}
+        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
+      >
         {groups.length === 0 && myAiRequests.length === 0 ? (
           <div className={PANEL.empty}>
             No quotations yet. Add a group to start collecting references.
+          </div>
+        ) : viewMode === "in-text" ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {anchoredGroups.map((group) => {
+              const top = positions.get(group.id);
+              if (top === undefined) return null;
+              return (
+                <div
+                  key={group.id}
+                  className={`absolute left-2 right-2 in-text-connector in-text-connector-${panelSide}`}
+                  style={{ top }}
+                >
+                  <QuotationGroupCard
+                    group={group}
+                    bibEntries={bibEntries}
+                    bibPackage={bibPackage}
+                    selected={selectedGroupId === group.id}
+                    onSelect={() => setSelectedGroupId(group.id)}
+                    onDelete={() => onDeleteGroup(group.id)}
+                    onJump={() => onScrollToParagraph?.(group.paragraphIds[0])}
+                    onUpdateGroupTitle={onUpdateGroupTitle}
+                    onAddReference={onAddReference}
+                    onDeleteReference={onDeleteReference}
+                    onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
+                    onAddQuote={onAddQuote}
+                    onUpdateQuote={onUpdateQuote}
+                    onDeleteQuote={onDeleteQuote}
+                    onUpdateNotes={onUpdateNotes}
+                  />
+                </div>
+              );
+            })}
           </div>
         ) : (
           <>

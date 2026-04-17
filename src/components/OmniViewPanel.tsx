@@ -93,10 +93,14 @@ function FilterMenu({
   enabled,
   onToggle,
   categorySides,
+  viewMode,
+  onViewModeChange,
 }: {
   enabled: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
   categorySides: Record<OmniCategory, "left" | "right">;
+  viewMode: "list" | "in-text";
+  onViewModeChange: (mode: "list" | "in-text") => void;
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -154,6 +158,10 @@ function FilterMenu({
           className="fixed bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
           style={{ top: pos.top, right: pos.right }}
         >
+          <div className="px-3 py-1.5 flex items-center justify-end">
+            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+          </div>
+          <div className="my-1 border-t border-stone-100" />
           {leftCats.length > 0 && (
             <>
               <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
@@ -248,8 +256,13 @@ function OmniViewPanel({
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader title="Omni-view">
-        <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-        <FilterMenu enabled={enabledCategories} onToggle={onToggleCategory} categorySides={categorySides} />
+        <FilterMenu
+          enabled={enabledCategories}
+          onToggle={onToggleCategory}
+          categorySides={categorySides}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+        />
       </PanelHeader>
 
       <div
