@@ -363,8 +363,8 @@ body {
   transition: opacity 0.15s;
 }
 
-.par-title-wrapper.has-add-btn:hover > .par-title-annotation,
-.list-title-wrapper.has-add-btn:hover > .par-title-annotation {
+.par-title-wrapper.has-add-btn > .par-title-annotation:hover,
+.list-title-wrapper.has-add-btn > .par-title-annotation:hover {
   opacity: 1;
 }
 
@@ -894,6 +894,13 @@ body {
 
 .tiptap p:has(> .latex-cmd:first-child:last-child) + p:has(> .latex-cmd:first-child:last-child) {
   margin-top: 0;
+}
+
+/* Restore normal paragraph spacing when a titled paragraph follows a
+   command-only paragraph — otherwise the tight command spacing leaves
+   no room for the title annotation. */
+.par-title-wrapper:has(.latex-cmd:first-child:last-child) + .par-title-wrapper.has-title {
+  margin-top: 1.1em;
 }
 
 /* Citation inline nodes */
