@@ -89,25 +89,41 @@ import { DocPermissionGate } from "./DocPermissionGate";
  * The padding is marked with a data attribute so repeat clicks reset it
  * before re-measuring.
  */
+function findScrollParent(el: HTMLElement | null): HTMLElement | null {
+  let cur: HTMLElement | null = el?.parentElement ?? null;
+  while (cur) {
+    const oy = getComputedStyle(cur).overflowY;
+    if (oy === "auto" || oy === "scroll") return cur;
+    cur = cur.parentElement;
+  }
+  return null;
+}
+
+// In in-text view the panel's scroll is yoked to the editor's via
+// useInTextPositions. Mark the panel during programmatic scrolls so the
+// panel→editor half of that sync sees the flag and skips — otherwise
+// aligning a card would drag the main text along with it.
+function suppressReverseSync(scrollEl: HTMLElement) {
+  scrollEl.dataset.virgilSuppressReverseSync = "1";
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      delete scrollEl.dataset.virgilSuppressReverseSync;
+    });
+  });
+}
+
 function alignEntryToY(entry: HTMLElement, targetY: number) {
   // Find the nearest ancestor whose overflow-y is auto or scroll. We pick
   // the *declared* scroll container, not the nearest one that currently
   // overflows — the content may fit before we add alignment padding, but
   // the container is still where we need to scroll.
-  const findScrollParent = (el: HTMLElement | null): HTMLElement | null => {
-    let cur: HTMLElement | null = el?.parentElement ?? null;
-    while (cur) {
-      const oy = getComputedStyle(cur).overflowY;
-      if (oy === "auto" || oy === "scroll") return cur;
-      cur = cur.parentElement;
-    }
-    return null;
-  };
   const scrollEl = findScrollParent(entry);
   if (!scrollEl) {
     entry.scrollIntoView({ behavior: "instant", block: "nearest" });
     return;
   }
+
+  suppressReverseSync(scrollEl);
 
   // Reset any prior alignment padding we applied so measurements are clean.
   if (scrollEl.dataset.virgilAlignPadding === "1") {
@@ -143,6 +159,17 @@ function alignEntryToY(entry: HTMLElement, targetY: number) {
     // scrollTop is already 0 from the first-pass clamp.
     scrollEl.dataset.virgilAlignPadding = "1";
   }
+}
+
+// Wraps entry.scrollIntoView to suppress the panel→editor scroll sync
+// (same reason as suppressReverseSync above).
+function scrollEntryIntoView(
+  entry: HTMLElement,
+  opts?: ScrollIntoViewOptions,
+) {
+  const scrollEl = findScrollParent(entry);
+  if (scrollEl) suppressReverseSync(scrollEl);
+  entry.scrollIntoView(opts ?? { behavior: "instant", block: "nearest" });
 }
 
 // --- Icons ---
@@ -2312,7 +2339,7 @@ export default function EditorLayout() {
         if (typeof targetY === "number") {
           alignEntryToY(entry, targetY);
         } else {
-          entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+          scrollEntryIntoView(entry);
         }
       });
       return true;
@@ -2467,8 +2494,10 @@ export default function EditorLayout() {
         }
         // Scroll the archive entry into view
         requestAnimationFrame(() => {
-          const entry = document.querySelector(`[data-archive-entry="${detail.archiveId}"]`);
-          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
+          const entry = document.querySelector(
+            `[data-archive-entry="${detail.archiveId}"]`,
+          ) as HTMLElement | null;
+          if (entry) scrollEntryIntoView(entry);
         });
       }
     };
@@ -2492,8 +2521,10 @@ export default function EditorLayout() {
           if (p.activeRight !== "footnotes") setActiveRight("footnotes");
         }
         requestAnimationFrame(() => {
-          const entry = document.querySelector(`[data-footnote-entry="${detail.footnoteId}"]`);
-          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
+          const entry = document.querySelector(
+            `[data-footnote-entry="${detail.footnoteId}"]`,
+          ) as HTMLElement | null;
+          if (entry) scrollEntryIntoView(entry);
         });
       }
     };
@@ -2576,7 +2607,7 @@ export default function EditorLayout() {
           if (typeof targetY === "number") {
             alignEntryToY(entry, targetY);
           } else {
-            entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+            scrollEntryIntoView(entry);
           }
         });
       }
