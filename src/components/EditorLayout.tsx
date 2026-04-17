@@ -67,6 +67,9 @@ import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import WordCountPanel from "./WordCountPanel";
 import { useFocusMode, sectionRange } from "@/hooks/useFocusMode";
 import { serializeToLatex } from "@/lib/latex-serializer";
+import pkg from "../../package.json";
+
+const APP_VERSION = pkg.version;
 import type { OrphanedFootnote } from "@/lib/types";
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
@@ -1122,6 +1125,17 @@ export default function EditorLayout() {
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
+  const [versionOpen, setVersionOpen] = useState(false);
+
+  useEffect(() => {
+    if (!versionOpen) return;
+    const close = () => setVersionOpen(false);
+    const id = window.setTimeout(() => window.addEventListener("click", close), 0);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("click", close);
+    };
+  }, [versionOpen]);
   const aiDot = useMemo(() => aiRequestDotStatus({
     bibReviewRequests,
     bibEntryRequests: entryRequests,
@@ -4098,6 +4112,26 @@ export default function EditorLayout() {
               <line x1="5" y1="12" x2="19" y2="12" />
               <polyline points="12 5 19 12 12 19" />
             </svg>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
+            className="relative p-1 rounded transition-colors text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
+            title={`Virgil v${APP_VERSION}`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="16" x2="12" y2="12" />
+              <line x1="12" y1="8" x2="12.01" y2="8" />
+            </svg>
+            {versionOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 px-3 py-2 whitespace-nowrap text-left"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="font-medium text-stone-600 mb-0.5">Version</div>
+                <div>Virgil v{APP_VERSION}</div>
+              </div>
+            )}
           </button>
           {/* AI request — sun-star: eight equal-length rays meeting
               at the center. Cardinal lines span 20 units (2→22);
