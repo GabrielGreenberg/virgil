@@ -3963,10 +3963,10 @@ export default function EditorLayout() {
           {openTabs.map((doc) => (
             <div
               key={doc.id}
-              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-lg relative border border-[var(--topbar-border,#d5d3ce)] ${
+              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative ${
                 doc.id === currentDocId
-                  ? "bg-[var(--background)] text-stone-800 border-b-[var(--background)] -mb-px z-10"
-                  : "text-stone-500 hover:bg-white/30 hover:text-stone-700"
+                  ? "browser-tab-swoop bg-[var(--background)] text-stone-800 -mb-px z-10"
+                  : "border border-[var(--topbar-border,#d5d3ce)] text-stone-500 hover:bg-white/30 hover:text-stone-700"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
