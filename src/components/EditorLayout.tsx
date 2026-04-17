@@ -408,6 +408,8 @@ function PanelColumn({
   blank,
   focusedHalf,
   onFocusHalf,
+  topPanelId,
+  bottomPanelId,
 }: {
   side: "left" | "right";
   width: number;
@@ -425,6 +427,8 @@ function PanelColumn({
   blank?: boolean;
   focusedHalf?: "top" | "bottom";
   onFocusHalf?: (half: "top" | "bottom") => void;
+  topPanelId?: PanelId;
+  bottomPanelId?: PanelId;
 }) {
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -484,6 +488,9 @@ function PanelColumn({
             className="min-h-0 overflow-hidden"
             style={{ flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("top")}
+            data-panel-side={side}
+            data-panel-id={topPanelId}
+            data-panel-half="top"
           >
             {children!.top}
           </div>
@@ -496,6 +503,9 @@ function PanelColumn({
             className="min-h-0 overflow-hidden"
             style={{ flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("bottom")}
+            data-panel-side={side}
+            data-panel-id={bottomPanelId}
+            data-panel-half="bottom"
           >
             {children!.bottom}
           </div>
@@ -504,6 +514,8 @@ function PanelColumn({
         <div
           className={`flex-1 min-w-0 overflow-hidden panel-container ${side === "left" ? "order-1" : "order-2"}`}
           style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
+          data-panel-side={side}
+          data-panel-id={topPanelId}
         >
           {(children as React.ReactNode)}
         </div>
@@ -2561,10 +2573,39 @@ export default function EditorLayout() {
         if (tryScrollOmniEntry(`ci:${detail.citationId}`, targetY)) return;
         const p = prefsRef.current;
         const citPlacement = p.placements.find((pl) => pl.id === "citations");
-        if (citPlacement?.side === "left") {
-          if (p.activeLeft !== "citations") setActiveLeft("citations");
-        } else {
-          if (p.activeRight !== "citations") setActiveRight("citations");
+        const targetSide: Side = citPlacement?.side ?? "left";
+        const sourceSide = detail.sourceSide as Side | undefined;
+        const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
+        const sourceHalf = detail.sourceHalf as Half | undefined;
+
+        // If the click came from inside the citations panel itself, don't
+        // re-route — just let the scroll logic below bring the entry into view.
+        if (sourcePanelId !== "citations") {
+          if (sourceSide && sourceSide === targetSide && sourcePanelId) {
+            // Same side as citations' home → open as a split so the source
+            // panel stays visible alongside citations.
+            const isSplit =
+              targetSide === "left"
+                ? p.activeLeftBottom != null
+                : p.activeRightBottom != null;
+            if (!isSplit) {
+              // Not split yet: pin source to top, open citations in bottom.
+              setActiveHalf(targetSide, "top", sourcePanelId);
+              setActiveHalf(targetSide, "bottom", "citations");
+            } else {
+              // Already split: put citations in the half opposite the source.
+              const oppHalf: Half = sourceHalf === "bottom" ? "top" : "bottom";
+              setActiveHalf(targetSide, oppHalf, "citations");
+            }
+          } else {
+            // From main text or from a panel on the opposite side — just
+            // activate citations on its home side.
+            if (targetSide === "left") {
+              if (p.activeLeft !== "citations") setActiveLeft("citations");
+            } else {
+              if (p.activeRight !== "citations") setActiveRight("citations");
+            }
+          }
         }
         // Scroll the panel entry into view, aligning it vertically with
         // the clicked citation when we have its Y position.
@@ -2583,7 +2624,7 @@ export default function EditorLayout() {
     };
     window.addEventListener("virgil-citation-click", handler);
     return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
+  }, [setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry]);
 
   // Listen for \ref node clicks → open the LabelRef popover
   useEffect(() => {
@@ -3980,6 +4021,8 @@ export default function EditorLayout() {
           split
           focusedHalf={focused}
           onFocusHalf={setFocused}
+          topPanelId={top ?? "blank"}
+          bottomPanelId={bottom}
         >
           {{
             top: top ? renderPanelInner(top, side) : <div className="w-full h-full bg-[var(--background)]" />,
@@ -3993,7 +4036,7 @@ export default function EditorLayout() {
 
     // Single mode
     return (
-      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank"}>
+      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank"} topPanelId={top ?? undefined}>
         {renderPanelInner(top!, side)}
       </PanelColumn>
     );
