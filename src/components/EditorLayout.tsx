@@ -2158,6 +2158,24 @@ export default function EditorLayout() {
     }
   }, [archiveContent, updateArchiveSnippet, addArchiveParagraphId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
+  // Archive-capture handler: receives content extracted from the editor
+  // by usePanelCapture (paragraph grip drag or text-selection drag) and
+  // creates a new snippet anchored to the source paragraph. The empty
+  // paragraph shell / inline deletion was already performed by the hook.
+  const handleArchiveCapture = useCallback(
+    ({ content, paragraphId }: { content: unknown; paragraphId: string | null }) => {
+      const snippet = archiveContent(content);
+      if (paragraphId) addArchiveParagraphId(snippet.id, paragraphId);
+      const archivePlacement = prefs.placements.find((p) => p.id === "archive");
+      if (archivePlacement?.side === "left") {
+        if (prefs.activeLeft !== "archive") setActiveLeft("archive");
+      } else {
+        if (prefs.activeRight !== "archive") setActiveRight("archive");
+      }
+    },
+    [archiveContent, addArchiveParagraphId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
+  );
+
   const insertingRef = useRef(false);
   const handleInsertArchive = useCallback((id: string) => {
     if (insertingRef.current) return;
@@ -3427,6 +3445,7 @@ export default function EditorLayout() {
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={handleCitationCreated}
           onEditorFocus={setOverrideEditor}
+          onCapture={handleArchiveCapture}
         />
       );
     }

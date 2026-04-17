@@ -29,6 +29,7 @@ import {
   MIME_TEXT_INSERT,
   isAnchorDrag,
 } from "@/lib/marginalia";
+import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -242,6 +243,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
   onConfirmFootnoteMoveRef.current = onConfirmFootnoteMove;
 
+  // Stashes pending capture-drag payloads. ProseMirror's internal
+  // dragstart handler rewrites DataTransfer (setting text/html +
+  // text/plain) after our per-element listeners run, wiping any MIME we
+  // set there. We instead apply our MIME in a window-level dragstart
+  // listener (bubble phase), which fires AFTER PM's handler.
+  const pendingParCaptureUuidRef = useRef<string | null>(null);
+  const pendingTextCaptureRef = useRef<{ from: number; to: number; paragraphId: string | null } | null>(null);
+
   const ParagraphWithTitle = Paragraph.extend({
     draggable: true,
     addAttributes() {
@@ -319,6 +328,27 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         });
         dragHandle.addEventListener("mouseup", () => {
           wrapper.classList.remove("dragging");
+        });
+
+        // Tag the drag with a paragraph-capture MIME so side panels can
+        // accept whole-paragraph drops (e.g. drop onto archive to archive
+        // the paragraph, leaving an empty shell + margin marker behind).
+        // We don't preventDefault — ProseMirror still sees this as a
+        // normal node drag for in-editor reordering.
+        // Stash the dragged paragraph's UUID so the editor-level dragstart
+        // (registered in handleDOMEvents) can tag the DataTransfer with
+        // MIME_PAR_CAPTURE AFTER ProseMirror's default handler clears it.
+        // ProseMirror rebuilds the DataTransfer during its own dragstart
+        // default (setting text/html + text/plain), wiping anything set
+        // from this handle-level listener.
+        dragHandle.addEventListener("dragstart", () => {
+          const handlePos = typeof getPos === "function" ? getPos() : null;
+          if (handlePos == null) return;
+          let uuid = currentNode.attrs?.uuid as string | null;
+          if (!uuid) {
+            uuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+          }
+          if (uuid) pendingParCaptureUuidRef.current = uuid;
         });
 
         // Hover detection is handled by editor-level mouseover delegation
@@ -1005,6 +1035,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             event.preventDefault();
             return true; // handled — suppress
           }
+          // Text-selection drag: stash the capture payload so the
+          // window-level dragstart listener (registered below) can tag
+          // DataTransfer AFTER ProseMirror's default handler runs.
+          const sel = view.state.selection;
+          if (!sel.empty) {
+            const paragraphId = ensureAnchorUuid(view, sel.from);
+            pendingTextCaptureRef.current = { from: sel.from, to: sel.to, paragraphId };
+          }
           return false;
         },
       },
@@ -1355,6 +1393,36 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     dom.addEventListener("mouseleave", onLeave);
     return () => { dom.removeEventListener("mouseover", onOver); dom.removeEventListener("mouseleave", onLeave); };
   }, [editor]);
+
+  // Window-level dragstart fires in the bubble phase AFTER ProseMirror's
+  // editor-level dragstart (which rewrites DataTransfer for its own node
+  // drag). Apply the stashed capture MIME here so it survives.
+  useEffect(() => {
+    const onWindowDragStart = (e: DragEvent) => {
+      const dt = e.dataTransfer;
+      if (!dt) return;
+      const parUuid = pendingParCaptureUuidRef.current;
+      if (parUuid) {
+        try { dt.setData(MIME_PAR_CAPTURE, JSON.stringify({ uuid: parUuid })); } catch {}
+      }
+      const textPayload = pendingTextCaptureRef.current;
+      if (textPayload) {
+        try { dt.setData(MIME_TEXT_CAPTURE, JSON.stringify(textPayload)); } catch {}
+      }
+    };
+    const onWindowDragEnd = () => {
+      pendingParCaptureUuidRef.current = null;
+      pendingTextCaptureRef.current = null;
+    };
+    window.addEventListener("dragstart", onWindowDragStart);
+    window.addEventListener("dragend", onWindowDragEnd);
+    window.addEventListener("drop", onWindowDragEnd);
+    return () => {
+      window.removeEventListener("dragstart", onWindowDragStart);
+      window.removeEventListener("dragend", onWindowDragEnd);
+      window.removeEventListener("drop", onWindowDragEnd);
+    };
+  }, []);
 
   useImperativeHandle(ref, () => ({
     replaceText(oldText: string, newText: string): boolean {
