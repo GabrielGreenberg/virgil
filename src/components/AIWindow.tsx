@@ -407,6 +407,14 @@ export interface AIWindowProps {
   refreshAll: () => void;
 }
 
+type AISection = "requests" | "connect" | "skills";
+
+const SECTIONS: { id: AISection; label: string; description: string }[] = [
+  { id: "requests", label: "Request status", description: "Open, responded, and resolved AI requests in this document" },
+  { id: "connect", label: "Connect with Claude", description: "Manage your connection to Claude and related services" },
+  { id: "skills", label: "Skills", description: "Skills Claude can use inside this document" },
+];
+
 export default function AIWindow({
   open,
   onClose,
@@ -426,6 +434,7 @@ export default function AIWindow({
   addGeneralRevision,
   refreshAll,
 }: AIWindowProps) {
+  const [section, setSection] = useState<AISection>("requests");
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerKind, setComposerKind] = useState<AIRequestKind>("revision-general");
   const [composerText, setComposerText] = useState("");
@@ -548,7 +557,7 @@ export default function AIWindow({
       aria-labelledby="ai-window-title"
       onClick={handleBackdrop}
     >
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-[760px] max-h-[82vh] mx-4 flex flex-col overflow-hidden">
+      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-[900px] max-h-[82vh] mx-4 flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)]">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -563,23 +572,22 @@ export default function AIWindow({
             id="ai-window-title"
             className="text-sm font-semibold text-stone-700"
           >
-            AI requests
+            AI
           </h2>
-          <span className="text-[11px] text-stone-400">
-            {buckets.open.length} open · {buckets.responded.length} responded · {buckets.resolved.length} resolved
-          </span>
           <div className="flex-1" />
-          <button
-            onClick={() => refreshAll()}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
-            title="Refresh"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 4 23 10 17 10" />
-              <polyline points="1 20 1 14 7 14" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-          </button>
+          {section === "requests" && (
+            <button
+              onClick={() => refreshAll()}
+              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              title="Refresh"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </button>
+          )}
           <button
             onClick={onClose}
             className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
@@ -591,123 +599,177 @@ export default function AIWindow({
           </button>
         </div>
 
-        {/* Composer — collapsible new request form */}
-        <div className="border-b border-[var(--border)] bg-stone-50/60 px-5 py-2.5">
-          {!composerOpen ? (
-            <button
-              onClick={() => setComposerOpen(true)}
-              className="flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 transition-colors"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
-              New request
-            </button>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
-                  New request
-                </span>
-                <select
-                  value={composerKind}
-                  onChange={(e) => {
-                    setComposerKind(e.target.value as AIRequestKind);
-                    setComposerBibKey("");
-                  }}
-                  className="text-xs bg-white border border-[var(--border)] rounded px-1.5 py-0.5 text-stone-700"
-                >
-                  <option value="revision-general">General dialogue</option>
-                  <option value="bib-entry">New bibliography entry</option>
-                  <option value="bib-fields">Bib field review</option>
-                  <option value="bib-notes">Bib notes review</option>
-                  <optgroup label="Panel requests">
-                    <option value="panel-footnote">Footnote request</option>
-                    <option value="panel-note">Note request</option>
-                    <option value="panel-citation">Citation request</option>
-                    <option value="panel-quotation">Quotation request</option>
-                    <option value="panel-todo">Todo request</option>
-                  </optgroup>
-                </select>
-                <span className="text-[11px] text-stone-400 truncate">
-                  {KIND_META[composerKind].description}
-                </span>
-              </div>
-
-              {composerNeedsBibKey && (
-                <div className="flex items-center gap-2 mb-2">
-                  <label className="text-[11px] text-stone-500">Entry key</label>
-                  <input
-                    list="ai-window-bib-keys"
-                    value={composerBibKey}
-                    onChange={(e) => setComposerBibKey(e.target.value)}
-                    placeholder="e.g. smith2020"
-                    className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)]"
-                  />
-                  <datalist id="ai-window-bib-keys">
-                    {bibEntries.map((b) => (
-                      <option key={b.key} value={b.key}>
-                        {b.fields.title || b.type}
-                      </option>
-                    ))}
-                  </datalist>
-                </div>
-              )}
-
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={composerText}
-                  onChange={(e) => setComposerText(e.target.value)}
-                  placeholder={
-                    composerKind === "bib-entry"
-                      ? "Describe the entry to find or create — title, authors, year, anything you remember…"
-                      : composerKind === "revision-general"
-                        ? "Ask Claude something, or describe what you'd like changed…"
-                        : "Optional notes for Claude (what to focus on)…"
-                  }
-                  rows={3}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      submitComposer();
-                    }
-                  }}
-                  className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1.5 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)] resize-none"
-                />
-                <div className="flex flex-col gap-1.5">
-                  <button
-                    onClick={submitComposer}
-                    disabled={
-                      (composerNeedsBibKey && !composerBibKey.trim()) ||
-                      (!composerNeedsBibKey && !composerText.trim())
-                    }
-                    className="px-3 py-1.5 text-xs font-medium rounded-md border bg-stone-800 hover:bg-stone-900 text-white border-stone-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    title="Submit (⌘↵)"
-                  >
-                    Submit
-                  </button>
-                  <button
-                    onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
-                    className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Body — request list */}
-        <div className="flex-1 overflow-y-auto px-5 py-3">
-          <Bucket title="Open" status="open" items={buckets.open} />
-          <Bucket title="Responded" status="responded" items={buckets.responded} />
-          <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
-          {requests.length === 0 && (
-            <div className="text-center text-xs text-stone-400 py-8">
-              No requests yet. Use the form above to start one.
+        {/* Two-pane body */}
+        <div className="flex-1 flex min-h-0">
+          {/* Left nav */}
+          <nav className="w-[200px] shrink-0 border-r border-[var(--border)] bg-stone-50/60 py-3 px-2 overflow-y-auto">
+            <div className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider px-2 mb-1.5">
+              Browse
             </div>
-          )}
+            <ul className="flex flex-col gap-0.5">
+              {SECTIONS.map((s) => {
+                const active = s.id === section;
+                return (
+                  <li key={s.id}>
+                    <button
+                      onClick={() => setSection(s.id)}
+                      className={
+                        "w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors " +
+                        (active
+                          ? "bg-white border border-[var(--border)] text-stone-800 shadow-sm"
+                          : "text-stone-600 hover:bg-white/70 hover:text-stone-800 border border-transparent")
+                      }
+                    >
+                      {s.label}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+
+          {/* Right content */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {section === "requests" && (
+              <>
+                <div className="px-5 pt-3 pb-2 border-b border-[var(--border)]">
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-sm font-semibold text-stone-700">Request status</h3>
+                    <span className="text-[11px] text-stone-400">
+                      {buckets.open.length} open · {buckets.responded.length} responded · {buckets.resolved.length} resolved
+                    </span>
+                  </div>
+                </div>
+
+                {/* Composer */}
+                <div className="border-b border-[var(--border)] bg-stone-50/60 px-5 py-2.5">
+                  {!composerOpen ? (
+                    <button
+                      onClick={() => setComposerOpen(true)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 transition-colors"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      New request
+                    </button>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
+                          New request
+                        </span>
+                        <select
+                          value={composerKind}
+                          onChange={(e) => {
+                            setComposerKind(e.target.value as AIRequestKind);
+                            setComposerBibKey("");
+                          }}
+                          className="text-xs bg-white border border-[var(--border)] rounded px-1.5 py-0.5 text-stone-700"
+                        >
+                          <option value="revision-general">General dialogue</option>
+                          <option value="bib-entry">New bibliography entry</option>
+                          <option value="bib-fields">Bib field review</option>
+                          <option value="bib-notes">Bib notes review</option>
+                          <optgroup label="Panel requests">
+                            <option value="panel-footnote">Footnote request</option>
+                            <option value="panel-note">Note request</option>
+                            <option value="panel-citation">Citation request</option>
+                            <option value="panel-quotation">Quotation request</option>
+                            <option value="panel-todo">Todo request</option>
+                          </optgroup>
+                        </select>
+                        <span className="text-[11px] text-stone-400 truncate">
+                          {KIND_META[composerKind].description}
+                        </span>
+                      </div>
+
+                      {composerNeedsBibKey && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <label className="text-[11px] text-stone-500">Entry key</label>
+                          <input
+                            list="ai-window-bib-keys"
+                            value={composerBibKey}
+                            onChange={(e) => setComposerBibKey(e.target.value)}
+                            placeholder="e.g. smith2020"
+                            className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)]"
+                          />
+                          <datalist id="ai-window-bib-keys">
+                            {bibEntries.map((b) => (
+                              <option key={b.key} value={b.key}>
+                                {b.fields.title || b.type}
+                              </option>
+                            ))}
+                          </datalist>
+                        </div>
+                      )}
+
+                      <div className="flex items-end gap-2">
+                        <textarea
+                          value={composerText}
+                          onChange={(e) => setComposerText(e.target.value)}
+                          placeholder={
+                            composerKind === "bib-entry"
+                              ? "Describe the entry to find or create — title, authors, year, anything you remember…"
+                              : composerKind === "revision-general"
+                                ? "Ask Claude something, or describe what you'd like changed…"
+                                : "Optional notes for Claude (what to focus on)…"
+                          }
+                          rows={3}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              submitComposer();
+                            }
+                          }}
+                          className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1.5 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)] resize-none"
+                        />
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            onClick={submitComposer}
+                            disabled={
+                              (composerNeedsBibKey && !composerBibKey.trim()) ||
+                              (!composerNeedsBibKey && !composerText.trim())
+                            }
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border bg-stone-800 hover:bg-stone-900 text-white border-stone-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                            title="Submit (⌘↵)"
+                          >
+                            Submit
+                          </button>
+                          <button
+                            onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Request list */}
+                <div className="flex-1 overflow-y-auto px-5 py-3">
+                  <Bucket title="Open" status="open" items={buckets.open} />
+                  <Bucket title="Responded" status="responded" items={buckets.responded} />
+                  <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
+                  {requests.length === 0 && (
+                    <div className="text-center text-xs text-stone-400 py-8">
+                      No requests yet. Use the form above to start one.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {section === "connect" && (
+              <ConnectWithClaude />
+            )}
+
+            {section === "skills" && (
+              <SkillsPanel />
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -814,6 +876,117 @@ function RequestCard({ req }: { req: AIRequestVM }) {
         onCancel={() => setConfirmOpen(false)}
       />
     </li>
+  );
+}
+
+function ConnectWithClaude() {
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-4">
+      <h3 className="text-sm font-semibold text-stone-700 mb-1">Connect with Claude</h3>
+      <p className="text-[11px] text-stone-500 mb-4">
+        Manage how this document talks to Claude. Authentication, models, and
+        workspace defaults will appear here.
+      </p>
+
+      <div className="flex flex-col gap-3">
+        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-xs font-medium text-stone-700">Account</div>
+              <div className="text-[11px] text-stone-500 mt-0.5">
+                Not yet connected. Sign in to use Claude for requests in this document.
+              </div>
+            </div>
+            <button
+              disabled
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-400 bg-stone-50 cursor-not-allowed"
+              title="Coming soon"
+            >
+              Sign in
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
+          <div className="text-xs font-medium text-stone-700 mb-1">Model</div>
+          <div className="text-[11px] text-stone-500 mb-2">
+            Default model used for new requests.
+          </div>
+          <select
+            disabled
+            className="text-xs bg-stone-50 border border-stone-200 rounded px-2 py-1 text-stone-500 cursor-not-allowed"
+          >
+            <option>Claude (workspace default)</option>
+          </select>
+        </div>
+
+        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
+          <div className="text-xs font-medium text-stone-700 mb-1">Context sharing</div>
+          <div className="text-[11px] text-stone-500">
+            Configure which parts of the document Claude can read when responding
+            to requests. Settings will live here.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkillsPanel() {
+  const skills = [
+    {
+      name: "Bibliography assistant",
+      description: "Find, create, and review BibTeX entries.",
+      enabled: true,
+    },
+    {
+      name: "Prose revision",
+      description: "Suggest edits to selected text or whole sections.",
+      enabled: true,
+    },
+    {
+      name: "Footnotes & annotations",
+      description: "Draft footnotes, margin notes, quotations, and todos.",
+      enabled: true,
+    },
+    {
+      name: "Citation formatter",
+      description: "Normalize citations against your style guide.",
+      enabled: false,
+    },
+  ];
+  return (
+    <div className="flex-1 overflow-y-auto px-5 py-4">
+      <h3 className="text-sm font-semibold text-stone-700 mb-1">Skills</h3>
+      <p className="text-[11px] text-stone-500 mb-4">
+        Skills are the tools Claude can use inside this document. Toggle them on
+        or off to shape what Claude can do on your behalf.
+      </p>
+
+      <ul className="flex flex-col gap-2">
+        {skills.map((s) => (
+          <li
+            key={s.name}
+            className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5 flex items-start gap-3"
+          >
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-stone-700">{s.name}</div>
+              <div className="text-[11px] text-stone-500 mt-0.5">{s.description}</div>
+            </div>
+            <span
+              className={
+                "shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium " +
+                (s.enabled
+                  ? "bg-[#f0fdf4] text-[#15803d]"
+                  : "bg-stone-100 text-stone-500")
+              }
+            >
+              {s.enabled ? "On" : "Off"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
