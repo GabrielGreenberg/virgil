@@ -4260,7 +4260,7 @@ export default function EditorLayout() {
 
 
         {/* Left icon strip */}
-        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-stone-50/30 shrink-0 gap-1.5">
+        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
             {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
@@ -4427,7 +4427,7 @@ export default function EditorLayout() {
         {renderPanelColumn("right")}
 
         {/* Right icon strip */}
-        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-stone-50/30 shrink-0 gap-1.5">
+        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
             {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
