@@ -251,6 +251,10 @@ export function useInTextPositions(
 
       const syncPanelToEditor = () => {
         if (syncingRef.current) return;
+        // Skip when an external caller (e.g. click-to-align on a panel card)
+        // has flagged this scroll as programmatic. Without this, aligning a
+        // card in the panel would drag the editor's main text along with it.
+        if (panelEl.dataset.virgilSuppressReverseSync === "1") return;
         syncingRef.current = true;
         const offset = topOffsetRef?.current ?? 0;
         // When the panel is in the "above document" zone, pin editor to top
