@@ -704,7 +704,7 @@ export function QuotationGroupCard({
       onKeyDown={handleKeyDown}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5${selected ? " bg-amber-50/60" : ""}`}>
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}>
         {/* Grab handle — card-level anchor drag (marginalia) */}
         <div
           draggable

@@ -15,6 +15,7 @@ import {
   ItemMenu,
   MenuDelete,
   TargetIcon,
+  CARD_THEMES,
 } from "./panel-primitives";
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
@@ -380,24 +381,43 @@ function RevisionCard({
   onReply,
   registerRef,
 }: CardProps) {
+  const theme = CARD_THEMES.comment;
+  const firstTurn = turns[0];
+  const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
   return (
     <div
       ref={(el) => registerRef?.(el)}
       onClick={onSelect}
-      className={`cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
+      className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
     >
-      <div className={`${PANEL.cardInner} space-y-2`}>
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">{header}</div>
-          <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            {selected && onJump && (
-              <TargetIcon onClick={onJump} title="Jump to text in document" />
-            )}
-            <ItemMenu>
-              <MenuDelete onClick={onDelete} />
-            </ItemMenu>
-          </div>
+      {/* Header: author + timestamp, with target icon + menu trailing */}
+      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
+        {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
+        {firstAuthor && (
+          <span className="text-xs font-medium text-stone-700 truncate">{firstAuthor.name}</span>
+        )}
+        {firstTurn && (
+          <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">
+            · {formatTurnTime(firstTurn.createdAt)}
+          </span>
+        )}
+        <div className="flex-1" />
+        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+          {selected && onJump && (
+            <TargetIcon onClick={onJump} title="Jump to text in document" />
+          )}
+          <ItemMenu>
+            <MenuDelete onClick={onDelete} />
+          </ItemMenu>
         </div>
+      </div>
+
+      {/* Separator */}
+      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+
+      <div className={`${PANEL.cardInner} space-y-2`}>
+        {/* Context: "Document-wide" / quoted text — passed from caller */}
+        {header && <div>{header}</div>}
 
         <div className="space-y-1.5">
           {turns.map((t) => (
