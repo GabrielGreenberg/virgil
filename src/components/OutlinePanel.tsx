@@ -1627,7 +1627,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onRenameParTitle={onRenameParTitle}
           />
         ) : (
-          <div className="bg-white rounded-lg border border-stone-200 pt-1 pb-3 relative">
+          <div className="bg-white rounded-lg border border-stone-200 pt-1 pb-3 relative min-h-full">
             {/* Focus band overlay — only in unlocked mode */}
             {focusState?.active && !focusState.locked && (
               <FocusBand
