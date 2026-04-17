@@ -1086,6 +1086,9 @@ export const Citation = Node.create({
         e.preventDefault();
         e.stopPropagation();
         const rect = dom.getBoundingClientRect();
+        const panelAncestor = dom.closest(
+          "[data-panel-side]",
+        ) as HTMLElement | null;
         window.dispatchEvent(
           new CustomEvent("virgil-citation-click", {
             detail: {
@@ -1094,6 +1097,9 @@ export const Citation = Node.create({
               // panel to align the corresponding card vertically with the
               // click target.
               clickY: rect.top,
+              sourceSide: panelAncestor?.dataset.panelSide,
+              sourcePanelId: panelAncestor?.dataset.panelId,
+              sourceHalf: panelAncestor?.dataset.panelHalf,
             },
           })
         );
