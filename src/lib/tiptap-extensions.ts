@@ -1085,9 +1085,16 @@ export const Citation = Node.create({
       dom.addEventListener("click", (e: Event) => {
         e.preventDefault();
         e.stopPropagation();
+        const rect = dom.getBoundingClientRect();
         window.dispatchEvent(
           new CustomEvent("virgil-citation-click", {
-            detail: { citationId: node.attrs.citationId },
+            detail: {
+              citationId: node.attrs.citationId,
+              // Viewport Y of the clicked citation — used by the citations
+              // panel to align the corresponding card vertically with the
+              // click target.
+              clickY: rect.top,
+            },
           })
         );
       });

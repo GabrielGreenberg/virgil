@@ -74,6 +74,74 @@ import { getDocHandle } from "@/lib/doc-index";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 
+/**
+ * Scroll a panel entry so its top aligns with the given viewport Y.
+ * Walks up from the entry to find its nearest scrollable ancestor, then:
+ *   1. Resets any previously-applied alignment padding.
+ *   2. Adjusts scrollTop so the entry's top matches targetY.
+ *   3. If the required scroll goes past either end of the scroll range,
+ *      adds temporary top/bottom padding on the scroll container to make
+ *      up the difference (so e.g. the first card can still be pushed
+ *      down to match a citation near the bottom of the viewport).
+ * The padding is marked with a data attribute so repeat clicks reset it
+ * before re-measuring.
+ */
+function alignEntryToY(entry: HTMLElement, targetY: number) {
+  // Find the nearest ancestor whose overflow-y is auto or scroll. We pick
+  // the *declared* scroll container, not the nearest one that currently
+  // overflows — the content may fit before we add alignment padding, but
+  // the container is still where we need to scroll.
+  const findScrollParent = (el: HTMLElement | null): HTMLElement | null => {
+    let cur: HTMLElement | null = el?.parentElement ?? null;
+    while (cur) {
+      const oy = getComputedStyle(cur).overflowY;
+      if (oy === "auto" || oy === "scroll") return cur;
+      cur = cur.parentElement;
+    }
+    return null;
+  };
+  const scrollEl = findScrollParent(entry);
+  if (!scrollEl) {
+    entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+    return;
+  }
+
+  // Reset any prior alignment padding we applied so measurements are clean.
+  if (scrollEl.dataset.virgilAlignPadding === "1") {
+    scrollEl.style.paddingTop = "";
+    scrollEl.style.paddingBottom = "";
+    scrollEl.dataset.virgilAlignPadding = "0";
+  }
+
+  // First pass: move scrollTop so the entry lines up with targetY.
+  const cardY1 = entry.getBoundingClientRect().top;
+  const desired = scrollEl.scrollTop + (cardY1 - targetY);
+  const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+  if (desired < 0) scrollEl.scrollTop = 0;
+  else if (desired > maxScroll) scrollEl.scrollTop = maxScroll;
+  else scrollEl.scrollTop = desired;
+
+  // Second pass: if we clamped, add padding to bridge the residual gap.
+  // The inline style overrides whatever baseline padding the class sets,
+  // so we add to the currently-computed value (otherwise we'd accidentally
+  // wipe out the panel's natural py-2 and end up off by ~8px).
+  const cardY2 = entry.getBoundingClientRect().top;
+  const residual = cardY2 - targetY;
+  if (residual > 0.5) {
+    // Card is still below target — need more scroll room at the bottom.
+    const baseBot = parseFloat(getComputedStyle(scrollEl).paddingBottom) || 0;
+    scrollEl.style.paddingBottom = `${baseBot + residual}px`;
+    scrollEl.scrollTop = scrollEl.scrollTop + residual;
+    scrollEl.dataset.virgilAlignPadding = "1";
+  } else if (residual < -0.5) {
+    // Card is still above target — pad the top to push it down.
+    const baseTop = parseFloat(getComputedStyle(scrollEl).paddingTop) || 0;
+    scrollEl.style.paddingTop = `${baseTop + -residual}px`;
+    // scrollTop is already 0 from the first-pass clamp.
+    scrollEl.dataset.virgilAlignPadding = "1";
+  }
+}
+
 // --- Icons ---
 function IconNotes({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
@@ -2218,16 +2286,25 @@ export default function EditorLayout() {
   // This is purely a DOM presence check, so it automatically handles
   // every case (left omni, right omni, both, neither) without the
   // callers needing to know about panel placement.
-  const tryScrollOmniEntry = useCallback((key: string): boolean => {
-    // Use starts-with selector so multi-paragraph instances (e.g. "nt:id@0")
-    // are found when searching for the base key ("nt:id").
-    const entry = document.querySelector(`[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`);
-    if (!entry) return false;
-    requestAnimationFrame(() => {
-      entry.scrollIntoView({ behavior: "instant", block: "nearest" });
-    });
-    return true;
-  }, []);
+  const tryScrollOmniEntry = useCallback(
+    (key: string, targetY?: number): boolean => {
+      // Use starts-with selector so multi-paragraph instances (e.g. "nt:id@0")
+      // are found when searching for the base key ("nt:id").
+      const entry = document.querySelector(
+        `[data-omni-entry="${key}"], [data-omni-entry^="${key}@"]`,
+      ) as HTMLElement | null;
+      if (!entry) return false;
+      requestAnimationFrame(() => {
+        if (typeof targetY === "number") {
+          alignEntryToY(entry, targetY);
+        } else {
+          entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+        }
+      });
+      return true;
+    },
+    [],
+  );
 
   const handleQuotationMarkerClick = useCallback(
     (groupId: string) => {
@@ -2464,8 +2541,10 @@ export default function EditorLayout() {
       const detail = (e as CustomEvent).detail;
       if (detail?.citationId) {
         setSelectedCitationId(detail.citationId);
+        const targetY: number | undefined =
+          typeof detail.clickY === "number" ? detail.clickY : undefined;
         // Route to OmniView if it has a card for this citation
-        if (tryScrollOmniEntry(`ci:${detail.citationId}`)) return;
+        if (tryScrollOmniEntry(`ci:${detail.citationId}`, targetY)) return;
         const p = prefsRef.current;
         const citPlacement = p.placements.find((pl) => pl.id === "citations");
         if (citPlacement?.side === "left") {
@@ -2473,10 +2552,18 @@ export default function EditorLayout() {
         } else {
           if (p.activeRight !== "citations") setActiveRight("citations");
         }
-        // Scroll the panel entry into view
+        // Scroll the panel entry into view, aligning it vertically with
+        // the clicked citation when we have its Y position.
         requestAnimationFrame(() => {
-          const entry = document.querySelector(`[data-citation-entry="${detail.citationId}"]`);
-          entry?.scrollIntoView({ behavior: "instant", block: "nearest" });
+          const entry = document.querySelector(
+            `[data-citation-entry="${detail.citationId}"]`,
+          ) as HTMLElement | null;
+          if (!entry) return;
+          if (typeof targetY === "number") {
+            alignEntryToY(entry, targetY);
+          } else {
+            entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+          }
         });
       }
     };
