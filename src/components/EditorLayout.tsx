@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
+import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
@@ -1165,16 +1166,25 @@ export default function EditorLayout() {
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
+  const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
 
   useEffect(() => {
     if (!versionOpen) return;
-    const close = () => setVersionOpen(false);
+    const close = () => { setVersionOpen(false); setCommandsPopoutOpen(false); };
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
     return () => {
       window.clearTimeout(id);
       window.removeEventListener("click", close);
     };
   }, [versionOpen]);
+
+  const insertVirgilCommand = useCallback((name: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    editor.chain().focus().insertContent(`\\${name}`).run();
+    setVersionOpen(false);
+    setCommandsPopoutOpen(false);
+  }, []);
   const aiDot = useMemo(() => aiRequestDotStatus({
     bibReviewRequests,
     bibEntryRequests: entryRequests,
@@ -4169,25 +4179,85 @@ export default function EditorLayout() {
 
         <div className="shrink-0 flex items-center px-2 gap-1">
           <button
-            onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-            className="relative p-1 rounded transition-colors text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
-            title={`Virgil v${APP_VERSION}`}
+            onClick={paraNavBack}
+            disabled={paraHistoryRef.current.idx <= 0}
+            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
+            title="Go back"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="16" x2="12" y2="12" />
-              <line x1="12" y1="8" x2="12.01" y2="8" />
+              <line x1="19" y1="12" x2="5" y2="12" />
+              <polyline points="12 19 5 12 12 5" />
             </svg>
+          </button>
+          <button
+            onClick={paraNavForward}
+            disabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
+            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
+            title="Go forward"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </button>
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
+              className="p-1 rounded transition-colors text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
+              title={`Virgil v${APP_VERSION}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </button>
             {versionOpen && (
               <div
-                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 px-3 py-2 whitespace-nowrap text-left"
+                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 whitespace-nowrap text-left min-w-[160px]"
                 onClick={(e) => e.stopPropagation()}
+                onMouseLeave={() => setCommandsPopoutOpen(false)}
               >
-                <div className="font-medium text-stone-600 mb-0.5">Version</div>
-                <div>Virgil v{APP_VERSION}</div>
+                <div className="px-3 py-2">
+                  <div className="font-medium text-stone-600 mb-0.5">Version</div>
+                  <div>Virgil v{APP_VERSION}</div>
+                </div>
+                <div className="border-t border-stone-200" />
+                <div
+                  className="relative flex items-center justify-between px-3 py-2 cursor-default hover:bg-stone-50"
+                  onMouseEnter={() => setCommandsPopoutOpen(true)}
+                >
+                  <span className="font-medium text-stone-600">Commands</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400">
+                    <polyline points="9 18 15 12 9 6" />
+                  </svg>
+                  {commandsPopoutOpen && (
+                    <div
+                      className="absolute right-full top-0 mr-1 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 py-1 min-w-[160px]"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {VIRGIL_COMMAND_NAMES.map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => insertVirgilCommand(name)}
+                          className="block w-full text-left px-3 py-1 font-mono text-stone-700 hover:bg-stone-100"
+                        >
+                          {`\\${name}`}
+                        </button>
+                      ))}
+                      <div className="border-t border-stone-200 mt-1 pt-1.5 pb-1 px-3 text-[10px] text-stone-400 flex items-center gap-1">
+                        <span>Type text +</span>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="9 10 4 15 9 20" />
+                          <path d="M20 4v7a4 4 0 0 1-4 4H4" />
+                        </svg>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </button>
+          </div>
           {/* AI request — sun-star: eight equal-length rays meeting
               at the center. Cardinal lines span 20 units (2→22);
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
