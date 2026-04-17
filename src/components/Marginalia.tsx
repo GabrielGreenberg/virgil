@@ -13,6 +13,7 @@ import {
   MIME_NOTE,
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
+  MIME_CUT,
   isAnchorDrag,
   isAnchorableNode,
   type MarginaliaMarker,
@@ -308,6 +309,22 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         return;
       }
 
+      // --- Cut drop (from CutterPanel) ---
+      const cutData = e.dataTransfer?.getData(MIME_CUT);
+      if (cutData) {
+        try {
+          const { cutId } = JSON.parse(cutData);
+          if (cutId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-cut-drop", {
+                detail: { cutId, paragraphId },
+              })
+            );
+          }
+        } catch { /* ignore */ }
+        return;
+      }
+
       // --- Archive anchor drop ---
       const archiveData = e.dataTransfer?.getData(MIME_ARCHIVE_ANCHOR);
       if (archiveData) {
@@ -399,6 +416,8 @@ function Gutter({
               e.stopPropagation();
               m.onClick?.();
             }}
+            onMouseEnter={() => m.onHover?.(true)}
+            onMouseLeave={() => m.onHover?.(false)}
             onKeyDown={(e) => {
               if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
                 e.preventDefault();

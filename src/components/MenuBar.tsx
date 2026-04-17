@@ -11,6 +11,8 @@ interface MenuBarProps {
   onArchive?: () => void;
   onCreateFootnote?: () => void;
   onQuoteSelection?: () => void;
+  onAddNote?: () => void;
+  onCutSelection?: () => void;
   showParTitles: boolean;
   onToggleParTitles: () => void;
   showLatexComments: boolean;
@@ -135,7 +137,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
@@ -320,6 +322,29 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
             </svg>
           </Btn>
         </>
+      )}
+      {onAddNote && (
+        <button
+          onClick={onAddNote}
+          title="Add note linked to selection"
+          className="px-2 py-1 rounded text-sm transition-colors text-[#15803d] hover:bg-[#f0fdf4] hover:text-[#166534]"
+        >
+          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-sans), system-ui, sans-serif", lineHeight: 1 }}>N</span>
+        </button>
+      )}
+      {onCutSelection && (
+        <button
+          onClick={onCutSelection}
+          title="Cut selection into Cutter panel"
+          className="px-2 py-1 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="4" cy="4" r="2" />
+            <circle cx="4" cy="12" r="2" />
+            <path d="M13 3L5.5 10.5" />
+            <path d="M9.5 9.5L13 13" />
+          </svg>
+        </button>
       )}
       {onArchive && (
         <button

@@ -5,7 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
 import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
-import { MIME_NOTE } from "@/lib/marginalia";
+import { MIME_NOTE, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -26,6 +26,10 @@ interface NotesPanelProps {
   onDeleteAiRequest?: (id: string) => void;
   /** Called with the Tiptap editor when a note body gains focus (for main toolbar routing). */
   onEditorFocus?: (editor: any) => void;
+  /** Hover handler wired into each NoteCard. Fires with the note id on enter, null on leave. */
+  onHoverNote?: (id: string | null) => void;
+  /** Called when the user drops the selection chip onto the panel — anchors a new note to that range. */
+  onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -59,6 +63,7 @@ export function NoteCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
+  onHoverChange,
 }: {
   note: UserNote;
   selected: boolean;
@@ -71,6 +76,7 @@ export function NoteCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
+  onHoverChange?: (hovering: boolean) => void;
 }) {
 
   const handleTitleChange = useCallback(
@@ -120,6 +126,7 @@ export function NoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
       extraDataAttrs={extraDataAttrs}
+      onHoverChange={onHoverChange}
     />
   );
 }
@@ -140,6 +147,8 @@ export default function NotesPanel({
   onUpdateAiRequestText,
   onDeleteAiRequest,
   onEditorFocus,
+  onHoverNote,
+  onDropSelection,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => {
@@ -186,7 +195,27 @@ export default function NotesPanel({
         />
       </PanelHeader>
 
-      <div className={PANEL.list} onClick={() => onSelectNote(null)}>
+      <div
+        className={PANEL.list}
+        onClick={() => onSelectNote(null)}
+        onDragOver={onDropSelection ? (e) => {
+          if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        } : undefined}
+        onDrop={onDropSelection ? (e) => {
+          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
+          if (!raw) return;
+          e.preventDefault();
+          try {
+            const payload = JSON.parse(raw);
+            if (typeof payload.from === "number" && typeof payload.to === "number") {
+              onDropSelection(payload);
+            }
+          } catch { /* ignore */ }
+        } : undefined}
+      >
         {sortedNotes.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No notes yet. Click &quot;Add Note&quot; to create one at the current cursor position.
@@ -220,6 +249,7 @@ export default function NotesPanel({
             onEditorFocus={onEditorFocus}
             getCitationDisplayText={getCitationDisplayText}
             onCitationCreated={onCitationCreated}
+            onHoverChange={onHoverNote ? (hovering) => onHoverNote(hovering ? note.id : null) : undefined}
           />
         ))}
       </div>

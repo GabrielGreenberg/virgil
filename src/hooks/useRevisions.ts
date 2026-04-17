@@ -39,7 +39,6 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
     createdAt: c.createdAt,
     resolved: c.resolved,
     selectedText: c.selectedText,
-    anchorPos: 0,
     text: c.comment,
     turns: [
       {
@@ -79,10 +78,22 @@ export function useRevisions(docId: string | null) {
         );
         if (currentDocIdRef.current !== id) return;
         if (existing) {
+          // Strip legacy `anchorPos` — we track linked anchors via a mark
+          // in the doc now, keyed by `anchorId`. Legacy records keep only
+          // `selectedText` as a snapshot for re-anchoring on load.
+          const strippedRevs = (existing.textRevisions ?? []).map((r) => {
+            const raw = r as TextRevision & { anchorPos?: number };
+            if ("anchorPos" in raw) {
+              const { anchorPos: _drop, ...rest } = raw;
+              void _drop;
+              return rest as TextRevision;
+            }
+            return raw as TextRevision;
+          });
           setState({
             users: existing.users?.length ? existing.users : [...DEFAULT_USERS],
             generalRevisions: existing.generalRevisions ?? [],
-            textRevisions: existing.textRevisions ?? [],
+            textRevisions: strippedRevs,
             activeUserId: existing.activeUserId ?? "me",
           });
           return;
@@ -180,7 +191,7 @@ export function useRevisions(docId: string | null) {
   );
 
   const addTextRevision = useCallback(
-    (selectedText: string, anchorPos: number, text: string) => {
+    (selectedText: string, anchorId: string | null, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return null;
       const now = new Date().toISOString();
@@ -194,7 +205,7 @@ export function useRevisions(docId: string | null) {
           createdAt: now,
           resolved: false,
           selectedText,
-          anchorPos,
+          anchorId: anchorId ?? undefined,
           text: trimmed,
           turns: [turn],
         };
@@ -205,6 +216,34 @@ export function useRevisions(docId: string | null) {
     },
     [update],
   );
+
+  const setRevisionAnchor = useCallback(
+    (id: string, anchorId: string | null) => {
+      update((prev) => ({
+        ...prev,
+        textRevisions: prev.textRevisions.map((r) =>
+          r.id === id ? { ...r, anchorId: anchorId ?? undefined } : r,
+        ),
+      }));
+    },
+    [update],
+  );
+
+  // Orphan listener — clear the dead anchor id on the matching revision.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      if (kind !== "revision" || !anchorId) return;
+      update((prev) => ({
+        ...prev,
+        textRevisions: prev.textRevisions.map((r) =>
+          r.anchorId === anchorId ? { ...r, anchorId: undefined } : r,
+        ),
+      }));
+    };
+    window.addEventListener("virgil-anchor-orphaned", handler);
+    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
+  }, [update]);
 
   const addTurn = useCallback(
     (kind: RevisionKind, revisionId: string, text: string) => {
@@ -305,6 +344,7 @@ export function useRevisions(docId: string | null) {
     addUser,
     addGeneralRevision,
     addTextRevision,
+    setRevisionAnchor,
     addTurn,
     resolveRevision,
     reopenRevision,

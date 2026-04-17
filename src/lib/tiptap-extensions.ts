@@ -2,6 +2,7 @@ import { Node, Mark, mergeAttributes, Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { NodeSelection } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { Fragment as PMFragmentCtor, Slice as PMSliceCtor, type Node as PMNode2, type Fragment as PMFragment } from "@tiptap/pm/model";
 import type { MutableRefObject } from "react";
 import {
   richJsonToPlainText,
@@ -1483,6 +1484,115 @@ export const AiRequestMarker = Node.create({
         },
       };
     };
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LinkedAnchor — invisible mark placed on a text range. Used by Notes,
+// Revisions, and Cutter to link a side-panel card to a specific selection.
+// The mark is *app state*, not document state: stripped on .tex export,
+// re-applied on load from sidecar JSON snapshots. `inclusive: false` so
+// typing at the edges does not extend the range.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const LinkedAnchor = Mark.create({
+  name: "linkedAnchor",
+  inclusive: false,
+  spanning: true,
+
+  addAttributes() {
+    return {
+      anchorId: { default: "" },
+      kind: { default: "note" },
+    };
+  },
+
+  parseHTML() {
+    return [{ tag: "span[data-anchor-id]" }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "span",
+      mergeAttributes(HTMLAttributes, {
+        "data-anchor-id": HTMLAttributes.anchorId || "",
+        "data-anchor-kind": HTMLAttributes.kind || "",
+        class: "linked-anchor",
+      }),
+      0,
+    ];
+  },
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LinkedAnchorGuard — watches the doc for vanishing linkedAnchor ids and
+// dispatches `virgil-anchor-orphaned` so each feature hook can clear the
+// dead anchorId on its matching item. Also strips the mark from pasted
+// slices to prevent duplicate-id collisions via copy-paste.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function collectAnchorIds(doc: import("@tiptap/pm/model").Node): Map<string, string> {
+  const ids = new Map<string, string>();
+  doc.descendants((node) => {
+    if (node.isText) {
+      for (const m of node.marks) {
+        if (m.type.name === "linkedAnchor") {
+          const id = m.attrs.anchorId as string | undefined;
+          const kind = (m.attrs.kind as string | undefined) || "note";
+          if (id) ids.set(id, kind);
+        }
+      }
+    }
+    return true;
+  });
+  return ids;
+}
+
+export const LinkedAnchorGuard = Extension.create({
+  name: "linkedAnchorGuard",
+
+  addProseMirrorPlugins() {
+    return [
+      new Plugin({
+        key: new PluginKey("linkedAnchorGuard"),
+        appendTransaction(transactions, oldState, newState) {
+          if (!transactions.some((tr) => tr.docChanged)) return null;
+          const oldIds = collectAnchorIds(oldState.doc);
+          if (oldIds.size === 0) return null;
+          const newIds = collectAnchorIds(newState.doc);
+          const vanished: Array<{ anchorId: string; kind: string }> = [];
+          for (const [id, kind] of oldIds) {
+            if (!newIds.has(id)) vanished.push({ anchorId: id, kind });
+          }
+          if (vanished.length === 0) return null;
+          setTimeout(() => {
+            for (const v of vanished) {
+              window.dispatchEvent(
+                new CustomEvent("virgil-anchor-orphaned", { detail: v })
+              );
+            }
+          }, 0);
+          return null;
+        },
+        props: {
+          transformPasted(slice) {
+            const rebuild = (frag: PMFragment): PMFragment => {
+              const out: PMNode2[] = [];
+              frag.forEach((n) => {
+                if (n.isText) {
+                  const filtered = n.marks.filter((m) => m.type.name !== "linkedAnchor");
+                  out.push(filtered.length === n.marks.length ? n : n.mark(filtered));
+                } else {
+                  out.push(n.copy(rebuild(n.content)));
+                }
+              });
+              return PMFragmentCtor.fromArray(out);
+            };
+            return new PMSliceCtor(rebuild(slice.content), slice.openStart, slice.openEnd);
+          },
+        },
+      }),
+    ];
   },
 });
 

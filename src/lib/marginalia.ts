@@ -84,6 +84,14 @@ export const MIME_FOOTNOTE = "application/x-virgil-footnote";
 export const MIME_AI_REQUEST = "application/x-virgil-ai-request";
 /** Drag raw text content for inline insertion (no entity identity). */
 export const MIME_TEXT_INSERT = "application/x-virgil-text-insert";
+/** Drag a cut card (Cutter tool) to anchor it to a paragraph. */
+export const MIME_CUT = "application/x-virgil-cut";
+/**
+ * Drag the floating "selection chip" into a side panel (Notes / Revisions /
+ * Cutter) to create a linked-margin item anchored to the selected range.
+ * Panel-level drop, not gutter-level — intentionally not in ANCHOR_DRAG_TYPES.
+ */
+export const MIME_SELECTION_ANCHOR = "application/x-virgil-selection-anchor";
 
 /**
  * All MIME types that represent paragraph-level anchor/link operations.
@@ -96,6 +104,7 @@ export const ANCHOR_DRAG_TYPES: readonly string[] = [
   MIME_NOTE,
   MIME_TODO,
   MIME_ARCHIVE_ANCHOR,
+  MIME_CUT,
 ];
 
 /** Returns true if the DataTransfer contains a paragraph-level anchor drag. */
@@ -126,6 +135,14 @@ export interface MarginaliaMarker {
   title?: string;
   /** When true the marker renders at reduced opacity (e.g. done todos) */
   muted?: boolean;
+  /**
+   * Linked anchor id, when this marker is bound to a specific text range
+   * via the `linkedAnchor` mark. Used to drive range highlighting on
+   * hover/click.
+   */
+  anchorId?: string;
+  /** Hover handler — fires on mouseenter (true) and mouseleave (false). */
+  onHover?: (hovering: boolean) => void;
 }
 
 export interface MarkerMeta {

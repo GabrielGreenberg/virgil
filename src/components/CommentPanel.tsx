@@ -17,6 +17,7 @@ import {
   TargetIcon,
   CARD_THEMES,
 } from "./panel-primitives";
+import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -364,6 +365,7 @@ interface CardProps {
   onDelete: () => void;
   onReply: (text: string) => void;
   registerRef?: (el: HTMLDivElement | null) => void;
+  onHoverChange?: (hovering: boolean) => void;
 }
 
 function RevisionCard({
@@ -380,6 +382,7 @@ function RevisionCard({
   onDelete,
   onReply,
   registerRef,
+  onHoverChange,
 }: CardProps) {
   const theme = CARD_THEMES.comment;
   const firstTurn = turns[0];
@@ -388,6 +391,8 @@ function RevisionCard({
     <div
       ref={(el) => registerRef?.(el)}
       onClick={onSelect}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
     >
       {/* Header: author + timestamp, with target icon + menu trailing */}
@@ -568,6 +573,10 @@ interface RevisionsPanelProps {
   selectedRevisionId: string | null;
   onSelectRevision: (id: string | null) => void;
   onHighlight: (text: string | null) => void;
+  /** Hover handler for the text-revision cards. Fires with id on enter, null on leave. */
+  onHoverRevision?: (id: string | null) => void;
+  /** Called when the selection chip is dropped onto the panel. */
+  onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
 }
 
 /* ── Main panel ───────────────────────────────────────────────────── */
@@ -591,6 +600,8 @@ export default function RevisionsPanel({
   selectedRevisionId,
   onSelectRevision,
   onHighlight,
+  onHoverRevision,
+  onDropSelection,
 }: RevisionsPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
@@ -695,7 +706,27 @@ export default function RevisionsPanel({
         </div>
       </PanelHeader>
 
-      <div ref={scrollRef} className={PANEL.list}>
+      <div
+        ref={scrollRef}
+        className={PANEL.list}
+        onDragOver={onDropSelection ? (e) => {
+          if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        } : undefined}
+        onDrop={onDropSelection ? (e) => {
+          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
+          if (!raw) return;
+          e.preventDefault();
+          try {
+            const payload = JSON.parse(raw);
+            if (typeof payload.from === "number" && typeof payload.to === "number") {
+              onDropSelection(payload);
+            }
+          } catch { /* ignore */ }
+        } : undefined}
+      >
         <ProgressHeader
           total={totalCount}
           resolved={resolvedCount}
@@ -851,6 +882,7 @@ export default function RevisionsPanel({
               onDelete={() => onDelete("text", r.id)}
               onReply={(text) => onAddTurn("text", r.id, text)}
               registerRef={(el) => registerCardRef(r.id, el)}
+              onHoverChange={onHoverRevision ? (hovering) => onHoverRevision(hovering ? r.id : null) : undefined}
             />
           );
         })}
