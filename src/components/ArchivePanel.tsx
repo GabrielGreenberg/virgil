@@ -11,6 +11,7 @@ import {
   richJsonToPlainText,
 } from "@/lib/footnote-content";
 import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
+import { usePanelCapture, type CapturedContent } from "@/hooks/usePanelCapture";
 
 interface ArchivePanelProps {
   snippets: ArchivedSnippet[];
@@ -31,6 +32,8 @@ interface ArchivePanelProps {
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   /** Called with the Tiptap editor when an archive body gains focus (for main toolbar routing). */
   onEditorFocus?: (editor: any) => void;
+  /** Called when a paragraph or text selection is dropped onto this panel. */
+  onCapture?: (captured: CapturedContent) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -141,6 +144,7 @@ function ArchivePanel({
   getCitationDisplayText,
   onCitationCreated,
   onEditorFocus,
+  onCapture,
 }: ArchivePanelProps) {
   const inTextItems = useMemo(
     () => getParagraphAnchorPositions(editor, snippets),
@@ -150,9 +154,18 @@ function ArchivePanel({
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor, inTextItems, viewMode === "in-text"
   );
+  const { dropProps, isDragOver } = usePanelCapture({
+    editor,
+    onCapture: onCapture ?? (() => {}),
+    enabled: !!onCapture,
+  });
 
   return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
+    <div
+      {...dropProps}
+      data-capture-drop-active={isDragOver ? "true" : undefined}
+      className={`w-full bg-transparent flex flex-col overflow-hidden h-full capture-drop-target${isDragOver ? " capture-drop-target--active" : ""}`}
+    >
       <PanelHeader title="Archived Text">
         <ItemMenu>
           <div className="px-3 py-1.5 flex items-center justify-end">
