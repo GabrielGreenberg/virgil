@@ -366,12 +366,12 @@ body {
 .par-drag-handle {
   position: absolute;
   left: -14px;
-  top: 6px;
+  top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 12px;
-  height: 20px;
+  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s;
