@@ -4771,6 +4771,19 @@ export default function EditorLayout() {
               <polyline points="12 5 19 12 12 19" />
             </svg>
           </button>
+          {focusMode.state.active && (
+            <button
+              onClick={focusMode.deactivate}
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] bg-[var(--accent-light)] hover:bg-white/30 transition-colors"
+              title="Exit focus view"
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="8" r="2.25" />
+                <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
+              </svg>
+              Focus view
+            </button>
+          )}
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
