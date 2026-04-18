@@ -62,10 +62,10 @@ function Btn({
     <button
       onClick={onClick}
       title={title}
-      className={`px-2 py-1 rounded text-sm transition-colors ${
+      className={`px-1 py-0.5 rounded text-sm transition-colors ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)] font-medium"
-          : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
+          : "text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
       }`}
       {...rest}
     >
@@ -119,7 +119,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Block type"
-        className="px-2 py-1 rounded text-sm transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700 flex items-center gap-1"
+        className="px-1 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700 flex items-center gap-1"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
@@ -233,38 +233,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         {canScrollLeft && (
           <div className="absolute left-0 top-0 bottom-0 w-6 bg-gradient-to-r from-[var(--pod-toolbar)] to-transparent z-10 pointer-events-none" />
         )}
-        <div ref={scrollRef} className="flex items-center gap-1 overflow-x-auto px-3 toolbar-scroll [&>*]:shrink-0">
-      {(onParaNavBack || onParaNavForward) && (
-        <>
-          {onParaNavBack && (
-            <button
-              onClick={onParaNavBack}
-              disabled={paraNavBackDisabled}
-              className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
-              title="Go back"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="19" y1="12" x2="5" y2="12" />
-                <polyline points="12 19 5 12 12 5" />
-              </svg>
-            </button>
-          )}
-          {onParaNavForward && (
-            <button
-              onClick={onParaNavForward}
-              disabled={paraNavForwardDisabled}
-              className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
-              title="Go forward"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12" />
-                <polyline points="12 5 19 12 12 19" />
-              </svg>
-            </button>
-          )}
-          <div className="w-px h-4 bg-[var(--border)] mx-1" />
-        </>
-      )}
+        <div ref={scrollRef} className="flex items-center gap-0 overflow-x-auto px-2 toolbar-scroll [&>*]:shrink-0">
       <Btn
         onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive("bold")}
@@ -284,11 +253,11 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         </svg>
       </Btn>
 
-      <div className="w-px h-4 bg-[var(--border)] mx-1" />
+      <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
 
       <BlockTypeDropdown editor={editor} />
 
-      <div className="w-px h-4 bg-[var(--border)] mx-1" />
+      <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
 
       <Btn
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -328,7 +297,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         </svg>
       </Btn>
 
-      <div className="w-px h-4 bg-[var(--border)] mx-1" />
+      <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
 
       <Btn
         onClick={() => {
@@ -361,10 +330,14 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         $$
       </Btn>
 
+      {(onAddComment || onAddNote || onCutSelection || onArchive || onCreateFootnote || onQuoteSelection) && (
+        <div className="w-px h-4 bg-[var(--border)] mx-1.5" />
+      )}
+      <div className="flex items-center gap-1">
       {onAddComment && (
         <>
-          <div className="w-px h-4 bg-[var(--border)] mx-1" />
           <Btn onClick={onAddComment} data-add-comment-button title="Add revision on selection (Cmd+Shift+M)">
+
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 2.5h12a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H4.5L2 13.5V3a.5.5 0 0 1 .5-.5z" />
               <line x1="8" y1="5.5" x2="8" y2="9" />
@@ -378,7 +351,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           onClick={onAddNote}
           data-add-note-button
           title="Add note linked to selection"
-          className="px-2 py-1 rounded text-sm transition-colors text-[#15803d] hover:bg-[#f0fdf4] hover:text-[#166534]"
+          className="px-1 py-0.5 rounded text-sm transition-colors text-[#15803d] hover:bg-[#f0fdf4] hover:text-[#166534]"
         >
           <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-sans), system-ui, sans-serif", lineHeight: 1 }}>N</span>
         </button>
@@ -388,7 +361,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           onClick={onCutSelection}
           data-cut-selection-button
           title="Cut selection into Cutter panel"
-          className="px-2 py-1 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
+          className="px-1 py-0.5 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="4" cy="4" r="2" />
@@ -402,7 +375,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <button
           onClick={onArchive}
           title="Archive selected text"
-          className="px-2 py-1 rounded text-sm transition-colors text-[#7191b0] hover:bg-[#f0f5fa] hover:text-[#5a7a99]"
+          className="px-1 py-0.5 rounded text-sm transition-colors text-[#7191b0] hover:bg-[#f0f5fa] hover:text-[#5a7a99]"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
             <rect x="2" y="2" width="12" height="12" rx="2.5" />
@@ -414,7 +387,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <button
           onClick={onCreateFootnote}
           title="Create footnote from selection"
-          className="px-2 py-1 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
+          className="px-1 py-0.5 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
             <text x="3" y="12" fontSize="12" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor">fn</text>
@@ -425,7 +398,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <button
           onClick={onQuoteSelection}
           title="Create quotation from selection"
-          className="px-2 py-1 rounded text-sm transition-colors text-[#a16207] hover:bg-[#fffbeb] hover:text-[#854d0e]"
+          className="px-1 py-0.5 rounded text-sm transition-colors text-[#a16207] hover:bg-[#fffbeb] hover:text-[#854d0e]"
         >
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
             <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
@@ -433,6 +406,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           </svg>
         </button>
       )}
+      </div>
 
         </div>
         {canScrollRight && (
@@ -442,11 +416,39 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
 
       {/* Pinned right-side controls — split toggle + view menu grouped
           together, flush against the right edge of the menubar. */}
-      <div className="shrink-0 flex items-center pl-1 pr-2">
+      <div className="shrink-0 flex items-center pl-1 pr-2 gap-0">
+        {(onParaNavBack || onParaNavForward) && (
+          <>
+            {onParaNavBack && (
+              <button
+                onClick={onParaNavBack}
+                disabled={paraNavBackDisabled}
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
+                title="Go back"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+            )}
+            {onParaNavForward && (
+              <button
+                onClick={onParaNavForward}
+                disabled={paraNavForwardDisabled}
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
+                title="Go forward"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            )}
+          </>
+        )}
         {onToggleEditorSplit && (
           <button
             onClick={onToggleEditorSplit}
-            className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"}`}
+            className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-200"}`}
             title={editorSplit ? "Close split editor" : "Split editor"}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -466,7 +468,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <div className="relative" ref={viewMenuRef}>
           <button
             onClick={() => setViewMenuOpen(!viewMenuOpen)}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-200 transition-colors"
             title="View options"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
