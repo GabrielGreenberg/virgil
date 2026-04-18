@@ -192,9 +192,40 @@ function IconNotes({ active }: { active?: boolean }) {
 }
 
 function IconRevisions({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  const cx = 12, cy = 12, r = 8;
+  const gap = (14 * Math.PI) / 180;
+  const N = 28;
+  const pt = (t: number) => `${cx + r * Math.cos(t)} ${cy + r * Math.sin(t)}`;
+  const renderArc = (tStart: number, tEnd: number, key: string) => {
+    const dt = (tEnd - tStart) / N;
+    const segs = [];
+    for (let i = 0; i < N; i++) {
+      const a = tStart + i * dt;
+      const b = tStart + (i + 1) * dt;
+      const u = (i + 1) / N;
+      const opacity = Math.pow(u, 0.6);
+      const isHead = i === N - 1;
+      segs.push(
+        <path
+          key={`${key}-${i}`}
+          d={`M ${pt(a)} A ${r} ${r} 0 0 1 ${pt(b)}`}
+          stroke={c}
+          strokeOpacity={opacity}
+          strokeWidth="3.25"
+          strokeLinecap={isHead ? "round" : "butt"}
+          fill="none"
+        />
+      );
+    }
+    return segs;
+  };
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <g transform="rotate(45 12 12)">
+        {renderArc(Math.PI + gap, 2 * Math.PI - gap, "top")}
+        {renderArc(gap, Math.PI - gap, "bot")}
+      </g>
     </svg>
   );
 }
