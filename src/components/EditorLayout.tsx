@@ -4692,8 +4692,13 @@ export default function EditorLayout() {
             </svg>
             {aiDot && (
               <span
-                className="absolute top-0 right-0 w-2 h-2 rounded-full"
-                style={{ backgroundColor: aiDot === "red" ? "#ef4444" : "#22c55e" }}
+                className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full"
+                style={{
+                  backgroundColor:
+                    aiDot === "red" ? "#ef4444"
+                    : aiDot === "green" ? "#22c55e"
+                    : "#eab308",
+                }}
               />
             )}
           </button>
