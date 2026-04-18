@@ -1123,11 +1123,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     content: initialContent,
     editorProps: {
       attributes: {
-        // px-20 (80px) leaves room for the 72px marginalia gutter plus a
-        // small breathing gap. Must stay >= MARGINALIA_GUTTER_WIDTH so
-        // gutter icons don't overlap the text column.
+        // Asymmetric horizontal padding: left is pl-22 (88px) to leave
+        // room for the 72px left marginalia gutter plus an 8px breathing
+        // strip for the heading fold-chevron. Right is pr-18 (72px),
+        // flush against the 72px-wide right gutter since its outer pad
+        // is squeezed. Total (88+72=160) matches the previous px-20
+        // so the text column width is unchanged.
         class:
-          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] px-20 py-10",
+          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[88px] pr-[72px] py-10",
       },
       handleDOMEvents: {
         // Only allow node drags that originate from an explicit drag handle.

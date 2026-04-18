@@ -390,15 +390,27 @@ export const MARGINALIA_ICON_SIZE = 22;
 export const MARGINALIA_COL_GAP = 6;
 /** Inner padding between the icon column and the text-pod edge */
 export const MARGINALIA_INNER_PAD = 8;
-/** Outer padding between the icon column and the panel/viewport edge */
-export const MARGINALIA_OUTER_PAD = 14;
+/** Outer padding between the icon column and the panel/viewport edge.
+ *  Left is widened to 22px to host the heading fold-chevron in that
+ *  strip; right is squeezed to 6px to keep the text column width
+ *  unchanged once the editor's horizontal padding shifts to compensate. */
+export const MARGINALIA_OUTER_PAD_LEFT = 22;
+export const MARGINALIA_OUTER_PAD_RIGHT = 6;
+/** Back-compat alias — equal to LEFT, the side whose icon packing
+ *  depends on the gutter width. */
+export const MARGINALIA_OUTER_PAD = MARGINALIA_OUTER_PAD_LEFT;
 /**
- * Width of one gutter (left or right), in pixels.
+ * Width of one gutter, in pixels. Side-specific because the left gutter
+ * hosts the fold-chevron in its outer-pad strip.
  * Layout: [OUTER_PAD] col col [INNER_PAD] [text edge]
- * Must be <= the editor column's side padding (px-20 = 80px).
  */
-export const MARGINALIA_GUTTER_WIDTH =
-  MARGINALIA_OUTER_PAD +
+const ICONS_BLOCK_WIDTH =
   MARGINALIA_COLS * MARGINALIA_ICON_SIZE +
-  (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP +
-  MARGINALIA_INNER_PAD;
+  (MARGINALIA_COLS - 1) * MARGINALIA_COL_GAP;
+export const MARGINALIA_GUTTER_WIDTH_LEFT =
+  MARGINALIA_OUTER_PAD_LEFT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
+export const MARGINALIA_GUTTER_WIDTH_RIGHT =
+  MARGINALIA_OUTER_PAD_RIGHT + ICONS_BLOCK_WIDTH + MARGINALIA_INNER_PAD;
+/** Back-compat alias — equal to the LEFT gutter width. Callers that care
+ *  about side should use the side-specific constants above. */
+export const MARGINALIA_GUTTER_WIDTH = MARGINALIA_GUTTER_WIDTH_LEFT;

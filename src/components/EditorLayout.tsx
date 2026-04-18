@@ -611,10 +611,14 @@ function PanelColumn({
           {(children as React.ReactNode)}
         </div>
       )}
-      {/* Drag gap — spans full gutter between panel pod and editor pod */}
+      {/* Drag gap — spans full gutter between panel pod and editor pod.
+          The gap element itself is --pod-gap wide, but the wrappers on
+          each side add 4px padding, so the real visual gutter is wider.
+          `drag-gap-toward-editor-*` nudges the ::after highlight so it
+          sits at the true center of the visible gutter. */}
       <div
         ref={gapRef}
-        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2" : "order-1"}`}
+        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />

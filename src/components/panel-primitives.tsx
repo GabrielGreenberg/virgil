@@ -639,12 +639,23 @@ export function PanelChromeProvider({
   );
 }
 
+/**
+ * Pop-out button bound to the surrounding PanelChromeProvider.
+ * Renders nothing when there is no chrome (e.g. panel not popped-out aware).
+ * Use this in custom panel headers that don't go through PanelHeader.
+ */
+export function PanelPopout() {
+  const chrome = useContext(PanelChromeContext);
+  if (!chrome) return null;
+  return <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />;
+}
+
 function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[#b45757]/75 hover:bg-[#d06666] transition-colors shrink-0"
+      className="w-[14px] h-[14px] -ml-2 mr-1.5 flex items-center justify-center rounded-full bg-[#d4d0c7] hover:bg-[#bfbab0] border border-[#b8b2ab] transition-colors shrink-0"
       title={isPoppedOut ? "Close floating panel" : "Pop out panel"}
       aria-label={isPoppedOut ? "Close floating panel" : "Pop out panel"}
     >
@@ -653,7 +664,7 @@ function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick:
         height="10"
         viewBox="0 0 24 24"
         fill="none"
-        stroke="#3b1f1f"
+        stroke="#57534e"
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"

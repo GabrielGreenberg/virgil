@@ -286,7 +286,17 @@ export function useViewPrefs() {
     update((p) => {
       const isPopped = p.poppedOutPanels.includes(id);
       if (isPopped) {
-        return { ...p, poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id) };
+        const next = { ...p, poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id) };
+        // If the panel's side column is currently open, re-dock the panel
+        // there so "collapse" returns it to its place. If the side is
+        // collapsed, just close the floating panel.
+        const placement = p.placements.find((pl) => pl.id === id);
+        if (placement?.side === "left" && p.activeLeft != null) {
+          next.activeLeft = id;
+        } else if (placement?.side === "right" && p.activeRight != null) {
+          next.activeRight = id;
+        }
+        return next;
       }
       // Popping out: also clear its sidebar slot so it "closes as a panel".
       let activeLeft = p.activeLeft;

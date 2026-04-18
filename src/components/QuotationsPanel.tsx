@@ -674,14 +674,12 @@ export function QuotationGroupCard({
         MIME_QUOTATION,
         JSON.stringify({ groupId: group.id })
       );
-      // Plain-text fallback — first quote of first reference
-      const firstQuote = group.references[0]?.quotes[0]?.text ?? "";
-      e.dataTransfer.setData("text/plain", firstQuote);
     },
-    [group.id, group.references]
+    [group.id]
   );
 
   const cardRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const theme = useCardTheme("quote");
 
@@ -715,16 +713,19 @@ export function QuotationGroupCard({
     >
       {/* Header */}
       <div
+        ref={headerRef}
         className={`flex items-center gap-2 px-3 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
         style={headerOverrideStyle(theme, selected)}
       >
-        {/* Grab handle — card-level anchor drag (marginalia) */}
+        {/* Grab handle — card-level anchor drag (marginalia). Drag ghost
+            is just the header, since the card-level drop only places a
+            marginalia anchor (not the inner quotes). */}
         <div
           draggable
           onDragStart={(e) => {
             handleDragStart(e);
-            if (cardRef.current) {
-              e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+            if (headerRef.current) {
+              e.dataTransfer.setDragImage(headerRef.current, 20, -10);
             }
           }}
           onClick={(e) => e.stopPropagation()}

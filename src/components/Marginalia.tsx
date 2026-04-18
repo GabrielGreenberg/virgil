@@ -6,7 +6,8 @@ import type { Editor } from "@tiptap/react";
 import { useMarginalia } from "@/hooks/useMarginalia";
 import {
   MARKER_META,
-  MARGINALIA_GUTTER_WIDTH,
+  MARGINALIA_GUTTER_WIDTH_LEFT,
+  MARGINALIA_GUTTER_WIDTH_RIGHT,
   MARGINALIA_ICON_SIZE,
   MIME_MARGINALIA_MOVE,
   MIME_QUOTATION,
@@ -142,9 +143,10 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         });
         scrollEl.appendChild(indicator);
       }
-      indicator.style.top = `${pos.domTop}px`;
-      indicator.style.height = `${pos.height}px`;
-      indicator.style[side] = `${MARGINALIA_GUTTER_WIDTH}px`;
+      // Span just the text lines (not the title or block spacing around them).
+      indicator.style.top = `${pos.top}px`;
+      indicator.style.height = `${pos.lineCount * pos.lineHeight}px`;
+      indicator.style[side] = `${side === "left" ? MARGINALIA_GUTTER_WIDTH_LEFT : MARGINALIA_GUTTER_WIDTH_RIGHT}px`;
       indicator.style[side === "left" ? "right" : "left"] = "";
       indicatedParagraphId = paragraphId;
     };
@@ -404,7 +406,7 @@ function Gutter({
       className="absolute top-0 bottom-0 pointer-events-none"
       style={{
         [side]: 0,
-        width: MARGINALIA_GUTTER_WIDTH,
+        width: side === "left" ? MARGINALIA_GUTTER_WIDTH_LEFT : MARGINALIA_GUTTER_WIDTH_RIGHT,
         zIndex: 10,
       }}
       data-marginalia-gutter={side}

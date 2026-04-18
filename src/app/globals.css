@@ -156,12 +156,12 @@ body {
   margin-top: 1.8em;
 }
 
-/* Folding chevron — sits in the left margin gutter, at the same horizontal
-   offset as the paragraph drag handles. Default state (expanded) points
-   down; folded state rotates the chevron so it faces into the heading. */
+/* Folding chevron — sits at the far left edge of the text column, outside
+   the marginalia gutter. Default state (expanded) points down; folded
+   state rotates the chevron so it faces into the heading. */
 .heading-fold-chevron {
   position: absolute;
-  left: -14px;
+  left: -84px;
   top: 0.5em;
   width: 14px;
   height: 14px;
@@ -1404,6 +1404,16 @@ body {
   left: 50%;
   width: 1px;
   transform: translateX(-0.5px);
+}
+/* Panel wrappers add 4px padding on each side, so the real visual
+   gutter between panel pod and editor pod is 8px wider than the
+   drag-gap element itself. Nudge the ::after highlight toward the
+   editor so it lands at the actual center of that gutter. */
+.drag-gap-v.drag-gap-toward-editor-right::after {
+  left: calc(50% + 4px);
+}
+.drag-gap-v.drag-gap-toward-editor-left::after {
+  left: calc(50% - 4px);
 }
 /* Horizontal drag gap (row-resize — panel splits, editor splits) */
 .drag-gap-h {
