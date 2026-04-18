@@ -749,7 +749,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         let currentNode = node;
 
         const wrapper = document.createElement("div");
-        wrapper.className = "heading-wrapper";
+        wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
 
         // Folding chevron — positioned in the left margin gutter at the same
         // horizontal offset as the paragraph drag handles. Clicking toggles
