@@ -126,6 +126,42 @@ export interface CardTheme {
   badgeBorder: string;
   /** Title input color for CardTitleInput. */
   titleColor: string;
+  /** Inline-style overrides used when the user picks a custom panel color.
+   *  When set, they override the Tailwind classnames above via inline `style`. */
+  override?: {
+    headerBg: string;
+    headerBgSelected: string;
+    separatorColor: string;
+    selectedBorder: string;
+  };
+}
+
+/** Apply inline-style overrides atop the card wrapper. Returns an empty object
+ *  when the theme has no override, so default Tailwind classes win. */
+export function cardOverrideStyle(
+  theme: CardTheme,
+  selected: boolean,
+): React.CSSProperties {
+  if (!theme.override) return {};
+  return selected ? { borderColor: theme.override.selectedBorder } : {};
+}
+
+/** Inline-style overrides for the header background. */
+export function headerOverrideStyle(
+  theme: CardTheme,
+  selected: boolean,
+): React.CSSProperties {
+  if (!theme.override) return {};
+  return { backgroundColor: selected ? theme.override.headerBgSelected : theme.override.headerBg };
+}
+
+/** Inline-style overrides for the card separator. */
+export function separatorOverrideStyle(
+  theme: CardTheme,
+  selected: boolean,
+): React.CSSProperties {
+  if (!theme.override || !selected) return {};
+  return { borderTopColor: theme.override.separatorColor };
 }
 
 /** Pre-built themes for existing card types. */
@@ -393,13 +429,16 @@ export function EditableCard({
       onKeyDown={handleKeyDown}
       onFocusCapture={() => { if (!selected && onClick) onClick(); }}
       className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${orphaned ? " border-dashed" : ""}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={wrapperStyle}
+      style={{ ...cardOverrideStyle(theme, selected), ...wrapperStyle }}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
+      <div
+        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
+        style={headerOverrideStyle(theme, selected)}
+      >
         {/* Optional grab handle — sole drag source when present */}
         {grabHandle && onDragStart && (
           <div
@@ -484,7 +523,10 @@ export function EditableCard({
       </div>
 
       {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+      <div
+        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+        style={separatorOverrideStyle(theme, selected)}
+      />
 
       {/* Body */}
       <div className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}`}>

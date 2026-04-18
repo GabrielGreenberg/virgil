@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutItem } from "@/lib/types";
 import {
   CARD_THEMES,
   EditableCard,
+  ItemMenu,
   PANEL,
   PanelHeader,
   BadgeLabel,
@@ -14,7 +15,11 @@ import {
   CardTargetIcon,
   startTextDrag,
 } from "./panel-primitives";
-import { normalizeRichContent } from "@/lib/footnote-content";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
+import ViewToggle from "./ViewToggle";
+import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
+import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_CUT, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 
 function startCutDrag(e: React.DragEvent, cutId: string) {
@@ -91,6 +96,10 @@ export default function CutterPanel({
   onScrollToParagraphId,
   onHoverCut,
   onDropSelection,
+  editor,
+  panelSide = "right",
+  viewMode = "list",
+  onViewModeChange,
 }: {
   cuts: CutItem[];
   onAdd: () => CutItem;
@@ -102,6 +111,10 @@ export default function CutterPanel({
   onScrollToParagraphId?: (uuid: string) => void;
   onHoverCut?: (id: string | null) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
+  editor?: Editor | null;
+  panelSide?: "left" | "right";
+  viewMode?: "list" | "in-text";
+  onViewModeChange?: (mode: "list" | "in-text") => void;
 }) {
   const sorted = useMemo(
     () => [...cuts].sort(
@@ -109,13 +122,33 @@ export default function CutterPanel({
     ),
     [cuts],
   );
+  const cutTheme = useCardTheme("cut");
+
+  const inTextItems = useMemo(
+    () => getParagraphAnchorPositions(editor ?? null, sorted),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, sorted],
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor ?? null, inTextItems, viewMode === "in-text",
+  );
 
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Cutter" count={cuts.length} onAdd={() => onAdd()} />
+      <PanelHeader title="Cutter" count={cuts.length} onAdd={() => onAdd()}>
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="cut" label="Cutter color" />
+            {onViewModeChange && (
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            )}
+          </div>
+        </ItemMenu>
+      </PanelHeader>
 
       <div
-        className={PANEL.list}
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
         onClick={() => onSelect(null)}
         onDragOver={onDropSelection ? (e) => {
           if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
@@ -141,22 +174,63 @@ export default function CutterPanel({
           </div>
         )}
 
-        {sorted.map((cut) => (
-          <CutCard
-            key={cut.id}
-            cut={cut}
-            selected={selectedId === cut.id}
-            onUpdate={onUpdate}
-            onUpdateTitle={onUpdateTitle}
-            onDelete={onDelete}
-            onSelect={onSelect}
-            onJump={onScrollToParagraphId && cut.paragraphIds[0]
-              ? () => onScrollToParagraphId(cut.paragraphIds[0])
-              : undefined
-            }
-            onHoverChange={onHoverCut ? (hovering) => onHoverCut(hovering ? cut.id : null) : undefined}
-          />
-        ))}
+        {viewMode === "in-text" && sorted.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {sorted.map((cut) => {
+              const top = positions.get(cut.id);
+              if (top === undefined) return null;
+              const isSelected = selectedId === cut.id;
+              const preview = richJsonToPlainText(cut.content) || "";
+              const borderColor = cutTheme.override?.selectedBorder ?? cutTheme.badgeBorder;
+              const selectedBg = cutTheme.override?.headerBgSelected;
+              return (
+                <div
+                  key={cut.id}
+                  data-cut-entry={cut.id}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                  style={{
+                    top,
+                    ...(isSelected
+                      ? { borderLeftColor: borderColor, backgroundColor: selectedBg ?? "rgba(180, 87, 87, 0.08)" }
+                      : {}),
+                  }}
+                  onClick={(e) => { e.stopPropagation(); onSelect(isSelected ? null : cut.id); }}
+                  onMouseEnter={onHoverCut ? () => onHoverCut(cut.id) : undefined}
+                  onMouseLeave={onHoverCut ? () => onHoverCut(null) : undefined}
+                >
+                  {cut.title && (
+                    <div className="text-[11px] font-medium truncate mb-0.5" style={{ color: cutTheme.titleColor }}>
+                      {cut.title}
+                    </div>
+                  )}
+                  <p
+                    className="text-xs text-stone-600 leading-snug line-clamp-2 pr-6"
+                    style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                  >
+                    {preview || <span className="italic text-stone-400">Empty cut</span>}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          sorted.map((cut) => (
+            <CutCard
+              key={cut.id}
+              cut={cut}
+              selected={selectedId === cut.id}
+              onUpdate={onUpdate}
+              onUpdateTitle={onUpdateTitle}
+              onDelete={onDelete}
+              onSelect={onSelect}
+              onJump={onScrollToParagraphId && cut.paragraphIds[0]
+                ? () => onScrollToParagraphId(cut.paragraphIds[0])
+                : undefined
+              }
+              onHoverChange={onHoverCut ? (hovering) => onHoverCut(hovering ? cut.id : null) : undefined}
+            />
+          ))
+        )}
       </div>
     </div>
   );

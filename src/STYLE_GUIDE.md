@@ -106,8 +106,10 @@ applies `border-dashed` directly and swaps `BadgeLabel`/`BadgeOrphaned`.
 
 ### Card themes (`CARD_THEMES`)
 Each theme provides: `cardClass`, `headerDefault`, `headerSelected`,
-`separatorSelected`, `badgeBg`, `badgeColor`, `badgeBorder`, `titleColor`.
-Panels reference themes, never hardcode colors.
+`separatorSelected`, `badgeBg`, `badgeColor`, `badgeBorder`, `titleColor`,
+and an optional `override` palette populated when the user picks a
+custom color for the panel. Panels reference themes, never hardcode
+colors.
 
 Available themes:
 - `footnote` — reddish
@@ -118,9 +120,38 @@ Available themes:
 - `citation` — warmer yellow (in-text citations)
 - `comment` — neutral stone (revisions/comments)
 - `aiRequest` — sky (AI request drafts)
+- `cut` — red (cutter pieces)
 
 `headerDefault` is roughly half the opacity of `headerSelected` so that
 selection intensifies the header rather than introducing it.
+
+### Per-panel color theming
+
+Every panel whose header menu contains the list/page view toggle
+(Citations, Bibliography, Footnotes, Notes, Archive, Quotations) also
+exposes a **color-picker swatch** to the left of that toggle. Picking a
+color overrides the panel's default theme and re-colors every element
+tied to that panel: card header tint, selection border, separator,
+badge, title, marginalia gutter icon, and — for panels that render
+linked-anchor highlights (notes, revisions, cutter) — the in-text
+highlight color.
+
+Implementation:
+- Base colors live in `src/lib/panel-theme.ts` (`DEFAULT_PANEL_COLORS`,
+  `PRESET_COLORS`). User overrides persist to `localStorage` under
+  `virgil-panel-colors`.
+- `useCardTheme(panelKey)` in `src/hooks/usePanelTheme.ts` returns the
+  active `CardTheme` — either the static default or a derived palette
+  when an override is set. Consumers apply the palette through
+  `cardOverrideStyle`, `headerOverrideStyle`, and `separatorOverrideStyle`
+  helpers (in `panel-primitives.tsx`) so inline styles override the
+  Tailwind classname defaults without touching the hover behavior.
+- `Marginalia.tsx` derives its per-type marker palette from the matching
+  panel override; `EditorLayout.tsx` does the same for linked-anchor
+  highlights.
+- `<PanelThemePicker panelKey="…" />` (in `PanelThemePicker.tsx`)
+  renders the swatch + preset popover. Insert it inside each panel's
+  three-dot menu, next to the ViewToggle.
 
 ### Delete behavior
 - [x] button and Delete/Backspace key both go through `tryDelete()`

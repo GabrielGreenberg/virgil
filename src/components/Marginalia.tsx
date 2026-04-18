@@ -22,6 +22,24 @@ import {
 import { generateNodeUuid } from "@/lib/uuid";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
+import {
+  deriveMarkerPalette,
+  getPanelColor,
+  getPanelColorVersion,
+  isPanelColorOverridden,
+  subscribePanelColors,
+  type PanelThemeKey,
+} from "@/lib/panel-theme";
+
+/** Marker type → panel theme key for color overrides. */
+const MARKER_TO_THEME_KEY: Partial<Record<keyof typeof MARKER_META, PanelThemeKey>> = {
+  quote: "quote",
+  note: "note",
+  archive: "archive",
+  revision: "revision",
+  cut: "cut",
+  todo: "todo",
+};
 
 interface MarginaliaProps {
   editor: Editor | null;
@@ -378,6 +396,9 @@ function Gutter({
   side: "left" | "right";
   markers: PositionedMarker[];
 }) {
+  // Subscribe to panel color changes so the gutter re-renders when the user
+  // picks a new color for a panel.
+  useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
   return (
     <div
       className="absolute top-0 bottom-0 pointer-events-none"
@@ -390,6 +411,11 @@ function Gutter({
     >
       {markers.map((m) => {
         const meta = MARKER_META[m.type];
+        const themeKey = MARKER_TO_THEME_KEY[m.type];
+        const palette =
+          themeKey && isPanelColorOverridden(themeKey)
+            ? deriveMarkerPalette(getPanelColor(themeKey))
+            : { color: meta.color, bg: meta.bg, selectedBg: meta.selectedBg, border: meta.border };
         return (
           <button
             key={`${m.type}:${m.id}`}
@@ -402,9 +428,9 @@ function Gutter({
               top: m.cell.y,
               width: MARGINALIA_ICON_SIZE,
               height: MARGINALIA_ICON_SIZE,
-              color: meta.color,
-              background: m.selected ? meta.selectedBg : meta.bg,
-              border: `1.5px solid ${meta.border}`,
+              color: palette.color,
+              background: m.selected ? palette.selectedBg : palette.bg,
+              border: `1.5px solid ${palette.border}`,
               opacity: m.muted ? 0.4 : undefined,
               cursor: "grab",
               padding: 0,

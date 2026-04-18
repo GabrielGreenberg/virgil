@@ -6,7 +6,9 @@ import type { FootnoteInfo } from "./Editor";
 import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, ItemMenu, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { EditableCard, ItemMenu, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -117,18 +119,19 @@ export function FootnoteCard({
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
+  const theme = useCardTheme("footnote");
 
   return (
     <EditableCard
       id={fn.footnoteId}
       selected={isSelected}
-      theme={CARD_THEMES.footnote}
+      theme={theme}
       grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={<BadgeLabel label={fn.number} theme={CARD_THEMES.footnote} />}
-      headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} theme={CARD_THEMES.footnote} />}
+      badge={<BadgeLabel label={fn.number} theme={theme} />}
+      headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} theme={theme} />}
       headerTrailing={<CardTargetIcon selected={isSelected} onClick={() => onJump()} title="Jump to footnote marker" />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
@@ -184,18 +187,19 @@ export function OrphanedFootnoteCard({
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
+  const theme = useCardTheme("footnote");
 
   return (
     <EditableCard
       id={orphan.footnoteId}
       selected={isSelected}
-      theme={CARD_THEMES.footnote}
+      theme={theme}
       grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={<BadgeOrphaned theme={CARD_THEMES.footnote} />}
-      headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} theme={CARD_THEMES.footnote} />}
+      badge={<BadgeOrphaned theme={theme} />}
+      headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} theme={theme} />}
       headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
       onClick={onSelect}
       onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
@@ -311,7 +315,8 @@ function FootnotePanel({
           label=""
         />
         <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end">
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="footnote" label="Footnote color" />
             <ViewToggle mode={viewMode} onChange={onViewModeChange} />
           </div>
         </ItemMenu>

@@ -20,7 +20,11 @@ import {
   useCycle,
   AiRequestCard,
   AiRequestsSectionHeader,
+  cardOverrideStyle,
+  headerOverrideStyle,
 } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
 import ConfirmDialog from "./ConfirmDialog";
@@ -679,6 +683,7 @@ export function QuotationGroupCard({
 
   const cardRef = useRef<HTMLDivElement>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const theme = useCardTheme("quote");
 
   const tryDelete = useCallback(() => {
     setConfirmOpen(true);
@@ -701,6 +706,7 @@ export function QuotationGroupCard({
     <div
       ref={cardRef}
       className={`group ${panelCard(selected)} focus:outline-none`}
+      style={cardOverrideStyle(theme, selected)}
       onClick={(e) => { e.stopPropagation(); onSelect(); }}
       data-quotation-group-id={group.id}
       tabIndex={selected ? 0 : -1}
@@ -708,7 +714,10 @@ export function QuotationGroupCard({
       onKeyDown={handleKeyDown}
     >
       {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}>
+      <div
+        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
+        style={headerOverrideStyle(theme, selected)}
+      >
         {/* Grab handle — card-level anchor drag (marginalia) */}
         <div
           draggable
@@ -741,7 +750,7 @@ export function QuotationGroupCard({
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
           placeholder="Group title..."
           className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-stone-400 placeholder:font-normal"
-          style={{ fontSize: "var(--par-title-size, 0.78rem)", color: "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
+          style={{ fontSize: "var(--par-title-size, 0.78rem)", color: theme.override ? theme.titleColor : "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
         />
         {/* Inline delete */}
         <button
@@ -965,7 +974,8 @@ export default function QuotationsPanel({
           label=""
         />
         <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end">
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="quote" label="Quotation color" />
             <ViewToggle mode={viewMode} onChange={onViewModeChange} />
           </div>
         </ItemMenu>
