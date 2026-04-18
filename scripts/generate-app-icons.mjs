@@ -1,80 +1,141 @@
 // Regenerate the PWA / apple-touch app icons from public/logo_new.png.
-// Bakes a squircle-style rounded corner into the PNG itself (transparent
-// outside the rounded rect) because macOS/PWA installs don't reliably
-// apply the mask themselves — a square PNG shows as a square in the Dock.
+// For manifest icons (macOS Dock / Chromium install), the PNG has the
+// squircle baked in, inset inside a transparent canvas so the visible
+// shape matches the size of native macOS icons (Apple's own icon
+// template insets the squircle ~10% from the 1024 canvas edge).
+// Adds a subtle vertical gradient on the background and an ambient
+// drop shadow below the squircle, matching the typical macOS look.
 
 import sharp from "sharp";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 
-const BG = "#efecea";
-// Apple HIG / web.dev maskable safe zone — content sits inside an
-// 80%-diameter circle (≈20% padding). 15% was visibly too tight.
-const PADDING_PCT = 0.20;
-// Apple's continuous-curvature squircle is ≈22.37% of the edge.
-// A plain rounded-rect at this radius reads as the same shape at
-// typical Dock sizes.
-const CORNER_RADIUS_PCT = 0.2237;
+// Fractions of the full canvas edge:
+const SQUIRCLE_INSET_PCT = 0.10;  // transparent padding around squircle
+const LOGO_PADDING_PCT = 0.22;    // logo inset from canvas edge (inside squircle)
+// Corner radius as fraction of canvas edge. Apple's continuous-curve
+// squircle is ~22.37% of the squircle edge; at 80% squircle size that
+// is ~17.9% of canvas edge.
+const CORNER_RADIUS_PCT = 0.1790;
+
+// Subtle vertical gradient — lighter at top, slightly darker at
+// bottom, matching the typical macOS "ceramic" background look.
+const BG_TOP = "#f4f1ee";
+const BG_BOTTOM = "#e4e0db";
 
 const SOURCE = join(repoRoot, "public/logo_new.png");
 
-/** Produce the square icon art (cream canvas + logo via multiply).
- *  This is the "unmasked" form — iOS will apply its own squircle to it. */
-async function composeSquare(size) {
-  const pad = Math.round(size * PADDING_PCT);
-  const contentSize = size - 2 * pad;
+// Logo source as data URI for embedding in the composition SVG.
+const LOGO_DATA_URI =
+  "data:image/png;base64," +
+  readFileSync(SOURCE).toString("base64");
 
-  // Source has a white background baked in. Resize onto WHITE letterbox
-  // so `multiply`-blending preserves the ring's gradient while white
-  // pixels collapse to the canvas cream (no visible framed rectangle).
+/** Full-bleed square for the apple-touch-icon. iOS applies its own
+ *  squircle mask on Add-to-Home-Screen, so no corner rounding, no
+ *  shadow (would be clipped anyway). Keeps the gradient since that
+ *  shows through the iOS mask. */
+async function composeAppleTouch(size) {
+  const pad = Math.round(size * LOGO_PADDING_PCT);
+  const logoSize = size - 2 * pad;
+
+  const bgSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${BG_TOP}"/>
+          <stop offset="1" stop-color="${BG_BOTTOM}"/>
+        </linearGradient>
+      </defs>
+      <rect width="${size}" height="${size}" fill="url(#bg)"/>
+    </svg>`,
+  );
+
   const resizedLogo = await sharp(SOURCE)
-    .resize(contentSize, contentSize, {
+    .resize(logoSize, logoSize, {
       fit: "contain",
       background: { r: 255, g: 255, b: 255 },
     })
     .toBuffer();
 
-  return sharp({
-    create: { width: size, height: size, channels: 3, background: BG },
-  })
+  return sharp(bgSvg)
     .composite([{ input: resizedLogo, left: pad, top: pad, blend: "multiply" }])
-    .png()
-    .toBuffer();
+    .png();
 }
 
-/** Bake a squircle-style rounded-rect alpha mask into the square art.
- *  Used for macOS Dock / manifest icons where the OS doesn't mask. */
-async function applySquircle(squareBuf, size) {
-  const radius = Math.round(size * CORNER_RADIUS_PCT);
-  const mask = Buffer.from(
+/** Manifest / macOS Dock icon: the squircle is inset inside a
+ *  transparent canvas (matching the size of native macOS icons) and
+ *  carries an ambient drop shadow + vertical gradient. */
+async function composeDockIcon(size) {
+  const inset = Math.round(size * SQUIRCLE_INSET_PCT);
+  const squircleSize = size - 2 * inset;
+  const cornerRadius = Math.round(size * CORNER_RADIUS_PCT);
+  const logoPad = Math.round(size * LOGO_PADDING_PCT);
+  const logoSize = size - 2 * logoPad;
+  // Shadow params scale with the icon size so 192 and 512 look
+  // consistent once each is rendered at its own display pixel density.
+  const shadowBlur = Math.round(size * 0.022);  // ~11px at 512
+  const shadowDy = Math.round(size * 0.008);    // ~4px at 512
+
+  // SVG draws: shadow → gradient squircle (as one layer via feDropShadow).
+  // feDropShadow's flood-opacity controls the shadow darkness.
+  const bgSvg = Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">
-      <rect x="0" y="0" width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="#000"/>
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="${BG_TOP}"/>
+          <stop offset="1" stop-color="${BG_BOTTOM}"/>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="${shadowDy}" stdDeviation="${shadowBlur}"
+            flood-color="#000" flood-opacity="0.22"/>
+        </filter>
+      </defs>
+      <rect x="${inset}" y="${inset}" width="${squircleSize}" height="${squircleSize}"
+        rx="${cornerRadius}" ry="${cornerRadius}"
+        fill="url(#bg)" filter="url(#shadow)"/>
     </svg>`,
   );
-  return sharp(squareBuf)
-    .ensureAlpha()
-    .composite([{ input: mask, blend: "dest-in" }])
+
+  // Render the gradient+shadow background first.
+  const bgPng = await sharp(bgSvg).png().toBuffer();
+
+  // Resize logo onto a WHITE letterbox so multiply collapses the white
+  // pixels into the gradient underneath (preserving the gradient where
+  // the logo is blank, and darkening where the ring draws).
+  const resizedLogo = await sharp(SOURCE)
+    .resize(logoSize, logoSize, {
+      fit: "contain",
+      background: { r: 255, g: 255, b: 255 },
+    })
+    .toBuffer();
+
+  // Composite logo with multiply. Multiply against transparent pixels
+  // (outside the squircle) keeps them transparent, so no extra masking
+  // is needed.
+  return sharp(bgPng)
+    .composite([{ input: resizedLogo, left: logoPad, top: logoPad, blend: "multiply" }])
     .png();
 }
 
 const targets = [
   // iOS masks the apple-touch-icon itself — ship as a full-bleed square.
-  { file: "public/apple-touch-icon.png", size: 180, square: true },
+  { file: "public/apple-touch-icon.png", size: 180, kind: "apple" },
   // Manifest icons land in the macOS Dock, which does NOT mask — bake
-  // the squircle corners so the Dock renders the soft shape.
-  { file: "public/icon-192x192.png", size: 192, square: false },
-  { file: "public/icon-512x512.png", size: 512, square: false },
-  // Archive copy of the rounded 1024 master.
-  { file: "icons/app-icon-1024.png", size: 1024, square: false },
+  // the squircle, shadow, and gradient into the PNG itself.
+  { file: "public/icon-192x192.png", size: 192, kind: "dock" },
+  { file: "public/icon-512x512.png", size: 512, kind: "dock" },
+  // Archive copy of the rendered 1024 master.
+  { file: "icons/app-icon-1024.png", size: 1024, kind: "dock" },
 ];
 
 for (const t of targets) {
   const outPath = join(repoRoot, t.file);
-  const square = await composeSquare(t.size);
-  const img = t.square ? sharp(square).png() : await applySquircle(square, t.size);
+  const img =
+    t.kind === "apple" ? await composeAppleTouch(t.size) : await composeDockIcon(t.size);
   await img.toFile(outPath);
-  console.log(`wrote ${t.file} (${t.size}x${t.size})${t.square ? " [square]" : " [squircle]"}`);
+  console.log(`wrote ${t.file} (${t.size}x${t.size}) [${t.kind}]`);
 }
