@@ -317,9 +317,10 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
 
 /**
  * Returns the notification dot color for the AI requests toolbar icon.
- *   - "red"   → at least one open (pending) request
- *   - "green" → no open requests, but at least one responded (answered)
- *   - null    → no requests, or all resolved
+ *   - "red"    → user has approved changes that the AI has not yet applied
+ *   - "green"  → AI has replied to one or more requests
+ *   - "yellow" → user requests are pending an AI response
+ *   - null     → nothing outstanding
  */
 export function aiRequestDotStatus(args: {
   bibReviewRequests: BibReviewRequest[];
@@ -327,7 +328,7 @@ export function aiRequestDotStatus(args: {
   generalRevisions: GeneralRevision[];
   textRevisions: TextRevision[];
   panelAiRequests: AiRequest[];
-}): "red" | "green" | null {
+}): "red" | "green" | "yellow" | null {
   const { bibReviewRequests, bibEntryRequests, generalRevisions, textRevisions, panelAiRequests } = args;
 
   let hasOpen = false;
@@ -368,8 +369,8 @@ export function aiRequestDotStatus(args: {
     else hasOpen = true;
   }
 
-  if (hasOpen) return "red";
   if (hasResponded) return "green";
+  if (hasOpen) return "yellow";
   return null;
 }
 
