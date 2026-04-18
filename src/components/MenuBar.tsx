@@ -38,12 +38,13 @@ function Btn({
   active,
   children,
   title,
+  ...rest
 }: {
   onClick: () => void;
   active?: boolean;
   children: React.ReactNode;
   title: string;
-}) {
+} & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       onClick={onClick}
@@ -53,6 +54,7 @@ function Btn({
           ? "bg-[var(--accent-light)] text-[var(--accent)] font-medium"
           : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-700"
       }`}
+      {...rest}
     >
       {children}
     </button>
@@ -314,7 +316,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       {onAddComment && (
         <>
           <div className="w-px h-4 bg-[var(--border)] mx-1" />
-          <Btn onClick={onAddComment} title="Add revision on selection (Cmd+Shift+M)">
+          <Btn onClick={onAddComment} data-add-comment-button title="Add revision on selection (Cmd+Shift+M)">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 2.5h12a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H4.5L2 13.5V3a.5.5 0 0 1 .5-.5z" />
               <line x1="8" y1="5.5" x2="8" y2="9" />
@@ -326,6 +328,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       {onAddNote && (
         <button
           onClick={onAddNote}
+          data-add-note-button
           title="Add note linked to selection"
           className="px-2 py-1 rounded text-sm transition-colors text-[#15803d] hover:bg-[#f0fdf4] hover:text-[#166534]"
         >
@@ -335,6 +338,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       {onCutSelection && (
         <button
           onClick={onCutSelection}
+          data-cut-selection-button
           title="Cut selection into Cutter panel"
           className="px-2 py-1 rounded text-sm transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
         >

@@ -2014,7 +2014,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const applyHighlight = useCallback(() => {
     if (!editor) return;
 
-    editor.chain().selectAll().unsetHighlight().run();
+    // Remember where the user's selection is so we can restore it after the
+    // selectAll-then-unset dance. Without this, when there's nothing new to
+    // highlight (e.g. clearing on click-away), the editor's selection is left
+    // spanning the entire doc — the browser renders this as a grey
+    // "inactive selection" ghost whenever the editor is blurred.
+    const prevSelection = editor.state.selection;
+    editor.chain().selectAll().unsetHighlight().setTextSelection(prevSelection.from).run();
 
     // Position-based highlight (from search panel) takes priority
     const range = highlightRangeRef.current;

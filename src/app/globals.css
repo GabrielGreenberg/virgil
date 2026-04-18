@@ -1137,18 +1137,20 @@ body {
   height: 0;
 }
 
-/* Highlight for suggestions */
+/* Highlight marks — tiptap Highlight applies the color via inline style. No
+   fallback background (so no stray yellow when a caller forgets a color) and
+   no border-bottom (the highlight itself is the signal). */
 .tiptap mark {
-  background-color: rgba(251, 191, 36, 0.25);
-  border-bottom: 2px solid rgba(200, 150, 20, 0.5);
   border-radius: 2px;
   padding: 0 1px;
+  border-bottom: none;
+  background-color: transparent;
 }
 
-/* User comment highlight */
+/* User comment highlight — matched by its exact data-color to swap in the
+   themed comment colors from CSS vars. */
 .tiptap mark[data-color="#93c5fd40"] {
   background-color: var(--comment-bg, rgba(147, 197, 253, 0.25));
-  border-bottom: 2px solid var(--comment-border, rgba(96, 165, 250, 0.5));
 }
 
 /* Scrollbar styling */

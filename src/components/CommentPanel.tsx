@@ -18,6 +18,7 @@ import {
   CARD_THEMES,
 } from "./panel-primitives";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
+import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 
 /* ── Helpers ──────────────────────────────────────────────────────── */
 
@@ -369,6 +370,8 @@ interface CardProps {
 }
 
 function RevisionCard({
+  kind,
+  id,
   users,
   activeUser,
   turns,
@@ -387,6 +390,11 @@ function RevisionCard({
   const theme = CARD_THEMES.comment;
   const firstTurn = turns[0];
   const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
+  // data-revision-entry lets the shared selection-anchor sync hook detect
+  // clicks inside a selected revision card (so click-away doesn't fire).
+  // Only set for "text" revisions — general ones have no anchor or
+  // click-away semantics tied to the editor.
+  const dataAttrs = kind === "text" ? { "data-revision-entry": id } : {};
   return (
     <div
       ref={(el) => registerRef?.(el)}
@@ -394,6 +402,7 @@ function RevisionCard({
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
       className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
+      {...dataAttrs}
     >
       {/* Header: author + timestamp, with target icon + menu trailing */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
@@ -577,6 +586,8 @@ interface RevisionsPanelProps {
   onHoverRevision?: (id: string | null) => void;
   /** Called when the selection chip is dropped onto the panel. */
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
+  /** Called when the user drags a paragraph by its grab bar onto the panel — creates a new text revision bound to that paragraph. */
+  onDropParagraph?: (paragraphId: string) => void;
 }
 
 /* ── Main panel ───────────────────────────────────────────────────── */
@@ -602,6 +613,7 @@ export default function RevisionsPanel({
   onHighlight,
   onHoverRevision,
   onDropSelection,
+  onDropParagraph,
 }: RevisionsPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
@@ -709,22 +721,40 @@ export default function RevisionsPanel({
       <div
         ref={scrollRef}
         className={PANEL.list}
-        onDragOver={onDropSelection ? (e) => {
-          if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
+        onDragOver={(onDropSelection || onDropParagraph) ? (e) => {
+          const types = e.dataTransfer.types;
+          if (
+            (onDropSelection && types.includes(MIME_SELECTION_ANCHOR)) ||
+            (onDropParagraph && types.includes(MIME_PAR_CAPTURE))
+          ) {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }
         } : undefined}
-        onDrop={onDropSelection ? (e) => {
-          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
-          if (!raw) return;
-          e.preventDefault();
-          try {
-            const payload = JSON.parse(raw);
-            if (typeof payload.from === "number" && typeof payload.to === "number") {
-              onDropSelection(payload);
+        onDrop={(onDropSelection || onDropParagraph) ? (e) => {
+          if (onDropParagraph) {
+            const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
+            if (parRaw) {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                const { uuid } = JSON.parse(parRaw) as { uuid: string };
+                if (uuid) onDropParagraph(uuid);
+              } catch { /* ignore */ }
+              return;
             }
-          } catch { /* ignore */ }
+          }
+          if (onDropSelection) {
+            const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
+            if (!raw) return;
+            e.preventDefault();
+            try {
+              const payload = JSON.parse(raw);
+              if (typeof payload.from === "number" && typeof payload.to === "number") {
+                onDropSelection(payload);
+              }
+            } catch { /* ignore */ }
+          }
         } : undefined}
       >
         <ProgressHeader
