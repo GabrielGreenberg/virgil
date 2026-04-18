@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, useState, useRef, useEffect, useCallback } from "react";
+import { type ReactNode, useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
@@ -568,6 +568,61 @@ export function Chevron({ expanded }: { expanded: boolean }) {
   );
 }
 
+/* ── Panel chrome context (popout button) ─────────────────────────── */
+
+/**
+ * Context that lets PanelHeader render a pop-out / un-pop button without
+ * threading props through every panel component. The EditorLayout wraps
+ * each rendered panel with a provider that supplies the current popped-out
+ * state for that panel's id.
+ */
+export interface PanelChromeValue {
+  isPoppedOut: boolean;
+  onTogglePopout: () => void;
+}
+
+const PanelChromeContext = createContext<PanelChromeValue | null>(null);
+
+export function PanelChromeProvider({
+  value,
+  children,
+}: {
+  value: PanelChromeValue;
+  children: ReactNode;
+}) {
+  return (
+    <PanelChromeContext.Provider value={value}>
+      {children}
+    </PanelChromeContext.Provider>
+  );
+}
+
+function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-[18px] h-[18px] flex items-center justify-center rounded-full bg-[#b45757]/75 hover:bg-[#d06666] transition-colors shrink-0"
+      title={isPoppedOut ? "Close floating panel" : "Pop out panel"}
+      aria-label={isPoppedOut ? "Close floating panel" : "Pop out panel"}
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#3b1f1f"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
+      >
+        <polyline points="6 15 12 9 18 15" />
+      </svg>
+    </button>
+  );
+}
+
 /* ── Panel header ─────────────────────────────────────────────────── */
 
 export function PanelHeader({
@@ -588,8 +643,12 @@ export function PanelHeader({
   onAiRequest?: () => void;
   children?: ReactNode;
 }) {
+  const chrome = useContext(PanelChromeContext);
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
+      {chrome && (
+        <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />
+      )}
       <h3 className="text-sm font-semibold text-stone-700">
         {title}
         {count != null && count > 0 && (

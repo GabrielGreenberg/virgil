@@ -59,7 +59,8 @@ import { QuotationGroupCard } from "./QuotationsPanel";
 import EditorMirror from "./EditorMirror";
 import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
-import { HSplit } from "./panel-primitives";
+import { HSplit, PanelChromeProvider } from "./panel-primitives";
+import FloatingPanel from "./FloatingPanel";
 import { usePreferences } from "@/hooks/usePreferences";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
@@ -1112,6 +1113,8 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    togglePopout,
+    setFloatPosition,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -3737,6 +3740,23 @@ export default function EditorLayout() {
   const bibliographyPanelSide: "left" | "right" | null =
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
+  // Wrap a rendered panel in the PanelChrome context so its PanelHeader
+  // can render the pop-out button bound to this panel id.
+  const renderPanelWithChrome = (panelId: PanelId, side: Side): React.ReactNode => {
+    const inner = renderPanelInner(panelId, side);
+    if (panelId === "blank" || panelId === "omni" || panelId === "suggestions") return inner;
+    return (
+      <PanelChromeProvider
+        value={{
+          isPoppedOut: prefs.poppedOutPanels.includes(panelId),
+          onTogglePopout: () => togglePopout(panelId),
+        }}
+      >
+        {inner}
+      </PanelChromeProvider>
+    );
+  };
+
   // Render the inner JSX for a panel by id, without any column wrapper.
   // The caller is responsible for wrapping in <PanelColumn> (or rendering
   // it inside a split half). The "suggestions" panel is special-cased
@@ -4481,8 +4501,8 @@ export default function EditorLayout() {
           bottomPanelId={bottom}
         >
           {{
-            top: top ? renderPanelInner(top, side) : <div className="w-full h-full bg-[var(--background)]" />,
-            bottom: renderPanelInner(bottom, side),
+            top: top ? renderPanelWithChrome(top, side) : <div className="w-full h-full bg-[var(--background)]" />,
+            bottom: renderPanelWithChrome(bottom, side),
             ratio,
             onRatioChange: (r: number) => setSplitRatio(side, r),
           }}
@@ -4495,7 +4515,7 @@ export default function EditorLayout() {
     return (
       <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined}>
 
-        {renderPanelInner(top!, side)}
+        {renderPanelWithChrome(top!, side)}
       </PanelColumn>
     );
   }
@@ -5098,6 +5118,31 @@ export default function EditorLayout() {
           onCancel={cancelFolderPick}
         />
       )}
+      {/* Floating (popped-out) panels — rendered via portal above everything. */}
+      {prefs.poppedOutPanels.map((pid, i) => {
+        const placement = prefs.placements.find((pl) => pl.id === pid);
+        const side: Side = placement?.side ?? "right";
+        const saved = prefs.floatPositions[pid];
+        const defaultW = 360;
+        const defaultH = 520;
+        const initialX = saved?.x ?? Math.max(40, window.innerWidth / 2 - defaultW / 2 + i * 24);
+        const initialY = saved?.y ?? Math.max(40, window.innerHeight / 2 - defaultH / 2 + i * 24);
+        const initialWidth = saved?.width ?? defaultW;
+        const initialHeight = saved?.height ?? defaultH;
+        return (
+          <FloatingPanel
+            key={pid}
+            initialX={initialX}
+            initialY={initialY}
+            initialWidth={initialWidth}
+            initialHeight={initialHeight}
+            zIndex={1000 + i}
+            onChange={(pos) => setFloatPosition(pid, pos)}
+          >
+            {renderPanelWithChrome(pid, side)}
+          </FloatingPanel>
+        );
+      })}
     </div>
   );
 }

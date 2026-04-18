@@ -31,6 +31,10 @@ export interface ViewPrefs {
   editorSplit: boolean;
   /** 0..1 — top pane ratio when editor is split. */
   editorSplitRatio: number;
+  /** Panels currently displayed as floating windows. */
+  poppedOutPanels: PanelId[];
+  /** Saved position/size of each floating panel, keyed by panel id. */
+  floatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -61,6 +65,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   panelWidths: {},
   editorSplit: false,
   editorSplitRatio: 0.5,
+  poppedOutPanels: [],
+  floatPositions: {},
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -276,6 +282,39 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
 
+  const togglePopout = useCallback((id: PanelId) => {
+    update((p) => {
+      const isPopped = p.poppedOutPanels.includes(id);
+      if (isPopped) {
+        return { ...p, poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id) };
+      }
+      // Popping out: also clear its sidebar slot so it "closes as a panel".
+      let activeLeft = p.activeLeft;
+      let activeRight = p.activeRight;
+      let activeLeftBottom = p.activeLeftBottom;
+      let activeRightBottom = p.activeRightBottom;
+      if (activeLeft === id) activeLeft = "blank";
+      if (activeRight === id) activeRight = "blank";
+      if (activeLeftBottom === id) activeLeftBottom = "blank";
+      if (activeRightBottom === id) activeRightBottom = "blank";
+      return {
+        ...p,
+        poppedOutPanels: [...p.poppedOutPanels, id],
+        activeLeft,
+        activeRight,
+        activeLeftBottom,
+        activeRightBottom,
+      };
+    });
+  }, [update]);
+
+  const setFloatPosition = useCallback(
+    (id: PanelId, pos: { x: number; y: number; width: number; height: number }) => {
+      update((p) => ({ ...p, floatPositions: { ...p.floatPositions, [id]: pos } }));
+    },
+    [update],
+  );
+
   const setEditorSplitRatio = useCallback((ratio: number) => {
     update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
   }, [update]);
@@ -302,5 +341,7 @@ export function useViewPrefs() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    togglePopout,
+    setFloatPosition,
   };
 }
