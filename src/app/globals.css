@@ -1196,6 +1196,50 @@ body {
   display: none !important;
 }
 
+/* View toggles — heading dividers per level. Horizontal rule above the
+   heading-wrapper, drawn as a positioned pseudo-element so it can extend
+   beyond the text column into the editor's px-20 padding without shifting
+   the heading text. */
+.show-dividers-1 .tiptap .heading-wrapper-l1,
+.show-dividers-2 .tiptap .heading-wrapper-l2,
+.show-dividers-3 .tiptap .heading-wrapper-l3,
+.show-dividers-4 .tiptap .heading-wrapper-l4 {
+  position: relative;
+  padding-top: 1.4em;
+  margin-top: 2.6em;
+}
+.show-dividers-1 .tiptap .heading-wrapper-l1::before,
+.show-dividers-2 .tiptap .heading-wrapper-l2::before,
+.show-dividers-3 .tiptap .heading-wrapper-l3::before,
+.show-dividers-4 .tiptap .heading-wrapper-l4::before {
+  content: "";
+  position: absolute;
+  top: 0px;
+  left: -1rem;
+  right: -1rem;
+  border-radius: 1px;
+}
+.show-dividers-1 .tiptap .heading-wrapper-l1 {
+  padding-top: 2.4em;
+  margin-top: 4em;
+}
+.show-dividers-1 .tiptap .heading-wrapper-l1::before {
+  height: 3px;
+  background-color: #8a857d;
+}
+.show-dividers-2 .tiptap .heading-wrapper-l2::before {
+  height: 2px;
+  background-color: #a8a29a;
+}
+.show-dividers-3 .tiptap .heading-wrapper-l3::before {
+  height: 1px;
+  background-color: #c4bfb7;
+}
+.show-dividers-4 .tiptap .heading-wrapper-l4::before {
+  height: 1px;
+  background-color: #d8d4cd;
+}
+
 /* Panel font size preferences */
 .panel-container {
   font-size: var(--panel-font-size, 13px);

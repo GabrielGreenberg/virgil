@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
-import MenuBar, { type MarginaliaType } from "./MenuBar";
+import MenuBar, { type MarginaliaType, type DividerLevel } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
@@ -1180,6 +1180,23 @@ export default function EditorLayout() {
     });
   }, []);
 
+  // Heading-divider visibility — persisted per level
+  const [dividerLevels, setDividerLevels] = useState<Set<DividerLevel>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = localStorage.getItem("virgil-divider-levels");
+      return raw ? new Set(JSON.parse(raw) as DividerLevel[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const toggleDividerLevel = useCallback((level: DividerLevel) => {
+    setDividerLevels((prev) => {
+      const next = new Set(prev);
+      if (next.has(level)) next.delete(level); else next.add(level);
+      try { localStorage.setItem("virgil-divider-levels", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, []);
+
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
@@ -2038,6 +2055,21 @@ export default function EditorLayout() {
   const docForOutline = latestDoc || content;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
   const outlineTotalBlocks = useMemo(() => docForOutline?.content?.length ?? 0, [docForOutline]);
+  const availableDividerLevels = useMemo(() => {
+    const s = new Set<DividerLevel>();
+    outlineHeadings.forEach((h) => {
+      if (h.level >= 1 && h.level <= 4) s.add(h.level as DividerLevel);
+    });
+    return s;
+  }, [outlineHeadings]);
+  const activeDividerLevels = useMemo(() => {
+    const s = new Set<DividerLevel>();
+    dividerLevels.forEach((lvl) => { if (availableDividerLevels.has(lvl)) s.add(lvl); });
+    return s;
+  }, [dividerLevels, availableDividerLevels]);
+  const dividerClassName = useMemo(() => (
+    [...activeDividerLevels].map((lvl) => `show-dividers-${lvl}`).join(" ")
+  ), [activeDividerLevels]);
 
   const handleFocusActivate = useCallback(() => {
     focusMode.activate(outlineHeadings, outlineTotalBlocks);
@@ -4864,7 +4896,7 @@ export default function EditorLayout() {
         {/* Editor column: toolbar pod + gap + editor pod + breadcrumb.
             Panel slots are always present in the flex layout (collapsed or not),
             so the editor's position never changes. */}
-        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}`} style={{
+        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
@@ -4893,6 +4925,9 @@ export default function EditorLayout() {
             onToggleMarginalia={toggleMarginalia}
             hiddenMarginaliaTypes={hiddenMarginaliaTypes}
             onToggleMarginaliaType={toggleMarginaliaType}
+            availableDividerLevels={availableDividerLevels}
+            dividerLevels={activeDividerLevels}
+            onToggleDividerLevel={toggleDividerLevel}
             onParaNavBack={paraNavBack}
             onParaNavForward={paraNavForward}
             paraNavBackDisabled={paraHistoryRef.current.idx <= 0}

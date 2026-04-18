@@ -740,7 +740,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         let currentNode = node;
 
         const wrapper = document.createElement("div");
-        wrapper.className = "heading-wrapper";
+        wrapper.className = `heading-wrapper heading-wrapper-l${node.attrs.level}`;
 
         const h = document.createElement(`h${node.attrs.level}`) as HTMLHeadingElement;
         if (node.attrs.numbered !== false && node.attrs.sectionNumber) {
