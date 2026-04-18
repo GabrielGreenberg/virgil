@@ -4592,28 +4592,6 @@ export default function EditorLayout() {
         </div>
 
         <div className="shrink-0 flex items-center px-2 gap-1">
-          <button
-            onClick={paraNavBack}
-            disabled={paraHistoryRef.current.idx <= 0}
-            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
-            title="Go back"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12" />
-              <polyline points="12 19 5 12 12 5" />
-            </svg>
-          </button>
-          <button
-            onClick={paraNavForward}
-            disabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-            className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
-            title="Go forward"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12" />
-              <polyline points="12 5 19 12 12 19" />
-            </svg>
-          </button>
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
