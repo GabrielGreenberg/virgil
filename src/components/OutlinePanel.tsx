@@ -130,7 +130,7 @@ function PositionLozenge({ scrollRef, attr, color }: {
     <div
       style={{
         position: "absolute",
-        left: 3,
+        left: 5,
         top: 0,
         width: 3,
         borderRadius: 1.5,
@@ -1615,7 +1615,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
         </div>
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 relative">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
             headings={headings}
@@ -1627,7 +1627,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onRenameParTitle={onRenameParTitle}
           />
         ) : (
-          <div className="bg-white rounded-lg border border-stone-200 pt-1 pb-3 relative min-h-full">
+          <div className="bg-white rounded-lg border border-stone-200 pt-3 pb-5 px-1 relative min-h-full">
             {/* Focus band overlay — only in unlocked mode */}
             {focusState?.active && !focusState.locked && (
               <FocusBand
