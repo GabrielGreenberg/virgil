@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { CARD_THEMES, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
+import ViewToggle from "./ViewToggle";
+import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -20,6 +25,10 @@ interface TodoPanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
+  editor?: Editor | null;
+  panelSide?: "left" | "right";
+  viewMode?: "list" | "in-text";
+  onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
 const theme = CARD_THEMES.todo;
@@ -226,9 +235,14 @@ export default function TodoPanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
+  editor,
+  panelSide = "right",
+  viewMode = "list",
+  onViewModeChange,
 }: TodoPanelProps) {
   const [newText, setNewText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const todoTheme = useCardTheme("todo");
 
   const handleAdd = () => {
     if (newText.trim()) {
@@ -246,6 +260,15 @@ export default function TodoPanel({
     [aiRequests],
   );
 
+  const inTextItems = useMemo(
+    () => getParagraphAnchorPositions(editor ?? null, items),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, items],
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor ?? null, inTextItems, viewMode === "in-text",
+  );
+
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <PanelHeader
@@ -253,7 +276,16 @@ export default function TodoPanel({
         count={pending.length}
         onAdd={() => inputRef.current?.focus()}
         onAiRequest={onAddAiRequest}
-      />
+      >
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="todo" label="Todo color" />
+            {onViewModeChange && (
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            )}
+          </div>
+        </ItemMenu>
+      </PanelHeader>
 
       {/* Add input */}
       <div className="px-4 py-2.5 border-b border-[var(--border-light)]">
@@ -277,41 +309,89 @@ export default function TodoPanel({
       </div>
 
       {/* Items */}
-      <div className={PANEL.list} onClick={() => onSelectTodo(null)}>
+      <div
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
+        onClick={() => onSelectTodo(null)}
+      >
         {items.length === 0 && myAiRequests.length === 0 && (
           <div className={PANEL.empty}>
             No tasks yet.
           </div>
         )}
 
-        {myAiRequests.length > 0 && (
+        {viewMode === "in-text" && items.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {items.map((item) => {
+              const top = positions.get(item.id);
+              if (top === undefined) return null;
+              const isSelected = selectedTodoId === item.id;
+              const borderColor = todoTheme.override?.selectedBorder ?? todoTheme.badgeBorder;
+              const selectedBg = todoTheme.override?.headerBgSelected;
+              return (
+                <div
+                  key={item.id}
+                  data-todo-entry={item.id}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"} ${item.done ? "opacity-60" : ""}`}
+                  style={{
+                    top,
+                    ...(isSelected
+                      ? { borderLeftColor: borderColor, backgroundColor: selectedBg ?? "rgba(120, 113, 108, 0.08)" }
+                      : {}),
+                  }}
+                  onClick={(e) => { e.stopPropagation(); onSelectTodo(isSelected ? null : item.id); }}
+                >
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      checked={item.done}
+                      onChange={() => onToggle(item.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <p
+                      className={`text-xs leading-snug line-clamp-2 pr-6 ${item.done ? "line-through text-stone-400" : "text-stone-700"}`}
+                      style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                    >
+                      {item.text || <span className="italic text-stone-400">Empty task</span>}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
           <>
-            <AiRequestsSectionHeader count={myAiRequests.length} />
-            {myAiRequests.map((req) => (
-              <AiRequestCard
-                key={req.id}
-                request={req}
-                onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                onDelete={() => onDeleteAiRequest?.(req.id)}
+            {myAiRequests.length > 0 && (
+              <>
+                <AiRequestsSectionHeader count={myAiRequests.length} />
+                {myAiRequests.map((req) => (
+                  <AiRequestCard
+                    key={req.id}
+                    request={req}
+                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
+                    onDelete={() => onDeleteAiRequest?.(req.id)}
+                  />
+                ))}
+              </>
+            )}
+
+            {items.map((item) => (
+              <TodoRow
+                key={item.id}
+                item={item}
+                selected={selectedTodoId === item.id}
+                onToggle={onToggle}
+                onUpdate={onUpdate}
+                onUpdateNotes={onUpdateNotes}
+                onDelete={onDelete}
+                onSelect={onSelectTodo}
+                isAnchored={item.paragraphIds.length > 0}
+                onJump={onScrollToMarker && item.paragraphIds.length > 0 ? () => onScrollToMarker(item.id) : undefined}
               />
             ))}
           </>
         )}
-
-        {items.map((item) => (
-          <TodoRow
-            key={item.id}
-            item={item}
-            selected={selectedTodoId === item.id}
-            onToggle={onToggle}
-            onUpdate={onUpdate}
-            onUpdateNotes={onUpdateNotes}
-            onDelete={onDelete}
-            onSelect={onSelectTodo}
-            isAnchored={item.paragraphIds.length > 0}
-            onJump={onScrollToMarker && item.paragraphIds.length > 0 ? () => onScrollToMarker(item.id) : undefined}
-          />
-        ))}
       </div>
 
       {/* Archive bar at bottom */}

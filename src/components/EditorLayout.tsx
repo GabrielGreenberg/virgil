@@ -44,6 +44,31 @@ import {
   MARKER_META,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
+import { useSyncExternalStore } from "react";
+import {
+  deriveMarkerPalette,
+  getPanelColor,
+  getPanelColorVersion,
+  isPanelColorOverridden,
+  loadPanelColors,
+  subscribePanelColors,
+  type PanelThemeKey,
+} from "@/lib/panel-theme";
+
+/** Subscribe the EditorLayout tree to panel-color changes. */
+function usePanelColorSubscription(): number {
+  // Load overrides on first use (idempotent).
+  if (typeof window !== "undefined") loadPanelColors();
+  return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
+}
+
+/** Maps the marker kinds that can appear as linked-anchor highlights to their
+ *  panel-theme key so the highlight color honors user color overrides. */
+const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
+  note: "note",
+  revision: "revision",
+  cut: "cut",
+};
 import { createLinkedAnchor, removeLinkedAnchor, reanchorByText } from "@/lib/linked-anchors";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
@@ -3756,9 +3781,19 @@ export default function EditorLayout() {
     handleCutMarkerClick,
   ]);
 
+  // Subscribe to panel-color changes so linked-anchor highlight updates live.
+  usePanelColorSubscription();
   // Effective linked-anchor activation: hovered takes priority over sticky-active.
   const effectiveAnchorId = hoveredAnchorId ?? activeAnchorId;
-  const effectiveAnchorColor = activeAnchorKind ? MARKER_META[activeAnchorKind].selectedBg : null;
+  const effectiveAnchorColor = (() => {
+    if (!activeAnchorKind) return null;
+    const meta = MARKER_META[activeAnchorKind];
+    const key = MARKER_KIND_TO_THEME_KEY[activeAnchorKind];
+    if (key && isPanelColorOverridden(key)) {
+      return deriveMarkerPalette(getPanelColor(key)).selectedBg;
+    }
+    return meta.selectedBg;
+  })();
 
   // Re-apply linked-anchor marks on load. Each sidecar stores (anchorId, anchorText);
   // we walk the doc and try to re-attach each mark via text search. For legacy
@@ -3856,6 +3891,12 @@ export default function EditorLayout() {
   const omniRightActive = activeRight === "omni";
   const notesPanelSide: "left" | "right" | null =
     activeLeft === "notes" ? "left" : activeRight === "notes" || omniRightActive ? "right" : null;
+  const todoPanelSide: "left" | "right" | null =
+    activeLeft === "todo" ? "left" : activeRight === "todo" || omniRightActive ? "right" : null;
+  const cutterPanelSide: "left" | "right" | null =
+    activeLeft === "cutter" ? "left" : activeRight === "cutter" || omniRightActive ? "right" : null;
+  const revisionsPanelSide: "left" | "right" | null =
+    activeLeft === "revisions" ? "left" : activeRight === "revisions" || omniRightActive ? "right" : null;
   const quotationsPanelSide: "left" | "right" | null =
     activeLeft === "quotations" || omniLeftActive ? "left" : activeRight === "quotations" ? "right" : null;
   const archivePanelSide: "left" | "right" | null =
@@ -3917,6 +3958,10 @@ export default function EditorLayout() {
           onAddAiRequest={() => addAiRequest("todo")}
           onUpdateAiRequestText={updateAiRequestText}
           onDeleteAiRequest={deleteAiRequest}
+          editor={editorInstance}
+          panelSide={todoPanelSide ?? side}
+          viewMode={getPanelViewMode("todo")}
+          onViewModeChange={(m) => setPanelViewMode("todo", m)}
         />
       );
     }
@@ -3967,6 +4012,10 @@ export default function EditorLayout() {
           onHoverNote={handleHoverNote}
           onDropSelection={handleDropSelectionOnNotes}
           onDropParagraph={handleDropParagraphOnNotes}
+          editor={editorInstance}
+          panelSide={notesPanelSide ?? side}
+          viewMode={getPanelViewMode("notes")}
+          onViewModeChange={(m) => setPanelViewMode("notes", m)}
         />
       );
     }
@@ -4033,6 +4082,10 @@ export default function EditorLayout() {
             pendingRevisionAnchorIdRef.current = record.anchorId;
             setPendingCommentText(record.text);
           }}
+          editor={editorInstance}
+          panelSide={revisionsPanelSide ?? side}
+          viewMode={getPanelViewMode("revisions")}
+          onViewModeChange={(m) => setPanelViewMode("revisions", m)}
         />
       );
     }
@@ -4180,6 +4233,11 @@ export default function EditorLayout() {
           entryRequests={entryRequests}
           onAddEntryRequest={addEntryRequest}
           onRemoveEntryRequest={removeEntryRequest}
+          editor={editorInstance}
+          citationPositions={citationPositionMap}
+          panelSide={bibliographyPanelSide ?? side}
+          viewMode={getPanelViewMode("bibliography")}
+          onViewModeChange={(m) => setPanelViewMode("bibliography", m)}
         />
       );
     }
@@ -4600,6 +4658,10 @@ export default function EditorLayout() {
           onHoverCut={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
           onDropParagraph={handleDropParagraphOnCutter}
+          editor={editorInstance}
+          panelSide={cutterPanelSide ?? side}
+          viewMode={getPanelViewMode("cutter")}
+          onViewModeChange={(m) => setPanelViewMode("cutter", m)}
         />
       );
     }

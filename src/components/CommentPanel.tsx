@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import type { Editor } from "@tiptap/react";
 import type {
   GeneralRevision,
   RevisionTurn,
@@ -17,6 +18,11 @@ import {
   TargetIcon,
   CARD_THEMES,
 } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
+import ViewToggle from "./ViewToggle";
+import { useInTextPositions, type PositionItem } from "@/hooks/useInTextPositions";
+import { resolveAnchorRange } from "@/lib/linked-anchors";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 
@@ -588,6 +594,10 @@ interface RevisionsPanelProps {
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   /** Called when the user drags a paragraph by its grab bar onto the panel — creates a new text revision bound to that paragraph. */
   onDropParagraph?: (paragraphId: string) => void;
+  editor?: Editor | null;
+  panelSide?: "left" | "right";
+  viewMode?: "list" | "in-text";
+  onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
 /* ── Main panel ───────────────────────────────────────────────────── */
@@ -614,12 +624,17 @@ export default function RevisionsPanel({
   onHoverRevision,
   onDropSelection,
   onDropParagraph,
+  editor,
+  panelSide = "right",
+  viewMode = "list",
+  onViewModeChange,
 }: RevisionsPanelProps) {
   const [showResolved, setShowResolved] = useState(false);
   const [newCommentText, setNewCommentText] = useState("");
   const newCommentRef = useRef<HTMLTextAreaElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const revisionTheme = useCardTheme("revision");
 
   const activeUser = userById(users, activeUserId);
 
@@ -642,6 +657,22 @@ export default function RevisionsPanel({
 
   const totalCount = generalRevisions.length + textRevisions.length;
   const resolvedCount = resolvedGeneral.length + resolvedText.length;
+
+  // In-text positions: only text revisions with a resolvable anchor.
+  const inTextItems = useMemo<PositionItem[]>(() => {
+    if (!editor) return [];
+    const out: PositionItem[] = [];
+    for (const r of activeText) {
+      if (!r.anchorId) continue;
+      const range = resolveAnchorRange(editor, r.anchorId);
+      if (range) out.push({ id: r.id, pos: range.from });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, activeText]);
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor ?? null, inTextItems, viewMode === "in-text",
+  );
 
   const awaitingClaudeCount = useMemo(() => {
     let n = 0;
@@ -715,9 +746,69 @@ export default function RevisionsPanel({
             onSelect={onSetActiveUser}
             onAdd={onAddUser}
           />
+          <ItemMenu>
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="revision" label="Revision color" />
+              {onViewModeChange && (
+                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+              )}
+            </div>
+          </ItemMenu>
         </div>
       </PanelHeader>
 
+      {viewMode === "in-text" ? (
+        <div
+          ref={panelScrollRef}
+          className="flex-1 overflow-y-auto"
+          onClick={() => onSelectRevision(null)}
+        >
+          {activeText.length === 0 ? (
+            <div className={PANEL.empty}>
+              No anchored revisions. Switch to list view to see all revisions.
+            </div>
+          ) : (
+            <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+              {activeText.map((r) => {
+                const top = positions.get(r.id);
+                if (top === undefined) return null;
+                const isSelected = selectedRevisionId === r.id;
+                const preview = r.turns[0]?.text || "";
+                const borderColor = revisionTheme.override?.selectedBorder ?? "#9333ea";
+                const selectedBg = revisionTheme.override?.headerBgSelected ?? "rgba(147, 51, 234, 0.08)";
+                return (
+                  <div
+                    key={r.id}
+                    data-revision-entry={r.id}
+                    className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                    style={{
+                      top,
+                      ...(isSelected
+                        ? { borderLeftColor: borderColor, backgroundColor: selectedBg }
+                        : {}),
+                    }}
+                    onClick={(e) => { e.stopPropagation(); onSelectRevision(isSelected ? null : r.id); }}
+                    onMouseEnter={onHoverRevision ? () => onHoverRevision(r.id) : undefined}
+                    onMouseLeave={onHoverRevision ? () => onHoverRevision(null) : undefined}
+                  >
+                    {r.selectedText && (
+                      <div className="text-[10px] italic text-stone-400 truncate mb-0.5">
+                        &ldquo;{r.selectedText}&rdquo;
+                      </div>
+                    )}
+                    <p
+                      className="text-xs text-stone-700 leading-snug line-clamp-2 pr-6"
+                      style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                    >
+                      {preview || <span className="italic text-stone-400">Empty revision</span>}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
       <div
         ref={scrollRef}
         className={PANEL.list}
@@ -969,6 +1060,7 @@ export default function RevisionsPanel({
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

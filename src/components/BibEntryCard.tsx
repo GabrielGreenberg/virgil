@@ -3,7 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron, TargetIcon, CARD_THEMES } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
 import { MIME_CITATION } from "@/lib/marginalia";
 
 export interface BibEntryCardProps {
@@ -401,7 +402,7 @@ export default function BibEntryCard({
     );
   }
 
-  const theme = CARD_THEMES.bib;
+  const theme = useCardTheme("bib");
 
   return (
     <div
@@ -409,10 +410,14 @@ export default function BibEntryCard({
       draggable
       onDragStart={handleDragStart}
       className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}`}
+      style={cardOverrideStyle(theme, isSelected)}
       onClick={onClick}
     >
       {/* Header: author · year · title + target icon + occurrence counter */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}>
+      <div
+        className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
+        style={headerOverrideStyle(theme, isSelected)}
+      >
         <div className="flex-1 min-w-0 text-sm text-stone-800 truncate" title={headerText}>
           {author && <span className="font-semibold">{author}</span>}
           {author && year && <span className="text-stone-400 mx-1.5">&middot;</span>}
@@ -445,7 +450,10 @@ export default function BibEntryCard({
       </div>
 
       {/* Separator */}
-      <div className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+      <div
+        className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+        style={separatorOverrideStyle(theme, isSelected)}
+      />
 
       {/* Body */}
       <div className={PANEL.cardInner}>

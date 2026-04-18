@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useCallback, useMemo } from "react";
-import type { JSONContent } from "@tiptap/react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
-import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { EditableCard, ItemMenu, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
+import ViewToggle from "./ViewToggle";
+import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
@@ -33,6 +37,13 @@ interface NotesPanelProps {
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   /** Called when the user drags a paragraph by its grab bar onto the panel — creates a new note anchored to that paragraph. */
   onDropParagraph?: (paragraphId: string) => void;
+  /** Editor handle used to compute in-text positions. */
+  editor?: Editor | null;
+  /** Which side of the layout the panel is on (used for in-text connector styling). */
+  panelSide?: "left" | "right";
+  /** View mode: "list" (default) or "in-text" (cards positioned next to anchors). */
+  viewMode?: "list" | "in-text";
+  onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -97,22 +108,23 @@ export function NoteCard({
   );
 
   const isOrphaned = note.paragraphIds.length === 0;
+  const theme = useCardTheme("note");
 
   return (
     <EditableCard
       id={note.id}
       selected={selected}
-      theme={CARD_THEMES.note}
+      theme={theme}
       grabHandle
       hideToolbar
       inlineDelete
       orphaned={isOrphaned}
       onEditorFocus={onEditorFocus}
       badge={isOrphaned
-        ? <BadgeOrphaned theme={CARD_THEMES.note} />
-        : <BadgeLabel label="N" theme={CARD_THEMES.note} />
+        ? <BadgeOrphaned theme={theme} />
+        : <BadgeLabel label="N" theme={theme} />
       }
-      headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} theme={CARD_THEMES.note} />}
+      headerContent={<CardTitleInput defaultValue={note.title} onChange={(t) => onUpdateTitle(note.id, t)} theme={theme} />}
       headerTrailing={onJump
         ? <CardTargetIcon selected={selected} onClick={onJump} title="Jump to note anchor" />
         : <CardTargetIcon selected={false} disabled onClick={() => {}} />
@@ -153,6 +165,10 @@ export default function NotesPanel({
   onHoverNote,
   onDropSelection,
   onDropParagraph,
+  editor,
+  panelSide = "right",
+  viewMode = "list",
+  onViewModeChange,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => {
@@ -166,6 +182,16 @@ export default function NotesPanel({
     () => (aiRequests ?? []).filter((r) => r.kind === "note"),
     [aiRequests],
   );
+
+  const inTextItems = useMemo(
+    () => getParagraphAnchorPositions(editor ?? null, sortedNotes),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [editor, sortedNotes],
+  );
+  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
+    editor ?? null, inTextItems, viewMode === "in-text",
+  );
+  const noteTheme = useCardTheme("note");
 
   const onActivateNote = useCallback(
     (note: UserNote) => {
@@ -197,10 +223,19 @@ export default function NotesPanel({
           total={sortedNotes.length}
           label="notes"
         />
+        <ItemMenu>
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="note" label="Note color" />
+            {onViewModeChange && (
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            )}
+          </div>
+        </ItemMenu>
       </PanelHeader>
 
       <div
-        className={PANEL.list}
+        ref={viewMode === "in-text" ? panelScrollRef : undefined}
+        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
         onClick={() => onSelectNote(null)}
         onDragOver={(onDropSelection || onDropParagraph) ? (e) => {
           const types = e.dataTransfer.types;
@@ -258,22 +293,65 @@ export default function NotesPanel({
           </>
         )}
 
-        {sortedNotes.map((note) => (
-          <NoteCard
-            key={note.id}
-            note={note}
-            selected={selectedNoteId === note.id}
-            onUpdate={onUpdate}
-            onUpdateTitle={onUpdateTitle}
-            onDelete={onDelete}
-            onSelect={onSelectNote}
-            onJump={onScrollToParagraphId && note.paragraphIds[0] ? () => onScrollToParagraphId(note.paragraphIds[0]) : undefined}
-            onEditorFocus={onEditorFocus}
-            getCitationDisplayText={getCitationDisplayText}
-            onCitationCreated={onCitationCreated}
-            onHoverChange={onHoverNote ? (hovering) => onHoverNote(hovering ? note.id : null) : undefined}
-          />
-        ))}
+        {viewMode === "in-text" && sortedNotes.length > 0 ? (
+          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
+            {sortedNotes.map((note) => {
+              const top = positions.get(note.id);
+              if (top === undefined) return null;
+              const isSelected = selectedNoteId === note.id;
+              const preview = richJsonToPlainText(note.content) || "";
+              const borderColor = noteTheme.override?.selectedBorder ?? noteTheme.badgeBorder;
+              const selectedBg = noteTheme.override?.headerBgSelected;
+              return (
+                <div
+                  key={note.id}
+                  data-note-entry={note.id}
+                  draggable
+                  onDragStart={(e) => startNoteDrag(e, note.id)}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                  style={{
+                    top,
+                    ...(isSelected
+                      ? { borderLeftColor: borderColor, backgroundColor: selectedBg ?? "rgba(16, 185, 129, 0.08)" }
+                      : {}),
+                  }}
+                  onClick={() => onSelectNote(isSelected ? null : note.id)}
+                  onMouseEnter={onHoverNote ? () => onHoverNote(note.id) : undefined}
+                  onMouseLeave={onHoverNote ? () => onHoverNote(null) : undefined}
+                >
+                  {note.title && (
+                    <div className="text-[11px] font-medium truncate mb-0.5" style={{ color: noteTheme.titleColor }}>
+                      {note.title}
+                    </div>
+                  )}
+                  <p
+                    className="text-xs text-stone-600 leading-snug line-clamp-2 pr-6"
+                    style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+                  >
+                    {preview || <span className="italic text-stone-400">Empty note</span>}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          sortedNotes.map((note) => (
+            <NoteCard
+              key={note.id}
+              note={note}
+              selected={selectedNoteId === note.id}
+              onUpdate={onUpdate}
+              onUpdateTitle={onUpdateTitle}
+              onDelete={onDelete}
+              onSelect={onSelectNote}
+              onJump={onScrollToParagraphId && note.paragraphIds[0] ? () => onScrollToParagraphId(note.paragraphIds[0]) : undefined}
+              onEditorFocus={onEditorFocus}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
+              onHoverChange={onHoverNote ? (hovering) => onHoverNote(hovering ? note.id : null) : undefined}
+            />
+          ))
+        )}
       </div>
     </div>
   );

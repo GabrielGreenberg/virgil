@@ -10,7 +10,9 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, CARD_THEMES } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
 import { MIME_CITATION } from "@/lib/marginalia";
@@ -133,6 +135,7 @@ export function CitationCard({
   const [isDropTarget, setIsDropTarget] = useState(false);
   const editWrapperRef = useRef<HTMLDivElement>(null);
   const builderHandleRef = useRef<CitationBuilderHandle>(null);
+  const theme = useCardTheme("citation");
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -321,7 +324,7 @@ export function CitationCard({
       onDragLeave={handleCardDragLeave}
       onDrop={handleCardDrop}
       className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={wrapperStyle}
+      style={{ ...cardOverrideStyle(theme, isSelected), ...wrapperStyle }}
       onClick={onSelect}
       title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
     >
@@ -343,7 +346,10 @@ export function CitationCard({
       ) : (
         <>
           {/* Header: bib-key chips + target icon trailing */}
-          <div className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? CARD_THEMES.citation.headerSelected : CARD_THEMES.citation.headerDefault}`}>
+          <div
+            className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
+            style={headerOverrideStyle(theme, isSelected)}
+          >
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
                 const entry = bibEntryMap.get(key);
@@ -384,7 +390,10 @@ export function CitationCard({
           </div>
 
           {/* Separator */}
-          <div className={`border-t transition-colors ${isSelected ? CARD_THEMES.citation.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+          <div
+            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+            style={separatorOverrideStyle(theme, isSelected)}
+          />
 
           {/* Body: command preview + edit, missing-key warnings, expanded bib pod */}
           <div className={PANEL.cardInner}>
@@ -614,7 +623,8 @@ function CitationsPanel({
             </button>
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
-                <div className="px-3 py-1.5 flex items-center justify-end">
+                <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+                  <PanelThemePicker panelKey="citation" label="Citation color" />
                   <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
                 </div>
                 <div className="my-1 border-t border-stone-200" />

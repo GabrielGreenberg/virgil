@@ -5,7 +5,9 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
-import { CARD_THEMES, EditableCard, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
+import { EditableCard, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import PanelThemePicker from "./PanelThemePicker";
 import {
   normalizeRichContent,
   richJsonToPlainText,
@@ -83,6 +85,7 @@ export function ArchiveCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const isAnchored = !orphaned;
+  const theme = useCardTheme("archive");
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
   };
@@ -90,16 +93,16 @@ export function ArchiveCard({
     <EditableCard
       id={snippet.id}
       selected={selected}
-      theme={CARD_THEMES.archive}
+      theme={theme}
       grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
       badge={orphaned
-        ? <BadgeOrphaned theme={CARD_THEMES.archive} />
-        : <BadgeLabel label="A" theme={CARD_THEMES.archive} />
+        ? <BadgeOrphaned theme={theme} />
+        : <BadgeLabel label="A" theme={theme} />
       }
-      headerContent={<CardTitleInput defaultValue={snippet.title} onChange={(t) => onUpdateTitle(snippet.id, t)} theme={CARD_THEMES.archive} />}
+      headerContent={<CardTitleInput defaultValue={snippet.title} onChange={(t) => onUpdateTitle(snippet.id, t)} theme={theme} />}
       headerTrailing={
         isAnchored && onScrollToMarker
           ? <CardTargetIcon selected={selected} onClick={() => onScrollToMarker(snippet.id)} title="Jump to archive marker" />
@@ -168,7 +171,8 @@ function ArchivePanel({
     >
       <PanelHeader title="Archived Text">
         <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end">
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="archive" label="Archive color" />
             <ViewToggle mode={viewMode} onChange={onViewModeChange} />
           </div>
         </ItemMenu>
