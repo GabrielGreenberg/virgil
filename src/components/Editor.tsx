@@ -36,6 +36,11 @@ import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
+import {
+  sectionFoldingPlugin,
+  sectionFoldingPluginKey,
+  getSectionFoldingState,
+} from "@/lib/section-folding";
 
 /**
  * Resolve a ProseMirror position to the nearest anchorable node, handling
@@ -207,6 +212,10 @@ export interface EditorHandle {
   applyLinkedAnchors: (
     records: Array<{ anchorId: string; kind: LinkedAnchorKind; text: string }>,
   ) => void;
+  /** Collapse all top-level heading sections (fold every section). */
+  collapseAllSections: () => void;
+  /** Expand all previously folded sections. */
+  expandAllSections: () => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -742,6 +751,69 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const wrapper = document.createElement("div");
         wrapper.className = "heading-wrapper";
 
+        // Folding chevron — positioned in the left margin gutter at the same
+        // horizontal offset as the paragraph drag handles. Clicking toggles
+        // the fold state for this heading's section.
+        const foldBtn = document.createElement("button");
+        foldBtn.type = "button";
+        foldBtn.className = "heading-fold-chevron";
+        foldBtn.contentEditable = "false";
+        foldBtn.setAttribute("aria-label", "Toggle section fold");
+        const SVG_NS_FOLD = "http://www.w3.org/2000/svg";
+        const foldSvg = document.createElementNS(SVG_NS_FOLD, "svg");
+        foldSvg.setAttribute("width", "12");
+        foldSvg.setAttribute("height", "12");
+        foldSvg.setAttribute("viewBox", "0 0 12 12");
+        foldSvg.setAttribute("fill", "none");
+        foldSvg.setAttribute("stroke", "currentColor");
+        foldSvg.setAttribute("stroke-width", "1.5");
+        foldSvg.setAttribute("stroke-linecap", "round");
+        foldSvg.setAttribute("stroke-linejoin", "round");
+        const foldPath = document.createElementNS(SVG_NS_FOLD, "path");
+        foldPath.setAttribute("d", "M4.5 2l4 4-4 4");
+        foldSvg.appendChild(foldPath);
+        foldBtn.appendChild(foldSvg);
+        // Prevent PM from focusing the editor / moving the selection.
+        foldBtn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        foldBtn.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const p = typeof getPos === "function" ? getPos() : null;
+          if (p == null) return;
+          // Ensure the heading has a UUID we can key the fold state to.
+          let uuid = currentNode.attrs?.uuid as string | null;
+          if (!uuid) {
+            uuid = ensureAnchorUuid(nodeEditor.view, p + 1);
+          }
+          if (!uuid) return;
+          const tr = nodeEditor.view.state.tr.setMeta(sectionFoldingPluginKey, {
+            action: "toggle",
+            uuid,
+          });
+          tr.setMeta("addToHistory", false);
+          nodeEditor.view.dispatch(tr);
+        });
+        wrapper.appendChild(foldBtn);
+
+        function refreshFoldBtn() {
+          const uuid = currentNode.attrs?.uuid as string | null;
+          const folded = uuid
+            ? getSectionFoldingState(nodeEditor.state).folded.has(uuid)
+            : false;
+          foldBtn.classList.toggle("is-folded", folded);
+          foldBtn.title = folded ? "Unfold section" : "Fold section";
+        }
+        refreshFoldBtn();
+
+        // Decorations applied to sibling blocks don't trigger this node's
+        // update(), so subscribe to all transactions to keep the chevron in
+        // sync with the folding plugin state.
+        const onTransaction = () => refreshFoldBtn();
+        nodeEditor.on("transaction", onTransaction);
+
         const h = document.createElement(`h${node.attrs.level}`) as HTMLHeadingElement;
         if (node.attrs.numbered !== false && node.attrs.sectionNumber) {
           h.dataset.sectionNumber = node.attrs.sectionNumber;
@@ -883,12 +955,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           // Tell ProseMirror to ignore all events originating from the annotation
           // area so it cannot steal focus from our label input.
           stopEvent(event) {
-            return annot === event.target || annot.contains(event.target as Node);
+            if (annot === event.target || annot.contains(event.target as Node)) return true;
+            if (foldBtn === event.target || foldBtn.contains(event.target as Node)) return true;
+            return false;
           },
           ignoreMutation(mutation) {
             // Ignore all mutations in the annotation area (label editing, etc.)
             if (annot.contains(mutation.target)) return true;
+            // Mutations inside the fold chevron (contentEditable=false) should
+            // also be ignored.
+            if (foldBtn.contains(mutation.target)) return true;
             return false;
+          },
+          destroy() {
+            nodeEditor.off("transaction", onTransaction);
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;
@@ -902,6 +982,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             }
             // Don't overwrite annot if an input is active
             if (!annot.querySelector("input")) renderAnnot();
+            refreshFoldBtn();
             return true;
           },
         };
@@ -910,6 +991,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     addProseMirrorPlugins() {
       return [
         ...(this.parent?.() || []),
+        sectionFoldingPlugin(),
         new Plugin({
           key: new PluginKey("sectionNumbers"),
           appendTransaction(transactions, _oldState, newState) {
@@ -2008,6 +2090,38 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         if (present.has(rec.anchorId)) continue;
         reanchorByText(editor, rec.kind, rec.text, rec.anchorId);
       }
+    },
+    collapseAllSections(): void {
+      if (!editor) return;
+      // Ensure every top-level heading has a UUID so fold state has a stable
+      // key per heading.
+      const existing = new Set<string>();
+      editor.state.doc.descendants((n) => {
+        if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
+      });
+      const tr = editor.state.tr;
+      let mutated = false;
+      editor.state.doc.forEach((node, offset) => {
+        if (node.type.name === "heading" && !node.attrs?.uuid) {
+          const newUuid = generateNodeUuid(existing);
+          existing.add(newUuid);
+          tr.setNodeMarkup(offset, undefined, { ...node.attrs, uuid: newUuid });
+          mutated = true;
+        }
+      });
+      if (mutated) {
+        tr.setMeta("addToHistory", false);
+      }
+      tr.setMeta(sectionFoldingPluginKey, { action: "collapseAll" });
+      editor.view.dispatch(tr);
+    },
+    expandAllSections(): void {
+      if (!editor) return;
+      const tr = editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "expandAll",
+      });
+      tr.setMeta("addToHistory", false);
+      editor.view.dispatch(tr);
     },
   }), [editor]);
 

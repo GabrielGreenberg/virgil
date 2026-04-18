@@ -356,6 +356,13 @@ Selected cards have a colored border + shadow with tinted header, white body:
 - **Archive**: `border-amber-300`, header `bg-amber-50/60`
 Body text always stays full dark (`#44403c`), never white-on-colored.
 
+### Highlight / Attention Color
+When a UI element needs to signal "active attention point" or "hidden
+content below" — e.g. the outline's current-position lozenge or a folded
+heading's chevron — use the footnote red: `var(--footnote-color, #b45757)`.
+This is the app's canonical "reddish highlight" and keeps attention cues
+consistent across the editor, outline, and margin gutter.
+
 ---
 
 ## Margin Elements (Marginalia)
