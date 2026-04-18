@@ -166,15 +166,15 @@ export function separatorOverrideStyle(
 
 /** Pre-built themes for existing card types. */
 export const CARD_THEMES = {
-  footnote:  { cardClass: footnoteCard, headerDefault: "bg-red-50/30",     headerSelected: "bg-red-50/60",     separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
-  note:      { cardClass: noteCard,     headerDefault: "bg-emerald-50/30", headerSelected: "bg-emerald-50/60", separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
-  archive:   { cardClass: panelCard,    headerDefault: "bg-amber-50/30",   headerSelected: "bg-amber-50/60",   separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
-  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-50/50",   headerSelected: "bg-stone-100/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/50",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
+  footnote:  { cardClass: footnoteCard, headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
+  note:      { cardClass: noteCard,     headerDefault: "bg-emerald-100/50", headerSelected: "bg-emerald-100",  separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
+  archive:   { cardClass: panelCard,    headerDefault: "bg-amber-100/50",  headerSelected: "bg-amber-100",     separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
+  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-100/70",  headerSelected: "bg-stone-200/80",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/80",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
   citation:  { cardClass: panelCard,    headerDefault: "bg-[#fef3c3]/40",  headerSelected: "bg-[#fef3c3]",     separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
-  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-50/40",   headerSelected: "bg-stone-100/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-50/40",     headerSelected: "bg-sky-50/80",     separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
-  cut:       { cardClass: cutCard,      headerDefault: "bg-red-50/30",     headerSelected: "bg-red-50/60",     separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
+  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-100/60",  headerSelected: "bg-stone-200/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-100/50",    headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
+  cut:       { cardClass: cutCard,      headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
