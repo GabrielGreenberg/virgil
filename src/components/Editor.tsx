@@ -424,7 +424,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (committed) return;
             committed = true;
             const val = input.value.trim() || null;
+            const original = (currentNode.attrs.parTitle as string | null) || null;
             cleanup();
+            if (val === original) {
+              renderAnnot();
+              return;
+            }
             setTitle(val);
           };
 
