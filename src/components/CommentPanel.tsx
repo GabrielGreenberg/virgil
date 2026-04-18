@@ -106,6 +106,7 @@ function UserSelector({
   }, [open]);
 
   const active = userById(users, activeUserId);
+  const selectable = users.filter((u) => u.id !== CLAUDE_ID);
 
   const submitNew = () => {
     const n = newName.trim();
@@ -121,21 +122,18 @@ function UserSelector({
     <div className="relative" ref={wrapRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-stone-200 bg-white hover:border-stone-300 transition-colors text-xs"
-        title="Switch acting user"
+        className="flex items-center justify-center p-0.5 rounded-full border border-stone-200 bg-white hover:border-stone-400 transition-colors"
+        title={`Acting as ${active.name} — click to switch`}
+        aria-label={`Acting as ${active.name}`}
       >
-        <UserAvatar user={active} size={14} />
-        <span className="text-stone-700 font-medium">{active.name}</span>
-        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <UserAvatar user={active} size={18} />
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-stone-200 rounded-md shadow-lg z-[9999] py-1">
           <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-[var(--muted-light)] font-medium">
             Acting as
           </div>
-          {users.map((u) => (
+          {selectable.map((u) => (
             <button
               key={u.id}
               onClick={() => {
@@ -254,7 +252,6 @@ function TurnPod({ turn, users }: { turn: RevisionTurn; users: RevisionUser[] })
     <div className={`${PANEL.subpod} space-y-1`}>
       <div className="flex items-center gap-1.5">
         <UserAvatar user={author} size={16} />
-        <span className="text-[11px] font-medium text-stone-700">{author.name}</span>
         <span className="text-[10px] text-[var(--muted-light)] ml-auto tabular-nums">
           {formatTurnTime(turn.createdAt)}
         </span>
@@ -289,9 +286,10 @@ function ReplyBox({
           setOpen(true);
         }}
         className="text-xs text-[var(--muted)] hover:text-stone-700 transition-colors flex items-center gap-1.5"
+        title={`Reply as ${activeUser.name}`}
       >
         <UserAvatar user={activeUser} size={14} />
-        Reply as {activeUser.name}
+        Reply
       </button>
     );
   }
@@ -308,9 +306,7 @@ function ReplyBox({
     <div className={`${PANEL.subpodWhite} p-2 space-y-1.5`} onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-1.5">
         <UserAvatar user={activeUser} size={14} />
-        <span className="text-[10px] text-[var(--muted)] font-medium">
-          Reply as {activeUser.name}
-        </span>
+        <span className="text-[10px] text-[var(--muted)] font-medium">Reply</span>
       </div>
       <textarea
         ref={ref}
@@ -413,12 +409,9 @@ function RevisionCard({
       {/* Header: author + timestamp, with target icon + menu trailing */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
         {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
-        {firstAuthor && (
-          <span className="text-xs font-medium text-stone-700 truncate">{firstAuthor.name}</span>
-        )}
         {firstTurn && (
           <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">
-            · {formatTurnTime(firstTurn.createdAt)}
+            {formatTurnTime(firstTurn.createdAt)}
           </span>
         )}
         <div className="flex-1" />
@@ -474,42 +467,65 @@ function RevisionCard({
   );
 }
 
-/* ── New general revision form ────────────────────────────────────── */
+/* ── New general revision actions ─────────────────────────────────── */
 
-function NewGeneralForm({
+type NewGeneralMode = "comment" | "ai";
+
+function NewGeneralActions({
   activeUser,
+  claudeUser,
   onSubmit,
 }: {
   activeUser: RevisionUser;
-  onSubmit: (text: string) => void;
+  claudeUser: RevisionUser;
+  onSubmit: (text: string, authorId?: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<NewGeneralMode | null>(null);
   const [text, setText] = useState("");
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (open) setTimeout(() => ref.current?.focus(), 10);
-  }, [open]);
+    if (mode) setTimeout(() => ref.current?.focus(), 10);
+  }, [mode]);
+
+  const author = mode === "ai" ? claudeUser : activeUser;
 
   const submit = () => {
-    if (text.trim()) {
-      onSubmit(text);
-      setText("");
-      setOpen(false);
-    }
+    if (!text.trim() || !mode) return;
+    onSubmit(text, mode === "ai" ? claudeUser.id : undefined);
+    setText("");
+    setMode(null);
   };
 
-  if (!open) {
+  const cancel = () => {
+    setMode(null);
+    setText("");
+  };
+
+  if (!mode) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-[var(--muted)] hover:text-stone-700 hover:bg-stone-50 rounded-md border border-dashed border-stone-200 hover:border-stone-300 transition-colors"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-          <path d="M12 5v14M5 12h14" />
-        </svg>
-        Add a general revision for the whole document
-      </button>
+      <div className="flex gap-1.5">
+        <button
+          onClick={() => setMode("comment")}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-stone-700 hover:bg-stone-50 rounded-md border border-dashed border-stone-200 hover:border-stone-300 transition-colors"
+          title="New revision comment"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
+          Revision comment
+        </button>
+        <button
+          onClick={() => setMode("ai")}
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-stone-700 hover:bg-stone-50 rounded-md border border-dashed border-stone-200 hover:border-stone-300 transition-colors"
+          title="New AI suggestion"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2 L13 10 L20 10 L14 14 L16 21 L12 17 L8 21 L10 14 L4 10 L11 10 Z" />
+          </svg>
+          AI suggestion
+        </button>
+      </div>
     );
   }
 
@@ -517,9 +533,9 @@ function NewGeneralForm({
     <div className={`${panelCard(true)}`}>
       <div className={`${PANEL.cardInner} space-y-2`}>
         <div className="flex items-center gap-1.5">
-          <UserAvatar user={activeUser} size={14} />
+          <UserAvatar user={author} size={14} />
           <span className="text-[10px] text-[var(--muted)] font-medium">
-            New general revision as {activeUser.name}
+            {mode === "ai" ? "New AI suggestion" : "New revision comment"}
           </span>
         </div>
         <textarea
@@ -531,23 +547,21 @@ function NewGeneralForm({
               e.preventDefault();
               submit();
             }
-            if (e.key === "Escape") {
-              setOpen(false);
-              setText("");
-            }
+            if (e.key === "Escape") cancel();
           }}
           rows={3}
-          placeholder="Instructions for Claude that apply to the whole document..."
+          placeholder={
+            mode === "ai"
+              ? "AI suggestion for the whole document..."
+              : "Revision comment for the whole document..."
+          }
           className="w-full bg-white border border-stone-200 rounded px-2.5 py-2 text-sm text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
         />
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-[var(--muted-light)]">Cmd+Enter to save</span>
           <div className="flex gap-1.5">
             <button
-              onClick={() => {
-                setOpen(false);
-                setText("");
-              }}
+              onClick={cancel}
               className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-stone-600 transition-colors"
             >
               Cancel
@@ -574,7 +588,7 @@ interface RevisionsPanelProps {
   textRevisions: TextRevision[];
   onSetActiveUser: (id: string) => void;
   onAddUser: (name: string, color: string) => void;
-  onAddGeneral: (text: string) => void;
+  onAddGeneral: (text: string, authorId?: string) => void;
   onAddTurn: (kind: RevisionKind, id: string, text: string) => void;
   onResolve: (kind: RevisionKind, id: string) => void;
   onReopen: (kind: RevisionKind, id: string) => void;
@@ -637,6 +651,7 @@ export default function RevisionsPanel({
   const revisionTheme = useCardTheme("revision");
 
   const activeUser = userById(users, activeUserId);
+  const claudeUser = userById(users, CLAUDE_ID);
 
   const activeGeneral = useMemo(
     () => generalRevisions.filter((r) => !r.resolved),
@@ -859,7 +874,11 @@ export default function RevisionsPanel({
           General
         </div>
 
-        <NewGeneralForm activeUser={activeUser} onSubmit={onAddGeneral} />
+        <NewGeneralActions
+          activeUser={activeUser}
+          claudeUser={claudeUser}
+          onSubmit={onAddGeneral}
+        />
 
         {activeGeneral.map((r) => (
           <RevisionCard

@@ -4029,7 +4029,7 @@ export default function EditorLayout() {
           textRevisions={textRevisions}
           onSetActiveUser={setActiveRevisionUser}
           onAddUser={addRevisionUser}
-          onAddGeneral={(text) => { addGeneralRevision(text); }}
+          onAddGeneral={(text, authorId) => { addGeneralRevision(text, authorId); }}
           onAddTurn={addRevisionTurn}
           onResolve={resolveRevision}
           onReopen={reopenRevision}

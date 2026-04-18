@@ -166,13 +166,13 @@ export function useRevisions(docId: string | null) {
   );
 
   const addGeneralRevision = useCallback(
-    (text: string) => {
+    (text: string, authorIdOverride?: string) => {
       const trimmed = text.trim();
       if (!trimmed) return null;
       const now = new Date().toISOString();
       let created: GeneralRevision | null = null;
       update((prev) => {
-        const authorId = prev.activeUserId ?? "me";
+        const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
         const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
         const rev: GeneralRevision = {
           id: generateEntityId(),
