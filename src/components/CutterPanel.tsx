@@ -16,6 +16,7 @@ import {
 } from "./panel-primitives";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_CUT, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
+import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 
 function startCutDrag(e: React.DragEvent, cutId: string) {
   e.dataTransfer.setData(MIME_CUT, JSON.stringify({ cutId }));
@@ -91,6 +92,7 @@ export default function CutterPanel({
   onScrollToParagraphId,
   onHoverCut,
   onDropSelection,
+  onDropParagraph,
 }: {
   cuts: CutItem[];
   onAdd: () => CutItem;
@@ -102,6 +104,8 @@ export default function CutterPanel({
   onScrollToParagraphId?: (uuid: string) => void;
   onHoverCut?: (id: string | null) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
+  /** Called when the user drags a paragraph by its grab bar onto the panel — creates a new cut bound to that paragraph. */
+  onDropParagraph?: (paragraphId: string) => void;
 }) {
   const sorted = useMemo(
     () => [...cuts].sort(
@@ -117,22 +121,40 @@ export default function CutterPanel({
       <div
         className={PANEL.list}
         onClick={() => onSelect(null)}
-        onDragOver={onDropSelection ? (e) => {
-          if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
+        onDragOver={(onDropSelection || onDropParagraph) ? (e) => {
+          const types = e.dataTransfer.types;
+          if (
+            (onDropSelection && types.includes(MIME_SELECTION_ANCHOR)) ||
+            (onDropParagraph && types.includes(MIME_PAR_CAPTURE))
+          ) {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }
         } : undefined}
-        onDrop={onDropSelection ? (e) => {
-          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
-          if (!raw) return;
-          e.preventDefault();
-          try {
-            const payload = JSON.parse(raw);
-            if (typeof payload.from === "number" && typeof payload.to === "number") {
-              onDropSelection(payload);
+        onDrop={(onDropSelection || onDropParagraph) ? (e) => {
+          if (onDropParagraph) {
+            const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
+            if (parRaw) {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                const { uuid } = JSON.parse(parRaw) as { uuid: string };
+                if (uuid) onDropParagraph(uuid);
+              } catch { /* ignore */ }
+              return;
             }
-          } catch { /* ignore */ }
+          }
+          if (onDropSelection) {
+            const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
+            if (!raw) return;
+            e.preventDefault();
+            try {
+              const payload = JSON.parse(raw);
+              if (typeof payload.from === "number" && typeof payload.to === "number") {
+                onDropSelection(payload);
+              }
+            } catch { /* ignore */ }
+          }
         } : undefined}
       >
         {sorted.length === 0 && (

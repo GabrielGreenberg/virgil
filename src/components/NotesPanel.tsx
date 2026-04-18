@@ -6,6 +6,7 @@ import type { UserNote, AiRequest } from "@/lib/types";
 import { CARD_THEMES, EditableCard, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
+import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -30,6 +31,8 @@ interface NotesPanelProps {
   onHoverNote?: (id: string | null) => void;
   /** Called when the user drops the selection chip onto the panel — anchors a new note to that range. */
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
+  /** Called when the user drags a paragraph by its grab bar onto the panel — creates a new note anchored to that paragraph. */
+  onDropParagraph?: (paragraphId: string) => void;
 }
 
 /* ── Shared helpers ──────────────────────────────────────────────── */
@@ -149,6 +152,7 @@ export default function NotesPanel({
   onEditorFocus,
   onHoverNote,
   onDropSelection,
+  onDropParagraph,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
     () => [...notes].sort((a, b) => {
@@ -198,22 +202,40 @@ export default function NotesPanel({
       <div
         className={PANEL.list}
         onClick={() => onSelectNote(null)}
-        onDragOver={onDropSelection ? (e) => {
-          if (e.dataTransfer.types.includes(MIME_SELECTION_ANCHOR)) {
+        onDragOver={(onDropSelection || onDropParagraph) ? (e) => {
+          const types = e.dataTransfer.types;
+          if (
+            (onDropSelection && types.includes(MIME_SELECTION_ANCHOR)) ||
+            (onDropParagraph && types.includes(MIME_PAR_CAPTURE))
+          ) {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }
         } : undefined}
-        onDrop={onDropSelection ? (e) => {
-          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
-          if (!raw) return;
-          e.preventDefault();
-          try {
-            const payload = JSON.parse(raw);
-            if (typeof payload.from === "number" && typeof payload.to === "number") {
-              onDropSelection(payload);
+        onDrop={(onDropSelection || onDropParagraph) ? (e) => {
+          if (onDropParagraph) {
+            const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
+            if (parRaw) {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                const { uuid } = JSON.parse(parRaw) as { uuid: string };
+                if (uuid) onDropParagraph(uuid);
+              } catch { /* ignore */ }
+              return;
             }
-          } catch { /* ignore */ }
+          }
+          if (onDropSelection) {
+            const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
+            if (!raw) return;
+            e.preventDefault();
+            try {
+              const payload = JSON.parse(raw);
+              if (typeof payload.from === "number" && typeof payload.to === "number") {
+                onDropSelection(payload);
+              }
+            } catch { /* ignore */ }
+          }
         } : undefined}
       >
         {sortedNotes.length === 0 && myAiRequests.length === 0 && (

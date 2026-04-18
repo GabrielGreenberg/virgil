@@ -22,6 +22,7 @@ import InTextConnectors from "./InTextConnectors";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
+import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
@@ -2391,6 +2392,48 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-note-drop", handler);
   }, [addNoteParagraphId]);
 
+  // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
+  // (notes, text revisions, cuts). Each hook:
+  //   • syncs `activeAnchorId`/`activeAnchorKind` to the selected entity, so
+  //     every setter (toolbar buttons, chip drops, marginalia clicks, kbd nav)
+  //     automatically drives the highlight,
+  //   • registers a document-level mousedown click-away that clears the
+  //     selection when the click lands outside the entity's card and its
+  //     anchor span.
+  // Text revisions don't carry a `data-revision-entry` card attribute the
+  // same way notes/cuts do, but the hook resolves the anchor span and the
+  // selection clears via a sibling `data-revision-entry` we add below.
+  useSelectedAnchorSync({
+    selectedId: selectedNoteId,
+    entities: notes,
+    kind: "note",
+    dataAttrName: "note-entry",
+    setSelectedId: setSelectedNoteId,
+    setActiveAnchorId,
+    setActiveAnchorKind,
+    skipSelectors: ['[data-selection-chip]', '[data-add-note-button]'],
+  });
+  useSelectedAnchorSync({
+    selectedId: selectedCutId,
+    entities: cuts,
+    kind: "cut",
+    dataAttrName: "cut-entry",
+    setSelectedId: setSelectedCutId,
+    setActiveAnchorId,
+    setActiveAnchorKind,
+    skipSelectors: ['[data-selection-chip]', '[data-cut-selection-button]'],
+  });
+  useSelectedAnchorSync({
+    selectedId: selectedCommentId,
+    entities: textRevisions,
+    kind: "revision",
+    dataAttrName: "revision-entry",
+    setSelectedId: setSelectedCommentId,
+    setActiveAnchorId,
+    setActiveAnchorKind,
+    skipSelectors: ['[data-selection-chip]', '[data-add-comment-button]'],
+  });
+
   // Listen for marginalia reanchor events (dragging a gutter icon to a new paragraph)
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2523,6 +2566,11 @@ export default function EditorLayout() {
       { anchorId: record.anchorId, anchorText: record.text },
     );
     setSelectedNoteId(note.id);
+    // Drop the native DOM selection so the browser doesn't render a lingering
+    // grey "inactive selection" rectangle after focus leaves the editor. The
+    // linked-anchor highlight (driven by the selection-sync effect) is now
+    // the authoritative visual.
+    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     const placement = prefs.placements.find((p) => p.id === "notes");
     if (placement?.side === "left") {
       if (prefs.activeLeft !== "notes") setActiveLeft("notes");
@@ -2545,6 +2593,20 @@ export default function EditorLayout() {
         undefined,
         { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
       );
+      setSelectedNoteId(note.id);
+    },
+    [addNote],
+  );
+
+  // Drag a whole paragraph (via its grab handle) into the Notes panel:
+  // creates a new note anchored to that paragraph's UUID. No text-range
+  // linkedAnchor — the binding is at paragraph granularity — and the
+  // paragraph stays intact in the document (unlike capture-style drops
+  // that extract content).
+  const handleDropParagraphOnNotes = useCallback(
+    (paragraphId: string) => {
+      if (!paragraphId) return;
+      const note = addNote(paragraphId);
       setSelectedNoteId(note.id);
     },
     [addNote],
@@ -2603,6 +2665,10 @@ export default function EditorLayout() {
       { anchorId: record.anchorId, anchorText: record.text },
     );
     setSelectedCutId(cut.id);
+    // Mirror handleAddNoteFromSelection: drop the native DOM selection so the
+    // browser doesn't render a grey "inactive selection" ghost after the
+    // toolbar button steals focus.
+    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     const placement = prefs.placements.find((p) => p.id === "cutter");
     if (placement?.side === "left") {
       if (prefs.activeLeft !== "cutter") setActiveLeft("cutter");
@@ -2623,6 +2689,18 @@ export default function EditorLayout() {
         undefined,
         { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
       );
+      setSelectedCutId(cut.id);
+    },
+    [addCut],
+  );
+
+  // Mirrors handleDropParagraphOnNotes: drag a whole paragraph by its grab
+  // handle into the Cutter panel → create a cut anchored to that paragraph
+  // (no text-range linkedAnchor; paragraph stays in the doc).
+  const handleDropParagraphOnCutter = useCallback(
+    (paragraphId: string) => {
+      if (!paragraphId) return;
+      const cut = addCut(paragraphId);
       setSelectedCutId(cut.id);
     },
     [addCut],
@@ -3179,6 +3257,10 @@ export default function EditorLayout() {
       pendingRevisionAnchorIdRef.current = null;
     }
     setPendingCommentText(selectedText);
+    // Mirror other toolbar actions: drop the native DOM selection so the
+    // browser doesn't leave a grey ghost over the editor after the button
+    // steals focus.
+    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     // Ensure revisions panel is open (setActiveLeft/Right are toggles, so only call if not already active)
     const revPlacement = prefs.placements.find((p) => p.id === "revisions");
     if (revPlacement?.side === "left") {
@@ -3480,7 +3562,15 @@ export default function EditorLayout() {
           selected: selectedNoteId === n.id,
           title: n.title || "Note",
           onClick: () => handleNoteMarkerClick(n.id),
-          onDelete: () => removeNoteParagraphId(n.id, pid),
+          onDelete: () => {
+            // Drop the text anchor first so the highlight clears. The
+            // orphan guard fires `virgil-anchor-orphaned` which clears
+            // `note.anchorId` via the useNotes listener; the selection-sync
+            // effect then releases `activeAnchorId` on its next tick.
+            const ed = editorRef.current?.getEditor();
+            if (ed && n.anchorId) removeLinkedAnchor(ed, n.anchorId);
+            removeNoteParagraphId(n.id, pid);
+          },
           anchorId: n.anchorId,
           onHover: n.anchorId
             ? (hovering: boolean) => {
@@ -3596,7 +3686,15 @@ export default function EditorLayout() {
           selected: selectedCutId === c.id,
           title: c.title || "Cut",
           onClick: () => handleCutMarkerClick(c.id),
-          onDelete: () => removeCutParagraphId(c.id, pid),
+          onDelete: () => {
+            // Drop the text anchor first (mirrors the Notes flow): the orphan
+            // guard fires `virgil-anchor-orphaned`, useCutter clears
+            // `cut.anchorId`, and the selection-sync hook then releases
+            // `activeAnchorId` — so the highlight goes away.
+            const ed = editorRef.current?.getEditor();
+            if (ed && c.anchorId) removeLinkedAnchor(ed, c.anchorId);
+            removeCutParagraphId(c.id, pid);
+          },
           anchorId: c.anchorId,
           onHover: c.anchorId
             ? (hovering: boolean) => {
@@ -3868,6 +3966,7 @@ export default function EditorLayout() {
           onEditorFocus={setOverrideEditor}
           onHoverNote={handleHoverNote}
           onDropSelection={handleDropSelectionOnNotes}
+          onDropParagraph={handleDropParagraphOnNotes}
         />
       );
     }
@@ -3908,6 +4007,31 @@ export default function EditorLayout() {
             if (!record) return;
             pendingRevisionAnchorIdRef.current = record.anchorId;
             setPendingCommentText(payload.selectedText || record.text);
+          }}
+          onDropParagraph={(paragraphId) => {
+            // Dragging a paragraph into Revisions: anchor a new revision over
+            // the whole paragraph's text range, then open the form with that
+            // range as `pendingCommentText` so the user can write their note.
+            // Revisions are always thread-rooted in a text span, so this
+            // matches the chip-drop flow rather than the Notes shortcut.
+            const ed = editorRef.current?.getEditor();
+            if (!ed) return;
+            let from: number | null = null;
+            let to: number | null = null;
+            ed.state.doc.descendants((node, pos) => {
+              if (from !== null) return false;
+              if (node.attrs?.uuid === paragraphId) {
+                from = pos + 1;
+                to = pos + node.nodeSize - 1;
+                return false;
+              }
+              return true;
+            });
+            if (from === null || to === null || from >= to) return;
+            const record = createLinkedAnchor(ed, "revision", { from, to });
+            if (!record) return;
+            pendingRevisionAnchorIdRef.current = record.anchorId;
+            setPendingCommentText(record.text);
           }}
         />
       );
@@ -4475,6 +4599,7 @@ export default function EditorLayout() {
           onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
           onHoverCut={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
+          onDropParagraph={handleDropParagraphOnCutter}
         />
       );
     }

@@ -65,6 +65,7 @@ export default function SelectionChip({ editor }: { editor: Editor | null }) {
 
   return createPortal(
     <div
+      data-selection-chip
       draggable
       onDragStart={onDragStart}
       onMouseDown={(e) => {
