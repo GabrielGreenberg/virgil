@@ -23,7 +23,7 @@ const CARD_THEME_BY_KEY: Record<PanelThemeKey, keyof typeof CARD_THEMES> = {
   footnote: "footnote",
   note:     "note",
   archive:  "archive",
-  quote:    "citation", // QuotationsPanel cards are themed inline; uses citation base
+  quote:    "quote",
   todo:     "todo",
   cut:      "cut",
   revision: "note",     // placeholder — revision cards aren't themed yet
