@@ -709,7 +709,8 @@ export function QuotationGroupCard({
     [selected, tryDelete],
   );
 
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -754,7 +755,7 @@ export function QuotationGroupCard({
           </svg>
         </div>
         {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
         )}
         <input
           type="text"
@@ -841,7 +842,7 @@ export function QuotationGroupCard({
       </div>
     </div>
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

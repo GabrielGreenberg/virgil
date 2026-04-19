@@ -61,7 +61,8 @@ export function CutCard({
   const isOrphaned = cut.paragraphIds.length === 0 && !cut.anchorId;
   const popped = usePoppedCards();
   const popKey = `cut:${cut.id}`;
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -92,10 +93,10 @@ export function CutCard({
       dataAttr={{ name: "cut-entry", value: cut.id }}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedNow}
+      isPoppedOut={isPoppedOut}
     />
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

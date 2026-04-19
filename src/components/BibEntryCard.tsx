@@ -412,7 +412,8 @@ export default function BibEntryCard({
   }
 
   const theme = useCardTheme("bib");
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -430,7 +431,7 @@ export default function BibEntryCard({
         style={headerOverrideStyle(theme, isSelected)}
       >
         {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
         )}
         <div
           className="flex-1 min-w-0 leading-snug"
@@ -486,6 +487,6 @@ export default function BibEntryCard({
       </div>
     </div>
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }

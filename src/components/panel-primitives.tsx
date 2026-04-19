@@ -936,7 +936,8 @@ export function AiRequestCard({
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
   const theme = CARD_THEMES.aiRequest;
 
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -949,7 +950,7 @@ export function AiRequestCard({
       {/* Header: star + kind label + status + inline delete */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
         {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
         )}
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
@@ -1023,7 +1024,7 @@ export function AiRequestCard({
       </div>
     </div>
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

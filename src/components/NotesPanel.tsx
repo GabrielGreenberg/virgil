@@ -117,7 +117,9 @@ export function NoteCard({
   const theme = useCardTheme("note");
   const popped = usePoppedCards();
   const popKey = `note:${note.id}`;
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  // Skip the in-list render when popped — <FloatingCards> renders the float.
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -152,10 +154,10 @@ export function NoteCard({
       extraDataAttrs={extraDataAttrs}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedNow}
+      isPoppedOut={isPoppedOut}
     />
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

@@ -323,7 +323,8 @@ export function CitationCard({
       ? "border-dashed opacity-80"
       : "";
 
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -363,7 +364,7 @@ export function CitationCard({
             style={headerOverrideStyle(theme, isSelected)}
           >
             {onToggleFromCtx && (
-              <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
+              <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
             )}
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
@@ -471,7 +472,7 @@ export function CitationCard({
       )}
     </div>
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

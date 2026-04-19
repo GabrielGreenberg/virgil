@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
-import RevisionsPanel from "./CommentPanel";
+import RevisionsPanel, { RevisionCard } from "./CommentPanel";
 import NotesPanel, { NoteCard } from "./NotesPanel";
-import CutterPanel from "./CutterPanel";
+import CutterPanel, { CutCard } from "./CutterPanel";
 import SelectionChip from "./SelectionChip";
 import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "./OutlinePanel";
 import TodoPanel, { TodoRow } from "./TodoPanel";
@@ -85,6 +85,8 @@ import OmniViewPanel, { type OmniItem, type OmniCategory, PANEL_TO_CATEGORY, DEF
 import { CitationCard } from "./CitationsPanel";
 import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
 import { QuotationGroupCard } from "./QuotationsPanel";
+import BibEntryCard from "./BibEntryCard";
+import { AiRequestCard } from "./panel-primitives";
 import EditorMirror from "./EditorMirror";
 import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
@@ -2037,11 +2039,13 @@ export default function EditorLayout() {
     };
   }, [editorSplit, mirrorViewGen, editorInstance]);
 
-  // Derive footnotes list from editor state (sorted by document position)
+  // Derive footnotes list from editor state (sorted by document position).
+  // Depends on `content` as well so the list populates on initial hydration,
+  // not only after the first user edit (which is what drives `latestDoc`).
   const footnotes = useMemo(() => {
     return editorRef.current?.getFootnotes() ?? [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, editorInstance]);
+  }, [latestDoc, content, editorInstance]);
 
   // Set of archive snippet IDs that have at least one paragraph anchor
   const anchoredIds = useMemo<Set<string>>(() => {
@@ -4875,6 +4879,276 @@ export default function EditorLayout() {
     setFloatPosition: setCardFloatPosition,
   };
 
+  /**
+   * Render a single popped card from its `${kind}:${id}` key. Returns null
+   * when the underlying entity no longer exists. Each branch mirrors the
+   * props the host panel would pass, with `isPoppedOut={true}` so the
+   * wrapper card skips its list-null-return and wraps itself in FloatCard.
+   */
+  const renderPoppedCard = (key: string): ReactNode => {
+    const sep = key.indexOf(":");
+    if (sep <= 0) return null;
+    const kind = key.slice(0, sep);
+    const id = key.slice(sep + 1);
+    switch (kind) {
+      case "note": {
+        const note = notes.find((n) => n.id === id);
+        if (!note) return null;
+        const pid = note.paragraphIds[0];
+        return (
+          <NoteCard
+            key={key}
+            note={note}
+            selected={selectedNoteId === note.id}
+            onUpdate={updateNote}
+            onUpdateTitle={updateNoteTitle}
+            onDelete={deleteNote}
+            onSelect={setSelectedNoteId}
+            onJump={pid ? () => editorRef.current?.scrollToParagraphId(pid) : undefined}
+            onEditorFocus={setOverrideEditor}
+            getCitationDisplayText={getCitationDisplayText}
+            onCitationCreated={handleCitationCreated}
+            onHoverChange={(hovering) => handleHoverNote(hovering ? note.id : null)}
+            isPoppedOut
+          />
+        );
+      }
+      case "footnote": {
+        // Read directly from the editor so the float renders on first paint
+        // even before the `footnotes` memo has recomputed (its deps only
+        // update on content edits, not on initial hydration).
+        const liveFootnotes = editorRef.current?.getFootnotes() ?? footnotes;
+        const fn = liveFootnotes.find((f) => f.footnoteId === id);
+        if (!fn) return null;
+        const isSelected = selectedFootnoteId === fn.footnoteId;
+        return (
+          <FootnoteCard
+            key={key}
+            footnote={fn}
+            isSelected={isSelected}
+            onSelect={() => setSelectedFootnoteId(isSelected ? null : fn.footnoteId)}
+            onJump={() => editorRef.current?.scrollToFootnote(fn.footnoteId)}
+            onEdit={(json) => handleEditFootnote(fn.footnoteId, json)}
+            onDelete={() => handleDeleteFootnote(fn.footnoteId)}
+            onEditTitle={(title) => handleEditFootnoteTitle(fn.footnoteId, title)}
+            onEditorFocus={setOverrideEditor}
+            getCitationDisplayText={getCitationDisplayText}
+            onCitationCreated={handleCitationCreated}
+            isPoppedOut
+          />
+        );
+      }
+      case "archive": {
+        const snippet = archiveSnippets.find((s) => s.id === id);
+        if (!snippet) return null;
+        const orphaned = anchoredIds && !anchoredIds.has(snippet.id);
+        return (
+          <ArchiveCard
+            key={key}
+            snippet={snippet}
+            selected={selectedArchiveId === snippet.id}
+            orphaned={orphaned}
+            onSelect={setSelectedArchiveId}
+            onEdit={updateArchiveSnippet}
+            onUpdateTitle={updateArchiveSnippetTitle}
+            onDelete={handleDeleteArchive}
+            onScrollToMarker={(sid) => {
+              const s = archiveSnippets.find((x) => x.id === sid);
+              const p = s?.paragraphIds[0];
+              if (p) editorRef.current?.scrollToParagraphId(p);
+            }}
+            onEditorFocus={setOverrideEditor}
+            getCitationDisplayText={getCitationDisplayText}
+            onCitationCreated={handleCitationCreated}
+            isPoppedOut
+          />
+        );
+      }
+      case "cut": {
+        const cut = cuts.find((c) => c.id === id);
+        if (!cut) return null;
+        const pid = cut.paragraphIds[0];
+        return (
+          <CutCard
+            key={key}
+            cut={cut}
+            selected={selectedCutId === cut.id}
+            onUpdate={updateCut}
+            onUpdateTitle={updateCutTitle}
+            onDelete={deleteCut}
+            onSelect={setSelectedCutId}
+            onJump={pid ? () => editorRef.current?.scrollToParagraphId(pid) : undefined}
+            onHoverChange={(hovering) => handleHoverCut(hovering ? cut.id : null)}
+            isPoppedOut
+          />
+        );
+      }
+      case "todo": {
+        const item = todoItems.find((t) => t.id === id);
+        if (!item) return null;
+        const pid = item.paragraphIds[0];
+        return (
+          <TodoRow
+            key={key}
+            item={item}
+            selected={selectedTodoId === item.id}
+            onToggle={toggleTodo}
+            onUpdate={updateTodo}
+            onUpdateNotes={updateTodoNotes}
+            onDelete={deleteTodo}
+            onSelect={setSelectedTodoId}
+            isAnchored={item.paragraphIds.length > 0}
+            onJump={pid ? () => editorRef.current?.scrollToParagraphId(pid) : undefined}
+            isPoppedOut
+          />
+        );
+      }
+      case "bib": {
+        const entry = bibEntries.find((e) => e.key === id);
+        if (!entry) return null;
+        const isCited = allEditorCitations.some((c) => c.keys.includes(entry.key));
+        return (
+          <BibEntryCard
+            key={key}
+            entry={entry}
+            isSelected={selectedBibKey === entry.key}
+            onClick={() => setSelectedBibKey(selectedBibKey === entry.key ? null : entry.key)}
+            getFormattedBib={getFormattedBib}
+            getAnnotation={getAnnotation}
+            setAnnotation={setAnnotation}
+            onRequestReview={requestBibReview}
+            onCancelReview={cancelBibReview}
+            getReviewStatus={getBibReviewStatus}
+            onUpdateBibEntry={updateBibEntry}
+            onUpdateBibKeyAndType={updateBibKeyAndType}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            isCited={isCited}
+            isPoppedOut
+          />
+        );
+      }
+      case "citation": {
+        const cit = citations.find((c) => c.id === id);
+        if (!cit) return null;
+        const pos = citationPositionMap.get(cit.id) ?? null;
+        const isSelected = selectedCitationId === cit.id;
+        return (
+          <CitationCard
+            key={key}
+            citation={cit}
+            isSelected={isSelected}
+            isAnchored={pos !== null}
+            bibEntries={bibEntries}
+            bibPackage={bibPackage}
+            getDisplayText={getCitationDisplayText}
+            onSelect={() => setSelectedCitationId(isSelected ? null : cit.id)}
+            onJump={() => {
+              setSelectedCitationId(cit.id);
+              editorRef.current?.scrollToCitation(cit.id);
+            }}
+            onUpdateCitation={updateCitation}
+            getFormattedBib={getFormattedBib}
+            getAnnotation={getAnnotation}
+            setAnnotation={setAnnotation}
+            onRequestReview={requestBibReview}
+            onCancelReview={cancelBibReview}
+            getReviewStatus={getBibReviewStatus}
+            onUpdateBibEntry={updateBibEntry}
+            onUpdateBibKeyAndType={updateBibKeyAndType}
+            isPoppedOut
+          />
+        );
+      }
+      case "revision": {
+        const gen = generalRevisions.find((r) => r.id === id);
+        const text = textRevisions.find((r) => r.id === id);
+        const rev = gen ?? text;
+        if (!rev) return null;
+        const rkind: "general" | "text" = gen ? "general" : "text";
+        const activeUser =
+          revisionUsers.find((u) => u.id === activeRevisionUserId) ??
+          revisionUsers[0];
+        if (!activeUser) return null;
+        const header = gen ? (
+          <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
+            Document-wide
+          </div>
+        ) : (
+          <div className="text-xs text-[var(--muted)] truncate font-medium">
+            &ldquo;{text!.selectedText}&rdquo;
+          </div>
+        );
+        return (
+          <RevisionCard
+            key={key}
+            kind={rkind}
+            id={rev.id}
+            users={revisionUsers}
+            activeUser={activeUser}
+            turns={rev.turns}
+            resolved={false}
+            selected={selectedCommentId === rev.id}
+            header={header}
+            onSelect={() =>
+              setSelectedCommentId(selectedCommentId === rev.id ? null : rev.id)
+            }
+            onResolve={() => resolveRevision(rkind, rev.id)}
+            onReopen={() => reopenRevision(rkind, rev.id)}
+            onDelete={() => deleteRevision(rkind, rev.id)}
+            onReply={(t) => addRevisionTurn(rkind, rev.id, t)}
+            isPoppedOut
+          />
+        );
+      }
+      case "quotation": {
+        const group = quotationGroups.find((g) => g.id === id);
+        if (!group) return null;
+        const pid = group.paragraphIds[0];
+        return (
+          <QuotationGroupCard
+            key={key}
+            group={group}
+            bibEntries={bibEntries}
+            bibPackage={bibPackage}
+            selected={selectedQuotationGroupId === group.id}
+            onSelect={() =>
+              setSelectedQuotationGroupId(
+                selectedQuotationGroupId === group.id ? null : group.id,
+              )
+            }
+            onDelete={() => deleteQuotationGroup(group.id)}
+            onJump={pid ? () => editorRef.current?.scrollToParagraphId(pid) : undefined}
+            onUpdateGroupTitle={updateQuotationGroupTitle}
+            onAddReference={addQuotationReference}
+            onDeleteReference={deleteQuotationReference}
+            onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
+            onAddQuote={addQuotationQuote}
+            onUpdateQuote={updateQuotationQuote}
+            onDeleteQuote={deleteQuotationQuote}
+            onUpdateNotes={updateQuotationNotes}
+            isPoppedOut
+          />
+        );
+      }
+      case "ai": {
+        const req = aiRequests.find((r) => r.id === id);
+        if (!req) return null;
+        return (
+          <AiRequestCard
+            key={key}
+            request={req}
+            onChangeText={(text) => updateAiRequestText(req.id, text)}
+            onDelete={() => deleteAiRequest(req.id)}
+            isPoppedOut
+          />
+        );
+      }
+      default:
+        return null;
+    }
+  };
+
   return (
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
@@ -5505,11 +5779,14 @@ export default function EditorLayout() {
           onCancel={cancelFolderPick}
         />
       )}
-      {/* Floating (popped-out) panels — rendered via portal above everything.
-          Floating (popped-out) cards are handled by each wrapper card
-          component itself: when `popped.isPopped(key)` is true, the card
-          wraps itself in <FloatCard/> (a FloatingPanel portal). Data flows
-          naturally through the host panel's existing props. */}
+      {/* Floating (popped-out) cards — rendered at the EditorLayout root so
+          they survive closing the source panel. Each wrapper card receives
+          `isPoppedOut={true}`, which makes it wrap itself in a FloatCard
+          (portal to document.body). The wrapper-internal null-return for
+          in-list renders prevents double-mounting when the source panel
+          is also open. */}
+      {prefs.poppedOutCards.map((key) => renderPoppedCard(key))}
+      {/* Floating (popped-out) panels — rendered via portal above everything. */}
       {prefs.poppedOutPanels.map((pid, i) => {
         const placement = prefs.placements.find((pl) => pl.id === pid);
         const side: Side = placement?.side ?? "right";

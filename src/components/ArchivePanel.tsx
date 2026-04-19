@@ -97,7 +97,8 @@ export function ArchiveCard({
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
   };
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
   const card = (
     <EditableCard
@@ -133,10 +134,10 @@ export function ArchiveCard({
       dataAttr={{ name: "archive-entry", value: snippet.id }}
       extraDataAttrs={extraDataAttrs}
       onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedNow}
+      isPoppedOut={isPoppedOut}
     />
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 

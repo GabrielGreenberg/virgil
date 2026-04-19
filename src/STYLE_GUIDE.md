@@ -145,14 +145,25 @@ floating. Clicking it toggles the card between its panel-list slot and a
 Any wrapper card (`NoteCard`, `FootnoteCard`, `ArchiveCard`, `CutCard`,
 `TodoRow`, `BibEntryCard`, `CitationCard`, `RevisionCard`,
 `QuotationGroupCard`, `AiRequestCard`) reads the shared `PoppedCardsContext`
-(`src/hooks/usePoppedCards.ts`) to decide whether it is popped. When popped,
-it wraps its own JSX in `<FloatCard>` (`src/components/FloatingCards.tsx`),
-which mounts a `FloatingPanel` portal with the rect from
-`useViewPrefs.cardFloatPositions`. Keys are shaped `${kind}:${id}` where
-`kind ∈ {note, footnote, archive, cut, todo, bib, citation, revision,
-quotation, ai}`. A card is rendered exactly once: either in the panel list
-or in the float. Closing the host panel's sidebar unmounts its popped
-cards; reopening restores them.
+(`src/hooks/usePoppedCards.ts`) to decide whether it is popped.
+
+- **In a panel list**: if the context says popped, the wrapper returns
+  `null` so the panel's list doesn't render it.
+- **As a float**: `EditorLayout` iterates `prefs.poppedOutCards` and calls
+  a top-level `renderPoppedCard(key)` dispatcher that rebuilds the card
+  with `isPoppedOut={true}`. That prop makes the wrapper bypass the
+  null-return and wrap itself in `<FloatCard>`
+  (`src/components/FloatingCards.tsx`), which mounts a `FloatingPanel`
+  portal with the rect from `useViewPrefs.cardFloatPositions`.
+
+Keys are shaped `${kind}:${id}` where `kind ∈ {note, footnote, archive, cut,
+todo, bib, citation, revision, quotation, ai}`. A card is rendered exactly
+once: either in the panel list or in the float.
+
+Because the dispatcher lives at the `EditorLayout` root, popped cards stay
+visible even when the host panel's sidebar is closed — the dispatcher has
+access to the same EditorLayout-scope state the panels consume, so data
+flows to the float independently of panel mount state.
 
 ### Selection states
 - **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.

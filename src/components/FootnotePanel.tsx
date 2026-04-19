@@ -128,7 +128,8 @@ export function FootnoteCard({
   const theme = useCardTheme("footnote");
   const popped = usePoppedCards();
   const popKey = `footnote:${fn.footnoteId}`;
-  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -159,10 +160,10 @@ export function FootnoteCard({
       wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
       onTogglePopout={onToggleFromCtx}
-      isPoppedOut={isPoppedNow}
+      isPoppedOut={isPoppedOut}
     />
   );
-  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
 }
 
