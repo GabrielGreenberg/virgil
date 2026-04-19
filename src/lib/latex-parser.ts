@@ -20,10 +20,23 @@ function stripPreamble(latex: string): string {
   return latex.trim();
 }
 
+/**
+ * Parse a run of inline LaTeX into Tiptap inline nodes.
+ *
+ * `\vfid{uuid}` and `\vcid{uuid}` are no-op markers the serializer emits
+ * right before `\footnote{...}` / `\cite{...}` to preserve stable
+ * `footnoteId` / `citationId` values across parse cycles. When we see one,
+ * we stash the id in `pendingFootnoteId` / `pendingCitationId`; the next
+ * matching entity consumes it. Without these markers we fall back to
+ * `generateEntityId()` (current behavior for legacy `.tex` files that
+ * haven't been re-saved yet).
+ */
 function parseInlineContent(text: string): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
+  let pendingFootnoteId: string | null = null;
+  let pendingCitationId: string | null = null;
 
   const flush = () => {
     if (buffer) {
@@ -141,6 +154,29 @@ function parseInlineContent(text: string): JSONContent[] {
         }
       }
 
+      // \vfid{uuid} — no-op marker stashing a stable footnoteId for the
+      // next \footnote{...} in the stream. Emitted by the serializer.
+      const vfidMatch = rest.match(/^\\vfid\{/);
+      if (vfidMatch) {
+        const idArg = extractBraced(text, i + "\\vfid".length);
+        if (idArg !== null) {
+          pendingFootnoteId = idArg.content || null;
+          i = idArg.end;
+          continue;
+        }
+      }
+
+      // \vcid{uuid} — same, for citationId.
+      const vcidMatch = rest.match(/^\\vcid\{/);
+      if (vcidMatch) {
+        const idArg = extractBraced(text, i + "\\vcid".length);
+        if (idArg !== null) {
+          pendingCitationId = idArg.content || null;
+          i = idArg.end;
+          continue;
+        }
+      }
+
       // \footnote{...}
       const fnMatch = rest.match(/^\\footnote\{/);
       if (fnMatch) {
@@ -152,9 +188,10 @@ function parseInlineContent(text: string): JSONContent[] {
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: generateEntityId(),
+              footnoteId: pendingFootnoteId || generateEntityId(),
             },
           });
+          pendingFootnoteId = null;
           i = inner.end;
           continue;
         }
@@ -223,11 +260,12 @@ function parseInlineContent(text: string): JSONContent[] {
             nodes.push({
               type: "citation",
               attrs: {
-                citationId: generateEntityId(),
+                citationId: pendingCitationId || generateEntityId(),
                 command: fullCmd,
                 displayText: "",
               },
             });
+            pendingCitationId = null;
             i = pos;
             continue;
           }
@@ -250,11 +288,12 @@ function parseInlineContent(text: string): JSONContent[] {
               nodes.push({
                 type: "citation",
                 attrs: {
-                  citationId: generateEntityId(),
+                  citationId: pendingCitationId || generateEntityId(),
                   command: fullCmd,
                   displayText: "",
                 },
               });
+              pendingCitationId = null;
               i = inner.end;
               continue;
             }

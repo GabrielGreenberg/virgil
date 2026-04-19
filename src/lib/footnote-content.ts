@@ -260,7 +260,11 @@ function serializeMarks(text: string, marks?: { type: string }[]): string {
 function serializeInlineNode(node: JSONContent): string {
   if (node.type === "text") return serializeMarks(node.text || "", node.marks as { type: string }[] | undefined);
   if (node.type === "inlineMath") return `$${node.attrs?.latex || ""}$`;
-  if (node.type === "citation") return (node.attrs?.command as string) || "";
+  if (node.type === "citation") {
+    const cid = node.attrs?.citationId as string | undefined;
+    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    return `${idMarker}${(node.attrs?.command as string) || ""}`;
+  }
   if (node.type === "hardBreak") return " ";
   return "";
 }
@@ -323,6 +327,9 @@ function parseInlineLatex(text: string): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
+  // `\vcid{uuid}` marker stashes a stable citationId for the next cite.
+  // Footnotes don't nest, so `\vfid` isn't handled in this inline parser.
+  let pendingCitationId: string | null = null;
 
   const flush = () => {
     if (buffer) {
@@ -371,6 +378,19 @@ function parseInlineLatex(text: string): JSONContent[] {
         }
       }
 
+      // \vcid{uuid} — no-op marker stashing a stable citationId for the
+      // next citation command. See parseInlineContent in latex-parser.ts.
+      const vcidMatch = rest.match(/^\\vcid\{/);
+      if (vcidMatch) {
+        const open = i + "\\vcid".length;
+        const closed = findClose(text, open);
+        if (closed !== -1) {
+          pendingCitationId = text.slice(open + 1, closed) || null;
+          i = closed + 1;
+          continue;
+        }
+      }
+
       // Citation commands: \cite, \citep, \citet, \textcite, \parencite, \cites, etc.
       const citeMatch = rest.match(/^\\(Citeyearpar|Citeauthor|Citeyear|Citealp|Citealt|Citep|Citet|Textcites|Parencites|Autocites|Footcites|Textcite|Parencite|Autocite|Footcite|Cites|Cite|citeyearpar|citeauthor|citeyear|citealp|citealt|citep|citet|textcites|parencites|autocites|footcites|textcite|parencite|autocite|footcite|cites|cite)(\*?)/);
       if (citeMatch) {
@@ -399,11 +419,12 @@ function parseInlineLatex(text: string): JSONContent[] {
           nodes.push({
             type: "citation",
             attrs: {
-              citationId: generateEntityId(),
+              citationId: pendingCitationId || generateEntityId(),
               command: fullCmd,
               displayText: "",
             },
           });
+          pendingCitationId = null;
           i = pos;
           continue;
         }

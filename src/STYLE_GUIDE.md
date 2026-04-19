@@ -165,6 +165,27 @@ visible even when the host panel's sidebar is closed — the dispatcher has
 access to the same EditorLayout-scope state the panels consume, so data
 flows to the float independently of panel mount state.
 
+### Inline-entity ID stability
+
+Footnotes and citations have no inherent identifier in a `.tex` file, so
+the parser would otherwise mint a fresh UUID for each one on every load,
+breaking any state keyed by those ids (popped-out cards, selection sync).
+The serializer emits two no-op markers alongside each inline entity:
+
+```latex
+\vfid{<uuid>}\footnote{...}
+\vcid{<uuid>}\cite{...}
+```
+
+Both are declared in the preamble as `\providecommand` no-ops so real
+LaTeX compilation ignores them. The parser consumes a preceding
+`\vfid`/`\vcid` into a pending-id slot and applies it to the next
+`\footnote` or citation command; absent a marker, it falls back to a
+fresh UUID (so legacy `.tex` files still open — the next save writes
+the markers in). This lives in `src/lib/latex-serializer.ts`,
+`src/lib/latex-parser.ts`, and the footnote-body parser/serializer in
+`src/lib/footnote-content.ts`.
+
 ### Selection states
 - **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
 - **Selected**: colored border around whole card, intensified header (`theme.headerSelected`), white body.

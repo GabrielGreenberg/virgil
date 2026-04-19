@@ -9,6 +9,13 @@ const PREAMBLE = `\\documentclass{article}
 \\usepackage{amsmath}
 \\usepackage{amssymb}
 
+% Virgil entity-id markers — no-op commands that carry stable UUIDs for
+% inline entities (footnotes, citations) across .tex parse cycles. Without
+% these, every re-parse regenerates the ids and any UI state keyed by them
+% (e.g. popped-out cards) becomes stale.
+\\providecommand{\\vfid}[1]{}
+\\providecommand{\\vcid}[1]{}
+
 \\begin{document}
 
 `;
@@ -174,8 +181,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       return `\\[\n${node.attrs?.latex || ""}\n\\]${anchor}\n\n`;
     }
 
-    case "footnote":
-      return `\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+    case "footnote": {
+      const fid = node.attrs?.footnoteId as string | undefined;
+      const idMarker = fid ? `\\vfid{${fid}}` : "";
+      return `${idMarker}\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+    }
 
     case "latexComment": {
       const uuid = node.attrs?.uuid as string | null;
@@ -188,8 +198,11 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       return `\\archivemarker{${node.attrs?.archiveId || ""}}{${preview}}`;
     }
 
-    case "citation":
-      return node.attrs?.command || "";
+    case "citation": {
+      const cid = node.attrs?.citationId as string | undefined;
+      const idMarker = cid ? `\\vcid{${cid}}` : "";
+      return `${idMarker}${node.attrs?.command || ""}`;
+    }
 
     case "labelRef":
       return `\\ref{${node.attrs?.label || ""}}`;
@@ -221,14 +234,18 @@ function serializeInline(node: JSONContent): string {
     return `$${node.attrs?.latex || ""}$`;
   }
   if (node.type === "footnote") {
-    return `\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+    const fid = node.attrs?.footnoteId as string | undefined;
+    const idMarker = fid ? `\\vfid{${fid}}` : "";
+    return `${idMarker}\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
   }
   if (node.type === "archiveMarker") {
     const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
     return `\\archivemarker{${node.attrs?.archiveId || ""}}{${preview}}`;
   }
   if (node.type === "citation") {
-    return node.attrs?.command || "";
+    const cid = node.attrs?.citationId as string | undefined;
+    const idMarker = cid ? `\\vcid{${cid}}` : "";
+    return `${idMarker}${node.attrs?.command || ""}`;
   }
   if (node.type === "labelRef") {
     return `\\ref{${node.attrs?.label || ""}}`;
