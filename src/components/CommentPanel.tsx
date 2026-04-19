@@ -11,14 +11,20 @@ import type {
 import type { RevisionKind } from "@/hooks/useRevisions";
 import {
   Card,
-  panelCard,
   PANEL,
   PanelHeader,
   ItemMenu,
   MenuDelete,
   TargetIcon,
-  CARD_THEMES,
 } from "./panel-primitives";
+
+/** Visual style for the draft-comment / draft-revision form wrappers.
+ *  These aren't cards (no entity, no selection, no drag), just form
+ *  containers that inherit the selected-card accent to signal "you're
+ *  adding something". Kept local so the `panelCard` helper stays
+ *  scoped to actual card rendering. */
+const FORM_CARD_CLASS =
+  "rounded-lg border border-amber-300 bg-surface shadow-sm overflow-hidden";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
@@ -390,7 +396,7 @@ function RevisionCard({
   registerRef,
   onHoverChange,
 }: CardProps) {
-  const theme = CARD_THEMES.comment;
+  const theme = useCardTheme("revision");
   const firstTurn = turns[0];
   const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
 
@@ -537,7 +543,7 @@ function NewGeneralActions({
   }
 
   return (
-    <div className={`${panelCard(true)}`}>
+    <div className={FORM_CARD_CLASS}>
       <div className={`${PANEL.cardInner} space-y-2`}>
         <div className="flex items-center gap-1.5">
           <UserAvatar user={author} size={14} />
@@ -918,7 +924,7 @@ export default function RevisionsPanel({
 
         {/* New text revision form (driven by editor "+ Revision" button) */}
         {pendingSelectedText && (
-          <div className={panelCard(true)}>
+          <div className={FORM_CARD_CLASS}>
             <div className={PANEL.cardInner}>
               <div className="text-xs text-[var(--muted)] mb-1.5 truncate font-medium">
                 Revision for: &ldquo;

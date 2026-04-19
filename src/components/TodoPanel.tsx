@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { Card, CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { Card, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
@@ -31,8 +31,6 @@ interface TodoPanelProps {
   onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
-const theme = CARD_THEMES.todo;
-
 export function TodoCard({
   item,
   selected,
@@ -56,6 +54,7 @@ export function TodoCard({
   isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
 }) {
+  const theme = useCardTheme("todo");
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const [notes, setNotes] = useState(item.notes);
