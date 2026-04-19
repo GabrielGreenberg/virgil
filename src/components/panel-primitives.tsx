@@ -622,6 +622,10 @@ export function Chevron({ expanded }: { expanded: boolean }) {
 export interface PanelChromeValue {
   isPoppedOut: boolean;
   onTogglePopout: () => void;
+  /** Side this panel is docked to (or floats from). Drives chevron direction. */
+  side: "left" | "right";
+  /** Close this panel: collapses the side, removes a split half, or closes the floater. */
+  onClose: () => void;
 }
 
 const PanelChromeContext = createContext<PanelChromeValue | null>(null);
@@ -649,6 +653,50 @@ export function PanelPopout() {
   const chrome = useContext(PanelChromeContext);
   if (!chrome) return null;
   return <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />;
+}
+
+/**
+ * Close button bound to the surrounding PanelChromeProvider. Renders a single
+ * chevron pointing toward the toolbar strip (outward — left side points left,
+ * right side points right). Click closes the panel: collapses the column in
+ * single mode, removes just the half in split mode, or closes the floater
+ * in pop-out mode (without re-docking).
+ */
+export function PanelClose() {
+  const chrome = useContext(PanelChromeContext);
+  if (!chrome) return null;
+  const pointsLeft = chrome.side === "left";
+  return (
+    <button
+      type="button"
+      onClick={chrome.onClose}
+      className="w-5 h-5 -ml-1.5 -mr-2.5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
+      title="Close panel"
+      aria-label="Close panel"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {chrome.isPoppedOut ? (
+          <>
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </>
+        ) : pointsLeft ? (
+          <polyline points="15 18 9 12 15 6" />
+        ) : (
+          <polyline points="9 18 15 12 9 6" />
+        )}
+      </svg>
+    </button>
+  );
 }
 
 function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick: () => void }) {
@@ -740,6 +788,7 @@ export function PanelHeader({
       )}
       <div className="flex-1" />
       {children}
+      <PanelClose />
     </div>
   );
 }

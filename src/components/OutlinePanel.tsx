@@ -9,7 +9,7 @@ import {
 } from "@/hooks/useWordCountConfig";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
-import { PanelPopout } from "./panel-primitives";
+import { PanelPopout, PanelClose } from "./panel-primitives";
 
 interface HeadingItem {
   id: string;
@@ -1614,6 +1614,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               </div>
             )}
           </div>
+          <PanelClose />
         </div>
       </div>
 

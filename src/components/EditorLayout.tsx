@@ -431,16 +431,6 @@ function IconWordCount({ active }: { active?: boolean }) {
 
 // OmniView icon: rounded square with three equal-length horizontal
 // lines inside, signaling "all panel content threaded together".
-function IconBlank({ active }: { active?: boolean }) {
-  const c = active ? "var(--accent)" : "currentColor";
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c}
-      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" />
-    </svg>
-  );
-}
-
 function IconOmni({ active }: { active?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
@@ -1183,6 +1173,7 @@ export default function EditorLayout() {
     setEditorSplit,
     setEditorSplitRatio,
     togglePopout,
+    closePopout,
     setFloatPosition,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
@@ -3999,15 +3990,27 @@ export default function EditorLayout() {
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
   // Wrap a rendered panel in the PanelChrome context so its PanelHeader
-  // can render the pop-out button bound to this panel id.
-  const renderPanelWithChrome = (panelId: PanelId, side: Side): React.ReactNode => {
+  // can render the pop-out and close buttons bound to this panel id.
+  // `half` is provided when the panel is rendered inside a split column;
+  // omitted for single-column and floating panels.
+  const renderPanelWithChrome = (panelId: PanelId, side: Side, half?: "top" | "bottom"): React.ReactNode => {
     const inner = renderPanelInner(panelId, side);
     if (panelId === "blank" || panelId === "omni" || panelId === "suggestions") return inner;
+    const isPoppedOut = prefs.poppedOutPanels.includes(panelId);
+    const onClose = () => {
+      if (isPoppedOut) {
+        closePopout(panelId);
+      } else {
+        setActiveHalf(side, half ?? "top", "blank");
+      }
+    };
     return (
       <PanelChromeProvider
         value={{
-          isPoppedOut: prefs.poppedOutPanels.includes(panelId),
+          isPoppedOut,
           onTogglePopout: () => togglePopout(panelId),
+          side,
+          onClose,
         }}
       >
         {inner}
@@ -4826,8 +4829,8 @@ export default function EditorLayout() {
           bottomPanelId={bottom}
         >
           {{
-            top: top ? renderPanelWithChrome(top, side) : <div className="w-full h-full bg-[var(--background)]" />,
-            bottom: renderPanelWithChrome(bottom, side),
+            top: top ? renderPanelWithChrome(top, side, "top") : <div className="w-full h-full bg-[var(--background)]" />,
+            bottom: renderPanelWithChrome(bottom, side, "bottom"),
             ratio,
             onRatioChange: (r: number) => setSplitRatio(side, r),
           }}
@@ -5203,16 +5206,7 @@ export default function EditorLayout() {
                 }
               </svg>
             </button>
-            {/* Blank — panel column stays (reserving space) but shows no content */}
-            <button
-              onClick={() => { if (activeLeft !== "blank") expandLeft(); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
-              title="Blank — reserve panel space without content"
-            >
-              <IconBlank active={activeLeft === "blank"} />
-            </button>
-            {/* OmniView — square like Blank, but with lines inside.
-                Shows all left-side elements (footnotes, citations, quotes). */}
+            {/* OmniView — Shows all left-side elements (footnotes, citations, quotes). */}
             <button
               onClick={() => { setActiveLeft(activeLeft === "omni" ? "blank" : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
@@ -5396,16 +5390,7 @@ export default function EditorLayout() {
                 }
               </svg>
             </button>
-            {/* Blank — panel column stays (reserving space) but shows no content */}
-            <button
-              onClick={() => { if (activeRight !== "blank") expandRight(); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
-              title="Blank — reserve panel space without content"
-            >
-              <IconBlank active={activeRight === "blank"} />
-            </button>
-            {/* OmniView — square like Blank, but with lines inside.
-                Shows all right-side elements (notes, revisions, cuts, archive). */}
+            {/* OmniView — Shows all right-side elements (notes, revisions, cuts, archive). */}
             <button
               onClick={() => { setActiveRight(activeRight === "omni" ? "blank" : "omni"); }}
               className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
