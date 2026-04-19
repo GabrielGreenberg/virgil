@@ -106,7 +106,8 @@ export function TodoRow({
     <div
       ref={cardRef}
       {...(extraDataAttrs || {})}
-      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none`}
+      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : undefined}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
       onKeyDown={(e) => {
@@ -220,7 +221,7 @@ export function TodoRow({
       <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
       {/* Body — notes always visible */}
-      <div className="px-3 pt-1.5 pb-2">
+      <div className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
@@ -228,8 +229,8 @@ export function TodoRow({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           placeholder="Notes..."
-          className="w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed"
-          rows={2}
+          className={`w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed${isPoppedOut ? " flex-1 min-h-0" : ""}`}
+          rows={isPoppedOut ? undefined : 2}
         />
       </div>
     </div>

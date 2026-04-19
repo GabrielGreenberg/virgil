@@ -336,8 +336,12 @@ export function CitationCard({
       onDragOver={handleCardDragOver}
       onDragLeave={handleCardDragLeave}
       onDrop={handleCardDrop}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={{ ...cardOverrideStyle(theme, isSelected), ...wrapperStyle }}
+      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={{
+        ...cardOverrideStyle(theme, isSelected),
+        ...wrapperStyle,
+        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+      }}
       onClick={onSelect}
       title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
     >
@@ -412,7 +416,7 @@ export function CitationCard({
           />
 
           {/* Body: command preview + edit, missing-key warnings, expanded bib pod */}
-          <div className={PANEL.cardInner}>
+          <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
             <div className="flex items-center gap-1.5 min-w-0">
               <div className="text-xs font-mono text-ink-subtle truncate flex-1 min-w-0">
                 {cit.command}

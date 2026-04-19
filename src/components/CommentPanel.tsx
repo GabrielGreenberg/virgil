@@ -415,7 +415,8 @@ export function RevisionCard({
       onClick={onSelect}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
-      className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
+      className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : undefined}
       {...dataAttrs}
     >
       {/* Header: author + timestamp, with target icon + menu trailing */}
@@ -443,7 +444,7 @@ export function RevisionCard({
       {/* Separator */}
       <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
-      <div className={`${PANEL.cardInner} space-y-2`}>
+      <div className={`${PANEL.cardInner} space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         {/* Context: "Document-wide" / quoted text — passed from caller */}
         {header && <div>{header}</div>}
 

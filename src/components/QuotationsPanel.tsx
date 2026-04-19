@@ -716,8 +716,11 @@ export function QuotationGroupCard({
   const card = (
     <div
       ref={cardRef}
-      className={`group ${panelCard(selected)} focus:outline-none`}
-      style={cardOverrideStyle(theme, selected)}
+      className={`group ${panelCard(selected)} focus:outline-none${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={{
+        ...cardOverrideStyle(theme, selected),
+        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+      }}
       onClick={(e) => { e.stopPropagation(); onSelect(); }}
       data-quotation-group-id={group.id}
       tabIndex={selected ? 0 : -1}
@@ -801,7 +804,7 @@ export function QuotationGroupCard({
       <div className={`border-t transition-colors ${selected ? "border-amber-200" : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
       {/* Body */}
-      <div className="relative px-3 pt-1.5 pb-2">
+      <div className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         {/* References — flat, separated by a thin divider when multiple */}
         <div
           className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"

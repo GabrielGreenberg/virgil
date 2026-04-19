@@ -47,9 +47,7 @@ export function FloatCard({
       zIndex={1200 + indexHint}
       onChange={(pos) => ctx.setFloatPosition(cardKey, pos)}
     >
-      <div className="flex flex-col min-h-0 flex-1 overflow-auto p-2">
-        {children}
-      </div>
+      {children}
     </FloatingPanel>
   );
 }

@@ -436,8 +436,12 @@ export function EditableCard({
       tabIndex={selected ? 0 : -1}
       onKeyDown={handleKeyDown}
       onFocusCapture={() => { if (!selected && onClick) onClick(); }}
-      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={{ ...cardOverrideStyle(theme, selected), ...wrapperStyle }}
+      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={{
+        ...cardOverrideStyle(theme, selected),
+        ...wrapperStyle,
+        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+      }}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
@@ -540,7 +544,7 @@ export function EditableCard({
       />
 
       {/* Body */}
-      <div className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}`}>
+      <div className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         {/* Optional text-drag handle — drags only text content for inline insertion */}
         {onTextDragStart && (
           <div
@@ -945,7 +949,7 @@ export function AiRequestCard({
       data-ai-request-id={request.id}
       draggable
       onDragStart={handleDragStart}
-      className="group rounded-lg border border-sky-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors"
+      className={`group ${isPoppedOut ? "h-full flex flex-col" : "rounded-lg border border-sky-200"} overflow-hidden cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors`}
     >
       {/* Header: star + kind label + status + inline delete */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
@@ -1005,7 +1009,7 @@ export function AiRequestCard({
       <div className="border-t border-sky-200/70" />
 
       {/* Body: auto-grow textarea */}
-      <div className="bg-sky-50/20 px-3 py-2">
+      <div className={`bg-sky-50/20 px-3 py-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         <textarea
           ref={taRef}
           value={draft}

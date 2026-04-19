@@ -421,8 +421,11 @@ export default function BibEntryCard({
       data-bib-entry={entry.key}
       draggable
       onDragStart={handleDragStart}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}`}
-      style={cardOverrideStyle(theme, isSelected)}
+      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}${isPoppedOut ? " h-full flex flex-col" : ""}`}
+      style={{
+        ...cardOverrideStyle(theme, isSelected),
+        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+      }}
       onClick={onClick}
     >
       {/* Header: author · year · title + target icon + occurrence counter */}
@@ -482,7 +485,7 @@ export default function BibEntryCard({
       />
 
       {/* Body */}
-      <div className={PANEL.cardInner}>
+      <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         {bodyContent}
       </div>
     </div>
