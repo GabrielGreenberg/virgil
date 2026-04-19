@@ -304,15 +304,7 @@ export function CitationCard({
     [cit.id, cit.command, bibPackage, onUpdateCitation],
   );
 
-  // Compose the card class. Unanchored citations get a dashed border
-  // and slightly muted appearance so they're visually distinct from
-  // the in-text anchored ones. The drop-target ring overrides those
-  // borders while a bib drag hovers.
-  const stateClass = isDropTarget
-    ? "ring-2 ring-amber-300 ring-offset-0"
-    : !isAnchored
-      ? "border-dashed opacity-80"
-      : "";
+  const stateClass = isDropTarget ? "ring-2 ring-amber-300 ring-offset-0" : "";
 
   return (
     <div

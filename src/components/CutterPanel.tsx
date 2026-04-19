@@ -62,7 +62,6 @@ export function CutCard({
       grabHandle
       hideToolbar
       inlineDelete
-      orphaned={isOrphaned}
       badge={isOrphaned
         ? <BadgeOrphaned theme={CARD_THEMES.cut} />
         : <BadgeLabel label="C" theme={CARD_THEMES.cut} />

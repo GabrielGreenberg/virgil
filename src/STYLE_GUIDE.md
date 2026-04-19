@@ -74,13 +74,12 @@ here — panels pass content-specific data, not styling.
 | `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
 | `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
 | `inlineDelete` | [x] button in header instead of three-dot menu |
-| `orphaned` | Adds `border-dashed` to card wrapper for unanchored items |
 | `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
 
 ### Selection states
 - **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
 - **Selected**: colored border around whole card, intensified header (`theme.headerSelected`), white body.
-- **Default**: `bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50`, plus the always-on `theme.headerDefault` tint on the header row.
+- **Default**: `bg-white border-stone-300 hover:border-stone-400 hover:bg-stone-50/50`, plus the always-on `theme.headerDefault` tint on the header row. The card outline (`stone-300`) is chosen to visually match the perceived edge weight of the pod/panel (which is a lighter `var(--border-light)` stroke plus an ambient shadow).
 - Separator: `border-stone-200`, darkens to `border-stone-300` on hover; selected cards use `theme.separatorSelected`.
 - Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`.
 - Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container).
@@ -94,15 +93,14 @@ here — panels pass content-specific data, not styling.
 | `CardTargetIcon` | Page-with-arrow icon: full opacity when selected, 60% when unselected, 30% when disabled |
 
 ### Unanchored (orphaned) cards
-When an item has no paragraph anchor (`paragraphIds` is empty), use this
-three-part pattern — all centralized via EditableCard and shared primitives:
-1. **`orphaned` prop on EditableCard** — adds `border-dashed` to the wrapper
-2. **`BadgeOrphaned` as the badge** — the panel passes this instead of `BadgeLabel`
-3. **`CardTargetIcon` with `disabled`** — greyed-out, non-clickable jump icon
+Unanchored cards share the same wrapper styling as anchored cards — no
+dashed border. The unanchored state is communicated through two opt-in
+signals at the panel level:
+1. **`BadgeOrphaned` as the badge** — local-color square with diagonal cross, shown instead of `BadgeLabel`.
+2. **`CardTargetIcon` with `disabled`** — greyed-out, non-clickable jump icon (30% opacity).
 
 Panels detect orphaned state from their data (`paragraphIds.length === 0`)
-and pass the appropriate props. TodoRow (which doesn't use EditableCard)
-applies `border-dashed` directly and swaps `BadgeLabel`/`BadgeOrphaned`.
+and pass the appropriate badge/target-icon props.
 
 ### Card themes (`CARD_THEMES`)
 Each theme provides: `cardClass`, `headerDefault`, `headerSelected`,

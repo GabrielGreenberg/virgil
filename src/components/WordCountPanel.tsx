@@ -95,7 +95,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
 
         {/* Category breakdown — each row is a toggle button */}
         {catsWithWords.length > 0 && (
-          <div className="rounded-lg border border-stone-200 bg-white overflow-hidden">
+          <div className="rounded-lg border border-stone-300 bg-white overflow-hidden">
             <div className="px-4 py-2 border-b border-stone-100">
               <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
                 Breakdown

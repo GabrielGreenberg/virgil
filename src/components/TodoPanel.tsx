@@ -94,7 +94,7 @@ export function TodoRow({
     <div
       ref={cardRef}
       {...(extraDataAttrs || {})}
-      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none${!isAnchored ? " border-dashed" : ""}`}
+      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none`}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
       onKeyDown={(e) => {
