@@ -462,16 +462,12 @@ function BibliographyPanel({
             {menuOpen && (
               <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
                 {/* Theme color + view mode */}
-                <div className="px-3 py-1.5 flex items-center justify-between gap-2 text-xs text-stone-600">
-                  <span>Panel color</span>
+                <div className="px-3 py-1.5 flex items-center justify-end gap-2">
                   <PanelThemePicker panelKey="bib" label="Bibliography color" />
-                </div>
-                {onViewModeChange && (
-                  <div className="px-3 py-1.5 flex items-center justify-between gap-2 text-xs text-stone-600">
-                    <span>View</span>
+                  {onViewModeChange && (
                     <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-                  </div>
-                )}
+                  )}
+                </div>
                 <div className="my-1 border-t border-stone-200" />
                 {/* Display section */}
                 <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">
