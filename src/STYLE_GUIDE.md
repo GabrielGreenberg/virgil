@@ -119,11 +119,18 @@ here — panels pass content-specific data, not styling.
 
 ### Layout
 ```
-[grab handle] [badge] [title input] ... [x delete] [target icon]
+[grab handle] [popout] [badge] [title input] ... [x delete] [target icon]
 ──────────────── separator ────────────────────────────────────
 [RichTextField body]                                    
 [optional footer]
 ```
+
+The **popout chevron** sits immediately right of the grab handle (or at the
+absolute left edge when no grab handle is present). It is a subtle
+hover-reveal control (`opacity-0 group-hover:opacity-60`) when the card is
+docked, and stays visible with its chevron rotated 180° when the card is
+floating. Clicking it toggles the card between its panel-list slot and a
+`FloatingPanel` portal — see *Card popout* below.
 
 ### Opt-in features (props)
 | Prop | Effect |
@@ -132,6 +139,20 @@ here — panels pass content-specific data, not styling.
 | `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
 | `inlineDelete` | [x] button in header instead of three-dot menu |
 | `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
+| `onTogglePopout` / `isPoppedOut` | Opt in to the per-card popout button; usually left unset — wrapper cards supply these from context |
+
+### Card popout
+Any wrapper card (`NoteCard`, `FootnoteCard`, `ArchiveCard`, `CutCard`,
+`TodoRow`, `BibEntryCard`, `CitationCard`, `RevisionCard`,
+`QuotationGroupCard`, `AiRequestCard`) reads the shared `PoppedCardsContext`
+(`src/hooks/usePoppedCards.ts`) to decide whether it is popped. When popped,
+it wraps its own JSX in `<FloatCard>` (`src/components/FloatingCards.tsx`),
+which mounts a `FloatingPanel` portal with the rect from
+`useViewPrefs.cardFloatPositions`. Keys are shaped `${kind}:${id}` where
+`kind ∈ {note, footnote, archive, cut, todo, bib, citation, revision,
+quotation, ai}`. A card is rendered exactly once: either in the panel list
+or in the float. Closing the host panel's sidebar unmounts its popped
+cards; reopening restores them.
 
 ### Selection states
 - **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
