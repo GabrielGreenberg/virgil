@@ -36,8 +36,6 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
     (sum, cat) => sum + (visible(cat) ? (counts.categories[cat] ?? 0) : 0),
     0,
   );
-  const filteredMinutes = Math.max(1, Math.round(filteredTotal / 225));
-  const filteredReadingTime = filteredMinutes === 1 ? "1 min" : `${filteredMinutes} min`;
 
   // Show all categories that have words — both included and excluded.
   const catsWithWords = ALL_CATS.filter((c) => (counts.categories[c] ?? 0) > 0);
@@ -64,9 +62,6 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
             <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
               chars
             </span>
-          </div>
-          <div className="ml-auto text-[11px] text-[var(--muted)] tabular-nums whitespace-nowrap">
-            ~{filteredReadingTime}
           </div>
         </div>
 
