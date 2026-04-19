@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
-import MenuBar, { type MarginaliaType, type DividerLevel } from "./MenuBar";
+import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SuggestionPanel from "./SuggestionPanel";
 import RevisionsPanel from "./CommentPanel";
@@ -1263,6 +1263,19 @@ export default function EditorLayout() {
       try { localStorage.setItem("virgil-divider-levels", JSON.stringify([...next])); } catch {}
       return next;
     });
+  }, []);
+
+  const [dividerWidth, setDividerWidthState] = useState<DividerWidth>(() => {
+    if (typeof window === "undefined") return "full";
+    try {
+      const raw = localStorage.getItem("virgil-divider-width");
+      if (raw === "full" || raw === "mid" || raw === "text") return raw;
+    } catch {}
+    return "full";
+  });
+  const setDividerWidth = useCallback((w: DividerWidth) => {
+    setDividerWidthState(w);
+    try { localStorage.setItem("virgil-divider-width", w); } catch {}
   }, []);
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -5138,7 +5151,7 @@ export default function EditorLayout() {
         {/* Editor column: toolbar pod + gap + editor pod + breadcrumb.
             Panel slots are always present in the flex layout (collapsed or not),
             so the editor's position never changes. */}
-        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""}`} style={{
+        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
@@ -5170,6 +5183,8 @@ export default function EditorLayout() {
             availableDividerLevels={availableDividerLevels}
             dividerLevels={activeDividerLevels}
             onToggleDividerLevel={toggleDividerLevel}
+            dividerWidth={dividerWidth}
+            onSetDividerWidth={setDividerWidth}
             onParaNavBack={paraNavBack}
             onParaNavForward={paraNavForward}
             paraNavBackDisabled={paraHistoryRef.current.idx <= 0}

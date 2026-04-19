@@ -1294,9 +1294,27 @@ body {
   content: "";
   position: absolute;
   top: 0px;
-  left: -1rem;
-  right: -1rem;
+  /* Variables are set per width preference on an ancestor
+     (.dividers-width-{full|mid|text}). Defaults match "full". */
+  left: var(--divider-inset-left, -88px);
+  right: var(--divider-inset-right, -72px);
   border-radius: 1px;
+}
+
+/* Divider width preferences — cancel some or all of the editor's
+   asymmetric horizontal padding (pl-[88px] pr-[72px]). "text" aligns
+   flush with the text column. */
+.dividers-width-full {
+  --divider-inset-left: -88px;
+  --divider-inset-right: -72px;
+}
+.dividers-width-mid {
+  --divider-inset-left: -44px;
+  --divider-inset-right: -36px;
+}
+.dividers-width-text {
+  --divider-inset-left: 0px;
+  --divider-inset-right: 0px;
 }
 .show-dividers-1 .tiptap .heading-wrapper-l1 {
   padding-top: 2.4em;
@@ -1305,6 +1323,24 @@ body {
 .show-dividers-1 .tiptap .heading-wrapper-l1::before {
   height: 3px;
   background-color: #8a857d;
+}
+
+/* Keep the fold chevron aligned with the heading text row even when
+   dividers push a padding-top onto the wrapper. Each rule adds the
+   wrapper's padding-top back onto the chevron's existing offset;
+   the small px nudges account for em-basis differences between the
+   chevron's inherited font-size and the wrapper's. */
+.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-fold-chevron {
+  top: calc(0.85em + 2.4em + 6px);
+}
+.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-fold-chevron {
+  top: calc(0.75em + 1.4em + 4px);
+}
+.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-fold-chevron {
+  top: calc(0.6em + 1.4em + 4px);
+}
+.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-fold-chevron {
+  top: calc(0.5em + 1.4em);
 }
 .show-dividers-2 .tiptap .heading-wrapper-l2::before {
   height: 2px;
