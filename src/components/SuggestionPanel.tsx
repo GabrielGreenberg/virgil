@@ -53,7 +53,7 @@ export default function SuggestionPanel({
     return (
       <div className="w-96 border-l border-[var(--border)] bg-[var(--background)] p-6 flex flex-col items-center justify-center text-center shrink-0">
         <div className="text-3xl mb-4 text-emerald-600">&#10003;</div>
-        <h3 className="text-stone-800 text-lg font-medium mb-2">
+        <h3 className="text-ink-strong text-lg font-medium mb-2">
           Review Complete
         </h3>
         <p className="text-[var(--muted)] text-sm mb-6">
@@ -61,7 +61,7 @@ export default function SuggestionPanel({
         </p>
         <button
           onClick={onClose}
-          className="px-4 py-2 rounded bg-stone-100 text-stone-600 hover:bg-stone-200 text-sm transition-colors"
+          className="px-4 py-2 rounded bg-surface-muted-strong text-ink-body hover:bg-edge-subtle text-sm transition-colors"
         >
           Close Panel
         </button>
@@ -85,7 +85,7 @@ export default function SuggestionPanel({
           <label className="block text-[var(--muted)] text-xs uppercase tracking-wider mb-2 font-medium">
             Suggestion
           </label>
-          <p className="text-stone-700 text-sm leading-relaxed">
+          <p className="text-ink-body text-sm leading-relaxed">
             {suggestion.explanation}
           </p>
         </div>
@@ -95,7 +95,7 @@ export default function SuggestionPanel({
           <label className="block text-[var(--muted)] text-xs uppercase tracking-wider mb-2 font-medium">
             Original
           </label>
-          <div className="bg-red-50 border border-red-200 rounded px-3 py-2">
+          <div className="bg-danger-soft border border-red-200 rounded px-3 py-2">
             <p className="text-red-700 text-sm leading-relaxed line-through decoration-red-300">
               {suggestion.original_text}
             </p>
@@ -126,7 +126,7 @@ export default function SuggestionPanel({
               onUpdateField(suggestion.id, "revision", e.target.value)
             }
             placeholder="Write your own version..."
-            className="w-full bg-white border border-[var(--border)] rounded px-3 py-2 text-stone-800 text-sm placeholder:text-stone-400 focus:outline-none focus:border-stone-400 resize-none min-h-[60px]"
+            className="w-full bg-surface border border-[var(--border)] rounded px-3 py-2 text-ink-strong text-sm placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[60px]"
             rows={3}
           />
         </div>
@@ -143,7 +143,7 @@ export default function SuggestionPanel({
               onUpdateField(suggestion.id, "note", e.target.value)
             }
             placeholder="Add a note..."
-            className="w-full bg-white border border-[var(--border)] rounded px-3 py-2 text-stone-800 text-sm placeholder:text-stone-400 focus:outline-none focus:border-stone-400 resize-none min-h-[40px]"
+            className="w-full bg-surface border border-[var(--border)] rounded px-3 py-2 text-ink-strong text-sm placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[40px]"
             rows={2}
           />
         </div>
@@ -154,13 +154,13 @@ export default function SuggestionPanel({
         <div className="flex gap-2">
           <button
             onClick={() => onAct(suggestion.id, "skipped")}
-            className="flex-1 px-3 py-2 rounded bg-stone-100 text-stone-600 hover:bg-stone-200 text-sm font-medium transition-colors"
+            className="flex-1 px-3 py-2 rounded bg-surface-muted-strong text-ink-body hover:bg-edge-subtle text-sm font-medium transition-colors"
           >
             Skip
           </button>
           <button
             onClick={() => onAct(suggestion.id, "rejected")}
-            className="flex-1 px-3 py-2 rounded bg-red-50 text-red-700 hover:bg-red-100 text-sm font-medium transition-colors border border-red-200"
+            className="flex-1 px-3 py-2 rounded bg-danger-soft text-red-700 hover:bg-red-100 text-sm font-medium transition-colors border border-red-200"
           >
             Reject
           </button>

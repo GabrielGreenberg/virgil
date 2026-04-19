@@ -348,8 +348,8 @@ function FootnotePanel({
                   onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
                   className={`group absolute left-0 right-0 px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
                     selectedId === fn.footnoteId
-                      ? "bg-red-50/60 border-l-2 border-l-red-300 border-b-stone-300"
-                      : "border-b-stone-300 hover:bg-stone-50"
+                      ? "bg-danger-soft/60 border-l-2 border-l-red-300 border-b-stone-300"
+                      : "border-b-stone-300 hover:bg-surface-muted"
                   }`}
                   style={{ top }}
                   onClick={() => onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)}
@@ -372,9 +372,9 @@ function FootnotePanel({
                         {fn.number}
                       </span>
                     </span>
-                    <p className="text-xs text-stone-600 leading-snug line-clamp-2 min-w-0"
+                    <p className="text-xs text-ink-body leading-snug line-clamp-2 min-w-0"
                       style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
-                      {preview || <span className="italic text-stone-400">Empty</span>}
+                      {preview || <span className="italic text-ink-muted">Empty</span>}
                     </p>
                   </div>
                 </div>
@@ -394,7 +394,7 @@ function FootnotePanel({
                       data-footnote-entry={orphan.footnoteId}
                       draggable
                       onDragStart={(e) => startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)}
-                      className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-stone-50 transition-colors"
+                      className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-surface-muted transition-colors"
                     >
                       <div className="flex items-start gap-2">
                         <span className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 mt-0.5">
@@ -407,7 +407,7 @@ function FootnotePanel({
                               stroke="#b0b0b0" strokeWidth="1.5" strokeLinecap="round" />
                           </svg>
                         </span>
-                        <p className="text-xs text-stone-400 leading-snug line-clamp-2 min-w-0"
+                        <p className="text-xs text-ink-muted leading-snug line-clamp-2 min-w-0"
                           style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
                           {preview}
                         </p>

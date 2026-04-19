@@ -12,13 +12,17 @@
   --accent: #7c5e3c;
   --accent-light: #f5f0ea;
 
-  /* App Chrome */
+  /* App Chrome
+     --theme-color is locked to --topbar-bg so the in-app top bar and the
+     PWA/browser chrome can't drift apart. */
   --topbar-bg: #e5e4e1;
   --topbar-border: #d5d3ce;
-  --theme-color: #efecea;
+  --theme-color: var(--topbar-bg);
 
-  /* Pod system */
-  --pod-editor: #ffffff;
+  /* Pod system
+     --pod-editor is locked to --surface so the editor pod and all
+     "paper" surfaces (cards, popovers, inputs) stay identical. */
+  --pod-editor: var(--surface);
   --pod-panel: #f3f0eb;
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
@@ -30,12 +34,14 @@
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
   --pod-shadow-light: 0 1px 5px rgba(0,0,0,0.09), 0 0 2px rgba(0,0,0,0.05);
 
-  /* Editor colors */
+  /* Editor colors
+     --h1-color and --h2h3-color are locked to the primary text tokens
+     (H1 = --foreground, H2/H3 = --editor-text-color). */
   --editor-font-size: 1.05rem;
   --editor-line-height: 1.8;
   --editor-text-color: #2a2a2a;
-  --h1-color: #1a1a1a;
-  --h2h3-color: #2a2a2a;
+  --h1-color: var(--foreground);
+  --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
   --heading-annotation-color: #6b9ac4;
@@ -77,13 +83,50 @@
   /* Drag */
   --drag-highlight: #3b82f6;
 
-  /* Scrollbar */
+  /* Scrollbar
+     --scrollbar-hover is locked to --muted-light (same grey as muted text). */
   --scrollbar-thumb: #d4cfc8;
-  --scrollbar-hover: #b5b0aa;
+  --scrollbar-hover: var(--muted-light);
 
   /* Panel sizing */
   --panel-font-size: 13px;
   --panel-header-size: 14px;
+
+  /* ── Semantic UI color scale ──────────────────────────────────────────
+     Role-based tokens for component-level styling (borders, hovers,
+     muted surfaces, muted text). Values match the Tailwind classes they
+     replace 1:1 so migration is pixel-neutral. Exposed as Tailwind
+     utilities via @theme inline below — e.g. bg-surface-muted,
+     text-ink-muted, border-edge-subtle. */
+
+  /* Surfaces & overlays */
+  --surface-muted: #fafaf9;          /* list-hover, subpod resting bg (≈ stone-50) */
+  --surface-muted-strong: #f5f5f4;   /* icon-button hover, chip bg (≈ stone-100) */
+  --overlay-scrim: rgba(0, 0, 0, 0.3); /* modal scrim */
+
+  /* Borders */
+  --edge-subtle: #e7e5e4;   /* card/input border, menu divider (≈ stone-200) */
+  --edge-hover: #d6d3d1;    /* border hover (≈ stone-300) */
+  --edge-strong: #a8a29e;   /* input focus border (≈ stone-400) */
+
+  /* Text scale */
+  --ink-faint: #d6d3d1;     /* disabled, resting drag handles (≈ stone-300) */
+  --ink-muted: #a8a29e;     /* placeholders, default icons, timestamps (≈ stone-400) */
+  --ink-subtle: #78716c;    /* subtitles (≈ stone-500) */
+  --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
+  --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
+
+  /* Destructive */
+  --danger: #ef4444;        /* destructive action text (≈ red-500) */
+  --danger-soft: #fef2f2;   /* destructive action hover bg (≈ red-50) */
+
+  /* Interaction */
+  --ring-drag-target: #fcd34d; /* drop-target highlight ring (≈ amber-300) */
+
+  /* Preference mode — the accent colour used for the hover outline and the
+     "edit this" hint. Kept separate from --accent so the two roles can
+     diverge later if needed. Default: same as --drag-highlight. */
+  --pref-mode-accent: var(--drag-highlight);
 }
 
 @theme inline {
@@ -93,6 +136,25 @@
   --font-display: var(--font-display);
   --font-serif: var(--font-serif);
   --font-mono: var(--font-mono);
+
+  /* Semantic UI color scale — exposes the :root tokens as Tailwind
+     utilities (bg-surface, bg-surface-muted, text-ink-muted,
+     border-edge-subtle, ring-drag-target, etc.). */
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-muted-strong: var(--surface-muted-strong);
+  --color-overlay-scrim: var(--overlay-scrim);
+  --color-edge-subtle: var(--edge-subtle);
+  --color-edge-hover: var(--edge-hover);
+  --color-edge-strong: var(--edge-strong);
+  --color-ink-faint: var(--ink-faint);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-subtle: var(--ink-subtle);
+  --color-ink-body: var(--ink-body);
+  --color-ink-strong: var(--ink-strong);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ring-drag-target: var(--ring-drag-target);
 }
 
 body {
@@ -1063,7 +1125,7 @@ body {
 }
 
 .label-ref-popover-pod + .label-ref-popover-pod {
-  border-top: 1px solid var(--border-light, #efecea);
+  border-top: 1px solid var(--border-light, #e0ddd7);
 }
 
 /* Top pod: target heading */
@@ -1409,6 +1471,40 @@ body {
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
   outline: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   Preference mode
+   ──────────────────────────────────────────────────────────────────────
+   When the global preference-mode toggle is on, <body> carries
+   `data-pref-mode="on"` (applied by the usePreferenceMode hook). These
+   rules fire only while that attribute is set, so they're inert when
+   preference mode is off.
+
+   What's here:
+     - A help cursor on any element that advertises `data-prefs` or
+       `data-panel-theme`, so users can discover what's editable.
+     - A 2px outline on hover of those elements, same reason.
+
+   Extending this:
+     - New annotation attribute? Extend the selector list below.
+     - Different outline style (colour / width)? Change --pref-mode-accent
+       in :root or adjust the rule directly.
+     - Want the hover outline to only appear when ctrl is held? That has
+       to happen in JS (PreferenceModePicker.tsx) — CSS can't observe
+       modifier keys.
+   ══════════════════════════════════════════════════════════════════════ */
+
+body[data-pref-mode="on"] [data-prefs],
+body[data-pref-mode="on"] [data-panel-theme] {
+  cursor: help;
+}
+
+body[data-pref-mode="on"] [data-prefs]:hover,
+body[data-pref-mode="on"] [data-panel-theme]:hover {
+  outline: 2px solid var(--pref-mode-accent);
+  outline-offset: 1px;
+  border-radius: 2px;
 }
 
 /* ── Drag gap — invisible split handle with blue hover highlight ── */

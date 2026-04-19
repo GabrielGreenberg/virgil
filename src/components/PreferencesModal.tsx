@@ -47,8 +47,8 @@ function TransformSlider({
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between mb-0.5">
-        <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wider">{label}</span>
-        <span className="text-[10px] text-stone-400 tabular-nums w-8 text-right">{value > 0 ? `+${value}` : value}</span>
+        <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wider">{label}</span>
+        <span className="text-[10px] text-ink-muted tabular-nums w-8 text-right">{value > 0 ? `+${value}` : value}</span>
       </div>
       <input
         type="range"
@@ -114,7 +114,7 @@ function PresetBar({
       <select
         value={selected}
         onChange={handleSelectChange}
-        className="flex-1 text-xs bg-white border border-stone-200 rounded px-2 py-1.5 text-stone-700 outline-none focus:border-[var(--accent)]"
+        className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 text-ink-body outline-none focus:border-[var(--accent)]"
       >
         <option value="">Load preset...</option>
         {presets.map((p) => (
@@ -133,13 +133,13 @@ function PresetBar({
           onKeyDown={handleKeyDown}
           onBlur={() => { if (!newName.trim()) setSaving(false); }}
           placeholder="Preset name"
-          className="text-xs border border-stone-300 rounded px-2 py-1.5 w-28 outline-none focus:border-[var(--accent)]"
+          className="text-xs border border-edge-hover rounded px-2 py-1.5 w-28 outline-none focus:border-[var(--accent)]"
         />
       ) : null}
 
       <button
         onClick={handleSave}
-        className="text-[11px] text-stone-500 hover:text-stone-700 border border-stone-200 rounded px-2.5 py-1.5 hover:bg-stone-50 transition-colors whitespace-nowrap"
+        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover:bg-surface-muted transition-colors whitespace-nowrap"
       >
         {saving ? "OK" : "Save"}
       </button>
@@ -147,7 +147,7 @@ function PresetBar({
       {canDelete && (
         <button
           onClick={() => { onDelete(selected); setSelected(""); }}
-          className="text-[11px] text-red-400 hover:text-red-600 border border-stone-200 rounded px-2 py-1.5 hover:bg-red-50 transition-colors"
+          className="text-[11px] text-danger hover:text-red-600 border border-edge-subtle rounded px-2 py-1.5 hover:bg-danger-soft transition-colors"
         >
           Del
         </button>
@@ -207,11 +207,11 @@ export default function PreferencesModal({
         onMouseDown={onDragStart}
         style={{ cursor: isDraggingRef.current ? "grabbing" : "grab" }}
       >
-        <h2 className="text-sm font-semibold text-stone-700">Preferences</h2>
+        <h2 className="text-sm font-semibold text-ink-body">Preferences</h2>
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
-          className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+          className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
           title="Close"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -270,7 +270,7 @@ export default function PreferencesModal({
       <div className="px-5 py-3 border-t border-[var(--border)] flex justify-end">
         <button
           onClick={onReset}
-          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+          className="text-xs text-ink-muted hover:text-ink-body transition-colors"
         >
           Reset to defaults
         </button>

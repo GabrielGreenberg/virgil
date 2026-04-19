@@ -568,7 +568,7 @@ function OutlineNode({
     <div>
       <div
         data-outline-pos={`h-${node.heading.index}`}
-        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover:bg-stone-50"}`}
+        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover:bg-surface-muted"}`}
         style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: isOutsideFocus ? undefined : "relative", zIndex: isOutsideFocus ? undefined : 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
@@ -578,7 +578,7 @@ function OutlineNode({
               e.stopPropagation();
               onToggle(node.heading.id);
             }}
-            className="mt-0.5 p-0.5 rounded text-[var(--muted)] hover:text-stone-600 transition-colors shrink-0"
+            className="mt-0.5 p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
           >
             <svg
               width="12"
@@ -601,14 +601,14 @@ function OutlineNode({
           <span
             className={`text-sm leading-snug ${
               node.heading.level === 1
-                ? "font-semibold text-stone-800"
+                ? "font-semibold text-ink-strong"
                 : node.heading.level === 2
-                  ? "font-medium text-stone-700"
-                  : "text-stone-600"
+                  ? "font-medium text-ink-body"
+                  : "text-ink-body"
             }`}
           >
             {showNumbers && node.heading.sectionNumber && (
-              <span className="text-stone-400 font-normal">{node.heading.sectionNumber}{"\u00a0\u00a0"}</span>
+              <span className="text-ink-muted font-normal">{node.heading.sectionNumber}{"\u00a0\u00a0"}</span>
             )}
             {node.heading.text}
           </span>
@@ -620,7 +620,7 @@ function OutlineNode({
           )}
         </div>
         {showWordCount && (
-          <span className="text-[10px] tabular-nums text-stone-400 shrink-0 mt-0.5">
+          <span className="text-[10px] tabular-nums text-ink-muted shrink-0 mt-0.5">
             {sectionWordCount}
           </span>
         )}
@@ -636,7 +636,7 @@ function OutlineNode({
               <div
                 key={`pt-${i}`}
                 data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover:bg-stone-50"}`}
+                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover:bg-surface-muted"}`}
                 style={{
                   paddingLeft: `${(depth + 1) * 16 + 24}px`,
                   paddingRight: 8,
@@ -870,10 +870,10 @@ function EditablePod({
         onDragEnd={onDragEnd}
         className={`flex items-center gap-1.5 rounded-md border transition-all cursor-grab active:cursor-grabbing ${
           isDragging
-            ? "opacity-30 border-stone-300 bg-stone-100"
+            ? "opacity-30 border-edge-hover bg-surface-muted-strong"
             : isParTitle
-              ? "border-stone-300 bg-white hover:border-stone-400"
-              : "border-stone-300 bg-white hover:border-stone-400 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              ? "border-edge-hover bg-surface hover:border-edge-strong"
+              : "border-edge-hover bg-surface hover:border-edge-strong shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
         }`}
         style={{
           marginLeft: `${indent}px`,
@@ -893,7 +893,7 @@ function EditablePod({
               onToggleCollapse?.();
             }}
             onMouseDown={(e) => e.stopPropagation()}
-            className="p-0.5 rounded text-[var(--muted)] hover:text-stone-600 transition-colors shrink-0"
+            className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
             title={isCollapsed ? "Expand" : "Collapse"}
           >
             <svg
@@ -925,7 +925,7 @@ function EditablePod({
             }}
             onBlur={commitRename}
             className={`flex-1 min-w-0 bg-transparent outline-none border-b border-[var(--accent)] ${
-              isParTitle ? "text-[11px] text-[#857070]" : "text-sm text-stone-800"
+              isParTitle ? "text-[11px] text-[#857070]" : "text-sm text-ink-strong"
             }`}
           />
         ) : (
@@ -935,10 +935,10 @@ function EditablePod({
               isParTitle
                 ? "text-[11px] text-[#857070]"
                 : pod.level === 1
-                  ? "text-sm font-semibold text-stone-800"
+                  ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
-                    ? "text-sm font-medium text-stone-700"
-                    : "text-sm text-stone-600"
+                    ? "text-sm font-medium text-ink-body"
+                    : "text-sm text-ink-body"
             }`}
           >
             {pod.text}
@@ -1475,7 +1475,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <div className="flex items-center gap-2">
           <PanelPopout />
-          <h3 className="text-sm font-semibold text-stone-700">Outline</h3>
+          <h3 className="text-sm font-semibold text-ink-body">Outline</h3>
           {onReorderBlocks && (
             <button
               onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
@@ -1483,8 +1483,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 editMode
                   ? "bg-[var(--accent)] text-white"
                   : focusState?.active
-                    ? "text-stone-300 cursor-not-allowed"
-                    : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
+                    ? "text-ink-faint cursor-not-allowed"
+                    : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
               }`}
               title={focusState?.active ? "Exit Focus to use Edit" : undefined}
             >
@@ -1505,8 +1505,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 focusState?.active
                   ? "bg-[var(--accent)] text-white"
                   : editMode
-                    ? "text-stone-300 cursor-not-allowed"
-                    : "text-[var(--muted)] hover:text-stone-600 hover:bg-stone-100"
+                    ? "text-ink-faint cursor-not-allowed"
+                    : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
               }`}
               title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
             >
@@ -1519,7 +1519,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               className={`p-0.5 rounded-md transition-colors ${
                 focusState.locked
                   ? "text-[var(--accent)]"
-                  : "text-[var(--muted)] hover:text-stone-600"
+                  : "text-[var(--muted)] hover:text-ink-body"
               }`}
               title={focusState.locked ? "Unlock focus (adjust selection)" : "Lock focus (hide other content)"}
             >
@@ -1543,7 +1543,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
         <div className="flex items-center gap-2">
           <button
             onClick={expandAll}
-            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+            className="text-[var(--muted)] hover:text-ink-body transition-colors"
             title="Expand all"
           >
             <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1553,7 +1553,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           </button>
           <button
             onClick={collapseAll}
-            className="text-[var(--muted)] hover:text-stone-600 transition-colors"
+            className="text-[var(--muted)] hover:text-ink-body transition-colors"
             title="Collapse all"
             style={{ marginTop: "-2px" }}
           >
@@ -1565,7 +1565,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
               title="View options"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -1575,37 +1575,37 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setShowNumbers(!showNumbers); }}
                 >
                   <span>Show section numbers</span>
                   <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setShowLabels(!showLabels); }}
                 >
                   <span>Show labels</span>
                   <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setShowTitles(!showTitles); }}
                 >
                   <span>Show par. titles</span>
                   <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setShowWordCount(!showWordCount); }}
                 >
                   <span>Show word count</span>
                   <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setShowPosition(!showPosition); }}
                 >
                   <span>Show current position</span>
@@ -1629,7 +1629,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onRenameParTitle={onRenameParTitle}
           />
         ) : (
-          <div className="bg-white rounded-lg border border-stone-200 pt-3 pb-5 px-1 relative min-h-full">
+          <div className="bg-surface rounded-lg border border-edge-subtle pt-3 pb-5 px-1 relative min-h-full">
             {/* Focus band overlay — only in unlocked mode */}
             {focusState?.active && !focusState.locked && (
               <FocusBand
@@ -1652,7 +1652,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             {/* Fixed top row — document start / title */}
             <div
               data-outline-pos="docstart"
-              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover:bg-stone-50"}`}
+              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover:bg-surface-muted"}`}
               style={{
                 paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
                 opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
@@ -1673,15 +1673,15 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               <div className="min-w-0 flex-1 text-sm leading-snug truncate">
                 {docTitle ? (
                   <>
-                    <span className="font-normal text-stone-400">Title: </span>
-                    <span className="font-semibold text-stone-800">{docTitle}</span>
+                    <span className="font-normal text-ink-muted">Title: </span>
+                    <span className="font-semibold text-ink-strong">{docTitle}</span>
                   </>
                 ) : (
-                  <span className="italic text-stone-400">Document start</span>
+                  <span className="italic text-ink-muted">Document start</span>
                 )}
               </div>
               {showWordCount && (
-                <span className="text-[10px] text-stone-400 shrink-0 mt-0.5">
+                <span className="text-[10px] text-ink-muted shrink-0 mt-0.5">
                   words
                 </span>
               )}
@@ -1697,7 +1697,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                     <div
                       key={`preamble-pt-${i}`}
                       data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover:bg-stone-50"}`}
+                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover:bg-surface-muted"}`}
                       style={{
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptOutside ? 0.3 : 1,

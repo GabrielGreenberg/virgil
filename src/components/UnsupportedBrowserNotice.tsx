@@ -11,8 +11,8 @@
  */
 export function UnsupportedBrowserNotice() {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-50 p-6">
-      <div className="max-w-lg space-y-4 text-stone-800">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-muted p-6">
+      <div className="max-w-lg space-y-4 text-ink-strong">
         <h1 className="text-xl font-semibold">Virgil needs a Chromium browser</h1>
         <p className="text-sm leading-relaxed">
           Virgil stores your papers as ordinary files on your own disk, using
@@ -27,7 +27,7 @@ export function UnsupportedBrowserNotice() {
           <span className="font-medium">Arc</span>, or another Chromium-based
           browser to continue.
         </p>
-        <p className="text-xs text-stone-500">
+        <p className="text-xs text-ink-subtle">
           Nothing you do here is uploaded — Virgil is a fully client-side app.
           The browser requirement is purely about disk access.
         </p>

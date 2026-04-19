@@ -112,7 +112,7 @@ export function TodoRow({
           draggable
           onDragStart={handleDragStart}
           onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
           title="Drag to anchor in text"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -162,12 +162,12 @@ export function TodoRow({
                 if (e.key === "Enter") commitEdit();
                 if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
               }}
-              className="w-full text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-stone-800"
+              className="w-full text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-ink-strong"
             />
           ) : (
             <span
               className={`block text-sm leading-relaxed truncate ${
-                item.done ? "line-through text-stone-400 decoration-stone-300" : "text-stone-900 font-medium"
+                item.done ? "line-through text-ink-muted decoration-stone-300" : "text-stone-900 font-medium"
               }`}
               onDoubleClick={(e) => { e.stopPropagation(); setEditText(item.text); setEditing(true); }}
             >
@@ -182,7 +182,7 @@ export function TodoRow({
           onMouseDown={(e) => e.stopPropagation()}
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
           title="Delete"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -201,7 +201,7 @@ export function TodoRow({
       </div>
 
       {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
       {/* Body — notes always visible */}
       <div className="px-3 pt-1.5 pb-2">
@@ -212,7 +212,7 @@ export function TodoRow({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           placeholder="Notes..."
-          className="w-full bg-transparent text-xs text-stone-600 placeholder:text-stone-400 focus:outline-none resize-none leading-relaxed"
+          className="w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed"
           rows={2}
         />
       </div>
@@ -296,7 +296,7 @@ export default function TodoPanel({
             onChange={(e) => setNewText(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
             placeholder="Add a task..."
-            className="flex-1 text-sm bg-transparent border-none outline-none text-stone-800 placeholder:text-stone-400"
+            className="flex-1 text-sm bg-transparent border-none outline-none text-ink-strong placeholder:text-ink-muted"
           />
           <button
             onClick={handleAdd}
@@ -332,7 +332,7 @@ export default function TodoPanel({
                 <div
                   key={item.id}
                   data-todo-entry={item.id}
-                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"} ${item.done ? "opacity-60" : ""}`}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"} ${item.done ? "opacity-60" : ""}`}
                   style={{
                     top,
                     ...(isSelected
@@ -350,10 +350,10 @@ export default function TodoPanel({
                       className="mt-0.5 shrink-0"
                     />
                     <p
-                      className={`text-xs leading-snug line-clamp-2 pr-6 ${item.done ? "line-through text-stone-400" : "text-stone-700"}`}
+                      className={`text-xs leading-snug line-clamp-2 pr-6 ${item.done ? "line-through text-ink-muted" : "text-ink-body"}`}
                       style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
                     >
-                      {item.text || <span className="italic text-stone-400">Empty task</span>}
+                      {item.text || <span className="italic text-ink-muted">Empty task</span>}
                     </p>
                   </div>
                 </div>
@@ -396,13 +396,13 @@ export default function TodoPanel({
 
       {/* Archive bar at bottom */}
       {done.length > 0 && (
-        <div className="px-4 py-2.5 border-t border-[var(--border)] flex items-center justify-between bg-stone-50/50">
-          <span className="text-xs text-stone-400">
+        <div className="px-4 py-2.5 border-t border-[var(--border)] flex items-center justify-between bg-surface-muted/50">
+          <span className="text-xs text-ink-muted">
             {done.length} completed
           </span>
           <button
             onClick={onArchiveDone}
-            className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-stone-700 hover:bg-stone-100 transition-colors flex items-center gap-1.5"
+            className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong transition-colors flex items-center gap-1.5"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 8v13H3V8" />

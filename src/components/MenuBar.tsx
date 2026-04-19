@@ -74,7 +74,7 @@ function Btn({
       className={`px-1 py-0.5 rounded text-sm transition-colors ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)] font-medium"
-          : "text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
+          : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
       }`}
       {...rest}
     >
@@ -128,13 +128,13 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Block type"
-        className="px-1 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700 flex items-center gap-1"
+        className="px-1 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body flex items-center gap-1"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
       {open && (
-        <div className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[160px]" style={{ top: pos.top, left: pos.left }}>
+        <div className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-[160px]" style={{ top: pos.top, left: pos.left }}>
           {BLOCK_TYPES.map((bt) => (
             <button
               key={bt.value}
@@ -147,7 +147,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
                 }
                 setOpen(false);
               }}
-              className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-stone-50 flex items-center gap-2"
+              className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-2"
             >
               <span className="w-4 text-center text-xs">
                 {current === bt.value ? "✓" : ""}
@@ -214,7 +214,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           {onExpandAllSections && (
             <button
               onClick={onExpandAllSections}
-              className="text-stone-400 hover:text-stone-600 transition-colors"
+              className="text-ink-muted hover:text-ink-body transition-colors"
               title="Expand all sections"
             >
               <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -226,7 +226,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           {onCollapseAllSections && (
             <button
               onClick={onCollapseAllSections}
-              className="text-stone-400 hover:text-stone-600 transition-colors"
+              className="text-ink-muted hover:text-ink-body transition-colors"
               title="Collapse all sections"
               style={{ marginTop: "-2px" }}
             >
@@ -433,7 +433,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
               <button
                 onClick={onParaNavBack}
                 disabled={paraNavBackDisabled}
-                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
                 title="Go back"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -445,7 +445,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
               <button
                 onClick={onParaNavForward}
                 disabled={paraNavForwardDisabled}
-                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-stone-200 hover:text-stone-700"
+                className="p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
                 title="Go forward"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -458,7 +458,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         {onToggleEditorSplit && (
           <button
             onClick={onToggleEditorSplit}
-            className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-400 hover:text-stone-600 hover:bg-stone-200"}`}
+            className={`p-1.5 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-ink-muted hover:text-ink-body hover:bg-edge-subtle"}`}
             title={editorSplit ? "Close split editor" : "Split editor"}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -478,7 +478,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         <div className="relative" ref={viewMenuRef}>
           <button
             onClick={() => setViewMenuOpen(!viewMenuOpen)}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-200 transition-colors"
+            className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-edge-subtle transition-colors"
             title="View options"
           >
             <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -488,36 +488,36 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
             </svg>
           </button>
           {viewMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-52 py-1">
-              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Display</div>
+            <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-50 w-52 py-1">
+              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
               <button
                 onClick={() => { onToggleParTitles(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
               >
                 <span>Paragraph titles</span>
                 <span className="text-[var(--accent)]">{showParTitles ? "\u2713" : ""}</span>
               </button>
               <button
                 onClick={() => { onToggleLatexComments(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
               >
                 <span>% comments</span>
                 <span className="text-[var(--accent)]">{showLatexComments ? "\u2713" : ""}</span>
               </button>
               <button
                 onClick={() => { onToggleSectionIndicator(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
               >
                 <span>Current section</span>
                 <span className="text-[var(--accent)]">{showSectionIndicator ? "\u2713" : ""}</span>
               </button>
-              <div className="my-1 border-t border-stone-200" />
+              <div className="my-1 border-t border-edge-subtle" />
               <button
                 onClick={() => setMarginaliaExpanded((p) => !p)}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
               >
                 <span>Marginalia</span>
-                <svg className="w-3 h-3 text-stone-400 transition-transform" style={{ transform: marginaliaExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: marginaliaExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M2.5 1L5.5 4L2.5 7" />
                 </svg>
               </button>
@@ -525,7 +525,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                 <>
                   <button
                     onClick={() => onToggleMarginalia()}
-                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   >
                     <span>Show marginalia</span>
                     <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
@@ -534,7 +534,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                     <button
                       key={type}
                       onClick={() => onToggleMarginaliaType(type)}
-                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                     >
                       <span>{type === "quote" ? "Quotations" : type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}</span>
                       <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
@@ -546,10 +546,10 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                 <>
                   <button
                     onClick={() => setDividersExpanded((p) => !p)}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   >
                     <span>Show dividers for&hellip;</span>
-                    <svg className="w-3 h-3 text-stone-400 transition-transform" style={{ transform: dividersExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: dividersExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M2.5 1L5.5 4L2.5 7" />
                     </svg>
                   </button>
@@ -559,7 +559,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                         <button
                           key={lvl}
                           onClick={() => onToggleDividerLevel(lvl)}
-                          className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                          className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                         >
                           <span>{DIVIDER_LEVEL_LABELS[lvl]}</span>
                           <span className="text-[var(--accent)]">{dividerLevels.has(lvl) ? "\u2713" : ""}</span>
@@ -567,10 +567,10 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                       ))}
                       <button
                         onClick={() => setDividerPrefsExpanded((p) => !p)}
-                        className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                        className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                       >
                         <span>Divider preferences</span>
-                        <svg className="w-3 h-3 text-stone-400 transition-transform" style={{ transform: dividerPrefsExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: dividerPrefsExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M2.5 1L5.5 4L2.5 7" />
                         </svg>
                       </button>
@@ -578,7 +578,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                         <button
                           key={w}
                           onClick={() => onSetDividerWidth(w)}
-                          className="w-full text-left pl-9 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                          className="w-full text-left pl-9 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                         >
                           <span>{DIVIDER_WIDTH_LABELS[w]}</span>
                           <span className="text-[var(--accent)]">{dividerWidth === w ? "\u2713" : ""}</span>
@@ -588,12 +588,12 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                   )}
                 </>
               )}
-              <div className="my-1 border-t border-stone-200" />
+              <div className="my-1 border-t border-edge-subtle" />
               <button
                 onClick={() => { onOpenPreferences?.(); setViewMenuOpen(false); }}
-                className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
               >
-                <svg className="w-4 h-4 text-stone-400" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+                <svg className="w-4 h-4 text-ink-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
                   <circle cx="8" cy="8" r="2.5" />
                   <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.17 3.17l1.42 1.42M11.41 11.41l1.42 1.42M3.17 12.83l1.42-1.42M11.41 4.59l1.42-1.42" />
                 </svg>

@@ -9,10 +9,6 @@ export interface EditorPreferences {
   editorLineHeight: number;
   editorTextColor: string;
 
-  // Editor > Headings
-  h1Color: string;
-  h2h3Color: string;
-
   // Editor > Paragraph Titles
   parTitleSize: number;        // rem
   parTitleColor: string;
@@ -60,18 +56,20 @@ export interface EditorPreferences {
   surfaceColor: string;
 
   // Panels > Chrome
+  // (podEditor is locked to surfaceColor and not user-editable)
   headerBg: string;
   podPanel: string;
   podToolbar: string;
-  podEditor: string;
   podDark: string;
 
   // App Chrome
+  // (themeColor is locked to topbarBackground and not user-editable)
   topbarBackground: string;
   topbarBorder: string;
-  themeColor: string;
 
   // Canvas & Layout
+  // (h1Color, h2h3Color, scrollbarHover are locked to foreground,
+  // editorTextColor, mutedLight respectively and not user-editable)
   foreground: string;
   borderColor: string;
   borderLight: string;
@@ -79,7 +77,6 @@ export interface EditorPreferences {
   mutedLight: string;
   dragHighlight: string;
   scrollbarThumb: string;
-  scrollbarHover: string;
 
   // Fonts
   fontSerif: string;
@@ -94,10 +91,6 @@ export const DEFAULT_PREFS: EditorPreferences = {
   editorFontSize: 1.05,
   editorLineHeight: 1.8,
   editorTextColor: "#2a2a2a",
-
-  // Editor > Headings
-  h1Color: "#1a1a1a",
-  h2h3Color: "#2a2a2a",
 
   // Editor > Paragraph Titles
   parTitleSize: 0.78,
@@ -149,13 +142,11 @@ export const DEFAULT_PREFS: EditorPreferences = {
   headerBg: "#e8e5de",
   podPanel: "#f3f0eb",
   podToolbar: "#f5f3ef",
-  podEditor: "#ffffff",
   podDark: "#eae6df",
 
   // App Chrome
   topbarBackground: "#e5e4e1",
   topbarBorder: "#d5d3ce",
-  themeColor: "#efecea",
 
   // Canvas & Layout
   foreground: "#1a1a1a",
@@ -165,7 +156,6 @@ export const DEFAULT_PREFS: EditorPreferences = {
   mutedLight: "#b5b0aa",
   dragHighlight: "#3b82f6",
   scrollbarThumb: "#d4cfc8",
-  scrollbarHover: "#b5b0aa",
 
   // Fonts
   fontSerif: "Source Serif 4",

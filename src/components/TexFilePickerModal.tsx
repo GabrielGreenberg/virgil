@@ -60,12 +60,12 @@ export default function TexFilePickerModal({
       aria-modal="true"
       onClick={handleBackdrop}
     >
-      <div className="bg-[var(--surface,#faf9f7)] border border-[var(--border,#e5e2dd)] rounded-xl shadow-xl w-full max-w-[340px] mx-4 overflow-hidden">
+      <div className="bg-[var(--surface,#ffffff)] border border-[var(--border,#e5e2dd)] rounded-xl shadow-xl w-full max-w-[340px] mx-4 overflow-hidden">
         <div className="px-5 pt-4 pb-3">
-          <h2 className="text-sm font-semibold text-stone-700 mb-0.5">
+          <h2 className="text-sm font-semibold text-ink-body mb-0.5">
             {folderName}
           </h2>
-          <p className="text-xs text-stone-500">
+          <p className="text-xs text-ink-subtle">
             Choose a file to open
           </p>
         </div>
@@ -74,7 +74,7 @@ export default function TexFilePickerModal({
             <button
               key={file}
               onClick={() => onSelect(file)}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-stone-700 rounded-lg hover:bg-stone-100 focus:bg-stone-100 focus:outline-none transition-colors"
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
             >
               <svg
                 width="14"
@@ -85,7 +85,7 @@ export default function TexFilePickerModal({
                 strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="text-stone-400 shrink-0"
+                className="text-ink-muted shrink-0"
               >
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                 <polyline points="14 2 14 8 20 8" />
@@ -94,11 +94,11 @@ export default function TexFilePickerModal({
             </button>
           ))}
         </div>
-        <div className="flex items-center justify-end px-4 py-3 border-t border-[var(--border,#e5e2dd)] bg-stone-50/60">
+        <div className="flex items-center justify-end px-4 py-3 border-t border-[var(--border,#e5e2dd)] bg-surface-muted/60">
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white border border-stone-300 rounded-md hover:bg-stone-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover:bg-surface-muted transition-colors"
           >
             Cancel
           </button>

@@ -304,7 +304,14 @@ export function CitationCard({
     [cit.id, cit.command, bibPackage, onUpdateCitation],
   );
 
-  const stateClass = isDropTarget ? "ring-2 ring-amber-300 ring-offset-0" : "";
+  // Unanchored citations get a dashed border + slight muting so they're
+  // visibly distinct from in-text anchored ones. The drop-target ring
+  // overrides those borders while a bib drag hovers.
+  const stateClass = isDropTarget
+    ? "ring-2 ring-drag-target ring-offset-0"
+    : !isAnchored
+      ? "border-dashed opacity-80"
+      : "";
 
   return (
     <div
@@ -358,7 +365,7 @@ export function CitationCard({
                     }}
                     className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
                       !entry
-                        ? "border-dashed border-red-300 text-red-400 bg-red-50/50"
+                        ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
                         : isActive
                           ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
                           : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
@@ -383,14 +390,14 @@ export function CitationCard({
 
           {/* Separator */}
           <div
-            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
             style={separatorOverrideStyle(theme, isSelected)}
           />
 
           {/* Body: command preview + edit, missing-key warnings, expanded bib pod */}
           <div className={PANEL.cardInner}>
             <div className="flex items-center gap-1.5 min-w-0">
-              <div className="text-xs font-mono text-stone-500 truncate flex-1 min-w-0">
+              <div className="text-xs font-mono text-ink-subtle truncate flex-1 min-w-0">
                 {cit.command}
               </div>
               <button
@@ -398,7 +405,7 @@ export function CitationCard({
                   e.stopPropagation();
                   setIsEditing(true);
                 }}
-                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-stone-200 text-stone-400 hover:text-stone-600 hover:bg-stone-100 hover:border-stone-300 transition-colors flex-shrink-0"
+                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
                 title="Edit citation"
               >
                 Edit
@@ -409,7 +416,7 @@ export function CitationCard({
             {cit.keys
               .filter((k) => !bibEntryMap.has(k))
               .map((k) => (
-                <div key={k} className="text-xs text-red-400 mt-1">
+                <div key={k} className="text-xs text-danger mt-1">
                   Key not found in .bib: <span className="font-mono">{k}</span>
                 </div>
               ))}
@@ -422,7 +429,7 @@ export function CitationCard({
                 draggable
                 onDragStart={handleBibPodDragStart}
                 onClick={(e) => e.stopPropagation()}
-                className="mt-2 rounded-md border border-stone-200 bg-stone-50/40 p-2 cursor-grab active:cursor-grabbing"
+                className="mt-2 rounded-md border border-edge-subtle bg-surface-muted/40 p-2 cursor-grab active:cursor-grabbing"
                 title="Drag to insert this citation"
               >
                 <BibEntryCard
@@ -605,7 +612,7 @@ function CitationsPanel({
           <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                 <circle cx="8" cy="3" r="1.5" />
@@ -614,25 +621,25 @@ function CitationsPanel({
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
                 <div className="px-3 py-1.5 flex items-center justify-end gap-2">
                   <PanelThemePicker panelKey="citation" label="Citation color" />
                   <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
                 </div>
-                <div className="my-1 border-t border-stone-200" />
-                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Package</div>
+                <div className="my-1 border-t border-edge-subtle" />
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Package</div>
                 {BIB_PACKAGES.map((p) => (
                   <button key={p.value} onClick={() => { onSetBibPackage(p.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3">
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3">
                     <span>{p.label}</span>
                     <span className="text-[var(--accent)]">{bibPackage === p.value ? "\u2713" : ""}</span>
                   </button>
                 ))}
-                <div className="my-1 border-t border-stone-200" />
-                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">Style</div>
+                <div className="my-1 border-t border-edge-subtle" />
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Style</div>
                 {STYLES.map((s) => (
                   <button key={s.value} onClick={() => { onSetStyle(s.value); setMenuOpen(false); }}
-                    className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3">
+                    className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3">
                     <span>{s.label}</span>
                     <span className="text-[var(--accent)]">{citationStyle === s.value ? "\u2713" : ""}</span>
                   </button>
@@ -646,7 +653,7 @@ function CitationsPanel({
       {/* New citation builder */}
       {pendingCreate !== null && (
         <div className="mx-2 mt-2">
-          <div className="text-xs font-medium text-stone-500 mb-1">New citation</div>
+          <div className="text-xs font-medium text-ink-subtle mb-1">New citation</div>
           <CitationBuilder
             initialCommand={pendingCreate.includes("{") ? pendingCreate : undefined}
             bibPackage={bibPackage}
@@ -668,7 +675,7 @@ function CitationsPanel({
       >
         {visibleCitations.length === 0 && !pendingCreate && (
           <div className={PANEL.empty}>
-            <>No citations yet. Type <code className="text-xs bg-stone-100 px-1 rounded">\cite</code> in the editor to add one.</>
+            <>No citations yet. Type <code className="text-xs bg-surface-muted-strong px-1 rounded">\cite</code> in the editor to add one.</>
           </div>
         )}
 

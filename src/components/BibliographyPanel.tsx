@@ -414,12 +414,12 @@ function BibliographyPanel({
           {/* Add menu dropdown (button is in PanelHeader via onAdd) */}
           <div className="relative" ref={addMenuRef}>
             {addMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
                 <button
                   className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
                     generalBibPath
-                      ? "text-stone-700 hover:bg-stone-50"
-                      : "text-stone-300 cursor-not-allowed"
+                      ? "text-ink-body hover:bg-surface-muted"
+                      : "text-ink-faint cursor-not-allowed"
                   }`}
                   onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
                   title={generalBibPath ? undefined : "Set general bibliography first"}
@@ -431,7 +431,7 @@ function BibliographyPanel({
                   From general bibliography
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center gap-2"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
                   onClick={handleOpenRequestForm}
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -450,7 +450,7 @@ function BibliographyPanel({
           <div className="relative -mr-1" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
               title="View options"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -460,7 +460,7 @@ function BibliographyPanel({
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
                 {/* Theme color + view mode */}
                 <div className="px-3 py-1.5 flex items-center justify-end gap-2">
                   <PanelThemePicker panelKey="bib" label="Bibliography color" />
@@ -468,20 +468,20 @@ function BibliographyPanel({
                     <ViewToggle mode={viewMode} onChange={onViewModeChange} />
                   )}
                 </div>
-                <div className="my-1 border-t border-stone-200" />
+                <div className="my-1 border-t border-edge-subtle" />
                 {/* Display section */}
-                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-stone-400 uppercase tracking-wide">
+                <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
                   Display
                 </div>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setFilter("cited"); setMenuOpen(false); }}
                 >
                   <span>Cited entries only</span>
                   <span className="text-[var(--accent)]">{filter === "cited" ? "✓" : ""}</span>
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
                   onClick={() => { setFilter("all"); setMenuOpen(false); }}
                 >
                   <span>Full bibliography</span>
@@ -489,14 +489,14 @@ function BibliographyPanel({
                 </button>
 
                 {/* Divider */}
-                <div className="my-1 border-t border-stone-200" />
+                <div className="my-1 border-t border-edge-subtle" />
 
                 {/* Export command */}
                 <button
                   className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
                     citedKeys.size > 0
-                      ? "text-stone-700 hover:bg-stone-50"
-                      : "text-stone-300 cursor-not-allowed"
+                      ? "text-ink-body hover:bg-surface-muted"
+                      : "text-ink-faint cursor-not-allowed"
                   }`}
                   onClick={citedKeys.size > 0 ? handleExportCited : undefined}
                   title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
@@ -510,21 +510,21 @@ function BibliographyPanel({
                 </button>
 
                 {/* Divider */}
-                <div className="my-1 border-t border-stone-200" />
+                <div className="my-1 border-t border-edge-subtle" />
 
                 <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted"
                   onClick={handlePickGeneralBib}
                 >
                   {generalBibPath ? "Change general bibliography..." : "Set general bibliography..."}
                 </button>
                 {generalBibPath && (
                   <>
-                    <div className="px-3 py-1 text-[10px] text-stone-400 truncate" title={generalBibPath}>
+                    <div className="px-3 py-1 text-[10px] text-ink-muted truncate" title={generalBibPath}>
                       {generalBibFilename}
                     </div>
                     <button
-                      className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                      className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft"
                       onClick={() => { onSetGeneralBibPath(null); setMenuOpen(false); }}
                     >
                       Clear general bibliography
@@ -539,12 +539,12 @@ function BibliographyPanel({
 
       {/* Search bar (inline, between header and list) */}
       {showSearch && (
-        <div className="px-3 py-2 border-b border-[var(--border-light)] bg-stone-50/50">
+        <div className="px-3 py-2 border-b border-[var(--border-light)] bg-surface-muted/50">
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">Search general bibliography</span>
+            <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">Search general bibliography</span>
             <button
               onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}
-              className="ml-auto text-stone-400 hover:text-stone-600 p-0.5"
+              className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
               title="Close search"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -554,7 +554,7 @@ function BibliographyPanel({
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-stone-400 shrink-0">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ink-muted shrink-0">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -565,29 +565,29 @@ function BibliographyPanel({
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") { setShowSearch(false); setSearchQuery(""); setSearchResults([]); } }}
               placeholder="Search by key, author, or title..."
-              className="flex-1 text-xs bg-white border border-stone-200 rounded px-2 py-1 outline-none focus:border-stone-400"
+              className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 outline-none focus:border-edge-strong"
             />
           </div>
           {searchLoading && (
-            <div className="text-[10px] text-stone-400 mt-1.5">Searching...</div>
+            <div className="text-[10px] text-ink-muted mt-1.5">Searching...</div>
           )}
           {!searchLoading && searchResults.length > 0 && (
             <div className="mt-1.5 max-h-[200px] overflow-y-auto space-y-1">
               {searchResults.map((entry) => {
                 const alreadyAdded = existingKeys.has(entry.key);
                 return (
-                  <div key={entry.key} className="flex items-start justify-between gap-2 text-xs px-1 py-1 rounded hover:bg-white">
+                  <div key={entry.key} className="flex items-start justify-between gap-2 text-xs px-1 py-1 rounded hover:bg-surface">
                     <div className="min-w-0">
-                      <span className="font-mono text-[10px] text-stone-500">{entry.key}</span>
-                      <span className="text-stone-400 mx-1">&middot;</span>
-                      <span className="text-stone-700">{entry.fields.author || "Unknown"}</span>
-                      {entry.fields.year && <span className="text-stone-400"> ({entry.fields.year})</span>}
+                      <span className="font-mono text-[10px] text-ink-subtle">{entry.key}</span>
+                      <span className="text-ink-muted mx-1">&middot;</span>
+                      <span className="text-ink-body">{entry.fields.author || "Unknown"}</span>
+                      {entry.fields.year && <span className="text-ink-muted"> ({entry.fields.year})</span>}
                       {entry.fields.title && (
-                        <div className="text-[10px] text-stone-500 truncate">{entry.fields.title}</div>
+                        <div className="text-[10px] text-ink-subtle truncate">{entry.fields.title}</div>
                       )}
                     </div>
                     {alreadyAdded ? (
-                      <span className="text-[10px] text-stone-400 shrink-0 py-0.5">Added</span>
+                      <span className="text-[10px] text-ink-muted shrink-0 py-0.5">Added</span>
                     ) : (
                       <button
                         onClick={() => handleAddEntry(entry)}
@@ -602,7 +602,7 @@ function BibliographyPanel({
             </div>
           )}
           {!searchLoading && searchQuery.trim() && searchResults.length === 0 && (
-            <div className="text-[10px] text-stone-400 mt-1.5">No results found</div>
+            <div className="text-[10px] text-ink-muted mt-1.5">No results found</div>
           )}
         </div>
       )}
@@ -611,10 +611,10 @@ function BibliographyPanel({
       {showRequestForm && (
         <div className="px-3 py-2 border-b border-[var(--border-light)] bg-amber-50/30">
           <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-medium text-stone-500 uppercase tracking-wide">Request entry</span>
+            <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">Request entry</span>
             <button
               onClick={() => { setShowRequestForm(false); setRequestText(""); }}
-              className="ml-auto text-stone-400 hover:text-stone-600 p-0.5"
+              className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
               title="Cancel"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -632,13 +632,13 @@ function BibliographyPanel({
               if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
             }}
             placeholder="Describe the bibliography entry you need..."
-            className="w-full text-xs bg-white border border-stone-200 rounded px-2 py-1.5 outline-none focus:border-stone-400 resize-none"
+            className="w-full text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 outline-none focus:border-edge-strong resize-none"
             rows={3}
           />
           <div className="flex justify-end gap-1.5 mt-1.5">
             <button
               onClick={() => { setShowRequestForm(false); setRequestText(""); }}
-              className="text-[10px] text-stone-500 hover:text-stone-700 px-2 py-1 rounded"
+              className="text-[10px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded"
             >
               Cancel
             </button>
@@ -683,7 +683,7 @@ function BibliographyPanel({
                 <div
                   key={entry.key}
                   data-bib-entry={entry.key}
-                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"}`}
                   style={{
                     top,
                     ...(isSelected
@@ -692,14 +692,14 @@ function BibliographyPanel({
                   }}
                   onClick={() => handleSelectBibKey(isSelected ? null : entry.key)}
                 >
-                  <div className="text-xs text-stone-800 leading-snug truncate pr-6" title={`${author} ${year} — ${title}`}>
+                  <div className="text-xs text-ink-strong leading-snug truncate pr-6" title={`${author} ${year} — ${title}`}>
                     {author && <span className="font-semibold">{author}</span>}
-                    {author && year && <span className="text-stone-400 mx-1.5">&middot;</span>}
+                    {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
                     {year && <span className="font-semibold">{year}</span>}
-                    {(author || year) && title && <span className="text-stone-400 mx-1.5">&middot;</span>}
-                    {title && <span className="italic text-stone-700">{title}</span>}
+                    {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
+                    {title && <span className="italic text-ink-body">{title}</span>}
                   </div>
-                  <div className="text-[10px] font-mono text-stone-400 truncate mt-0.5" style={{ color: bibTheme.titleColor }}>
+                  <div className="text-[10px] font-mono text-ink-muted truncate mt-0.5" style={{ color: bibTheme.titleColor }}>
                     {formatMinimalCitation(entry.key, bibEntries)}
                   </div>
                 </div>
@@ -744,8 +744,8 @@ function BibliographyPanel({
 
         {/* Pending entry requests */}
         {entryRequests.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-stone-200">
-            <div className="text-[10px] font-medium text-stone-500 uppercase tracking-wide px-2 mb-1.5">
+          <div className="mt-2 pt-2 border-t border-edge-subtle">
+            <div className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide px-2 mb-1.5">
               Pending requests ({entryRequests.length})
             </div>
             {entryRequests.map((req) => (
@@ -754,10 +754,10 @@ function BibliographyPanel({
                 className="mx-1 mb-1.5 rounded-md border border-amber-200 bg-amber-50/40 px-3 py-2"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs text-stone-700 whitespace-pre-wrap">{req.description}</p>
+                  <p className="text-xs text-ink-body whitespace-pre-wrap">{req.description}</p>
                   <button
                     onClick={() => onRemoveEntryRequest(req.id)}
-                    className="text-stone-400 hover:text-stone-600 shrink-0 p-0.5"
+                    className="text-ink-muted hover:text-ink-body shrink-0 p-0.5"
                     title="Dismiss"
                   >
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -766,7 +766,7 @@ function BibliographyPanel({
                     </svg>
                   </button>
                 </div>
-                <div className="text-[10px] text-stone-400 mt-1">
+                <div className="text-[10px] text-ink-muted mt-1">
                   {new Date(req.createdAt).toLocaleDateString()}
                   {req.status === "pending" && (
                     <span className="ml-1.5 inline-flex items-center gap-1">

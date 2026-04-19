@@ -80,10 +80,10 @@ function FormatToolbar({
   if (!editor) return null;
 
   const btnClass = selected
-    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover:bg-white/15 transition-colors"
-    : "w-6 h-6 flex items-center justify-center rounded text-xs text-stone-600 hover:bg-stone-100 transition-colors";
+    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover:bg-surface/15 transition-colors"
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover:bg-surface-muted-strong transition-colors";
   const dividerClass = selected
-    ? "w-px h-4 bg-white/20 mx-0.5"
+    ? "w-px h-4 bg-surface/20 mx-0.5"
     : "w-px h-4 bg-[var(--border-light)] mx-0.5";
 
   return (

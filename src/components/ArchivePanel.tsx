@@ -202,7 +202,7 @@ function ArchivePanel({
                   className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
                     isSelected
                       ? "bg-amber-50 border-l-2 border-l-amber-400 border-b-stone-300"
-                      : "border-b-stone-300 hover:bg-stone-50"
+                      : "border-b-stone-300 hover:bg-surface-muted"
                   }`}
                   style={{ top }}
                   onClick={() => onSelect(isSelected ? null : s.id)}
@@ -212,9 +212,9 @@ function ArchivePanel({
                       <TargetIcon onClick={() => onScrollToMarker(s.id)} title="Jump to archive marker" />
                     </div>
                   )}
-                  <p className="text-xs text-stone-600 leading-snug line-clamp-2 pr-6"
+                  <p className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
                     style={{ fontFamily: "var(--font-serif), Georgia, serif" }}>
-                    {preview || <span className="italic text-stone-400">Empty</span>}
+                    {preview || <span className="italic text-ink-muted">Empty</span>}
                   </p>
                 </div>
               );

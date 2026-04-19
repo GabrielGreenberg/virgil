@@ -121,7 +121,7 @@ function FilterMenu({
     <button
       key={cat}
       onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-stone-700 hover:bg-stone-50 transition-colors flex items-center justify-between gap-3"
+      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted transition-colors flex items-center justify-between gap-3"
     >
       <span>{CATEGORY_LABELS[cat]}</span>
       <span className="text-[var(--accent)]">{enabled.has(cat) ? "✓" : ""}</span>
@@ -133,7 +133,7 @@ function FilterMenu({
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+        className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
         title="Filter items"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -145,12 +145,12 @@ function FilterMenu({
       {open && (
         <div
           ref={menuRef}
-          className="fixed bg-white border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
+          className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
           style={{ top: pos.top, right: pos.right }}
         >
           {leftCats.length > 0 && (
             <>
-              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                 Left-side tools
               </div>
               {leftCats.map(renderRow)}
@@ -159,7 +159,7 @@ function FilterMenu({
           {rightCats.length > 0 && (
             <>
               {leftCats.length > 0 && <div className="my-1 border-t border-stone-100" />}
-              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-stone-400">
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                 Right-side tools
               </div>
               {rightCats.map(renderRow)}
@@ -247,7 +247,7 @@ function OmniViewPanel({
         className="w-full h-full overflow-y-auto hide-scrollbar"
       >
         {visibleItems.length === 0 && (
-          <div className="text-center text-stone-400 text-xs px-3 py-6">
+          <div className="text-center text-ink-muted text-xs px-3 py-6">
             {enabledCategories.size === 0
               ? "No item types selected — use the filter menu."
               : "No items to show yet."}
@@ -255,7 +255,7 @@ function OmniViewPanel({
         )}
         {unanchored.length > 0 && (
           <div ref={unanchoredRef} className="px-2 pt-2 pb-2 space-y-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-stone-400 px-1">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1">
               Unanchored
             </div>
             {unanchored.map((item) => (

@@ -20,7 +20,7 @@ const ALL_CATS: Category[] = ALL_CATEGORIES;
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="flex flex-col items-center">
-      <span className="text-base font-medium text-stone-800 tabular-nums">{value}</span>
+      <span className="text-base font-medium text-ink-strong tabular-nums">{value}</span>
       <span className="text-[10px] text-[var(--muted)] uppercase tracking-wide">{label}</span>
     </div>
   );
@@ -50,7 +50,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
         {/* Total stats */}
         <div className="px-4 py-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-base font-medium text-stone-800 tabular-nums leading-none">
+            <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
               {filteredTotal.toLocaleString()}
             </span>
             <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
@@ -58,7 +58,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
             </span>
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-base font-medium text-stone-800 tabular-nums leading-none">
+            <span className="text-base font-medium text-ink-strong tabular-nums leading-none">
               {counts.characters.toLocaleString()}
             </span>
             <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
@@ -95,7 +95,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
 
         {/* Category breakdown — each row is a toggle button */}
         {catsWithWords.length > 0 && (
-          <div className="rounded-lg border border-stone-300 bg-white overflow-hidden">
+          <div className="rounded-lg border border-edge-subtle bg-surface overflow-hidden">
             <div className="px-4 py-2 border-b border-stone-100">
               <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
                 Breakdown
@@ -111,7 +111,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
                 <button
                   key={cat}
                   onClick={() => toggleCat(cat)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-stone-50 ${
+                  className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-surface-muted ${
                     i < catsWithWords.length - 1 ? "border-b border-stone-50" : ""
                   }`}
                   title={included ? `Exclude ${CATEGORY_LABELS[cat]} from total` : `Include ${CATEGORY_LABELS[cat]} in total`}
@@ -119,13 +119,13 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
                   <span className="w-4 text-center text-xs text-[var(--accent)]">
                     {included ? "\u2713" : ""}
                   </span>
-                  <span className={`text-xs flex-1 text-left ${included ? "text-stone-700" : "text-stone-400"}`}>
+                  <span className={`text-xs flex-1 text-left ${included ? "text-ink-body" : "text-ink-muted"}`}>
                     {CATEGORY_LABELS[cat]}
                   </span>
-                  <span className={`text-xs tabular-nums ${included ? "text-stone-800" : "text-stone-300"}`}>
+                  <span className={`text-xs tabular-nums ${included ? "text-ink-strong" : "text-ink-faint"}`}>
                     {wc}
                   </span>
-                  <span className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-stone-300"}`}>
+                  <span className={`text-[10px] w-8 text-right ${included ? "text-[var(--muted)]" : "text-ink-faint"}`}>
                     {included ? `${pct}%` : "off"}
                   </span>
                 </button>

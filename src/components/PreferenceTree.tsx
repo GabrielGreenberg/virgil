@@ -11,8 +11,8 @@ import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 function PrefLabel({ label, description }: { label: string; description?: string }) {
   return (
     <div className="w-36 shrink-0">
-      <span className="text-xs text-stone-600">{label}</span>
-      {description && <span className="text-[10px] text-stone-400 block leading-tight">{description}</span>}
+      <span className="text-xs text-ink-body">{label}</span>
+      {description && <span className="text-[10px] text-ink-muted block leading-tight">{description}</span>}
     </div>
   );
 }
@@ -48,7 +48,7 @@ function SliderPref({
         onChange={(e) => onChange(parseFloat(e.target.value))}
         className="flex-1 h-1 accent-[var(--accent)]"
       />
-      <span className="text-[11px] text-stone-400 w-14 text-right tabular-nums">
+      <span className="text-[11px] text-ink-muted w-14 text-right tabular-nums">
         {value}{unit}
       </span>
     </div>
@@ -95,7 +95,7 @@ function ColorPref({
           type="color"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-6 h-6 rounded border border-stone-200 cursor-pointer p-0 bg-transparent"
+          className="w-6 h-6 rounded border border-edge-subtle cursor-pointer p-0 bg-transparent"
         />
         <input
           type="text"
@@ -106,14 +106,14 @@ function ColorPref({
           spellCheck={false}
           className={`text-[11px] font-mono w-[70px] px-1 py-0.5 border rounded bg-transparent outline-none ${
             invalid
-              ? "border-red-300 text-red-500"
-              : "border-stone-200 text-stone-500 focus:border-[var(--accent)]"
+              ? "border-red-300 text-danger"
+              : "border-edge-subtle text-ink-subtle focus:border-[var(--accent)]"
           }`}
         />
         {!isDefault && (
           <button
             onClick={() => onChange(defaultValue)}
-            className="text-[10px] text-stone-400 hover:text-stone-600 underline ml-auto"
+            className="text-[10px] text-ink-muted hover:text-ink-body underline ml-auto"
           >
             reset
           </button>
@@ -142,7 +142,7 @@ function FontPref({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="flex-1 text-xs bg-white border border-stone-200 rounded px-2 py-1 text-stone-700 outline-none focus:border-[var(--accent)]"
+        className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 text-ink-body outline-none focus:border-[var(--accent)]"
       >
         {options.map((f) => (
           <option key={f} value={f}>{f}</option>
@@ -171,21 +171,21 @@ function SectionNode({
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-full text-left py-1 hover:bg-stone-50 rounded transition-colors"
+        className="flex items-center gap-1.5 w-full text-left py-1 hover:bg-surface-muted rounded transition-colors"
         style={{ paddingLeft: depth * 12 }}
       >
         <svg
           width="10"
           height="10"
           viewBox="0 0 10 10"
-          className={`text-stone-400 transition-transform ${open ? "rotate-90" : ""}`}
+          className={`text-ink-muted transition-transform ${open ? "rotate-90" : ""}`}
           fill="none"
           stroke="currentColor"
           strokeWidth="1.5"
         >
           <path d="M3 1.5l4 3.5-4 3.5" />
         </svg>
-        <span className="text-[11px] font-semibold text-stone-500 uppercase tracking-wider">
+        <span className="text-[11px] font-semibold text-ink-subtle uppercase tracking-wider">
           {group.label}
         </span>
       </button>

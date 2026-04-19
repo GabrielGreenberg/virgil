@@ -5,6 +5,63 @@ new UI and update it whenever a decision feels generalizable.
 
 ---
 
+## Semantic Color Tokens
+
+Use the semantic tokens defined in `src/app/globals.css` instead of raw
+Tailwind color utilities (`text-stone-*`, `border-stone-*`, `bg-stone-*`,
+`text-red-*`, `bg-red-*`). The tokens let every instance of a role move
+together when colors change, and they're the surface the user-preferences
+picker edits.
+
+| Use for | Token utility | CSS var |
+|---|---|---|
+| Card / popover / input bg (the "paper") | `bg-surface` | `--surface` |
+| Subtle resting bg, list-item hover | `bg-surface-muted` | `--surface-muted` |
+| Stronger hover (icon buttons, chips) | `bg-surface-muted-strong` | `--surface-muted-strong` |
+| Modal scrim | `bg-[var(--overlay-scrim)]` | `--overlay-scrim` |
+| Subtle borders (cards, dividers) | `border-edge-subtle` | `--edge-subtle` |
+| Border on hover | `border-edge-hover` | `--edge-hover` |
+| Input focus border | `focus:border-edge-strong` | `--edge-strong` |
+| Disabled / idle drag handle | `text-ink-faint` | `--ink-faint` |
+| Placeholder, icon default | `text-ink-muted` | `--ink-muted` |
+| Subtitle / caption | `text-ink-subtle` | `--ink-subtle` |
+| Section titles, body text | `text-ink-body` | `--ink-body` |
+| Modal titles, strong text | `text-ink-strong` | `--ink-strong` |
+| Destructive action text | `text-danger` | `--danger` |
+| Destructive hover bg | `hover:bg-danger-soft` | `--danger-soft` |
+| Drop-target ring | `ring-drag-target` | `--ring-drag-target` |
+
+### Tokens that are locked together
+
+Several tokens intentionally alias to a canonical counterpart so they can't
+drift apart. Do not override them independently — change the canonical:
+
+| Alias | Canonical |
+|---|---|
+| `--pod-editor` | `var(--surface)` |
+| `--h1-color` | `var(--foreground)` |
+| `--h2h3-color` | `var(--editor-text-color)` |
+| `--scrollbar-hover` | `var(--muted-light)` |
+| `--theme-color` | `var(--topbar-bg)` |
+
+The aliased keys have been removed from the preferences tree — they surface
+only via the canonical token in the picker.
+
+### When raw Tailwind colors are still OK
+
+- Per-panel chrome (footnote-red, note-emerald, bib-amber, AI-sky): these
+  colors live in `CARD_THEMES` in `panel-primitives.tsx` and in
+  `panel-theme.ts`'s `deriveCardPalette`. They're customized per panel via
+  the header color picker — don't collapse them into global tokens.
+- Primary-action button fills (`bg-stone-700`, `bg-stone-800`) where the
+  darker stone is the intended visual. These are rare; consider adding a
+  `--button-primary` token if you find yourself reaching for them often.
+- Decorative one-offs (bibliography amber highlight, archive blue tint,
+  comment-draft amber badge). If the same color starts recurring in ≥3
+  places, promote it to a token.
+
+---
+
 ## Icons
 
 ### AI Star

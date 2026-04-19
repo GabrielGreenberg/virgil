@@ -208,7 +208,7 @@ export default function CutterPanel({
                 <div
                   key={cut.id}
                   data-cut-entry={cut.id}
-                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                  className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"}`}
                   style={{
                     top,
                     ...(isSelected
@@ -225,10 +225,10 @@ export default function CutterPanel({
                     </div>
                   )}
                   <p
-                    className="text-xs text-stone-600 leading-snug line-clamp-2 pr-6"
+                    className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
                     style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
                   >
-                    {preview || <span className="italic text-stone-400">Empty cut</span>}
+                    {preview || <span className="italic text-ink-muted">Empty cut</span>}
                   </p>
                 </div>
               );

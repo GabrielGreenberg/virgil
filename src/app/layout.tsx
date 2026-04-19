@@ -56,7 +56,7 @@ export default function RootLayout({
       className={`${inter.variable} ${playfair.variable} ${cinzel.variable} ${sourceSerif.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
-        <meta name="theme-color" content="#efecea" />
+        <meta name="theme-color" content="#e5e4e1" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2" />
       </head>
       <body className="min-h-full flex flex-col">
