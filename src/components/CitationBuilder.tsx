@@ -6,9 +6,11 @@ import {
   useRef,
   useEffect,
   useCallback,
+  useLayoutEffect,
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { createPortal } from "react-dom";
 import type { BibEntry } from "@/lib/types";
 import type { ParsedCiteKey } from "@/lib/bib-parser";
 import { parseCiteCommand, serializeCiteCommand, formatMinimalCitation } from "@/lib/bib-parser";
@@ -67,18 +69,38 @@ function KeySearchDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState(value);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setSearch(value); }, [value]);
 
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (dropRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !inputRef.current) return;
+    const update = () => {
+      const r = inputRef.current!.getBoundingClientRect();
+      setPos({ left: r.left, top: r.bottom + 2, width: r.width });
+    };
+    update();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [open]);
 
   const filtered = useMemo(() => {
@@ -107,22 +129,28 @@ function KeySearchDropdown({
         placeholder={placeholder || "key"}
         className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
       />
-      {open && filtered.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-stone-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+      {open && filtered.length > 0 && pos && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", left: pos.left, top: pos.top, minWidth: pos.width }}
+          className="bg-white border border-stone-200 rounded-md shadow-lg z-50 max-h-64 overflow-y-auto w-max max-w-[32rem]"
+        >
           {filtered.map((e) => (
             <button
               key={e.key}
               onMouseDown={(ev) => { ev.preventDefault(); onChange(e.key); setSearch(e.key); setOpen(false); }}
-              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-stone-50 flex flex-col gap-0.5"
+              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-stone-50 leading-snug line-clamp-2 whitespace-normal break-words"
             >
               <span className="font-mono text-stone-700">{e.key}</span>
-              <span className="text-stone-400 truncate">
+              <span className="text-stone-400">
+                {"  "}
                 {formatMinimalCitation(e.key, [e])}
                 {e.fields.title ? ` \u2014 ${e.fields.title}` : ""}
               </span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
