@@ -90,6 +90,7 @@ import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit, PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
+import FloatingCards from "./FloatingCards";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
@@ -1178,6 +1179,9 @@ export default function EditorLayout() {
     togglePopout,
     closePopout,
     setFloatPosition,
+    toggleCardPopout,
+    closeCardPopout,
+    setCardFloatPosition,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -5491,6 +5495,17 @@ export default function EditorLayout() {
           onCancel={cancelFolderPick}
         />
       )}
+      {/* Floating (popped-out) cards — rendered via portal above everything.
+          The per-kind dispatch lives in commit 2's wire-up; for now this
+          mounts the scaffolding and responds to entity-missing with
+          auto-dismiss. */}
+      <FloatingCards
+        poppedOutCards={prefs.poppedOutCards}
+        cardFloatPositions={prefs.cardFloatPositions}
+        setCardFloatPosition={setCardFloatPosition}
+        closeCardPopout={closeCardPopout}
+        renderCard={() => null}
+      />
       {/* Floating (popped-out) panels — rendered via portal above everything. */}
       {prefs.poppedOutPanels.map((pid, i) => {
         const placement = prefs.placements.find((pl) => pl.id === pid);

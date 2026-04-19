@@ -17,6 +17,7 @@ import {
   MenuDelete,
   TargetIcon,
   CARD_THEMES,
+  CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
@@ -369,6 +370,8 @@ interface CardProps {
   onReply: (text: string) => void;
   registerRef?: (el: HTMLDivElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }
 
 function RevisionCard({
@@ -388,6 +391,8 @@ function RevisionCard({
   onReply,
   registerRef,
   onHoverChange,
+  onTogglePopout,
+  isPoppedOut,
 }: CardProps) {
   const theme = CARD_THEMES.comment;
   const firstTurn = turns[0];
@@ -408,6 +413,9 @@ function RevisionCard({
     >
       {/* Header: author + timestamp, with target icon + menu trailing */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        )}
         {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
         {firstTurn && (
           <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">

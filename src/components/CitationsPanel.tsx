@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import BibEntryCard from "./BibEntryCard";
@@ -106,6 +106,10 @@ export interface CitationCardProps {
   wrapperStyle?: React.CSSProperties;
   /** Extra data-* attributes on the card wrapper (e.g. data-omni-entry). */
   extraDataAttrs?: Record<string, string>;
+  /** When provided, renders a popout chevron at the left edge of the header. */
+  onTogglePopout?: () => void;
+  /** Whether this card is currently rendered in a floating window. */
+  isPoppedOut?: boolean;
 }
 
 export function CitationCard({
@@ -129,6 +133,8 @@ export function CitationCard({
   wrapperClassName,
   wrapperStyle,
   extraDataAttrs,
+  onTogglePopout,
+  isPoppedOut,
 }: CitationCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
@@ -349,6 +355,9 @@ export function CitationCard({
             className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
             style={headerOverrideStyle(theme, isSelected)}
           >
+            {onTogglePopout && (
+              <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+            )}
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
                 const entry = bibEntryMap.get(key);

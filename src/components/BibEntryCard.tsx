@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { MIME_CITATION } from "@/lib/marginalia";
 
@@ -30,6 +30,10 @@ export interface BibEntryCardProps {
   isCited?: boolean;
   /** Called when user clicks the target icon to jump to this entry in the text. Only shown when selected. */
   onJump?: () => void;
+  /** When provided, renders a popout chevron at the left edge of the header. */
+  onTogglePopout?: () => void;
+  /** Whether this card is currently rendered in a floating window. */
+  isPoppedOut?: boolean;
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -125,6 +129,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
+  onTogglePopout, isPoppedOut,
 }: BibEntryCardProps) {
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
@@ -418,6 +423,9 @@ export default function BibEntryCard({
         className={`flex items-start gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, isSelected)}
       >
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        )}
         <div
           className="flex-1 min-w-0 leading-snug"
           style={{

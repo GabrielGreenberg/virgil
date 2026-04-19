@@ -331,6 +331,10 @@ export interface EditableCardProps {
   onEditorFocus?: (editor: any) => void;
   /** Mouse-hover hook. Fires on mouseenter (true) and mouseleave (false). */
   onHoverChange?: (hovering: boolean) => void;
+  /** When provided, renders a popout chevron at the left edge (after grabHandle). */
+  onTogglePopout?: () => void;
+  /** Whether this card is currently rendered in a floating window. */
+  isPoppedOut?: boolean;
 }
 
 /**
@@ -349,6 +353,7 @@ export function EditableCard({
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
+  onTogglePopout, isPoppedOut,
 }: EditableCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
@@ -465,6 +470,9 @@ export function EditableCard({
               <circle cx="7" cy="12" r="1.2" />
             </svg>
           </div>
+        )}
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
         )}
         {badge}
         {headerContent}
@@ -699,6 +707,56 @@ export function PanelClose() {
   );
 }
 
+/**
+ * Per-card popout toggle. Lives at the left edge of each card header,
+ * immediately right of any grab handle. Subtle hover-reveal when docked;
+ * always visible (and rotated) when the card is popped out.
+ */
+export function CardPopoutButton({
+  isPoppedOut,
+  onClick,
+}: {
+  isPoppedOut: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      className={`${
+        isPoppedOut
+          ? "opacity-70 hover:opacity-100"
+          : "opacity-0 group-hover:opacity-60 hover:!opacity-100"
+      } focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-ink-body shrink-0`}
+      title={isPoppedOut ? "Dock card" : "Pop out card"}
+      aria-label={isPoppedOut ? "Dock card" : "Pop out card"}
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
+      >
+        <polyline points="6 15 12 9 18 15" />
+      </svg>
+    </button>
+  );
+}
+
 function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick: () => void }) {
   return (
     <button
@@ -816,10 +874,14 @@ export function AiRequestCard({
   request,
   onChangeText,
   onDelete,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   request: AiRequest;
   onChangeText: (text: string) => void;
   onDelete: () => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
   const [draft, setDraft] = useState(request.text);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -879,6 +941,9 @@ export function AiRequestCard({
     >
       {/* Header: star + kind label + status + inline delete */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        )}
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
           title={`AI ${kindLabel} request`}

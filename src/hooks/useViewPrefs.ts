@@ -35,6 +35,10 @@ export interface ViewPrefs {
   poppedOutPanels: PanelId[];
   /** Saved position/size of each floating panel, keyed by panel id. */
   floatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
+  /** Cards currently displayed as floating windows — keys shaped `${kind}:${id}`. */
+  poppedOutCards: string[];
+  /** Saved position/size of each floating card, keyed by card key. */
+  cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -67,6 +71,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   editorSplitRatio: 0.5,
   poppedOutPanels: [],
   floatPositions: {},
+  poppedOutCards: [],
+  cardFloatPositions: {},
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -336,6 +342,32 @@ export function useViewPrefs() {
     [update],
   );
 
+  const toggleCardPopout = useCallback((key: string) => {
+    update((p) => {
+      const isPopped = p.poppedOutCards.includes(key);
+      return {
+        ...p,
+        poppedOutCards: isPopped
+          ? p.poppedOutCards.filter((x) => x !== key)
+          : [...p.poppedOutCards, key],
+      };
+    });
+  }, [update]);
+
+  const closeCardPopout = useCallback((key: string) => {
+    update((p) => ({
+      ...p,
+      poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
+    }));
+  }, [update]);
+
+  const setCardFloatPosition = useCallback(
+    (key: string, pos: { x: number; y: number; width: number; height: number }) => {
+      update((p) => ({ ...p, cardFloatPositions: { ...p.cardFloatPositions, [key]: pos } }));
+    },
+    [update],
+  );
+
   const setEditorSplitRatio = useCallback((ratio: number) => {
     update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
   }, [update]);
@@ -365,5 +397,8 @@ export function useViewPrefs() {
     togglePopout,
     closePopout,
     setFloatPosition,
+    toggleCardPopout,
+    closeCardPopout,
+    setCardFloatPosition,
   };
 }

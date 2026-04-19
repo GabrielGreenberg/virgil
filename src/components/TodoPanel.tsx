@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
@@ -44,6 +44,8 @@ export function TodoRow({
   onJump,
   isAnchored,
   extraDataAttrs,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   item: TodoItem;
   selected: boolean;
@@ -55,6 +57,8 @@ export function TodoRow({
   onJump?: () => void;
   isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
@@ -124,6 +128,10 @@ export function TodoRow({
             <circle cx="7" cy="12" r="1.2" />
           </svg>
         </div>
+
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        )}
 
         {/* Badge */}
         {isAnchored

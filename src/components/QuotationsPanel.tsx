@@ -22,6 +22,7 @@ import {
   AiRequestsSectionHeader,
   cardOverrideStyle,
   headerOverrideStyle,
+  CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
@@ -632,6 +633,8 @@ export function QuotationGroupCard({
   onUpdateQuote,
   onDeleteQuote,
   onUpdateNotes,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   group: QuotationGroup;
   bibEntries: BibEntry[];
@@ -653,6 +656,8 @@ export function QuotationGroupCard({
   ) => void;
   onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
   // Local title state with debounced persist
   const [title, setTitle] = useState(group.title);
@@ -741,6 +746,9 @@ export function QuotationGroupCard({
             <circle cx="7" cy="12" r="1.2" />
           </svg>
         </div>
+        {onTogglePopout && (
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        )}
         <input
           type="text"
           value={title}

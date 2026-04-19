@@ -78,7 +78,7 @@ export default function FloatingPanel({
 
   const onHeaderMouseDown = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest("button, input, textarea, select, a, [contenteditable='true']")) return;
+    if (target.closest("button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]")) return;
     dragStateRef.current = {
       mode: "move",
       startX: e.clientX,
