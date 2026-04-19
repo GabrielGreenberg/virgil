@@ -872,8 +872,8 @@ function EditablePod({
           isDragging
             ? "opacity-30 border-stone-300 bg-stone-100"
             : isParTitle
-              ? "border-stone-200 bg-white hover:border-stone-300"
-              : "border-stone-200 bg-white hover:border-stone-300 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
+              ? "border-stone-300 bg-white hover:border-stone-400"
+              : "border-stone-300 bg-white hover:border-stone-400 shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
         }`}
         style={{
           marginLeft: `${indent}px`,

@@ -122,7 +122,6 @@ export function ArchiveCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "archive-entry", value: snippet.id }}
       extraDataAttrs={extraDataAttrs}
-      orphaned={orphaned}
     />
   );
 }
