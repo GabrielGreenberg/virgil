@@ -282,6 +282,17 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
 
+  /**
+   * Close a floating panel without re-docking it into the sidebar (unlike
+   * togglePopout, which re-docks if the side column is open).
+   */
+  const closePopout = useCallback((id: PanelId) => {
+    update((p) => ({
+      ...p,
+      poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+    }));
+  }, [update]);
+
   const togglePopout = useCallback((id: PanelId) => {
     update((p) => {
       const isPopped = p.poppedOutPanels.includes(id);
@@ -352,6 +363,7 @@ export function useViewPrefs() {
     setEditorSplit,
     setEditorSplitRatio,
     togglePopout,
+    closePopout,
     setFloatPosition,
   };
 }
