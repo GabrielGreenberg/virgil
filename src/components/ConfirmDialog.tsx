@@ -143,23 +143,23 @@ export default function ConfirmDialog({
           {title && (
             <h2
               id="confirm-dialog-title"
-              className="text-sm font-semibold text-stone-700 mb-1.5"
+              className="text-sm font-semibold text-ink-body mb-1.5"
             >
               {title}
             </h2>
           )}
           <div
             id="confirm-dialog-message"
-            className="text-xs text-stone-600 leading-relaxed"
+            className="text-xs text-ink-body leading-relaxed"
           >
             {message}
           </div>
         </div>
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border)] bg-stone-50/60">
+        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border)] bg-surface-muted/60">
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-stone-700 bg-white border border-stone-300 rounded-md hover:bg-stone-50 transition-colors"
+            className="px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover:bg-surface-muted transition-colors"
           >
             {cancelLabel}
           </button>

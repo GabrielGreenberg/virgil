@@ -296,14 +296,14 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleNavKeys}
           placeholder="Find in document..."
-          className="flex-1 text-sm bg-transparent outline-none placeholder:text-stone-400"
+          className="flex-1 text-sm bg-transparent outline-none placeholder:text-ink-muted"
         />
         <button
           onClick={() => setCaseSensitive((v) => !v)}
           className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
             caseSensitive
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
-              : "border-stone-300 text-stone-400 hover:text-stone-600"
+              : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
           title="Match case"
         >
@@ -314,7 +314,7 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
           className={`text-[10px] font-bold px-1.5 py-0.5 rounded border transition-colors ${
             wholeWord
               ? "border-[var(--accent)] text-[var(--accent)] bg-amber-50/60"
-              : "border-stone-300 text-stone-400 hover:text-stone-600"
+              : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
           title="Whole word"
         >
@@ -359,7 +359,7 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
                       {seg.kind === "title" ? (
                         <>
                           <span className="text-[var(--muted)]">Title: </span>
-                          <span className="text-stone-600 font-medium">
+                          <span className="text-ink-body font-medium">
                             {seg.text}
                           </span>
                         </>
@@ -380,18 +380,18 @@ function SearchPanel({ editor, onHighlightRange }: SearchPanelProps) {
                   ))}
                 </div>
               )}
-              <div className="text-sm text-stone-700 leading-snug break-words">
+              <div className="text-sm text-ink-body leading-snug break-words">
                 {r.before.length > 0 && (
-                  <span className="text-stone-400">
+                  <span className="text-ink-muted">
                     {r.before.length === CTX ? "\u2026" : ""}
                     {r.before}
                   </span>
                 )}
-                <mark className="bg-amber-200/80 text-stone-800 rounded-sm px-px">
+                <mark className="bg-amber-200/80 text-ink-strong rounded-sm px-px">
                   {r.match}
                 </mark>
                 {r.after.length > 0 && (
-                  <span className="text-stone-400">
+                  <span className="text-ink-muted">
                     {r.after}
                     {r.after.length === CTX ? "\u2026" : ""}
                   </span>

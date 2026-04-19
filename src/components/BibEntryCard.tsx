@@ -50,16 +50,16 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
   };
 
   return (
-    <div className="flex items-center gap-0.5 px-1 py-0.5 border-b border-stone-200">
+    <div className="flex items-center gap-0.5 px-1 py-0.5 border-b border-edge-subtle">
       <button onMouseDown={(e) => { e.preventDefault(); exec("bold"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-stone-600 hover:bg-stone-100 transition-colors" title="Bold">B</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-ink-body hover:bg-surface-muted-strong transition-colors" title="Bold">B</button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("italic"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-stone-600 hover:bg-stone-100 transition-colors" title="Italic">I</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-ink-body hover:bg-surface-muted-strong transition-colors" title="Italic">I</button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-stone-600 hover:bg-stone-100 transition-colors" title="Underline">U</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover:bg-surface-muted-strong transition-colors" title="Underline">U</button>
       <div className="w-px h-4 bg-stone-200 mx-0.5" />
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-stone-600 hover:bg-stone-100 transition-colors" title="Bullet list">
+        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover:bg-surface-muted-strong transition-colors" title="Bullet list">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" /><rect x="5" y="3" width="10" height="2" rx="0.5" />
           <circle cx="2" cy="8" r="1.5" /><rect x="5" y="7" width="10" height="2" rx="0.5" />
@@ -67,7 +67,7 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
         </svg>
       </button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertOrderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-stone-600 hover:bg-stone-100 transition-colors" title="Numbered list">
+        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover:bg-surface-muted-strong transition-colors" title="Numbered list">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text><rect x="5" y="3" width="10" height="2" rx="0.5" />
           <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text><rect x="5" y="7" width="10" height="2" rx="0.5" />
@@ -113,7 +113,7 @@ function AnnotationEditor({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onClick={(e) => e.stopPropagation()}
-        className="annotation-editor px-3 py-2 text-sm text-stone-700 leading-relaxed focus:outline-none min-h-[2.5rem]"
+        className="annotation-editor px-3 py-2 text-sm text-ink-body leading-relaxed focus:outline-none min-h-[2.5rem]"
         data-placeholder="Write an annotation for this reference..."
       />
     </div>
@@ -231,7 +231,7 @@ export default function BibEntryCard({
         if (parts.length === 0) return null;
         return (
           <div
-            className="text-xs text-stone-500 leading-relaxed break-words overflow-hidden"
+            className="text-xs text-ink-subtle leading-relaxed break-words overflow-hidden"
             style={{ overflowWrap: "anywhere" }}
             dangerouslySetInnerHTML={{ __html: parts.join(". ") + "." }}
           />
@@ -240,10 +240,10 @@ export default function BibEntryCard({
 
       {/* Cite key + copy */}
       <div className="mt-1.5 inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <span className="text-xs font-mono text-stone-400 break-all">{entry.key}</span>
+        <span className="text-xs font-mono text-ink-muted break-all">{entry.key}</span>
         <button
           onClick={handleCopyKey}
-          className="p-0.5 text-stone-300 hover:text-stone-500 transition-colors"
+          className="p-0.5 text-ink-faint hover:text-ink-subtle transition-colors"
           title="Copy cite key"
         >
           {copied ? (
@@ -263,7 +263,7 @@ export default function BibEntryCard({
       <div className="mt-3">
         <div className="flex items-center gap-1.5">
           <button onClick={(e) => { e.stopPropagation(); setFieldsOpen((p) => !p); }}
-            className="flex items-center gap-1.5 text-xs text-stone-500 hover:text-stone-700 transition-colors">
+            className="flex items-center gap-1.5 text-xs text-ink-subtle hover:text-ink-body transition-colors">
             <Chevron expanded={fieldsOpen} />
             <span>BibTeX Fields</span>
           </button>
@@ -272,7 +272,7 @@ export default function BibEntryCard({
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               fieldsReviewStatus === "pending"
                 ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
             }`}
             title={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
           >
@@ -287,7 +287,7 @@ export default function BibEntryCard({
                 <input type="text" value={requestNoteDrafts[fieldsDk] || ""}
                   onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [fieldsDk]: e.target.value }))}
                   placeholder="Request annotation..."
-                  className="w-full text-xs px-3 py-2 bg-transparent text-stone-600 placeholder:text-stone-400 focus:outline-none" />
+                  className="w-full text-xs px-3 py-2 bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
               </div>
             )}
             <div className={PANEL.subpod}>
@@ -300,44 +300,44 @@ export default function BibEntryCard({
                   )}
                   {/* Editable @type and key */}
                   <div className="flex gap-1 items-start">
-                    <span className="font-mono text-stone-400 w-16 flex-shrink-0 text-right text-xs">@type:</span>
+                    <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">@type:</span>
                     <input type="text" value={editBibType}
                       onChange={(e) => setEditBibType(e.target.value)}
-                      className="flex-1 font-mono border border-stone-200 rounded px-1 py-0.5 text-xs" />
+                      className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
                   </div>
                   <div className="flex gap-1 items-start">
-                    <span className="font-mono text-stone-400 w-16 flex-shrink-0 text-right text-xs">key:</span>
+                    <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">key:</span>
                     <input type="text" value={editBibKey}
                       onChange={(e) => setEditBibKey(e.target.value)}
-                      className="flex-1 font-mono border border-stone-200 rounded px-1 py-0.5 text-xs" />
+                      className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
                   </div>
                   {Object.entries(editBibFields).map(([field, val]) => (
                     <div key={field} className="flex gap-1 items-start">
-                      <span className="font-mono text-stone-400 w-16 flex-shrink-0 text-right text-xs">{field}:</span>
+                      <span className="font-mono text-ink-muted w-16 flex-shrink-0 text-right text-xs">{field}:</span>
                       <input type="text" value={val}
                         onChange={(e) => setEditBibFields((prev) => ({ ...prev, [field]: e.target.value }))}
-                        className="flex-1 font-mono border border-stone-200 rounded px-1 py-0.5 text-xs" />
+                        className="flex-1 font-mono border border-edge-subtle rounded px-1 py-0.5 text-xs" />
                     </div>
                   ))}
                   <div className="flex gap-1 mt-1">
                     <button onClick={commitEditBib} className="text-xs px-2 py-0.5 bg-stone-700 text-white rounded hover:bg-stone-800">Save</button>
-                    <button onClick={cancelEditBib} className="text-xs px-2 py-0.5 border border-stone-300 rounded hover:bg-stone-100">Cancel</button>
+                    <button onClick={cancelEditBib} className="text-xs px-2 py-0.5 border border-edge-hover rounded hover:bg-surface-muted-strong">Cancel</button>
                   </div>
                 </div>
               ) : (
-                <div className="space-y-0.5 text-xs text-stone-500 min-w-0">
+                <div className="space-y-0.5 text-xs text-ink-subtle min-w-0">
                   {/* @type{key} shown as first line */}
-                  <div className="break-words font-mono text-stone-400 mb-0.5">
+                  <div className="break-words font-mono text-ink-muted mb-0.5">
                     @{entry.type}{"{" + entry.key + "}"}
                   </div>
                   {Object.entries(entry.fields).map(([field, val]) => (
                     <div key={field} className="break-words" style={{ overflowWrap: "anywhere" }}>
-                      <span className="font-mono text-stone-400">{field}:</span>{" "}
-                      <span className="text-stone-600">{val}</span>
+                      <span className="font-mono text-ink-muted">{field}:</span>{" "}
+                      <span className="text-ink-body">{val}</span>
                     </div>
                   ))}
                   <button onClick={(e) => { e.stopPropagation(); startEditBib(); }}
-                    className="text-xs text-stone-400 hover:text-stone-600 underline mt-1">Edit entry</button>
+                    className="text-xs text-ink-muted hover:text-ink-body underline mt-1">Edit entry</button>
                 </div>
               )}
             </div>
@@ -350,7 +350,7 @@ export default function BibEntryCard({
         <div className="flex items-center gap-1.5">
           <button onClick={(e) => { e.stopPropagation(); setAnnotationOpen((p) => !p); }}
             className={`flex items-center gap-1.5 text-xs transition-colors ${
-              annotation ? "text-amber-600 hover:text-amber-700" : "text-stone-500 hover:text-stone-700"
+              annotation ? "text-amber-600 hover:text-amber-700" : "text-ink-subtle hover:text-ink-body"
             }`}>
             <Chevron expanded={annotationOpen} />
             <span>Annotations</span>
@@ -360,7 +360,7 @@ export default function BibEntryCard({
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               notesReviewStatus === "pending"
                 ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                : "text-stone-400 hover:text-stone-600 hover:bg-stone-100"
+                : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
             }`}
             title={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
           >
@@ -375,7 +375,7 @@ export default function BibEntryCard({
                 <input type="text" value={requestNoteDrafts[notesDk] || ""}
                   onChange={(e) => setRequestNoteDrafts((prev) => ({ ...prev, [notesDk]: e.target.value }))}
                   placeholder="Request annotation..."
-                  className="w-full text-xs px-3 py-2 bg-transparent text-stone-600 placeholder:text-stone-400 focus:outline-none" />
+                  className="w-full text-xs px-3 py-2 bg-transparent text-ink-body placeholder:text-ink-muted focus:outline-none" />
               </div>
             )}
             <div className={PANEL.subpodWhite}>
@@ -393,7 +393,7 @@ export default function BibEntryCard({
     return (
       <div className="relative">
         {headerText && (
-          <div className="text-sm text-stone-800 font-semibold mb-1.5 leading-snug">
+          <div className="text-sm text-ink-strong font-semibold mb-1.5 leading-snug">
             {headerText}
           </div>
         )}
@@ -418,23 +418,23 @@ export default function BibEntryCard({
         className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, isSelected)}
       >
-        <div className="flex-1 min-w-0 text-sm text-stone-800 truncate" title={headerText}>
+        <div className="flex-1 min-w-0 text-sm text-ink-strong truncate" title={headerText}>
           {author && <span className="font-semibold">{author}</span>}
-          {author && year && <span className="text-stone-400 mx-1.5">&middot;</span>}
+          {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
           {year && <span className="font-semibold">{year}</span>}
-          {(author || year) && title && <span className="text-stone-400 mx-1.5">&middot;</span>}
-          {title && <span className="italic text-stone-700">{title}</span>}
+          {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
+          {title && <span className="italic text-ink-body">{title}</span>}
         </div>
         {hasOccCounter && (
           <div
-            className="flex items-center gap-0.5 text-xs text-stone-400 shrink-0"
+            className="flex items-center gap-0.5 text-xs text-ink-muted shrink-0"
             onClick={(e) => e.stopPropagation()}
             draggable={false}
             onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
           >
-            <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-stone-600 px-0.5" title="Previous occurrence">&#x25B2;</button>
+            <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body px-0.5" title="Previous occurrence">&#x25B2;</button>
             <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
-            <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-stone-600 px-0.5" title="Next occurrence">&#x25BC;</button>
+            <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body px-0.5" title="Next occurrence">&#x25BC;</button>
           </div>
         )}
         {showTargetIcon && (
@@ -451,7 +451,7 @@ export default function BibEntryCard({
 
       {/* Separator */}
       <div
-        className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+        className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
         style={separatorOverrideStyle(theme, isSelected)}
       />
 

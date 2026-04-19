@@ -571,7 +571,7 @@ export default function AIWindow({
           </svg>
           <h2
             id="ai-window-title"
-            className="text-sm font-semibold text-stone-700"
+            className="text-sm font-semibold text-ink-body"
           >
             AI
           </h2>
@@ -579,7 +579,7 @@ export default function AIWindow({
           {section === "requests" && (
             <button
               onClick={() => refreshAll()}
-              className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
               title="Refresh"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -591,7 +591,7 @@ export default function AIWindow({
           )}
           <button
             onClick={onClose}
-            className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+            className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
             title="Close (Esc)"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -603,8 +603,8 @@ export default function AIWindow({
         {/* Two-pane body */}
         <div className="flex-1 flex min-h-0">
           {/* Left nav */}
-          <nav className="w-[200px] shrink-0 border-r border-[var(--border)] bg-stone-50/60 py-3 px-2 overflow-y-auto">
-            <div className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider px-2 mb-1.5">
+          <nav className="w-[200px] shrink-0 border-r border-[var(--border)] bg-surface-muted/60 py-3 px-2 overflow-y-auto">
+            <div className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider px-2 mb-1.5">
               Browse
             </div>
             <ul className="flex flex-col gap-0.5">
@@ -617,8 +617,8 @@ export default function AIWindow({
                       className={
                         "w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors " +
                         (active
-                          ? "bg-white border border-[var(--border)] text-stone-800 shadow-sm"
-                          : "text-stone-600 hover:bg-white/70 hover:text-stone-800 border border-transparent")
+                          ? "bg-surface border border-[var(--border)] text-ink-strong shadow-sm"
+                          : "text-ink-body hover:bg-surface/70 hover:text-ink-strong border border-transparent")
                       }
                     >
                       {s.label}
@@ -635,19 +635,19 @@ export default function AIWindow({
               <>
                 <div className="px-5 pt-3 pb-2 border-b border-[var(--border)]">
                   <div className="flex items-baseline gap-2">
-                    <h3 className="text-sm font-semibold text-stone-700">Request status</h3>
-                    <span className="text-[11px] text-stone-400">
+                    <h3 className="text-sm font-semibold text-ink-body">Request status</h3>
+                    <span className="text-[11px] text-ink-muted">
                       {buckets.open.length} open · {buckets.responded.length} responded · {buckets.resolved.length} resolved
                     </span>
                   </div>
                 </div>
 
                 {/* Composer */}
-                <div className="border-b border-[var(--border)] bg-stone-50/60 px-5 py-2.5">
+                <div className="border-b border-[var(--border)] bg-surface-muted/60 px-5 py-2.5">
                   {!composerOpen ? (
                     <button
                       onClick={() => setComposerOpen(true)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-700 transition-colors"
+                      className="flex items-center gap-1.5 text-xs font-medium text-ink-subtle hover:text-ink-body transition-colors"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M12 5v14M5 12h14" />
@@ -657,7 +657,7 @@ export default function AIWindow({
                   ) : (
                     <>
                       <div className="flex items-center gap-2 mb-2">
-                        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
+                        <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
                           New request
                         </span>
                         <select
@@ -666,7 +666,7 @@ export default function AIWindow({
                             setComposerKind(e.target.value as AIRequestKind);
                             setComposerBibKey("");
                           }}
-                          className="text-xs bg-white border border-[var(--border)] rounded px-1.5 py-0.5 text-stone-700"
+                          className="text-xs bg-surface border border-[var(--border)] rounded px-1.5 py-0.5 text-ink-body"
                         >
                           <option value="revision-general">General dialogue</option>
                           <option value="bib-entry">New bibliography entry</option>
@@ -680,20 +680,20 @@ export default function AIWindow({
                             <option value="panel-todo">Todo request</option>
                           </optgroup>
                         </select>
-                        <span className="text-[11px] text-stone-400 truncate">
+                        <span className="text-[11px] text-ink-muted truncate">
                           {KIND_META[composerKind].description}
                         </span>
                       </div>
 
                       {composerNeedsBibKey && (
                         <div className="flex items-center gap-2 mb-2">
-                          <label className="text-[11px] text-stone-500">Entry key</label>
+                          <label className="text-[11px] text-ink-subtle">Entry key</label>
                           <input
                             list="ai-window-bib-keys"
                             value={composerBibKey}
                             onChange={(e) => setComposerBibKey(e.target.value)}
                             placeholder="e.g. smith2020"
-                            className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)]"
+                            className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)]"
                           />
                           <datalist id="ai-window-bib-keys">
                             {bibEntries.map((b) => (
@@ -723,7 +723,7 @@ export default function AIWindow({
                               submitComposer();
                             }
                           }}
-                          className="flex-1 text-xs bg-white border border-[var(--border)] rounded px-2 py-1.5 text-stone-700 placeholder:text-stone-400 focus:outline-none focus:border-[var(--accent)] resize-none"
+                          className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1.5 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)] resize-none"
                         />
                         <div className="flex flex-col gap-1.5">
                           <button
@@ -739,7 +739,7 @@ export default function AIWindow({
                           </button>
                           <button
                             onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-subtle hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
                           >
                             Cancel
                           </button>
@@ -755,7 +755,7 @@ export default function AIWindow({
                   <Bucket title="Responded" status="responded" items={buckets.responded} />
                   <Bucket title="Resolved" status="resolved" items={buckets.resolved} />
                   {requests.length === 0 && (
-                    <div className="text-center text-xs text-stone-400 py-8">
+                    <div className="text-center text-xs text-ink-muted py-8">
                       No requests yet. Use the form above to start one.
                     </div>
                   )}
@@ -798,10 +798,10 @@ function Bucket({
           className="inline-block w-1.5 h-1.5 rounded-full"
           style={{ background: meta.dot }}
         />
-        <span className="text-[10px] font-semibold text-stone-400 uppercase tracking-wider">
+        <span className="text-[10px] font-semibold text-ink-muted uppercase tracking-wider">
           {title}
         </span>
-        <span className="text-[10px] text-stone-400">{items.length}</span>
+        <span className="text-[10px] text-ink-muted">{items.length}</span>
       </div>
       <ul className="flex flex-col gap-1.5">
         {items.map((req) => (
@@ -825,7 +825,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
   }, [req]);
 
   return (
-    <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-white hover:border-stone-300 transition-colors">
+    <li className="flex gap-2.5 items-start px-2.5 py-2 rounded-md border border-[var(--border)] bg-surface hover:border-edge-hover transition-colors">
       <span
         className="shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium"
         style={{ background: meta.chipBg, color: meta.chipFg }}
@@ -835,34 +835,34 @@ function RequestCard({ req }: { req: AIRequestVM }) {
       </span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-xs font-medium text-stone-700 truncate">
+          <span className="text-xs font-medium text-ink-body truncate">
             {req.label}
           </span>
           {req.resolvedHint && (
-            <span className="text-[10px] text-stone-400 truncate">
+            <span className="text-[10px] text-ink-muted truncate">
               {req.resolvedHint}
             </span>
           )}
           {req.turnCount > 1 && (
             <span
-              className="shrink-0 text-[9px] text-stone-500 bg-stone-100 px-1 rounded"
+              className="shrink-0 text-[9px] text-ink-subtle bg-surface-muted-strong px-1 rounded"
               title={`${req.turnCount} turns in this thread`}
             >
               {req.turnCount} turns
             </span>
           )}
-          <span className="text-[10px] text-stone-400 ml-auto shrink-0">
+          <span className="text-[10px] text-ink-muted ml-auto shrink-0">
             {relTime(req.createdAt)}
           </span>
         </div>
-        <p className="text-[11px] text-stone-500 leading-snug mt-0.5 break-words">
+        <p className="text-[11px] text-ink-subtle leading-snug mt-0.5 break-words">
           {truncate(req.snippet)}
         </p>
       </div>
       {req.onCancel && (
         <button
           onClick={handleCancel}
-          className="shrink-0 text-[10px] text-stone-400 hover:text-[#b45757] transition-colors px-1"
+          className="shrink-0 text-[10px] text-ink-muted hover:text-[#b45757] transition-colors px-1"
           title="Cancel this request"
         >
           ×
@@ -883,24 +883,24 @@ function RequestCard({ req }: { req: AIRequestVM }) {
 function ConnectWithClaude() {
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4">
-      <h3 className="text-sm font-semibold text-stone-700 mb-1">Connect with Claude</h3>
-      <p className="text-[11px] text-stone-500 mb-4">
+      <h3 className="text-sm font-semibold text-ink-body mb-1">Connect with Claude</h3>
+      <p className="text-[11px] text-ink-subtle mb-4">
         Manage how this document talks to Claude. Authentication, models, and
         workspace defaults will appear here.
       </p>
 
       <div className="flex flex-col gap-3">
-        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
+        <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">
           <div className="flex items-center justify-between">
             <div>
-              <div className="text-xs font-medium text-stone-700">Account</div>
-              <div className="text-[11px] text-stone-500 mt-0.5">
+              <div className="text-xs font-medium text-ink-body">Account</div>
+              <div className="text-[11px] text-ink-subtle mt-0.5">
                 Not yet connected. Sign in to use Claude for requests in this document.
               </div>
             </div>
             <button
               disabled
-              className="px-3 py-1.5 text-xs font-medium rounded-md border border-stone-200 text-stone-400 bg-stone-50 cursor-not-allowed"
+              className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-muted bg-surface-muted cursor-not-allowed"
               title="Coming soon"
             >
               Sign in
@@ -908,22 +908,22 @@ function ConnectWithClaude() {
           </div>
         </div>
 
-        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
-          <div className="text-xs font-medium text-stone-700 mb-1">Model</div>
-          <div className="text-[11px] text-stone-500 mb-2">
+        <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">
+          <div className="text-xs font-medium text-ink-body mb-1">Model</div>
+          <div className="text-[11px] text-ink-subtle mb-2">
             Default model used for new requests.
           </div>
           <select
             disabled
-            className="text-xs bg-stone-50 border border-stone-200 rounded px-2 py-1 text-stone-500 cursor-not-allowed"
+            className="text-xs bg-surface-muted border border-edge-subtle rounded px-2 py-1 text-ink-subtle cursor-not-allowed"
           >
             <option>Claude (workspace default)</option>
           </select>
         </div>
 
-        <div className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5">
-          <div className="text-xs font-medium text-stone-700 mb-1">Context sharing</div>
-          <div className="text-[11px] text-stone-500">
+        <div className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5">
+          <div className="text-xs font-medium text-ink-body mb-1">Context sharing</div>
+          <div className="text-[11px] text-ink-subtle">
             Configure which parts of the document Claude can read when responding
             to requests. Settings will live here.
           </div>
@@ -958,8 +958,8 @@ function SkillsPanel() {
   ];
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4">
-      <h3 className="text-sm font-semibold text-stone-700 mb-1">Skills</h3>
-      <p className="text-[11px] text-stone-500 mb-4">
+      <h3 className="text-sm font-semibold text-ink-body mb-1">Skills</h3>
+      <p className="text-[11px] text-ink-subtle mb-4">
         Skills are the tools Claude can use inside this document. Toggle them on
         or off to shape what Claude can do on your behalf.
       </p>
@@ -968,18 +968,18 @@ function SkillsPanel() {
         {skills.map((s) => (
           <li
             key={s.name}
-            className="rounded-md border border-[var(--border)] bg-white px-3 py-2.5 flex items-start gap-3"
+            className="rounded-md border border-[var(--border)] bg-surface px-3 py-2.5 flex items-start gap-3"
           >
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-stone-700">{s.name}</div>
-              <div className="text-[11px] text-stone-500 mt-0.5">{s.description}</div>
+              <div className="text-xs font-medium text-ink-body">{s.name}</div>
+              <div className="text-[11px] text-ink-subtle mt-0.5">{s.description}</div>
             </div>
             <span
               className={
                 "shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium " +
                 (s.enabled
                   ? "bg-[#f0fdf4] text-[#15803d]"
-                  : "bg-stone-100 text-stone-500")
+                  : "bg-surface-muted-strong text-ink-subtle")
               }
             >
               {s.enabled ? "On" : "Off"}

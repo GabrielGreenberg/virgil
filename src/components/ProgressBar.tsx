@@ -18,7 +18,7 @@ export default function ProgressBar({
   const completed = suggestions.filter((s) => s.status !== "pending").length;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-b border-[var(--border)] px-4 py-2">
+    <div className="fixed top-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-sm border-b border-[var(--border)] px-4 py-2">
       <div className="flex items-center gap-3 max-w-screen-2xl mx-auto">
         <span className="text-[var(--muted)] text-sm whitespace-nowrap">
           {completed === suggestions.length

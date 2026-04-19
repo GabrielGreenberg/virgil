@@ -117,7 +117,7 @@ export default function FloatingPanel({
         width: pos.width,
         height: pos.height,
         zIndex,
-        background: "var(--pod-panel, #faf9f7)",
+        background: "var(--pod-panel, #f3f0eb)",
         borderRadius: "var(--pod-radius, 8px)",
         border: "var(--pod-border, 1px solid #e5e2dd)",
         boxShadow: "0 10px 30px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",

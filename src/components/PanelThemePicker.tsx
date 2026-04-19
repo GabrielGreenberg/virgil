@@ -64,12 +64,12 @@ export default function PanelThemePicker({
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         onMouseDown={(e) => e.stopPropagation()}
         title={label ?? "Panel color"}
-        className="w-5 h-5 rounded border border-stone-300 shadow-inner shrink-0 hover:ring-2 hover:ring-stone-200 transition-shadow"
+        className="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:ring-2 hover:ring-stone-200 transition-shadow"
         style={{ background: current }}
       />
       {open && (
         <div
-          className="absolute right-0 top-full mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg p-2 z-[9999]"
+          className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-md shadow-lg p-2 z-[9999]"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
@@ -82,7 +82,7 @@ export default function PanelThemePicker({
                   type="button"
                   onClick={() => pick(c.hex)}
                   title={c.name}
-                  className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${active ? "ring-2 ring-offset-1 ring-stone-500" : "border-stone-300"}`}
+                  className={`w-5 h-5 rounded border transition-transform hover:scale-110 ${active ? "ring-2 ring-offset-1 ring-stone-500" : "border-edge-hover"}`}
                   style={{ background: c.hex }}
                 />
               );
@@ -92,7 +92,7 @@ export default function PanelThemePicker({
             <button
               type="button"
               onClick={onReset}
-              className="mt-2 w-full text-[11px] text-stone-500 hover:text-stone-700 px-2 py-1 rounded hover:bg-stone-50"
+              className="mt-2 w-full text-[11px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded hover:bg-surface-muted"
             >
               Reset to default
             </button>

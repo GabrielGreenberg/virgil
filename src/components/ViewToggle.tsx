@@ -35,12 +35,12 @@ interface ViewToggleProps {
 
 export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
   return (
-    <div className="flex items-center bg-stone-100 rounded p-0.5 gap-0.5">
+    <div className="flex items-center bg-surface-muted-strong rounded p-0.5 gap-0.5">
       <button
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onChange("in-text"); }}
         className={`p-1 rounded transition-colors ${
-          mode === "in-text" ? "bg-white shadow-sm" : "hover:bg-stone-50"
+          mode === "in-text" ? "bg-surface shadow-sm" : "hover:bg-surface-muted"
         }`}
         title="In-text view"
       >
@@ -50,7 +50,7 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onChange("list"); }}
         className={`p-1 rounded transition-colors ${
-          mode === "list" ? "bg-white shadow-sm" : "hover:bg-stone-50"
+          mode === "list" ? "bg-surface shadow-sm" : "hover:bg-surface-muted"
         }`}
         title="List view"
       >

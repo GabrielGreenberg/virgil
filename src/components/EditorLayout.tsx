@@ -88,6 +88,10 @@ import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit, PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { usePreferences } from "@/hooks/usePreferences";
+// Preference mode — ctrl+click picker for live token editing. See
+// usePreferenceMode.ts for the full architecture / extension guide.
+import { usePreferenceMode } from "@/hooks/usePreferenceMode";
+import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
@@ -473,7 +477,7 @@ function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewTogg
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
-        <h3 className="text-sm font-semibold text-stone-700">{title}</h3>
+        <h3 className="text-sm font-semibold text-ink-body">{title}</h3>
         {hasViewToggle && <ViewToggle mode={viewMode} onChange={setViewMode} />}
       </div>
       <div className="flex-1 flex items-center justify-center p-6">
@@ -962,7 +966,7 @@ function StripButton({
         handledByPointer.current = false;
       }}
       className={`p-2 rounded transition-colors relative select-none ${
-        active ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+        active ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
       }`}
       title={meta.label}
     >
@@ -1291,6 +1295,9 @@ export default function EditorLayout() {
     panelAiRequests: aiRequests,
   }), [bibReviewRequests, entryRequests, generalRevisions, textRevisions, aiRequests]);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
+  // Preference mode toggle. `on` drives the top-bar button styling and gates
+  // the ctrl+click picker. Read-only here — the button itself calls toggle().
+  const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
@@ -1401,8 +1408,8 @@ export default function EditorLayout() {
     for (const entry of DERIVED_CSS) {
       s.setProperty(entry.cssVar, entry.compute(editorPrefs));
     }
-    // Update browser theme-color meta tag
-    const tc = applyTransforms(editorPrefs.themeColor, editorTransforms);
+    // Update browser theme-color meta tag (locked to topbarBackground)
+    const tc = applyTransforms(editorPrefs.topbarBackground, editorTransforms);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
   }, [editorPrefs, editorTransforms]);
 
@@ -4784,6 +4791,10 @@ export default function EditorLayout() {
 
   return (
     <div className="flex flex-col h-screen bg-[var(--background)]">
+      {/* Preference mode picker — renders nothing until a ctrl+click on an
+          annotated element opens it. Mounted at the layout root so its
+          global ctrl+click listener is active for the whole app. */}
+      <PreferenceModePicker />
       {/* Progress bar */}
       {suggestionPanelVisible && (
         <ProgressBar
@@ -4794,7 +4805,12 @@ export default function EditorLayout() {
       )}
 
       {/* Top bar: logo + tabs */}
-      <div className={`flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
+      <div
+        // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
+        // the PWA/browser theme-color (see globals.css merger notes), so
+        // changing it updates both the in-app bar and the browser chrome.
+        data-prefs="topbarBackground,topbarBorder"
+        className={`flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
         suggestionPanelVisible ? "mt-10" : ""
       }`}>
         {/* Logo + file buttons + tabs — all bottom-aligned */}
@@ -4809,14 +4825,14 @@ export default function EditorLayout() {
             </h1>
             <button
               onClick={handleNativeOpen}
-              className="p-1 rounded text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
+              className="p-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
               title="Open .tex file"
             >
               <IconFolder />
             </button>
             <button
               onClick={handleNewDocStart}
-              className="p-1 rounded text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
+              className="p-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
               title="New document"
             >
               <IconPlus />
@@ -4832,7 +4848,7 @@ export default function EditorLayout() {
                 }}
                 onBlur={handleNewDocCancel}
                 placeholder="Paper name…"
-                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-white/70 focus:outline-none focus:border-[var(--accent)]"
+                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-surface/70 focus:outline-none focus:border-[var(--accent)]"
               />
             )}
           </div>
@@ -4841,8 +4857,8 @@ export default function EditorLayout() {
               key={doc.id}
               className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative ${
                 doc.id === currentDocId
-                  ? "browser-tab-swoop bg-[var(--background)] text-stone-800 -mb-px z-10"
-                  : "border border-[var(--topbar-border,#d5d3ce)] text-stone-500 hover:bg-white/30 hover:text-stone-700"
+                  ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10"
+                  : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
               }`}
               onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
             >
@@ -4850,13 +4866,13 @@ export default function EditorLayout() {
                 <span className="text-sm leading-none truncate pt-[3px]" title={doc.folderName}>
                   {doc.folderName}
                 </span>
-                <span className="text-[10px] leading-none text-stone-400 truncate mt-[2px]" title={doc.texFilename}>
+                <span className="text-[10px] leading-none text-ink-muted truncate mt-[2px]" title={doc.texFilename}>
                   {doc.texFilename}
                 </span>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                className="p-0.5 rounded text-stone-500 hover:text-stone-700 hover:bg-white/40 transition-all"
+                className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover:bg-surface/40 transition-all"
                 title="Close tab"
               >
                 <IconX />
@@ -4869,7 +4885,7 @@ export default function EditorLayout() {
           {focusMode.state.active && (
             <button
               onClick={focusMode.deactivate}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] bg-[var(--accent-light)] hover:bg-white/30 transition-colors"
+              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] bg-[var(--accent-light)] hover:bg-surface/30 transition-colors"
               title="Exit focus view"
             >
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -4879,10 +4895,48 @@ export default function EditorLayout() {
               Focus view
             </button>
           )}
+          {/* ── Preference Mode toggle ─────────────────────────────────
+              Flips the global preference-mode state. When on, every DOM
+              element with `data-prefs="<pref-key>"` becomes ctrl+clickable
+              and opens a picker showing just those preference entries.
+
+              Related files (keep in sync):
+                - src/hooks/usePreferenceMode.ts   — state + architecture guide
+                - src/components/PreferenceModePicker.tsx — picker + ctrl+click listener
+                - src/app/globals.css "Preference mode" — hover outline rule
+
+              The active-state styling matches the AI-requests button
+              directly below: accent text/bg when on, subtle ink-subtle
+              when off. Keep them visually parallel if you restyle either.
+
+              To move / restyle this button without changing its behaviour,
+              edit this JSX only. Don't hardcode the on/off logic anywhere
+              else — always drive it through usePreferenceMode(). */}
+          <button
+            onClick={togglePrefMode}
+            className={`p-1 rounded transition-colors ${
+              prefModeOn
+                ? "text-[var(--accent)] bg-[var(--accent-light)]"
+                : "text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
+            }`}
+            title={prefModeOn ? "Preference mode: on (ctrl-click to edit)" : "Preference mode: off"}
+            aria-pressed={prefModeOn}
+          >
+            {/* Painter's palette icon — solid silhouette with the classic
+                thumb-hole cutout on the right and four color wells punched
+                through via fill-rule="evenodd". Solid (not stroked) so the
+                shape stays legible at 14px; this deliberately reads as
+                more visually present than the neighbouring (i) and
+                AI-star icons, because it toggles a *mode* rather than
+                opening a menu. */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+            </svg>
+          </button>
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-              className="p-1 rounded transition-colors text-stone-500 hover:bg-white/30 hover:text-[var(--accent)]"
+              className="p-1 rounded transition-colors text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
               title={`Virgil v${APP_VERSION}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -4893,38 +4947,38 @@ export default function EditorLayout() {
             </button>
             {versionOpen && (
               <div
-                className="absolute right-0 top-full mt-1 z-20 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 whitespace-nowrap text-left min-w-[160px]"
+                className="absolute right-0 top-full mt-1 z-20 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
                 onClick={(e) => e.stopPropagation()}
                 onMouseLeave={() => setCommandsPopoutOpen(false)}
               >
                 <div className="px-3 py-2">
-                  <div className="font-medium text-stone-600 mb-0.5">Version</div>
+                  <div className="font-medium text-ink-body mb-0.5">Version</div>
                   <div>Virgil v{APP_VERSION}</div>
                 </div>
-                <div className="border-t border-stone-200" />
+                <div className="border-t border-edge-subtle" />
                 <div
-                  className="relative flex items-center justify-between px-3 py-2 cursor-default hover:bg-stone-50"
+                  className="relative flex items-center justify-between px-3 py-2 cursor-default hover:bg-surface-muted"
                   onMouseEnter={() => setCommandsPopoutOpen(true)}
                 >
-                  <span className="font-medium text-stone-600">Commands</span>
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-stone-400">
+                  <span className="font-medium text-ink-body">Commands</span>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-ink-muted">
                     <polyline points="9 18 15 12 9 6" />
                   </svg>
                   {commandsPopoutOpen && (
                     <div
-                      className="absolute right-full top-0 mr-1 bg-white border border-stone-200 rounded shadow-md text-xs text-stone-700 py-1 min-w-[160px]"
+                      className="absolute right-full top-0 mr-1 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body py-1 min-w-[160px]"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {VIRGIL_COMMAND_NAMES.map((name) => (
                         <button
                           key={name}
                           onClick={() => insertVirgilCommand(name)}
-                          className="block w-full text-left px-3 py-1 font-mono text-stone-700 hover:bg-stone-100"
+                          className="block w-full text-left px-3 py-1 font-mono text-ink-body hover:bg-surface-muted-strong"
                         >
                           {`\\${name}`}
                         </button>
                       ))}
-                      <div className="border-t border-stone-200 mt-1 pt-1.5 pb-1 px-3 text-[10px] text-stone-400 flex items-center gap-1">
+                      <div className="border-t border-edge-subtle mt-1 pt-1.5 pb-1 px-3 text-[10px] text-ink-muted flex items-center gap-1">
                         <span>Type text +</span>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="9 10 4 15 9 20" />
@@ -4942,7 +4996,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-stone-500 hover:bg-sky-50/50 hover:text-sky-600"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-ink-subtle hover:bg-sky-50/50 hover:text-sky-600"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -4969,7 +5023,7 @@ export default function EditorLayout() {
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-stone-500 hover:bg-white/30 hover:text-[var(--accent)] transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
             title={codeView ? "Visual Editor" : "Code Editor"}
           >
             {codeView ? (
@@ -5069,13 +5123,13 @@ export default function EditorLayout() {
 
 
         {/* Left icon strip */}
-        <div data-strip-side="left" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
+        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
-          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
+          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
             <button
               onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
-              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
               title={activeLeft ? "Collapse panel" : "Expand panel"}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -5088,7 +5142,7 @@ export default function EditorLayout() {
             {/* Blank — panel column stays (reserving space) but shows no content */}
             <button
               onClick={() => { if (activeLeft !== "blank") expandLeft(); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Blank — reserve panel space without content"
             >
               <IconBlank active={activeLeft === "blank"} />
@@ -5097,7 +5151,7 @@ export default function EditorLayout() {
                 Shows all left-side elements (footnotes, citations, quotes). */}
             <button
               onClick={() => { setActiveLeft(activeLeft === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Omni-view — show all left panels"
             >
               <IconOmni active={activeLeft === "omni"} />
@@ -5105,7 +5159,7 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("left")}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit
@@ -5215,8 +5269,15 @@ export default function EditorLayout() {
                 }
               />
             ) : (
-              /* Single editor — one white pod */
-              <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
+              /* Single editor — one white pod.
+                 Preference-mode: the pod uses --pod-editor which is locked
+                 to --surface (see globals.css), and the text inside uses
+                 editor typography tokens. Annotating the pod means any
+                 ctrl+click on the "paper" area — including body text that
+                 doesn't set its own data-prefs — surfaces these controls. */
+              <div
+                data-prefs="surfaceColor,editorTextColor,editorFontSize,editorLineHeight"
+                className="flex-1 flex flex-col min-h-0 overflow-hidden relative" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
                 <VirgilEditor
                   ref={editorRef}
                   initialContent={content}
@@ -5253,13 +5314,13 @@ export default function EditorLayout() {
         {renderPanelColumn("right")}
 
         {/* Right icon strip */}
-        <div data-strip-side="right" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
+        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
-          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-white/70 border border-stone-300">
+          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
             <button
               onClick={() => { activeRight ? collapseRight() : expandRight(); }}
-              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"
+              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
               title={activeRight ? "Collapse panel" : "Expand panel"}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -5272,7 +5333,7 @@ export default function EditorLayout() {
             {/* Blank — panel column stays (reserving space) but shows no content */}
             <button
               onClick={() => { if (activeRight !== "blank") expandRight(); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Blank — reserve panel space without content"
             >
               <IconBlank active={activeRight === "blank"} />
@@ -5281,7 +5342,7 @@ export default function EditorLayout() {
                 Shows all right-side elements (notes, revisions, cuts, archive). */}
             <button
               onClick={() => { setActiveRight(activeRight === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Omni-view — show all right panels"
             >
               <IconOmni active={activeRight === "omni"} />
@@ -5289,7 +5350,7 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("right")}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-stone-100 hover:text-stone-600"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit

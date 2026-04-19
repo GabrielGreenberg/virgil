@@ -105,18 +105,18 @@ function KeySearchDropdown({
         }}
         onBlur={() => { setTimeout(() => { onChange(search); }, 150); }}
         placeholder={placeholder || "key"}
-        className="w-full text-xs font-mono border border-stone-300 rounded px-2 py-1 bg-white"
+        className="w-full text-xs font-mono border border-edge-hover rounded px-2 py-1 bg-surface"
       />
       {open && filtered.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-0.5 bg-white border border-stone-200 rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
+        <div className="absolute left-0 right-0 top-full mt-0.5 bg-surface border border-edge-subtle rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
           {filtered.map((e) => (
             <button
               key={e.key}
               onMouseDown={(ev) => { ev.preventDefault(); onChange(e.key); setSearch(e.key); setOpen(false); }}
-              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-stone-50 flex flex-col gap-0.5"
+              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-surface-muted flex flex-col gap-0.5"
             >
-              <span className="font-mono text-stone-700">{e.key}</span>
-              <span className="text-stone-400 truncate">
+              <span className="font-mono text-ink-body">{e.key}</span>
+              <span className="text-ink-muted truncate">
                 {formatMinimalCitation(e.key, [e])}
                 {e.fields.title ? ` \u2014 ${e.fields.title}` : ""}
               </span>
@@ -257,33 +257,33 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
         <select
           value={cmdType}
           onChange={(e) => setCmdType(e.target.value)}
-          className="text-xs font-mono border border-stone-300 rounded px-1.5 py-1 bg-white"
+          className="text-xs font-mono border border-edge-hover rounded px-1.5 py-1 bg-surface"
         >
           {types.map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
         <label
-          className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none"
+          className="flex items-center gap-1 text-xs text-ink-subtle cursor-pointer select-none"
           title="Full author list (e.g. \citet*)"
         >
           <input
             type="checkbox"
             checked={starred}
             onChange={(e) => setStarred(e.target.checked)}
-            className="rounded border-stone-300"
+            className="rounded border-edge-hover"
           />
           <span className="font-mono">*</span>
         </label>
         <label
-          className="flex items-center gap-1 text-xs text-stone-500 cursor-pointer select-none"
+          className="flex items-center gap-1 text-xs text-ink-subtle cursor-pointer select-none"
           title="Capitalize first letter for sentence start (e.g. \Citet)"
         >
           <input
             type="checkbox"
             checked={capitalized}
             onChange={(e) => setCapitalized(e.target.checked)}
-            className="rounded border-stone-300"
+            className="rounded border-edge-hover"
           />
           <span className="font-mono">Aa</span>
         </label>
@@ -292,7 +292,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
       {/* Key entries */}
       <div className="space-y-2 mb-2.5">
         {entries.map((entry, idx) => (
-          <div key={entry.id} className="rounded-md border border-stone-200 bg-white p-2">
+          <div key={entry.id} className="rounded-md border border-edge-subtle bg-surface p-2">
             <div className="flex items-center gap-1.5 mb-1">
               <KeySearchDropdown
                 value={entry.key}
@@ -303,7 +303,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
               {entries.length > 1 && (
                 <button
                   onClick={() => removeEntry(entry.id)}
-                  className="text-stone-400 hover:text-red-400 p-0.5 transition-colors"
+                  className="text-ink-muted hover:text-danger p-0.5 transition-colors"
                   title="Remove this reference"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -327,7 +327,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
                     }
                   }}
                   placeholder="pre-note"
-                  className="flex-1 text-xs border border-stone-200 rounded px-1.5 py-0.5 bg-stone-50/50 placeholder:text-stone-300"
+                  className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
                 />
                 <input
                   type="text"
@@ -340,7 +340,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
                     }
                   }}
                   placeholder="post-note"
-                  className="flex-1 text-xs border border-stone-200 rounded px-1.5 py-0.5 bg-stone-50/50 placeholder:text-stone-300"
+                  className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
                 />
               </div>
             )}
@@ -351,7 +351,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
       {/* Add reference button */}
       <button
         onClick={addEntry}
-        className="text-xs text-stone-500 hover:text-stone-700 mb-2.5 flex items-center gap-1 transition-colors"
+        className="text-xs text-ink-subtle hover:text-ink-body mb-2.5 flex items-center gap-1 transition-colors"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
@@ -361,8 +361,8 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
 
       {/* Preview */}
       {preview && preview !== command && (
-        <div className="text-xs text-stone-500 mb-2.5 truncate">
-          <span className="text-stone-400">Preview:</span>{" "}
+        <div className="text-xs text-ink-subtle mb-2.5 truncate">
+          <span className="text-ink-muted">Preview:</span>{" "}
           <span className="citation-preview" dangerouslySetInnerHTML={{ __html: preview.replace(/<\/?(?!\/?[ib]>)[^>]+>/gi, "") }} />
         </div>
       )}
@@ -371,7 +371,7 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
       <div className="flex items-center justify-between">
         <button
           onClick={onCancel}
-          className="text-xs text-stone-400 hover:text-stone-600 transition-colors"
+          className="text-xs text-ink-muted hover:text-ink-body transition-colors"
         >
           Cancel
         </button>

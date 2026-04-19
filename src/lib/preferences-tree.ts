@@ -48,6 +48,32 @@ function isLeaf(node: PrefNode): node is PrefLeaf {
 }
 export { isLeaf };
 
+/**
+ * Walk PREFERENCES_TREE and return the first leaf matching `key`, or
+ * undefined. Used by PreferenceModePicker to turn a `data-prefs` attribute
+ * key into its leaf metadata (label, description, control type). Keys are
+ * unique across the tree, so "first match" is unambiguous.
+ *
+ * Declared here (rather than in the picker) so the tree remains the single
+ * source of truth for what's editable.
+ */
+export function findLeafByKey(
+  key: keyof EditorPreferences,
+): PrefLeaf | undefined {
+  const walk = (nodes: PrefNode[]): PrefLeaf | undefined => {
+    for (const n of nodes) {
+      if (isLeaf(n)) {
+        if (n.key === key) return n;
+      } else {
+        const found = walk(n.children);
+        if (found) return found;
+      }
+    }
+    return undefined;
+  };
+  return walk(PREFERENCES_TREE);
+}
+
 // ─── Font Options ─────────────────────────────────────────────────────────────
 
 const SERIF_FONTS = ["Source Serif 4", "Georgia", "Playfair Display", "Libre Baskerville", "Lora", "Merriweather", "EB Garamond", "Crimson Text"];
@@ -62,9 +88,8 @@ export const PREFERENCES_TREE: PrefNode[] = [
   {
     label: "Top Bar & Browser",
     children: [
-      { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar" },
+      { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar (also sets the browser/PWA chrome color)" },
       { type: "color", key: "topbarBorder", label: "Top bar border", description: "Bottom edge separating title bar from content" },
-      { type: "color", key: "themeColor", label: "Browser theme color", description: "Browser tab & mobile status bar tint" },
     ],
   },
   {
@@ -79,13 +104,6 @@ export const PREFERENCES_TREE: PrefNode[] = [
           { type: "slider", key: "editorLineHeight", label: "Line height", description: "Vertical spacing between text lines", min: 1.4, max: 2.4, step: 0.1, unit: "" },
           { type: "color", key: "editorTextColor", label: "Text color", description: "Default color for paragraph body text" },
           { type: "font", key: "fontSerif", label: "Font family", description: "Typeface used for body paragraphs", options: SERIF_FONTS },
-        ],
-      },
-      {
-        label: "Headings",
-        children: [
-          { type: "color", key: "h1Color", label: "H1 color", description: "Top-level chapter headings" },
-          { type: "color", key: "h2h3Color", label: "H2/H3 color", description: "Section and subsection headings" },
         ],
       },
       {
@@ -191,7 +209,6 @@ export const PREFERENCES_TREE: PrefNode[] = [
           { type: "color", key: "headerBg", label: "Header background", description: "Top header bar of each panel" },
           { type: "color", key: "podPanel", label: "Panel pod background", description: "Container area behind panel content" },
           { type: "color", key: "podToolbar", label: "Toolbar pod background", description: "Container area behind the toolbar" },
-          { type: "color", key: "podEditor", label: "Editor pod background", description: "Container area behind the editor" },
           { type: "color", key: "podDark", label: "Dark pod background", description: "Dark-themed container regions" },
         ],
       },
@@ -208,8 +225,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
       { type: "color", key: "mutedColor", label: "Muted text", description: "Secondary and de-emphasized text" },
       { type: "color", key: "mutedLight", label: "Muted light", description: "Very light placeholder and hint text" },
       { type: "color", key: "dragHighlight", label: "Drag highlight", description: "Indicator shown when dragging items" },
-      { type: "color", key: "scrollbarThumb", label: "Scrollbar", description: "Scrollbar handle at rest" },
-      { type: "color", key: "scrollbarHover", label: "Scrollbar hover", description: "Scrollbar handle on mouse hover" },
+      { type: "color", key: "scrollbarThumb", label: "Scrollbar", description: "Scrollbar handle at rest (hover state is locked to muted text color)" },
     ],
   },
   {
@@ -240,13 +256,9 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "editorTextColor", cssVar: "--editor-text-color", isColor: true },
 
   // App chrome
+  // (--theme-color is aliased to --topbar-bg in globals.css)
   { key: "topbarBackground", cssVar: "--topbar-bg", isColor: true },
   { key: "topbarBorder", cssVar: "--topbar-border", isColor: true },
-  { key: "themeColor", cssVar: "--theme-color", isColor: true },
-
-  // Headings
-  { key: "h1Color", cssVar: "--h1-color", isColor: true },
-  { key: "h2h3Color", cssVar: "--h2h3-color", isColor: true },
 
   // Heading annotations
   { key: "headingAnnotationColor", cssVar: "--heading-annotation-color", isColor: true },
@@ -293,10 +305,10 @@ export const PREF_TO_CSS: CssMapping[] = [
   // Panels
   { key: "panelFontSize", cssVar: "--panel-font-size", isColor: false, transform: (v) => `${v}px` },
   { key: "panelHeaderSize", cssVar: "--panel-header-size", isColor: false, transform: (v) => `${v}px` },
+  // (--pod-editor is aliased to --surface in globals.css)
   { key: "headerBg", cssVar: "--header-bg", isColor: true },
   { key: "podPanel", cssVar: "--pod-panel", isColor: true },
   { key: "podToolbar", cssVar: "--pod-toolbar", isColor: true },
-  { key: "podEditor", cssVar: "--pod-editor", isColor: true },
   { key: "podDark", cssVar: "--pod-dark", isColor: true },
 
   // Canvas & layout
@@ -306,8 +318,8 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "mutedColor", cssVar: "--muted", isColor: true },
   { key: "mutedLight", cssVar: "--muted-light", isColor: true },
   { key: "dragHighlight", cssVar: "--drag-highlight", isColor: true },
+  // (--scrollbar-hover is aliased to --muted-light in globals.css)
   { key: "scrollbarThumb", cssVar: "--scrollbar-thumb", isColor: true },
-  { key: "scrollbarHover", cssVar: "--scrollbar-hover", isColor: true },
 
   // Fonts
   { key: "fontSerif", cssVar: "--font-serif-override", isColor: false, transform: (v) => `"${v}"` },

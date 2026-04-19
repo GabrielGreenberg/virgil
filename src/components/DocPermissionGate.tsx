@@ -52,7 +52,7 @@ export function DocPermissionGate({ docName, handle, onGranted }: Props) {
 
   return (
     <div className="flex h-full w-full items-center justify-center p-6">
-      <div className="max-w-md space-y-4 text-stone-800">
+      <div className="max-w-md space-y-4 text-ink-strong">
         <h2 className="text-base font-semibold">Reconnect to your paper</h2>
         <p className="text-sm leading-relaxed">
           Virgil needs your permission to read and write files in{" "}

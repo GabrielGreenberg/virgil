@@ -122,14 +122,14 @@ function UserSelector({
     <div className="relative" ref={wrapRef}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center justify-center p-0.5 rounded-full border border-stone-200 bg-white hover:border-stone-400 transition-colors"
+        className="flex items-center justify-center p-0.5 rounded-full border border-edge-subtle bg-surface hover:border-edge-strong transition-colors"
         title={`Acting as ${active.name} — click to switch`}
         aria-label={`Acting as ${active.name}`}
       >
         <UserAvatar user={active} size={18} />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-stone-200 rounded-md shadow-lg z-[9999] py-1">
+        <div className="absolute right-0 top-full mt-1 w-52 bg-surface border border-edge-subtle rounded-md shadow-lg z-[9999] py-1">
           <div className="px-3 pt-1 pb-1 text-[10px] uppercase tracking-wider text-[var(--muted-light)] font-medium">
             Acting as
           </div>
@@ -140,12 +140,12 @@ function UserSelector({
                 onSelect(u.id);
                 setOpen(false);
               }}
-              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-stone-50 transition-colors ${
+              className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-surface-muted transition-colors ${
                 u.id === activeUserId ? "bg-amber-50/60" : ""
               }`}
             >
               <UserAvatar user={u} size={16} />
-              <span className="text-stone-700 flex-1 text-left">{u.name}</span>
+              <span className="text-ink-body flex-1 text-left">{u.name}</span>
               {u.id === activeUserId && (
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-600">
                   <polyline points="20 6 9 17 4 12" />
@@ -166,14 +166,14 @@ function UserSelector({
                   if (e.key === "Escape") setCreating(false);
                 }}
                 placeholder="Name"
-                className="w-full text-xs px-2 py-1 border border-stone-200 rounded focus:outline-none focus:border-stone-400"
+                className="w-full text-xs px-2 py-1 border border-edge-subtle rounded focus:outline-none focus:border-edge-strong"
               />
               <div className="flex items-center gap-2">
                 <input
                   type="color"
                   value={newColor}
                   onChange={(e) => setNewColor(e.target.value)}
-                  className="w-6 h-6 rounded border border-stone-200 cursor-pointer"
+                  className="w-6 h-6 rounded border border-edge-subtle cursor-pointer"
                 />
                 <button
                   onClick={submitNew}
@@ -183,7 +183,7 @@ function UserSelector({
                 </button>
                 <button
                   onClick={() => setCreating(false)}
-                  className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-stone-600 transition-colors"
+                  className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-ink-body transition-colors"
                 >
                   Cancel
                 </button>
@@ -192,7 +192,7 @@ function UserSelector({
           ) : (
             <button
               onClick={() => setCreating(true)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-stone-50 hover:text-stone-700 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--muted)] hover:bg-surface-muted hover:text-ink-body transition-colors"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M12 5v14M5 12h14" />
@@ -230,7 +230,7 @@ function ProgressHeader({
         <span className="text-[10px] tabular-nums text-[var(--muted)] font-medium whitespace-nowrap">
           {resolved} / {total} resolved
         </span>
-        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-stone-100">
+        <div className="flex-1 h-1.5 rounded-full overflow-hidden bg-surface-muted-strong">
           <div
             className="h-full bg-emerald-500 transition-all"
             style={{ width: `${pct}%` }}
@@ -256,7 +256,7 @@ function TurnPod({ turn, users }: { turn: RevisionTurn; users: RevisionUser[] })
           {formatTurnTime(turn.createdAt)}
         </span>
       </div>
-      <p className="text-xs text-stone-700 leading-snug whitespace-pre-wrap">{turn.text}</p>
+      <p className="text-xs text-ink-body leading-snug whitespace-pre-wrap">{turn.text}</p>
     </div>
   );
 }
@@ -285,7 +285,7 @@ function ReplyBox({
           e.stopPropagation();
           setOpen(true);
         }}
-        className="text-xs text-[var(--muted)] hover:text-stone-700 transition-colors flex items-center gap-1.5"
+        className="text-xs text-[var(--muted)] hover:text-ink-body transition-colors flex items-center gap-1.5"
         title={`Reply as ${activeUser.name}`}
       >
         <UserAvatar user={activeUser} size={14} />
@@ -324,7 +324,7 @@ function ReplyBox({
         }}
         placeholder="Write a reply..."
         rows={2}
-        className="w-full bg-white border border-stone-200 rounded px-2 py-1.5 text-xs text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
+        className="w-full bg-surface border border-edge-subtle rounded px-2 py-1.5 text-xs text-ink-strong focus:outline-none focus:border-edge-strong resize-none"
       />
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-[var(--muted-light)]">Cmd+Enter</span>
@@ -334,7 +334,7 @@ function ReplyBox({
               setOpen(false);
               setText("");
             }}
-            className="text-xs px-2 py-0.5 rounded text-[var(--muted)] hover:text-stone-600 transition-colors"
+            className="text-xs px-2 py-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors"
           >
             Cancel
           </button>
@@ -426,7 +426,7 @@ function RevisionCard({
       </div>
 
       {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`} />
+      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
       <div className={`${PANEL.cardInner} space-y-2`}>
         {/* Context: "Document-wide" / quoted text — passed from caller */}
@@ -446,7 +446,7 @@ function RevisionCard({
                 e.stopPropagation();
                 onReopen();
               }}
-              className="text-xs text-[var(--muted)] hover:text-stone-600 transition-colors"
+              className="text-xs text-[var(--muted)] hover:text-ink-body transition-colors"
             >
               Reopen
             </button>
@@ -507,7 +507,7 @@ function NewGeneralActions({
       <div className="flex gap-1.5">
         <button
           onClick={() => setMode("comment")}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-stone-700 hover:bg-stone-50 rounded-md border border-dashed border-stone-200 hover:border-stone-300 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted rounded-md border border-dashed border-edge-subtle hover:border-edge-hover transition-colors"
           title="New revision comment"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -517,7 +517,7 @@ function NewGeneralActions({
         </button>
         <button
           onClick={() => setMode("ai")}
-          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-stone-700 hover:bg-stone-50 rounded-md border border-dashed border-stone-200 hover:border-stone-300 transition-colors"
+          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted rounded-md border border-dashed border-edge-subtle hover:border-edge-hover transition-colors"
           title="New AI suggestion"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -555,14 +555,14 @@ function NewGeneralActions({
               ? "AI suggestion for the whole document..."
               : "Revision comment for the whole document..."
           }
-          className="w-full bg-white border border-stone-200 rounded px-2.5 py-2 text-sm text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
+          className="w-full bg-surface border border-edge-subtle rounded px-2.5 py-2 text-sm text-ink-strong focus:outline-none focus:border-edge-strong resize-none"
         />
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-[var(--muted-light)]">Cmd+Enter to save</span>
           <div className="flex gap-1.5">
             <button
               onClick={cancel}
-              className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-stone-600 transition-colors"
+              className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-ink-body transition-colors"
             >
               Cancel
             </button>
@@ -749,7 +749,7 @@ export default function RevisionsPanel({
           {(resolvedGeneral.length + resolvedText.length) > 0 && (
             <button
               onClick={() => setShowResolved(!showResolved)}
-              className="text-xs text-[var(--muted)] hover:text-stone-600 transition-colors"
+              className="text-xs text-[var(--muted)] hover:text-ink-body transition-colors"
             >
               {showResolved ? "Hide" : "Show"} resolved (
               {resolvedGeneral.length + resolvedText.length})
@@ -795,7 +795,7 @@ export default function RevisionsPanel({
                   <div
                     key={r.id}
                     data-revision-entry={r.id}
-                    className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-stone-50"}`}
+                    className={`absolute left-0 right-0 px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${isSelected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"}`}
                     style={{
                       top,
                       ...(isSelected
@@ -807,15 +807,15 @@ export default function RevisionsPanel({
                     onMouseLeave={onHoverRevision ? () => onHoverRevision(null) : undefined}
                   >
                     {r.selectedText && (
-                      <div className="text-[10px] italic text-stone-400 truncate mb-0.5">
+                      <div className="text-[10px] italic text-ink-muted truncate mb-0.5">
                         &ldquo;{r.selectedText}&rdquo;
                       </div>
                     )}
                     <p
-                      className="text-xs text-stone-700 leading-snug line-clamp-2 pr-6"
+                      className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
                       style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
                     >
-                      {preview || <span className="italic text-stone-400">Empty revision</span>}
+                      {preview || <span className="italic text-ink-muted">Empty revision</span>}
                     </p>
                   </div>
                 );
@@ -944,7 +944,7 @@ export default function RevisionsPanel({
                   }
                 }}
                 placeholder="Describe the revision..."
-                className="w-full bg-white border border-[var(--border)] rounded px-2.5 py-2 text-sm text-stone-800 focus:outline-none focus:border-stone-400 resize-none"
+                className="w-full bg-surface border border-[var(--border)] rounded px-2.5 py-2 text-sm text-ink-strong focus:outline-none focus:border-edge-strong resize-none"
                 rows={3}
               />
               <div className="flex items-center justify-between mt-2">
@@ -955,7 +955,7 @@ export default function RevisionsPanel({
                       onCancelNew();
                       setNewCommentText("");
                     }}
-                    className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-stone-600 transition-colors"
+                    className="text-xs px-2 py-1 rounded text-[var(--muted)] hover:text-ink-body transition-colors"
                   >
                     Cancel
                   </button>

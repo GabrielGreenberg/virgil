@@ -69,7 +69,7 @@ function DeleteXButton({
           e.stopPropagation();
           setAsking(true);
         }}
-        className="opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-300 hover:text-red-400 hover:bg-red-50"
+        className="opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-faint hover:text-danger hover:bg-danger-soft"
         title="Delete"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -209,7 +209,7 @@ function CiteKeyAutocomplete({
   return (
     <div ref={wrapperRef} className="relative">
       <div className="flex items-center gap-2">
-        <span className="text-[10px] text-stone-400 uppercase tracking-wider whitespace-nowrap">
+        <span className="text-[10px] text-ink-muted uppercase tracking-wider whitespace-nowrap">
           Cite key
         </span>
         <input
@@ -228,21 +228,21 @@ function CiteKeyAutocomplete({
           }}
           onKeyDown={onKeyDown}
           placeholder="Search bibliography..."
-          className="flex-1 text-xs font-mono bg-transparent border-b border-stone-200 focus:border-amber-400 outline-none py-0.5 text-stone-700"
+          className="flex-1 text-xs font-mono bg-transparent border-b border-edge-subtle focus:border-amber-400 outline-none py-0.5 text-ink-body"
         />
       </div>
       {isOpen && results.length > 0 && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-full max-h-48 overflow-y-auto">
+        <div className="absolute top-full left-0 mt-1 bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-50 min-w-full max-h-48 overflow-y-auto">
           {results.map(({ entry }, i) => (
             <button
               key={entry.key}
               onMouseDown={(e) => { e.preventDefault(); selectEntry(entry.key); }}
               className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 text-xs ${
-                i === highlightedIndex ? "bg-amber-50" : "hover:bg-stone-50"
+                i === highlightedIndex ? "bg-amber-50" : "hover:bg-surface-muted"
               }`}
             >
-              <span className="font-mono font-semibold text-stone-800 shrink-0">{entry.key}</span>
-              <span className="text-stone-400 truncate">
+              <span className="font-mono font-semibold text-ink-strong shrink-0">{entry.key}</span>
+              <span className="text-ink-muted truncate">
                 {entry.fields.author ? entry.fields.author.slice(0, 30) : ""}
                 {entry.fields.year ? ` (${entry.fields.year})` : ""}
               </span>
@@ -367,7 +367,7 @@ const QuoteEntry = memo(function QuoteEntry({
             }
           }}
           onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-stone-300 group-hover/card:text-stone-500 transition-colors shrink-0"
+          className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover/card:text-ink-subtle transition-colors shrink-0"
           title="Drag quote into document"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -384,7 +384,7 @@ const QuoteEntry = memo(function QuoteEntry({
             value={text}
             onChange={handleTextChange}
             placeholder="Enter quoted text..."
-            className="text-sm text-stone-700 leading-relaxed italic"
+            className="text-sm text-ink-body leading-relaxed italic"
             rows={1}
           />
         </div>
@@ -399,13 +399,13 @@ const QuoteEntry = memo(function QuoteEntry({
       {/* Page number */}
       <div className="flex items-center mt-1.5 pt-1.5 border-t border-stone-100">
         <div className="flex items-center gap-1">
-          <span className="text-[10px] text-stone-400">p.</span>
+          <span className="text-[10px] text-ink-muted">p.</span>
           <input
             type="text"
             value={page}
             onChange={handlePageChange}
             placeholder="--"
-            className="w-14 text-xs font-mono bg-transparent outline-none text-stone-600 border-b border-transparent focus:border-stone-300"
+            className="w-14 text-xs font-mono bg-transparent outline-none text-ink-body border-b border-transparent focus:border-edge-hover"
           />
         </div>
       </div>
@@ -478,7 +478,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
               }}
               className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
                 !matchedEntry
-                  ? "border-dashed border-red-300 text-red-400 bg-red-50/50"
+                  ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
                   : editingCiteKey
                     ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
                     : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
@@ -489,12 +489,12 @@ const ReferenceBlock = memo(function ReferenceBlock({
           </div>
           {/* Author + title display */}
           {matchedEntry && cleanTitle && (
-            <p className="text-[11px] text-stone-500 leading-snug">
+            <p className="text-[11px] text-ink-subtle leading-snug">
               {cleanTitle}
             </p>
           )}
           {!matchedEntry && !reference.citeKey && (
-            <p className="text-xs text-stone-400 italic">No reference selected</p>
+            <p className="text-xs text-ink-muted italic">No reference selected</p>
           )}
         </div>
         {/* Delete reference X button */}
@@ -518,7 +518,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
       {/* Inline cite key display + edit button (matches CitationCard pattern) */}
       {!editingCiteKey && reference.citeKey && (
         <div className="flex items-center gap-1.5 min-w-0">
-          <div className="text-xs font-mono text-stone-400 truncate flex-1 min-w-0">
+          <div className="text-xs font-mono text-ink-muted truncate flex-1 min-w-0">
             {reference.citeKey}
           </div>
           <button
@@ -526,7 +526,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
               e.stopPropagation();
               setEditingCiteKey(true);
             }}
-            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-stone-200 text-stone-400 hover:text-stone-600 hover:bg-stone-100 hover:border-stone-300 transition-colors flex-shrink-0"
+            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
             title="Edit cite key"
           >
             Edit
@@ -589,12 +589,12 @@ function CollapsibleNotes({
     <div className="mt-2">
       <button
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-1 text-xs text-stone-500 hover:text-stone-700 transition-colors"
+        className="flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
       >
         <Chevron expanded={expanded} />
         <span>Notes</span>
         {!expanded && notes && (
-          <span className="text-[10px] text-stone-400 truncate max-w-[140px]">
+          <span className="text-[10px] text-ink-muted truncate max-w-[140px]">
             -- {notes.slice(0, 60)}
           </span>
         )}
@@ -606,7 +606,7 @@ function CollapsibleNotes({
             onChange={(e) => handleChange(e.target.value)}
             placeholder="Add notes..."
             rows={3}
-            className="w-full resize-none outline-none bg-transparent text-xs text-stone-600 leading-relaxed"
+            className="w-full resize-none outline-none bg-transparent text-xs text-ink-body leading-relaxed"
           />
         </div>
       )}
@@ -729,7 +729,7 @@ export function QuotationGroupCard({
             }
           }}
           onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
           title="Drag to anchor to paragraph"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -750,7 +750,7 @@ export function QuotationGroupCard({
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
           placeholder="Group title..."
-          className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-stone-400 placeholder:font-normal"
+          className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
           style={{ fontSize: "var(--par-title-size, 0.78rem)", color: theme.override ? theme.titleColor : "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
         />
         {/* Inline delete */}
@@ -759,7 +759,7 @@ export function QuotationGroupCard({
           onMouseDown={(e) => e.stopPropagation()}
           draggable={false}
           onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
           title="Delete"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -782,7 +782,7 @@ export function QuotationGroupCard({
       </div>
 
       {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? "border-amber-200" : "border-stone-200 group-hover:border-stone-300"}`} />
+      <div className={`border-t transition-colors ${selected ? "border-amber-200" : "border-edge-subtle group-hover:border-edge-hover"}`} />
 
       {/* Body */}
       <div className="relative px-3 pt-1.5 pb-2">

@@ -35,21 +35,21 @@ import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-conten
 const CARD_BASE =
   "rounded-lg border transition-colors overflow-hidden";
 const CARD_DEFAULT =
-  "bg-white border-stone-200 hover:border-stone-300 hover:bg-stone-50/50";
+  "bg-surface border-edge-subtle hover:border-edge-hover hover:bg-surface-muted/50";
 const CARD_SELECTED =
-  "bg-white border-amber-300 shadow-sm";
+  "bg-surface border-amber-300 shadow-sm";
 
 const CARD_SELECTED_FOOTNOTE =
-  "bg-white border-red-300 shadow-sm";
+  "bg-surface border-red-300 shadow-sm";
 
 const CARD_SELECTED_NOTE =
-  "bg-white border-emerald-300 shadow-sm";
+  "bg-surface border-emerald-300 shadow-sm";
 
 const CARD_SELECTED_TODO =
-  "bg-white border-stone-400 shadow-sm";
+  "bg-surface border-stone-400 shadow-sm";
 
 const CARD_SELECTED_CUT =
-  "bg-white border-red-300 shadow-sm";
+  "bg-surface border-red-300 shadow-sm";
 
 /** Returns the full card className given selection state. */
 export function panelCard(selected: boolean, extra?: string): string {
@@ -169,10 +169,10 @@ export const CARD_THEMES = {
   footnote:  { cardClass: footnoteCard, headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
   note:      { cardClass: noteCard,     headerDefault: "bg-emerald-100/50", headerSelected: "bg-emerald-100",  separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
   archive:   { cardClass: panelCard,    headerDefault: "bg-amber-100/50",  headerSelected: "bg-amber-100",     separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
-  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-100/70",  headerSelected: "bg-stone-200/80",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-100/70",  headerSelected: "bg-stone-200/80",  separatorSelected: "border-edge-hover",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
   bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/80",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
   citation:  { cardClass: panelCard,    headerDefault: "bg-[#fef3c3]/40",  headerSelected: "bg-[#fef3c3]",     separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
-  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-100/60",  headerSelected: "bg-stone-200/70",  separatorSelected: "border-stone-300",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-100/60",  headerSelected: "bg-stone-200/70",  separatorSelected: "border-edge-hover",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
   aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-100/50",    headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
   cut:       { cardClass: cutCard,      headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
 } satisfies Record<string, CardTheme>;
@@ -207,7 +207,7 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
 
 /* ── Title input (par-title styling) ─────────────────────────────── */
 
-const TITLE_CLASS = "flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-stone-400 placeholder:font-normal";
+const TITLE_CLASS = "flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
 const TITLE_STYLE: React.CSSProperties = {
   fontSize: "var(--par-title-size, 0.78rem)",
   color: "var(--par-title-color, #c45a5a)",
@@ -423,6 +423,12 @@ export function EditableCard({
     <div
       ref={cardRef}
       {...dataAttrs}
+      // Preference-mode annotation: the card's outer surface and border
+      // come from the generic --surface / --border tokens, so a ctrl+click
+      // on the card background edits every card in every panel. Per-panel
+      // header colours are managed by panel-theme.ts / PanelThemePicker —
+      // the header <div> below gets its own `data-panel-theme` annotation.
+      data-prefs="surfaceColor,borderColor"
       draggable={cardDraggable}
       onDragStart={!grabHandle ? onDragStart : undefined}
       tabIndex={selected ? 0 : -1}
@@ -452,7 +458,7 @@ export function EditableCard({
               }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
             title="Drag to reorder"
           >
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -479,7 +485,7 @@ export function EditableCard({
               onMouseDown={(e) => e.stopPropagation()}
               draggable={false}
               onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-stone-400 hover:text-red-500 shrink-0"
+              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
               title="Delete"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -524,7 +530,7 @@ export function EditableCard({
 
       {/* Separator */}
       <div
-        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-stone-200 group-hover:border-stone-300"}`}
+        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
         style={separatorOverrideStyle(theme, selected)}
       />
 
@@ -536,7 +542,7 @@ export function EditableCard({
             draggable={!isFocused}
             onDragStart={(e) => { onTextDragStart(e); }}
             onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-stone-300 group-hover:text-stone-500 transition-colors shrink-0"
+            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
             title="Drag text into document"
           >
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
@@ -581,9 +587,9 @@ export const PANEL = {
   /** Inner padding for card content. */
   cardInner: "px-4 py-3 relative min-w-0",
   /** Expandable sub-pod with muted background (for fields, notes, etc.). */
-  subpod: "rounded-md border border-stone-200 bg-stone-50/70 p-3 overflow-hidden",
+  subpod: "rounded-md border border-edge-subtle bg-surface-muted/70 p-3 overflow-hidden",
   /** Sub-pod with white background (for rich-text editors, etc.). */
-  subpodWhite: "rounded-md border border-stone-200 bg-white overflow-hidden",
+  subpodWhite: "rounded-md border border-edge-subtle bg-white overflow-hidden",
   /** Standard panel header bar — height set by --header-h so all headers align. */
   header: "px-4 border-b border-[var(--border-light)] h-[var(--header-h)] shrink-0 bg-[var(--header-bg)]",
   /** Empty-state message. */
@@ -702,7 +708,7 @@ export function PanelHeader({
       {chrome && (
         <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />
       )}
-      <h3 className="text-sm font-semibold text-stone-700">
+      <h3 className="text-sm font-semibold text-ink-body">
         {title}
         {count != null && count > 0 && (
           <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
@@ -713,7 +719,7 @@ export function PanelHeader({
       {onAdd && (
         <button
           onClick={onAdd}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+          className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
           title="Add"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -724,7 +730,7 @@ export function PanelHeader({
       {onAiRequest && (
         <button
           onClick={onAiRequest}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-stone-400 hover:text-sky-600 hover:bg-sky-50 transition-colors"
+          className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-sky-600 hover:bg-sky-50 transition-colors"
           title="New AI request"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -860,7 +866,7 @@ export function AiRequestCard({
             }
           }}
           onMouseDown={(e) => e.stopPropagation()}
-          className="text-stone-400 hover:text-stone-600 shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Delete request"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -894,7 +900,7 @@ export function AiRequestCard({
           placeholder={`Describe what you want the AI to ${
             request.kind === "todo" ? "do" : "find or write"
           }\u2026`}
-          className="w-full resize-none bg-transparent text-xs text-stone-700 placeholder:text-stone-400 focus:outline-none leading-snug font-serif"
+          className="w-full resize-none bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none leading-snug font-serif"
           style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
           rows={1}
         />
@@ -909,7 +915,7 @@ export function AiRequestCard({
  */
 export function AiRequestsSectionHeader({ count }: { count: number }) {
   return (
-    <div className="text-[10px] font-medium text-stone-500 uppercase tracking-wide px-2 mb-1.5 mt-2 pt-2 border-t border-stone-200">
+    <div className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide px-2 mb-1.5 mt-2 pt-2 border-t border-edge-subtle">
       Pending AI requests ({count})
     </div>
   );
@@ -1004,7 +1010,7 @@ export function ItemMenu({
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1 rounded text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors"
+        className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
         title="Options"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -1016,7 +1022,7 @@ export function ItemMenu({
       {open && (
         <div
           ref={menuRef}
-          className="fixed bg-white border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[100px]"
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[100px]"
           style={{ top: pos.top, right: pos.right }}
           onClick={() => setOpen(false)}
         >
@@ -1097,7 +1103,7 @@ export function MenuDelete({ onClick, label }: { onClick: () => void; label?: st
   return (
     <button
       onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 transition-colors"
+      className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft transition-colors"
     >
       {label ?? "Delete"}
     </button>
@@ -1131,7 +1137,7 @@ export function TargetFileIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-white/60 transition-colors ${className ?? ""}`}
+      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover:bg-surface/60 transition-colors ${className ?? ""}`}
       title={title}
     >
       <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1162,7 +1168,7 @@ export function TargetIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-stone-500 hover:text-stone-800 hover:bg-white/60 transition-colors ${className ?? ""}`}
+      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover:bg-surface/60 transition-colors ${className ?? ""}`}
       title={title}
     >
       <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
