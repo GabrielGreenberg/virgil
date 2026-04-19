@@ -48,9 +48,9 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
 
       <div className={PANEL.list}>
         {/* Total stats */}
-        <div className="px-4 py-3 flex items-baseline gap-6">
+        <div className="px-4 py-3 flex flex-wrap items-baseline gap-x-6 gap-y-1">
           <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-light text-stone-800 tabular-nums leading-none">
+            <span className="text-base font-medium text-stone-800 tabular-nums leading-none">
               {filteredTotal.toLocaleString()}
             </span>
             <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
@@ -58,7 +58,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
             </span>
           </div>
           <div className="flex items-baseline gap-1.5">
-            <span className="text-2xl font-light text-stone-800 tabular-nums leading-none">
+            <span className="text-base font-medium text-stone-800 tabular-nums leading-none">
               {counts.characters.toLocaleString()}
             </span>
             <span className="text-[11px] text-[var(--muted)] uppercase tracking-wide">
@@ -75,7 +75,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
           <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
             Selection
           </div>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap gap-x-6 gap-y-1">
             <Stat label="Words" value={selection?.words ?? 0} />
             <Stat label="Characters" value={selection?.characters ?? 0} />
           </div>
@@ -87,7 +87,7 @@ export default function WordCountPanel({ counts, selection, focusCounts }: WordC
             <div className="text-[10px] uppercase tracking-wider text-[var(--accent)] font-medium mb-2">
               Focus
             </div>
-            <div className="flex gap-6">
+            <div className="flex flex-wrap gap-x-6 gap-y-1">
               <Stat label="Words" value={focusCounts.words} />
             </div>
           </div>
