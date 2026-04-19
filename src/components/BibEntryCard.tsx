@@ -415,15 +415,26 @@ export default function BibEntryCard({
     >
       {/* Header: author · year · title + target icon + occurrence counter */}
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
+        className={`flex items-start gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, isSelected)}
       >
-        <div className="flex-1 min-w-0 text-sm text-ink-strong truncate" title={headerText}>
+        <div
+          className="flex-1 min-w-0 leading-snug"
+          style={{
+            fontSize: "var(--par-title-size, 0.78rem)",
+            color: theme.titleColor,
+            fontWeight: 500,
+            fontFamily: "var(--font-sans), Inter, sans-serif",
+            letterSpacing: "0.02em",
+            overflowWrap: "anywhere",
+          }}
+          title={headerText}
+        >
           {author && <span className="font-semibold">{author}</span>}
           {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
           {year && <span className="font-semibold">{year}</span>}
           {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
-          {title && <span className="italic text-ink-body">{title}</span>}
+          {title && <span className="italic">{title}</span>}
         </div>
         {hasOccCounter && (
           <div
