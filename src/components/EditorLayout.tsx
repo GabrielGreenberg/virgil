@@ -77,7 +77,10 @@ const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
 import CitationsPanel from "./CitationsPanel";
 import BibliographyPanel from "./BibliographyPanel";
 import QuotationsPanel from "./QuotationsPanel";
-import SearchPanel from "./SearchPanel";
+import SearchPanel, {
+  type SearchPanelState,
+  INITIAL_SEARCH_STATE,
+} from "./SearchPanel";
 import OmniViewPanel, { type OmniItem, type OmniCategory, PANEL_TO_CATEGORY, DEFAULT_OMNI_CATEGORIES } from "./OmniViewPanel";
 import { CitationCard } from "./CitationsPanel";
 import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
@@ -1349,6 +1352,7 @@ export default function EditorLayout() {
   // ("unanchored", from the panel + button).
   const [pendingCitationMode, setPendingCitationMode] = useState<"anchored" | "unanchored">("anchored");
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
+  const [searchState, setSearchState] = useState<SearchPanelState>(INITIAL_SEARCH_STATE);
 
   /** SearchPanel dispatches selection + opens the target panel (auto-splits
    *  the search side when target is on the same side). */
@@ -4404,6 +4408,8 @@ export default function EditorLayout() {
           generalRevisions={generalRevisions}
           bibEntries={bibEntries}
           onOpenItem={openItemInPanel}
+          state={searchState}
+          onStateChange={setSearchState}
         />
       );
     }

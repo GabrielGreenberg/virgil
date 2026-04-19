@@ -22,7 +22,6 @@ import {
   searchArchive,
   searchCuts,
   searchQuotations,
-  searchHeadings,
   searchRevisions,
   searchBibliography,
 } from "@/lib/search-sources";
@@ -51,6 +50,26 @@ interface SearchResult extends SearchHit {
   breadcrumb: BreadcrumbSegment[];
 }
 
+/**
+ * Lifted-state container so the panel survives structural remounts (e.g.
+ * when clicking a result opens a split and the column DOM tree changes).
+ */
+export interface SearchPanelState {
+  query: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  enabledScopes: SearchScope[];
+  selectedIdx: number | null;
+}
+
+export const INITIAL_SEARCH_STATE: SearchPanelState = {
+  query: "",
+  caseSensitive: false,
+  wholeWord: false,
+  enabledScopes: ["mainText", "footnotes"],
+  selectedIdx: null,
+};
+
 interface SearchPanelProps {
   editor: Editor | null;
   onHighlightRange: (range: { from: number; to: number } | null) => void;
@@ -72,9 +91,18 @@ interface SearchPanelProps {
 
   /** Open the item's native panel and focus it there. */
   onOpenItem: (panel: PanelId, itemId: string) => void;
+
+  /** Lifted panel state — kept in the parent so it persists across remounts. */
+  state: SearchPanelState;
+  onStateChange: React.Dispatch<React.SetStateAction<SearchPanelState>>;
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────── */
+
+const PRIMARY_SCOPES: SearchScope[] = ["mainText", "footnotes"];
+const DROPDOWN_SCOPES: SearchScope[] = SCOPE_ORDER.filter(
+  (s) => !PRIMARY_SCOPES.includes(s),
+);
 
 const CTX = 40;
 const FIELD_LABEL: Record<NonNullable<SearchHit["field"]>, string> = {
@@ -238,13 +266,13 @@ function SearchPanel({
   generalRevisions,
   bibEntries,
   onOpenItem,
+  state,
+  onStateChange,
 }: SearchPanelProps) {
-  const [query, setQuery] = useState("");
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [wholeWord, setWholeWord] = useState(false);
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [enabledScopes, setEnabledScopes] = useState<Set<SearchScope>>(
-    () => new Set(["mainText", "footnotes"]),
+  const { query, caseSensitive, wholeWord, selectedIdx } = state;
+  const enabledScopes = useMemo(
+    () => new Set(state.enabledScopes),
+    [state.enabledScopes],
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -253,14 +281,58 @@ function SearchPanel({
     inputRef.current?.focus();
   }, []);
 
-  const toggleScope = useCallback((scope: SearchScope) => {
-    setEnabledScopes((prev) => {
-      const next = new Set(prev);
-      if (next.has(scope)) next.delete(scope);
-      else next.add(scope);
-      return next;
-    });
-  }, []);
+  // User-input changes reset the selection + highlight. We drive this from
+  // the setter callbacks (rather than a useEffect on `results`) so that when
+  // the component remounts with preserved state, we don't clobber the
+  // user's active selection.
+  const setQuery = useCallback(
+    (q: string) => {
+      onStateChange((s) => ({ ...s, query: q, selectedIdx: null }));
+      onHighlightRange(null);
+    },
+    [onStateChange, onHighlightRange],
+  );
+  const setCaseSensitive = useCallback(
+    (fn: (v: boolean) => boolean) => {
+      onStateChange((s) => ({
+        ...s,
+        caseSensitive: fn(s.caseSensitive),
+        selectedIdx: null,
+      }));
+      onHighlightRange(null);
+    },
+    [onStateChange, onHighlightRange],
+  );
+  const setWholeWord = useCallback(
+    (fn: (v: boolean) => boolean) => {
+      onStateChange((s) => ({
+        ...s,
+        wholeWord: fn(s.wholeWord),
+        selectedIdx: null,
+      }));
+      onHighlightRange(null);
+    },
+    [onStateChange, onHighlightRange],
+  );
+  const setSelectedIdx = useCallback(
+    (idx: number | null) => {
+      onStateChange((s) => ({ ...s, selectedIdx: idx }));
+    },
+    [onStateChange],
+  );
+  const toggleScope = useCallback(
+    (scope: SearchScope) => {
+      onStateChange((s) => {
+        const has = s.enabledScopes.includes(scope);
+        const nextScopes = has
+          ? s.enabledScopes.filter((x) => x !== scope)
+          : [...s.enabledScopes, scope];
+        return { ...s, enabledScopes: nextScopes, selectedIdx: null };
+      });
+      onHighlightRange(null);
+    },
+    [onStateChange, onHighlightRange],
+  );
 
   /* ── Combined search (memoised) ────────────────────────────────────── */
 
@@ -285,9 +357,6 @@ function SearchPanel({
 
     if (enabledScopes.has("footnotes")) {
       hits.push(...searchFootnotes(footnotes, orphanedFootnotes, re));
-    }
-    if (enabledScopes.has("headings")) {
-      hits.push(...searchHeadings(editor, re));
     }
     if (enabledScopes.has("notes")) {
       hits.push(...searchNotes(notes, editor, uuidPos, re));
@@ -340,12 +409,6 @@ function SearchPanel({
     generalRevisions,
     bibEntries,
   ]);
-
-  // Reset selection and clear highlight when results change
-  useEffect(() => {
-    setSelectedIdx(null);
-    onHighlightRange(null);
-  }, [results, onHighlightRange]);
 
   /* ── Navigation ──────────────────────────────────────────────────── */
 
@@ -461,8 +524,8 @@ function SearchPanel({
       </div>
 
       {/* Scope chips */}
-      <div className="px-3 pb-2 pt-2 flex flex-wrap gap-1 border-b border-[var(--border)]">
-        {SCOPE_ORDER.map((s) => (
+      <div className="px-3 pb-2 pt-2 flex flex-wrap items-center gap-1 border-b border-[var(--border)]">
+        {PRIMARY_SCOPES.map((s) => (
           <ScopeChip
             key={s}
             scope={s}
@@ -470,6 +533,11 @@ function SearchPanel({
             onToggle={() => toggleScope(s)}
           />
         ))}
+        <MoreScopesDropdown
+          scopes={DROPDOWN_SCOPES}
+          enabledScopes={enabledScopes}
+          onToggle={toggleScope}
+        />
       </div>
 
       {/* Results list */}
@@ -504,6 +572,124 @@ function SearchPanel({
 }
 
 /* ── Subcomponents ───────────────────────────────────────────────────── */
+
+function MoreScopesDropdown({
+  scopes,
+  enabledScopes,
+  onToggle,
+}: {
+  scopes: SearchScope[];
+  enabledScopes: Set<SearchScope>;
+  onToggle: (scope: SearchScope) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const enabledCount = scopes.filter((s) => enabledScopes.has(s)).length;
+
+  useEffect(() => {
+    if (!open) return;
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 4, left: r.left });
+    }
+    const handler = (e: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node) &&
+        btnRef.current &&
+        !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const active = enabledCount > 0;
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((o) => !o);
+        }}
+        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
+          active
+            ? "border-stone-300 bg-white/70 text-stone-700"
+            : "border-stone-200 bg-transparent text-stone-400 hover:text-stone-600"
+        }`}
+        title="More search scopes"
+      >
+        <span>More</span>
+        {active && (
+          <span className="text-[9px] leading-none tabular-nums text-stone-500">
+            {enabledCount}
+          </span>
+        )}
+        <svg
+          width="8"
+          height="8"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d={open ? "M2 6 L5 3 L8 6" : "M2 4 L5 7 L8 4"} />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[140px]"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          {scopes.map((s) => {
+            const enabled = enabledScopes.has(s);
+            const color = SCOPE_COLOR[s];
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggle(s);
+                }}
+                className="w-full flex items-center gap-2 px-2.5 py-1 text-[11px] text-left hover:bg-surface-muted transition-colors"
+              >
+                <span
+                  aria-hidden
+                  className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{
+                    backgroundColor: color === "transparent" ? "#78716c" : color,
+                    opacity: enabled ? 1 : 0.4,
+                  }}
+                />
+                <span className={enabled ? "text-ink-body" : "text-ink-muted"}>
+                  {SCOPE_LABEL[s]}
+                </span>
+                {enabled && (
+                  <span className="ml-auto text-[10px] leading-none text-ink-muted">
+                    ✓
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ScopeChip({
   scope,
