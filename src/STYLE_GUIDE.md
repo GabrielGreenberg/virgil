@@ -99,46 +99,91 @@ container (it bleeds through on split views).
 
 ### Shared Primitives (`panel-primitives.tsx`)
 All panels import from this file. It exports:
-- `panelCard(selected, extra?)` — card className builder
+- `Card` — **the one card shell** (see below)
+- `EditableCard`, `AiRequestCard` — specialized card variants
+- `panelCard(selected, extra?)` — raw className builder (rarely needed directly)
 - `PANEL` — class-string tokens (`.list`, `.cardInner`, `.subpod`, etc.)
-- `PanelHeader` — standard header bar
+- `PanelHeader` — standard panel header bar
 - `ItemMenu` + `MenuDelete` — three-dot context menu
 - `TargetIcon` — jump-to-text bullseye
 - `Chevron` — expand/collapse arrow
 - `PrevNextCounter` + `useCycle` — prev/next navigation
-- `AiRequestCard` + `AiRequestsSectionHeader` — AI request integration
+- `AiRequestsSectionHeader` — heading for the AI-request strip inside panel lists
 - `HSplit` — horizontal draggable split divider
 
 ---
 
-## EditableCard
+## Card
 
-`EditableCard` is the canonical card component for all panels with editable
-rich-text content (footnotes, notes, archive). All formatting is centralized
-here — panels pass content-specific data, not styling.
+`Card` is the **one universal card shell** that every in-panel card composes.
+Cross-cutting concerns (rounded border, theme colors, selection state,
+delete affordance + confirm, drag source, drop-target wiring, text-drag
+gutter, `data-prefs` + `data-panel-theme` annotations, popout plug point)
+live here and nowhere else. Specialized cards just fill slots.
 
 ### Layout
 ```
-[grab handle] [badge] [title input] ... [x delete] [target icon]
-──────────────── separator ────────────────────────────────────
-[RichTextField body]                                    
-[optional footer]
+[grab?] {header} [inlineDelete?] {headerTrailing?} [menu?] [popout?]
+──────────────── separator ─────────────────────────────────────────
+{body}
+{footer?}
 ```
 
-### Opt-in features (props)
+Items in `[brackets]` are injected by the shell when the corresponding
+feature flag is set; items in `{braces}` are slots the variant fills.
+
+### Slots & flags (most-used)
 | Prop | Effect |
 |------|--------|
-| `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
-| `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
-| `inlineDelete` | [x] button in header instead of three-dot menu |
-| `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
+| `header` | Free-form content row. Pass `null`/`undefined` to omit the header + separator entirely (used by CitationCard's edit mode). |
+| `body` | Free-form body content. Padded by default via `bodyClassName` (defaults to `relative px-3 pt-1.5 pb-2`). |
+| `footer` | Optional content below the body, outside body padding. |
+| `headerTrailing` | Last slot before shell-injected menu/popout (typically `CardTargetIcon`). |
+| `bodyClassName` | Override body padding when the variant wants different spacing (e.g. `PANEL.cardInner` for Bib/Citation/Revision). |
+| `dragSource` | `"none"` / `"handle"` (6-dot grip) / `"whole-card"`. |
+| `dragDisabled` | Disables whole-card drag (e.g. CitationCard while editing). |
+| `onDragStart` | Required when `dragSource !== "none"`. |
+| `onTextDragStart` | Renders the body-gutter 6-dot handle for text-only drags. |
+| `onDragOver` / `onDragLeave` / `onDrop` | Drop-target wiring (used by CitationCard to accept bib drops). |
+| `onDelete` + `deleteAffordance` | `"inline"` / `"menu"` / `"none"`. Inline renders an `[x]`; menu renders `MenuDelete` inside the three-dot `ItemMenu`. |
+| `deleteConfirmWhen` + `deleteConfirmMessage` + `deleteConfirmLabel` | Gate delete on a `ConfirmDialog` when the predicate returns true (e.g. the card body has text). The dialog anchors to the card root. |
+| `enableKeyboardDelete` | Defaults on when `selectable && onDelete`. Hooks Del/Backspace. Turn off for cards where keyboard delete is undesired (e.g. RevisionCard). |
+| `isFocused` | Pass `true` when the body (or any variant-specific input) has focus. Disables whole-card drag and inline-handle drag while editing. |
+| `onSelect` + `selectable` | Shell wires `onClick`, `onFocusCapture` auto-select, and `tabIndex`. |
+| `onTogglePopout` + `isPoppedOut` | Plug point for card-level popout. Renders a `CardPopoutButton` trailing the header when set. |
+| `onHoverChange` | Fires on mouseenter (true) / mouseleave (false). |
+| `panelThemeKey` | Annotates the header with `data-panel-theme=<key>` so preference-mode ctrl+click edits the matching palette. |
+| `rootRef` | Callback for the card's root DOM node (used by panels that need to scroll a card into view). |
+| `title` | Native tooltip on the card root. |
+| `wrapperClassName` / `wrapperStyle` | Variant-specific extras (dashed border for unanchored CitationCard, drop-target ring, opacity for done todos, etc.). |
+| `dataAttr` / `extraDataAttrs` | `data-<name>=<value>` annotations for selection-anchor sync, omni view, etc. |
+
+### Variants
+| Variant | File | What it fills |
+|---|---|---|
+| `EditableCard` | `panel-primitives.tsx` | Builds `header={badge + headerContent + toolbar portal}` and `body={<RichTextField>}`; tracks RichTextField focus to feed `isFocused`. Used by Footnote, Note, Archive, Cutter. |
+| `AiRequestCard` | `panel-primitives.tsx` | Sky-tinted wrapper (`aiRequestCard` helper on theme), whole-card drag, inline delete with "discard if non-empty" confirm. |
+| `TodoCard` | `TodoPanel.tsx` | Grab-handle drag, badge + checkbox + text input in the header slot, notes textarea in the body; tracks `editing` and `notesFocused` to feed `isFocused`. |
+| `BibEntryCard` | `BibEntryCard.tsx` | Whole-card drag, custom header (author · year · title + occurrence counter), sub-pod body with bib fields + annotation editor. |
+| `CitationCard` | `CitationsPanel.tsx` | Whole-card drag, drop target (accepts bib drops to append keys), header with bib-key chips; edit mode sets `header={null}` to take over the whole card with `CitationBuilder`. |
+| `RevisionCard` | `CommentPanel.tsx` | No drag, menu-based delete, bespoke body (turns + reply + resolve); `panelThemeKey="revision"`. |
+
+### "Add feature X to every card"
+The card shell is the one and only place to grow cross-cutting behavior.
+Adding a feature to every card = editing `Card` in `panel-primitives.tsx`
+and (usually) the variant's slot construction. Examples already in place:
+- Selection border, focus-capture auto-select, keyboard Delete.
+- Inline-delete [x] / three-dot menu with optional confirm.
+- Text-drag gutter handle in body.
+- Popout plug point (`onTogglePopout`).
+- Preference-mode annotations (`data-prefs`, `data-panel-theme`).
 
 ### Selection states
-- **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
+- **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — always visible. Selection intensifies the header, it does not introduce it.
 - **Selected**: colored border around whole card, intensified header (`theme.headerSelected`), white body.
-- **Default**: `bg-white border-stone-300 hover:border-stone-400 hover:bg-stone-50/50`, plus the always-on `theme.headerDefault` tint on the header row. The card outline (`stone-300`) is chosen to visually match the perceived edge weight of the pod/panel (which is a lighter `var(--border-light)` stroke plus an ambient shadow).
-- Separator: `border-stone-200`, darkens to `border-stone-300` on hover; selected cards use `theme.separatorSelected`.
-- Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`.
+- **Default**: `bg-surface border-edge-hover hover:border-edge-strong hover:bg-surface-muted/50`, plus the always-on `theme.headerDefault` tint on the header row.
+- Separator: `border-edge-subtle`, darkens to `border-edge-hover` on hover; selected cards use `theme.separatorSelected`.
+- Clicking anywhere on the card auto-selects via `onFocusCapture`.
 - Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container).
 
 ### Shared sub-components (`panel-primitives.tsx`)
@@ -209,16 +254,17 @@ Implementation:
   three-dot menu, next to the ViewToggle.
 
 ### Delete behavior
-- [x] button and Delete/Backspace key both go through `tryDelete()`
-- If the card body has text content → shows `ConfirmDialog`
-- If empty → deletes immediately
-- The `ConfirmDialog` positions near the card (via `anchorRef`), not dead-center screen
+- Inline [x] button and Delete/Backspace key both route through the shell's internal `tryDelete()`.
+- If `deleteConfirmWhen?.()` returns true → shows `ConfirmDialog` anchored to the card root.
+- If the predicate is absent or returns false → deletes immediately.
+- `deleteAffordance` controls where the control lives: `"inline"` (header [x]), `"menu"` (three-dot menu with `MenuDelete`), or `"none"`.
 
 ### Drag behavior
-- **Card handle** (6-dot grip in header): Drags the card entity (footnote atom, margin note anchor, etc.). Uses the whole card as the drag ghost (`setDragImage`), offset below cursor.
-- **Text handle** (3-line icon in body gutter): Drags only the text content for inline insertion — no anchoring, no entity identity. Uses a neutral ghost (white bg, gray border). Appears on hover (`opacity-0 group-hover:opacity-60`).
-- Both handles are disabled while RichTextField is focused
-- Handle darkens on card hover (`group-hover:text-stone-500`)
+- **Grab handle** (6-dot grip, shown when `dragSource="handle"`): Drags the card entity (footnote atom, margin note anchor, etc.). Uses the whole card as the drag ghost (`setDragImage`), offset below cursor.
+- **Whole-card drag** (`dragSource="whole-card"`): the card root is `draggable`. Automatically disabled while `isFocused` is true, or when `dragDisabled` is set (e.g. CitationCard in edit mode).
+- **Text handle** (6-dot grip in body gutter, shown when `onTextDragStart` is set): Drags only the text content for inline insertion — no anchoring, no entity identity. Uses a neutral ghost (white bg, gray border). Appears on hover.
+- The grab handle is disabled while `isFocused` is true; the text handle likewise.
+- Handles use `text-ink-faint` at rest and darken to `text-ink-subtle` on card hover.
 
 ### Sub-pods
 Expandable sections within cards use sub-pod containers:

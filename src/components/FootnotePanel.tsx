@@ -129,6 +129,7 @@ export function FootnoteCard({
       grabHandle
       hideToolbar
       inlineDelete
+      panelThemeKey="footnote"
       onEditorFocus={onEditorFocus}
       badge={<BadgeLabel label={fn.number} theme={theme} />}
       headerContent={<CardTitleInput defaultValue={fn.title} onChange={onEditTitle} theme={theme} />}
@@ -197,6 +198,7 @@ export function OrphanedFootnoteCard({
       grabHandle
       hideToolbar
       inlineDelete
+      panelThemeKey="footnote"
       onEditorFocus={onEditorFocus}
       badge={<BadgeOrphaned theme={theme} />}
       headerContent={<CardTitleInput defaultValue={orphan.title} onChange={onEditTitle} theme={theme} />}

@@ -97,6 +97,7 @@ export function ArchiveCard({
       grabHandle
       hideToolbar
       inlineDelete
+      panelThemeKey="archive"
       onEditorFocus={onEditorFocus}
       badge={orphaned
         ? <BadgeOrphaned theme={theme} />

@@ -118,6 +118,7 @@ export function NoteCard({
       grabHandle
       hideToolbar
       inlineDelete
+      panelThemeKey="note"
       onEditorFocus={onEditorFocus}
       badge={isOrphaned
         ? <BadgeOrphaned theme={theme} />

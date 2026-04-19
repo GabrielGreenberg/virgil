@@ -3,22 +3,29 @@
  *
  * Design language:
  *  - Items are rendered as rounded cards with subtle borders
- *  - Selected cards get an amber tint + border + shadow
+ *  - Selected cards get a themed tint + border + shadow
  *  - Expandable sub-sections use "sub-pod" containers (rounded-md, muted bg)
  *  - Lists use `space-y-2` gaps between cards (no border-b dividers)
  *  - Headers are compact: title + count + optional action
  *
- * Usage:
- *  import { panelCard, PANEL, Chevron, PanelHeader } from "./panel-primitives";
+ * Card model:
+ *  Every in-panel card composes the single `Card` shell below. Cross-cutting
+ *  concerns (selection, delete affordance + confirm, drag source, drop-target
+ *  wiring, text-drag gutter, theme + override styles, `data-prefs` + data-panel-theme
+ *  annotations, card-level popout plug point) live on `Card`. Variants
+ *  (`EditableCard`, `AiRequestCard`, `TodoCard`, `BibEntryCard`, `CitationCard`,
+ *  `RevisionCard`) just fill the header / body / footer slots. See STYLE_GUIDE.md
+ *  "Card" section for the full contract.
  *
- *  <div className={PANEL.list}>
- *    <div className={panelCard(isSelected)}>
- *      <div className={PANEL.cardInner}>
- *        ...content...
- *        <div className={PANEL.subpod}>...expandable...</div>
- *      </div>
- *    </div>
- *  </div>
+ *  Usage (raw):
+ *    <Card theme={CARD_THEMES.note} selected={sel} header={...} body={...}
+ *      dragSource="handle" onDragStart={...} onDelete={...}
+ *      deleteAffordance="inline" panelThemeKey="note" />
+ *
+ *  Usage (via a RichTextField-backed variant):
+ *    <EditableCard id={id} selected={sel} theme={theme} badge={...}
+ *      headerContent={...} value={content} onChange={...} grabHandle
+ *      inlineDelete hideToolbar onDelete={...} onDragStart={...} />
  */
 
 import { type ReactNode, useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
@@ -92,6 +99,13 @@ export function cutCard(selected: boolean, extra?: string): string {
   return `${CARD_BASE} ${selected ? CARD_SELECTED_CUT : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
+/** AI-request card: sky borders throughout — no separate selection state. */
+const AI_REQUEST_CARD_BASE =
+  "rounded-lg border border-sky-200 overflow-hidden hover:border-sky-300 transition-colors";
+export function aiRequestCard(_selected: boolean, extra?: string): string {
+  return `${AI_REQUEST_CARD_BASE}${extra ? ` ${extra}` : ""}`;
+}
+
 /* ── Text-only drag helper ──────────────────────────────────────── */
 
 /** Start a text-only drag (no entity identity). Used by the body text handle. */
@@ -110,9 +124,9 @@ export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlai
   requestAnimationFrame(() => document.body.removeChild(ghost));
 }
 
-/* ── EditableCard — shared card for RichTextField-bearing panels ──── */
+/* ── Card theme ──────────────────────────────────────────────────── */
 
-/** Theme configuration for an EditableCard. */
+/** Theme configuration for a Card. */
 export interface CardTheme {
   cardClass: (selected: boolean, extra?: string) => string;
   /** Always-on header tint (shown even when unselected). */
@@ -173,7 +187,7 @@ export const CARD_THEMES = {
   bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/80",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
   citation:  { cardClass: panelCard,    headerDefault: "bg-[#fef3c3]/40",  headerSelected: "bg-[#fef3c3]",     separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
   comment:   { cardClass: panelCard,    headerDefault: "bg-stone-100/60",  headerSelected: "bg-stone-200/70",  separatorSelected: "border-edge-hover",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-100/50",    headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
+  aiRequest: { cardClass: aiRequestCard, headerDefault: "bg-sky-100/50",   headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
   cut:       { cardClass: cutCard,      headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
 } satisfies Record<string, CardTheme>;
 
@@ -275,6 +289,406 @@ export function CardTargetIcon({
   );
 }
 
+/* ── Card — unified shell for every panel card ───────────────────── */
+
+/**
+ * Universal card shell. Owns every cross-cutting concern: rounded border,
+ * theme colors, selection state (click + keyboard), delete affordance
+ * (inline [x] or three-dot menu, with optional content-aware confirm),
+ * drag source (whole-card or 6-dot grab handle), drop-target wiring,
+ * body-gutter text-drag handle, hover, preference-mode annotations,
+ * and a plug point for future card-level popout.
+ *
+ * Variants (EditableCard, BibEntryCard, CitationCard, TodoCard,
+ * AiRequestCard, RevisionCard, …) compose this shell by filling the
+ * `header`, `body`, and optional `footer` slots; specialization is just
+ * "what goes in the slots + which feature flags to set".
+ *
+ * Header layout (left→right, shell-injected items in brackets):
+ *   [grab?] {header} [inlineDelete?] {headerTrailing?} [menu?] [popout?]
+ *
+ * Features intentionally NOT owned by Card (per-variant concerns):
+ *  - The in-editor toolbar portal target (lives in EditableCard).
+ *  - Body-editor focus state (body emits it via `isFocused`; Card consumes).
+ */
+export interface CardProps {
+  /** Stable identifier — useful as a React key in ancestor lists. Not itself
+   *  rendered by Card; variants may pass their entity id for convenience. */
+  id: string;
+  theme: CardTheme;
+  selected: boolean;
+
+  /** Free-form header content. Shell injects grab/inlineDelete/menu/popout
+   *  around it in the documented order; the variant controls everything
+   *  that sits between the grab handle and the shell-owned trailing chrome.
+   *  Passing `null`/`undefined` omits the header row AND its separator —
+   *  intended for full-card-takeover modes (e.g. citation-edit builder). */
+  header?: ReactNode;
+  /** Free-form body content. When `onTextDragStart` is set, Card wraps this
+   *  in a flex row and injects a gutter drag handle to the left. */
+  body: ReactNode;
+  /** Optional footer rendered below the body, outside the body padding. */
+  footer?: ReactNode;
+  /** Optional trailing header slot, placed after the shell-injected
+   *  inline-delete [x] and before the menu/popout. Used by variants whose
+   *  target icon must appear right-of-[x]. */
+  headerTrailing?: ReactNode;
+
+  // ── Selection ──
+  /** Click and focus-capture both route through this. */
+  onSelect?: () => void;
+  /** Defaults to `!!onSelect`. Controls tabIndex + onFocusCapture wiring. */
+  selectable?: boolean;
+
+  // ── Delete ──
+  onDelete?: () => void;
+  /** Default: `"menu"` when `onDelete` is set, `"none"` otherwise. */
+  deleteAffordance?: "inline" | "menu" | "none";
+  /** Predicate checked when the user triggers delete. If it returns true, a
+   *  `ConfirmDialog` appears instead of deleting immediately. */
+  deleteConfirmWhen?: () => boolean;
+  /** Message shown in the confirm dialog; falls back to a generic message. */
+  deleteConfirmMessage?: ReactNode;
+  deleteConfirmLabel?: string;
+  /** Extra items rendered in the three-dot menu above MenuDelete. */
+  menuExtras?: ReactNode;
+  /** Default: on when selectable + onDelete set. Del / Backspace → tryDelete. */
+  enableKeyboardDelete?: boolean;
+
+  // ── Drag (source) ──
+  /** Default `"none"`. `"handle"` renders a 6-dot grip as the first header
+   *  item and makes only the grip draggable. `"whole-card"` makes the
+   *  outer div itself draggable (disabled automatically when `isFocused`). */
+  dragSource?: "whole-card" | "handle" | "none";
+  /** Explicit opt-out for whole-card drag (e.g. CitationCard while editing). */
+  dragDisabled?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  /** When provided, renders a 6-dot text-drag handle in the body gutter.
+   *  Intended for dragging *text content only* (no entity identity) into
+   *  the editor for inline insertion. */
+  onTextDragStart?: (e: React.DragEvent) => void;
+
+  // ── Drag (drop target) ──
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
+  onDrop?: (e: React.DragEvent) => void;
+
+  // ── Focus tracking (body-driven) ──
+  /** True when the body (e.g. RichTextField, contentEditable) has focus.
+   *  Card uses it to disable drag and switch the cursor to default. */
+  isFocused?: boolean;
+
+  // ── Card-level popout (plug point) ──
+  /** When provided, renders a popout toggle in the header trailing chrome. */
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
+
+  // ── Hover ──
+  onHoverChange?: (hovering: boolean) => void;
+
+  // ── Wrapper ──
+  /** Callback that receives the card's root element. Useful when the
+   *  parent needs to scroll a specific card into view. */
+  rootRef?: (el: HTMLDivElement | null) => void;
+  /** Native `title` tooltip on the card root. */
+  title?: string;
+  dataAttr?: { name: string; value: string };
+  extraDataAttrs?: Record<string, string>;
+  wrapperClassName?: string;
+  wrapperStyle?: React.CSSProperties;
+  /** Replace the default body padding (`relative px-3 pt-1.5 pb-2`). Use when
+   *  the variant needs different spacing (e.g. `PANEL.cardInner`) or no
+   *  padding at all. The text-drag gutter, when present, is added to
+   *  whatever class is used. */
+  bodyClassName?: string;
+  /** Preference-mode annotation for the header row — makes it editable via
+   *  `PanelThemePicker`. Pass the matching `PanelThemeKey`. */
+  panelThemeKey?: string;
+}
+
+export function Card({
+  theme,
+  selected,
+  header,
+  body,
+  footer,
+  headerTrailing,
+  onSelect,
+  selectable,
+  onDelete,
+  deleteAffordance,
+  deleteConfirmWhen,
+  deleteConfirmMessage = "This item has text. Delete it?",
+  deleteConfirmLabel = "Delete",
+  menuExtras,
+  enableKeyboardDelete,
+  dragSource = "none",
+  dragDisabled,
+  onDragStart,
+  onTextDragStart,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  isFocused,
+  onTogglePopout,
+  isPoppedOut,
+  onHoverChange,
+  rootRef,
+  title,
+  dataAttr,
+  extraDataAttrs,
+  wrapperClassName,
+  wrapperStyle,
+  bodyClassName,
+  panelThemeKey,
+}: CardProps) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      cardRef.current = el;
+      rootRef?.(el);
+    },
+    [rootRef],
+  );
+
+  const isSelectable = selectable ?? !!onSelect;
+  const resolvedDeleteAffordance =
+    deleteAffordance ?? (onDelete ? "menu" : "none");
+  const showInlineDelete =
+    resolvedDeleteAffordance === "inline" && !!onDelete;
+  const showMenu =
+    resolvedDeleteAffordance === "menu" && (!!onDelete || !!menuExtras);
+  const kbDelete =
+    enableKeyboardDelete ?? (isSelectable && !!onDelete);
+
+  const tryDelete = useCallback(() => {
+    if (!onDelete) return;
+    if (deleteConfirmWhen && deleteConfirmWhen()) {
+      setConfirmOpen(true);
+    } else {
+      onDelete();
+    }
+  }, [onDelete, deleteConfirmWhen]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (!kbDelete || !selected || isFocused) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        tryDelete();
+      }
+    },
+    [kbDelete, selected, isFocused, tryDelete],
+  );
+
+  const wholeCardDraggable =
+    dragSource === "whole-card" && !dragDisabled && !isFocused && !!onDragStart;
+  const showHandle = dragSource === "handle" && !!onDragStart;
+  const cursorClass = isFocused
+    ? "cursor-default"
+    : wholeCardDraggable
+      ? "cursor-grab active:cursor-grabbing"
+      : "";
+
+  const dataAttrs: Record<string, string> = {
+    ...(dataAttr ? { [`data-${dataAttr.name}`]: dataAttr.value } : {}),
+    ...(extraDataAttrs || {}),
+  };
+
+  return (
+    <div
+      ref={setRefs}
+      {...dataAttrs}
+      // Preference-mode annotation: the outer surface and border come from
+      // generic --surface / --edge tokens, so ctrl+click edits every card
+      // in every panel. Per-panel header colours are annotated separately
+      // via `data-panel-theme` on the header row below.
+      data-prefs="surfaceColor,borderColor"
+      title={title}
+      draggable={wholeCardDraggable}
+      onDragStart={wholeCardDraggable ? onDragStart : undefined}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      tabIndex={isSelectable ? (selected ? 0 : -1) : undefined}
+      onKeyDown={kbDelete ? handleKeyDown : undefined}
+      onFocusCapture={
+        isSelectable && onSelect
+          ? () => { if (!selected) onSelect(); }
+          : undefined
+      }
+      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={{ ...cardOverrideStyle(theme, selected), ...wrapperStyle }}
+      onClick={onSelect ? (e) => { e.stopPropagation(); onSelect(); } : undefined}
+      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
+      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+    >
+      {/* Header */}
+      {header != null && (
+      <div
+        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
+        style={headerOverrideStyle(theme, selected)}
+        data-panel-theme={panelThemeKey}
+      >
+        {/* Grab handle — sole drag source when dragSource === "handle" */}
+        {showHandle && (
+          <div
+            draggable
+            onDragStart={(e) => {
+              onDragStart!(e);
+              if (cardRef.current) {
+                e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+            title="Drag to reorder"
+          >
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2" />
+              <circle cx="7" cy="2" r="1.2" />
+              <circle cx="3" cy="7" r="1.2" />
+              <circle cx="7" cy="7" r="1.2" />
+              <circle cx="3" cy="12" r="1.2" />
+              <circle cx="7" cy="12" r="1.2" />
+            </svg>
+          </div>
+        )}
+
+        {header}
+
+        {/* Inline [x] delete — sits between header content and trailing chrome. */}
+        {showInlineDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); tryDelete(); }}
+            onMouseDown={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+            className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
+            title="Delete"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
+
+        {headerTrailing}
+
+        {showMenu && (
+          <div
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            <ItemMenu>
+              {menuExtras}
+              {onDelete && <MenuDelete onClick={tryDelete} />}
+            </ItemMenu>
+          </div>
+        )}
+
+        {onTogglePopout && (
+          <CardPopoutButton
+            isPoppedOut={!!isPoppedOut}
+            onClick={onTogglePopout}
+          />
+        )}
+      </div>
+      )}
+
+      {/* Separator — omitted with the header */}
+      {header != null && (
+        <div
+          className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
+          style={separatorOverrideStyle(theme, selected)}
+        />
+      )}
+
+      {/* Body */}
+      <div className={`${bodyClassName ?? "relative px-3 pt-1.5 pb-2"}${onTextDragStart ? " flex items-start gap-1" : ""}`}>
+        {onTextDragStart && (
+          <div
+            draggable={!isFocused}
+            onDragStart={(e) => { onTextDragStart(e); }}
+            onClick={(e) => e.stopPropagation()}
+            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+            title="Drag text into document"
+          >
+            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+              <circle cx="3" cy="2" r="1.2" />
+              <circle cx="7" cy="2" r="1.2" />
+              <circle cx="3" cy="7" r="1.2" />
+              <circle cx="7" cy="7" r="1.2" />
+              <circle cx="3" cy="12" r="1.2" />
+              <circle cx="7" cy="12" r="1.2" />
+            </svg>
+          </div>
+        )}
+        <div className={onTextDragStart ? "flex-1 min-w-0" : undefined}>
+          {body}
+        </div>
+      </div>
+
+      {footer}
+
+      {onDelete && (
+        <ConfirmDialog
+          open={confirmOpen}
+          message={deleteConfirmMessage}
+          confirmLabel={deleteConfirmLabel}
+          tone="danger"
+          anchorRef={cardRef}
+          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ── Card-level popout button ─────────────────────────────────────── */
+
+/** Small popout toggle rendered at the trailing edge of the Card header.
+ *  Mirrors the panel-level PopoutButton but sized for card chrome. */
+function CardPopoutButton({
+  isPoppedOut,
+  onClick,
+}: {
+  isPoppedOut: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="w-[14px] h-[14px] flex items-center justify-center rounded-full bg-[#d4d0c7] hover:bg-[#bfbab0] border border-[#b8b2ab] transition-colors shrink-0"
+      title={isPoppedOut ? "Close floating card" : "Pop out card"}
+      aria-label={isPoppedOut ? "Close floating card" : "Pop out card"}
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#57534e"
+        strokeWidth="3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
+      >
+        <polyline points="6 15 12 9 18 15" />
+      </svg>
+    </button>
+  );
+}
+
+/* ── EditableCard — RichTextField-bearing variant of Card ──────────── */
+
 export interface EditableCardProps {
   /** Unique ID (used as RichTextField instanceKey). */
   id: string;
@@ -290,9 +704,9 @@ export interface EditableCardProps {
   /** Extra content below the RichTextField body (e.g. action buttons). */
   footer?: ReactNode;
 
-  /** Menu items inside ItemMenu. Falls back to MenuDelete when onDelete is provided. */
-  menuContent?: ReactNode;
   onDelete?: () => void;
+  /** Extra items rendered in the three-dot menu above MenuDelete. */
+  menuExtras?: ReactNode;
 
   onClick?: () => void;
   /** When provided, the card is draggable (disabled while RichTextField is focused). */
@@ -316,6 +730,7 @@ export interface EditableCardProps {
   extraDataAttrs?: Record<string, string>;
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
+  panelThemeKey?: string;
 
   // ── Opt-in layout features ──
   /** Render a 6-dot grip handle as the first header element.
@@ -323,7 +738,7 @@ export interface EditableCardProps {
   grabHandle?: boolean;
   /** Suppress the FormatToolbar in the RichTextField (keyboard shortcuts still work). */
   hideToolbar?: boolean;
-  /** Show an [x] delete button in the body area instead of the three-dot menu in the header. */
+  /** Show an [x] delete button in the header instead of the three-dot menu. */
   inlineDelete?: boolean;
   /** Called when the RichTextField gains focus (e.g. for focus-to-select behaviour). */
   onBodyFocus?: () => void;
@@ -336,56 +751,23 @@ export interface EditableCardProps {
 /**
  * Canonical card layout for panels with editable rich text content.
  *
- * Structure: header (badge + toolbar + menu) → separator → body (RichTextField) → optional footer.
- * Internalizes focus tracking (disables drag while editing) and toolbar
- * portal target (formats render inline in the header).
+ * Thin wrapper over {@link Card}: builds the header (badge + content +
+ * toolbar portal slot) and the body (RichTextField), forwards focus state
+ * to disable drag while editing, and delegates every other concern
+ * (selection, delete, drag, theme, wrapper chrome) to the shell.
  */
 export function EditableCard({
   id, selected, theme,
   badge, headerContent, headerTrailing, footer,
-  menuContent, onDelete,
+  onDelete, menuExtras,
   onClick, onDragStart, onTextDragStart,
   value, variant, placeholder, muted,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
-  dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
+  dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle, panelThemeKey,
   grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
 }: EditableCardProps) {
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  /** Check whether the value has any visible text content. */
-  const hasContent = useCallback(() => {
-    if (!value) return false;
-    const walk = (node: any): boolean => {
-      if (node.text && node.text.trim()) return true;
-      if (node.content) return node.content.some(walk);
-      return false;
-    };
-    return walk(value);
-  }, [value]);
-
-  /** Delete with confirmation if there is content. */
-  const tryDelete = useCallback(() => {
-    if (!onDelete) return;
-    if (hasContent()) {
-      setConfirmOpen(true);
-    } else {
-      onDelete();
-    }
-  }, [onDelete, hasContent]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (!selected || !onDelete || isFocused) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        tryDelete();
-      }
-    },
-    [selected, onDelete, isFocused, tryDelete],
-  );
 
   const handleFocusChange = useCallback(
     (focused: boolean, editor?: any) => {
@@ -398,180 +780,70 @@ export function EditableCard({
     [onBodyFocus, onEditorFocus],
   );
 
-  // When grabHandle is active, only the grip is draggable — not the whole card.
-  const cardDraggable = grabHandle ? false : (onDragStart ? !isFocused : false);
-  const cursorClass = isFocused
-    ? "cursor-default"
-    : (!grabHandle && onDragStart)
-      ? "cursor-grab active:cursor-grabbing"
-      : "";
+  const hasContent = useCallback(() => {
+    if (!value) return false;
+    const walk = (node: any): boolean => {
+      if (node.text && node.text.trim()) return true;
+      if (node.content) return node.content.some(walk);
+      return false;
+    };
+    return walk(value);
+  }, [value]);
 
-  const dataAttrs: Record<string, string> = {
-    ...(dataAttr ? { [`data-${dataAttr.name}`]: dataAttr.value } : {}),
-    ...(extraDataAttrs || {}),
-  };
+  const cardHeader = (
+    <>
+      {badge}
+      {headerContent}
+      {!hideToolbar && (
+        <div ref={setToolbarTarget} className="flex items-center" />
+      )}
+      {!headerContent && !hideToolbar && <div className="flex-1" />}
+    </>
+  );
 
-  // Whether to render the three-dot menu in the header (skip when inlineDelete is on)
-  const showHeaderMenu = !inlineDelete;
+  const cardBody = (
+    <RichTextField
+      instanceKey={id}
+      value={value}
+      placeholder={placeholder}
+      variant={variant}
+      selected={selected}
+      muted={muted}
+      onChange={onChange}
+      onArchiveConsumed={onArchiveConsumed}
+      getCitationDisplayText={getCitationDisplayText}
+      onCitationCreated={onCitationCreated}
+      onFocusChange={handleFocusChange}
+      toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
+      hideToolbar={hideToolbar}
+    />
+  );
 
   return (
-    <div
-      ref={cardRef}
-      {...dataAttrs}
-      // Preference-mode annotation: the card's outer surface and border
-      // come from the generic --surface / --border tokens, so a ctrl+click
-      // on the card background edits every card in every panel. Per-panel
-      // header colours are managed by panel-theme.ts / PanelThemePicker —
-      // the header <div> below gets its own `data-panel-theme` annotation.
-      data-prefs="surfaceColor,borderColor"
-      draggable={cardDraggable}
-      onDragStart={!grabHandle ? onDragStart : undefined}
-      tabIndex={selected ? 0 : -1}
-      onKeyDown={handleKeyDown}
-      onFocusCapture={() => { if (!selected && onClick) onClick(); }}
-      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={{ ...cardOverrideStyle(theme, selected), ...wrapperStyle }}
-      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
-    >
-      {/* Header */}
-      <div
-        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
-        style={headerOverrideStyle(theme, selected)}
-      >
-        {/* Optional grab handle — sole drag source when present */}
-        {grabHandle && onDragStart && (
-          <div
-            draggable
-            onDragStart={(e) => {
-              onDragStart!(e);
-              // Use the whole card as the drag ghost, positioned below the cursor
-              // so it never obscures the drop target
-              if (cardRef.current) {
-                e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-            title="Drag to reorder"
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
-        )}
-        {badge}
-        {headerContent}
-        {!hideToolbar && (
-          <div ref={setToolbarTarget} className="flex items-center" />
-        )}
-        {!headerContent && !hideToolbar && <div className="flex-1" />}
-        {/* Inline [x] delete — to the left of the target icon */}
-        {inlineDelete && onDelete && (
-          <>
-            <button
-              onClick={(e) => { e.stopPropagation(); tryDelete(); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              draggable={false}
-              onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
-              title="Delete"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            <ConfirmDialog
-              open={confirmOpen}
-              message="This item has text. Delete it?"
-              confirmLabel="Delete"
-              tone="danger"
-              anchorRef={cardRef}
-              onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-              onCancel={() => setConfirmOpen(false)}
-            />
-          </>
-        )}
-        {headerTrailing}
-        {showHeaderMenu && (
-          <div
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            {menuContent ?? (onDelete ? (
-              <>
-                <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
-                <ConfirmDialog
-                  open={confirmOpen}
-                  message="This item has text. Delete it?"
-                  confirmLabel="Delete"
-                  tone="danger"
-                  anchorRef={cardRef}
-                  onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-                  onCancel={() => setConfirmOpen(false)}
-                />
-              </>
-            ) : null)}
-          </div>
-        )}
-      </div>
-
-      {/* Separator */}
-      <div
-        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={separatorOverrideStyle(theme, selected)}
-      />
-
-      {/* Body */}
-      <div className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}`}>
-        {/* Optional text-drag handle — drags only text content for inline insertion */}
-        {onTextDragStart && (
-          <div
-            draggable={!isFocused}
-            onDragStart={(e) => { onTextDragStart(e); }}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-            title="Drag text into document"
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
-        )}
-        <div className={onTextDragStart ? "flex-1 min-w-0" : undefined}>
-          <RichTextField
-            instanceKey={id}
-            value={value}
-            placeholder={placeholder}
-            variant={variant}
-            selected={selected}
-            muted={muted}
-            onChange={onChange}
-            onArchiveConsumed={onArchiveConsumed}
-            getCitationDisplayText={getCitationDisplayText}
-            onCitationCreated={onCitationCreated}
-            onFocusChange={handleFocusChange}
-            toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
-            hideToolbar={hideToolbar}
-          />
-        </div>
-      </div>
-
-      {/* Optional footer (e.g. archive action buttons) */}
-      {footer}
-    </div>
+    <Card
+      id={id}
+      theme={theme}
+      selected={selected}
+      header={cardHeader}
+      body={cardBody}
+      footer={footer}
+      headerTrailing={headerTrailing}
+      onSelect={onClick}
+      onDelete={onDelete}
+      deleteAffordance={inlineDelete ? "inline" : "menu"}
+      deleteConfirmWhen={hasContent}
+      menuExtras={menuExtras}
+      dragSource={onDragStart ? (grabHandle ? "handle" : "whole-card") : "none"}
+      onDragStart={onDragStart}
+      onTextDragStart={onTextDragStart}
+      isFocused={isFocused}
+      onHoverChange={onHoverChange}
+      dataAttr={dataAttr}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={wrapperClassName}
+      wrapperStyle={wrapperStyle}
+      panelThemeKey={panelThemeKey}
+    />
   );
 }
 
@@ -773,7 +1045,6 @@ export function AiRequestCard({
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState(request.text);
-  const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
 
   // Sync external updates (e.g. AI fulfillment) into the local draft.
@@ -819,88 +1090,68 @@ export function AiRequestCard({
   );
 
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
-  const theme = CARD_THEMES.aiRequest;
+
+  const header = (
+    <>
+      <span
+        className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
+        title={`AI ${kindLabel} request`}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <g transform="rotate(15 12 12)">
+            <line x1="12" y1="2" x2="12" y2="22" />
+            <line x1="2" y1="12" x2="22" y2="12" />
+            <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
+          </g>
+        </svg>
+      </span>
+      <span className="text-xs font-medium text-sky-800 truncate">AI {kindLabel} request</span>
+      {request.status === "submitted" && (
+        <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 shrink-0">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+          Pending
+        </span>
+      )}
+      <div className="flex-1" />
+    </>
+  );
+
+  const body = (
+    <textarea
+      ref={taRef}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={handleBlur}
+      onMouseDown={(e) => e.stopPropagation()}
+      onDragStart={(e) => e.stopPropagation()}
+      draggable={false}
+      placeholder={`Describe what you want the AI to ${
+        request.kind === "todo" ? "do" : "find or write"
+      }\u2026`}
+      className="w-full resize-none bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none leading-snug font-serif"
+      style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+      rows={1}
+    />
+  );
 
   return (
-    <div
-      data-ai-request-id={request.id}
-      draggable
+    <Card
+      id={request.id}
+      theme={CARD_THEMES.aiRequest}
+      selected={false}
+      header={header}
+      body={body}
+      dragSource="whole-card"
       onDragStart={handleDragStart}
-      className="group rounded-lg border border-sky-200 overflow-hidden cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors"
-    >
-      {/* Header: star + kind label + status + inline delete */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
-        <span
-          className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
-          title={`AI ${kindLabel} request`}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <g transform="rotate(15 12 12)">
-              <line x1="12" y1="2" x2="12" y2="22" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
-            </g>
-          </svg>
-        </span>
-        <span className="text-xs font-medium text-sky-800 truncate">AI {kindLabel} request</span>
-        {request.status === "submitted" && (
-          <span className="inline-flex items-center gap-1 text-[10px] text-sky-600 shrink-0">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
-            Pending
-          </span>
-        )}
-        <div className="flex-1" />
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (draft.trim()) {
-              setConfirmOpen(true);
-            } else {
-              onDelete();
-            }
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-          title="Delete request"
-        >
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-        <ConfirmDialog
-          open={confirmOpen}
-          message="This request has text. Discard it?"
-          confirmLabel="Discard"
-          tone="danger"
-          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-          onCancel={() => setConfirmOpen(false)}
-        />
-      </div>
-
-      {/* Separator */}
-      <div className="border-t border-sky-200/70" />
-
-      {/* Body: auto-grow textarea */}
-      <div className="bg-sky-50/20 px-3 py-2">
-        <textarea
-          ref={taRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={handleBlur}
-          onMouseDown={(e) => e.stopPropagation()}
-          onDragStart={(e) => e.stopPropagation()}
-          draggable={false}
-          placeholder={`Describe what you want the AI to ${
-            request.kind === "todo" ? "do" : "find or write"
-          }\u2026`}
-          className="w-full resize-none bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none leading-snug font-serif"
-          style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-          rows={1}
-        />
-      </div>
-    </div>
+      onDelete={onDelete}
+      deleteAffordance="inline"
+      deleteConfirmWhen={() => draft.trim().length > 0}
+      deleteConfirmMessage="This request has text. Discard it?"
+      deleteConfirmLabel="Discard"
+      extraDataAttrs={{ "data-ai-request-id": request.id }}
+      bodyClassName="bg-sky-50/20 px-3 py-2"
+    />
   );
 }
 

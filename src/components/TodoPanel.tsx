@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
+import { Card, CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
@@ -33,7 +33,7 @@ interface TodoPanelProps {
 
 const theme = CARD_THEMES.todo;
 
-export function TodoRow({
+export function TodoCard({
   item,
   selected,
   onToggle,
@@ -59,8 +59,8 @@ export function TodoRow({
   const [editing, setEditing] = useState(false);
   const [editText, setEditText] = useState(item.text);
   const [notes, setNotes] = useState(item.notes);
+  const [notesFocused, setNotesFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -73,6 +73,7 @@ export function TodoRow({
 
   const commitNotes = useCallback(() => {
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
+    setNotesFocused(false);
   }, [notes, item.notes, item.id, onUpdateNotes]);
 
   /** Anchor-only drag — do NOT set text/plain here; ProseMirror's default
@@ -83,142 +84,106 @@ export function TodoRow({
       e.stopPropagation();
       e.dataTransfer.effectAllowed = "link";
       e.dataTransfer.setData(MIME_TODO, JSON.stringify({ todoId: item.id }));
-      if (cardRef.current) {
-        e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-      }
     },
     [item.id],
   );
 
+  const header = (
+    <>
+      {isAnchored
+        ? <BadgeLabel label="T" theme={theme} />
+        : <BadgeOrphaned theme={theme} />
+      }
+
+      {/* Checkbox */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(item.id); }}
+        className="shrink-0"
+      >
+        {item.done ? (
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
+            <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
+          </svg>
+        )}
+      </button>
+
+      {/* Text */}
+      <div className="flex-1 min-w-0">
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            onBlur={commitEdit}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitEdit();
+              if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
+            }}
+            className="w-full text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-ink-strong"
+          />
+        ) : (
+          <span
+            className={`block text-sm leading-relaxed truncate ${
+              item.done ? "line-through text-ink-muted decoration-stone-300" : "text-stone-900 font-medium"
+            }`}
+            onDoubleClick={(e) => { e.stopPropagation(); setEditText(item.text); setEditing(true); }}
+          >
+            {item.text}
+          </span>
+        )}
+      </div>
+    </>
+  );
+
+  const body = (
+    <textarea
+      value={notes}
+      onChange={(e) => setNotes(e.target.value)}
+      onFocus={() => setNotesFocused(true)}
+      onBlur={commitNotes}
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      placeholder="Notes..."
+      className="w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed"
+      rows={2}
+    />
+  );
+
   return (
-    <div
-      ref={cardRef}
-      {...(extraDataAttrs || {})}
-      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none`}
-      tabIndex={selected ? 0 : -1}
-      onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
-      onKeyDown={(e) => {
-        if (!selected || editing) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDelete(item.id);
-        }
-      }}
-    >
-      {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
-        {/* Grab handle — sole drag source */}
-        <div
-          draggable
-          onDragStart={handleDragStart}
-          onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-          title="Drag to anchor in text"
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-            <circle cx="3" cy="2" r="1.2" />
-            <circle cx="7" cy="2" r="1.2" />
-            <circle cx="3" cy="7" r="1.2" />
-            <circle cx="7" cy="7" r="1.2" />
-            <circle cx="3" cy="12" r="1.2" />
-            <circle cx="7" cy="12" r="1.2" />
-          </svg>
-        </div>
-
-        {/* Badge */}
-        {isAnchored
-          ? <BadgeLabel label="T" theme={theme} />
-          : <BadgeOrphaned theme={theme} />
-        }
-
-        {/* Checkbox */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggle(item.id); }}
-          className="shrink-0"
-        >
-          {item.done ? (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" fill="#c8c3bc" stroke="#c8c3bc" strokeWidth="1.5" />
-              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          ) : (
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-              <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" />
-            </svg>
-          )}
-        </button>
-
-        {/* Text */}
-        <div className="flex-1 min-w-0">
-          {editing ? (
-            <input
-              ref={inputRef}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
-              onBlur={commitEdit}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commitEdit();
-                if (e.key === "Escape") { setEditText(item.text); setEditing(false); }
-              }}
-              className="w-full text-sm bg-transparent border-b border-[var(--accent)] outline-none py-0 text-ink-strong"
-            />
-          ) : (
-            <span
-              className={`block text-sm leading-relaxed truncate ${
-                item.done ? "line-through text-ink-muted decoration-stone-300" : "text-stone-900 font-medium"
-              }`}
-              onDoubleClick={(e) => { e.stopPropagation(); setEditText(item.text); setEditing(true); }}
-            >
-              {item.text}
-            </span>
-          )}
-        </div>
-
-        {/* Inline delete [x] */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-          onMouseDown={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
-          title="Delete"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
-        {/* Jump target */}
+    <Card
+      id={item.id}
+      theme={theme}
+      selected={selected}
+      header={header}
+      body={body}
+      headerTrailing={
         <CardTargetIcon
           selected={selected}
           disabled={!isAnchored}
           onClick={(e) => { e.stopPropagation(); onJump?.(); }}
           title={isAnchored ? "Jump to in text" : "Not anchored in document"}
         />
-      </div>
-
-      {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
-
-      {/* Body — notes always visible */}
-      <div className="px-3 pt-1.5 pb-2">
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={commitNotes}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          placeholder="Notes..."
-          className="w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed"
-          rows={2}
-        />
-      </div>
-    </div>
+      }
+      onSelect={() => onSelect(selected ? null : item.id)}
+      onDelete={() => onDelete(item.id)}
+      deleteAffordance="inline"
+      dragSource="handle"
+      onDragStart={handleDragStart}
+      isFocused={editing || notesFocused}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={item.done ? "opacity-60" : undefined}
+      panelThemeKey="todo"
+    />
   );
 }
+
 
 export default function TodoPanel({
   items,
@@ -377,7 +342,7 @@ export default function TodoPanel({
             )}
 
             {items.map((item) => (
-              <TodoRow
+              <TodoCard
                 key={item.id}
                 item={item}
                 selected={selectedTodoId === item.id}

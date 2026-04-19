@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { Card, PANEL, PanelHeader, PrevNextCounter, CardTargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import BibEntryCard from "./BibEntryCard";
@@ -312,148 +312,131 @@ export function CitationCard({
     : !isAnchored
       ? "border-dashed opacity-80"
       : "";
+  const extraWrapper = [stateClass, "cursor-pointer", wrapperClassName]
+    .filter(Boolean)
+    .join(" ");
+
+  const header = !isEditing ? (
+    <>
+      <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+        {cit.keys.map((key) => {
+          const entry = bibEntryMap.get(key);
+          const isActive = expandedBibKey === key;
+          const label = entry ? formatMinimalCitation(key, bibEntries) : key;
+          return (
+            <button
+              key={key}
+              onClick={(e) => { e.stopPropagation(); toggleBibKey(key); }}
+              className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
+                !entry
+                  ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
+                  : isActive
+                    ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
+                    : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  ) : null;
+
+  const body = isEditing ? (
+    <div ref={editWrapperRef} onClick={(e) => e.stopPropagation()}>
+      <CitationBuilder
+        ref={builderHandleRef}
+        initialCommand={cit.command}
+        bibPackage={bibPackage}
+        bibEntries={bibEntries}
+        getDisplayText={getDisplayText}
+        onSave={handleBuilderEdit}
+        onCancel={() => setIsEditing(false)}
+        saveLabel="Save"
+      />
+    </div>
+  ) : (
+    <>
+      <div className="flex items-center gap-1.5 min-w-0">
+        <div className="text-xs font-mono text-ink-subtle truncate flex-1 min-w-0">
+          {cit.command}
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); setIsEditing(true); }}
+          className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
+          title="Edit citation"
+        >
+          Edit
+        </button>
+      </div>
+
+      {/* Missing keys */}
+      {cit.keys
+        .filter((k) => !bibEntryMap.has(k))
+        .map((k) => (
+          <div key={k} className="text-xs text-danger mt-1">
+            Key not found in .bib: <span className="font-mono">{k}</span>
+          </div>
+        ))}
+
+      {/* Expanded bibliography pod — draggable, drops as a single-key
+          citation for the key the user selected (not the parent multi-key
+          command, and not the full bib card). */}
+      {expandedEntry && (
+        <div
+          draggable
+          onDragStart={handleBibPodDragStart}
+          onClick={(e) => e.stopPropagation()}
+          className="mt-2 rounded-md border border-edge-subtle bg-surface-muted/40 p-2 cursor-grab active:cursor-grabbing"
+          title="Drag to insert this citation"
+        >
+          <BibEntryCard
+            entry={expandedEntry}
+            isSelected={false}
+            onClick={() => {}}
+            getFormattedBib={getFormattedBib}
+            getAnnotation={getAnnotation}
+            setAnnotation={setAnnotation}
+            onRequestReview={onRequestReview}
+            onCancelReview={onCancelReview}
+            getReviewStatus={getReviewStatus}
+            onUpdateBibEntry={onUpdateBibEntry}
+            onUpdateBibKeyAndType={onUpdateBibKeyAndType}
+            bibPackage={bibPackage}
+            bibEntries={bibEntries}
+            compact
+          />
+        </div>
+      )}
+    </>
+  );
 
   return (
-    <div
-      data-citation-entry={cit.id}
-      {...(extraDataAttrs || {})}
-      draggable={!isEditing}
+    <Card
+      id={cit.id}
+      theme={theme}
+      selected={isSelected}
+      header={header}
+      headerTrailing={!isEditing ? (
+        <CardTargetIcon selected={isSelected} onClick={onJump} title="Jump to citation" />
+      ) : undefined}
+      body={body}
+      bodyClassName={PANEL.cardInner}
+      onSelect={onSelect}
+      dragSource="whole-card"
+      dragDisabled={isEditing}
       onDragStart={handleDragStart}
       onDragOver={handleCardDragOver}
       onDragLeave={handleCardDragLeave}
       onDrop={handleCardDrop}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-      style={{ ...cardOverrideStyle(theme, isSelected), ...wrapperStyle }}
-      onClick={onSelect}
+      dataAttr={{ name: "citation-entry", value: cit.id }}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={extraWrapper || undefined}
+      wrapperStyle={wrapperStyle}
+      panelThemeKey="citation"
       title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
-    >
-      {isEditing ? (
-        <div className={PANEL.cardInner}>
-          <div ref={editWrapperRef} onClick={(e) => e.stopPropagation()}>
-            <CitationBuilder
-              ref={builderHandleRef}
-              initialCommand={cit.command}
-              bibPackage={bibPackage}
-              bibEntries={bibEntries}
-              getDisplayText={getDisplayText}
-              onSave={handleBuilderEdit}
-              onCancel={() => setIsEditing(false)}
-              saveLabel="Save"
-            />
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Header: bib-key chips + target icon trailing */}
-          <div
-            className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
-            style={headerOverrideStyle(theme, isSelected)}
-          >
-            <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
-              {cit.keys.map((key) => {
-                const entry = bibEntryMap.get(key);
-                const isActive = expandedBibKey === key;
-                const label = entry
-                  ? formatMinimalCitation(key, bibEntries)
-                  : key;
-                return (
-                  <button
-                    key={key}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleBibKey(key);
-                    }}
-                    className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
-                      !entry
-                        ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
-                        : isActive
-                          ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
-                          : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <div
-              className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
-              draggable={false}
-              onDragStart={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-            >
-              <TargetIcon onClick={onJump} title="Jump to citation" />
-            </div>
-          </div>
-
-          {/* Separator */}
-          <div
-            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={separatorOverrideStyle(theme, isSelected)}
-          />
-
-          {/* Body: command preview + edit, missing-key warnings, expanded bib pod */}
-          <div className={PANEL.cardInner}>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="text-xs font-mono text-ink-subtle truncate flex-1 min-w-0">
-                {cit.command}
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditing(true);
-                }}
-                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
-                title="Edit citation"
-              >
-                Edit
-              </button>
-            </div>
-
-            {/* Missing keys */}
-            {cit.keys
-              .filter((k) => !bibEntryMap.has(k))
-              .map((k) => (
-                <div key={k} className="text-xs text-danger mt-1">
-                  Key not found in .bib: <span className="font-mono">{k}</span>
-                </div>
-              ))}
-
-            {/* Expanded bibliography pod — draggable, drops as a
-                single-key citation for the key the user selected (not
-                the parent multi-key command, and not the full bib card). */}
-            {expandedEntry && (
-              <div
-                draggable
-                onDragStart={handleBibPodDragStart}
-                onClick={(e) => e.stopPropagation()}
-                className="mt-2 rounded-md border border-edge-subtle bg-surface-muted/40 p-2 cursor-grab active:cursor-grabbing"
-                title="Drag to insert this citation"
-              >
-                <BibEntryCard
-                  entry={expandedEntry}
-                  isSelected={false}
-                  onClick={() => {}}
-                  getFormattedBib={getFormattedBib}
-                  getAnnotation={getAnnotation}
-                  setAnnotation={setAnnotation}
-                  onRequestReview={onRequestReview}
-                  onCancelReview={onCancelReview}
-                  getReviewStatus={getReviewStatus}
-                  onUpdateBibEntry={onUpdateBibEntry}
-                  onUpdateBibKeyAndType={onUpdateBibKeyAndType}
-                  bibPackage={bibPackage}
-                  bibEntries={bibEntries}
-                  compact
-                />
-              </div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
+    />
   );
 }
 

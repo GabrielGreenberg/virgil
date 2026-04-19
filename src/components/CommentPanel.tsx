@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import type { RevisionKind } from "@/hooks/useRevisions";
 import {
+  Card,
   panelCard,
   PANEL,
   PanelHeader,
@@ -392,78 +393,84 @@ function RevisionCard({
   const theme = CARD_THEMES.comment;
   const firstTurn = turns[0];
   const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
+
+  const cardHeader = (
+    <>
+      {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
+      {firstTurn && (
+        <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">
+          {formatTurnTime(firstTurn.createdAt)}
+        </span>
+      )}
+      <div className="flex-1" />
+    </>
+  );
+
+  const headerTrailing = (
+    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+      {selected && onJump && (
+        <TargetIcon onClick={onJump} title="Jump to text in document" />
+      )}
+    </div>
+  );
+
+  const body = (
+    <div className="space-y-2">
+      {/* Context: "Document-wide" / quoted text — passed from caller */}
+      {header && <div>{header}</div>}
+
+      <div className="space-y-1.5">
+        {turns.map((t) => (
+          <TurnPod key={t.id} turn={t} users={users} />
+        ))}
+      </div>
+
+      <div className="flex items-center justify-between pt-1">
+        <ReplyBox activeUser={activeUser} onReply={onReply} />
+        {resolved ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onReopen(); }}
+            className="text-xs text-[var(--muted)] hover:text-ink-body transition-colors"
+          >
+            Reopen
+          </button>
+        ) : (
+          <button
+            onClick={(e) => { e.stopPropagation(); onResolve(); }}
+            className="text-xs text-emerald-600 hover:text-emerald-700 transition-colors font-medium"
+          >
+            Resolve
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   // data-revision-entry lets the shared selection-anchor sync hook detect
   // clicks inside a selected revision card (so click-away doesn't fire).
   // Only set for "text" revisions — general ones have no anchor or
   // click-away semantics tied to the editor.
-  const dataAttrs = kind === "text" ? { "data-revision-entry": id } : {};
+  const extraDataAttrs = kind === "text" ? { "data-revision-entry": id } : undefined;
+
   return (
-    <div
-      ref={(el) => registerRef?.(el)}
-      onClick={onSelect}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
-      className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}`}
-      {...dataAttrs}
-    >
-      {/* Header: author + timestamp, with target icon + menu trailing */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
-        {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
-        {firstTurn && (
-          <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">
-            {formatTurnTime(firstTurn.createdAt)}
-          </span>
-        )}
-        <div className="flex-1" />
-        <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {selected && onJump && (
-            <TargetIcon onClick={onJump} title="Jump to text in document" />
-          )}
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
-      </div>
-
-      {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`} />
-
-      <div className={`${PANEL.cardInner} space-y-2`}>
-        {/* Context: "Document-wide" / quoted text — passed from caller */}
-        {header && <div>{header}</div>}
-
-        <div className="space-y-1.5">
-          {turns.map((t) => (
-            <TurnPod key={t.id} turn={t} users={users} />
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between pt-1">
-          <ReplyBox activeUser={activeUser} onReply={onReply} />
-          {resolved ? (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onReopen();
-              }}
-              className="text-xs text-[var(--muted)] hover:text-ink-body transition-colors"
-            >
-              Reopen
-            </button>
-          ) : (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onResolve();
-              }}
-              className="text-xs text-emerald-600 hover:text-emerald-700 transition-colors font-medium"
-            >
-              Resolve
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    <Card
+      id={id}
+      theme={theme}
+      selected={selected}
+      header={cardHeader}
+      headerTrailing={headerTrailing}
+      body={body}
+      bodyClassName={PANEL.cardInner}
+      onSelect={onSelect}
+      onDelete={onDelete}
+      deleteAffordance="menu"
+      enableKeyboardDelete={false}
+      onHoverChange={onHoverChange}
+      rootRef={registerRef}
+      extraDataAttrs={extraDataAttrs}
+      wrapperClassName={`cursor-pointer${resolved ? " opacity-60" : ""}`}
+      panelThemeKey="revision"
+    />
   );
 }
 

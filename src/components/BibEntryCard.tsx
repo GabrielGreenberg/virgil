@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { Card, PANEL, Chevron, CardTargetIcon } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { MIME_CITATION } from "@/lib/marginalia";
 
@@ -404,61 +404,48 @@ export default function BibEntryCard({
 
   const theme = useCardTheme("bib");
 
-  return (
-    <div
-      data-bib-entry={entry.key}
-      draggable
-      onDragStart={handleDragStart}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}`}
-      style={cardOverrideStyle(theme, isSelected)}
-      onClick={onClick}
-    >
-      {/* Header: author · year · title + target icon + occurrence counter */}
-      <div
-        className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
-        style={headerOverrideStyle(theme, isSelected)}
-      >
-        <div className="flex-1 min-w-0 text-sm text-ink-strong truncate" title={headerText}>
-          {author && <span className="font-semibold">{author}</span>}
-          {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
-          {year && <span className="font-semibold">{year}</span>}
-          {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
-          {title && <span className="italic text-ink-body">{title}</span>}
+  const header = (
+    <>
+      <div className="flex-1 min-w-0 text-sm text-ink-strong truncate" title={headerText}>
+        {author && <span className="font-semibold">{author}</span>}
+        {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
+        {year && <span className="font-semibold">{year}</span>}
+        {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
+        {title && <span className="italic text-ink-body">{title}</span>}
+      </div>
+      {hasOccCounter && (
+        <div
+          className="flex items-center gap-0.5 text-xs text-ink-muted shrink-0"
+          onClick={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body px-0.5" title="Previous occurrence">&#x25B2;</button>
+          <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
+          <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body px-0.5" title="Next occurrence">&#x25BC;</button>
         </div>
-        {hasOccCounter && (
-          <div
-            className="flex items-center gap-0.5 text-xs text-ink-muted shrink-0"
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body px-0.5" title="Previous occurrence">&#x25B2;</button>
-            <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
-            <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body px-0.5" title="Next occurrence">&#x25BC;</button>
-          </div>
-        )}
-        {showTargetIcon && (
-          <div
-            className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
-          </div>
-        )}
-      </div>
+      )}
+    </>
+  );
 
-      {/* Separator */}
-      <div
-        className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={separatorOverrideStyle(theme, isSelected)}
-      />
-
-      {/* Body */}
-      <div className={PANEL.cardInner}>
-        {bodyContent}
-      </div>
-    </div>
+  return (
+    <Card
+      id={entry.key}
+      theme={theme}
+      selected={isSelected}
+      header={header}
+      headerTrailing={showTargetIcon
+        ? <CardTargetIcon selected={isSelected} onClick={() => onJump?.()} title="Jump to citation" />
+        : undefined
+      }
+      body={bodyContent}
+      bodyClassName={PANEL.cardInner}
+      onSelect={onClick}
+      dragSource="whole-card"
+      onDragStart={handleDragStart}
+      dataAttr={{ name: "bib-entry", value: entry.key }}
+      wrapperClassName={!isCited ? "opacity-60" : undefined}
+      panelThemeKey="bib"
+    />
   );
 }

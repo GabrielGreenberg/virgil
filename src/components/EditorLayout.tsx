@@ -12,7 +12,7 @@ import NotesPanel, { NoteCard } from "./NotesPanel";
 import CutterPanel from "./CutterPanel";
 import SelectionChip from "./SelectionChip";
 import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "./OutlinePanel";
-import TodoPanel, { TodoRow } from "./TodoPanel";
+import TodoPanel, { TodoCard } from "./TodoPanel";
 import ArchivePanel, { ArchiveCard } from "./ArchivePanel";
 import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "./FootnotePanel";
@@ -4714,7 +4714,7 @@ export default function EditorLayout() {
               id: `td:${item.id}`,
               pos: null,
               content: (
-                <TodoRow
+                <TodoCard
                   key={`td:${item.id}`}
                   item={item}
                   selected={isSelected}
@@ -4738,7 +4738,7 @@ export default function EditorLayout() {
                 id: omniId,
                 pos,
                 content: (
-                  <TodoRow
+                  <TodoCard
                     key={omniId}
                     item={item}
                     selected={isSelected}
