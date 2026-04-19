@@ -29,6 +29,8 @@ import ConfirmDialog from "./ConfirmDialog";
 import RichTextField from "./RichTextField";
 import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -886,6 +888,8 @@ export function AiRequestCard({
   const [draft, setDraft] = useState(request.text);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const popped = usePoppedCards();
+  const popKey = `ai:${request.id}`;
 
   // Sync external updates (e.g. AI fulfillment) into the local draft.
   useEffect(() => {
@@ -932,7 +936,10 @@ export function AiRequestCard({
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
   const theme = CARD_THEMES.aiRequest;
 
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+
+  const card = (
     <div
       data-ai-request-id={request.id}
       draggable
@@ -941,8 +948,8 @@ export function AiRequestCard({
     >
       {/* Header: star + kind label + status + inline delete */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        {onToggleFromCtx && (
+          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
         )}
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
@@ -1016,6 +1023,8 @@ export function AiRequestCard({
       </div>
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 /**

@@ -12,6 +12,8 @@ import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import BibEntryCard from "./BibEntryCard";
 import CitationBuilder, { type CitationBuilderHandle } from "./CitationBuilder";
@@ -142,6 +144,8 @@ export function CitationCard({
   const editWrapperRef = useRef<HTMLDivElement>(null);
   const builderHandleRef = useRef<CitationBuilderHandle>(null);
   const theme = useCardTheme("citation");
+  const popped = usePoppedCards();
+  const popKey = `citation:${cit.id}`;
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -319,7 +323,10 @@ export function CitationCard({
       ? "border-dashed opacity-80"
       : "";
 
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+
+  const card = (
     <div
       data-citation-entry={cit.id}
       {...(extraDataAttrs || {})}
@@ -355,8 +362,8 @@ export function CitationCard({
             className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
             style={headerOverrideStyle(theme, isSelected)}
           >
-            {onTogglePopout && (
-              <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+            {onToggleFromCtx && (
+              <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
             )}
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
@@ -464,6 +471,8 @@ export function CitationCard({
       )}
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 function CitationsPanel({

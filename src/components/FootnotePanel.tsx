@@ -8,6 +8,8 @@ import ViewToggle from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import { EditableCard, ItemMenu, PANEL, PanelHeader, PrevNextCounter, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, startTextDrag } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import {
   normalizeRichContent,
@@ -98,6 +100,8 @@ export interface FootnoteCardProps {
   wrapperStyle?: React.CSSProperties;
   /** Extra data-* attributes on the card wrapper (e.g. data-omni-entry). */
   extraDataAttrs?: Record<string, string>;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }
 
 export function FootnoteCard({
@@ -114,14 +118,20 @@ export function FootnoteCard({
   wrapperClassName,
   wrapperStyle,
   extraDataAttrs,
+  onTogglePopout,
+  isPoppedOut,
 }: FootnoteCardProps) {
   const handleEdit = useCallback(
     (json: JSONContent) => onEdit(normalizeRichContent(json)),
     [onEdit],
   );
   const theme = useCardTheme("footnote");
+  const popped = usePoppedCards();
+  const popKey = `footnote:${fn.footnoteId}`;
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
-  return (
+  const card = (
     <EditableCard
       id={fn.footnoteId}
       selected={isSelected}
@@ -148,8 +158,12 @@ export function FootnoteCard({
       extraDataAttrs={extraDataAttrs}
       wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedNow}
     />
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 /* ── OrphanedFootnoteCard ────────────────────────────────────────── */

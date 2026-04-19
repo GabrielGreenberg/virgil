@@ -8,6 +8,8 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_NOTE, MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
@@ -78,6 +80,8 @@ export function NoteCard({
   onCitationCreated,
   extraDataAttrs,
   onHoverChange,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   note: UserNote;
   selected: boolean;
@@ -91,6 +95,8 @@ export function NoteCard({
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
   onHoverChange?: (hovering: boolean) => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
 
   const handleTitleChange = useCallback(
@@ -109,8 +115,12 @@ export function NoteCard({
 
   const isOrphaned = note.paragraphIds.length === 0;
   const theme = useCardTheme("note");
+  const popped = usePoppedCards();
+  const popKey = `note:${note.id}`;
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
-  return (
+  const card = (
     <EditableCard
       id={note.id}
       selected={selected}
@@ -141,8 +151,12 @@ export function NoteCard({
       dataAttr={{ name: "note-entry", value: note.id }}
       extraDataAttrs={extraDataAttrs}
       onHoverChange={onHoverChange}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedNow}
     />
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 export default function NotesPanel({

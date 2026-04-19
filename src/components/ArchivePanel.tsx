@@ -7,6 +7,8 @@ import ViewToggle, { ViewMode } from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
 import { EditableCard, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTitleInput, CardTargetIcon, TargetIcon, startTextDrag } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import {
   normalizeRichContent,
@@ -70,6 +72,8 @@ export function ArchiveCard({
   getCitationDisplayText,
   onCitationCreated,
   extraDataAttrs,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   snippet: ArchivedSnippet;
   selected: boolean;
@@ -83,13 +87,19 @@ export function ArchiveCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
   const isAnchored = !orphaned;
   const theme = useCardTheme("archive");
+  const popped = usePoppedCards();
+  const popKey = `archive:${snippet.id}`;
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
   };
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+  const card = (
     <EditableCard
       id={snippet.id}
       selected={selected}
@@ -122,8 +132,12 @@ export function ArchiveCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "archive-entry", value: snippet.id }}
       extraDataAttrs={extraDataAttrs}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedNow}
     />
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 /* ── ArchivePanel ────────────────────────────────────────────────── */

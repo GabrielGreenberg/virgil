@@ -9,6 +9,8 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 
 interface TodoPanelProps {
   items: TodoItem[];
@@ -65,6 +67,8 @@ export function TodoRow({
   const [notes, setNotes] = useState(item.notes);
   const inputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const popped = usePoppedCards();
+  const popKey = `todo:${item.id}`;
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -94,7 +98,10 @@ export function TodoRow({
     [item.id],
   );
 
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+
+  const card = (
     <div
       ref={cardRef}
       {...(extraDataAttrs || {})}
@@ -129,8 +136,8 @@ export function TodoRow({
           </svg>
         </div>
 
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        {onToggleFromCtx && (
+          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
         )}
 
         {/* Badge */}
@@ -226,6 +233,8 @@ export function TodoRow({
       </div>
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 export default function TodoPanel({

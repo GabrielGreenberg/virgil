@@ -16,6 +16,8 @@ import {
   startTextDrag,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
@@ -37,6 +39,8 @@ export function CutCard({
   onSelect,
   onJump,
   onHoverChange,
+  onTogglePopout,
+  isPoppedOut,
 }: {
   cut: CutItem;
   selected: boolean;
@@ -46,6 +50,8 @@ export function CutCard({
   onSelect: (id: string | null) => void;
   onJump?: () => void;
   onHoverChange?: (hovering: boolean) => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
     (json: JSONContent) => onUpdate(cut.id, normalizeRichContent(json)),
@@ -53,8 +59,12 @@ export function CutCard({
   );
 
   const isOrphaned = cut.paragraphIds.length === 0 && !cut.anchorId;
+  const popped = usePoppedCards();
+  const popKey = `cut:${cut.id}`;
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
-  return (
+  const card = (
     <EditableCard
       id={cut.id}
       selected={selected}
@@ -81,8 +91,12 @@ export function CutCard({
       onChange={handleChange}
       dataAttr={{ name: "cut-entry", value: cut.id }}
       onHoverChange={onHoverChange}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedNow}
     />
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 export default function CutterPanel({

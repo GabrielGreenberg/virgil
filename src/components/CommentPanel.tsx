@@ -20,6 +20,8 @@ import {
   CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, type PositionItem } from "@/hooks/useInTextPositions";
@@ -395,6 +397,8 @@ function RevisionCard({
   isPoppedOut,
 }: CardProps) {
   const theme = CARD_THEMES.comment;
+  const popped = usePoppedCards();
+  const popKey = `revision:${id}`;
   const firstTurn = turns[0];
   const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
   // data-revision-entry lets the shared selection-anchor sync hook detect
@@ -402,7 +406,9 @@ function RevisionCard({
   // Only set for "text" revisions — general ones have no anchor or
   // click-away semantics tied to the editor.
   const dataAttrs = kind === "text" ? { "data-revision-entry": id } : {};
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+  const card = (
     <div
       ref={(el) => registerRef?.(el)}
       onClick={onSelect}
@@ -413,8 +419,8 @@ function RevisionCard({
     >
       {/* Header: author + timestamp, with target icon + menu trailing */}
       <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        {onToggleFromCtx && (
+          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
         )}
         {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
         {firstTurn && (
@@ -473,6 +479,8 @@ function RevisionCard({
       </div>
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 /* ── New general revision actions ─────────────────────────────────── */

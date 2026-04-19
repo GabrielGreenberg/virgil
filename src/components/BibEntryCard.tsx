@@ -5,6 +5,8 @@ import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import { MIME_CITATION } from "@/lib/marginalia";
 
 export interface BibEntryCardProps {
@@ -131,6 +133,8 @@ export default function BibEntryCard({
   occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
   onTogglePopout, isPoppedOut,
 }: BibEntryCardProps) {
+  const popped = usePoppedCards();
+  const popKey = `bib:${entry.key}`;
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);
@@ -408,8 +412,10 @@ export default function BibEntryCard({
   }
 
   const theme = useCardTheme("bib");
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
-  return (
+  const card = (
     <div
       data-bib-entry={entry.key}
       draggable
@@ -423,8 +429,8 @@ export default function BibEntryCard({
         className={`flex items-start gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, isSelected)}
       >
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        {onToggleFromCtx && (
+          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
         )}
         <div
           className="flex-1 min-w-0 leading-snug"
@@ -480,4 +486,6 @@ export default function BibEntryCard({
       </div>
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }

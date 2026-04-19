@@ -90,7 +90,7 @@ import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { HSplit, PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
-import FloatingCards from "./FloatingCards";
+import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
@@ -4866,7 +4866,17 @@ export default function EditorLayout() {
     return <UnsupportedBrowserNotice />;
   }
 
+  const poppedCardsValue = {
+    poppedKeys: prefs.poppedOutCards,
+    isPopped: (key: string) => prefs.poppedOutCards.includes(key),
+    toggle: toggleCardPopout,
+    close: closeCardPopout,
+    getFloatPosition: (key: string) => prefs.cardFloatPositions[key],
+    setFloatPosition: setCardFloatPosition,
+  };
+
   return (
+    <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Preference mode picker — renders nothing until a ctrl+click on an
           annotated element opens it. Mounted at the layout root so its
@@ -5495,18 +5505,11 @@ export default function EditorLayout() {
           onCancel={cancelFolderPick}
         />
       )}
-      {/* Floating (popped-out) cards — rendered via portal above everything.
-          The per-kind dispatch lives in commit 2's wire-up; for now this
-          mounts the scaffolding and responds to entity-missing with
-          auto-dismiss. */}
-      <FloatingCards
-        poppedOutCards={prefs.poppedOutCards}
-        cardFloatPositions={prefs.cardFloatPositions}
-        setCardFloatPosition={setCardFloatPosition}
-        closeCardPopout={closeCardPopout}
-        renderCard={() => null}
-      />
-      {/* Floating (popped-out) panels — rendered via portal above everything. */}
+      {/* Floating (popped-out) panels — rendered via portal above everything.
+          Floating (popped-out) cards are handled by each wrapper card
+          component itself: when `popped.isPopped(key)` is true, the card
+          wraps itself in <FloatCard/> (a FloatingPanel portal). Data flows
+          naturally through the host panel's existing props. */}
       {prefs.poppedOutPanels.map((pid, i) => {
         const placement = prefs.placements.find((pl) => pl.id === pid);
         const side: Side = placement?.side ?? "right";
@@ -5532,5 +5535,6 @@ export default function EditorLayout() {
         );
       })}
     </div>
+    </PoppedCardsContext.Provider>
   );
 }

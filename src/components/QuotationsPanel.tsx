@@ -25,6 +25,8 @@ import {
   CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "./FloatingCards";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
 import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
@@ -687,6 +689,8 @@ export function QuotationGroupCard({
   const headerRef = useRef<HTMLDivElement>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const theme = useCardTheme("quote");
+  const popped = usePoppedCards();
+  const popKey = `quotation:${group.id}`;
 
   const tryDelete = useCallback(() => {
     setConfirmOpen(true);
@@ -705,7 +709,10 @@ export function QuotationGroupCard({
     [selected, tryDelete],
   );
 
-  return (
+  const isPoppedNow = popped?.isPopped(popKey) ?? false;
+  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+
+  const card = (
     <div
       ref={cardRef}
       className={`group ${panelCard(selected)} focus:outline-none`}
@@ -746,8 +753,8 @@ export function QuotationGroupCard({
             <circle cx="7" cy="12" r="1.2" />
           </svg>
         </div>
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        {onToggleFromCtx && (
+          <CardPopoutButton isPoppedOut={isPoppedNow} onClick={onToggleFromCtx} />
         )}
         <input
           type="text"
@@ -834,6 +841,8 @@ export function QuotationGroupCard({
       </div>
     </div>
   );
+  if (isPoppedNow) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  return card;
 }
 
 /* ── Main Panel ──────────────────────────────────────────────────── */
