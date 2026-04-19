@@ -5,12 +5,19 @@ import { Editor } from "@tiptap/react";
 
 export type MarginaliaType = "quote" | "note" | "archive" | "todo";
 export type DividerLevel = 1 | 2 | 3 | 4;
+export type DividerWidth = "full" | "mid" | "text";
 
 const DIVIDER_LEVEL_LABELS: Record<DividerLevel, string> = {
   1: "Chapters",
   2: "Sections",
   3: "Subsections",
   4: "Subsubsections",
+};
+
+const DIVIDER_WIDTH_LABELS: Record<DividerWidth, string> = {
+  full: "Full width",
+  mid: "Mid width",
+  text: "Text width",
 };
 
 interface MenuBarProps {
@@ -38,6 +45,8 @@ interface MenuBarProps {
   availableDividerLevels: Set<DividerLevel>;
   dividerLevels: Set<DividerLevel>;
   onToggleDividerLevel: (level: DividerLevel) => void;
+  dividerWidth: DividerWidth;
+  onSetDividerWidth: (width: DividerWidth) => void;
   onParaNavBack?: () => void;
   onParaNavForward?: () => void;
   paraNavBackDisabled?: boolean;
@@ -152,10 +161,11 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, availableDividerLevels, dividerLevels, onToggleDividerLevel, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
+  const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
   const viewMenuRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -543,16 +553,39 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                       <path d="M2.5 1L5.5 4L2.5 7" />
                     </svg>
                   </button>
-                  {dividersExpanded && ([1, 2, 3, 4] as const).filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
-                    <button
-                      key={lvl}
-                      onClick={() => onToggleDividerLevel(lvl)}
-                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
-                    >
-                      <span>{DIVIDER_LEVEL_LABELS[lvl]}</span>
-                      <span className="text-[var(--accent)]">{dividerLevels.has(lvl) ? "\u2713" : ""}</span>
-                    </button>
-                  ))}
+                  {dividersExpanded && (
+                    <>
+                      {([1, 2, 3, 4] as const).filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
+                        <button
+                          key={lvl}
+                          onClick={() => onToggleDividerLevel(lvl)}
+                          className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                        >
+                          <span>{DIVIDER_LEVEL_LABELS[lvl]}</span>
+                          <span className="text-[var(--accent)]">{dividerLevels.has(lvl) ? "\u2713" : ""}</span>
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setDividerPrefsExpanded((p) => !p)}
+                        className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                      >
+                        <span>Divider preferences</span>
+                        <svg className="w-3 h-3 text-stone-400 transition-transform" style={{ transform: dividerPrefsExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M2.5 1L5.5 4L2.5 7" />
+                        </svg>
+                      </button>
+                      {dividerPrefsExpanded && (["full", "mid", "text"] as const).map((w) => (
+                        <button
+                          key={w}
+                          onClick={() => onSetDividerWidth(w)}
+                          className="w-full text-left pl-9 pr-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50 flex items-center justify-between gap-3"
+                        >
+                          <span>{DIVIDER_WIDTH_LABELS[w]}</span>
+                          <span className="text-[var(--accent)]">{dividerWidth === w ? "\u2713" : ""}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
                 </>
               )}
               <div className="my-1 border-t border-stone-200" />
