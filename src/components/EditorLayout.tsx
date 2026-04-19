@@ -1343,6 +1343,34 @@ export default function EditorLayout() {
   const [pendingCitationMode, setPendingCitationMode] = useState<"anchored" | "unanchored">("anchored");
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
 
+  /** SearchPanel dispatches selection + opens the target panel (auto-splits
+   *  the search side when target is on the same side). */
+  const openItemInPanel = useCallback((panel: PanelId, itemId: string) => {
+    switch (panel) {
+      case "footnotes": setSelectedFootnoteId(itemId); break;
+      case "notes": setSelectedNoteId(itemId); break;
+      case "citations": setSelectedCitationId(itemId); break;
+      case "todo": setSelectedTodoId(itemId); break;
+      case "archive": setSelectedArchiveId(itemId); break;
+      case "cutter": setSelectedCutId(itemId); break;
+      case "quotations": setSelectedQuotationGroupId(itemId); break;
+      case "revisions": setSelectedCommentId(itemId); break;
+      case "bibliography": setSelectedBibKey(itemId); break;
+      default: break;
+    }
+
+    const p = prefsRef.current;
+    const searchSide = p.placements.find((x) => x.id === "search")?.side ?? "left";
+    const targetSide = p.placements.find((x) => x.id === panel)?.side ?? searchSide;
+
+    if (targetSide === searchSide) {
+      setActiveHalf(searchSide, "top", "search");
+      setActiveHalf(searchSide, "bottom", panel);
+    } else {
+      setActiveHalf(targetSide, "top", panel);
+    }
+  }, [setActiveHalf]);
+
   // Lifted view modes — persist across panel re-mounts and across sessions
   const [panelViewModes, setPanelViewModes] = useState<Record<string, "list" | "in-text">>(() => {
     if (typeof window === "undefined") return {};
@@ -4351,7 +4379,26 @@ export default function EditorLayout() {
     }
 
     if (panelId === "search") {
-      return <SearchPanel editor={editorInstance} onHighlightRange={setSearchHighlightRange} />;
+      return (
+        <SearchPanel
+          editor={editorInstance}
+          onHighlightRange={setSearchHighlightRange}
+          footnotes={footnotes}
+          orphanedFootnotes={orphanedFootnotes}
+          notes={notes}
+          citations={citations}
+          editorCitations={allEditorCitations}
+          getCitationDisplayText={getCitationDisplayText}
+          todos={todoItems}
+          archiveSnippets={archiveSnippets}
+          cuts={cuts}
+          quotationGroups={quotationGroups}
+          textRevisions={textRevisions}
+          generalRevisions={generalRevisions}
+          bibEntries={bibEntries}
+          onOpenItem={openItemInPanel}
+        />
+      );
     }
 
     if (panelId === "omni") {
