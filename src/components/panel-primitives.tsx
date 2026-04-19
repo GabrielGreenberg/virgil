@@ -715,8 +715,11 @@ export function PanelClose() {
 
 /**
  * Per-card popout toggle. Lives at the left edge of each card header,
- * immediately right of any grab handle. Subtle hover-reveal when docked;
- * always visible (and rotated) when the card is popped out.
+ * immediately right of any grab handle. Same circular shape as the panel
+ * popout button; the fill is a translucent-black overlay so the button
+ * always reads as "a shade darker than the local card header" regardless
+ * of which theme (or user color override) the card is using. Hover-reveal
+ * when docked; always visible (and rotated) when the card is popped.
  */
 export function CardPopoutButton({
   isPoppedOut,
@@ -740,19 +743,29 @@ export function CardPopoutButton({
       }}
       className={`${
         isPoppedOut
-          ? "opacity-70 hover:opacity-100"
-          : "opacity-0 group-hover:opacity-60 hover:!opacity-100"
-      } focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-ink-body shrink-0`}
+          ? "opacity-80 hover:opacity-100"
+          : "opacity-0 group-hover:opacity-70 hover:!opacity-100"
+      } focus:opacity-100 w-[14px] h-[14px] flex items-center justify-center rounded-full border transition-opacity transition-colors shrink-0 text-ink-body`}
+      style={{
+        backgroundColor: "rgba(0, 0, 0, 0.08)",
+        borderColor: "rgba(0, 0, 0, 0.18)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.16)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.08)";
+      }}
       title={isPoppedOut ? "Dock card" : "Pop out card"}
       aria-label={isPoppedOut ? "Dock card" : "Pop out card"}
     >
       <svg
-        width="10"
-        height="10"
+        width="8"
+        height="8"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="2.5"
+        strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
         className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
