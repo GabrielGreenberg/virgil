@@ -32,7 +32,6 @@ export type SearchScope =
   | "archive"
   | "cuts"
   | "quotations"
-  | "headings"
   | "revisions"
   | "bibliography";
 
@@ -80,7 +79,6 @@ export const SCOPE_LABEL: Record<SearchScope, string> = {
   archive: "Archive",
   cuts: "Cuts",
   quotations: "Quotations",
-  headings: "Headings",
   revisions: "Revisions",
   bibliography: "Bibliography",
 };
@@ -108,7 +106,6 @@ export const SCOPE_COLOR: Record<SearchScope, string> = {
   archive: "#7191b0",
   cuts: "#b45757",
   quotations: "#6b6245",
-  headings: "#7c5e3c",
   revisions: "#78716c",
   bibliography: "#6b6245",
 };
@@ -117,7 +114,6 @@ export const SCOPE_COLOR: Record<SearchScope, string> = {
 export const SCOPE_ORDER: SearchScope[] = [
   "mainText",
   "footnotes",
-  "headings",
   "notes",
   "citations",
   "todos",
@@ -439,29 +435,6 @@ export function searchQuotations(
       }
     }
   }
-  return out;
-}
-
-/* ── Headings ────────────────────────────────────────────────────────── */
-
-export function searchHeadings(editor: Editor, re: RegExp): SearchHit[] {
-  const out: SearchHit[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name !== "heading") return true;
-    const text = node.textContent || "";
-    for (const m of scanText(text, re)) {
-      out.push({
-        scope: "headings",
-        from: pos + 1 + m.start,
-        to: pos + 1 + m.end,
-        before: m.before,
-        match: m.match,
-        after: m.after,
-        field: "text",
-      });
-    }
-    return true;
-  });
   return out;
 }
 
