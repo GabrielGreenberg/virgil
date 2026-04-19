@@ -577,7 +577,9 @@ function PanelColumn({
         >
           <div
             className="min-h-0 overflow-hidden"
-            style={{ flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
+            style={topPanelId === "omni"
+              ? { flex: `${children!.ratio} 1 0`, minHeight: 0 }
+              : { flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("top")}
             data-panel-side={side}
             data-panel-id={topPanelId}
@@ -592,7 +594,9 @@ function PanelColumn({
           />
           <div
             className="min-h-0 overflow-hidden"
-            style={{ flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
+            style={bottomPanelId === "omni"
+              ? { flex: `${1 - children!.ratio} 1 0`, minHeight: 0 }
+              : { flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("bottom")}
             data-panel-side={side}
             data-panel-id={bottomPanelId}
