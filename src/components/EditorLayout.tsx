@@ -68,7 +68,7 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   revision: "revision",
   cut: "cut",
 };
-import { createLinkedAnchor, removeLinkedAnchor, reanchorByText } from "@/lib/linked-anchors";
+import { createLinkedAnchor, removeLinkedAnchor, reanchorByText } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -2592,28 +2592,28 @@ export default function EditorLayout() {
     skipSelectors: ['[data-selection-chip]', '[data-add-comment-button]'],
   });
 
-  // Listen for marginalia reanchor events (dragging a gutter icon to a new paragraph)
+  // Listen for marginalia reanchor events (dragging a gutter icon to a new
+  // paragraph). The per-entity add/remove mutators share the exact same
+  // (entityId, paragraphId) shape, so a small dispatch table replaces the
+  // if/else ladder this used to be.
   useEffect(() => {
+    const mutators: Record<
+      string,
+      { remove: (id: string, pid: string) => void; add: (id: string, pid: string) => void } | undefined
+    > = {
+      quote: { remove: removeQuotationParagraphId, add: addQuotationParagraphId },
+      todo: { remove: removeTodoParagraphId, add: addTodoParagraphId },
+      note: { remove: removeNoteParagraphId, add: addNoteParagraphId },
+      archive: { remove: removeArchiveParagraphId, add: addArchiveParagraphId },
+      cut: { remove: removeCutParagraphId, add: addCutParagraphId },
+    };
     const handler = (e: Event) => {
       const { type, entityId, oldParagraphId, newParagraphId } = (e as CustomEvent).detail;
       if (!type || !entityId || !newParagraphId) return;
-
-      if (type === "quote") {
-        removeQuotationParagraphId(entityId, oldParagraphId);
-        addQuotationParagraphId(entityId, newParagraphId);
-      } else if (type === "todo") {
-        removeTodoParagraphId(entityId, oldParagraphId);
-        addTodoParagraphId(entityId, newParagraphId);
-      } else if (type === "note") {
-        removeNoteParagraphId(entityId, oldParagraphId);
-        addNoteParagraphId(entityId, newParagraphId);
-      } else if (type === "archive") {
-        removeArchiveParagraphId(entityId, oldParagraphId);
-        addArchiveParagraphId(entityId, newParagraphId);
-      } else if (type === "cut") {
-        removeCutParagraphId(entityId, oldParagraphId);
-        addCutParagraphId(entityId, newParagraphId);
-      }
+      const m = mutators[type];
+      if (!m) return;
+      m.remove(entityId, oldParagraphId);
+      m.add(entityId, newParagraphId);
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
@@ -5273,8 +5273,8 @@ export default function EditorLayout() {
             selectedId={selectedCitationId}
             panelSide={citationPanelSide}
             mainRef={mainAreaRef}
-            markerAttr="data-citation-id"
-            entryAttr="data-citation-entry"
+            markerAttr="data-link-id"
+            entryAttr="data-link-card"
           />
         )}
         {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (

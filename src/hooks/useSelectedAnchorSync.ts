@@ -24,7 +24,7 @@
  */
 
 import { useEffect } from "react";
-import type { LinkedAnchorKind } from "@/lib/linked-anchors";
+import type { LinkedAnchorKind } from "@/links/links";
 
 interface Entity {
   id: string;
@@ -91,7 +91,7 @@ export function useSelectedAnchorSync<T extends Entity>({
       if (!target) return;
       if (target.closest(`[data-${dataAttrName}="${selectedId}"]`)) return;
       const entity = entities.find((x) => x.id === selectedId);
-      if (entity?.anchorId && target.closest(`[data-anchor-id="${entity.anchorId}"]`)) return;
+      if (entity?.anchorId && target.closest(`[data-link-id="${entity.anchorId}"]`)) return;
       for (const sel of skipSelectors ?? []) {
         if (target.closest(sel)) return;
       }

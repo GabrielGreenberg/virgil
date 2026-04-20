@@ -9,7 +9,7 @@
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
-import { resolveAnchorRange } from "./linked-anchors";
+import { resolveAnchorRange } from "@/links/links";
 import type {
   ArchivedSnippet,
   CitationRef,

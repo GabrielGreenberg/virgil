@@ -21,7 +21,7 @@ import {
   useInTextPositions,
   type PositionItem,
 } from "@/hooks/useInTextPositions";
-import { resolveAnchorRange } from "@/lib/linked-anchors";
+import { resolveAnchorRange } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";

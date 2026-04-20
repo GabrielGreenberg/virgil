@@ -560,6 +560,147 @@ function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Legacy linked-anchor API (absorbed from src/lib/linked-anchors.ts).
+// These five exports preserve the signatures that callers depended on
+// before the Link unification. New code should prefer `createLink`,
+// `resolveLink`, `deleteLink`.
+// ---------------------------------------------------------------------------
+
+export type LinkedAnchorKind = "note" | "revision" | "cut";
+
+export interface LinkedAnchorRecord {
+  anchorId: string;
+  paragraphId: string;
+  text: string;
+  createdAt: string;
+}
+
+function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
+  switch (kind) {
+    case "note":
+      return "note";
+    case "cut":
+      return "cut";
+    case "revision":
+      return "comment";
+  }
+}
+
+/**
+ * Apply a `linkedAnchor` mark to the current selection (or the given
+ * range), returning the new record. When `cardId` is provided, the mark
+ * carries `linkCard="<cardKind>:<cardId>"` so it's self-describing.
+ */
+export function createLinkedAnchor(
+  editor: Editor,
+  kind: LinkedAnchorKind,
+  range?: { from: number; to: number },
+  cardId?: string,
+): LinkedAnchorRecord | null {
+  const sel = range ?? {
+    from: editor.state.selection.from,
+    to: editor.state.selection.to,
+  };
+  if (sel.to <= sel.from) return null;
+  const anchorId = generateEntityId();
+  const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
+  const paragraphId = paragraphUuidAt(editor.state.doc, sel.from) ?? "";
+  const cardKind = legacyKindToCardKindString(kind);
+  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
+  const ok = editor
+    .chain()
+    .setTextSelection(sel)
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard,
+    })
+    .setTextSelection(sel.from)
+    .run();
+  if (!ok) return null;
+  return {
+    anchorId,
+    paragraphId,
+    text,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Locate the contiguous run carrying `anchorId`. Returns null if missing. */
+export function resolveAnchorRange(
+  editor: Editor,
+  anchorId: string,
+): { from: number; to: number } | null {
+  return resolveTextRangeByAnchorId(editor, anchorId);
+}
+
+/** Remove the `linkedAnchor` mark for `anchorId` wherever it appears. */
+export function removeLinkedAnchor(editor: Editor, anchorId: string): void {
+  removeLinkedAnchorMark(editor, anchorId);
+}
+
+/**
+ * Best-effort re-anchor by searching for `snapshot` text in the doc.
+ * Used on load for items whose mark was lost across a parse.
+ */
+export function reanchorByText(
+  editor: Editor,
+  kind: LinkedAnchorKind,
+  snapshot: string,
+  preferredAnchorId?: string,
+  cardId?: string,
+): LinkedAnchorRecord | null {
+  const text = editor.getText();
+  const index = text.indexOf(snapshot);
+  if (index === -1) return null;
+  let charCount = 0;
+  let from = -1;
+  let to = -1;
+  editor.state.doc.descendants((node, pos) => {
+    if (from !== -1 && to !== -1) return false;
+    if (node.isText && node.text) {
+      const nodeStart = charCount;
+      const nodeEnd = charCount + node.text.length;
+      if (from === -1 && index >= nodeStart && index < nodeEnd) {
+        from = pos + (index - nodeStart);
+      }
+      if (from !== -1 && to === -1) {
+        const endIndex = index + snapshot.length;
+        if (endIndex <= nodeEnd) to = pos + (endIndex - nodeStart);
+      }
+      charCount = nodeEnd;
+    }
+    return true;
+  });
+  if (from === -1 || to === -1) return null;
+  const anchorId = preferredAnchorId ?? generateEntityId();
+  const paragraphId = paragraphUuidAt(editor.state.doc, from) ?? "";
+  const cardKind = legacyKindToCardKindString(kind);
+  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
+  const ok = editor
+    .chain()
+    .setTextSelection({ from, to })
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard,
+    })
+    .setTextSelection(from)
+    .run();
+  if (!ok) return null;
+  return {
+    anchorId,
+    paragraphId,
+    text: snapshot,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // derivedLinksForCard — synthesize Link[] from the legacy card shape
 // ---------------------------------------------------------------------------
 

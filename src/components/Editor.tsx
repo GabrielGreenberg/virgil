@@ -15,8 +15,14 @@ import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard } from "@/lib/tiptap-extensions";
-import { reanchorByText, resolveAnchorRange, type LinkedAnchorKind } from "@/lib/linked-anchors";
-import { collectLinksFromEditor, jumpToLink, deleteLink } from "@/links/links";
+import {
+  collectLinksFromEditor,
+  jumpToLink,
+  deleteLink,
+  reanchorByText,
+  resolveAnchorRange,
+  type LinkedAnchorKind,
+} from "@/links/links";
 import type { Link as VirgilLink } from "@/links/links";
 import {
   isAnchorableNode,
