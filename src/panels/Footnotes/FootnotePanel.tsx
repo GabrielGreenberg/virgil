@@ -155,6 +155,7 @@ function FootnotePanel({
             <div
               key={orphan.footnoteId}
               data-footnote-entry={orphan.footnoteId}
+              data-link-card={`footnote:${orphan.footnoteId}`}
               draggable
               onDragStart={(e) =>
                 startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
@@ -287,6 +288,7 @@ function FootnotePanel({
         return (
           <div
             data-footnote-entry={fn.footnoteId}
+            data-link-card={`footnote:${fn.footnoteId}`}
             draggable
             onDragStart={(e) =>
               startFootnoteDrag(e, fn.footnoteId, fn.content, false)

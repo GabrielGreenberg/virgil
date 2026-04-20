@@ -16,7 +16,8 @@ import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard } from "@/lib/tiptap-extensions";
 import { reanchorByText, resolveAnchorRange, type LinkedAnchorKind } from "@/lib/linked-anchors";
-import { collectLinksFromEditor } from "@/links/links";
+import { collectLinksFromEditor, jumpToLink, deleteLink } from "@/links/links";
+import type { Link as VirgilLink } from "@/links/links";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -1722,12 +1723,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     scrollToFootnote(footnoteId: string): void {
       if (!editor) return;
-      const el = editor.view.dom.querySelector(
-        `[data-footnote-id="${footnoteId}"]`
-      ) as HTMLElement | null;
-      if (el) {
-        el.scrollIntoView({ behavior: "instant", block: "center" });
-      }
+      const link: VirgilLink = {
+        id: footnoteId,
+        kind: "footnote",
+        anchor: { type: "inline-atom", nodeName: "footnote", pos: null },
+        target: { type: "card", ref: { kind: "footnote", id: footnoteId } },
+        createdAt: "",
+      };
+      jumpToLink(editor, link, "to-marker");
     },
     updateFootnoteContent(footnoteId: string, newContent: TipJSON): void {
       if (!editor) return;
@@ -1773,18 +1776,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     deleteFootnote(footnoteId: string): void {
       if (!editor) return;
-      let fnPos: number | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (node.type.name === "footnote" && node.attrs.footnoteId === footnoteId) {
-          fnPos = pos;
-          return false;
-        }
-        return true;
-      });
-      if (fnPos != null) {
-        const tr = editor.state.tr.delete(fnPos, fnPos + 1);
-        editor.view.dispatch(tr);
-      }
+      const link: VirgilLink = {
+        id: footnoteId,
+        kind: "footnote",
+        anchor: { type: "inline-atom", nodeName: "footnote", pos: null },
+        target: { type: "card", ref: { kind: "footnote", id: footnoteId } },
+        createdAt: "",
+      };
+      deleteLink(editor, link);
     },
     createFootnoteFromSelection(): { footnoteId: string } | null {
       if (!editor) return null;
@@ -1845,8 +1844,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
     scrollToCitation(citationId: string): void {
       if (!editor) return;
-      const el = editor.view.dom.querySelector(`[data-citation-id="${citationId}"]`);
-      if (el) el.scrollIntoView({ behavior: "instant", block: "center" });
+      const link: VirgilLink = {
+        id: citationId,
+        kind: "citation",
+        anchor: { type: "inline-atom", nodeName: "citation", pos: null },
+        target: { type: "card", ref: { kind: "citation", id: citationId } },
+        createdAt: "",
+      };
+      jumpToLink(editor, link, "to-marker");
     },
 
     updateCitationDisplay(citationId: string, displayText: string): void {

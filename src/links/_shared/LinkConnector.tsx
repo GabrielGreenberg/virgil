@@ -2,38 +2,75 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import {
+  DATA_LINK_CARD,
+  DATA_LINK_ID,
+  LINK_REGISTRY,
+  linkCardKey,
+} from "../link-registry";
+import type { CardKind } from "@/panels/_shared/types";
+import type { LinkKind } from "./types";
 
 interface Connector {
   id: string;
   d: string;
 }
 
-export default function CitationConnectors({
+interface LinkConnectorProps {
+  editor: Editor | null;
+  /** The link id to connect (from marker to card entry). */
+  linkId: string | null;
+  /** Which link kind — drives stroke style via the registry. */
+  linkKind: LinkKind;
+  /** Target card ref — selects the panel-side entry via `data-link-card`. */
+  targetCard: { kind: CardKind; id: string };
+  /** Which side the panel is on relative to the editor. */
+  panelSide: "left" | "right";
+  /** Ref to the main area containing both editor and panel. */
+  mainRef: React.RefObject<HTMLDivElement | null>;
+  /** Optional override for the panel-side selector (used by the
+   *  citation↔bib cross-link: the panel entry lives in a different panel). */
+  panelEntrySelector?: string;
+  /** Used to invalidate positions when the doc changes. */
+  docVersion?: unknown;
+}
+
+/**
+ * Unified SVG connector between an in-editor link marker and its panel
+ * card. Replaces the per-kind `FootnoteConnectors`/`CitationConnectors`/
+ * `ArchiveConnectors`.
+ *
+ * DOM contract: the marker carries `data-link-id="<linkId>"`; the panel
+ * card carries `data-link-card="<cardKind>:<cardId>"`. Both are uniform
+ * across kinds — stroke style is the only per-kind difference.
+ */
+export default function LinkConnector({
   editor,
-  selectedId,
+  linkId,
+  linkKind,
+  targetCard,
   panelSide,
   mainRef,
   panelEntrySelector,
-}: {
-  editor: Editor | null;
-  selectedId: string | null;
-  panelSide: "left" | "right";
-  mainRef: React.RefObject<HTMLDivElement | null>;
-  panelEntrySelector?: string;
-}) {
+  docVersion,
+}: LinkConnectorProps) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const rafRef = useRef(0);
 
+  const entry = LINK_REGISTRY[linkKind];
+  const stroke = entry.connectorStroke;
+
   const compute = useCallback(() => {
     const main = mainRef.current;
-    if (!editor || !main || !selectedId) {
+    if (!editor || !main || !linkId || !stroke) {
       setConnectors([]);
       return;
     }
 
     const cr = main.getBoundingClientRect();
-
-    const editorScrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+    const editorScrollEl = editor.view.dom.closest(
+      ".overflow-y-auto",
+    ) as HTMLElement | null;
     if (!editorScrollEl) {
       setConnectors([]);
       return;
@@ -45,24 +82,33 @@ export default function CitationConnectors({
         ? edRect.right - 28 - cr.left
         : edRect.left + 28 - cr.left;
 
-    const results: Connector[] = [];
-
     const markerEl = editor.view.dom.querySelector(
-      `[data-citation-id="${selectedId}"]`
+      `[${DATA_LINK_ID}="${linkId}"]`,
     ) as HTMLElement | null;
-    if (!markerEl) { setConnectors([]); return; }
+    if (!markerEl) {
+      setConnectors([]);
+      return;
+    }
 
-    const entryEl = main.querySelector(
-      panelEntrySelector || `[data-citation-entry="${selectedId}"]`
-    ) as HTMLElement | null;
-    if (!entryEl) { setConnectors([]); return; }
-    // Skip curved connectors when panel is in in-text mode (straight lines handle it)
-    if (getComputedStyle(entryEl).position === "absolute") { setConnectors([]); return; }
+    const entrySelector =
+      panelEntrySelector ??
+      `[${DATA_LINK_CARD}="${linkCardKey(targetCard.kind, targetCard.id)}"]`;
+    const entryEl = main.querySelector(entrySelector) as HTMLElement | null;
+    if (!entryEl) {
+      setConnectors([]);
+      return;
+    }
+    if (getComputedStyle(entryEl).position === "absolute") {
+      setConnectors([]);
+      return;
+    }
 
     const mRect = markerEl.getBoundingClientRect();
     const eRect = entryEl.getBoundingClientRect();
-
-    if (eRect.bottom < cr.top || eRect.top > cr.bottom) { setConnectors([]); return; }
+    if (eRect.bottom < cr.top || eRect.top > cr.bottom) {
+      setConnectors([]);
+      return;
+    }
 
     const mx = mRect.left + mRect.width / 2 - cr.left;
     const mTop = mRect.top - cr.top;
@@ -70,20 +116,19 @@ export default function CitationConnectors({
 
     const markerAbove = mRect.bottom < cr.top;
     const markerBelow = mRect.top > cr.bottom;
-    const mCenter = markerAbove ? 0 : markerBelow ? cr.height : (mTop + mBottom) / 2;
+    const mCenter = markerAbove
+      ? 0
+      : markerBelow
+        ? cr.height
+        : (mTop + mBottom) / 2;
 
     const ey = eRect.top + 14 - cr.top;
     const ex =
-      panelSide === "right"
-        ? eRect.left - cr.left
-        : eRect.right - cr.left;
+      panelSide === "right" ? eRect.left - cr.left : eRect.right - cr.left;
 
     let d: string;
-
-    // Prefer straight horizontal line when marker and entry are close in Y
     const yDiff = Math.abs(mCenter - ey);
     if (!markerAbove && !markerBelow && yDiff < 30) {
-      // Straight line from marker to entry
       const lineY = (mCenter + ey) / 2;
       d = `M ${mx} ${lineY} L ${ex} ${lineY}`;
     } else if (markerAbove || markerBelow) {
@@ -130,9 +175,10 @@ export default function CitationConnectors({
       ].join(" ");
     }
 
-    results.push({ id: selectedId, d });
-    setConnectors(results);
-  }, [editor, selectedId, panelSide, mainRef]);
+    setConnectors([{ id: linkId, d }]);
+    // docVersion is consumed only to force recomputes when the doc changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, linkId, targetCard.kind, targetCard.id, panelSide, mainRef, panelEntrySelector, stroke, docVersion]);
 
   const scheduleCompute = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -141,14 +187,12 @@ export default function CitationConnectors({
 
   useEffect(() => {
     compute();
-
     const main = mainRef.current;
     main?.addEventListener("scroll", scheduleCompute, {
       passive: true,
       capture: true,
     });
     window.addEventListener("resize", scheduleCompute);
-
     return () => {
       cancelAnimationFrame(rafRef.current);
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
@@ -156,7 +200,7 @@ export default function CitationConnectors({
     };
   }, [compute, scheduleCompute, mainRef]);
 
-  if (connectors.length === 0) return null;
+  if (connectors.length === 0 || !stroke) return null;
 
   return (
     <svg
@@ -169,11 +213,11 @@ export default function CitationConnectors({
         <path
           key={c.id}
           d={c.d}
-          stroke="#b8912e"
-          strokeWidth="1.5"
-          strokeDasharray="4 3"
+          stroke={stroke.color}
+          strokeWidth={stroke.width}
+          strokeDasharray={stroke.dasharray}
           fill="none"
-          opacity={0.6}
+          opacity={stroke.opacity}
         />
       ))}
     </svg>

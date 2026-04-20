@@ -19,7 +19,12 @@ import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { CardKind } from "@/panels/_shared/types";
 import type { Link, LinkResolution } from "./_shared/types";
-import { parseLinkCardKey } from "./link-registry";
+import { generateEntityId } from "@/lib/uuid";
+import {
+  DATA_LINK_ID,
+  linkCardKey,
+  parseLinkCardKey,
+} from "./link-registry";
 
 // Re-exports so callers import everything from one module.
 export type { Link, LinkAnchor, LinkKind, LinkResolution, LinkTarget, ModeBAnchorLink } from "./_shared/types";
@@ -206,12 +211,27 @@ function inferMarginSide(cardKind: CardKind): "left" | "right" {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs for Phase 1+ — throw so accidental callers are loud
+// Public API: create / resolve / jump / delete
 // ---------------------------------------------------------------------------
 
 export type CreateLinkArgs =
-  | { kind: "footnote"; targetCardId: string; content?: unknown; title?: string }
-  | { kind: "citation"; targetCardId: string; command: string; displayText?: string }
+  | {
+      kind: "footnote";
+      /** When omitted, a fresh UUID is generated. */
+      targetCardId?: string;
+      /** Tiptap JSONContent for the footnote body. */
+      content?: unknown;
+      title?: string;
+      /** If provided, consume the current selection (Markdown-like
+       *  `\footnote{…}` behavior). Otherwise inserts at cursor. */
+      fromSelection?: boolean;
+    }
+  | {
+      kind: "citation";
+      targetCardId?: string;
+      command: string;
+      displayText?: string;
+    }
   | {
       kind: "anchor";
       targetCardKind: CardKind;
@@ -220,32 +240,180 @@ export type CreateLinkArgs =
       textRange?: { from: number; to: number };
     };
 
-function notImplemented(fn: string): never {
+/** Create a new link. Phase 1 implements footnote + citation. Anchor
+ *  creation is still routed through the legacy `linked-anchors.ts` and
+ *  per-entity paragraph-id mutators. */
+export function createLink(editor: Editor, args: CreateLinkArgs): Link {
+  if (args.kind === "footnote") return createFootnoteLink(editor, args);
+  if (args.kind === "citation") return createCitationLink(editor, args);
   throw new Error(
-    `${fn}: not implemented in Phase 0. Use the legacy path for now.`,
+    `createLink: kind "${args.kind}" not implemented in Phase 1.`,
   );
 }
 
-export function createLink(_editor: Editor, _args: CreateLinkArgs): Link {
-  notImplemented("createLink");
+function createFootnoteLink(
+  editor: Editor,
+  args: Extract<CreateLinkArgs, { kind: "footnote" }>,
+): Link {
+  const linkId = args.targetCardId ?? generateEntityId();
+  const cardKey = linkCardKey("footnote", linkId);
+  let content = args.content ?? null;
+  const chain = editor.chain().focus();
+
+  if (args.fromSelection) {
+    const { from, to } = editor.state.selection;
+    if (from !== to) {
+      const text = editor.state.doc.textBetween(from, to, " ");
+      if (text.trim()) {
+        content = content ?? {
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+        };
+        chain.deleteSelection();
+      }
+    }
+  }
+
+  chain
+    .insertContent({
+      type: "footnote",
+      attrs: {
+        content,
+        title: args.title ?? "",
+        number: 0,
+        footnoteId: linkId,
+        linkId,
+        linkKind: "footnote",
+        linkCard: cardKey,
+      },
+    })
+    .run();
+
+  const pos = findInlineAtomPos(editor, "footnote", linkId);
+  return {
+    id: linkId,
+    kind: "footnote",
+    anchor: { type: "inline-atom", nodeName: "footnote", pos },
+    target: { type: "card", ref: { kind: "footnote", id: linkId } },
+    createdAt: new Date().toISOString(),
+  };
 }
 
+function createCitationLink(
+  editor: Editor,
+  args: Extract<CreateLinkArgs, { kind: "citation" }>,
+): Link {
+  const linkId = args.targetCardId ?? generateEntityId();
+  const cardKey = linkCardKey("citation", linkId);
+  editor
+    .chain()
+    .focus()
+    .insertContent({
+      type: "citation",
+      attrs: {
+        command: args.command,
+        displayText: args.displayText ?? "",
+        citationId: linkId,
+        linkId,
+        linkKind: "citation",
+        linkCard: cardKey,
+      },
+    })
+    .run();
+
+  const pos = findInlineAtomPos(editor, "citation", linkId);
+  return {
+    id: linkId,
+    kind: "citation",
+    anchor: { type: "inline-atom", nodeName: "citation", pos },
+    target: { type: "card", ref: { kind: "citation", id: linkId } },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Locate `link` in the live editor. Returns null if it's missing. */
 export function resolveLink(
-  _editor: Editor,
-  _link: Link,
+  editor: Editor,
+  link: Link,
 ): LinkResolution | null {
-  notImplemented("resolveLink");
+  if (link.anchor.type === "inline-atom") {
+    const pos = findInlineAtomPos(editor, link.anchor.nodeName, link.id);
+    if (pos == null) return null;
+    const node = editor.state.doc.nodeAt(pos);
+    const domEl = editor.view.dom.querySelector(
+      `[${DATA_LINK_ID}="${link.id}"]`,
+    ) as HTMLElement | null;
+    return {
+      kind: "inline-atom",
+      pos,
+      nodeSize: node?.nodeSize ?? 1,
+      domEl,
+    };
+  }
+  // Anchor-kind resolution lands in Phase 2.
+  return null;
 }
 
+/** Scroll the appropriate end of the link into view.
+ *
+ *  - `"to-marker"`: scroll the editor to the in-text marker.
+ *  - `"to-card"`:   scroll the panel to the card entry.
+ *  - `"both"`:      do both. */
 export function jumpToLink(
-  _editor: Editor,
-  _link: Link,
-  _dir: "to-marker" | "to-card" | "both",
+  editor: Editor,
+  link: Link,
+  dir: "to-marker" | "to-card" | "both",
 ): void {
-  notImplemented("jumpToLink");
+  if (dir === "to-marker" || dir === "both") {
+    const resolved = resolveLink(editor, link);
+    if (resolved?.domEl) {
+      resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+    }
+  }
+  if (dir === "to-card" || dir === "both") {
+    const cardKey = linkCardKey(link.target.ref.kind, link.target.ref.id);
+    const entryEl = document.querySelector(
+      `[data-link-card="${cardKey}"]`,
+    ) as HTMLElement | null;
+    entryEl?.scrollIntoView({ behavior: "instant", block: "center" });
+  }
 }
 
-export function deleteLink(_editor: Editor, _link: Link): void {
-  notImplemented("deleteLink");
+/** Delete `link` from the editor. For inline-atom kinds this removes the
+ *  node; for anchor kinds it strips the `linkedAnchor` mark. The target
+ *  card is NOT deleted — a caller that wants cascading deletion handles
+ *  that separately. */
+export function deleteLink(editor: Editor, link: Link): void {
+  if (link.anchor.type === "inline-atom") {
+    const pos = findInlineAtomPos(editor, link.anchor.nodeName, link.id);
+    if (pos == null) return;
+    const tr = editor.state.tr.delete(pos, pos + 1);
+    editor.view.dispatch(tr);
+  }
+  // Anchor-kind deletion lands in Phase 2.
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function findInlineAtomPos(
+  editor: Editor,
+  nodeName: "footnote" | "citation",
+  linkId: string,
+): number | null {
+  const idAttr = nodeName === "footnote" ? "footnoteId" : "citationId";
+  let found: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found != null) return false;
+    if (node.type.name !== nodeName) return true;
+    const attrs = node.attrs as Record<string, unknown>;
+    if (attrs.linkId === linkId || attrs[idAttr] === linkId) {
+      found = pos;
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
 

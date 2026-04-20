@@ -42,6 +42,14 @@ export interface LinkRegistryEntry {
   /** Coupled-highlight behavior. `marker-and-textrange` means hovering
    *  either the margin icon or the Mode B text range lights up both. */
   highlight: "marker-only" | "marker-and-textrange";
+  /** SVG stroke style for the optional connector. Null when
+   *  `connector === "none"`. */
+  connectorStroke: {
+    color: string;
+    width: number;
+    dasharray: string;
+    opacity: number;
+  } | null;
 }
 
 export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
@@ -56,6 +64,12 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
     bidirectional: true,
     cardKind: "footnote",
     highlight: "marker-only",
+    connectorStroke: {
+      color: "#b45757",
+      width: 1,
+      dasharray: "3 3",
+      opacity: 0.5,
+    },
   },
   citation: {
     kind: "citation",
@@ -68,6 +82,12 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
     bidirectional: true,
     cardKind: "citation",
     highlight: "marker-only",
+    connectorStroke: {
+      color: "#b8912e",
+      width: 1.5,
+      dasharray: "4 3",
+      opacity: 0.6,
+    },
   },
   anchor: {
     kind: "anchor",
@@ -80,6 +100,7 @@ export const LINK_REGISTRY: Record<LinkKind, LinkRegistryEntry> = {
     bidirectional: true,
     cardKind: "__from_target__",
     highlight: "marker-and-textrange",
+    connectorStroke: null,
   },
 };
 

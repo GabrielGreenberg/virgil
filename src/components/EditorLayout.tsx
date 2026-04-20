@@ -16,8 +16,7 @@ import TodoPanel, { TodoRow } from "@/panels/Todo";
 import ArchivePanel, { ArchiveCard } from "@/panels/Archive";
 import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "@/panels/Footnotes";
-import FootnoteConnectors from "./FootnoteConnectors";
-import CitationConnectors from "./CitationConnectors";
+import LinkConnector from "@/links/_shared/LinkConnector";
 import InTextConnectors from "./InTextConnectors";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
@@ -1741,7 +1740,9 @@ export default function EditorLayout() {
     const matching = allEditorCitations.filter((c) => c.keys.includes(selectedBibKey));
     const els: HTMLElement[] = [];
     for (const c of matching) {
-      const el = document.querySelector(`[data-citation-id="${c.citationId}"]`) as HTMLElement | null;
+      const el = document.querySelector(
+        `[data-link-kind="citation"][data-link-id="${c.citationId}"]`,
+      ) as HTMLElement | null;
       if (el) {
         el.classList.add("citation-highlight-bib");
         els.push(el);
@@ -1762,7 +1763,7 @@ export default function EditorLayout() {
     if (!selectedCitationId) return;
     const els = Array.from(
       document.querySelectorAll(
-        `[data-citation-id="${selectedCitationId}"]`,
+        `[data-link-kind="citation"][data-link-id="${selectedCitationId}"]`,
       ),
     ) as HTMLElement[];
     for (const el of els) el.classList.add("citation-highlight-bib");
@@ -1778,7 +1779,7 @@ export default function EditorLayout() {
     if (!selectedFootnoteId) return;
     const els = Array.from(
       document.querySelectorAll(
-        `[data-footnote-id="${selectedFootnoteId}"]`,
+        `[data-link-kind="footnote"][data-link-id="${selectedFootnoteId}"]`,
       ),
     ) as HTMLElement[];
     for (const el of els) el.classList.add("footnote-highlight-marker");
@@ -3004,7 +3005,7 @@ export default function EditorLayout() {
         }
         requestAnimationFrame(() => {
           const entry = document.querySelector(
-            `[data-footnote-entry="${detail.footnoteId}"]`,
+            `[data-link-card="footnote:${detail.footnoteId}"]`,
           ) as HTMLElement | null;
           if (entry) scrollEntryIntoView(entry);
         });
@@ -3112,7 +3113,7 @@ export default function EditorLayout() {
         // the clicked citation when we have its Y position.
         requestAnimationFrame(() => {
           const entry = document.querySelector(
-            `[data-citation-entry="${detail.citationId}"]`,
+            `[data-link-card="citation:${detail.citationId}"]`,
           ) as HTMLElement | null;
           if (!entry) return;
           if (typeof targetY === "number") {
@@ -5232,18 +5233,22 @@ export default function EditorLayout() {
           />
         )}
         {footnotePanelSide && selectedFootnoteId && (
-          <FootnoteConnectors
+          <LinkConnector
             editor={editorInstance}
-            selectedId={selectedFootnoteId}
+            linkId={selectedFootnoteId}
+            linkKind="footnote"
+            targetCard={{ kind: "footnote", id: selectedFootnoteId }}
             panelSide={footnotePanelSide}
             mainRef={mainAreaRef}
             docVersion={latestDoc}
           />
         )}
         {citationPanelSide && selectedCitationId && (
-          <CitationConnectors
+          <LinkConnector
             editor={editorInstance}
-            selectedId={selectedCitationId}
+            linkId={selectedCitationId}
+            linkKind="citation"
+            targetCard={{ kind: "citation", id: selectedCitationId }}
             panelSide={citationPanelSide}
             mainRef={mainAreaRef}
           />
@@ -5259,9 +5264,11 @@ export default function EditorLayout() {
           />
         )}
         {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (
-          <CitationConnectors
+          <LinkConnector
             editor={editorInstance}
-            selectedId={bibActiveCitationId}
+            linkId={bibActiveCitationId}
+            linkKind="citation"
+            targetCard={{ kind: "citation", id: bibActiveCitationId }}
             panelSide={bibliographyPanelSide}
             mainRef={mainAreaRef}
             panelEntrySelector={`[data-bib-entry="${selectedBibKey}"]`}

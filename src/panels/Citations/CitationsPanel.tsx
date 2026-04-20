@@ -178,7 +178,7 @@ function CitationsPanel({
       jumpToCitation(cit.id);
       requestAnimationFrame(() => {
         const card = panelScrollRef.current?.querySelector(
-          `[data-citation-entry="${cit.id}"]`,
+          `[data-link-card="citation:${cit.id}"]`,
         );
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
