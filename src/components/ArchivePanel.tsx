@@ -183,14 +183,17 @@ function ArchivePanel({
       data-capture-drop-active={isDragOver ? "true" : undefined}
       className={`w-full bg-transparent flex flex-col overflow-hidden h-full capture-drop-target${isDragOver ? " capture-drop-target--active" : ""}`}
     >
-      <PanelHeader title="Archived Text">
-        <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="archive" label="Archive color" />
-            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-          </div>
-        </ItemMenu>
-      </PanelHeader>
+      <PanelHeader
+        title="Archived Text"
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="archive" label="Archive color" />
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            </div>
+          </ItemMenu>
+        }
+      />
 
       <div
         ref={viewMode === "in-text" ? panelScrollRef : undefined}

@@ -5487,17 +5487,16 @@ export default function EditorLayout() {
         <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
-            {/* Double chevron toggle: points left (close) when open, right (open) when closed */}
+            {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
             <button
               onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
               className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
               title={activeLeft ? "Collapse panel" : "Expand panel"}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                {activeLeft
-                  ? <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
-                  : <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
-                }
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="1.5" />
+                {activeLeft && <rect x="4" y="4" width="6" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
+                <line x1="10" y1="4" x2="10" y2="20" />
               </svg>
             </button>
             {/* OmniView — Shows all left-side elements (footnotes, citations, quotes). */}
@@ -5671,17 +5670,16 @@ export default function EditorLayout() {
         <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
-            {/* Double chevron toggle: points right (close) when open, left (open) when closed */}
+            {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
             <button
               onClick={() => { activeRight ? collapseRight() : expandRight(); }}
               className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
               title={activeRight ? "Collapse panel" : "Expand panel"}
             >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                {activeRight
-                  ? <><path d="M6 3L9.5 7L6 11" /><path d="M2 3L5.5 7L2 11" /></>
-                  : <><path d="M8 3L4.5 7L8 11" /><path d="M12 3L8.5 7L12 11" /></>
-                }
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="4" width="16" height="16" rx="1.5" />
+                {activeRight && <rect x="14" y="4" width="6" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
+                <line x1="14" y1="4" x2="14" y2="20" />
               </svg>
             </button>
             {/* OmniView — Shows all right-side elements (notes, revisions, cuts, archive). */}

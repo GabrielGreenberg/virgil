@@ -10,7 +10,7 @@ import {
 } from "@/lib/bib-parser";
 import ViewToggle, { ViewMode as ToggleViewMode } from "./ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
+import { PanelCard, PANEL, PanelHeader, PrevNextCounter, TargetIcon, useCycle, AiRequestCard, AiRequestsSectionHeader, clearStaleHover, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
@@ -328,20 +328,21 @@ export function CitationCard({
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
-    <div
+    <PanelCard
       data-citation-entry={cit.id}
       {...(extraDataAttrs || {})}
+      theme={theme}
+      selected={isSelected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isEditing}
       onDragStart={handleDragStart}
       onDragOver={handleCardDragOver}
       onDragLeave={handleCardDragLeave}
       onDrop={handleCardDrop}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`)}${wrapperClassName ? ` ${wrapperClassName}` : ""}${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={{
-        ...cardOverrideStyle(theme, isSelected),
-        ...wrapperStyle,
-        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
-      }}
+      className={wrapperClassName}
+      style={wrapperStyle}
       onClick={onSelect}
       title={!isAnchored ? "Unanchored citation — drag into the editor to anchor it" : undefined}
     >
@@ -362,14 +363,11 @@ export function CitationCard({
         </div>
       ) : (
         <>
-          {/* Header: bib-key chips + target icon trailing */}
+          {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
           <div
-            className={`flex items-center gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
+            className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
             style={headerOverrideStyle(theme, isSelected)}
           >
-            {onToggleFromCtx && (
-              <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-            )}
             <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
               {cit.keys.map((key) => {
                 const entry = bibEntryMap.get(key);
@@ -474,7 +472,7 @@ export function CitationCard({
           </div>
         </>
       )}
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
@@ -625,17 +623,12 @@ function CitationsPanel({
         title="Citations"
         onAdd={() => { onStartCreate(); }}
         onAiRequest={onAddAiRequest}
-      >
-        <div className="flex items-center gap-1.5">
-          <PrevNextCounter
-            current={cycleIdx}
-            total={orderedCitations.length}
-            label=""
-          />
-          <div className="relative -mr-1" ref={menuRef}>
+        leading={
+          <div className="relative -ml-3" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+              className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
+              title="View options"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
                 <circle cx="8" cy="3" r="1.5" />
@@ -644,7 +637,7 @@ function CitationsPanel({
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
+              <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
                 <div className="px-3 py-1.5 flex items-center justify-end gap-2">
                   <PanelThemePicker panelKey="citation" label="Citation color" />
                   <ViewToggle mode={toggleViewMode} onChange={handleToggleViewMode} />
@@ -670,7 +663,13 @@ function CitationsPanel({
               </div>
             )}
           </div>
-        </div>
+        }
+      >
+        <PrevNextCounter
+          current={cycleIdx}
+          total={orderedCitations.length}
+          label=""
+        />
       </PanelHeader>
 
       {/* New citation builder */}

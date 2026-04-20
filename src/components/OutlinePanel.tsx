@@ -1474,8 +1474,59 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <div className="flex items-center gap-2">
-          <PanelPopout />
-          <h3 className="text-sm font-semibold text-ink-body">Outline</h3>
+          <div className="relative -ml-3" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
+              title="View options"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                <circle cx="8" cy="3" r="1.5" />
+                <circle cx="8" cy="8" r="1.5" />
+                <circle cx="8" cy="13" r="1.5" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  onClick={() => { setShowNumbers(!showNumbers); }}
+                >
+                  <span>Show section numbers</span>
+                  <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  onClick={() => { setShowLabels(!showLabels); }}
+                >
+                  <span>Show labels</span>
+                  <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  onClick={() => { setShowTitles(!showTitles); }}
+                >
+                  <span>Show par. titles</span>
+                  <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  onClick={() => { setShowWordCount(!showWordCount); }}
+                >
+                  <span>Show word count</span>
+                  <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  onClick={() => { setShowPosition(!showPosition); }}
+                >
+                  <span>Show current position</span>
+                  <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
+                </button>
+              </div>
+            )}
+          </div>
+          <h3 className="text-sm font-semibold text-ink-body -ml-1">Outline</h3>
           {onReorderBlocks && (
             <button
               onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
@@ -1562,59 +1613,10 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               <path d="M2 9 L7 5.5 L12 9" />
             </svg>
           </button>
-          <div className="relative -mr-1" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
-              title="View options"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="3" r="1.5" />
-                <circle cx="8" cy="8" r="1.5" />
-                <circle cx="8" cy="13" r="1.5" />
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowNumbers(!showNumbers); }}
-                >
-                  <span>Show section numbers</span>
-                  <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowLabels(!showLabels); }}
-                >
-                  <span>Show labels</span>
-                  <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowTitles(!showTitles); }}
-                >
-                  <span>Show par. titles</span>
-                  <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowWordCount(!showWordCount); }}
-                >
-                  <span>Show word count</span>
-                  <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowPosition(!showPosition); }}
-                >
-                  <span>Show current position</span>
-                  <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
-                </button>
-              </div>
-            )}
-          </div>
           <PanelClose />
+          <div className="-mr-2">
+            <PanelPopout />
+          </div>
         </div>
       </div>
 

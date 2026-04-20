@@ -10,7 +10,7 @@ import type {
   AiRequest,
 } from "@/lib/types";
 import {
-  panelCard,
+  PanelCard,
   PANEL,
   Chevron,
   ItemMenu,
@@ -20,9 +20,7 @@ import {
   useCycle,
   AiRequestCard,
   AiRequestsSectionHeader,
-  cardOverrideStyle,
   headerOverrideStyle,
-  CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -714,23 +712,24 @@ export function QuotationGroupCard({
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
-    <div
+    <PanelCard
       ref={cardRef}
-      className={`group ${panelCard(selected)} focus:outline-none${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={{
-        ...cardOverrideStyle(theme, selected),
-        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
-      }}
+      theme={theme}
+      selected={selected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      onTrashClick={tryDelete}
+      className="focus:outline-none"
       onClick={(e) => { e.stopPropagation(); onSelect(); }}
       data-quotation-group-id={group.id}
       tabIndex={selected ? 0 : -1}
       onFocusCapture={() => { if (!selected) onSelect(); }}
       onKeyDown={handleKeyDown}
     >
-      {/* Header */}
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
         ref={headerRef}
-        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
+        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
         style={headerOverrideStyle(theme, selected)}
       >
         {/* Grab handle — card-level anchor drag (marginalia). Drag ghost
@@ -757,9 +756,6 @@ export function QuotationGroupCard({
             <circle cx="7" cy="12" r="1.2" />
           </svg>
         </div>
-        {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-        )}
         <input
           type="text"
           value={title}
@@ -772,20 +768,6 @@ export function QuotationGroupCard({
           className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
           style={{ fontSize: "var(--par-title-size, 0.78rem)", color: theme.override ? theme.titleColor : "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
         />
-        {/* Inline delete */}
-        <button
-          onClick={(e) => { e.stopPropagation(); tryDelete(); }}
-          onMouseDown={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
-          title="Delete"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
         <ConfirmDialog
           open={confirmOpen}
           message="Delete this quotation group?"
@@ -843,7 +825,7 @@ export function QuotationGroupCard({
           />
         </div>
       </div>
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
@@ -989,18 +971,20 @@ export default function QuotationsPanel({
         title="Quotations"
         onAdd={handleAdd}
         onAiRequest={onAddAiRequest}
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="quote" label="Quotation color" />
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            </div>
+          </ItemMenu>
+        }
       >
         <PrevNextCounter
           current={cycleIdx}
           total={anchoredGroups.length}
           label=""
         />
-        <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="quote" label="Quotation color" />
-            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-          </div>
-        </ItemMenu>
       </PanelHeader>
 
       <div

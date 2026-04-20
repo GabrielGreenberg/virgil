@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { panelCard, PANEL, Chevron, TargetIcon, cardOverrideStyle, headerOverrideStyle, separatorOverrideStyle, CardPopoutButton } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
@@ -417,25 +417,22 @@ export default function BibEntryCard({
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
-    <div
+    <PanelCard
       data-bib-entry={entry.key}
+      theme={theme}
+      selected={isSelected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`}
       draggable
       onDragStart={handleDragStart}
-      className={`group ${panelCard(isSelected, `cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`)}${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={{
-        ...cardOverrideStyle(theme, isSelected),
-        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
-      }}
       onClick={onClick}
     >
-      {/* Header: author · year · title + target icon + occurrence counter */}
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
-        className={`flex items-start gap-2 px-3 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
+        className={`flex items-start gap-2 pl-3 pr-7 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, isSelected)}
       >
-        {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-        )}
         <div
           className="flex-1 min-w-0 leading-snug"
           style={{
@@ -488,7 +485,7 @@ export default function BibEntryCard({
       <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
         {bodyContent}
       </div>
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;

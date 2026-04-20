@@ -111,33 +111,66 @@ All panels import from this file. It exports:
 
 ---
 
+## PanelCard (universal card wrapper)
+
+`PanelCard` (in `panel-primitives.tsx`) is the single source of truth for
+card chrome. **Every card in the app** — `EditableCard` (footnotes, notes,
+archive, cutter), `BibEntryCard`, `CitationCard`, `TodoRow`,
+`RevisionCard`, `QuotationGroupCard`, `AiRequestCard` — wraps its
+header/separator/body in a `<PanelCard>`. System-level look-and-feel
+changes (popout position, trash placement, popped-out styling) land here,
+not in individual panels.
+
+`PanelCard` renders:
+- the outer card `<div>` with `group relative`, themed border, selection
+  state, and popped-out sizing
+- an absolute top-right **popout button** (`CardPopoutButton`) — always
+  visible, chevron when docked / X when floating
+- an absolute bottom-right **trash button** (`CardTrashButton`) — small,
+  red, hover-reveal — opt-in via `onTrashClick`
+
+Because both buttons are absolute-positioned overlays, each card's header
+reserves right-padding (`pr-7`) for the popout so trailing header content
+doesn't sit under the button.
+
 ## EditableCard
 
-`EditableCard` is the canonical card component for all panels with editable
-rich-text content (footnotes, notes, archive). All formatting is centralized
-here — panels pass content-specific data, not styling.
+`EditableCard` is the canonical card component for panels with editable
+rich-text content (footnotes, notes, archive, cutter). It wraps
+`PanelCard` and adds the rich-text body + header chrome (grab handle,
+badge, title, inline toolbar, three-dot menu). Panels pass content-specific
+data, not styling.
 
 ### Layout
 ```
-[grab handle] [popout] [badge] [title input] ... [x delete] [target icon]
+[grab handle] [badge] [title input] ... [target icon] [menu]    [popout]
 ──────────────── separator ────────────────────────────────────
 [RichTextField body]                                    
-[optional footer]
+[optional footer]                                        [🗑 trash]
 ```
 
-The **popout chevron** sits immediately right of the grab handle (or at the
-absolute left edge when no grab handle is present). It is a subtle
-hover-reveal control (`opacity-0 group-hover:opacity-60`) when the card is
-docked, and stays visible with its chevron rotated 180° when the card is
-floating. Clicking it toggles the card between its panel-list slot and a
-`FloatingPanel` portal — see *Card popout* below.
+(The `[popout]` and `[🗑 trash]` markers sit in the absolute overlay layer
+provided by `PanelCard`, not inside the flex header/footer rows.)
+
+The **popout chevron** sits at the top-right corner of the card. It is
+always visible (not hover-reveal) so the pop-out affordance is
+discoverable at rest. The icon is a chevron while the card is docked and
+an X while the card is floating (click the X to re-dock). Clicking
+toggles the card between its panel-list slot and a `FloatingPanel` portal
+— see *Card popout* below.
+
+The **trash-icon delete** (opt-in via `inlineDelete` on EditableCard, or
+`onTrashClick` on PanelCard directly) sits at the bottom-right corner of
+the card. It is small, red (`text-danger`), and hover-reveal
+(`opacity-0 group-hover:opacity-70`) so it does not clutter the resting
+card surface.
 
 ### Opt-in features (props)
 | Prop | Effect |
 |------|--------|
 | `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
 | `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
-| `inlineDelete` | [x] button in header instead of three-dot menu |
+| `inlineDelete` | Small red trash icon in bottom-right corner instead of three-dot menu |
 | `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
 | `onTogglePopout` / `isPoppedOut` | Opt in to the per-card popout button; usually left unset — wrapper cards supply these from context |
 
@@ -262,7 +295,7 @@ Implementation:
   three-dot menu, next to the ViewToggle.
 
 ### Delete behavior
-- [x] button and Delete/Backspace key both go through `tryDelete()`
+- Trash-icon button and Delete/Backspace key both go through `tryDelete()`
 - If the card body has text content → shows `ConfirmDialog`
 - If empty → deletes immediately
 - The `ConfirmDialog` positions near the card (via `anchorRef`), not dead-center screen
@@ -293,6 +326,14 @@ height (`--header-h: 34px`) and background (`--header-bg: #e8e5de`).
 ```
 
 Children (counters, toggles, extra buttons) are right-aligned via flex spacer.
+
+### Panel pop-out button
+The panel-level pop-out button sits at the **top far right** of every
+panel header (last element, after `PanelClose`). It uses the same
+`CardPopoutButton` as cards: 18×18 circle, translucent-black overlay,
+chevron when docked, X when popped. Custom panel headers that don't use
+`PanelHeader` should render `<PanelPopout />` as the rightmost element
+(wrapped in `<div className="-mr-2">` to sit flush with the right edge).
 
 ---
 

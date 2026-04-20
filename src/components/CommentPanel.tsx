@@ -11,13 +11,13 @@ import type {
 import type { RevisionKind } from "@/hooks/useRevisions";
 import {
   panelCard,
+  PanelCard,
   PANEL,
   PanelHeader,
   ItemMenu,
   MenuDelete,
   TargetIcon,
   CARD_THEMES,
-  CardPopoutButton,
 } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -410,20 +410,20 @@ export function RevisionCard({
   if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
   const card = (
-    <div
+    <PanelCard
       ref={(el) => registerRef?.(el)}
+      theme={theme}
+      selected={selected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      extraCardClass={`cursor-pointer ${resolved ? "opacity-60" : ""}`}
       onClick={onSelect}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
-      className={`group cursor-pointer ${panelCard(selected, resolved ? "opacity-60" : "")}${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : undefined}
       {...dataAttrs}
     >
-      {/* Header: author + timestamp, with target icon + menu trailing */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
-        {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-        )}
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
+      <div className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
         {firstAuthor && <UserAvatar user={firstAuthor} size={16} />}
         {firstTurn && (
           <span className="text-[10px] text-[var(--muted-light)] tabular-nums shrink-0">
@@ -479,7 +479,7 @@ export function RevisionCard({
           )}
         </div>
       </div>
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
@@ -762,7 +762,20 @@ export default function RevisionsPanel({
 
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Revisions" count={activeGeneral.length + activeText.length}>
+      <PanelHeader
+        title="Revisions"
+        count={activeGeneral.length + activeText.length}
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="revision" label="Revision color" />
+              {onViewModeChange && (
+                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+              )}
+            </div>
+          </ItemMenu>
+        }
+      >
         <div className="flex items-center gap-2">
           {(resolvedGeneral.length + resolvedText.length) > 0 && (
             <button
@@ -779,14 +792,6 @@ export default function RevisionsPanel({
             onSelect={onSetActiveUser}
             onAdd={onAddUser}
           />
-          <ItemMenu>
-            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-              <PanelThemePicker panelKey="revision" label="Revision color" />
-              {onViewModeChange && (
-                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-              )}
-            </div>
-          </ItemMenu>
         </div>
       </PanelHeader>
 

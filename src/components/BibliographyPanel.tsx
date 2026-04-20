@@ -404,53 +404,11 @@ function BibliographyPanel({
         title="Bibliography"
         onAdd={() => setAddMenuOpen((o) => !o)}
         onAiRequest={handleOpenRequestForm}
-      >
-        <PrevNextCounter
-          current={selectedIdx >= 0 ? selectedIdx : null}
-          total={sortedEntries.length}
-          label=""
-        />
-        <div className="flex items-center gap-1">
-          {/* Add menu dropdown (button is in PanelHeader via onAdd) */}
-          <div className="relative" ref={addMenuRef}>
-            {addMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
-                <button
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-                    generalBibPath
-                      ? "text-ink-body hover:bg-surface-muted"
-                      : "text-ink-faint cursor-not-allowed"
-                  }`}
-                  onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
-                  title={generalBibPath ? undefined : "Set general bibliography first"}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  From general bibliography
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
-                  onClick={handleOpenRequestForm}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="12" y1="18" x2="12" y2="12" />
-                    <line x1="9" y1="15" x2="15" y2="15" />
-                  </svg>
-                  Request entry
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Three-dot menu */}
-          <div className="relative -mr-1" ref={menuRef}>
+        leading={
+          <div className="relative -ml-3" ref={menuRef}>
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+              className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
               title="View options"
             >
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -460,7 +418,7 @@ function BibliographyPanel({
               </svg>
             </button>
             {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
+              <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
                 {/* Theme color + view mode */}
                 <div className="px-3 py-1.5 flex items-center justify-end gap-2">
                   <PanelThemePicker panelKey="bib" label="Bibliography color" />
@@ -534,6 +492,49 @@ function BibliographyPanel({
               </div>
             )}
           </div>
+        }
+      >
+        <PrevNextCounter
+          current={selectedIdx >= 0 ? selectedIdx : null}
+          total={sortedEntries.length}
+          label=""
+        />
+        <div className="flex items-center gap-1">
+          {/* Add menu dropdown (button is in PanelHeader via onAdd) */}
+          <div className="relative" ref={addMenuRef}>
+            {addMenuOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
+                <button
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
+                    generalBibPath
+                      ? "text-ink-body hover:bg-surface-muted"
+                      : "text-ink-faint cursor-not-allowed"
+                  }`}
+                  onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
+                  title={generalBibPath ? undefined : "Set general bibliography first"}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  From general bibliography
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
+                  onClick={handleOpenRequestForm}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="12" y1="18" x2="12" y2="12" />
+                    <line x1="9" y1="15" x2="15" y2="15" />
+                  </svg>
+                  Request entry
+                </button>
+              </div>
+            )}
+          </div>
+
         </div>
       </PanelHeader>
 

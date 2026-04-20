@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { MIME_TODO } from "@/lib/marginalia";
-import { CARD_THEMES, ItemMenu, PANEL, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader, CardPopoutButton } from "./panel-primitives";
+import { CARD_THEMES, ItemMenu, PANEL, PanelCard, PanelHeader, BadgeLabel, BadgeOrphaned, CardTargetIcon, AiRequestCard, AiRequestsSectionHeader } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "./PanelThemePicker";
 import ViewToggle from "./ViewToggle";
@@ -103,11 +103,16 @@ export function TodoRow({
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
-    <div
+    <PanelCard
       ref={cardRef}
       {...(extraDataAttrs || {})}
-      className={`group ${theme.cardClass(selected, item.done ? "opacity-60" : "")} focus:outline-none${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : undefined}
+      theme={theme}
+      selected={selected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      onTrashClick={() => onDelete(item.id)}
+      extraCardClass={item.done ? "opacity-60" : ""}
+      className="focus:outline-none"
       tabIndex={selected ? 0 : -1}
       onClick={(e) => { e.stopPropagation(); onSelect(selected ? null : item.id); }}
       onKeyDown={(e) => {
@@ -118,8 +123,8 @@ export function TodoRow({
         }
       }}
     >
-      {/* Header */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
+      <div className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}>
         {/* Grab handle — sole drag source */}
         <div
           draggable
@@ -137,10 +142,6 @@ export function TodoRow({
             <circle cx="7" cy="12" r="1.2" />
           </svg>
         </div>
-
-        {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-        )}
 
         {/* Badge */}
         {isAnchored
@@ -193,21 +194,6 @@ export function TodoRow({
           )}
         </div>
 
-        {/* Inline delete [x] */}
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-          onMouseDown={(e) => e.stopPropagation()}
-          draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
-          title="Delete"
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18" />
-            <line x1="6" y1="6" x2="18" y2="18" />
-          </svg>
-        </button>
-
         {/* Jump target */}
         <CardTargetIcon
           selected={selected}
@@ -233,7 +219,7 @@ export function TodoRow({
           rows={isPoppedOut ? undefined : 2}
         />
       </div>
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
@@ -295,16 +281,17 @@ export default function TodoPanel({
         count={pending.length}
         onAdd={() => inputRef.current?.focus()}
         onAiRequest={onAddAiRequest}
-      >
-        <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="todo" label="Todo color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
-          </div>
-        </ItemMenu>
-      </PanelHeader>
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="todo" label="Todo color" />
+              {onViewModeChange && (
+                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+              )}
+            </div>
+          </ItemMenu>
+        }
+      />
 
       {/* Add input */}
       <div className="px-4 py-2.5 border-b border-[var(--border-light)]">

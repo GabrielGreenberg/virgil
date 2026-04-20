@@ -322,18 +322,20 @@ function FootnotePanel({
         title="Footnotes"
         onAdd={onAdd}
         onAiRequest={onAddAiRequest}
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="footnote" label="Footnote color" />
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            </div>
+          </ItemMenu>
+        }
       >
         <PrevNextCounter
           current={cycleIdx}
           total={footnotes.length}
           label=""
         />
-        <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="footnote" label="Footnote color" />
-            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-          </div>
-        </ItemMenu>
       </PanelHeader>
 
       <div

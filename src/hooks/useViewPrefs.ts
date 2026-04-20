@@ -33,6 +33,10 @@ export interface ViewPrefs {
   editorSplitRatio: number;
   /** Panels currently displayed as floating windows. */
   poppedOutPanels: PanelId[];
+  /** Which split half each popped-out panel came from, so un-popping
+   *  restores it to the same slot instead of always the top. Entries
+   *  are removed when a panel is un-popped. */
+  poppedOutOrigins: Partial<Record<PanelId, Half>>;
   /** Saved position/size of each floating panel, keyed by panel id. */
   floatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
   /** Cards currently displayed as floating windows — keys shaped `${kind}:${id}`. */
@@ -70,6 +74,7 @@ const DEFAULT_PREFS: ViewPrefs = {
   editorSplit: false,
   editorSplitRatio: 0.5,
   poppedOutPanels: [],
+  poppedOutOrigins: {},
   floatPositions: {},
   poppedOutCards: [],
   cardFloatPositions: {},
@@ -293,40 +298,63 @@ export function useViewPrefs() {
    * togglePopout, which re-docks if the side column is open).
    */
   const closePopout = useCallback((id: PanelId) => {
-    update((p) => ({
-      ...p,
-      poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-    }));
+    update((p) => {
+      const { [id]: _dropped, ...remainingOrigins } = p.poppedOutOrigins;
+      return {
+        ...p,
+        poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+        poppedOutOrigins: remainingOrigins,
+      };
+    });
   }, [update]);
 
   const togglePopout = useCallback((id: PanelId) => {
     update((p) => {
       const isPopped = p.poppedOutPanels.includes(id);
       if (isPopped) {
-        const next = { ...p, poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id) };
+        const { [id]: origin, ...remainingOrigins } = p.poppedOutOrigins;
+        const next = {
+          ...p,
+          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+          poppedOutOrigins: remainingOrigins,
+        };
         // If the panel's side column is currently open, re-dock the panel
-        // there so "collapse" returns it to its place. If the side is
-        // collapsed, just close the floating panel.
+        // to the same half (top/bottom) it was popped from. Fall back to
+        // top when the column is no longer split. If the side is
+        // collapsed entirely, just close the floating panel.
         const placement = p.placements.find((pl) => pl.id === id);
         if (placement?.side === "left" && p.activeLeft != null) {
-          next.activeLeft = id;
+          if (origin === "bottom" && p.activeLeftBottom != null) {
+            next.activeLeftBottom = id;
+          } else {
+            next.activeLeft = id;
+          }
         } else if (placement?.side === "right" && p.activeRight != null) {
-          next.activeRight = id;
+          if (origin === "bottom" && p.activeRightBottom != null) {
+            next.activeRightBottom = id;
+          } else {
+            next.activeRight = id;
+          }
         }
         return next;
       }
-      // Popping out: also clear its sidebar slot so it "closes as a panel".
+      // Popping out: capture origin half, then clear the panel's slot so
+      // it "closes as a panel" in the sidebar.
       let activeLeft = p.activeLeft;
       let activeRight = p.activeRight;
       let activeLeftBottom = p.activeLeftBottom;
       let activeRightBottom = p.activeRightBottom;
-      if (activeLeft === id) activeLeft = "blank";
-      if (activeRight === id) activeRight = "blank";
-      if (activeLeftBottom === id) activeLeftBottom = "blank";
-      if (activeRightBottom === id) activeRightBottom = "blank";
+      let origin: Half | undefined;
+      if (activeLeft === id) { activeLeft = "blank"; origin = "top"; }
+      if (activeRight === id) { activeRight = "blank"; origin = "top"; }
+      if (activeLeftBottom === id) { activeLeftBottom = "blank"; origin = "bottom"; }
+      if (activeRightBottom === id) { activeRightBottom = "blank"; origin = "bottom"; }
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
+        poppedOutOrigins: origin
+          ? { ...p.poppedOutOrigins, [id]: origin }
+          : p.poppedOutOrigins,
         activeLeft,
         activeRight,
         activeLeftBottom,

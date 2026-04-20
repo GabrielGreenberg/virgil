@@ -153,16 +153,21 @@ export default function CutterPanel({
 
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Cutter" count={cuts.length} onAdd={() => onAdd()}>
-        <ItemMenu>
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="cut" label="Cutter color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
-          </div>
-        </ItemMenu>
-      </PanelHeader>
+      <PanelHeader
+        title="Cutter"
+        count={cuts.length}
+        onAdd={() => onAdd()}
+        leading={
+          <ItemMenu align="left">
+            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+              <PanelThemePicker panelKey="cut" label="Cutter color" />
+              {onViewModeChange && (
+                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+              )}
+            </div>
+          </ItemMenu>
+        }
+      />
 
       <div
         ref={viewMode === "in-text" ? panelScrollRef : undefined}

@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, useState, useRef, useEffect, useCallback, createContext, useContext } from "react";
+import { type ReactNode, type HTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
@@ -422,7 +422,7 @@ export function EditableCard({
   const showHeaderMenu = !inlineDelete;
 
   return (
-    <div
+    <PanelCard
       ref={cardRef}
       {...dataAttrs}
       // Preference-mode annotation: the card's outer surface and border
@@ -431,24 +431,26 @@ export function EditableCard({
       // header colours are managed by panel-theme.ts / PanelThemePicker —
       // the header <div> below gets its own `data-panel-theme` annotation.
       data-prefs="surfaceColor,borderColor"
+      theme={theme}
+      selected={selected}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onTogglePopout}
+      onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
+      extraCardClass={cursorClass}
       draggable={cardDraggable}
       onDragStart={!grabHandle ? onDragStart : undefined}
       tabIndex={selected ? 0 : -1}
       onKeyDown={handleKeyDown}
       onFocusCapture={() => { if (!selected && onClick) onClick(); }}
-      className={`group ${theme.cardClass(selected, cursorClass)} focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}${isPoppedOut ? " h-full flex flex-col" : ""}`}
-      style={{
-        ...cardOverrideStyle(theme, selected),
-        ...wrapperStyle,
-        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
-      }}
+      className={`focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
+      style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >
-      {/* Header */}
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
+        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
         style={headerOverrideStyle(theme, selected)}
       >
         {/* Optional grab handle — sole drag source when present */}
@@ -477,42 +479,12 @@ export function EditableCard({
             </svg>
           </div>
         )}
-        {onTogglePopout && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
-        )}
         {badge}
         {headerContent}
         {!hideToolbar && (
           <div ref={setToolbarTarget} className="flex items-center" />
         )}
         {!headerContent && !hideToolbar && <div className="flex-1" />}
-        {/* Inline [x] delete — to the left of the target icon */}
-        {inlineDelete && onDelete && (
-          <>
-            <button
-              onClick={(e) => { e.stopPropagation(); tryDelete(); }}
-              onMouseDown={(e) => e.stopPropagation()}
-              draggable={false}
-              onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-              className="opacity-0 group-hover:opacity-60 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-muted hover:text-danger shrink-0"
-              title="Delete"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-            <ConfirmDialog
-              open={confirmOpen}
-              message="This item has text. Delete it?"
-              confirmLabel="Delete"
-              tone="danger"
-              anchorRef={cardRef}
-              onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-              onCancel={() => setConfirmOpen(false)}
-            />
-          </>
-        )}
         {headerTrailing}
         {showHeaderMenu && (
           <div
@@ -520,18 +492,7 @@ export function EditableCard({
             onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
           >
             {menuContent ?? (onDelete ? (
-              <>
-                <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
-                <ConfirmDialog
-                  open={confirmOpen}
-                  message="This item has text. Delete it?"
-                  confirmLabel="Delete"
-                  tone="danger"
-                  anchorRef={cardRef}
-                  onConfirm={() => { setConfirmOpen(false); onDelete(); }}
-                  onCancel={() => setConfirmOpen(false)}
-                />
-              </>
+              <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
             ) : null)}
           </div>
         )}
@@ -585,7 +546,19 @@ export function EditableCard({
 
       {/* Optional footer (e.g. archive action buttons) */}
       {footer}
-    </div>
+
+      {onDelete && (
+        <ConfirmDialog
+          open={confirmOpen}
+          message="This item has text. Delete it?"
+          confirmLabel="Delete"
+          tone="danger"
+          anchorRef={cardRef}
+          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onCancel={() => setConfirmOpen(false)}
+        />
+      )}
+    </PanelCard>
   );
 }
 
@@ -662,11 +635,14 @@ export function PanelChromeProvider({
  * Pop-out button bound to the surrounding PanelChromeProvider.
  * Renders nothing when there is no chrome (e.g. panel not popped-out aware).
  * Use this in custom panel headers that don't go through PanelHeader.
+ * Styled identically to the per-card popout — 18px translucent-black circle,
+ * chevron when docked / X when popped. Place it as the last element on the
+ * top-right of a panel header.
  */
 export function PanelPopout() {
   const chrome = useContext(PanelChromeContext);
   if (!chrome) return null;
-  return <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />;
+  return <CardPopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />;
 }
 
 /**
@@ -684,7 +660,7 @@ export function PanelClose() {
     <button
       type="button"
       onClick={chrome.onClose}
-      className="w-5 h-5 -ml-1.5 -mr-2.5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
+      className="w-5 h-5 -ml-1.5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
       title="Close panel"
       aria-label="Close panel"
     >
@@ -698,15 +674,16 @@ export function PanelClose() {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {chrome.isPoppedOut ? (
+        {pointsLeft ? (
           <>
-            <line x1="6" y1="6" x2="18" y2="18" />
-            <line x1="18" y1="6" x2="6" y2="18" />
+            <polyline points="11 18 5 12 11 6" />
+            <polyline points="19 18 13 12 19 6" />
           </>
-        ) : pointsLeft ? (
-          <polyline points="15 18 9 12 15 6" />
         ) : (
-          <polyline points="9 18 15 12 9 6" />
+          <>
+            <polyline points="5 18 11 12 5 6" />
+            <polyline points="13 18 19 12 13 6" />
+          </>
         )}
       </svg>
     </button>
@@ -714,12 +691,11 @@ export function PanelClose() {
 }
 
 /**
- * Per-card popout toggle. Lives at the left edge of each card header,
- * immediately right of any grab handle. Same circular shape as the panel
- * popout button; the fill is a translucent-black overlay so the button
- * always reads as "a shade darker than the local card header" regardless
- * of which theme (or user color override) the card is using. Hover-reveal
- * when docked; always visible (and rotated) when the card is popped.
+ * Per-card popout toggle. Always rendered as the last element of the card
+ * header (top-right). The fill is a translucent-black overlay so the button
+ * always reads as "a shade darker than the local card header" regardless of
+ * which theme (or user color override) the card is using. Always visible;
+ * docked state shows a chevron, popped state shows an X (click-to-dock).
  */
 export function CardPopoutButton({
   isPoppedOut,
@@ -741,11 +717,7 @@ export function CardPopoutButton({
         e.stopPropagation();
         e.preventDefault();
       }}
-      className={`${
-        isPoppedOut
-          ? "opacity-80 hover:opacity-100"
-          : "opacity-0 group-hover:opacity-70 hover:!opacity-100"
-      } focus:opacity-100 w-[14px] h-[14px] flex items-center justify-center rounded-full border transition-opacity transition-colors shrink-0 text-ink-body`}
+      className="opacity-80 hover:opacity-100 focus:opacity-100 w-[18px] h-[18px] flex items-center justify-center rounded-full border transition-colors shrink-0 text-ink-body"
       style={{
         backgroundColor: "rgba(0, 0, 0, 0.08)",
         borderColor: "rgba(0, 0, 0, 0.18)",
@@ -760,47 +732,156 @@ export function CardPopoutButton({
       aria-label={isPoppedOut ? "Dock card" : "Pop out card"}
     >
       <svg
-        width="8"
-        height="8"
+        width="12"
+        height="12"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         strokeWidth="3"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
       >
-        <polyline points="6 15 12 9 18 15" />
+        {isPoppedOut ? (
+          <>
+            <line x1="6" y1="6" x2="18" y2="18" />
+            <line x1="18" y1="6" x2="6" y2="18" />
+          </>
+        ) : (
+          <polyline points="6 15 12 9 18 15" />
+        )}
       </svg>
     </button>
   );
 }
 
-function PopoutButton({ isPoppedOut, onClick }: { isPoppedOut: boolean; onClick: () => void }) {
+/**
+ * Universal card-delete affordance. Absolute-positioned at the card's
+ * bottom-right corner, hover-revealed, small and red. Requires the outer
+ * card wrapper to be `position: relative`. Use from any card chrome that
+ * wants the standard trash-icon delete, in tandem with `ConfirmDialog` if
+ * the card body may contain content.
+ */
+export function CardTrashButton({
+  onClick,
+  title = "Delete",
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
   return (
     <button
-      type="button"
-      onClick={onClick}
-      className="w-[14px] h-[14px] -ml-2 mr-1.5 flex items-center justify-center rounded-full bg-[#d4d0c7] hover:bg-[#bfbab0] border border-[#b8b2ab] transition-colors shrink-0"
-      title={isPoppedOut ? "Close floating panel" : "Pop out panel"}
-      aria-label={isPoppedOut ? "Close floating panel" : "Pop out panel"}
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-danger shrink-0"
+      title={title}
+      aria-label={title}
     >
-      <svg
-        width="10"
-        height="10"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="#57534e"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className={`transition-transform duration-150 ${isPoppedOut ? "rotate-180" : ""}`}
-      >
-        <polyline points="6 15 12 9 18 15" />
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
       </svg>
     </button>
   );
 }
+
+/**
+ * Universal card wrapper. One source of truth for:
+ *   - outer card div (`group relative`, themed border + selection state)
+ *   - popped-out state (removes rounding/border, fills floating window)
+ *   - top-right popout toggle (absolute overlay — reserve `pr-7` on the header)
+ *   - bottom-right trash delete (absolute overlay)
+ *
+ * Every card chrome in the app should wrap its header/separator/body in a
+ * `PanelCard`. Card-wide look-and-feel changes should land here, not in
+ * individual panels.
+ */
+interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick"> {
+  theme: CardTheme;
+  selected: boolean;
+  isPoppedOut?: boolean;
+  onTogglePopout?: () => void;
+  /** When provided, renders a bottom-right trash button that calls this. */
+  onTrashClick?: () => void;
+  /** Extra classes forwarded into `theme.cardClass(selected, extra)` — typically
+   *  cursor / opacity modifiers like `"cursor-grab active:cursor-grabbing"` or
+   *  `"opacity-60"`. */
+  extraCardClass?: string;
+  onClick?: (e: React.MouseEvent) => void;
+}
+
+export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function PanelCard(
+  {
+    children,
+    theme,
+    selected,
+    isPoppedOut,
+    onTogglePopout,
+    onTrashClick,
+    extraCardClass,
+    className,
+    style,
+    ...rest
+  },
+  ref,
+) {
+  // Measure the header (first child) so the absolute popout overlay centers
+  // on whatever the header's actual height turns out to be — header content
+  // varies per panel (inputs, avatars, chips, …) so a fixed `top` value
+  // misaligns on some cards. The measured height is published as a CSS
+  // variable on the card root; the popout uses `calc()` to self-center.
+  const innerRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+    const header = el.firstElementChild as HTMLElement | null;
+    if (!header) return;
+    const update = () => {
+      el.style.setProperty("--pc-header-h", `${header.getBoundingClientRect().height}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, []);
+
+  const setRefs = useCallback(
+    (el: HTMLDivElement | null) => {
+      innerRef.current = el;
+      if (typeof ref === "function") ref(el);
+      else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    },
+    [ref],
+  );
+
+  return (
+    <div
+      ref={setRefs}
+      className={`group relative ${theme.cardClass(selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
+      style={{
+        ...cardOverrideStyle(theme, selected),
+        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+        ...style,
+      }}
+      {...rest}
+    >
+      {children}
+      {onTogglePopout && (
+        <div
+          className="absolute right-1.5 z-10"
+          style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 9px)" }}
+        >
+          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+        </div>
+      )}
+      {onTrashClick && <CardTrashButton onClick={onTrashClick} />}
+    </div>
+  );
+});
 
 /* ── Panel header ─────────────────────────────────────────────────── */
 
@@ -809,6 +890,7 @@ export function PanelHeader({
   count,
   onAdd,
   onAiRequest,
+  leading,
   children,
 }: {
   title: string;
@@ -820,15 +902,16 @@ export function PanelHeader({
    * on the panel). Uses the same sun-star icon as the editor toolbar.
    */
   onAiRequest?: () => void;
+  /** Content rendered at the far left of the header, before the title.
+   *  Typical use: the panel's three-dots options menu. */
+  leading?: ReactNode;
   children?: ReactNode;
 }) {
   const chrome = useContext(PanelChromeContext);
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
-      {chrome && (
-        <PopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />
-      )}
-      <h3 className="text-sm font-semibold text-ink-body">
+      {leading}
+      <h3 className={`text-sm font-semibold text-ink-body${leading ? " -ml-1" : ""}`}>
         {title}
         {count != null && count > 0 && (
           <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
@@ -850,7 +933,7 @@ export function PanelHeader({
       {onAiRequest && (
         <button
           onClick={onAiRequest}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-sky-600 hover:bg-sky-50 transition-colors"
+          className={`w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-sky-600 hover:bg-sky-50 transition-colors${onAdd ? " -ml-1" : ""}`}
           title="New AI request"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -866,6 +949,11 @@ export function PanelHeader({
       <div className="flex-1" />
       {children}
       <PanelClose />
+      {chrome && (
+        <div className="-mr-2">
+          <CardPopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />
+        </div>
+      )}
     </div>
   );
 }
@@ -958,17 +1046,18 @@ export function AiRequestCard({
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
-    <div
+    <PanelCard
       data-ai-request-id={request.id}
+      theme={theme}
+      selected={false}
+      isPoppedOut={isPoppedOut}
+      onTogglePopout={onToggleFromCtx}
+      extraCardClass="cursor-grab active:cursor-grabbing"
       draggable
       onDragStart={handleDragStart}
-      className={`group ${isPoppedOut ? "h-full flex flex-col" : "rounded-lg border border-sky-200"} overflow-hidden cursor-grab active:cursor-grabbing hover:border-sky-300 transition-colors`}
     >
-      {/* Header: star + kind label + status + inline delete */}
-      <div className={`flex items-center gap-2 px-3 py-1.5 ${theme.headerDefault}`}>
-        {onToggleFromCtx && (
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
-        )}
+      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
+      <div className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${theme.headerDefault}`}>
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
           title={`AI ${kindLabel} request`}
@@ -1039,7 +1128,7 @@ export function AiRequestCard({
           rows={1}
         />
       </div>
-    </div>
+    </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
   return card;
@@ -1116,20 +1205,29 @@ export function HSplit({
 
 export function ItemMenu({
   children,
+  align = "right",
 }: {
   children: ReactNode;
+  /** Which edge of the button the dropdown aligns to. Use "left" for
+   *  menu buttons near the left edge of a panel (dropdown drops right),
+   *  "right" (default) for buttons near the right edge of a card. */
+  align?: "left" | "right";
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
 
   useEffect(() => {
     if (!open) return;
     // Position the fixed dropdown relative to the button
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+      setPos(
+        align === "left"
+          ? { top: r.bottom + 4, left: r.left }
+          : { top: r.bottom + 4, right: window.innerWidth - r.right },
+      );
     }
     const handler = (e: MouseEvent) => {
       if (
@@ -1139,14 +1237,22 @@ export function ItemMenu({
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, align]);
 
+  // Panel-header menus sit at the far left and use a bare button (no
+  // rounded lozenge / hover background) for a lighter-weight look.
+  // Card-level menus keep the button-style treatment.
+  const isPanelHeader = align === "left";
   return (
-    <div className="relative shrink-0">
+    <div className={`relative shrink-0${isPanelHeader ? " -ml-3" : ""}`}>
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+        className={
+          isPanelHeader
+            ? "p-0.5 text-ink-muted hover:text-ink-body transition-colors"
+            : "p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+        }
         title="Options"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
@@ -1159,7 +1265,7 @@ export function ItemMenu({
         <div
           ref={menuRef}
           className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[9999] min-w-[100px]"
-          style={{ top: pos.top, right: pos.right }}
+          style={{ top: pos.top, left: pos.left, right: pos.right }}
           onClick={() => setOpen(false)}
         >
           {children}
