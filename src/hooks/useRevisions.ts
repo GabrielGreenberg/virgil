@@ -11,6 +11,7 @@ import type {
   RevisionsState,
   TextRevision,
 } from "@/lib/types";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const DEFAULT_USERS: RevisionUser[] = [
   { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
@@ -83,12 +84,17 @@ export function useRevisions(docId: string | null) {
           // `selectedText` as a snapshot for re-anchoring on load.
           const strippedRevs = (existing.textRevisions ?? []).map((r) => {
             const raw = r as TextRevision & { anchorPos?: number };
+            let base: TextRevision;
             if ("anchorPos" in raw) {
               const { anchorPos: _drop, ...rest } = raw;
               void _drop;
-              return rest as TextRevision;
+              base = rest as TextRevision;
+            } else {
+              base = raw as TextRevision;
             }
-            return raw as TextRevision;
+            // Hydrate legacy `anchorId` from `links` if the sidecar was
+            // persisted in the new links-only shape.
+            return hydrateCardFromLinks(base);
           });
           setState({
             users: existing.users?.length ? existing.users : [...DEFAULT_USERS],
@@ -132,7 +138,12 @@ export function useRevisions(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "revisions.json", newState);
+      // textRevisions are the only anchor-bearing cards in this state.
+      const enriched: RevisionsState = {
+        ...newState,
+        textRevisions: enrichCardsWithLinks("comment", newState.textRevisions),
+      };
+      await writeSidecar(id, "revisions.json", enriched);
     } catch (err) {
       console.error("Failed to save revisions:", err);
     }

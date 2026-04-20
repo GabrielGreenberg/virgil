@@ -5,6 +5,7 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const EMPTY: ArchiveState = { snippets: [] };
 
@@ -21,17 +22,23 @@ function migrateSnippets(snippets: ArchivedSnippet[]): ArchivedSnippet[] {
     const needsTextMigration = legacy.text != null && s.content == null;
     const needsParagraphIds = !Array.isArray(s.paragraphIds);
     const needsTitle = typeof s.title !== "string";
+    let next: ArchivedSnippet = s;
     if (needsTextMigration || needsParagraphIds || needsTitle) {
       changed = true;
-      return {
+      next = {
         id: s.id,
         title: typeof s.title === "string" ? s.title : "",
         content: needsTextMigration ? normalizeRichContent(legacy.text!) : s.content,
         createdAt: s.createdAt,
         paragraphIds: Array.isArray(s.paragraphIds) ? s.paragraphIds : [],
+        links: s.links,
       };
     }
-    return s;
+    // Hydrate legacy fields from `links` if the sidecar was persisted
+    // in the new links-only shape.
+    const hydrated = hydrateCardFromLinks(next);
+    if (hydrated !== next) changed = true;
+    return hydrated;
   });
   return changed ? migrated : snippets;
 }
@@ -64,7 +71,10 @@ export function useArchive(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "archive.json", s);
+      const enriched: ArchiveState = {
+        snippets: enrichCardsWithLinks("archive", s.snippets),
+      };
+      await writeSidecar(id, "archive.json", enriched);
     } catch (err) {
       console.error("Failed to save archive:", err);
     }

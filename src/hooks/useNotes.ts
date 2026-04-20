@@ -6,6 +6,7 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { NotesState, UserNote } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const EMPTY_STATE: NotesState = { notes: [] };
 
@@ -33,7 +34,7 @@ export function useNotes(docId: string | null) {
         const migrated: NotesState = {
           notes: data.notes.map((n) => {
             const raw = n as UserNote & { anchorPos?: number; anchorPositions?: number[] };
-            return {
+            const base: UserNote = {
               id: raw.id,
               title: typeof raw.title === "string" ? raw.title : "",
               content: normalizeRichContent(raw.content),
@@ -43,8 +44,13 @@ export function useNotes(docId: string | null) {
                 : [], // drop legacy numeric anchors
               anchorId: typeof raw.anchorId === "string" ? raw.anchorId : undefined,
               anchorText: typeof raw.anchorText === "string" ? raw.anchorText : undefined,
+              links: Array.isArray(raw.links) ? raw.links : undefined,
             };
-          }) as UserNote[],
+            // If the sidecar was persisted with the new links-only shape,
+            // hydrate the legacy fields back in so existing runtime
+            // readers see a consistent view.
+            return hydrateCardFromLinks(base);
+          }),
         };
         setState(migrated);
       })
@@ -55,7 +61,10 @@ export function useNotes(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "notes.json", newState);
+      const enriched: NotesState = {
+        notes: enrichCardsWithLinks("note", newState.notes),
+      };
+      await writeSidecar(id, "notes.json", enriched);
     } catch (err) {
       console.error("Failed to save notes:", err);
     }

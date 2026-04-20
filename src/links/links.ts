@@ -748,6 +748,7 @@ type AnchorCardShape = {
   paragraphIds?: string[];
   anchorId?: string;
   anchorText?: string;
+  links?: Link[];
 };
 
 /**
@@ -761,6 +762,54 @@ type AnchorCardShape = {
  * containing paragraph inferred from the mark, if distinct. Mode A cards
  * produce one Link per paragraphId.
  */
+/**
+ * Enrich an array of cards with their derived `links` field. Used at
+ * persist time so the sidecar JSON carries the canonical Link records
+ * alongside the legacy fields. Callers retain all other fields on each
+ * card verbatim.
+ */
+export function enrichCardsWithLinks<T extends AnchorCardShape>(
+  cardKind: CardKind,
+  cards: readonly T[],
+): T[] {
+  return cards.map((card) => ({
+    ...card,
+    links: derivedLinksForCard(cardKind, card),
+  }));
+}
+
+/**
+ * Hydrate legacy card fields (`paragraphIds`, `anchorId`, `anchorText`)
+ * from a `links[]` array. Used at load time so existing readers (which
+ * still reach for the legacy fields) see consistent data regardless of
+ * whether the sidecar was persisted with the old shape or the new
+ * `links`-only shape.
+ *
+ * If `card.links` is absent or empty, the card is returned unchanged —
+ * legacy-only saved data still works.
+ */
+export function hydrateCardFromLinks<T extends AnchorCardShape>(card: T): T {
+  if (!card.links || card.links.length === 0) return card;
+  const paragraphIds: string[] = [];
+  let anchorId: string | undefined;
+  let anchorText: string | undefined;
+  for (const link of card.links) {
+    if (link.anchor.type !== "anchor") continue;
+    for (const pid of link.anchor.paragraphIds) {
+      if (!paragraphIds.includes(pid)) paragraphIds.push(pid);
+    }
+    if (link.anchor.textRange && !anchorId) {
+      anchorId = link.anchor.textRange.anchorId;
+      anchorText = link.anchor.textRange.textSnapshot;
+    }
+  }
+  return {
+    ...card,
+    paragraphIds,
+    ...(anchorId ? { anchorId, anchorText } : {}),
+  };
+}
+
 export function derivedLinksForCard(
   cardKind: CardKind,
   card: AnchorCardShape,

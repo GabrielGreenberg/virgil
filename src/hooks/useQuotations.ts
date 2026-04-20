@@ -10,6 +10,7 @@ import type {
   Quote,
 } from "@/lib/types";
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const EMPTY_STATE: QuotationsState = { groups: [] };
 
@@ -40,7 +41,11 @@ export function useQuotations(docId: string | null) {
       .then((data) => {
         if (currentDocIdRef.current === docId) {
           // The migration helper handles legacy and current shapes both.
-          setState(migrateQuotationsState(data));
+          const migrated = migrateQuotationsState(data);
+          setState({
+            ...migrated,
+            groups: migrated.groups.map(hydrateCardFromLinks),
+          });
         }
       })
       .catch(() => {});
@@ -50,7 +55,11 @@ export function useQuotations(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "quotations.json", newState);
+      const enriched: QuotationsState = {
+        ...newState,
+        groups: enrichCardsWithLinks("quotation", newState.groups),
+      };
+      await writeSidecar(id, "quotations.json", enriched);
     } catch (err) {
       console.error("Failed to save quotations:", err);
     }

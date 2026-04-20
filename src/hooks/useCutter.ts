@@ -6,6 +6,7 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { CutterState, CutItem } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const EMPTY_STATE: CutterState = { cuts: [] };
 
@@ -23,15 +24,19 @@ export function useCutter(docId: string | null) {
       .then((data) => {
         if (currentDocIdRef.current !== docId || !data.cuts) return;
         setState({
-          cuts: data.cuts.map((c) => ({
-            id: c.id,
-            title: typeof c.title === "string" ? c.title : "",
-            content: normalizeRichContent(c.content),
-            createdAt: c.createdAt,
-            paragraphIds: Array.isArray(c.paragraphIds) ? c.paragraphIds : [],
-            anchorId: typeof c.anchorId === "string" ? c.anchorId : undefined,
-            anchorText: typeof c.anchorText === "string" ? c.anchorText : undefined,
-          })),
+          cuts: data.cuts.map((c) => {
+            const base: CutItem = {
+              id: c.id,
+              title: typeof c.title === "string" ? c.title : "",
+              content: normalizeRichContent(c.content),
+              createdAt: c.createdAt,
+              paragraphIds: Array.isArray(c.paragraphIds) ? c.paragraphIds : [],
+              anchorId: typeof c.anchorId === "string" ? c.anchorId : undefined,
+              anchorText: typeof c.anchorText === "string" ? c.anchorText : undefined,
+              links: Array.isArray(c.links) ? c.links : undefined,
+            };
+            return hydrateCardFromLinks(base);
+          }),
         });
       })
       .catch(() => {});
@@ -41,7 +46,10 @@ export function useCutter(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "cutter.json", newState);
+      const enriched: CutterState = {
+        cuts: enrichCardsWithLinks("cut", newState.cuts),
+      };
+      await writeSidecar(id, "cutter.json", enriched);
     } catch (err) {
       console.error("Failed to save cuts:", err);
     }

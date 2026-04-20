@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { TodoState, TodoItem } from "@/lib/types";
+import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
 
 const EMPTY: TodoState = { items: [] };
 
@@ -17,11 +18,15 @@ export function useTodos(docId: string | null) {
     readSidecar<TodoState>(docId, "todos.json", EMPTY)
       .then((data) => {
         if (docIdRef.current === docId && data.items) {
-          // Migrate legacy items that lack paragraphIds
-          const items = data.items.map((i) => ({
-            ...i,
-            paragraphIds: i.paragraphIds ?? [],
-          }));
+          // Migrate legacy items that lack paragraphIds, and hydrate
+          // legacy fields from `links` if the sidecar was persisted in
+          // the new links-only shape.
+          const items = data.items.map((i) =>
+            hydrateCardFromLinks({
+              ...i,
+              paragraphIds: i.paragraphIds ?? [],
+            }),
+          );
           setState({ items });
         }
       })
@@ -32,7 +37,10 @@ export function useTodos(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      await writeSidecar(id, "todos.json", s);
+      const enriched: TodoState = {
+        items: enrichCardsWithLinks("todo", s.items),
+      };
+      await writeSidecar(id, "todos.json", enriched);
     } catch (err) {
       console.error("Failed to save todos:", err);
     }
