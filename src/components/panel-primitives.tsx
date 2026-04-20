@@ -31,6 +31,7 @@ import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
+import { cardPopKey } from "@/panels/panel-registry";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -891,6 +892,7 @@ export function PanelHeader({
   onAdd,
   onAiRequest,
   leading,
+  titleAfter,
   children,
 }: {
   title: string;
@@ -905,6 +907,10 @@ export function PanelHeader({
   /** Content rendered at the far left of the header, before the title.
    *  Typical use: the panel's three-dots options menu. */
   leading?: ReactNode;
+  /** Content rendered immediately after the title (before add/AI buttons).
+   *  Use for inline mode toggles that cluster with the title — e.g.
+   *  Outline's Edit/Focus/Lock buttons. */
+  titleAfter?: ReactNode;
   children?: ReactNode;
 }) {
   const chrome = useContext(PanelChromeContext);
@@ -919,6 +925,7 @@ export function PanelHeader({
           </span>
         )}
       </h3>
+      {titleAfter}
       {onAdd && (
         <button
           onClick={onAdd}
@@ -994,7 +1001,7 @@ export function AiRequestCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const popped = usePoppedCards();
-  const popKey = `ai:${request.id}`;
+  const popKey = cardPopKey("ai", request.id);
 
   // Sync external updates (e.g. AI fulfillment) into the local draft.
   useEffect(() => {

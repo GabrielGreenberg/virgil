@@ -1,0 +1,111 @@
+"use client";
+
+import { useCallback } from "react";
+import type { JSONContent } from "@tiptap/react";
+import type { CutItem } from "@/lib/types";
+import {
+  CARD_THEMES,
+  EditableCard,
+  BadgeLabel,
+  BadgeOrphaned,
+  CardTitleInput,
+  CardTargetIcon,
+  startTextDrag,
+} from "@/components/panel-primitives";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { FloatCard } from "@/components/FloatingCards";
+import { normalizeRichContent } from "@/lib/footnote-content";
+import { MIME_CUT } from "@/lib/marginalia";
+import { popKey } from "@/panels/panel-registry";
+
+export function startCutDrag(e: React.DragEvent, cutId: string) {
+  e.dataTransfer.setData(MIME_CUT, JSON.stringify({ cutId }));
+  e.dataTransfer.effectAllowed = "copy";
+}
+
+export function CutCard({
+  cut,
+  selected,
+  onUpdate,
+  onUpdateTitle,
+  onDelete,
+  onSelect,
+  onJump,
+  onHoverChange,
+  onTogglePopout,
+  isPoppedOut,
+}: {
+  cut: CutItem;
+  selected: boolean;
+  onUpdate: (id: string, content: JSONContent) => void;
+  onUpdateTitle: (id: string, title: string) => void;
+  onDelete: (id: string) => void;
+  onSelect: (id: string | null) => void;
+  onJump?: () => void;
+  onHoverChange?: (hovering: boolean) => void;
+  onTogglePopout?: () => void;
+  isPoppedOut?: boolean;
+}) {
+  const handleChange = useCallback(
+    (json: JSONContent) => onUpdate(cut.id, normalizeRichContent(json)),
+    [cut.id, onUpdate],
+  );
+
+  const isOrphaned = cut.paragraphIds.length === 0 && !cut.anchorId;
+  const popped = usePoppedCards();
+  const cardKey = popKey("cutter", cut.id);
+  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
+  if (!isPoppedOut && isPoppedInCtx) return null;
+  const onToggleFromCtx =
+    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+
+  const card = (
+    <EditableCard
+      id={cut.id}
+      selected={selected}
+      theme={CARD_THEMES.cut}
+      grabHandle
+      hideToolbar
+      inlineDelete
+      badge={
+        isOrphaned ? (
+          <BadgeOrphaned theme={CARD_THEMES.cut} />
+        ) : (
+          <BadgeLabel label="C" theme={CARD_THEMES.cut} />
+        )
+      }
+      headerContent={
+        <CardTitleInput
+          defaultValue={cut.title}
+          onChange={(t) => onUpdateTitle(cut.id, t)}
+          theme={CARD_THEMES.cut}
+        />
+      }
+      headerTrailing={
+        onJump ? (
+          <CardTargetIcon
+            selected={selected}
+            onClick={onJump}
+            title="Jump to cut anchor"
+          />
+        ) : (
+          <CardTargetIcon selected={false} disabled onClick={() => {}} />
+        )
+      }
+      onClick={() => onSelect(selected ? null : cut.id)}
+      onDragStart={(e) => startCutDrag(e, cut.id)}
+      onTextDragStart={(e) => startTextDrag(e, cut.content, cut.title)}
+      onDelete={() => onDelete(cut.id)}
+      value={cut.content}
+      variant="footnote"
+      placeholder="Cut text…"
+      onChange={handleChange}
+      dataAttr={{ name: "cut-entry", value: cut.id }}
+      onHoverChange={onHoverChange}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedOut}
+    />
+  );
+  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
+  return card;
+}

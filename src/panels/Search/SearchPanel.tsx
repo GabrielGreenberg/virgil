@@ -2,7 +2,12 @@
 
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
-import { panelCard, PANEL, PanelHeader, PrevNextCounter, clearStaleHover } from "./panel-primitives";
+import {
+  panelCard,
+  PANEL,
+  PrevNextCounter,
+  clearStaleHover,
+} from "@/components/panel-primitives";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
   type SearchScope,
@@ -37,8 +42,7 @@ import type {
   TodoItem,
   UserNote,
 } from "@/lib/types";
-
-/* ── Types ──────────────────────────────────────────────────────────── */
+import { Panel } from "@/panels/_shared/Panel";
 
 type BreadcrumbSegment = {
   text: string;
@@ -46,14 +50,9 @@ type BreadcrumbSegment = {
 };
 
 interface SearchResult extends SearchHit {
-  /** Breadcrumb path: section hierarchy + paragraph title above the match. */
   breadcrumb: BreadcrumbSegment[];
 }
 
-/**
- * Lifted-state container so the panel survives structural remounts (e.g.
- * when clicking a result opens a split and the column DOM tree changes).
- */
 export interface SearchPanelState {
   query: string;
   caseSensitive: boolean;
@@ -73,8 +72,6 @@ export const INITIAL_SEARCH_STATE: SearchPanelState = {
 interface SearchPanelProps {
   editor: Editor | null;
   onHighlightRange: (range: { from: number; to: number } | null) => void;
-
-  /* Collections searched beyond the main text body. */
   footnotes: FootnoteSearchItem[];
   orphanedFootnotes: OrphanedFootnote[];
   notes: UserNote[];
@@ -88,16 +85,10 @@ interface SearchPanelProps {
   textRevisions: TextRevision[];
   generalRevisions: GeneralRevision[];
   bibEntries: BibEntry[];
-
-  /** Open the item's native panel and focus it there. */
   onOpenItem: (panel: PanelId, itemId: string) => void;
-
-  /** Lifted panel state — kept in the parent so it persists across remounts. */
   state: SearchPanelState;
   onStateChange: React.Dispatch<React.SetStateAction<SearchPanelState>>;
 }
-
-/* ── Helpers ─────────────────────────────────────────────────────────── */
 
 const PRIMARY_SCOPES: SearchScope[] = ["mainText", "footnotes"];
 const DROPDOWN_SCOPES: SearchScope[] = SCOPE_ORDER.filter(
@@ -114,18 +105,10 @@ const FIELD_LABEL: Record<NonNullable<SearchHit["field"]>, string> = {
   author: "author",
 };
 
-/**
- * Extract the document's title (from the titleField node) if present.
- * Returns empty string when there's no title, so callers can fall back
- * to "Document start".
- */
 function getDocTitle(editor: Editor): string {
   let title = "";
   editor.state.doc.forEach((node) => {
-    if (
-      node.type.name === "titleField" &&
-      node.attrs?.field === "title"
-    ) {
+    if (node.type.name === "titleField" && node.attrs?.field === "title") {
       const text = node.textContent?.trim() || "";
       if (text) title = text;
     }
@@ -133,7 +116,6 @@ function getDocTitle(editor: Editor): string {
   return title;
 }
 
-/** Build breadcrumb by walking doc nodes up to a position. */
 function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
   const sections: BreadcrumbSegment[] = [];
   let parTitle = "";
@@ -180,7 +162,6 @@ function buildBreadcrumb(editor: Editor, pos: number): BreadcrumbSegment[] {
   return crumbs;
 }
 
-/** Search the main editor text, returning hits with true PM positions. */
 function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
   const docText = editor.state.doc.textBetween(
     0,
@@ -198,8 +179,6 @@ function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
     const before = docText.slice(Math.max(0, matchStart - CTX), matchStart);
     const after = docText.slice(matchEnd, matchEnd + CTX);
 
-    // Mirror ProseMirror's textBetween separator logic (one "\n" before
-    // each textblock except the first) to map text offset → PM position.
     let pmFrom = 0;
     let pmTo = 0;
     let textOffset = 0;
@@ -247,8 +226,6 @@ function searchMainText(editor: Editor, re: RegExp): SearchHit[] {
   return out;
 }
 
-/* ── Component ───────────────────────────────────────────────────────── */
-
 function SearchPanel({
   editor,
   onHighlightRange,
@@ -281,10 +258,6 @@ function SearchPanel({
     inputRef.current?.focus();
   }, []);
 
-  // User-input changes reset the selection + highlight. We drive this from
-  // the setter callbacks (rather than a useEffect on `results`) so that when
-  // the component remounts with preserved state, we don't clobber the
-  // user's active selection.
   const setQuery = useCallback(
     (q: string) => {
       onStateChange((s) => ({ ...s, query: q, selectedIdx: null }));
@@ -334,8 +307,6 @@ function SearchPanel({
     [onStateChange, onHighlightRange],
   );
 
-  /* ── Combined search (memoised) ────────────────────────────────────── */
-
   const results: SearchResult[] = useMemo(() => {
     if (!editor) return [];
     const re = compileQuery(query, { caseSensitive, wholeWord });
@@ -353,7 +324,9 @@ function SearchPanel({
       enabledScopes.has("archive") ||
       enabledScopes.has("cuts") ||
       enabledScopes.has("quotations");
-    const uuidPos = needsUuidMap ? buildUuidPosMap(editor) : new Map<string, number>();
+    const uuidPos = needsUuidMap
+      ? buildUuidPosMap(editor)
+      : new Map<string, number>();
 
     if (enabledScopes.has("footnotes")) {
       hits.push(...searchFootnotes(footnotes, orphanedFootnotes, re));
@@ -362,7 +335,14 @@ function SearchPanel({
       hits.push(...searchNotes(notes, editor, uuidPos, re));
     }
     if (enabledScopes.has("citations")) {
-      hits.push(...searchCitations(citations, editorCitations, getCitationDisplayText, re));
+      hits.push(
+        ...searchCitations(
+          citations,
+          editorCitations,
+          getCitationDisplayText,
+          re,
+        ),
+      );
     }
     if (enabledScopes.has("todos")) {
       hits.push(...searchTodos(todos, uuidPos, re));
@@ -377,7 +357,9 @@ function SearchPanel({
       hits.push(...searchQuotations(quotationGroups, uuidPos, re));
     }
     if (enabledScopes.has("revisions")) {
-      hits.push(...searchRevisions(textRevisions, generalRevisions, editor, re));
+      hits.push(
+        ...searchRevisions(textRevisions, generalRevisions, editor, re),
+      );
     }
     if (enabledScopes.has("bibliography")) {
       hits.push(...searchBibliography(bibEntries, re));
@@ -410,8 +392,6 @@ function SearchPanel({
     bibEntries,
   ]);
 
-  /* ── Navigation ──────────────────────────────────────────────────── */
-
   const navigateToResult = useCallback(
     (result: SearchResult, idx: number) => {
       if (!editor) return;
@@ -435,7 +415,7 @@ function SearchPanel({
         card?.scrollIntoView({ block: "nearest", behavior: "smooth" });
       });
     },
-    [editor, onHighlightRange, onOpenItem],
+    [editor, onHighlightRange, onOpenItem, setSelectedIdx],
   );
 
   const goNext = useCallback(() => {
@@ -474,21 +454,16 @@ function SearchPanel({
     [results, goNext, goPrev],
   );
 
-  /* ── Render ──────────────────────────────────────────────────────── */
+  const headerExtras = query ? (
+    <PrevNextCounter
+      current={selectedIdx}
+      total={results.length}
+      label="results"
+    />
+  ) : undefined;
 
-  return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader title="Search">
-        {query && (
-          <PrevNextCounter
-            current={selectedIdx}
-            total={results.length}
-            label="results"
-          />
-        )}
-      </PanelHeader>
-
-      {/* Search input + Aa/W toggles */}
+  const panelExtras = (
+    <>
       <div className="px-3 py-2 border-b border-[var(--border-light)] flex items-center gap-2">
         <input
           ref={inputRef}
@@ -523,7 +498,6 @@ function SearchPanel({
         </button>
       </div>
 
-      {/* Scope chips */}
       <div className="px-3 pb-2 pt-2 flex flex-wrap items-center gap-1 border-b border-[var(--border)]">
         {PRIMARY_SCOPES.map((s) => (
           <ScopeChip
@@ -539,39 +513,37 @@ function SearchPanel({
           onToggle={toggleScope}
         />
       </div>
+    </>
+  );
 
-      {/* Results list */}
-      <div
-        ref={listRef}
-        className={PANEL.list}
-        tabIndex={0}
-        onKeyDown={handleNavKeys}
-        style={{ outline: "none" }}
-      >
-        {!query && (
-          <p className={PANEL.empty}>Type to search your document.</p>
-        )}
-        {query && results.length === 0 && (
-          <p className={PANEL.empty}>No matches found.</p>
-        )}
-        {results.map((r, i) => (
-          <ResultCard
-            key={`${r.scope}-${r.itemId ?? "x"}-${r.from}-${i}`}
-            idx={i}
-            result={r}
-            selected={selectedIdx === i}
-            onClick={() => {
-              navigateToResult(r, i);
-              listRef.current?.focus();
-            }}
-          />
-        ))}
-      </div>
-    </div>
+  return (
+    <Panel
+      kind="search"
+      headerExtras={headerExtras}
+      panelExtras={panelExtras}
+      scrollRef={listRef}
+      onKeyDown={handleNavKeys}
+      scrollTabIndex={0}
+    >
+      {!query && <p className={PANEL.empty}>Type to search your document.</p>}
+      {query && results.length === 0 && (
+        <p className={PANEL.empty}>No matches found.</p>
+      )}
+      {results.map((r, i) => (
+        <ResultCard
+          key={`${r.scope}-${r.itemId ?? "x"}-${r.from}-${i}`}
+          idx={i}
+          result={r}
+          selected={selectedIdx === i}
+          onClick={() => {
+            navigateToResult(r, i);
+            listRef.current?.focus();
+          }}
+        />
+      ))}
+    </Panel>
   );
 }
-
-/* ── Subcomponents ───────────────────────────────────────────────────── */
 
 function MoreScopesDropdown({
   scopes,
@@ -670,7 +642,8 @@ function MoreScopesDropdown({
                   aria-hidden
                   className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
                   style={{
-                    backgroundColor: color === "transparent" ? "#78716c" : color,
+                    backgroundColor:
+                      color === "transparent" ? "#78716c" : color,
                     opacity: enabled ? 1 : 0.4,
                   }}
                 />
@@ -760,7 +733,9 @@ function ResultCard({
               <>
                 <span
                   className="font-medium"
-                  style={{ color: color === "transparent" ? undefined : color }}
+                  style={{
+                    color: color === "transparent" ? undefined : color,
+                  }}
                 >
                   {scopeLabel}
                   {fieldLabel ? ` ${fieldLabel}` : ""}
@@ -774,9 +749,7 @@ function ResultCard({
             {result.breadcrumb.map((seg, segIdx) => (
               <span key={segIdx}>
                 {segIdx > 0 && (
-                  <span className="text-[var(--muted)]">
-                    {" \u203a "}
-                  </span>
+                  <span className="text-[var(--muted)]">{" \u203a "}</span>
                 )}
                 {seg.kind === "title" ? (
                   <>

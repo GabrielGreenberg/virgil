@@ -8,6 +8,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
 import { MIME_CITATION } from "@/lib/marginalia";
+import { popKey as buildPopKey } from "@/panels/panel-registry";
 
 export interface BibEntryCardProps {
   entry: BibEntry;
@@ -134,7 +135,7 @@ export default function BibEntryCard({
   onTogglePopout, isPoppedOut,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
-  const popKey = `bib:${entry.key}`;
+  const popKey = buildPopKey("bibliography", entry.key);
   // Per-entry state
   const [fieldsOpen, setFieldsOpen] = useState(false);
   const [annotationOpen, setAnnotationOpen] = useState(false);

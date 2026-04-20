@@ -6,16 +6,16 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
 import { Editor } from "@tiptap/react";
-import SuggestionPanel from "./SuggestionPanel";
-import RevisionsPanel, { RevisionCard } from "./CommentPanel";
-import NotesPanel, { NoteCard } from "./NotesPanel";
-import CutterPanel, { CutCard } from "./CutterPanel";
+import SuggestionPanel from "@/panels/Suggestions";
+import RevisionsPanel, { RevisionCard } from "@/panels/Revisions";
+import NotesPanel, { NoteCard } from "@/panels/Notes";
+import CutterPanel, { CutCard } from "@/panels/Cutter";
 import SelectionChip from "./SelectionChip";
-import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "./OutlinePanel";
-import TodoPanel, { TodoRow } from "./TodoPanel";
-import ArchivePanel, { ArchiveCard } from "./ArchivePanel";
+import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
+import TodoPanel, { TodoRow } from "@/panels/Todo";
+import ArchivePanel, { ArchiveCard } from "@/panels/Archive";
 import ArchiveConnectors from "./ArchiveConnectors";
-import FootnotePanel from "./FootnotePanel";
+import FootnotePanel from "@/panels/Footnotes";
 import FootnoteConnectors from "./FootnoteConnectors";
 import CitationConnectors from "./CitationConnectors";
 import InTextConnectors from "./InTextConnectors";
@@ -74,17 +74,34 @@ import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
-import CitationsPanel from "./CitationsPanel";
-import BibliographyPanel from "./BibliographyPanel";
-import QuotationsPanel from "./QuotationsPanel";
+import CitationsPanel from "@/panels/Citations";
+import BibliographyPanel from "@/panels/Bibliography";
+import QuotationsPanel from "@/panels/Quotations";
 import SearchPanel, {
   type SearchPanelState,
   INITIAL_SEARCH_STATE,
-} from "./SearchPanel";
-import OmniViewPanel, { type OmniItem, type OmniCategory, PANEL_TO_CATEGORY, DEFAULT_OMNI_CATEGORIES } from "./OmniViewPanel";
-import { CitationCard } from "./CitationsPanel";
-import { FootnoteCard, OrphanedFootnoteCard } from "./FootnotePanel";
-import { QuotationGroupCard } from "./QuotationsPanel";
+} from "@/panels/Search";
+import OmniViewPanel, {
+  type OmniItem,
+  type OmniCategory,
+  DEFAULT_OMNI_CATEGORIES,
+  migrateOmniCategories,
+  deriveCategorySides,
+} from "@/panels/Omni";
+import { CitationCard, buildCitationOmniItems } from "@/panels/Citations";
+import {
+  FootnoteCard,
+  OrphanedFootnoteCard,
+  buildFootnoteOmniItems,
+} from "@/panels/Footnotes";
+import {
+  QuotationGroupCard,
+  buildQuotationOmniItems,
+} from "@/panels/Quotations";
+import { buildNoteOmniItems } from "@/panels/Notes";
+import { buildArchiveOmniItems } from "@/panels/Archive";
+import { buildTodoOmniItems } from "@/panels/Todo";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import BibEntryCard from "./BibEntryCard";
 import { AiRequestCard } from "./panel-primitives";
 import EditorMirror from "./EditorMirror";
@@ -107,7 +124,7 @@ import LabelRefPopover, { type LabelInfo } from "./LabelRefPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
-import WordCountPanel from "./WordCountPanel";
+import WordCountPanel from "@/panels/WordCount";
 import { useFocusMode, sectionRange } from "@/hooks/useFocusMode";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
@@ -450,23 +467,34 @@ function IconOmni({ active }: { active?: boolean }) {
   );
 }
 
-const PANEL_META: Record<PanelId, { label: string; icon: (active: boolean) => React.ReactNode }> = {
-  outline: { label: "Outline", icon: (a) => <IconOutline active={a} /> },
-  todo: { label: "Todo List", icon: (a) => <IconTodo active={a} /> },
-  notes: { label: "Notes", icon: (a) => <IconNotes active={a} /> },
-  revisions: { label: "Revisions", icon: (a) => <IconRevisions active={a} /> },
-  archive: { label: "Archived Text", icon: (a) => <IconArchive active={a} /> },
-  footnotes: { label: "Footnotes", icon: (a) => <IconFootnote active={a} /> },
-  citations: { label: "Citations", icon: (a) => <IconCitation active={a} /> },
-  bibliography: { label: "Bibliography", icon: (a) => <IconBibliography active={a} /> },
-  suggestions: { label: "Suggestions", icon: (a) => <IconSuggestions active={a} /> },
-  cutter: { label: "Cutter", icon: (a) => <IconCutter active={a} /> },
-  quotations: { label: "Quotations", icon: (a) => <IconQuotations active={a} /> },
-  search: { label: "Search", icon: (a) => <IconSearch active={a} /> },
-  wordcount: { label: "Word Count", icon: (a) => <IconWordCount active={a} /> },
-  blank: { label: "Blank", icon: () => null },
-  omni: { label: "Omni-view", icon: (a) => <IconOmni active={a} /> },
+// Per-panel-id icon renderer for the strip + omni button. Labels for
+// these ids come from PANEL_REGISTRY (or the "Blank" fallback below);
+// only the icon factory lives here, since icons reference local
+// components and aren't part of the registry.
+const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> = {
+  outline: (a) => <IconOutline active={a} />,
+  todo: (a) => <IconTodo active={a} />,
+  notes: (a) => <IconNotes active={a} />,
+  revisions: (a) => <IconRevisions active={a} />,
+  archive: (a) => <IconArchive active={a} />,
+  footnotes: (a) => <IconFootnote active={a} />,
+  citations: (a) => <IconCitation active={a} />,
+  bibliography: (a) => <IconBibliography active={a} />,
+  suggestions: (a) => <IconSuggestions active={a} />,
+  cutter: (a) => <IconCutter active={a} />,
+  quotations: (a) => <IconQuotations active={a} />,
+  search: (a) => <IconSearch active={a} />,
+  wordcount: (a) => <IconWordCount active={a} />,
+  blank: () => null,
+  omni: (a) => <IconOmni active={a} />,
 };
+
+/** Display label for a panel id. Reads from PANEL_REGISTRY for real
+ *  panels and falls back for the layout-only "blank" slot. */
+function panelLabel(id: PanelId): string {
+  if (id === "blank") return "Blank";
+  return PANEL_REGISTRY[id].label;
+}
 
 function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
   const [viewMode, setViewMode] = useState<import("./ViewToggle").ViewMode>("list");
@@ -784,15 +812,14 @@ function StripButton({
   badge?: boolean;
   stripRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const meta = PANEL_META[panelId as keyof typeof PANEL_META];
+  const renderIcon = PANEL_ICONS[panelId];
+  const label = panelLabel(panelId);
   const btnRef = useRef<HTMLButtonElement>(null);
-  if (!meta) return null;
+  if (!renderIcon) return null;
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   const isDragging = useRef(false);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const handledByPointer = useRef(false);
-
-  if (!meta) return null;
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     pointerStart.current = { x: e.clientX, y: e.clientY };
@@ -968,9 +995,9 @@ function StripButton({
       className={`p-2 rounded transition-colors relative select-none ${
         active ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
       }`}
-      title={meta.label}
+      title={label}
     >
-      {meta.icon(active)}
+      {renderIcon(active)}
       {badge && (
         <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--accent)] rounded-full" />
       )}
@@ -1396,17 +1423,25 @@ export default function EditorLayout() {
     });
   }, []);
 
-  // Persisted omni-view category preferences per side
+  // Persisted omni-view category preferences per side. Older builds
+  // stored 2-char prefixes (fn/ci/qu/nt/ar/td); migrateOmniCategories
+  // translates them to the new full prefixes (footnote/citation/…)
+  // and is idempotent.
   const [omniCategories, setOmniCategories] = useState<Record<"left" | "right", OmniCategory[]>>(() => {
     if (typeof window === "undefined") return DEFAULT_OMNI_CATEGORIES;
     try {
       const raw = localStorage.getItem("virgil-omni-categories");
       if (!raw) return DEFAULT_OMNI_CATEGORIES;
       const parsed = JSON.parse(raw);
-      return {
-        left: Array.isArray(parsed.left) ? parsed.left : DEFAULT_OMNI_CATEGORIES.left,
-        right: Array.isArray(parsed.right) ? parsed.right : DEFAULT_OMNI_CATEGORIES.right,
+      const migrated = {
+        left: migrateOmniCategories(parsed.left) ?? DEFAULT_OMNI_CATEGORIES.left,
+        right: migrateOmniCategories(parsed.right) ?? DEFAULT_OMNI_CATEGORIES.right,
       };
+      // Persist the migrated form so we don't keep translating.
+      try {
+        localStorage.setItem("virgil-omni-categories", JSON.stringify(migrated));
+      } catch {}
+      return migrated;
     } catch { return DEFAULT_OMNI_CATEGORIES; }
   });
   const getOmniEnabled = useCallback((side: "left" | "right") => new Set(omniCategories[side]), [omniCategories]);
@@ -1421,20 +1456,10 @@ export default function EditorLayout() {
   }, []);
 
   // Derive which strip side each category's native panel lives on
-  const categorySides = useMemo(() => {
-    const result = {} as Record<OmniCategory, "left" | "right">;
-    for (const p of prefs.placements) {
-      const cat = PANEL_TO_CATEGORY[p.id];
-      if (cat) result[cat] = p.side;
-    }
-    // Ensure all categories have a side (fallback to defaults)
-    for (const [, cat] of Object.entries(PANEL_TO_CATEGORY)) {
-      if (!(cat in result)) {
-        result[cat] = DEFAULT_OMNI_CATEGORIES.left.includes(cat) ? "left" : "right";
-      }
-    }
-    return result;
-  }, [prefs.placements]);
+  const categorySides = useMemo(
+    () => deriveCategorySides(prefs.placements),
+    [prefs.placements],
+  );
 
   // Inject editor preferences as CSS custom properties (with global transforms)
   useEffect(() => {
@@ -4035,8 +4060,7 @@ export default function EditorLayout() {
   // it inside a split half). The "suggestions" panel is special-cased
   // because it manages its own layout.
   function renderPanelInner(panelId: PanelId, side: Side): React.ReactNode {
-    const meta = PANEL_META[panelId as keyof typeof PANEL_META];
-    if (!meta) return null;
+    if (!(panelId in PANEL_ICONS)) return null;
 
     if (panelId === "blank") {
       return <div className="w-full h-full bg-[var(--background)]" />;
@@ -4426,15 +4450,8 @@ export default function EditorLayout() {
     }
 
     if (panelId === "omni") {
-      // OmniView — threads pods from several panels into one unified
-      // list. Each card is rendered by instantiating the actual panel
-      // card component (CitationCard, FootnoteCard, etc.) so it looks
-      // and behaves identically to the native panel. In in-text mode
-      // each card is positioned by its doc location.
-      const items: OmniItem[] = [];
-
-      // Resolve a paragraph UUID to its doc position (used by
-      // quotation groups, which anchor by paragraphId not pos).
+      // Resolve a paragraph UUID to its doc position (used by panels
+      // that anchor by paragraphId not pos).
       const findParagraphPos = (uuid: string | null): number | null => {
         if (!uuid || !editorInstance) return null;
         let result: number | null = null;
@@ -4448,332 +4465,102 @@ export default function EditorLayout() {
         });
         return result;
       };
+      const scrollToParagraphId = (uuid: string) =>
+        editorRef.current?.scrollToParagraphId(uuid);
 
-      // --- Footnotes (fn) — single-position items from the editor node ---
-      {
-        for (const fn of footnotes) {
-          const isSelected = selectedFootnoteId === fn.footnoteId;
-          items.push({
-            id: `fn:${fn.footnoteId}`,
-            pos: fn.pos,
-            content: (
-              <FootnoteCard
-                key={`fn:${fn.footnoteId}`}
-                footnote={fn}
-                isSelected={isSelected}
-                onSelect={() =>
-                  setSelectedFootnoteId(isSelected ? null : fn.footnoteId)
-                }
-                onJump={() => editorRef.current?.scrollToFootnote(fn.footnoteId)}
-                onEdit={(json) => handleEditFootnote(fn.footnoteId, json)}
-                onDelete={() => handleDeleteFootnote(fn.footnoteId)}
-                onEditTitle={(title) => handleEditFootnoteTitle(fn.footnoteId, title)}
-                onEditorFocus={setOverrideEditor}
-                getCitationDisplayText={getCitationDisplayText}
-                onCitationCreated={handleCitationCreated}
-                extraDataAttrs={{ "data-omni-entry": `fn:${fn.footnoteId}` }}
-              />
-            ),
-          });
-        }
-        // Orphaned footnotes (no doc anchor)
-        for (const orphan of orphanedFootnotes) {
-          items.push({
-            id: `fn:${orphan.footnoteId}`,
-            pos: null,
-            content: (
-              <OrphanedFootnoteCard
-                key={`fn:${orphan.footnoteId}`}
-                orphan={orphan}
-                isSelected={selectedFootnoteId === orphan.footnoteId}
-                onSelect={() => setSelectedFootnoteId(selectedFootnoteId === orphan.footnoteId ? null : orphan.footnoteId)}
-                onEdit={(json) => handleEditOrphan(orphan.footnoteId, json)}
-                onDelete={() => handleDeleteOrphan(orphan.footnoteId)}
-                onEditTitle={(title) => handleEditOrphanTitle(orphan.footnoteId, title)}
-                onEditorFocus={setOverrideEditor}
-                getCitationDisplayText={getCitationDisplayText}
-                onCitationCreated={handleCitationCreated}
-                extraDataAttrs={{ "data-omni-entry": `fn:${orphan.footnoteId}` }}
-              />
-            ),
-          });
-        }
-      }
-
-      // --- Citations (ci) — single-position items ---
-      {
-        for (const cit of citations) {
-          const pos = citationPositionMap.get(cit.id) ?? null;
-          const isSelected = selectedCitationId === cit.id;
-          items.push({
-            id: `ci:${cit.id}`,
-            pos,
-            content: (
-              <CitationCard
-                key={`ci:${cit.id}`}
-                citation={cit}
-                isSelected={isSelected}
-                isAnchored={pos !== null}
-                bibEntries={bibEntries}
-                bibPackage={bibPackage}
-                getDisplayText={getCitationDisplayText}
-                onSelect={() =>
-                  setSelectedCitationId(isSelected ? null : cit.id)
-                }
-                onJump={() => {
-                  setSelectedCitationId(cit.id);
-                  editorRef.current?.scrollToCitation(cit.id);
-                }}
-                onUpdateCitation={updateCitation}
-                getFormattedBib={getFormattedBib}
-                getAnnotation={getAnnotation}
-                setAnnotation={setAnnotation}
-                onRequestReview={requestBibReview}
-                onCancelReview={cancelBibReview}
-                getReviewStatus={getBibReviewStatus}
-                onUpdateBibEntry={updateBibEntry}
-                onUpdateBibKeyAndType={updateBibKeyAndType}
-                extraDataAttrs={{ "data-omni-entry": `ci:${cit.id}` }}
-              />
-            ),
-          });
-        }
-      }
-
-      // --- Quotation groups (qu) — multi-paragraph: one item per paragraphId ---
-      {
-        for (const group of quotationGroups) {
-          const pids = group.paragraphIds;
-          const isSelected = selectedQuotationGroupId === group.id;
-          if (pids.length === 0) {
-            items.push({
-              id: `qu:${group.id}`,
-              pos: null,
-              content: (
-                <div key={`qu:${group.id}`} data-omni-entry={`qu:${group.id}`}>
-                  <QuotationGroupCard
-                    group={group}
-                    bibEntries={bibEntries}
-                    bibPackage={bibPackage}
-                    selected={isSelected}
-                    onSelect={() => setSelectedQuotationGroupId(isSelected ? null : group.id)}
-                    onDelete={() => deleteQuotationGroup(group.id)}
-                    onUpdateGroupTitle={updateQuotationGroupTitle}
-                    onAddReference={addQuotationReference}
-                    onDeleteReference={deleteQuotationReference}
-                    onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
-                    onAddQuote={addQuotationQuote}
-                    onUpdateQuote={updateQuotationQuote}
-                    onDeleteQuote={deleteQuotationQuote}
-                    onUpdateNotes={updateQuotationNotes}
-                  />
-                </div>
-              ),
-            });
-          } else {
-            for (let pi = 0; pi < pids.length; pi++) {
-              const pid = pids[pi];
-              const pos = findParagraphPos(pid);
-              const suffix = pids.length > 1 ? `@${pi}` : "";
-              const omniId = `qu:${group.id}${suffix}`;
-              items.push({
-                id: omniId,
-                pos,
-                content: (
-                  <div key={omniId} data-omni-entry={omniId}>
-                    <QuotationGroupCard
-                      group={group}
-                      bibEntries={bibEntries}
-                      bibPackage={bibPackage}
-                      selected={isSelected}
-                      onSelect={() => setSelectedQuotationGroupId(isSelected ? null : group.id)}
-                      onDelete={() => deleteQuotationGroup(group.id)}
-                      onJump={() => editorRef.current?.scrollToParagraphId(pid)}
-                      onUpdateGroupTitle={updateQuotationGroupTitle}
-                      onAddReference={addQuotationReference}
-                      onDeleteReference={deleteQuotationReference}
-                      onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
-                      onAddQuote={addQuotationQuote}
-                      onUpdateQuote={updateQuotationQuote}
-                      onDeleteQuote={deleteQuotationQuote}
-                      onUpdateNotes={updateQuotationNotes}
-                    />
-                  </div>
-                ),
-              });
-            }
-          }
-        }
-      }
-
-      // --- Notes (nt) — multi-paragraph: one item per paragraphId ---
-      {
-        for (const note of notes) {
-          const pids = note.paragraphIds;
-          const isSelected = selectedNoteId === note.id;
-          if (pids.length === 0) {
-            items.push({
-              id: `nt:${note.id}`,
-              pos: null,
-              content: (
-                <NoteCard
-                  key={`nt:${note.id}`}
-                  note={note}
-                  selected={isSelected}
-                  onUpdate={updateNote}
-                  onUpdateTitle={updateNoteTitle}
-                  onDelete={deleteNote}
-                  onSelect={setSelectedNoteId}
-                  onEditorFocus={setOverrideEditor}
-                  getCitationDisplayText={getCitationDisplayText}
-                  onCitationCreated={handleCitationCreated}
-                  extraDataAttrs={{ "data-omni-entry": `nt:${note.id}` }}
-                />
-              ),
-            });
-          } else {
-            for (let pi = 0; pi < pids.length; pi++) {
-              const pid = pids[pi];
-              const pos = findParagraphPos(pid);
-              const suffix = pids.length > 1 ? `@${pi}` : "";
-              const omniId = `nt:${note.id}${suffix}`;
-              items.push({
-                id: omniId,
-                pos,
-                content: (
-                  <NoteCard
-                    key={omniId}
-                    note={note}
-                    selected={isSelected}
-                    onUpdate={updateNote}
-                    onUpdateTitle={updateNoteTitle}
-                    onDelete={deleteNote}
-                    onSelect={setSelectedNoteId}
-                    onJump={() => editorRef.current?.scrollToParagraphId(pid)}
-                    onEditorFocus={setOverrideEditor}
-                    getCitationDisplayText={getCitationDisplayText}
-                    onCitationCreated={handleCitationCreated}
-                    extraDataAttrs={{ "data-omni-entry": omniId }}
-                  />
-                ),
-              });
-            }
-          }
-        }
-      }
-
-      // --- Archive snippets (ar) — multi-paragraph: one item per paragraphId ---
-      {
-        for (const snippet of sortedArchiveSnippets) {
-          const orphaned = anchoredIds && !anchoredIds.has(snippet.id);
-          const isSelected = selectedArchiveId === snippet.id;
-          const pids = snippet.paragraphIds ?? [];
-          if (orphaned || pids.length === 0) {
-            items.push({
-              id: `ar:${snippet.id}`,
-              pos: null,
-              content: (
-                <ArchiveCard
-                  key={`ar:${snippet.id}`}
-                  snippet={snippet}
-                  selected={isSelected}
-                  orphaned={orphaned}
-                  onSelect={setSelectedArchiveId}
-                  onEdit={(id, content) => updateArchiveSnippet(id, content)}
-                  onUpdateTitle={updateArchiveSnippetTitle}
-                  onDelete={handleDeleteArchive}
-                  onEditorFocus={setOverrideEditor}
-                  getCitationDisplayText={getCitationDisplayText}
-                  onCitationCreated={handleCitationCreated}
-                  extraDataAttrs={{ "data-omni-entry": `ar:${snippet.id}` }}
-                />
-              ),
-            });
-          } else {
-            for (let pi = 0; pi < pids.length; pi++) {
-              const pid = pids[pi];
-              const pos = findParagraphPos(pid);
-              const suffix = pids.length > 1 ? `@${pi}` : "";
-              const omniId = `ar:${snippet.id}${suffix}`;
-              items.push({
-                id: omniId,
-                pos,
-                content: (
-                  <ArchiveCard
-                    key={omniId}
-                    snippet={snippet}
-                    selected={isSelected}
-                    onSelect={setSelectedArchiveId}
-                    onEdit={(id, content) => updateArchiveSnippet(id, content)}
-                    onUpdateTitle={updateArchiveSnippetTitle}
-                    onDelete={handleDeleteArchive}
-                    onScrollToMarker={() => editorRef.current?.scrollToParagraphId(pid)}
-                    onEditorFocus={setOverrideEditor}
-                    getCitationDisplayText={getCitationDisplayText}
-                    onCitationCreated={handleCitationCreated}
-                    extraDataAttrs={{ "data-omni-entry": omniId }}
-                  />
-                ),
-              });
-            }
-          }
-        }
-      }
-
-      // --- Todo items (td) — multi-paragraph: one item per paragraphId ---
-      {
-        for (const item of todoItems) {
-          const pids = item.paragraphIds;
-          const isAnchored = pids.length > 0;
-          const isSelected = selectedTodoId === item.id;
-          if (!isAnchored) {
-            items.push({
-              id: `td:${item.id}`,
-              pos: null,
-              content: (
-                <TodoRow
-                  key={`td:${item.id}`}
-                  item={item}
-                  selected={isSelected}
-                  onToggle={toggleTodo}
-                  onUpdate={updateTodo}
-                  onUpdateNotes={updateTodoNotes}
-                  onDelete={deleteTodo}
-                  onSelect={setSelectedTodoId}
-                  isAnchored={false}
-                  extraDataAttrs={{ "data-omni-entry": `td:${item.id}` }}
-                />
-              ),
-            });
-          } else {
-            for (let pi = 0; pi < pids.length; pi++) {
-              const pid = pids[pi];
-              const pos = findParagraphPos(pid);
-              const suffix = pids.length > 1 ? `@${pi}` : "";
-              const omniId = `td:${item.id}${suffix}`;
-              items.push({
-                id: omniId,
-                pos,
-                content: (
-                  <TodoRow
-                    key={omniId}
-                    item={item}
-                    selected={isSelected}
-                    onToggle={toggleTodo}
-                    onUpdate={updateTodo}
-                    onUpdateNotes={updateTodoNotes}
-                    onDelete={deleteTodo}
-                    onSelect={setSelectedTodoId}
-                    isAnchored={true}
-                    onJump={() => editorRef.current?.scrollToParagraphId(pid)}
-                    extraDataAttrs={{ "data-omni-entry": omniId }}
-                  />
-                ),
-              });
-            }
-          }
-        }
-      }
+      const items: OmniItem[] = [
+        ...buildFootnoteOmniItems({
+          footnotes,
+          orphanedFootnotes,
+          selectedFootnoteId,
+          setSelectedFootnoteId,
+          scrollToFootnote: (id) => editorRef.current?.scrollToFootnote(id),
+          onEditFootnote: handleEditFootnote,
+          onDeleteFootnote: handleDeleteFootnote,
+          onEditFootnoteTitle: handleEditFootnoteTitle,
+          onEditOrphan: handleEditOrphan,
+          onDeleteOrphan: handleDeleteOrphan,
+          onEditOrphanTitle: handleEditOrphanTitle,
+          setOverrideEditor,
+          getCitationDisplayText,
+          onCitationCreated: handleCitationCreated,
+        }),
+        ...buildCitationOmniItems({
+          citations,
+          citationPositionMap,
+          selectedCitationId,
+          setSelectedCitationId,
+          scrollToCitation: (id) => editorRef.current?.scrollToCitation(id),
+          bibEntries,
+          bibPackage,
+          getCitationDisplayText,
+          updateCitation,
+          getFormattedBib,
+          getAnnotation,
+          setAnnotation,
+          requestBibReview,
+          cancelBibReview,
+          getBibReviewStatus,
+          updateBibEntry,
+          updateBibKeyAndType,
+        }),
+        ...buildQuotationOmniItems({
+          quotationGroups,
+          selectedQuotationGroupId,
+          setSelectedQuotationGroupId,
+          scrollToParagraphId,
+          findParagraphPos,
+          bibEntries,
+          bibPackage,
+          deleteQuotationGroup,
+          updateQuotationGroupTitle,
+          addQuotationReference,
+          deleteQuotationReference,
+          updateQuotationReferenceCiteKey,
+          addQuotationQuote,
+          updateQuotationQuote,
+          deleteQuotationQuote,
+          updateQuotationNotes,
+        }),
+        ...buildNoteOmniItems({
+          notes,
+          selectedNoteId,
+          setSelectedNoteId,
+          scrollToParagraphId,
+          findParagraphPos,
+          updateNote,
+          updateNoteTitle,
+          deleteNote,
+          setOverrideEditor,
+          getCitationDisplayText,
+          onCitationCreated: handleCitationCreated,
+        }),
+        ...buildArchiveOmniItems({
+          archiveSnippets: sortedArchiveSnippets,
+          anchoredIds,
+          selectedArchiveId,
+          setSelectedArchiveId,
+          scrollToParagraphId,
+          findParagraphPos,
+          updateArchiveSnippet,
+          updateArchiveSnippetTitle,
+          handleDeleteArchive,
+          setOverrideEditor,
+          getCitationDisplayText,
+          onCitationCreated: handleCitationCreated,
+        }),
+        ...buildTodoOmniItems({
+          todoItems,
+          selectedTodoId,
+          setSelectedTodoId,
+          scrollToParagraphId,
+          findParagraphPos,
+          toggleTodo,
+          updateTodo,
+          updateTodoNotes,
+          deleteTodo,
+        }),
+      ];
 
       return (
         <OmniViewPanel
@@ -4809,7 +4596,7 @@ export default function EditorLayout() {
       );
     }
 
-    return <PlaceholderPanel title={meta.label} hasViewToggle={false} />;
+    return <PlaceholderPanel title={panelLabel(panelId)} hasViewToggle={false} />;
   }
 
   // Render a side's panel column. Always returns a PanelColumn so the

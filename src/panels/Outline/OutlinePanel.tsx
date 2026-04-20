@@ -9,7 +9,7 @@ import {
 } from "@/hooks/useWordCountConfig";
 import type { FocusState } from "@/hooks/useFocusMode";
 import { sectionRange } from "@/hooks/useFocusMode";
-import { PanelPopout, PanelClose } from "./panel-primitives";
+import { Panel } from "@/panels/_shared/Panel";
 
 interface HeadingItem {
   id: string;
@@ -1470,156 +1470,161 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
     setCollapsed(new Set());
   }, []);
 
-  return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
-        <div className="flex items-center gap-2">
-          <div className="relative -ml-3" ref={menuRef}>
-            <button
-              onClick={() => setMenuOpen(!menuOpen)}
-              className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-              title="View options"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                <circle cx="8" cy="3" r="1.5" />
-                <circle cx="8" cy="8" r="1.5" />
-                <circle cx="8" cy="13" r="1.5" />
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowNumbers(!showNumbers); }}
-                >
-                  <span>Show section numbers</span>
-                  <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowLabels(!showLabels); }}
-                >
-                  <span>Show labels</span>
-                  <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowTitles(!showTitles); }}
-                >
-                  <span>Show par. titles</span>
-                  <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowWordCount(!showWordCount); }}
-                >
-                  <span>Show word count</span>
-                  <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
-                </button>
-                <button
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
-                  onClick={() => { setShowPosition(!showPosition); }}
-                >
-                  <span>Show current position</span>
-                  <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
-                </button>
-              </div>
-            )}
-          </div>
-          <h3 className="text-sm font-semibold text-ink-body -ml-1">Outline</h3>
-          {onReorderBlocks && (
-            <button
-              onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
-              className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
-                editMode
-                  ? "bg-[var(--accent)] text-white"
-                  : focusState?.active
-                    ? "text-ink-faint cursor-not-allowed"
-                    : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
-              }`}
-              title={focusState?.active ? "Exit Focus to use Edit" : undefined}
-            >
-              Edit
-            </button>
-          )}
-          {onFocusActivate && (
-            <button
-              onClick={() => {
-                if (editMode) return;
-                if (focusState?.active) {
-                  onFocusDeactivate?.();
-                } else {
-                  onFocusActivate();
-                }
-              }}
-              className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
-                focusState?.active
-                  ? "bg-[var(--accent)] text-white"
-                  : editMode
-                    ? "text-ink-faint cursor-not-allowed"
-                    : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
-              }`}
-              title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
-            >
-              Focus
-            </button>
-          )}
-          {focusState?.active && onFocusToggleLock && (
-            <button
-              onClick={onFocusToggleLock}
-              className={`p-0.5 rounded-md transition-colors ${
-                focusState.locked
-                  ? "text-[var(--accent)]"
-                  : "text-[var(--muted)] hover:text-ink-body"
-              }`}
-              title={focusState.locked ? "Unlock focus (adjust selection)" : "Lock focus (hide other content)"}
-            >
-              {focusState.locked ? (
-                /* Locked: closed shackle, filled body */
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
-                  <path d="M5 7V5a3 3 0 0 1 6 0v2" />
-                  <circle cx="8" cy="10.5" r="1" fill="var(--header-bg)" stroke="none" />
-                </svg>
-              ) : (
-                /* Unlocked: same shackle shifted left — right leg in body, left leg free */
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="7" width="10" height="7" rx="1.5" />
-                  <path d="M1 7V5a3 3 0 0 1 6 0v2" />
-                </svg>
-              )}
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
+  const headerLeading = (
+    <div className="relative -ml-3" ref={menuRef}>
+      <button
+        onClick={() => setMenuOpen(!menuOpen)}
+        className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
+        title="View options"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+          <circle cx="8" cy="3" r="1.5" />
+          <circle cx="8" cy="8" r="1.5" />
+          <circle cx="8" cy="13" r="1.5" />
+        </svg>
+      </button>
+      {menuOpen && (
+        <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
           <button
-            onClick={expandAll}
-            className="text-[var(--muted)] hover:text-ink-body transition-colors"
-            title="Expand all"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            onClick={() => { setShowNumbers(!showNumbers); }}
           >
-            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 1 L7 4.5 L12 1" />
-              <path d="M2 6.5 L7 10 L12 6.5" />
-            </svg>
+            <span>Show section numbers</span>
+            <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
           </button>
           <button
-            onClick={collapseAll}
-            className="text-[var(--muted)] hover:text-ink-body transition-colors"
-            title="Collapse all"
-            style={{ marginTop: "-2px" }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            onClick={() => { setShowLabels(!showLabels); }}
           >
-            <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 5.5 L7 2 L12 5.5" />
-              <path d="M2 9 L7 5.5 L12 9" />
-            </svg>
+            <span>Show labels</span>
+            <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
           </button>
-          <PanelClose />
-          <div className="-mr-2">
-            <PanelPopout />
-          </div>
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            onClick={() => { setShowTitles(!showTitles); }}
+          >
+            <span>Show par. titles</span>
+            <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            onClick={() => { setShowWordCount(!showWordCount); }}
+          >
+            <span>Show word count</span>
+            <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            onClick={() => { setShowPosition(!showPosition); }}
+          >
+            <span>Show current position</span>
+            <span className="text-[var(--accent)]">{showPosition ? "✓" : ""}</span>
+          </button>
         </div>
-      </div>
+      )}
+    </div>
+  );
 
+  const headerTitleAfter = (
+    <div className="flex items-center gap-2">
+      {onReorderBlocks && (
+        <button
+          onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
+          className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+            editMode
+              ? "bg-[var(--accent)] text-white"
+              : focusState?.active
+                ? "text-ink-faint cursor-not-allowed"
+                : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
+          }`}
+          title={focusState?.active ? "Exit Focus to use Edit" : undefined}
+        >
+          Edit
+        </button>
+      )}
+      {onFocusActivate && (
+        <button
+          onClick={() => {
+            if (editMode) return;
+            if (focusState?.active) {
+              onFocusDeactivate?.();
+            } else {
+              onFocusActivate();
+            }
+          }}
+          className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+            focusState?.active
+              ? "bg-[var(--accent)] text-white"
+              : editMode
+                ? "text-ink-faint cursor-not-allowed"
+                : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
+          }`}
+          title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
+        >
+          Focus
+        </button>
+      )}
+      {focusState?.active && onFocusToggleLock && (
+        <button
+          onClick={onFocusToggleLock}
+          className={`p-0.5 rounded-md transition-colors ${
+            focusState.locked
+              ? "text-[var(--accent)]"
+              : "text-[var(--muted)] hover:text-ink-body"
+          }`}
+          title={focusState.locked ? "Unlock focus (adjust selection)" : "Lock focus (hide other content)"}
+        >
+          {focusState.locked ? (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor" />
+              <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+              <circle cx="8" cy="10.5" r="1" fill="var(--header-bg)" stroke="none" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="7" width="10" height="7" rx="1.5" />
+              <path d="M1 7V5a3 3 0 0 1 6 0v2" />
+            </svg>
+          )}
+        </button>
+      )}
+    </div>
+  );
+
+  const headerExtras = (
+    <div className="flex items-center gap-2 mr-1">
+      <button
+        onClick={expandAll}
+        className="text-[var(--muted)] hover:text-ink-body transition-colors"
+        title="Expand all"
+      >
+        <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 1 L7 4.5 L12 1" />
+          <path d="M2 6.5 L7 10 L12 6.5" />
+        </svg>
+      </button>
+      <button
+        onClick={collapseAll}
+        className="text-[var(--muted)] hover:text-ink-body transition-colors"
+        title="Collapse all"
+        style={{ marginTop: "-2px" }}
+      >
+        <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M2 5.5 L7 2 L12 5.5" />
+          <path d="M2 9 L7 5.5 L12 9" />
+        </svg>
+      </button>
+    </div>
+  );
+
+  return (
+    <Panel
+      kind="outline"
+      headerLeading={headerLeading}
+      headerTitleAfter={headerTitleAfter}
+      headerExtras={headerExtras}
+      variant="raw"
+    >
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 relative">
         {editMode && onReorderBlocks && onRenameHeading && onRenameParTitle ? (
           <EditableOutline
@@ -1753,7 +1758,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
           </div>
         )}
       </div>
-    </div>
+    </Panel>
   );
 }
 

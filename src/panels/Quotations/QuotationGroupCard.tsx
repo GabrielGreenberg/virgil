@@ -1,59 +1,50 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo, memo } from "react";
-import type { Editor } from "@tiptap/react";
+import {
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  useMemo,
+  memo,
+} from "react";
 import type {
   QuotationGroup,
   Reference,
   Quote,
   BibEntry,
-  AiRequest,
 } from "@/lib/types";
 import {
   PanelCard,
   PANEL,
   Chevron,
-  ItemMenu,
-  PanelHeader,
-  PrevNextCounter,
   TargetIcon,
-  useCycle,
-  AiRequestCard,
-  AiRequestsSectionHeader,
   headerOverrideStyle,
-} from "./panel-primitives";
+} from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { FloatCard } from "./FloatingCards";
-import PanelThemePicker from "./PanelThemePicker";
-import ViewToggle from "./ViewToggle";
-import { useInTextPositions, getParagraphAnchorPositions } from "@/hooks/useInTextPositions";
-import ConfirmDialog from "./ConfirmDialog";
-import {
-  formatMinimalCitation as fmtMinCite,
-} from "@/lib/bib-parser";
+import { FloatCard } from "@/components/FloatingCards";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatMinimalCitation as fmtMinCite } from "@/lib/bib-parser";
 import { MIME_QUOTE, MIME_QUOTATION } from "@/lib/marginalia";
+import { popKey } from "@/panels/panel-registry";
 
-/* ── Debounce helper ─────────────────────────────────────────────── */
-
-function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+function useDebouncedCallback<T extends (...args: any[]) => void>(
+  fn: T,
+  delay: number,
+): T {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fnRef = useRef(fn);
   fnRef.current = fn;
-  return useCallback((...args: any[]) => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => fnRef.current(...args), delay);
-  }, [delay]) as unknown as T;
+  return useCallback(
+    (...args: any[]) => {
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => fnRef.current(...args), delay);
+    },
+    [delay],
+  ) as unknown as T;
 }
 
-/* ── Delete X button with confirm dialog ────────────────────────── */
-
-/**
- * A small "×" button that appears on hover of its parent (via the
- * `group-hover` / `group/xxx` pattern). Clicking it shows a
- * ConfirmDialog (fixed viewport overlay) before actually deleting,
- * so the confirmation is never clipped by scroll containers.
- */
 function DeleteXButton({
   onConfirm,
   label = "Delete this item?",
@@ -62,7 +53,6 @@ function DeleteXButton({
   label?: string;
 }) {
   const [asking, setAsking] = useState(false);
-
   return (
     <>
       <button
@@ -83,14 +73,15 @@ function DeleteXButton({
         message={label}
         confirmLabel="Delete"
         tone="danger"
-        onConfirm={() => { setAsking(false); onConfirm(); }}
+        onConfirm={() => {
+          setAsking(false);
+          onConfirm();
+        }}
         onCancel={() => setAsking(false)}
       />
     </>
   );
 }
-
-/* ── Auto-resizing textarea ──────────────────────────────────────── */
 
 function AutoTextarea({
   value,
@@ -113,7 +104,6 @@ function AutoTextarea({
     el.style.height = el.scrollHeight + "px";
   }, []);
   useEffect(resize, [value, resize]);
-
   return (
     <textarea
       ref={ref}
@@ -126,8 +116,6 @@ function AutoTextarea({
     />
   );
 }
-
-/* ── Cite Key Autocomplete ───────────────────────────────────────── */
 
 function CiteKeyAutocomplete({
   value,
@@ -143,7 +131,9 @@ function CiteKeyAutocomplete({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { setInputValue(value); }, [value]);
+  useEffect(() => {
+    setInputValue(value);
+  }, [value]);
 
   const results = useMemo(() => {
     if (inputValue.length < 1) {
@@ -170,7 +160,10 @@ function CiteKeyAutocomplete({
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+      if (
+        wrapperRef.current &&
+        !wrapperRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
       }
     };
@@ -184,7 +177,7 @@ function CiteKeyAutocomplete({
       onChange(key);
       setIsOpen(false);
     },
-    [onChange]
+    [onChange],
   );
 
   const onKeyDown = useCallback(
@@ -204,7 +197,7 @@ function CiteKeyAutocomplete({
         setInputValue(value);
       }
     },
-    [results, highlightedIndex, isOpen, selectEntry, value]
+    [results, highlightedIndex, isOpen, selectEntry, value],
   );
 
   return (
@@ -237,12 +230,17 @@ function CiteKeyAutocomplete({
           {results.map(({ entry }, i) => (
             <button
               key={entry.key}
-              onMouseDown={(e) => { e.preventDefault(); selectEntry(entry.key); }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                selectEntry(entry.key);
+              }}
               className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 text-xs ${
                 i === highlightedIndex ? "bg-amber-50" : "hover:bg-surface-muted"
               }`}
             >
-              <span className="font-mono font-semibold text-ink-strong shrink-0">{entry.key}</span>
+              <span className="font-mono font-semibold text-ink-strong shrink-0">
+                {entry.key}
+              </span>
               <span className="text-ink-muted truncate">
                 {entry.fields.author ? entry.fields.author.slice(0, 30) : ""}
                 {entry.fields.year ? ` (${entry.fields.year})` : ""}
@@ -255,13 +253,6 @@ function CiteKeyAutocomplete({
   );
 }
 
-/* ── Single Quote Entry (text + page only — no title) ────────────── */
-
-/**
- * Build a citation command for the given cite key + optional page. The
- * command format matches the document's bib package (natbib → \citep,
- * biblatex → \parencite). Returns an empty string if no citeKey is set.
- */
 function buildQuoteCitationCommand(
   citeKey: string,
   page: string,
@@ -276,7 +267,9 @@ function buildQuoteCitationCommand(
       ? `p.~${p}`
       : p
     : "";
-  return postnote ? `\\${cmd}[${postnote}]{${key}}` : `\\${cmd}{${key}}`;
+  return postnote
+    ? `\\${cmd}[${postnote}]{${key}}`
+    : `\\${cmd}{${key}}`;
 }
 
 const QuoteEntry = memo(function QuoteEntry({
@@ -299,13 +292,12 @@ const QuoteEntry = memo(function QuoteEntry({
     groupId: string,
     referenceId: string,
     quoteId: string,
-    fields: Partial<Pick<Quote, "text" | "page">>
+    fields: Partial<Pick<Quote, "text" | "page">>,
   ) => void;
   onDelete: (groupId: string, referenceId: string, quoteId: string) => void;
 }) {
   const [text, setText] = useState(quote.text);
   const [page, setPage] = useState(quote.page);
-
   const debouncedUpdate = useDebouncedCallback(onUpdate, 400);
 
   const handleTextChange = useCallback(
@@ -313,7 +305,7 @@ const QuoteEntry = memo(function QuoteEntry({
       setText(v);
       debouncedUpdate(groupId, referenceId, quote.id, { text: v });
     },
-    [groupId, referenceId, quote.id, debouncedUpdate]
+    [groupId, referenceId, quote.id, debouncedUpdate],
   );
 
   const handlePageChange = useCallback(
@@ -322,27 +314,25 @@ const QuoteEntry = memo(function QuoteEntry({
       setPage(v);
       debouncedUpdate(groupId, referenceId, quote.id, { page: v });
     },
-    [groupId, referenceId, quote.id, debouncedUpdate]
+    [groupId, referenceId, quote.id, debouncedUpdate],
   );
 
-  useEffect(() => { setText(quote.text); }, [quote.text]);
-  useEffect(() => { setPage(quote.page); }, [quote.page]);
+  useEffect(() => {
+    setText(quote.text);
+  }, [quote.text]);
+  useEffect(() => {
+    setPage(quote.page);
+  }, [quote.page]);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
-      // Stop propagation so the enclosing group card's drag handler
-      // (which drops a paragraph anchor) doesn't also fire
       e.stopPropagation();
       const command = buildQuoteCitationCommand(citeKey, page, bibPackage);
       e.dataTransfer.effectAllowed = "copy";
       e.dataTransfer.setData(
         MIME_QUOTE,
-        JSON.stringify({
-          quoteText: text,
-          command,
-        }),
+        JSON.stringify({ quoteText: text, command }),
       );
-      // Plain-text fallback — quoted text with citation marker
       const fallback = command ? `"${text}" ${command}` : `"${text}"`;
       e.dataTransfer.setData("text/plain", fallback);
     },
@@ -357,7 +347,6 @@ const QuoteEntry = memo(function QuoteEntry({
       className={`group/card ${PANEL.subpodWhite} p-3`}
       title="Drag handle to insert quote with citation"
     >
-      {/* Quote text */}
       <div className="flex items-start gap-2">
         <div
           draggable
@@ -396,8 +385,6 @@ const QuoteEntry = memo(function QuoteEntry({
           />
         )}
       </div>
-
-      {/* Page number */}
       <div className="flex items-center mt-1.5 pt-1.5 border-t border-stone-100">
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-ink-muted">p.</span>
@@ -413,8 +400,6 @@ const QuoteEntry = memo(function QuoteEntry({
     </div>
   );
 });
-
-/* ── Reference block (flat: citeKey + quote pods, no enclosing sub-pod) ── */
 
 const ReferenceBlock = memo(function ReferenceBlock({
   reference,
@@ -440,7 +425,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
     groupId: string,
     referenceId: string,
     quoteId: string,
-    fields: Partial<Pick<Quote, "text" | "page">>
+    fields: Partial<Pick<Quote, "text" | "page">>,
   ) => void;
   onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
 }) {
@@ -457,20 +442,17 @@ const ReferenceBlock = memo(function ReferenceBlock({
       onUpdateCiteKey(groupId, reference.id, key);
       setEditingCiteKey(false);
     },
-    [onUpdateCiteKey, groupId, reference.id]
+    [onUpdateCiteKey, groupId, reference.id],
   );
 
-  // Label for the cite key chip — mirrors CitationCard's key buttons
   const chipLabel = matchedEntry
     ? fmtMinCite(reference.citeKey, bibEntries)
     : reference.citeKey || "No key";
 
   return (
     <div className="group/card space-y-2">
-      {/* Reference header — cite key chip + author info (modeled after CitationCard) */}
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          {/* Cite key chip */}
           <div className="flex flex-wrap gap-1.5 mb-1">
             <button
               onClick={(e) => {
@@ -488,7 +470,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
               {chipLabel}
             </button>
           </div>
-          {/* Author + title display */}
           {matchedEntry && cleanTitle && (
             <p className="text-[11px] text-ink-subtle leading-snug">
               {cleanTitle}
@@ -498,7 +479,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
             <p className="text-xs text-ink-muted italic">No reference selected</p>
           )}
         </div>
-        {/* Delete reference X button */}
         {canDelete && (
           <DeleteXButton
             onConfirm={() => onDeleteReference(groupId, reference.id)}
@@ -507,7 +487,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
         )}
       </div>
 
-      {/* Cite key autocomplete — toggled by clicking the chip */}
       {editingCiteKey && (
         <CiteKeyAutocomplete
           value={reference.citeKey}
@@ -516,7 +495,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
         />
       )}
 
-      {/* Inline cite key display + edit button (matches CitationCard pattern) */}
       {!editingCiteKey && reference.citeKey && (
         <div className="flex items-center gap-1.5 min-w-0">
           <div className="text-xs font-mono text-ink-muted truncate flex-1 min-w-0">
@@ -535,7 +513,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
         </div>
       )}
 
-      {/* Quote pods — each draggable onto the editor */}
       <div className="space-y-1.5">
         {reference.quotes.map((q) => (
           <QuoteEntry
@@ -552,7 +529,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
         ))}
       </div>
 
-      {/* Add quote button */}
       <button
         onClick={() => onAddQuote(groupId, reference.id)}
         className="text-[11px] text-amber-600 hover:text-amber-700 transition-colors"
@@ -562,8 +538,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
     </div>
   );
 });
-
-/* ── Collapsible Notes ───────────────────────────────────────────── */
 
 function CollapsibleNotes({
   notes,
@@ -576,14 +550,16 @@ function CollapsibleNotes({
   const [localNotes, setLocalNotes] = useState(notes);
   const debouncedSave = useDebouncedCallback(onChange, 400);
 
-  useEffect(() => { setLocalNotes(notes); }, [notes]);
+  useEffect(() => {
+    setLocalNotes(notes);
+  }, [notes]);
 
   const handleChange = useCallback(
     (v: string) => {
       setLocalNotes(v);
       debouncedSave(v);
     },
-    [debouncedSave]
+    [debouncedSave],
   );
 
   return (
@@ -614,8 +590,6 @@ function CollapsibleNotes({
     </div>
   );
 }
-
-/* ── Group Card ──────────────────────────────────────────────────── */
 
 export function QuotationGroupCard({
   group,
@@ -652,16 +626,17 @@ export function QuotationGroupCard({
     groupId: string,
     referenceId: string,
     quoteId: string,
-    fields: Partial<Pick<Quote, "text" | "page">>
+    fields: Partial<Pick<Quote, "text" | "page">>,
   ) => void;
   onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
   onTogglePopout?: () => void;
   isPoppedOut?: boolean;
 }) {
-  // Local title state with debounced persist
   const [title, setTitle] = useState(group.title);
-  useEffect(() => { setTitle(group.title); }, [group.title]);
+  useEffect(() => {
+    setTitle(group.title);
+  }, [group.title]);
   const debouncedTitleUpdate = useDebouncedCallback(onUpdateGroupTitle, 400);
   const handleTitleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -669,7 +644,7 @@ export function QuotationGroupCard({
       setTitle(v);
       debouncedTitleUpdate(group.id, v);
     },
-    [group.id, debouncedTitleUpdate]
+    [group.id, debouncedTitleUpdate],
   );
 
   const handleDragStart = useCallback(
@@ -677,10 +652,10 @@ export function QuotationGroupCard({
       e.dataTransfer.effectAllowed = "link";
       e.dataTransfer.setData(
         MIME_QUOTATION,
-        JSON.stringify({ groupId: group.id })
+        JSON.stringify({ groupId: group.id }),
       );
     },
-    [group.id]
+    [group.id],
   );
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -688,7 +663,7 @@ export function QuotationGroupCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const theme = useCardTheme("quote");
   const popped = usePoppedCards();
-  const popKey = `quotation:${group.id}`;
+  const cardKey = popKey("quotations", group.id);
 
   const tryDelete = useCallback(() => {
     setConfirmOpen(true);
@@ -699,7 +674,13 @@ export function QuotationGroupCard({
       if (!selected) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         const el = document.activeElement;
-        if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || (el as HTMLElement).isContentEditable)) return;
+        if (
+          el &&
+          (el.tagName === "INPUT" ||
+            el.tagName === "TEXTAREA" ||
+            (el as HTMLElement).isContentEditable)
+        )
+          return;
         e.preventDefault();
         tryDelete();
       }
@@ -707,9 +688,10 @@ export function QuotationGroupCard({
     [selected, tryDelete],
   );
 
-  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
+  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
   if (!isPoppedOut && isPoppedInCtx) return null;
-  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+  const onToggleFromCtx =
+    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 
   const card = (
     <PanelCard
@@ -720,21 +702,22 @@ export function QuotationGroupCard({
       onTogglePopout={onToggleFromCtx}
       onTrashClick={tryDelete}
       className="focus:outline-none"
-      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect();
+      }}
       data-quotation-group-id={group.id}
       tabIndex={selected ? 0 : -1}
-      onFocusCapture={() => { if (!selected) onSelect(); }}
+      onFocusCapture={() => {
+        if (!selected) onSelect();
+      }}
       onKeyDown={handleKeyDown}
     >
-      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
         ref={headerRef}
         className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
         style={headerOverrideStyle(theme, selected)}
       >
-        {/* Grab handle — card-level anchor drag (marginalia). Drag ghost
-            is just the header, since the card-level drop only places a
-            marginalia anchor (not the inner quotes). */}
         <div
           draggable
           onDragStart={(e) => {
@@ -763,10 +746,19 @@ export function QuotationGroupCard({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           draggable={false}
-          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          onDragStart={(e) => {
+            e.stopPropagation();
+            e.preventDefault();
+          }}
           placeholder="Group title..."
           className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
-          style={{ fontSize: "var(--par-title-size, 0.78rem)", color: theme.override ? theme.titleColor : "#92700a", fontWeight: 500, fontFamily: "var(--font-sans), Inter, sans-serif", letterSpacing: "0.02em" }}
+          style={{
+            fontSize: "var(--par-title-size, 0.78rem)",
+            color: theme.override ? theme.titleColor : "#92700a",
+            fontWeight: 500,
+            fontFamily: "var(--font-sans), Inter, sans-serif",
+            letterSpacing: "0.02em",
+          }}
         />
         <ConfirmDialog
           open={confirmOpen}
@@ -774,7 +766,10 @@ export function QuotationGroupCard({
           confirmLabel="Delete"
           tone="danger"
           anchorRef={cardRef}
-          onConfirm={() => { setConfirmOpen(false); onDelete(); }}
+          onConfirm={() => {
+            setConfirmOpen(false);
+            onDelete();
+          }}
           onCancel={() => setConfirmOpen(false)}
         />
         {onJump && (
@@ -782,12 +777,13 @@ export function QuotationGroupCard({
         )}
       </div>
 
-      {/* Separator */}
-      <div className={`border-t transition-colors ${selected ? "border-amber-200" : "border-edge-subtle group-hover:border-edge-hover"}`} />
+      <div
+        className={`border-t transition-colors ${selected ? "border-amber-200" : "border-edge-subtle group-hover:border-edge-hover"}`}
+      />
 
-      {/* Body */}
-      <div className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
-        {/* References — flat, separated by a thin divider when multiple */}
+      <div
+        className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
+      >
         <div
           className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"
           onClick={(e) => e.stopPropagation()}
@@ -809,15 +805,16 @@ export function QuotationGroupCard({
           ))}
         </div>
 
-        {/* Add reference button */}
         <button
-          onClick={(e) => { e.stopPropagation(); onAddReference(group.id); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddReference(group.id);
+          }}
           className="mt-2 text-xs text-amber-600 hover:text-amber-700 transition-colors"
         >
           + Add reference
         </button>
 
-        {/* Collapsible notes */}
         <div onClick={(e) => e.stopPropagation()}>
           <CollapsibleNotes
             notes={group.notes}
@@ -827,245 +824,6 @@ export function QuotationGroupCard({
       </div>
     </PanelCard>
   );
-  if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;
+  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
   return card;
-}
-
-/* ── Main Panel ──────────────────────────────────────────────────── */
-
-export interface QuotationsPanelProps {
-  groups: QuotationGroup[];
-  bibEntries: BibEntry[];
-  bibPackage: string;
-  citationStyle: string;
-  onAddGroup: () => QuotationGroup;
-  onDeleteGroup: (groupId: string) => void;
-  onUpdateGroupTitle: (groupId: string, title: string) => void;
-  onAddReference: (groupId: string) => string;
-  onDeleteReference: (groupId: string, referenceId: string) => void;
-  onUpdateReferenceCiteKey: (groupId: string, referenceId: string, key: string) => void;
-  onAddQuote: (groupId: string, referenceId: string) => string;
-  onUpdateQuote: (
-    groupId: string,
-    referenceId: string,
-    quoteId: string,
-    fields: Partial<Pick<Quote, "text" | "page">>
-  ) => void;
-  onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
-  onUpdateNotes: (groupId: string, notes: string) => void;
-  /** Optional controlled selected group id */
-  selectedGroupId?: string | null;
-  onSelectGroup?: (groupId: string | null) => void;
-  onScrollToParagraph?: (uuid: string) => void;
-  aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
-  onUpdateAiRequestText?: (id: string, text: string) => void;
-  onDeleteAiRequest?: (id: string) => void;
-  viewMode: "list" | "in-text";
-  onViewModeChange: (mode: "list" | "in-text") => void;
-  editor: Editor | null;
-  panelSide: "left" | "right";
-}
-
-export default function QuotationsPanel({
-  groups,
-  bibEntries,
-  bibPackage,
-  onAddGroup,
-  onDeleteGroup,
-  onUpdateGroupTitle,
-  onAddReference,
-  onDeleteReference,
-  onUpdateReferenceCiteKey,
-  onAddQuote,
-  onUpdateQuote,
-  onDeleteQuote,
-  onUpdateNotes,
-  selectedGroupId: controlledSelectedGroupId,
-  onSelectGroup,
-  onScrollToParagraph,
-  aiRequests,
-  onAddAiRequest,
-  onUpdateAiRequestText,
-  onDeleteAiRequest,
-  viewMode,
-  onViewModeChange,
-  editor,
-  panelSide,
-}: QuotationsPanelProps) {
-  const myAiRequests = useMemo(
-    () => (aiRequests ?? []).filter((r) => r.kind === "quotation"),
-    [aiRequests],
-  );
-  const [internalSelectedGroupId, setInternalSelectedGroupId] = useState<
-    string | null
-  >(null);
-  const selectedGroupId =
-    controlledSelectedGroupId !== undefined
-      ? controlledSelectedGroupId
-      : internalSelectedGroupId;
-  const setSelectedGroupId = useCallback(
-    (id: string | null) => {
-      if (onSelectGroup) onSelectGroup(id);
-      else setInternalSelectedGroupId(id);
-    },
-    [onSelectGroup]
-  );
-
-  // Scroll the selected group into view when selection changes externally
-  const listRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!selectedGroupId) return;
-    const el = listRef.current?.querySelector(
-      `[data-quotation-group-id="${selectedGroupId}"]`
-    );
-    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, [selectedGroupId]);
-
-  const handleAdd = useCallback(() => {
-    const g = onAddGroup();
-    setSelectedGroupId(g.id);
-  }, [onAddGroup, setSelectedGroupId]);
-
-  // Anchored groups (with paragraphId) for prev/next cycling
-  const anchoredGroups = useMemo(
-    () => groups.filter((g) => g.paragraphIds.length > 0),
-    [groups],
-  );
-
-  const inTextItems = useMemo(
-    () => getParagraphAnchorPositions(editor, anchoredGroups),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, anchoredGroups],
-  );
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor,
-    inTextItems,
-    viewMode === "in-text",
-    "data-quotation-group-id",
-  );
-
-  const onActivateGroup = useCallback(
-    (g: QuotationGroup) => {
-      setSelectedGroupId(g.id);
-      if (g.paragraphIds.length > 0) onScrollToParagraph?.(g.paragraphIds[0]);
-    },
-    [onScrollToParagraph, setSelectedGroupId],
-  );
-  const { idx: cycleIdx, next: cycleNext, prev: cyclePrev, setIdx: setCycleIdx } =
-    useCycle(anchoredGroups, onActivateGroup);
-
-  // Sync external selection back to cycle index — including deselect
-  useEffect(() => {
-    if (!selectedGroupId) {
-      if (cycleIdx != null) setCycleIdx(null);
-      return;
-    }
-    const i = anchoredGroups.findIndex((g) => g.id === selectedGroupId);
-    if (i >= 0 && i !== cycleIdx) setCycleIdx(i);
-  }, [selectedGroupId, anchoredGroups, cycleIdx, setCycleIdx]);
-
-  return (
-    <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-      <PanelHeader
-        title="Quotations"
-        onAdd={handleAdd}
-        onAiRequest={onAddAiRequest}
-        leading={
-          <ItemMenu align="left">
-            <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-              <PanelThemePicker panelKey="quote" label="Quotation color" />
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            </div>
-          </ItemMenu>
-        }
-      >
-        <PrevNextCounter
-          current={cycleIdx}
-          total={anchoredGroups.length}
-          label=""
-        />
-      </PanelHeader>
-
-      <div
-        ref={viewMode === "in-text" ? panelScrollRef : listRef}
-        className={viewMode === "in-text" ? "flex-1 overflow-y-auto" : PANEL.list}
-      >
-        {groups.length === 0 && myAiRequests.length === 0 ? (
-          <div className={PANEL.empty}>
-            No quotations yet. Add a group to start collecting references.
-          </div>
-        ) : viewMode === "in-text" ? (
-          <div className="relative" style={{ height: editorScrollHeight || "100%" }}>
-            {anchoredGroups.map((group) => {
-              const top = positions.get(group.id);
-              if (top === undefined) return null;
-              return (
-                <div
-                  key={group.id}
-                  className={`absolute left-2 right-2 in-text-connector in-text-connector-${panelSide}`}
-                  style={{ top }}
-                >
-                  <QuotationGroupCard
-                    group={group}
-                    bibEntries={bibEntries}
-                    bibPackage={bibPackage}
-                    selected={selectedGroupId === group.id}
-                    onSelect={() => setSelectedGroupId(group.id)}
-                    onDelete={() => onDeleteGroup(group.id)}
-                    onJump={() => onScrollToParagraph?.(group.paragraphIds[0])}
-                    onUpdateGroupTitle={onUpdateGroupTitle}
-                    onAddReference={onAddReference}
-                    onDeleteReference={onDeleteReference}
-                    onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
-                    onAddQuote={onAddQuote}
-                    onUpdateQuote={onUpdateQuote}
-                    onDeleteQuote={onDeleteQuote}
-                    onUpdateNotes={onUpdateNotes}
-                  />
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <>
-            {myAiRequests.length > 0 && (
-              <>
-                <AiRequestsSectionHeader count={myAiRequests.length} />
-                {myAiRequests.map((req) => (
-                  <AiRequestCard
-                    key={req.id}
-                    request={req}
-                    onChangeText={(text) => onUpdateAiRequestText?.(req.id, text)}
-                    onDelete={() => onDeleteAiRequest?.(req.id)}
-                  />
-                ))}
-              </>
-            )}
-
-            {groups.map((group) => (
-              <QuotationGroupCard
-                key={group.id}
-                group={group}
-                bibEntries={bibEntries}
-                bibPackage={bibPackage}
-                selected={selectedGroupId === group.id}
-                onSelect={() => setSelectedGroupId(group.id)}
-                onDelete={() => onDeleteGroup(group.id)}
-                onJump={group.paragraphIds.length > 0 ? () => onScrollToParagraph?.(group.paragraphIds[0]) : undefined}
-                onUpdateGroupTitle={onUpdateGroupTitle}
-                onAddReference={onAddReference}
-                onDeleteReference={onDeleteReference}
-                onUpdateReferenceCiteKey={onUpdateReferenceCiteKey}
-                onAddQuote={onAddQuote}
-                onUpdateQuote={onUpdateQuote}
-                onDeleteQuote={onDeleteQuote}
-                onUpdateNotes={onUpdateNotes}
-              />
-            ))}
-          </>
-        )}
-      </div>
-    </div>
-  );
 }

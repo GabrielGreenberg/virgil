@@ -85,8 +85,69 @@ for AI-related actions.
 
 ## Panel Architecture
 
-### Container Pattern
-Every panel renders inside a flex column that fills its allocated space:
+Panels live under `src/panels/<Kind>/` — one folder per panel. Each folder
+contains the panel component, its card component(s) (if any), an optional
+omni builder, and an `index.ts` barrel. The taxonomy (panel kind, card
+kind, popout key prefix, omni eligibility, default strip side) lives in
+[`src/panels/panel-registry.ts`](src/panels/panel-registry.ts) — a single
+source of truth that other systems (chrome, OmniView, popKey helper)
+read from.
+
+### Panel + CardListPanel (the wrappers)
+
+Every panel uses one of two wrappers from `src/panels/_shared/`:
+
+- **`Panel`** — the universal chrome (outer flex column, header, scroll
+  body). Variants: `"list"` (default — applies `PANEL.list`) and `"raw"`
+  (caller owns the body). Use `Panel` directly when there are no
+  card-list semantics (Outline, Search, WordCount).
+- **`CardListPanel<T>`** — wraps `Panel` and adds iteration over an
+  `items` array, AI-requests section, and list/in-text view modes. Use
+  for any panel whose body is "a list of cards." Pass `kind`, `items`,
+  `getId`, `selectedId`, `onSelect`, `renderCard` (and optional
+  `inTextRenderItem` + `inTextPositions` for the in-text mode).
+
+```tsx
+// Cardful panel — most common case
+<CardListPanel
+  kind="notes"
+  items={sortedNotes}
+  getId={(n) => n.id}
+  selectedId={selectedNoteId}
+  onSelect={onSelectNote}
+  renderCard={(note, { selected }) => <NoteCard note={note} selected={selected} ... />}
+  emptyState={<div className={PANEL.empty}>No notes yet.</div>}
+  // Plus header/footer/scroll/in-text slots as needed.
+/>
+
+// Non-cardful panel — bespoke body
+<Panel kind="outline" variant="raw" headerLeading={<OptionsMenu/>}>
+  <div className="flex-1 overflow-y-auto p-1 relative">…tree…</div>
+</Panel>
+```
+
+`Panel` requires only `kind` — title, popout, and close are wired
+automatically from the registry + `PanelChromeProvider`. Available slots:
+
+| Slot | Purpose |
+|------|---------|
+| `headerLeading` | Far-left of header (typically the options menu) |
+| `headerTitleAfter` | Inline buttons cluster with the title (Outline's Edit/Focus/Lock) |
+| `headerExtras` | Right-aligned header content (counter, view toggle) |
+| `panelExtras` | Above the scroll body (search inputs, citation builder) |
+| `footer` | Below the scroll body (Todo's archive bar) |
+| `wrapperClassName` / `wrapperProps` | Spread onto the outer wrapper (Archive's capture-drop styling) |
+| `onKeyDown` / `scrollTabIndex` | Keyboard nav on the scroll container |
+
+`CardListPanel` adds: `aiRequests`, `viewMode`, `inTextPositions`,
+`inTextRenderItem`, `inTextTrailing` (footnotes' orphan stack),
+`listTrailing` (bibliography's pending requests).
+
+### Container Pattern (legacy bare-bones)
+Only the lower-level kit — `Panel` itself, the popout dispatcher in
+`EditorLayout`, and the `Suggestions` panel — instantiates this raw
+container directly. Real panels use `Panel`/`CardListPanel`.
+
 ```tsx
 <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
   <PanelHeader ... />
@@ -98,10 +159,11 @@ controls panel background. Never set `bg-[var(--background)]` on a panel
 container (it bleeds through on split views).
 
 ### Shared Primitives (`panel-primitives.tsx`)
-All panels import from this file. It exports:
+The lower-level kit on which `Panel`/`CardListPanel` are built. It exports:
 - `panelCard(selected, extra?)` — card className builder
 - `PANEL` — class-string tokens (`.list`, `.cardInner`, `.subpod`, etc.)
-- `PanelHeader` — standard header bar
+- `PanelHeader` — standard header bar (used internally by `Panel`)
+- `PanelChromeProvider` / `PanelClose` / `PanelPopout` — chrome plumbing
 - `ItemMenu` + `MenuDelete` — three-dot context menu
 - `TargetIcon` — jump-to-text bullseye
 - `Chevron` — expand/collapse arrow
@@ -189,9 +251,15 @@ Any wrapper card (`NoteCard`, `FootnoteCard`, `ArchiveCard`, `CutCard`,
   (`src/components/FloatingCards.tsx`), which mounts a `FloatingPanel`
   portal with the rect from `useViewPrefs.cardFloatPositions`.
 
-Keys are shaped `${kind}:${id}` where `kind ∈ {note, footnote, archive, cut,
-todo, bib, citation, revision, quotation, ai}`. A card is rendered exactly
-once: either in the panel list or in the float.
+Keys are shaped `${kind}:${id}` and produced by `popKey(panelKind, id)`
+or `cardPopKey(cardKind, id)` from
+[`src/panels/panel-registry.ts`](src/panels/panel-registry.ts) — never
+hand-rolled in card components. The canonical prefix per `CardKind`
+lives in `CARD_KEY_PREFIXES`: `note, footnote, archive, cut, todo, bib,
+citation, revision, quotation, ai`. (Note: the `comment` CardKind uses
+prefix `revision` for backward compatibility with the original
+panel name.) A card is rendered exactly once: either in the panel list
+or in the float.
 
 Because the dispatcher lives at the `EditorLayout` root, popped cards stay
 visible even when the host panel's sidebar is closed — the dispatcher has
@@ -315,13 +383,28 @@ Expandable sections within cards use sub-pod containers:
 
 ## Panel Headers
 
-All panels use `PanelHeader` for their title bar. The header has a fixed
-height (`--header-h: 34px`) and background (`--header-bg: #e8e5de`).
+`PanelHeader` is the underlying header primitive. In normal use, you
+don't render it directly — it's wired by `Panel`, which exposes the
+header slots (`headerLeading`, `headerTitleAfter`, `headerExtras`) plus
+`title`/`count`/`onAdd`/`onAiRequest`. The header has a fixed height
+(`--header-h: 34px`) and background (`--header-bg: #e8e5de`).
 
 ```tsx
-<PanelHeader title="Footnotes" count={3} onAdd={handleAdd} onAiRequest={handleAi}>
-  <PrevNextCounter current={idx} total={total} label="" />
-  <ViewToggle mode={viewMode} onChange={setViewMode} />
+// Typical use — through Panel/CardListPanel
+<CardListPanel
+  kind="footnotes"
+  count={3}
+  onAdd={handleAdd}
+  onAiRequest={handleAi}
+  headerLeading={<ItemMenu align="left">…</ItemMenu>}
+  headerExtras={<PrevNextCounter current={idx} total={total} label="" />}
+  …
+/>
+
+// Direct use is fine for one-off custom headers (the children slot
+// holds right-aligned content).
+<PanelHeader title="Outline" leading={<OptionsMenu/>}>
+  <ExpandCollapseButtons />
 </PanelHeader>
 ```
 
@@ -331,9 +414,11 @@ Children (counters, toggles, extra buttons) are right-aligned via flex spacer.
 The panel-level pop-out button sits at the **top far right** of every
 panel header (last element, after `PanelClose`). It uses the same
 `CardPopoutButton` as cards: 18×18 circle, translucent-black overlay,
-chevron when docked, X when popped. Custom panel headers that don't use
-`PanelHeader` should render `<PanelPopout />` as the rightmost element
-(wrapped in `<div className="-mr-2">` to sit flush with the right edge).
+chevron when docked, X when popped. `Panel` (and the `PanelHeader`
+primitive it uses) wires this automatically via `PanelChromeContext`.
+Bespoke headers that don't go through `Panel`/`PanelHeader` should
+render `<PanelPopout />` as the rightmost element (wrapped in
+`<div className="-mr-2">` to sit flush with the right edge).
 
 ---
 
