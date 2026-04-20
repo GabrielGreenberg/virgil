@@ -143,6 +143,7 @@ import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
+import { LibraryTabView } from "./library/LibraryTabView";
 
 /**
  * Scroll a panel entry so its top aligns with the given viewport Y.
@@ -1046,7 +1047,26 @@ export default function EditorLayout() {
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
+    libraryOpenFor,
+    activePane,
+    openLibraryFor,
+    closeLibraryFor,
+    activateDocPane,
+    activateLibraryPane,
+    toggleActivePane,
   } = useFiles();
+
+  // Bibliography / citation UI dispatches `virgil-open-library` when the
+  // user clicks a library-status chip. Switch the current doc's shadow
+  // tab into its Library pane; LibraryTabView handles scrolling to the
+  // specific item via its own listener on the same event.
+  useEffect(() => {
+    const handler = () => {
+      if (currentDocId) activateLibraryPane(currentDocId);
+    };
+    window.addEventListener("virgil-open-library", handler);
+    return () => window.removeEventListener("virgil-open-library", handler);
+  }, [currentDocId, activateLibraryPane]);
 
   // Per-doc permission gate state. We query (without prompting) when
   // the active doc changes; if it isn't already granted we show the
@@ -5049,33 +5069,74 @@ export default function EditorLayout() {
               />
             )}
           </div>
-          {openTabs.map((doc) => (
-            <div
-              key={doc.id}
-              className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative ${
-                doc.id === currentDocId
-                  ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10"
-                  : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
-              }`}
-              onClick={() => { if (doc.id !== currentDocId) openFile(doc.id); }}
-            >
-              <div className="flex flex-col min-w-0">
-                <span className="text-sm leading-none truncate pt-[3px]" title={doc.folderName}>
-                  {doc.folderName}
-                </span>
-                <span className="text-[10px] leading-none text-ink-muted truncate mt-[2px]" title={doc.texFilename}>
-                  {doc.texFilename}
-                </span>
+          {openTabs.map((doc) => {
+            const isCurrentDoc = doc.id === currentDocId;
+            const isDocPaneActive = isCurrentDoc && activePane === "doc";
+            const isLibPaneActive = isCurrentDoc && activePane === "library";
+            const libraryOpen = libraryOpenFor.includes(doc.id);
+            return (
+              <div key={doc.id} className="flex items-end shrink-0">
+                {/* Doc tab */}
+                <div
+                  className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative ${
+                    isDocPaneActive
+                      ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10"
+                      : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
+                  }`}
+                  onClick={() => {
+                    if (!isDocPaneActive) activateDocPane(doc.id);
+                  }}
+                >
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-sm leading-none truncate pt-[3px]" title={doc.folderName}>
+                      {doc.folderName}
+                    </span>
+                    <span className="text-[10px] leading-none text-ink-muted truncate mt-[2px]" title={doc.texFilename}>
+                      {doc.texFilename}
+                    </span>
+                  </div>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
+                    className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover:bg-surface/40 transition-all"
+                    title="Close tab"
+                  >
+                    <IconX />
+                  </button>
+                </div>
+                {/* Attached library pill (shadow tab) */}
+                {libraryOpen ? (
+                  <div
+                    className={`group flex items-center gap-1 -ml-1 pl-2 pr-1 pt-[1px] pb-0 text-[11px] cursor-default shrink-0 transition-all rounded-t-[8px] relative ${
+                      isLibPaneActive
+                        ? "bg-[var(--background)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
+                        : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body opacity-80"
+                    }`}
+                    title={`Library for ${doc.folderName}`}
+                    onClick={() => {
+                      if (!isLibPaneActive) activateLibraryPane(doc.id);
+                    }}
+                  >
+                    <span className="text-[10px] leading-none py-[5px] font-medium tracking-wide">Lib</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); closeLibraryFor(doc.id); }}
+                      className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover:bg-surface/40 transition-all"
+                      title="Close library tab"
+                    >
+                      <IconX />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => openLibraryFor(doc.id)}
+                    className="-ml-0.5 px-1 py-[3px] text-[10px] text-ink-subtle hover:text-ink-body hover:bg-surface/30 rounded transition-colors"
+                    title={`Open library tab for ${doc.folderName}`}
+                  >
+                    +Lib
+                  </button>
+                )}
               </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover:bg-surface/40 transition-all"
-                title="Close tab"
-              >
-                <IconX />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         <div className="shrink-0 flex items-center px-2 gap-1">
@@ -5260,7 +5321,11 @@ export default function EditorLayout() {
       {/* Path bar removed — podification */}
 
       {/* Main area */}
-      {currentDoc && docPermState !== "granted" ? null : codeView && currentDocId ? (
+      {currentDoc && docPermState !== "granted" ? null : activePane === "library" && currentDocId ? (
+        <div className="flex flex-1 overflow-hidden">
+          <LibraryTabView docId={currentDocId} />
+        </div>
+      ) : codeView && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
           <CodeEditor
             docId={currentDocId!}

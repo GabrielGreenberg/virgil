@@ -10,7 +10,12 @@ import {
   deleteDocFromIndex,
   type FolderPickResult,
 } from "@/lib/storage";
-import { readTabs, writeTabs, type FsaDocMeta } from "@/lib/doc-index";
+import {
+  readTabs,
+  writeTabs,
+  type ActivePaneKind,
+  type FsaDocMeta,
+} from "@/lib/doc-index";
 
 /**
  * Manages the workspace tabs and the doc index.
@@ -23,6 +28,8 @@ export function useFiles() {
   const [docs, setDocs] = useState<FsaDocMeta[]>([]);
   const [openTabIds, setOpenTabIds] = useState<string[]>([]);
   const [currentDocId, setCurrentDocId] = useState<string | null>(null);
+  const [libraryOpenFor, setLibraryOpenFor] = useState<string[]>([]);
+  const [activePane, setActivePaneState] = useState<ActivePaneKind>("doc");
   const [loading, setLoading] = useState(true);
   const [pendingFolderPick, setPendingFolderPick] = useState<FolderPickResult | null>(null);
   const hydratedRef = useRef(false);
@@ -42,6 +49,11 @@ export function useFiles() {
             ? tabs.currentDocId
             : (validTabs[0] ?? null),
         );
+        const restoredLibOpen = (tabs.libraryOpenFor ?? []).filter((id) =>
+          validTabs.includes(id),
+        );
+        setLibraryOpenFor(restoredLibOpen);
+        setActivePaneState(tabs.activePane ?? "doc");
       } catch (err) {
         console.error("Failed to load files index:", err);
       } finally {
@@ -54,12 +66,20 @@ export function useFiles() {
   // Persist tab state on every change after initial hydration.
   useEffect(() => {
     if (!hydratedRef.current) return;
-    writeTabs({ openTabIds, currentDocId }).catch(() => {});
-  }, [openTabIds, currentDocId]);
+    writeTabs({
+      openTabIds,
+      currentDocId,
+      libraryOpenFor,
+      activePane,
+    }).catch(() => {});
+  }, [openTabIds, currentDocId, libraryOpenFor, activePane]);
 
   const openFile = useCallback((id: string) => {
     setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setCurrentDocId(id);
+    setActivePaneState("doc");
+    // Auto-pair the library tab on first open of this doc.
+    setLibraryOpenFor((prev) => (prev.includes(id) ? prev : [...prev, id]));
   }, []);
 
   const closeTab = useCallback(
@@ -70,12 +90,53 @@ export function useFiles() {
           const idx = prev.indexOf(id);
           const newActive = next[Math.min(idx, next.length - 1)] || null;
           setCurrentDocId(newActive);
+          setActivePaneState("doc");
         }
         return next;
       });
+      setLibraryOpenFor((prev) => prev.filter((t) => t !== id));
     },
     [currentDocId],
   );
+
+  const openLibraryFor = useCallback((id: string) => {
+    setLibraryOpenFor((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setCurrentDocId(id);
+    setActivePaneState("library");
+  }, []);
+
+  const closeLibraryFor = useCallback(
+    (id: string) => {
+      setLibraryOpenFor((prev) => prev.filter((t) => t !== id));
+      if (currentDocId === id) setActivePaneState("doc");
+    },
+    [currentDocId],
+  );
+
+  const activateDocPane = useCallback((id: string) => {
+    setCurrentDocId(id);
+    setActivePaneState("doc");
+  }, []);
+
+  const activateLibraryPane = useCallback((id: string) => {
+    setCurrentDocId(id);
+    setLibraryOpenFor((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setActivePaneState("library");
+  }, []);
+
+  /** Toggle the current doc's pane between doc and library (Cmd-L). */
+  const toggleActivePane = useCallback(() => {
+    if (!currentDocId) return;
+    setActivePaneState((prev) => {
+      const next: ActivePaneKind = prev === "doc" ? "library" : "doc";
+      if (next === "library") {
+        setLibraryOpenFor((libs) =>
+          libs.includes(currentDocId) ? libs : [...libs, currentDocId],
+        );
+      }
+      return next;
+    });
+  }, [currentDocId]);
 
   /**
    * Create a new paper. Must be called from a user gesture — the
@@ -87,6 +148,10 @@ export function useFiles() {
       setDocs((prev) => [...prev, meta]);
       setOpenTabIds((prev) => [...prev, meta.id]);
       setCurrentDocId(meta.id);
+      setActivePaneState("doc");
+      setLibraryOpenFor((prev) =>
+        prev.includes(meta.id) ? prev : [...prev, meta.id],
+      );
       return meta;
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return null;
@@ -104,6 +169,10 @@ export function useFiles() {
       prev.includes(meta.id) ? prev : [...prev, meta.id],
     );
     setCurrentDocId(meta.id);
+    setActivePaneState("doc");
+    setLibraryOpenFor((prev) =>
+      prev.includes(meta.id) ? prev : [...prev, meta.id],
+    );
   }, []);
 
   /**
@@ -157,6 +226,7 @@ export function useFiles() {
       await deleteDocFromIndex(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
       setOpenTabIds((prev) => prev.filter((t) => t !== id));
+      setLibraryOpenFor((prev) => prev.filter((t) => t !== id));
       setCurrentDocId((prev) => (prev === id ? null : prev));
     } catch (err) {
       console.error("Failed to remove file from workspace:", err);
@@ -192,5 +262,13 @@ export function useFiles() {
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
+    // Library shadow tab
+    libraryOpenFor,
+    activePane,
+    openLibraryFor,
+    closeLibraryFor,
+    activateDocPane,
+    activateLibraryPane,
+    toggleActivePane,
   };
 }

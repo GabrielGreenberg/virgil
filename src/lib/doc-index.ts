@@ -52,13 +52,27 @@ export interface FsaDocIndex {
   docs: FsaDocMeta[];
 }
 
+export type ActivePaneKind = "doc" | "library";
+
 export interface TabsState {
   openTabIds: string[];
   currentDocId: string | null;
+  /** Doc ids whose sibling library "shadow tab" is currently open in the
+   *  tab strip. Persisted so reloads restore the paired pill. */
+  libraryOpenFor?: string[];
+  /** Which half of the current doc's pair is active: the doc itself or
+   *  its library. Only meaningful when `currentDocId` has its library
+   *  open (otherwise implicitly "doc"). */
+  activePane?: ActivePaneKind;
 }
 
 const EMPTY_INDEX: FsaDocIndex = { docs: [] };
-const EMPTY_TABS: TabsState = { openTabIds: [], currentDocId: null };
+const EMPTY_TABS: TabsState = {
+  openTabIds: [],
+  currentDocId: null,
+  libraryOpenFor: [],
+  activePane: "doc",
+};
 
 // --- Index ---------------------------------------------------------------
 

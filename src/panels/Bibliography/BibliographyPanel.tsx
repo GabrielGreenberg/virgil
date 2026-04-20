@@ -16,6 +16,12 @@ import { searchGeneralBib } from "@/lib/bib-search";
 import { pickGeneralBib } from "@/lib/storage";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { useLibraryItems } from "@/hooks/useLibrary";
+import {
+  BibLibraryChip,
+  type BibLibraryChipKind,
+} from "@/components/library/BibLibraryChip";
+import type { LibraryIndexItem } from "@/lib/library/library-types";
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
@@ -245,6 +251,27 @@ function BibliographyPanel({
   const existingKeys = useMemo(
     () => new Set(bibEntries.map((e) => e.key)),
     [bibEntries],
+  );
+
+  // Library-status lookup: citekey → chip info. The library is global,
+  // so a single item's state applies to every doc that cites it.
+  const { items: libraryItems } = useLibraryItems();
+  const libraryByCitekey = useMemo(() => {
+    const out = new Map<string, LibraryIndexItem>();
+    for (const item of libraryItems) {
+      if (item.citekey) out.set(item.citekey, item);
+    }
+    return out;
+  }, [libraryItems]);
+  const libraryChipFor = useCallback(
+    (key: string): BibLibraryChipKind => {
+      const item = libraryByCitekey.get(key);
+      if (!item) return { kind: "missing" };
+      if (item.status === "ready") return { kind: "ready", itemId: item.id };
+      if (item.status === "failed") return { kind: "failed", itemId: item.id };
+      return { kind: "processing", itemId: item.id, status: item.status };
+    },
+    [libraryByCitekey],
   );
 
   const inTextItems = useMemo<PositionItem[]>(() => {
@@ -776,6 +803,12 @@ function BibliographyPanel({
             bibPackage={bibPackage}
             bibEntries={bibEntries}
             isCited={isCited}
+            libraryChip={
+              <BibLibraryChip
+                citekey={entry.key}
+                info={libraryChipFor(entry.key)}
+              />
+            }
             occurrenceInfo={
               ids.length > 1
                 ? {

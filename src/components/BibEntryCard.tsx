@@ -37,6 +37,11 @@ export interface BibEntryCardProps {
   onTogglePopout?: () => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
+  /** Small badge/chip rendered at the right side of the header — used by
+   *  the Bibliography panel to surface library-status (in library /
+   *  processing / no PDF) without this component needing to know about
+   *  the Library feature. */
+  libraryChip?: React.ReactNode;
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -132,7 +137,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
-  onTogglePopout, isPoppedOut,
+  onTogglePopout, isPoppedOut, libraryChip,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
@@ -452,6 +457,16 @@ export default function BibEntryCard({
           {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
           {title && <span className="italic">{title}</span>}
         </div>
+        {libraryChip ? (
+          <div
+            className="shrink-0"
+            onClick={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            {libraryChip}
+          </div>
+        ) : null}
         {hasOccCounter && (
           <div
             className="flex items-center gap-0.5 text-xs text-ink-muted shrink-0"
