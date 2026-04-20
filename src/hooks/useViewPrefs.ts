@@ -298,6 +298,14 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
 
+  const setAlwaysShowLinkedText = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    update((p) => ({
+      ...p,
+      alwaysShowLinkedText:
+        typeof v === "function" ? v(p.alwaysShowLinkedText) : v,
+    }));
+  }, [update]);
+
   /**
    * Close a floating panel without re-docking it into the sidebar (unlike
    * togglePopout, which re-docks if the side column is open).
@@ -427,6 +435,7 @@ export function useViewPrefs() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setAlwaysShowLinkedText,
     togglePopout,
     closePopout,
     setFloatPosition,

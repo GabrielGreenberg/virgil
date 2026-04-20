@@ -1205,6 +1205,7 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setAlwaysShowLinkedText,
     togglePopout,
     closePopout,
     setFloatPosition,
@@ -5375,6 +5376,8 @@ export default function EditorLayout() {
             onToggleMarginalia={toggleMarginalia}
             hiddenMarginaliaTypes={hiddenMarginaliaTypes}
             onToggleMarginaliaType={toggleMarginaliaType}
+            alwaysShowLinkedText={prefs.alwaysShowLinkedText}
+            onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
             availableDividerLevels={availableDividerLevels}
             dividerLevels={activeDividerLevels}
             onToggleDividerLevel={toggleDividerLevel}

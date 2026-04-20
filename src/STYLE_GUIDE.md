@@ -640,3 +640,102 @@ consistent across the editor, outline, and margin gutter.
 - Drag indicator: **vertical line** on the gutter side spanning the
   full paragraph height. Horizontal ProseMirror drop cursor is hidden
   during paragraph-linking drags.
+
+---
+
+## Link Architecture
+
+Every connection between an in-editor element and a side-panel card is a
+`Link`. Links are declared in [src/links/link-registry.ts](links/link-registry.ts),
+modeled by a discriminated union in [src/links/_shared/types.ts](links/_shared/types.ts),
+and manipulated through the unified API in [src/links/links.ts](links/links.ts).
+
+### Three kinds
+
+| Kind | Anchor | Marker | Connector | Multiplicity | Modes |
+|---|---|---|---|---|---|
+| `footnote` | inline atom | superscript number | on-select SVG curve | one | — |
+| `citation` | inline atom | styled pill | on-select SVG curve | one | — |
+| `anchor` | paragraph + optional text range | gutter icon (+ text-range highlight for Mode B) | none | many | A: paragraph only · B: paragraph + text range |
+
+Mode is derived, not declared: an `anchor` link is Mode B iff
+`anchor.textRange` is populated. `isModeB(link)` in
+`src/links/_shared/types.ts` codifies this.
+
+### Agent Legibility Contract
+
+Every cross-document reference in Virgil follows one DOM contract, no
+exceptions. Parsers (including Claude Cowork) may assume exactly these
+three attributes:
+
+- `data-link-id="<uuid>"` — the link's stable id.
+- `data-link-kind="footnote | citation | anchor"` — which kind.
+- `data-link-card="<cardKind>:<cardId>"` — the target card, in the same
+  format used by `popKey()` in `panel-registry.ts`.
+
+On the in-editor marker (footnote atom, citation atom, linkedAnchor
+mark span): all three are present.
+
+On the panel card element: `data-link-card` is present; multi-anchor
+cards may also carry `data-link-ids="<id1> <id2> …"`.
+
+### Tiptap JSON
+
+The same three attrs appear on the serialized doc, so a fresh parse
+can reconstruct the link graph without runtime state:
+
+```jsonc
+// footnote (inline atom)
+{ "type": "footnote",
+  "attrs": { "linkId": "...", "linkKind": "footnote", "linkCard": "footnote:...",
+             "number": 4, "content": {...}, "title": "" } }
+
+// citation (inline atom)
+{ "type": "citation",
+  "attrs": { "linkId": "...", "linkKind": "citation", "linkCard": "citation:...",
+             "command": "\\citep{...}", "displayText": "..." } }
+
+// anchor, Mode B — mark on a text range
+{ "type": "text", "text": "contentious phrase",
+  "marks": [{ "type": "linkedAnchor",
+              "attrs": { "linkId": "...", "linkKind": "anchor",
+                         "linkCard": "note:..." } }] }
+```
+
+Mode A anchor links have no inline node — their only in-doc trace is
+the paragraph UUID on the anchorable node. They live in the target
+card's sidecar. `derivedLinksForCard(cardKind, card)` in
+[src/links/links.ts](links/links.ts) produces a canonical `Link[]`
+from any card record (legacy-field-aware); this is the Cowork entry
+point for reading card sidecars.
+
+### Coupled highlight
+
+Margin icon and Mode B text range share one highlight state, keyed by
+`linkId`. Hovering or selecting either end lights up both — CSS-only,
+driven by `data-link-highlight` written by
+[useLinkHighlight](links/_shared/useLinkHighlight.ts).
+
+The pref `alwaysShowLinkedText` (toggle in View → Marginalia) adds
+`data-always-show-links="true"` on the editor root; CSS then gives every
+Mode B text range a subtle persistent background, intensified on
+hover/select.
+
+### Multiplicity
+
+`LINK_REGISTRY[kind].multiplicity` is `"one"` for `footnote` / `citation`
+and `"many"` for `anchor`. Enforced at runtime in `createLink` via
+`enforceMultiplicity`.
+
+### Do / don't
+
+- **Do** call `jumpToLink` / `resolveLink` / `deleteLink` — never reach
+  into `editor.view.dom.querySelector('[data-<kind>-id=…]')` from a
+  panel. The only canonical id attribute is `data-link-id`.
+- **Do** add a new link kind by adding a `LinkRegistryEntry` and, if
+  needed, a per-kind subfolder in `src/links/<Kind>/`.
+- **Don't** add new `data-<kind>-id` or `data-<kind>-entry` attributes.
+  Extend the unified contract, don't sidestep it.
+- **Don't** add per-kind connector components; extend `LinkConnector`.
+- **Don't** store anchor state in two places. For card sidecars, prefer
+  `derivedLinksForCard` over reading legacy fields directly.

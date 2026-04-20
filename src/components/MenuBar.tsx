@@ -42,6 +42,8 @@ interface MenuBarProps {
   onToggleMarginalia: () => void;
   hiddenMarginaliaTypes: Set<MarginaliaType>;
   onToggleMarginaliaType: (type: MarginaliaType) => void;
+  alwaysShowLinkedText: boolean;
+  onToggleAlwaysShowLinkedText: () => void;
   availableDividerLevels: Set<DividerLevel>;
   dividerLevels: Set<DividerLevel>;
   onToggleDividerLevel: (level: DividerLevel) => void;
@@ -161,7 +163,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections }: MenuBarProps) {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
@@ -540,6 +542,14 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                       <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
                     </button>
                   ))}
+                  <button
+                    onClick={onToggleAlwaysShowLinkedText}
+                    title="Persistently highlight text ranges that are linked to notes, cuts, or revisions. When off, highlights appear only on hover or selection."
+                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  >
+                    <span>Always show linked text</span>
+                    <span className="text-[var(--accent)]">{alwaysShowLinkedText ? "\u2713" : ""}</span>
+                  </button>
                 </>
               )}
               {availableDividerLevels.size > 0 && (
