@@ -106,6 +106,7 @@ import { AiRequestCard } from "./panel-primitives";
 import EditorMirror from "./EditorMirror";
 import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
+import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { HSplit, PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { PoppedCardsContext } from "@/hooks/usePoppedCards";
@@ -1363,6 +1364,18 @@ export default function EditorLayout() {
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [hoveredAnchorId, setHoveredAnchorId] = useState<string | null>(null);
   const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cut" | null>(null);
+
+  // CSS-based coupled highlight: the `.linked-anchor` span for the
+  // active/hovered link gets `data-link-highlight`, and the editor root
+  // gets `data-always-show-links` when the pref is on. Margin icons read
+  // the same `activeAnchorId`/`hoveredAnchorId` state via their own
+  // `selected` prop. Bidirectional by construction.
+  useLinkHighlight({
+    editor: editorInstance,
+    activeLinkId: activeAnchorId,
+    hoveredLinkId: hoveredAnchorId,
+    alwaysShowLinkedText: prefs.alwaysShowLinkedText,
+  });
 
   // ── LabelRef popover state ──
   const [activeRefLabel, setActiveRefLabel] = useState<string | null>(null);

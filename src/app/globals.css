@@ -674,6 +674,27 @@ body {
   font-size: 0.85em;
 }
 
+/* Linked-anchor spans (Mode B anchor links).
+ * Default: invisible — the mark is semantic-only, activated by hover
+ * or selection via `data-link-highlight`, or made subtly-visible
+ * globally via `data-always-show-links` on the editor root.
+ * See src/links/_shared/useLinkHighlight.ts for the sync logic. */
+.linked-anchor {
+  background: transparent;
+  border-radius: 2px;
+  transition: background-color 120ms ease-out;
+}
+[data-always-show-links="true"] .linked-anchor {
+  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 18%, transparent);
+}
+.linked-anchor[data-link-highlight="hover"] {
+  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 45%, transparent);
+}
+.linked-anchor[data-link-highlight="active"] {
+  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color, #fbbf24) 80%, transparent);
+}
+
 /* Footnote markers */
 .footnote-marker {
   display: inline;

@@ -18,6 +18,18 @@ import { generateEntityId } from "@/lib/uuid";
 
 export type LinkedAnchorKind = "note" | "revision" | "cut";
 
+/** Legacy `LinkedAnchorKind` → `CardKind` used in `data-link-card`. */
+function legacyKindToCardKind(kind: LinkedAnchorKind): string {
+  switch (kind) {
+    case "note":
+      return "note";
+    case "cut":
+      return "cut";
+    case "revision":
+      return "comment";
+  }
+}
+
 export interface LinkedAnchorRecord {
   anchorId: string;
   paragraphId: string;
@@ -44,11 +56,17 @@ function paragraphUuidAt(editor: Editor, pos: number): string | null {
  * returning the new record. Caller is responsible for also calling
  * `ensureParagraphUuid` on the range start *before* calling this, so that
  * the containing paragraph has a uuid to record.
+ *
+ * When `cardId` is provided, the mark carries `linkCard="<cardKind>:<cardId>"`
+ * so the marker is self-describing for Cowork and the LinkConnector
+ * selectors. Callers that don't know their card id yet can omit it; the
+ * mark will have an empty `linkCard` and be upgraded later via migration.
  */
 export function createLinkedAnchor(
   editor: Editor,
   kind: LinkedAnchorKind,
   range?: { from: number; to: number },
+  cardId?: string,
 ): LinkedAnchorRecord | null {
   const sel = range ?? {
     from: editor.state.selection.from,
@@ -58,10 +76,18 @@ export function createLinkedAnchor(
   const anchorId = generateEntityId();
   const text = editor.state.doc.textBetween(sel.from, sel.to, " ");
   const paragraphId = paragraphUuidAt(editor, sel.from) ?? "";
+  const cardKind = legacyKindToCardKind(kind);
+  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
   const ok = editor
     .chain()
     .setTextSelection(sel)
-    .setMark("linkedAnchor", { anchorId, kind })
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard,
+    })
     .setTextSelection(sel.from)
     .run();
   if (!ok) return null;
@@ -122,6 +148,7 @@ export function reanchorByText(
   kind: LinkedAnchorKind,
   snapshot: string,
   preferredAnchorId?: string,
+  cardId?: string,
 ): LinkedAnchorRecord | null {
   const text = editor.getText();
   const index = text.indexOf(snapshot);
@@ -148,10 +175,18 @@ export function reanchorByText(
   if (from === -1 || to === -1) return null;
   const anchorId = preferredAnchorId ?? generateEntityId();
   const paragraphId = paragraphUuidAt(editor, from) ?? "";
+  const cardKind = legacyKindToCardKind(kind);
+  const linkCard = cardId ? `${cardKind}:${cardId}` : "";
   const ok = editor
     .chain()
     .setTextSelection({ from, to })
-    .setMark("linkedAnchor", { anchorId, kind })
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard,
+    })
     .setTextSelection(from)
     .run();
   if (!ok) return null;

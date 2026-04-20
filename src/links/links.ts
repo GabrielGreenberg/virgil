@@ -240,14 +240,13 @@ export type CreateLinkArgs =
       textRange?: { from: number; to: number };
     };
 
-/** Create a new link. Phase 1 implements footnote + citation. Anchor
- *  creation is still routed through the legacy `linked-anchors.ts` and
- *  per-entity paragraph-id mutators. */
+/** Create a new link. */
 export function createLink(editor: Editor, args: CreateLinkArgs): Link {
   if (args.kind === "footnote") return createFootnoteLink(editor, args);
   if (args.kind === "citation") return createCitationLink(editor, args);
+  if (args.kind === "anchor") return createAnchorLink(editor, args);
   throw new Error(
-    `createLink: kind "${args.kind}" not implemented in Phase 1.`,
+    `createLink: kind "${(args as { kind: string }).kind}" not supported.`,
   );
 }
 
@@ -297,6 +296,72 @@ function createFootnoteLink(
     target: { type: "card", ref: { kind: "footnote", id: linkId } },
     createdAt: new Date().toISOString(),
   };
+}
+
+function createAnchorLink(
+  editor: Editor,
+  args: Extract<CreateLinkArgs, { kind: "anchor" }>,
+): Link {
+  const linkId = generateEntityId();
+  const cardKey = linkCardKey(args.targetCardKind, args.targetCardId);
+
+  // Mode B: wrap the text range in a linkedAnchor mark.
+  let textRange: { anchorId: string; textSnapshot: string } | undefined;
+  if (args.textRange) {
+    const { from, to } = args.textRange;
+    if (to > from) {
+      const snapshot = editor.state.doc.textBetween(from, to, " ");
+      const ok = editor
+        .chain()
+        .setTextSelection(args.textRange)
+        .setMark("linkedAnchor", {
+          anchorId: linkId,
+          kind: cardKindToLegacyAnchorKind(args.targetCardKind),
+          linkId,
+          linkKind: "anchor",
+          linkCard: cardKey,
+        })
+        .setTextSelection(from)
+        .run();
+      if (ok) textRange = { anchorId: linkId, textSnapshot: snapshot };
+    }
+  }
+
+  // Paragraph ids: either explicit, or derived from the text range's
+  // containing paragraph.
+  let paragraphIds = args.paragraphIds.slice();
+  if (paragraphIds.length === 0 && args.textRange) {
+    const pid = paragraphUuidAt(editor.state.doc, args.textRange.from);
+    if (pid) paragraphIds = [pid];
+  }
+
+  return {
+    id: linkId,
+    kind: "anchor",
+    anchor: {
+      type: "anchor",
+      paragraphIds,
+      margin: { side: inferMarginSide(args.targetCardKind) },
+      ...(textRange ? { textRange } : {}),
+    },
+    target: { type: "card", ref: { kind: args.targetCardKind, id: args.targetCardId } },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Legacy `linkedAnchor.kind` values the mark accepts today. Kept until
+ *  the mark's `kind` attr is dropped in Phase 3 cleanup. */
+function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
+  switch (cardKind) {
+    case "note":
+      return "note";
+    case "cut":
+      return "cut";
+    case "comment":
+      return "revision";
+    default:
+      return "note";
+  }
 }
 
 function createCitationLink(
@@ -350,7 +415,30 @@ export function resolveLink(
       domEl,
     };
   }
-  // Anchor-kind resolution lands in Phase 2.
+  if (link.anchor.type === "anchor") {
+    // Mode B: prefer the text-range mark.
+    if (link.anchor.textRange) {
+      const range = resolveTextRangeByAnchorId(
+        editor,
+        link.anchor.textRange.anchorId,
+      );
+      if (range) {
+        const domEl = editor.view.dom.querySelector(
+          `[data-link-id="${link.anchor.textRange.anchorId}"]`,
+        ) as HTMLElement | null;
+        return { kind: "text-range", from: range.from, to: range.to, domEl };
+      }
+    }
+    // Mode A (or Mode B with a lost mark): fall back to the first paragraph.
+    const paragraphId = link.anchor.paragraphIds[0];
+    if (!paragraphId) return null;
+    const pos = findParagraphByUuid(editor, paragraphId);
+    if (pos == null) return null;
+    const domEl = editor.view.dom.querySelector(
+      `[data-uuid="${paragraphId}"]`,
+    ) as HTMLElement | null;
+    return { kind: "paragraph", paragraphId, pos, domEl };
+  }
   return null;
 }
 
@@ -380,17 +468,22 @@ export function jumpToLink(
 }
 
 /** Delete `link` from the editor. For inline-atom kinds this removes the
- *  node; for anchor kinds it strips the `linkedAnchor` mark. The target
- *  card is NOT deleted — a caller that wants cascading deletion handles
- *  that separately. */
+ *  node; for Mode B anchor links it strips the `linkedAnchor` mark. Mode A
+ *  anchor links have no in-doc trace so this is a no-op — the caller is
+ *  responsible for removing the entry from the target card's `links[]`.
+ *  The target card is NOT deleted — a caller that wants cascading
+ *  deletion handles that separately. */
 export function deleteLink(editor: Editor, link: Link): void {
   if (link.anchor.type === "inline-atom") {
     const pos = findInlineAtomPos(editor, link.anchor.nodeName, link.id);
     if (pos == null) return;
     const tr = editor.state.tr.delete(pos, pos + 1);
     editor.view.dispatch(tr);
+    return;
   }
-  // Anchor-kind deletion lands in Phase 2.
+  if (link.anchor.type === "anchor" && link.anchor.textRange) {
+    removeLinkedAnchorMark(editor, link.anchor.textRange.anchorId);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -415,5 +508,118 @@ function findInlineAtomPos(
     return true;
   });
   return found;
+}
+
+function findParagraphByUuid(editor: Editor, uuid: string): number | null {
+  let found: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found != null) return false;
+    if (node.attrs?.uuid === uuid) {
+      found = pos;
+      return false;
+    }
+    return true;
+  });
+  return found;
+}
+
+function resolveTextRangeByAnchorId(
+  editor: Editor,
+  anchorId: string,
+): { from: number; to: number } | null {
+  let from: number | null = null;
+  let to: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (to !== null) return false;
+    if (!node.isText) return true;
+    const has = node.marks.some(
+      (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
+    );
+    const end = pos + node.nodeSize;
+    if (has) {
+      if (from === null) from = pos;
+      to = end;
+    } else if (from !== null && to === null) {
+      to = pos;
+    }
+    return true;
+  });
+  if (from === null || to === null) return null;
+  return { from, to };
+}
+
+function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
+  const range = resolveTextRangeByAnchorId(editor, anchorId);
+  if (!range) return;
+  editor
+    .chain()
+    .setTextSelection(range)
+    .unsetMark("linkedAnchor")
+    .setTextSelection(range.from)
+    .run();
+}
+
+// ---------------------------------------------------------------------------
+// derivedLinksForCard — synthesize Link[] from the legacy card shape
+// ---------------------------------------------------------------------------
+
+type AnchorCardShape = {
+  id: string;
+  paragraphIds?: string[];
+  anchorId?: string;
+  anchorText?: string;
+};
+
+/**
+ * Derive a canonical `Link[]` from a card that's still using legacy
+ * fields (`paragraphIds` / `anchorId` / `anchorText`). Used by hooks that
+ * load card sidecars into state — lets Cowork read a uniform shape
+ * without needing to branch per card kind.
+ *
+ * Policy: Mode B cards (those with an `anchorId`) produce a single Link
+ * whose `paragraphIds` include all known paragraph entries PLUS the
+ * containing paragraph inferred from the mark, if distinct. Mode A cards
+ * produce one Link per paragraphId.
+ */
+export function derivedLinksForCard(
+  cardKind: CardKind,
+  card: AnchorCardShape,
+): Link[] {
+  const out: Link[] = [];
+  const side = inferMarginSide(cardKind);
+
+  if (card.anchorId) {
+    out.push({
+      id: card.anchorId,
+      kind: "anchor",
+      anchor: {
+        type: "anchor",
+        paragraphIds: card.paragraphIds?.slice() ?? [],
+        margin: { side },
+        textRange: {
+          anchorId: card.anchorId,
+          textSnapshot: card.anchorText ?? "",
+        },
+      },
+      target: { type: "card", ref: { kind: cardKind, id: card.id } },
+      createdAt: "",
+    });
+    return out;
+  }
+
+  for (const paragraphId of card.paragraphIds ?? []) {
+    out.push({
+      id: `${card.id}@${paragraphId}`,
+      kind: "anchor",
+      anchor: {
+        type: "anchor",
+        paragraphIds: [paragraphId],
+        margin: { side },
+      },
+      target: { type: "card", ref: { kind: cardKind, id: card.id } },
+      createdAt: "",
+    });
+  }
+  return out;
 }
 

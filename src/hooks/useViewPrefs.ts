@@ -43,6 +43,10 @@ export interface ViewPrefs {
   poppedOutCards: string[];
   /** Saved position/size of each floating card, keyed by card key. */
   cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
+  /** When true, Mode B anchor links (`.linked-anchor` spans) show a subtle
+   *  persistent background, intensifying on hover/select. Off by default
+   *  to preserve the clean reading surface. */
+  alwaysShowLinkedText: boolean;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -78,6 +82,7 @@ const DEFAULT_PREFS: ViewPrefs = {
   floatPositions: {},
   poppedOutCards: [],
   cardFloatPositions: {},
+  alwaysShowLinkedText: false,
 };
 
 const STORAGE_KEY = "virgil-view-prefs";

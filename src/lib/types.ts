@@ -1,3 +1,5 @@
+import type { Link } from "@/links/_shared/types";
+
 export interface ParagraphMeta {
   title?: string;
   fingerprint?: string;
@@ -98,6 +100,8 @@ export interface TextRevision {
   anchorId?: string;
   text: string;
   turns: RevisionTurn[];
+  /** Unified link records (Phase 2, dual-read). */
+  links?: Link[];
 }
 
 export interface RevisionsState {
@@ -117,6 +121,9 @@ export interface ArchivedSnippet {
   createdAt: string;
   /** Paragraph UUIDs this snippet is anchored to in the editor margin. */
   paragraphIds: string[];
+  /** Unified link records (Phase 2, dual-read). When present this is the
+   *  source of truth; `paragraphIds` is kept in sync for one release. */
+  links?: Link[];
 }
 
 export interface ArchiveState {
@@ -131,6 +138,8 @@ export interface TodoItem {
   createdAt: string;
   /** Paragraph UUIDs this todo is anchored to in the editor margin. */
   paragraphIds: string[];
+  /** Unified link records (Phase 2, dual-read). */
+  links?: Link[];
 }
 
 export interface TodoState {
@@ -225,6 +234,8 @@ export interface UserNote {
   anchorId?: string;
   /** Snapshot of the originally selected text, used to re-anchor on load. */
   anchorText?: string;
+  /** Unified link records (Phase 2, dual-read). */
+  links?: Link[];
 }
 
 export interface NotesState {
@@ -244,6 +255,8 @@ export interface CutItem {
   anchorId?: string;
   /** Snapshot of the originally selected text, used to re-anchor on load. */
   anchorText?: string;
+  /** Unified link records (Phase 2, dual-read). */
+  links?: Link[];
 }
 
 export interface CutterState {
@@ -316,6 +329,8 @@ export interface QuotationGroup {
   paragraphIds: string[];
   notes: string;
   createdAt: string;
+  /** Unified link records (Phase 2, dual-read). */
+  links?: Link[];
 }
 
 export interface QuotationsState {
