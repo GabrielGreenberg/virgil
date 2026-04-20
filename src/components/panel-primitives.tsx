@@ -891,6 +891,7 @@ export function PanelHeader({
   onAdd,
   onAiRequest,
   leading,
+  titleAfter,
   children,
 }: {
   title: string;
@@ -905,6 +906,10 @@ export function PanelHeader({
   /** Content rendered at the far left of the header, before the title.
    *  Typical use: the panel's three-dots options menu. */
   leading?: ReactNode;
+  /** Content rendered immediately after the title (before add/AI buttons).
+   *  Use for inline mode toggles that cluster with the title — e.g.
+   *  Outline's Edit/Focus/Lock buttons. */
+  titleAfter?: ReactNode;
   children?: ReactNode;
 }) {
   const chrome = useContext(PanelChromeContext);
@@ -919,6 +924,7 @@ export function PanelHeader({
           </span>
         )}
       </h3>
+      {titleAfter}
       {onAdd && (
         <button
           onClick={onAdd}
