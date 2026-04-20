@@ -1,87 +1,98 @@
 "use client";
 
-import { useMemo, memo, useState, useRef, useEffect, type ReactNode } from "react";
+import { useMemo, memo, useState, useRef, useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
+import {
+  OMNI_PANELS,
+  PANEL_REGISTRY,
+} from "@/panels/panel-registry";
+import type { CardKind, OmniItem } from "@/panels/_shared/types";
 
 /**
  * The Omni-view threads pods from several other panels into a single
  * unified list. On the left side it merges footnotes, citations and
- * quotations; on the right side it merges the corresponding writing
- * pods (notes, revisions, archive snippets, etc.).
+ * quotations; on the right side it merges notes, archive snippets, and
+ * todos.
  *
  * Each item is a `content` ReactNode that should render EXACTLY the
- * same card its native panel renders — the caller (EditorLayout)
- * builds these by instantiating the extracted card components
- * (CitationCard, FootnoteCard, QuotationGroupCard, …).
+ * same card its native panel renders. The caller (EditorLayout) builds
+ * these by calling each panel's `build<Kind>OmniItems` helper.
  *
- * Cards are absolutely positioned so each one lines up with its
- * corresponding location in the editor. Unanchored items stack at the
- * top of the column.
+ * Card ids follow the registry's `popKey(kind, id)` shape — e.g.
+ * `note:abc`, `footnote:def`. Categories ARE card kinds; this is the
+ * canonical taxonomy.
  */
 
-/** Known item category prefixes. */
-export type OmniCategory = "fn" | "ci" | "qu" | "nt" | "ar" | "td";
+export type { OmniItem };
 
-const CATEGORY_LABELS: Record<OmniCategory, string> = {
-  fn: "Footnotes",
-  ci: "Citations",
-  qu: "Quotations",
-  nt: "Notes",
-  ar: "Archive",
-  td: "Todo",
+/** Category keys are CardKinds. The omni filter menu shows one row per
+ *  omni-eligible panel's card kind. */
+export type OmniCategory = CardKind;
+
+const OMNI_CATEGORIES = OMNI_PANELS.map((p) => p.card!.kind as CardKind);
+
+const CATEGORY_LABELS: Partial<Record<CardKind, string>> = Object.fromEntries(
+  OMNI_PANELS.map((p) => [p.card!.kind, p.label]),
+);
+
+/** Maps strip panel ids to omni category keys. Used by the filter menu
+ *  to group categories under the side they live on. */
+export const PANEL_TO_CATEGORY: Record<string, OmniCategory> = Object.fromEntries(
+  OMNI_PANELS.map((p) => [p.kind, p.card!.kind]),
+);
+
+/** Default enabled categories per side, derived from registry. */
+export const DEFAULT_OMNI_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
+  left: OMNI_PANELS.filter((p) => p.omniSide === "left").map((p) => p.card!.kind),
+  right: OMNI_PANELS.filter((p) => p.omniSide === "right").map((p) => p.card!.kind),
 };
 
-export interface OmniItem {
-  /** Unique within the omni view (typically `${kind}:${id}`). */
-  id: string;
-  /** Document position in the editor; null for unanchored items. */
-  pos: number | null;
-  /** Pre-rendered card. Must include the data-omni-entry attr on the
-      outermost element so in-text positioning can measure its height. */
-  content: ReactNode;
+/** Map from old 2-char prefix to new full-prefix card kind. Run on first
+ *  load to migrate persisted localStorage state. */
+const LEGACY_OMNI_PREFIX_MAP: Record<string, CardKind> = {
+  fn: "footnote",
+  ci: "citation",
+  qu: "quotation",
+  nt: "note",
+  ar: "archive",
+  td: "todo",
+};
+
+/** Translate a possibly-legacy omni filter list to current card kinds.
+ *  Drops any entries that don't map to a known kind. Idempotent: passing
+ *  already-current values returns them unchanged. */
+export function migrateOmniCategories(list: unknown): OmniCategory[] {
+  if (!Array.isArray(list)) return [];
+  const out: OmniCategory[] = [];
+  for (const item of list) {
+    if (typeof item !== "string") continue;
+    const mapped = LEGACY_OMNI_PREFIX_MAP[item] ?? item;
+    if (OMNI_CATEGORIES.includes(mapped as CardKind)) {
+      out.push(mapped as CardKind);
+    }
+  }
+  return out;
 }
 
 interface OmniViewPanelProps {
   side: "left" | "right";
   items: OmniItem[];
-  /** Editor instance — required for in-text positioning. */
   editor: Editor | null;
-  /** Which categories this side currently shows. */
   enabledCategories: Set<OmniCategory>;
-  /** Toggle a category on/off for this side. */
   onToggleCategory: (cat: OmniCategory) => void;
-  /** Which strip side each category's native panel lives on. */
   categorySides: Record<OmniCategory, "left" | "right">;
 }
 
-/** Extract the category prefix from an OmniItem id (e.g. "fn" from "fn:3"). */
+/** Extract the category prefix from an OmniItem id (e.g. "note" from "note:abc"). */
 function categoryOf(id: string): OmniCategory | null {
   const colon = id.indexOf(":");
   if (colon === -1) return null;
   const prefix = id.slice(0, colon);
-  return prefix in CATEGORY_LABELS ? (prefix as OmniCategory) : null;
+  return OMNI_CATEGORIES.includes(prefix as CardKind)
+    ? (prefix as CardKind)
+    : null;
 }
-
-/* ── Filter menu (three-dot) ────────────────────────────────────────── */
-
-const ALL_CATEGORIES: OmniCategory[] = ["fn", "ci", "qu", "nt", "ar", "td"];
-
-/** Maps strip panel ids to omni-view category prefixes. */
-export const PANEL_TO_CATEGORY: Record<string, OmniCategory> = {
-  footnotes: "fn",
-  citations: "ci",
-  quotations: "qu",
-  notes: "nt",
-  archive: "ar",
-  todo: "td",
-};
-
-/** Default enabled categories when no persisted state exists. */
-export const DEFAULT_OMNI_CATEGORIES: Record<"left" | "right", OmniCategory[]> = {
-  left: ["fn", "ci", "qu"],
-  right: ["nt", "ar", "td"],
-};
 
 function FilterMenu({
   enabled,
@@ -113,9 +124,8 @@ function FilterMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  // Group categories by their strip side
-  const leftCats = ALL_CATEGORIES.filter((c) => categorySides[c] === "left");
-  const rightCats = ALL_CATEGORIES.filter((c) => categorySides[c] === "right");
+  const leftCats = OMNI_CATEGORIES.filter((c) => categorySides[c] === "left");
+  const rightCats = OMNI_CATEGORIES.filter((c) => categorySides[c] === "right");
 
   const renderRow = (cat: OmniCategory) => (
     <button
@@ -123,7 +133,7 @@ function FilterMenu({
       onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
       className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted transition-colors flex items-center justify-between gap-3"
     >
-      <span>{CATEGORY_LABELS[cat]}</span>
+      <span>{CATEGORY_LABELS[cat] ?? cat}</span>
       <span className="text-[var(--accent)]">{enabled.has(cat) ? "✓" : ""}</span>
     </button>
   );
@@ -171,17 +181,14 @@ function FilterMenu({
   );
 }
 
-/* ── Main panel ─────────────────────────────────────────────────────── */
-
 function OmniViewPanel({
-  side,
+  side: _side,
   items,
   editor,
   enabledCategories,
   onToggleCategory,
   categorySides,
 }: OmniViewPanelProps) {
-  // Filter items by enabled categories
   const visibleItems = useMemo(() => {
     return items.filter((item) => {
       const cat = categoryOf(item.id);
@@ -189,8 +196,6 @@ function OmniViewPanel({
     });
   }, [items, enabledCategories]);
 
-  // Split into anchored (have pos) and unanchored, sorting anchored
-  // in document order so the list traces the page.
   const { anchored, unanchored } = useMemo(() => {
     const anchored: Array<OmniItem & { pos: number }> = [];
     const unanchored: OmniItem[] = [];
@@ -202,16 +207,11 @@ function OmniViewPanel({
     return { anchored, unanchored };
   }, [visibleItems]);
 
-  // Feed anchored items to the position hook. The hook measures each
-  // rendered card's height via the data-omni-entry attribute (which
-  // EditorLayout sets on the card wrapper via `extraDataAttrs`).
   const inTextItems = useMemo(
     () => anchored.map((i) => ({ id: i.id, pos: i.pos })),
     [anchored],
   );
 
-  // Measure unanchored section height so scroll sync can offset past it,
-  // letting the panel scroll above the document to show unanchored items.
   const unanchoredRef = useRef<HTMLDivElement>(null);
   const topOffsetRef = useRef(0);
   useEffect(() => {
@@ -287,3 +287,22 @@ function OmniViewPanel({
 }
 
 export default memo(OmniViewPanel);
+
+/** Update preferences in `useViewPrefs.placements` to derive each
+ *  category's strip side. Used by EditorLayout to pass `categorySides`. */
+export function deriveCategorySides(
+  placements: Array<{ id: string; side: "left" | "right" }>,
+): Record<OmniCategory, "left" | "right"> {
+  const result = {} as Record<OmniCategory, "left" | "right">;
+  for (const p of placements) {
+    const cat = PANEL_TO_CATEGORY[p.id];
+    if (cat) result[cat] = p.side;
+  }
+  for (const p of OMNI_PANELS) {
+    const cat = p.card!.kind as CardKind;
+    if (!(cat in result)) {
+      result[cat] = p.omniSide ?? "left";
+    }
+  }
+  return result;
+}

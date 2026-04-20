@@ -31,6 +31,7 @@ import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
+import { cardPopKey } from "@/panels/panel-registry";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -1000,7 +1001,7 @@ export function AiRequestCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const popped = usePoppedCards();
-  const popKey = `ai:${request.id}`;
+  const popKey = cardPopKey("ai", request.id);
 
   // Sync external updates (e.g. AI fulfillment) into the local draft.
   useEffect(() => {

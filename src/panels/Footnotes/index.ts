@@ -4,3 +4,4 @@ export {
   OrphanedFootnoteCard,
   startFootnoteDrag,
 } from "./FootnoteCard";
+export { buildFootnoteOmniItems } from "./omni";

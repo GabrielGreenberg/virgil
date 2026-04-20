@@ -187,6 +187,22 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
   },
 };
 
+/** Canonical key-prefix per card kind. Source of truth for popout keys
+ *  and OmniView prefix taxonomy. AI requests appear in multiple panels
+ *  so they don't have a parent panel — listed here directly. */
+export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
+  note: "note",
+  footnote: "footnote",
+  archive: "archive",
+  todo: "todo",
+  bib: "bib",
+  citation: "citation",
+  comment: "revision",
+  cut: "cut",
+  quotation: "quotation",
+  ai: "ai",
+};
+
 /** `${keyPrefix}:${id}` — canonical popout key for this card. Throws if
  *  the panel has no card kind. */
 export function popKey(panelKind: PanelKind, id: string): string {
@@ -195,6 +211,13 @@ export function popKey(panelKind: PanelKind, id: string): string {
     throw new Error(`Panel "${panelKind}" has no card kind`);
   }
   return `${entry.card.keyPrefix}:${id}`;
+}
+
+/** `${keyPrefix}:${id}` — canonical popout key by card kind. Use for
+ *  cross-cutting card kinds (e.g. AI requests) that aren't owned by a
+ *  single panel. */
+export function cardPopKey(cardKind: CardKind, id: string): string {
+  return `${CARD_KEY_PREFIXES[cardKind]}:${id}`;
 }
 
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {
