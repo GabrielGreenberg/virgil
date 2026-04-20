@@ -16,6 +16,7 @@ import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard } from "@/lib/tiptap-extensions";
 import { reanchorByText, resolveAnchorRange, type LinkedAnchorKind } from "@/lib/linked-anchors";
+import { collectLinksFromEditor } from "@/links/links";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -1558,6 +1559,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       window.removeEventListener("drop", onWindowDragEnd);
     };
   }, []);
+
+  // Dev-only: expose window.__virgil.collectLinks() for ad-hoc inspection
+  // while the Link system is being rolled out. Reads from the live editor.
+  useEffect(() => {
+    if (!editor) return;
+    type VirgilDevtools = { collectLinks: () => unknown };
+    const w = window as typeof window & { __virgil?: VirgilDevtools };
+    w.__virgil = { collectLinks: () => collectLinksFromEditor(editor) };
+    return () => {
+      if (w.__virgil) delete w.__virgil;
+    };
+  }, [editor]);
 
   useImperativeHandle(ref, () => ({
     replaceText(oldText: string, newText: string): boolean {

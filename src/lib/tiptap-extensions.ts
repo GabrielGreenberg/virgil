@@ -593,6 +593,11 @@ export const Footnote = Node.create({
       number: { default: 1 },
       footnoteId: { default: "" },
       title: { default: "" },
+      // Phase 0: additional link attrs (src/links/). Mirror footnoteId for
+      // back-compat. See src/links/link-registry.ts for the DOM contract.
+      linkId: { default: "" },
+      linkKind: { default: "footnote" },
+      linkCard: { default: "" },
     };
   },
 
@@ -601,11 +606,21 @@ export const Footnote = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const footnoteId =
+      (HTMLAttributes.linkId as string) ||
+      (HTMLAttributes.footnoteId as string) ||
+      "";
+    const linkCard =
+      (HTMLAttributes.linkCard as string) ||
+      (footnoteId ? `footnote:${footnoteId}` : "");
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": "footnote",
         class: "footnote-marker",
+        "data-link-id": footnoteId,
+        "data-link-kind": "footnote",
+        "data-link-card": linkCard,
       }),
       String(HTMLAttributes.number || "1"),
     ];
@@ -986,6 +1001,10 @@ export const Citation = Node.create({
       citationId: { default: "" },
       command: { default: "" },
       displayText: { default: "" },
+      // Phase 0: additional link attrs (src/links/). Mirror citationId.
+      linkId: { default: "" },
+      linkKind: { default: "citation" },
+      linkCard: { default: "" },
     };
   },
 
@@ -994,11 +1013,21 @@ export const Citation = Node.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const citationId =
+      (HTMLAttributes.linkId as string) ||
+      (HTMLAttributes.citationId as string) ||
+      "";
+    const linkCard =
+      (HTMLAttributes.linkCard as string) ||
+      (citationId ? `citation:${citationId}` : "");
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-type": "citation",
         class: "citation-node",
+        "data-link-id": citationId,
+        "data-link-kind": "citation",
+        "data-link-card": linkCard,
       }),
       HTMLAttributes.displayText || HTMLAttributes.command || "",
     ];
@@ -1504,6 +1533,14 @@ export const LinkedAnchor = Mark.create({
     return {
       anchorId: { default: "" },
       kind: { default: "note" },
+      // Phase 0: additional link attrs (src/links/). `linkCard` is
+      // populated lazily in Phase 2 when the anchor kind is unified
+      // (the mark doesn't currently carry the card id — only the card
+      // knows its own id). For now linkId mirrors anchorId and
+      // linkKind is always "anchor".
+      linkId: { default: "" },
+      linkKind: { default: "anchor" },
+      linkCard: { default: "" },
     };
   },
 
@@ -1512,12 +1549,19 @@ export const LinkedAnchor = Mark.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const anchorId =
+      (HTMLAttributes.linkId as string) ||
+      (HTMLAttributes.anchorId as string) ||
+      "";
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         "data-anchor-id": HTMLAttributes.anchorId || "",
         "data-anchor-kind": HTMLAttributes.kind || "",
         class: "linked-anchor",
+        "data-link-id": anchorId,
+        "data-link-kind": "anchor",
+        "data-link-card": (HTMLAttributes.linkCard as string) || "",
       }),
       0,
     ];
