@@ -10,6 +10,7 @@ import {
   useCycle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import {
@@ -100,7 +101,7 @@ export default function NotesPanel({
   const onActivateNote = useCallback(
     (note: UserNote) => {
       onSelectNote(note.id);
-      const firstPid = note.paragraphIds[0];
+      const firstPid = getLinkedParagraphIds(note)[0];
       if (firstPid) onScrollToParagraphId?.(firstPid);
     },
     [onSelectNote, onScrollToParagraphId],
@@ -211,11 +212,12 @@ export default function NotesPanel({
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
           onSelect={onSelectNote}
-          onJump={
-            onScrollToParagraphId && note.paragraphIds[0]
-              ? () => onScrollToParagraphId(note.paragraphIds[0])
-              : undefined
-          }
+          onJump={(() => {
+            const pid = getLinkedParagraphIds(note)[0];
+            return onScrollToParagraphId && pid
+              ? () => onScrollToParagraphId(pid)
+              : undefined;
+          })()}
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}

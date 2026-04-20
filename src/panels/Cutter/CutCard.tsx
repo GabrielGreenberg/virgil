@@ -13,6 +13,7 @@ import {
   startTextDrag,
 } from "@/components/panel-primitives";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_CUT } from "@/lib/marginalia";
@@ -51,7 +52,7 @@ export function CutCard({
     [cut.id, onUpdate],
   );
 
-  const isOrphaned = cut.paragraphIds.length === 0 && !cut.anchorId;
+  const isOrphaned = getLinkedParagraphIds(cut).length === 0 && !hasTextAnchor(cut);
   const popped = usePoppedCards();
   const cardKey = popKey("cutter", cut.id);
   const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;

@@ -5,42 +5,44 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import {
+  addParagraphLink,
+  derivedLinksForCard,
+  removeParagraphLink,
+} from "@/links/links";
 
 const EMPTY: ArchiveState = { snippets: [] };
 
-/**
- * Migrate legacy snippets that stored a plain `text` string instead of
- * rich `content` (Tiptap JSONContent). Returns a new array if any
- * migration occurred, or the original if none needed.
- */
-function migrateSnippets(snippets: ArchivedSnippet[]): ArchivedSnippet[] {
-  let changed = false;
-  const migrated = snippets.map((s) => {
-    // Legacy shape: { id, text: string, createdAt }
-    const legacy = s as ArchivedSnippet & { text?: string };
-    const needsTextMigration = legacy.text != null && s.content == null;
-    const needsParagraphIds = !Array.isArray(s.paragraphIds);
-    const needsTitle = typeof s.title !== "string";
-    let next: ArchivedSnippet = s;
-    if (needsTextMigration || needsParagraphIds || needsTitle) {
-      changed = true;
-      next = {
-        id: s.id,
-        title: typeof s.title === "string" ? s.title : "",
-        content: needsTextMigration ? normalizeRichContent(legacy.text!) : s.content,
-        createdAt: s.createdAt,
-        paragraphIds: Array.isArray(s.paragraphIds) ? s.paragraphIds : [],
-        links: s.links,
-      };
-    }
-    // Hydrate legacy fields from `links` if the sidecar was persisted
-    // in the new links-only shape.
-    const hydrated = hydrateCardFromLinks(next);
-    if (hydrated !== next) changed = true;
-    return hydrated;
+function migrateSnippet(raw: unknown): ArchivedSnippet {
+  const s = raw as Partial<ArchivedSnippet> & {
+    text?: string;
+    paragraphIds?: string[];
+  };
+  const content =
+    s.text != null && s.content == null
+      ? normalizeRichContent(s.text)
+      : normalizeRichContent(s.content);
+  if (Array.isArray(s.links) && s.links.length > 0) {
+    return {
+      id: s.id!,
+      title: typeof s.title === "string" ? s.title : "",
+      content,
+      createdAt: s.createdAt!,
+      links: s.links,
+    };
+  }
+  const base: ArchivedSnippet = {
+    id: s.id!,
+    title: typeof s.title === "string" ? s.title : "",
+    content,
+    createdAt: s.createdAt!,
+    links: [],
+  };
+  base.links = derivedLinksForCard("archive", {
+    id: base.id,
+    paragraphIds: Array.isArray(s.paragraphIds) ? s.paragraphIds : [],
   });
-  return changed ? migrated : snippets;
+  return base;
 }
 
 export function useArchive(docId: string | null) {
@@ -55,11 +57,11 @@ export function useArchive(docId: string | null) {
     readSidecar<ArchiveState>(docId, "archive.json", EMPTY)
       .then((data) => {
         if (docRef.current === docId && data.snippets) {
-          const migrated = migrateSnippets(data.snippets);
+          const migrated = data.snippets.map(migrateSnippet);
           const next = { snippets: migrated };
           setState(next);
-          // Persist migration if anything changed
-          if (migrated !== data.snippets) {
+          // Persist migration if any snippet was converted.
+          if (migrated.some((m, i) => m !== data.snippets[i])) {
             writeSidecar(docId, "archive.json", next).catch(() => {});
           }
         }
@@ -71,10 +73,7 @@ export function useArchive(docId: string | null) {
     const id = docRef.current;
     if (!id) return;
     try {
-      const enriched: ArchiveState = {
-        snippets: enrichCardsWithLinks("archive", s.snippets),
-      };
-      await writeSidecar(id, "archive.json", enriched);
+      await writeSidecar(id, "archive.json", s);
     } catch (err) {
       console.error("Failed to save archive:", err);
     }
@@ -86,7 +85,7 @@ export function useArchive(docId: string | null) {
       title: "",
       content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
-      paragraphIds: [],
+      links: [],
     };
     setState((prev) => {
       const next = { snippets: [...prev.snippets, snippet] };
@@ -124,9 +123,7 @@ export function useArchive(docId: string | null) {
     setState((prev) => {
       const next = {
         snippets: prev.snippets.map((s) =>
-          s.id === id && !s.paragraphIds.includes(paragraphId)
-            ? { ...s, paragraphIds: [...s.paragraphIds, paragraphId] }
-            : s
+          s.id === id ? addParagraphLink(s, "archive", paragraphId) : s,
         ),
       };
       persist(next);
@@ -138,9 +135,7 @@ export function useArchive(docId: string | null) {
     setState((prev) => {
       const next = {
         snippets: prev.snippets.map((s) =>
-          s.id === id
-            ? { ...s, paragraphIds: s.paragraphIds.filter((p) => p !== paragraphId) }
-            : s
+          s.id === id ? removeParagraphLink(s, paragraphId) : s,
         ),
       };
       persist(next);

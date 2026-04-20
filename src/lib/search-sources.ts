@@ -9,7 +9,8 @@
 import type { Editor } from "@tiptap/react";
 import type { JSONContent } from "@tiptap/core";
 import { richJsonToPlainText } from "./footnote-content";
-import { resolveAnchorRange } from "@/links/links";
+import { resolveAnchorRange, getLinkedParagraphIds, getTextAnchor } from "@/links/links";
+import type { Link } from "@/links/_shared/types";
 import type {
   ArchivedSnippet,
   CitationRef,
@@ -205,13 +206,14 @@ function lowestPos(
 function resolveItemPos(
   editor: Editor,
   uuidPos: Map<string, number>,
-  item: { anchorId?: string; paragraphIds?: string[] },
+  item: { id: string; links?: Link[] },
 ): number | null {
-  if (item.anchorId) {
-    const r = resolveAnchorRange(editor, item.anchorId);
+  const anchor = getTextAnchor(item);
+  if (anchor) {
+    const r = resolveAnchorRange(editor, anchor.anchorId);
     if (r) return r.from;
   }
-  return lowestPos(uuidPos, item.paragraphIds);
+  return lowestPos(uuidPos, getLinkedParagraphIds(item));
 }
 
 /** Turn a matched string + context into a SearchHit. */
@@ -344,7 +346,7 @@ export function searchTodos(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const t of todos) {
-    const pos = lowestPos(uuidPos, t.paragraphIds);
+    const pos = lowestPos(uuidPos, getLinkedParagraphIds(t));
     for (const m of scanText(t.text, re)) {
       out.push(hitFromMatch("todos", t.id, pos, "text", m));
     }
@@ -366,7 +368,7 @@ export function searchArchive(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const s of snippets) {
-    const pos = lowestPos(uuidPos, s.paragraphIds);
+    const pos = lowestPos(uuidPos, getLinkedParagraphIds(s));
     if (s.title) {
       for (const m of scanText(s.title, re)) {
         out.push(hitFromMatch("archive", s.id, pos, "title", m));
@@ -413,7 +415,7 @@ export function searchQuotations(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const g of groups) {
-    const pos = lowestPos(uuidPos, g.paragraphIds);
+    const pos = lowestPos(uuidPos, getLinkedParagraphIds(g));
     if (g.title) {
       for (const m of scanText(g.title, re)) {
         out.push(hitFromMatch("quotations", g.id, pos, "title", m));
@@ -448,7 +450,8 @@ export function searchRevisions(
 ): SearchHit[] {
   const out: SearchHit[] = [];
   for (const r of textRevisions) {
-    const range = r.anchorId ? resolveAnchorRange(editor, r.anchorId) : null;
+    const ta = getTextAnchor(r);
+    const range = ta ? resolveAnchorRange(editor, ta.anchorId) : null;
     const pos = range?.from ?? null;
     for (const m of scanText(r.text, re)) {
       out.push(hitFromMatch("revisions", r.id, pos, "body", m));

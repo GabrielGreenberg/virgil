@@ -21,7 +21,7 @@ import {
   useInTextPositions,
   type PositionItem,
 } from "@/hooks/useInTextPositions";
-import { resolveAnchorRange } from "@/links/links";
+import { resolveAnchorRange, getTextAnchor } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -423,8 +423,9 @@ export default function RevisionsPanel({
     if (!editor) return [];
     const out: PositionItem[] = [];
     for (const r of activeText) {
-      if (!r.anchorId) continue;
-      const range = resolveAnchorRange(editor, r.anchorId);
+      const ta = getTextAnchor(r);
+      if (!ta) continue;
+      const range = resolveAnchorRange(editor, ta.anchorId);
       if (range) out.push({ id: r.id, pos: range.from });
     }
     return out;

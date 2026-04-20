@@ -96,12 +96,11 @@ export interface TextRevision {
   createdAt: string;
   resolved: boolean;
   selectedText: string;
-  /** Linked-anchor id for the selected range. Missing if anchor is lost. */
-  anchorId?: string;
   text: string;
   turns: RevisionTurn[];
-  /** Unified link records (Phase 2, dual-read). */
-  links?: Link[];
+  /** All connections this revision makes to the editor: Mode B
+   *  text-range anchor, paragraph anchors, etc. See src/links/links.ts. */
+  links: Link[];
 }
 
 export interface RevisionsState {
@@ -119,11 +118,9 @@ export interface ArchivedSnippet {
    *  the useArchive hook migrates them to JSONContent on load. */
   content: unknown;
   createdAt: string;
-  /** Paragraph UUIDs this snippet is anchored to in the editor margin. */
-  paragraphIds: string[];
-  /** Unified link records (Phase 2, dual-read). When present this is the
-   *  source of truth; `paragraphIds` is kept in sync for one release. */
-  links?: Link[];
+  /** All paragraphs this snippet is anchored to. See src/links/links.ts
+   *  for helpers (getLinkedParagraphIds, addParagraphLink, …). */
+  links: Link[];
 }
 
 export interface ArchiveState {
@@ -136,10 +133,7 @@ export interface TodoItem {
   notes: string;
   done: boolean;
   createdAt: string;
-  /** Paragraph UUIDs this todo is anchored to in the editor margin. */
-  paragraphIds: string[];
-  /** Unified link records (Phase 2, dual-read). */
-  links?: Link[];
+  links: Link[];
 }
 
 export interface TodoState {
@@ -228,14 +222,8 @@ export interface UserNote {
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;
-  paragraphIds: string[]; // paragraph UUIDs the note is anchored to
   createdAt: string;
-  /** When the note was created from a text selection, its linked-anchor id. */
-  anchorId?: string;
-  /** Snapshot of the originally selected text, used to re-anchor on load. */
-  anchorText?: string;
-  /** Unified link records (Phase 2, dual-read). */
-  links?: Link[];
+  links: Link[];
 }
 
 export interface NotesState {
@@ -249,14 +237,8 @@ export interface CutItem {
   title: string;
   /** Tiptap JSONContent — the cut text body (editable once on the card). */
   content: unknown;
-  paragraphIds: string[];
   createdAt: string;
-  /** Linked-anchor id when the cut was created from a text selection. */
-  anchorId?: string;
-  /** Snapshot of the originally selected text, used to re-anchor on load. */
-  anchorText?: string;
-  /** Unified link records (Phase 2, dual-read). */
-  links?: Link[];
+  links: Link[];
 }
 
 export interface CutterState {
@@ -326,11 +308,9 @@ export interface QuotationGroup {
   id: string;
   title: string;
   references: Reference[];
-  paragraphIds: string[];
   notes: string;
   createdAt: string;
-  /** Unified link records (Phase 2, dual-read). */
-  links?: Link[];
+  links: Link[];
 }
 
 export interface QuotationsState {

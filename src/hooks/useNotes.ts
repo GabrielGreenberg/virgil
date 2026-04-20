@@ -6,9 +6,52 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { NotesState, UserNote } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import {
+  addParagraphLink,
+  clearTextAnchorLink,
+  derivedLinksForCard,
+  getTextAnchor,
+  removeParagraphLink,
+  setTextAnchorLink,
+} from "@/links/links";
 
 const EMPTY_STATE: NotesState = { notes: [] };
+
+/** Migrate a raw sidecar record into the canonical `links`-only shape. */
+function migrateNote(raw: unknown): UserNote {
+  const r = raw as Partial<UserNote> & {
+    anchorPos?: number;
+    anchorPositions?: number[];
+    paragraphIds?: string[];
+    anchorId?: string;
+    anchorText?: string;
+  };
+  // If the sidecar already carries `links`, trust it.
+  if (Array.isArray(r.links) && r.links.length > 0) {
+    return {
+      id: r.id!,
+      title: typeof r.title === "string" ? r.title : "",
+      content: normalizeRichContent(r.content),
+      createdAt: r.createdAt!,
+      links: r.links,
+    };
+  }
+  // Otherwise synthesize from legacy fields.
+  const base: UserNote = {
+    id: r.id!,
+    title: typeof r.title === "string" ? r.title : "",
+    content: normalizeRichContent(r.content),
+    createdAt: r.createdAt!,
+    links: [],
+  };
+  base.links = derivedLinksForCard("note", {
+    id: base.id,
+    paragraphIds: Array.isArray(r.paragraphIds) ? r.paragraphIds : [],
+    anchorId: typeof r.anchorId === "string" ? r.anchorId : undefined,
+    anchorText: typeof r.anchorText === "string" ? r.anchorText : undefined,
+  });
+  return base;
+}
 
 export function useNotes(docId: string | null) {
   const [state, setState] = useState<NotesState>(EMPTY_STATE);
@@ -20,39 +63,10 @@ export function useNotes(docId: string | null) {
       setState(EMPTY_STATE);
       return;
     }
-
     readSidecar<NotesState>(docId, "notes.json", EMPTY_STATE)
       .then((data) => {
         if (currentDocIdRef.current !== docId || !data.notes) return;
-        // Migrate legacy notes:
-        //   - missing `title`  → coerce to ""
-        //   - HTML string body → convert to JSONContent
-        //   - anchorPositions (old number[]) → paragraphIds (string[])
-        //     Legacy positions are dropped — notes that still have numeric
-        //     anchors will appear un-anchored until re-dropped. This is safe
-        //     because numeric positions are unstable across edits anyway.
-        const migrated: NotesState = {
-          notes: data.notes.map((n) => {
-            const raw = n as UserNote & { anchorPos?: number; anchorPositions?: number[] };
-            const base: UserNote = {
-              id: raw.id,
-              title: typeof raw.title === "string" ? raw.title : "",
-              content: normalizeRichContent(raw.content),
-              createdAt: raw.createdAt,
-              paragraphIds: Array.isArray(raw.paragraphIds)
-                ? raw.paragraphIds
-                : [], // drop legacy numeric anchors
-              anchorId: typeof raw.anchorId === "string" ? raw.anchorId : undefined,
-              anchorText: typeof raw.anchorText === "string" ? raw.anchorText : undefined,
-              links: Array.isArray(raw.links) ? raw.links : undefined,
-            };
-            // If the sidecar was persisted with the new links-only shape,
-            // hydrate the legacy fields back in so existing runtime
-            // readers see a consistent view.
-            return hydrateCardFromLinks(base);
-          }),
-        };
-        setState(migrated);
+        setState({ notes: data.notes.map(migrateNote) });
       })
       .catch(() => {});
   }, [docId]);
@@ -61,10 +75,7 @@ export function useNotes(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      const enriched: NotesState = {
-        notes: enrichCardsWithLinks("note", newState.notes),
-      };
-      await writeSidecar(id, "notes.json", enriched);
+      await writeSidecar(id, "notes.json", newState);
     } catch (err) {
       console.error("Failed to save notes:", err);
     }
@@ -76,15 +87,17 @@ export function useNotes(docId: string | null) {
       content?: JSONContent,
       anchor?: { anchorId: string; anchorText: string },
     ) => {
-      const newNote: UserNote = {
+      let newNote: UserNote = {
         id: generateEntityId(),
         title: "",
         content: content ?? emptyRichContent(),
-        paragraphIds: paragraphId ? [paragraphId] : [],
         createdAt: new Date().toISOString(),
-        anchorId: anchor?.anchorId,
-        anchorText: anchor?.anchorText,
+        links: [],
       };
+      if (paragraphId) newNote = addParagraphLink(newNote, "note", paragraphId);
+      if (anchor) {
+        newNote = setTextAnchorLink(newNote, "note", anchor.anchorId, anchor.anchorText);
+      }
       setState((prev) => {
         const newState = { notes: [...prev.notes, newNote] };
         persist(newState);
@@ -100,7 +113,7 @@ export function useNotes(docId: string | null) {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
-            n.id === id ? { ...n, anchorId, anchorText } : n,
+            n.id === id ? setTextAnchorLink(n, "note", anchorId, anchorText) : n,
           ),
         };
         persist(newState);
@@ -113,10 +126,14 @@ export function useNotes(docId: string | null) {
   const clearNoteAnchor = useCallback(
     (anchorId: string) => {
       setState((prev) => {
-        if (!prev.notes.some((n) => n.anchorId === anchorId)) return prev;
+        if (!prev.notes.some((n) => getTextAnchor(n)?.anchorId === anchorId)) {
+          return prev;
+        }
         const newState = {
           notes: prev.notes.map((n) =>
-            n.anchorId === anchorId ? { ...n, anchorId: undefined } : n,
+            getTextAnchor(n)?.anchorId === anchorId
+              ? clearTextAnchorLink(n, "note")
+              : n,
           ),
         };
         persist(newState);
@@ -173,9 +190,7 @@ export function useNotes(docId: string | null) {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
-            n.id === id && !n.paragraphIds.includes(paragraphId)
-              ? { ...n, paragraphIds: [...n.paragraphIds, paragraphId] }
-              : n
+            n.id === id ? addParagraphLink(n, "note", paragraphId) : n,
           ),
         };
         persist(newState);
@@ -190,9 +205,7 @@ export function useNotes(docId: string | null) {
       setState((prev) => {
         const newState = {
           notes: prev.notes.map((n) =>
-            n.id === id
-              ? { ...n, paragraphIds: n.paragraphIds.filter((p) => p !== paragraphId) }
-              : n
+            n.id === id ? removeParagraphLink(n, paragraphId) : n,
           ),
         };
         persist(newState);

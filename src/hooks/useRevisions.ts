@@ -11,7 +11,12 @@ import type {
   RevisionsState,
   TextRevision,
 } from "@/lib/types";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import {
+  clearTextAnchorLink,
+  derivedLinksForCard,
+  getTextAnchor,
+  setTextAnchorLink,
+} from "@/links/links";
 
 const DEFAULT_USERS: RevisionUser[] = [
   { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
@@ -49,6 +54,7 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
         text: c.comment,
       },
     ],
+    links: [],
   }));
   return {
     users: [...DEFAULT_USERS],
@@ -83,18 +89,38 @@ export function useRevisions(docId: string | null) {
           // in the doc now, keyed by `anchorId`. Legacy records keep only
           // `selectedText` as a snapshot for re-anchoring on load.
           const strippedRevs = (existing.textRevisions ?? []).map((r) => {
-            const raw = r as TextRevision & { anchorPos?: number };
-            let base: TextRevision;
-            if ("anchorPos" in raw) {
-              const { anchorPos: _drop, ...rest } = raw;
-              void _drop;
-              base = rest as TextRevision;
-            } else {
-              base = raw as TextRevision;
+            const raw = r as TextRevision & {
+              anchorPos?: number;
+              anchorId?: string;
+            };
+            // Already-migrated records have a non-empty links array.
+            if (Array.isArray(raw.links) && raw.links.length > 0) {
+              return {
+                id: raw.id,
+                authorId: raw.authorId,
+                createdAt: raw.createdAt,
+                resolved: raw.resolved,
+                selectedText: raw.selectedText,
+                text: raw.text,
+                turns: raw.turns,
+                links: raw.links,
+              };
             }
-            // Hydrate legacy `anchorId` from `links` if the sidecar was
-            // persisted in the new links-only shape.
-            return hydrateCardFromLinks(base);
+            // Legacy: build links from the old anchorId field.
+            return {
+              id: raw.id,
+              authorId: raw.authorId,
+              createdAt: raw.createdAt,
+              resolved: raw.resolved,
+              selectedText: raw.selectedText,
+              text: raw.text,
+              turns: raw.turns,
+              links: derivedLinksForCard("comment", {
+                id: raw.id,
+                anchorId: raw.anchorId,
+                anchorText: raw.selectedText,
+              }),
+            };
           });
           setState({
             users: existing.users?.length ? existing.users : [...DEFAULT_USERS],
@@ -138,12 +164,7 @@ export function useRevisions(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      // textRevisions are the only anchor-bearing cards in this state.
-      const enriched: RevisionsState = {
-        ...newState,
-        textRevisions: enrichCardsWithLinks("comment", newState.textRevisions),
-      };
-      await writeSidecar(id, "revisions.json", enriched);
+      await writeSidecar(id, "revisions.json", newState);
     } catch (err) {
       console.error("Failed to save revisions:", err);
     }
@@ -210,16 +231,19 @@ export function useRevisions(docId: string | null) {
       update((prev) => {
         const authorId = prev.activeUserId ?? "me";
         const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
-        const rev: TextRevision = {
+        let rev: TextRevision = {
           id: generateEntityId(),
           authorId,
           createdAt: now,
           resolved: false,
           selectedText,
-          anchorId: anchorId ?? undefined,
           text: trimmed,
           turns: [turn],
+          links: [],
         };
+        if (anchorId) {
+          rev = setTextAnchorLink(rev, "comment", anchorId, selectedText);
+        }
         created = rev;
         return { ...prev, textRevisions: [...prev.textRevisions, rev] };
       });
@@ -232,9 +256,11 @@ export function useRevisions(docId: string | null) {
     (id: string, anchorId: string | null) => {
       update((prev) => ({
         ...prev,
-        textRevisions: prev.textRevisions.map((r) =>
-          r.id === id ? { ...r, anchorId: anchorId ?? undefined } : r,
-        ),
+        textRevisions: prev.textRevisions.map((r) => {
+          if (r.id !== id) return r;
+          if (anchorId == null) return clearTextAnchorLink(r, "comment");
+          return setTextAnchorLink(r, "comment", anchorId, r.selectedText);
+        }),
       }));
     },
     [update],
@@ -248,7 +274,9 @@ export function useRevisions(docId: string | null) {
       update((prev) => ({
         ...prev,
         textRevisions: prev.textRevisions.map((r) =>
-          r.anchorId === anchorId ? { ...r, anchorId: undefined } : r,
+          getTextAnchor(r)?.anchorId === anchorId
+            ? clearTextAnchorLink(r, "comment")
+            : r,
         ),
       }));
     };

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { getLinkedParagraphIds } from "@/links/links";
+import type { Link } from "@/links/_shared/types";
 
 export interface PositionItem {
   id: string;
@@ -10,13 +12,12 @@ export interface PositionItem {
 }
 
 /**
- * Helper: extract positions for items anchored to paragraphs by UUID.
- * Works for any item shape that has `id` and `paragraphIds[]` — uses the
- * first paragraph anchor to resolve a doc position.
+ * Helper: extract positions for link-anchored items. Uses the first
+ * paragraph in each card's `links` array to resolve a doc position.
  */
 export function getParagraphAnchorPositions(
   editor: Editor | null,
-  items?: Array<{ id: string; paragraphIds: string[] }>,
+  items?: ReadonlyArray<{ id: string; links?: Link[] }>,
 ): PositionItem[] {
   if (!editor || !items) return [];
   const uuidToPos = new Map<string, number>();
@@ -28,8 +29,9 @@ export function getParagraphAnchorPositions(
   });
   const out: PositionItem[] = [];
   for (const it of items) {
-    if (it.paragraphIds.length > 0) {
-      const pos = uuidToPos.get(it.paragraphIds[0]);
+    const pids = getLinkedParagraphIds(it);
+    if (pids.length > 0) {
+      const pos = uuidToPos.get(pids[0]);
       if (pos !== undefined) out.push({ id: it.id, pos });
     }
   }

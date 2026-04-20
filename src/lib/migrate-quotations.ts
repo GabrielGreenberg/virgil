@@ -1,5 +1,6 @@
 import { generateEntityId } from "@/lib/uuid";
 import type { QuotationGroup, QuotationsState, Reference, Quote } from "@/lib/types";
+import { derivedLinksForCard } from "@/links/links";
 
 /**
  * Legacy shapes — kept here only for migration. The current model lives in
@@ -68,9 +69,12 @@ function migrateGroup(legacy: LegacyQuotationGroup): QuotationGroup {
     id: legacy.id,
     title,
     references: [reference],
-    paragraphIds: legacy.paragraphId ? [legacy.paragraphId] : [],
     notes: legacy.notes ?? "",
     createdAt: legacy.createdAt,
+    links: derivedLinksForCard("quotation", {
+      id: legacy.id,
+      paragraphIds: legacy.paragraphId ? [legacy.paragraphId] : [],
+    }),
   };
 }
 
@@ -87,13 +91,23 @@ export function migrateQuotationsState(
   for (const g of raw.groups) {
     if (isModernGroup(g)) {
       // Defensive: ensure refs and quotes have ids and required fields.
-      // Migrate legacy `paragraphId` string → `paragraphIds` array
-      const raw = g as QuotationGroup & { paragraphId?: string | null };
-      const paragraphIds = Array.isArray(g.paragraphIds)
-        ? g.paragraphIds
+      // Migrate legacy `paragraphId` string → canonical `links[]`.
+      const raw = g as QuotationGroup & {
+        paragraphId?: string | null;
+        paragraphIds?: string[];
+      };
+      const legacyParagraphIds = Array.isArray(raw.paragraphIds)
+        ? raw.paragraphIds
         : raw.paragraphId
           ? [raw.paragraphId]
           : [];
+      const links =
+        Array.isArray(g.links) && g.links.length > 0
+          ? g.links
+          : derivedLinksForCard("quotation", {
+              id: g.id,
+              paragraphIds: legacyParagraphIds,
+            });
       groups.push({
         id: g.id,
         title: g.title ?? "",
@@ -106,9 +120,9 @@ export function migrateQuotationsState(
             page: q.page ?? "",
           })),
         })),
-        paragraphIds,
         notes: g.notes ?? "",
         createdAt: g.createdAt,
+        links,
       });
     } else if (isLegacyGroup(g)) {
       groups.push(migrateGroup(g));

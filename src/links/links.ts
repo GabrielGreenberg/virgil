@@ -762,52 +762,203 @@ type AnchorCardShape = {
  * containing paragraph inferred from the mark, if distinct. Mode A cards
  * produce one Link per paragraphId.
  */
-/**
- * Enrich an array of cards with their derived `links` field. Used at
- * persist time so the sidecar JSON carries the canonical Link records
- * alongside the legacy fields. Callers retain all other fields on each
- * card verbatim.
- */
-export function enrichCardsWithLinks<T extends AnchorCardShape>(
-  cardKind: CardKind,
-  cards: readonly T[],
-): T[] {
-  return cards.map((card) => ({
-    ...card,
-    links: derivedLinksForCard(cardKind, card),
-  }));
-}
+// ---------------------------------------------------------------------------
+// Accessor / mutator API over card.links
+//
+// These replace every direct `card.paragraphIds` / `card.anchorId` /
+// `card.anchorText` read or write in the rest of the codebase. Once all
+// callsites use these helpers, the legacy fields can be dropped from
+// the card type definitions entirely.
+// ---------------------------------------------------------------------------
 
-/**
- * Hydrate legacy card fields (`paragraphIds`, `anchorId`, `anchorText`)
- * from a `links[]` array. Used at load time so existing readers (which
- * still reach for the legacy fields) see consistent data regardless of
- * whether the sidecar was persisted with the old shape or the new
- * `links`-only shape.
- *
- * If `card.links` is absent or empty, the card is returned unchanged —
- * legacy-only saved data still works.
- */
-export function hydrateCardFromLinks<T extends AnchorCardShape>(card: T): T {
-  if (!card.links || card.links.length === 0) return card;
-  const paragraphIds: string[] = [];
-  let anchorId: string | undefined;
-  let anchorText: string | undefined;
-  for (const link of card.links) {
+type CardWithLinks = { id: string; links?: Link[] };
+
+/** All paragraph UUIDs any of this card's anchor-kind links cover. */
+export function getLinkedParagraphIds(card: CardWithLinks): string[] {
+  const links = card.links ?? [];
+  const out: string[] = [];
+  for (const link of links) {
     if (link.anchor.type !== "anchor") continue;
     for (const pid of link.anchor.paragraphIds) {
-      if (!paragraphIds.includes(pid)) paragraphIds.push(pid);
-    }
-    if (link.anchor.textRange && !anchorId) {
-      anchorId = link.anchor.textRange.anchorId;
-      anchorText = link.anchor.textRange.textSnapshot;
+      if (!out.includes(pid)) out.push(pid);
     }
   }
+  return out;
+}
+
+/** The first Mode B text-range anchor on this card, or null. Cards are
+ *  expected to carry at most one Mode B anchor today. */
+export function getTextAnchor(
+  card: CardWithLinks,
+): { anchorId: string; anchorText: string } | null {
+  const links = card.links ?? [];
+  for (const link of links) {
+    if (link.anchor.type === "anchor" && link.anchor.textRange) {
+      return {
+        anchorId: link.anchor.textRange.anchorId,
+        anchorText: link.anchor.textRange.textSnapshot,
+      };
+    }
+  }
+  return null;
+}
+
+export function hasTextAnchor(card: CardWithLinks): boolean {
+  return getTextAnchor(card) !== null;
+}
+
+/** Convenience: a Set of all paragraph UUIDs across a list of cards. */
+export function collectAllLinkedParagraphIds(
+  cards: readonly CardWithLinks[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const c of cards) {
+    for (const pid of getLinkedParagraphIds(c)) out.add(pid);
+  }
+  return out;
+}
+
+function makeAnchorLink(
+  cardKind: CardKind,
+  cardId: string,
+  paragraphIds: string[],
+  textRange?: { anchorId: string; textSnapshot: string },
+): Link {
+  return {
+    id: textRange?.anchorId ?? `${cardId}@${paragraphIds[0] ?? ""}`,
+    kind: "anchor",
+    anchor: {
+      type: "anchor",
+      paragraphIds,
+      margin: { side: inferMarginSide(cardKind) },
+      ...(textRange ? { textRange } : {}),
+    },
+    target: { type: "card", ref: { kind: cardKind, id: cardId } },
+    createdAt: new Date().toISOString(),
+  };
+}
+
+/** Add a paragraph anchor to `card.links`. No-op if already present.
+ *  Preserves any existing Mode B link's textRange by folding the new
+ *  paragraph into its `paragraphIds` when one exists. */
+export function addParagraphLink<T extends CardWithLinks>(
+  card: T,
+  cardKind: CardKind,
+  paragraphId: string,
+): T {
+  if (!paragraphId) return card;
+  const links = card.links ?? [];
+  // If the card has a Mode B link, fold the new paragraph into it.
+  const modeBIdx = links.findIndex(
+    (l) => l.anchor.type === "anchor" && l.anchor.textRange,
+  );
+  if (modeBIdx !== -1) {
+    const link = links[modeBIdx];
+    if (link.anchor.type !== "anchor") return card;
+    if (link.anchor.paragraphIds.includes(paragraphId)) return card;
+    const updatedLinks = links.slice();
+    updatedLinks[modeBIdx] = {
+      ...link,
+      anchor: {
+        ...link.anchor,
+        paragraphIds: [...link.anchor.paragraphIds, paragraphId],
+      },
+    };
+    return { ...card, links: updatedLinks };
+  }
+  // Otherwise add a fresh Mode A link — unless one already covers it.
+  const existing = getLinkedParagraphIds(card);
+  if (existing.includes(paragraphId)) return card;
   return {
     ...card,
-    paragraphIds,
-    ...(anchorId ? { anchorId, anchorText } : {}),
+    links: [...links, makeAnchorLink(cardKind, card.id, [paragraphId])],
   };
+}
+
+/** Remove a paragraph anchor from `card.links`. */
+export function removeParagraphLink<T extends CardWithLinks>(
+  card: T,
+  paragraphId: string,
+): T {
+  const links = card.links ?? [];
+  let changed = false;
+  const next: Link[] = [];
+  for (const link of links) {
+    if (link.anchor.type !== "anchor") {
+      next.push(link);
+      continue;
+    }
+    if (!link.anchor.paragraphIds.includes(paragraphId)) {
+      next.push(link);
+      continue;
+    }
+    changed = true;
+    const remaining = link.anchor.paragraphIds.filter((p) => p !== paragraphId);
+    // Keep Mode B links even when they lose all paragraphs — the
+    // text-range anchor itself is the primary binding.
+    if (remaining.length === 0 && !link.anchor.textRange) continue;
+    next.push({
+      ...link,
+      anchor: { ...link.anchor, paragraphIds: remaining },
+    });
+  }
+  return changed ? { ...card, links: next } : card;
+}
+
+/** Replace all paragraph anchors on the card with `paragraphIds`. */
+export function setParagraphLinks<T extends CardWithLinks>(
+  card: T,
+  cardKind: CardKind,
+  paragraphIds: string[],
+): T {
+  const textAnchor = getTextAnchor(card);
+  const links: Link[] = [];
+  if (textAnchor) {
+    links.push(
+      makeAnchorLink(cardKind, card.id, paragraphIds, {
+        anchorId: textAnchor.anchorId,
+        textSnapshot: textAnchor.anchorText,
+      }),
+    );
+  } else {
+    for (const pid of paragraphIds) {
+      links.push(makeAnchorLink(cardKind, card.id, [pid]));
+    }
+  }
+  return { ...card, links };
+}
+
+/** Set a Mode B text-range anchor on the card. Preserves existing
+ *  paragraph anchors. */
+export function setTextAnchorLink<T extends CardWithLinks>(
+  card: T,
+  cardKind: CardKind,
+  anchorId: string,
+  anchorText: string,
+): T {
+  const paragraphIds = getLinkedParagraphIds(card);
+  const next = makeAnchorLink(cardKind, card.id, paragraphIds, {
+    anchorId,
+    textSnapshot: anchorText,
+  });
+  // Drop any existing anchor-kind links; this new one is canonical.
+  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "anchor");
+  return { ...card, links: [...kept, next] };
+}
+
+/** Clear the Mode B text-range anchor. Preserves paragraph anchors. */
+export function clearTextAnchorLink<T extends CardWithLinks>(
+  card: T,
+  cardKind: CardKind,
+): T {
+  if (!hasTextAnchor(card)) return card;
+  const paragraphIds = getLinkedParagraphIds(card);
+  const kept = (card.links ?? []).filter((l) => l.anchor.type !== "anchor");
+  const newLinks: Link[] = [...kept];
+  for (const pid of paragraphIds) {
+    newLinks.push(makeAnchorLink(cardKind, card.id, [pid]));
+  }
+  return { ...card, links: newLinks };
 }
 
 export function derivedLinksForCard(

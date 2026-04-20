@@ -4,9 +4,38 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { TodoState, TodoItem } from "@/lib/types";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import {
+  addParagraphLink,
+  derivedLinksForCard,
+  removeParagraphLink,
+} from "@/links/links";
 
 const EMPTY: TodoState = { items: [] };
+
+function migrateTodo(raw: unknown): TodoItem {
+  const i = raw as Partial<TodoItem> & { paragraphIds?: string[] };
+  if (Array.isArray(i.links) && i.links.length > 0) {
+    return {
+      id: i.id!,
+      text: i.text ?? "",
+      notes: i.notes ?? "",
+      done: !!i.done,
+      createdAt: i.createdAt!,
+      links: i.links,
+    };
+  }
+  return {
+    id: i.id!,
+    text: i.text ?? "",
+    notes: i.notes ?? "",
+    done: !!i.done,
+    createdAt: i.createdAt!,
+    links: derivedLinksForCard("todo", {
+      id: i.id!,
+      paragraphIds: Array.isArray(i.paragraphIds) ? i.paragraphIds : [],
+    }),
+  };
+}
 
 export function useTodos(docId: string | null) {
   const [state, setState] = useState<TodoState>(EMPTY);
@@ -18,16 +47,7 @@ export function useTodos(docId: string | null) {
     readSidecar<TodoState>(docId, "todos.json", EMPTY)
       .then((data) => {
         if (docIdRef.current === docId && data.items) {
-          // Migrate legacy items that lack paragraphIds, and hydrate
-          // legacy fields from `links` if the sidecar was persisted in
-          // the new links-only shape.
-          const items = data.items.map((i) =>
-            hydrateCardFromLinks({
-              ...i,
-              paragraphIds: i.paragraphIds ?? [],
-            }),
-          );
-          setState({ items });
+          setState({ items: data.items.map(migrateTodo) });
         }
       })
       .catch(() => {});
@@ -37,10 +57,7 @@ export function useTodos(docId: string | null) {
     const id = docIdRef.current;
     if (!id) return;
     try {
-      const enriched: TodoState = {
-        items: enrichCardsWithLinks("todo", s.items),
-      };
-      await writeSidecar(id, "todos.json", enriched);
+      await writeSidecar(id, "todos.json", s);
     } catch (err) {
       console.error("Failed to save todos:", err);
     }
@@ -53,7 +70,7 @@ export function useTodos(docId: string | null) {
       notes: "",
       done: false,
       createdAt: new Date().toISOString(),
-      paragraphIds: [],
+      links: [],
     };
     setState((prev) => {
       const next = { items: [...prev.items, item] };
@@ -117,11 +134,7 @@ export function useTodos(docId: string | null) {
     setState((prev) => {
       const next = {
         items: prev.items.map((i) =>
-          i.id === todoId
-            ? i.paragraphIds.includes(paragraphId)
-              ? i
-              : { ...i, paragraphIds: [...i.paragraphIds, paragraphId] }
-            : i
+          i.id === todoId ? addParagraphLink(i, "todo", paragraphId) : i,
         ),
       };
       persist(next);
@@ -133,9 +146,7 @@ export function useTodos(docId: string | null) {
     setState((prev) => {
       const next = {
         items: prev.items.map((i) =>
-          i.id === todoId
-            ? { ...i, paragraphIds: i.paragraphIds.filter((pid) => pid !== paragraphId) }
-            : i
+          i.id === todoId ? removeParagraphLink(i, paragraphId) : i,
         ),
       };
       persist(next);

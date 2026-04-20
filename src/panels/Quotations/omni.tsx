@@ -4,6 +4,7 @@ import type { BibEntry, Quote, QuotationGroup } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { QuotationGroupCard } from "./QuotationGroupCard";
+import { getLinkedParagraphIds } from "@/links/links";
 
 interface BuildArgs {
   quotationGroups: QuotationGroup[];
@@ -41,7 +42,7 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const group of a.quotationGroups) {
-    const pids = group.paragraphIds;
+    const pids = getLinkedParagraphIds(group);
     const isSelected = a.selectedQuotationGroupId === group.id;
     const baseId = popKey("quotations", group.id);
 

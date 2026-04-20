@@ -5,6 +5,7 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import {
@@ -158,11 +159,12 @@ export default function CutterPanel({
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
           onSelect={onSelect}
-          onJump={
-            onScrollToParagraphId && cut.paragraphIds[0]
-              ? () => onScrollToParagraphId(cut.paragraphIds[0])
-              : undefined
-          }
+          onJump={(() => {
+            const pid = getLinkedParagraphIds(cut)[0];
+            return onScrollToParagraphId && pid
+              ? () => onScrollToParagraphId(pid)
+              : undefined;
+          })()}
           onHoverChange={
             onHoverCut
               ? (hovering) => onHoverCut(hovering ? cut.id : null)

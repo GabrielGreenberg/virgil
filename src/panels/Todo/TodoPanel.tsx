@@ -5,6 +5,7 @@ import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import {
@@ -146,9 +147,9 @@ export default function TodoPanel({
           onUpdateNotes={onUpdateNotes}
           onDelete={onDelete}
           onSelect={onSelectTodo}
-          isAnchored={item.paragraphIds.length > 0}
+          isAnchored={getLinkedParagraphIds(item).length > 0}
           onJump={
-            onScrollToMarker && item.paragraphIds.length > 0
+            onScrollToMarker && getLinkedParagraphIds(item).length > 0
               ? () => onScrollToMarker(item.id)
               : undefined
           }

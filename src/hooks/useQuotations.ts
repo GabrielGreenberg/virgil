@@ -10,7 +10,7 @@ import type {
   Quote,
 } from "@/lib/types";
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import { addParagraphLink, removeParagraphLink } from "@/links/links";
 
 const EMPTY_STATE: QuotationsState = { groups: [] };
 
@@ -41,11 +41,7 @@ export function useQuotations(docId: string | null) {
       .then((data) => {
         if (currentDocIdRef.current === docId) {
           // The migration helper handles legacy and current shapes both.
-          const migrated = migrateQuotationsState(data);
-          setState({
-            ...migrated,
-            groups: migrated.groups.map(hydrateCardFromLinks),
-          });
+          setState(migrateQuotationsState(data));
         }
       })
       .catch(() => {});
@@ -55,11 +51,7 @@ export function useQuotations(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      const enriched: QuotationsState = {
-        ...newState,
-        groups: enrichCardsWithLinks("quotation", newState.groups),
-      };
-      await writeSidecar(id, "quotations.json", enriched);
+      await writeSidecar(id, "quotations.json", newState);
     } catch (err) {
       console.error("Failed to save quotations:", err);
     }
@@ -83,16 +75,19 @@ export function useQuotations(docId: string | null) {
 
   const addGroup = useCallback(
     (init?: { text?: string; paragraphId?: string | null }) => {
-      const newGroup: QuotationGroup = {
+      let newGroup: QuotationGroup = {
         id: generateEntityId(),
         title: "",
         references: [makeReference("", [makeQuote(init?.text ?? "")])],
-        paragraphIds: init?.paragraphId ? [init.paragraphId] : [],
         notes: "",
         createdAt: new Date().toISOString(),
+        links: [],
       };
+      if (init?.paragraphId) {
+        newGroup = addParagraphLink(newGroup, "quotation", init.paragraphId);
+      }
       setState((prev) => {
-        const newState = { groups: [newGroup, ...prev.groups] };
+        const newState = { ...prev, groups: [newGroup, ...prev.groups] };
         persist(newState);
         return newState;
       });
@@ -128,21 +123,14 @@ export function useQuotations(docId: string | null) {
 
   const addParagraphId = useCallback(
     (groupId: string, paragraphId: string) => {
-      updateGroup(groupId, (g) =>
-        g.paragraphIds.includes(paragraphId)
-          ? g
-          : { ...g, paragraphIds: [...g.paragraphIds, paragraphId] }
-      );
+      updateGroup(groupId, (g) => addParagraphLink(g, "quotation", paragraphId));
     },
     [updateGroup]
   );
 
   const removeParagraphId = useCallback(
     (groupId: string, paragraphId: string) => {
-      updateGroup(groupId, (g) => ({
-        ...g,
-        paragraphIds: g.paragraphIds.filter((id) => id !== paragraphId),
-      }));
+      updateGroup(groupId, (g) => removeParagraphLink(g, paragraphId));
     },
     [updateGroup]
   );

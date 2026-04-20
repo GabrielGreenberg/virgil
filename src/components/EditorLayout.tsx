@@ -67,7 +67,15 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   revision: "revision",
   cut: "cut",
 };
-import { createLinkedAnchor, removeLinkedAnchor, reanchorByText, updateLinkedAnchorCard } from "@/links/links";
+import {
+  createLinkedAnchor,
+  removeLinkedAnchor,
+  reanchorByText,
+  updateLinkedAnchorCard,
+  getLinkedParagraphIds,
+  getTextAnchor,
+  collectAllLinkedParagraphIds,
+} from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -2090,7 +2098,7 @@ export default function EditorLayout() {
   const anchoredIds = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
     for (const s of archiveSnippets) {
-      if (s.paragraphIds.length > 0) ids.add(s.id);
+      if (getLinkedParagraphIds(s).length > 0) ids.add(s.id);
     }
     return ids;
   }, [archiveSnippets]);
@@ -2110,8 +2118,10 @@ export default function EditorLayout() {
       });
     }
     return [...archiveSnippets].sort((a, b) => {
-      const aPos = a.paragraphIds.length > 0 ? paragraphOrder.get(a.paragraphIds[0]) : undefined;
-      const bPos = b.paragraphIds.length > 0 ? paragraphOrder.get(b.paragraphIds[0]) : undefined;
+      const aPids = getLinkedParagraphIds(a);
+      const bPids = getLinkedParagraphIds(b);
+      const aPos = aPids.length > 0 ? paragraphOrder.get(aPids[0]) : undefined;
+      const bPos = bPids.length > 0 ? paragraphOrder.get(bPids[0]) : undefined;
       if (aPos != null && bPos != null) return aPos - bPos;
       if (aPos != null) return -1;
       if (bPos != null) return 1;
@@ -2669,7 +2679,7 @@ export default function EditorLayout() {
       setSelectedNoteId(nextSelected);
       // Also drive the linked-anchor highlight if the note has one.
       const note = notes.find((n) => n.id === noteId);
-      const anchorId = note?.anchorId;
+      const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
       if (anchorId) {
         if (nextSelected) {
           setActiveAnchorId(anchorId);
@@ -2699,8 +2709,9 @@ export default function EditorLayout() {
         return;
       }
       const note = notes.find((n) => n.id === noteId);
-      if (note?.anchorId) {
-        setHoveredAnchorId(note.anchorId);
+      const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
+      if (anchorId) {
+        setHoveredAnchorId(anchorId);
         setActiveAnchorKind("note");
       }
     },
@@ -2777,7 +2788,7 @@ export default function EditorLayout() {
       const nextSelected = selectedCutId === cutId ? null : cutId;
       setSelectedCutId(nextSelected);
       const cut = cuts.find((c) => c.id === cutId);
-      const anchorId = cut?.anchorId;
+      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
       if (anchorId) {
         if (nextSelected) {
           setActiveAnchorId(anchorId);
@@ -2802,8 +2813,9 @@ export default function EditorLayout() {
     (cutId: string | null) => {
       if (!cutId) { setHoveredAnchorId(null); return; }
       const cut = cuts.find((c) => c.id === cutId);
-      if (cut?.anchorId) {
-        setHoveredAnchorId(cut.anchorId);
+      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
+      if (anchorId) {
+        setHoveredAnchorId(anchorId);
         setActiveAnchorKind("cut");
       }
     },
@@ -3701,8 +3713,9 @@ export default function EditorLayout() {
 
     // Quotation markers — one marker per paragraphId
     for (const g of quotationGroups) {
-      if (g.paragraphIds.length === 0) continue;
-      for (const pid of g.paragraphIds) {
+      const pids = getLinkedParagraphIds(g);
+      if (pids.length === 0) continue;
+      for (const pid of pids) {
         result.push({
           id: `${g.id}:${pid}`,
           entityId: g.id,
@@ -3718,8 +3731,10 @@ export default function EditorLayout() {
 
     // Note markers — one marker per paragraphId (same pattern as quotations)
     for (const n of notes) {
-      if (n.paragraphIds.length === 0) continue;
-      for (const pid of n.paragraphIds) {
+      const pids = getLinkedParagraphIds(n);
+      if (pids.length === 0) continue;
+      const noteAnchor = getTextAnchor(n);
+      for (const pid of pids) {
         result.push({
           id: `${n.id}:${pid}`,
           entityId: n.id,
@@ -3731,17 +3746,17 @@ export default function EditorLayout() {
           onDelete: () => {
             // Drop the text anchor first so the highlight clears. The
             // orphan guard fires `virgil-anchor-orphaned` which clears
-            // `note.anchorId` via the useNotes listener; the selection-sync
-            // effect then releases `activeAnchorId` on its next tick.
+            // the note's text anchor via the useNotes listener; the
+            // selection-sync effect then releases `activeAnchorId`.
             const ed = editorRef.current?.getEditor();
-            if (ed && n.anchorId) removeLinkedAnchor(ed, n.anchorId);
+            if (ed && noteAnchor) removeLinkedAnchor(ed, noteAnchor.anchorId);
             removeNoteParagraphId(n.id, pid);
           },
-          anchorId: n.anchorId,
-          onHover: n.anchorId
+          anchorId: noteAnchor?.anchorId,
+          onHover: noteAnchor
             ? (hovering: boolean) => {
                 if (hovering) {
-                  setHoveredAnchorId(n.anchorId!);
+                  setHoveredAnchorId(noteAnchor.anchorId);
                   setActiveAnchorKind("note");
                 } else {
                   setHoveredAnchorId(null);
@@ -3754,8 +3769,9 @@ export default function EditorLayout() {
 
     // Archive markers — one marker per paragraphId
     for (const snippet of archiveSnippets) {
-      if (!snippet.paragraphIds || snippet.paragraphIds.length === 0) continue;
-      for (const pid of snippet.paragraphIds) {
+      const pids = getLinkedParagraphIds(snippet);
+      if (pids.length === 0) continue;
+      for (const pid of pids) {
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
@@ -3778,7 +3794,10 @@ export default function EditorLayout() {
     const ed = editorRef.current?.getEditor();
     if (ed) {
       for (const r of textRevisions) {
-        if (r.resolved || !r.anchorId) continue;
+        if (r.resolved) continue;
+        const revAnchor = getTextAnchor(r);
+        if (!revAnchor) continue;
+        const anchorId = revAnchor.anchorId;
         // Find paragraphId by walking to the containing anchorable node
         let paragraphId: string | null = null;
         try {
@@ -3786,7 +3805,7 @@ export default function EditorLayout() {
             if (paragraphId) return false;
             if (node.isText) {
               const hasMark = node.marks.some(
-                (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === r.anchorId,
+                (m) => m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId,
               );
               if (hasMark) {
                 const $p = ed.state.doc.resolve(pos);
@@ -3807,12 +3826,12 @@ export default function EditorLayout() {
           paragraphId,
           selected: selectedCommentId === r.id,
           title: r.selectedText || "Revision",
-          anchorId: r.anchorId,
+          anchorId,
           onClick: () => {
             const nextSelected = selectedCommentId === r.id ? null : r.id;
             setSelectedCommentId(nextSelected);
-            if (nextSelected && r.anchorId) {
-              setActiveAnchorId(r.anchorId);
+            if (nextSelected) {
+              setActiveAnchorId(anchorId);
               setActiveAnchorKind("revision");
             } else {
               setActiveAnchorId(null);
@@ -3826,24 +3845,24 @@ export default function EditorLayout() {
               if (p.activeRight !== "revisions") setActiveRight("revisions");
             }
           },
-          onHover: r.anchorId
-            ? (hovering: boolean) => {
-                if (hovering) {
-                  setHoveredAnchorId(r.anchorId!);
-                  setActiveAnchorKind("revision");
-                } else {
-                  setHoveredAnchorId(null);
-                }
-              }
-            : undefined,
+          onHover: (hovering: boolean) => {
+            if (hovering) {
+              setHoveredAnchorId(anchorId);
+              setActiveAnchorKind("revision");
+            } else {
+              setHoveredAnchorId(null);
+            }
+          },
         });
       }
     }
 
     // Cut markers — one per paragraphId
     for (const c of cuts) {
-      if (c.paragraphIds.length === 0) continue;
-      for (const pid of c.paragraphIds) {
+      const pids = getLinkedParagraphIds(c);
+      if (pids.length === 0) continue;
+      const cutAnchor = getTextAnchor(c);
+      for (const pid of pids) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
@@ -3854,18 +3873,18 @@ export default function EditorLayout() {
           onClick: () => handleCutMarkerClick(c.id),
           onDelete: () => {
             // Drop the text anchor first (mirrors the Notes flow): the orphan
-            // guard fires `virgil-anchor-orphaned`, useCutter clears
-            // `cut.anchorId`, and the selection-sync hook then releases
-            // `activeAnchorId` — so the highlight goes away.
+            // guard fires `virgil-anchor-orphaned`, useCutter clears the
+            // cut's text-anchor link, and the selection-sync hook then
+            // releases `activeAnchorId` — so the highlight goes away.
             const ed = editorRef.current?.getEditor();
-            if (ed && c.anchorId) removeLinkedAnchor(ed, c.anchorId);
+            if (ed && cutAnchor) removeLinkedAnchor(ed, cutAnchor.anchorId);
             removeCutParagraphId(c.id, pid);
           },
-          anchorId: c.anchorId,
-          onHover: c.anchorId
+          anchorId: cutAnchor?.anchorId,
+          onHover: cutAnchor
             ? (hovering: boolean) => {
                 if (hovering) {
-                  setHoveredAnchorId(c.anchorId!);
+                  setHoveredAnchorId(cutAnchor.anchorId);
                   setActiveAnchorKind("cut");
                 } else {
                   setHoveredAnchorId(null);
@@ -3878,8 +3897,9 @@ export default function EditorLayout() {
 
     // Todo markers — one marker per paragraphId
     for (const item of todoItems) {
-      if (!item.paragraphIds || item.paragraphIds.length === 0) continue;
-      for (const pid of item.paragraphIds) {
+      const pids = getLinkedParagraphIds(item);
+      if (pids.length === 0) continue;
+      for (const pid of pids) {
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,
@@ -3948,28 +3968,32 @@ export default function EditorLayout() {
     anchorsAppliedDocRef.current = docIdForHooks;
     const records: Array<{ anchorId: string; kind: "note" | "revision" | "cut"; text: string }> = [];
     for (const n of notes) {
-      if (n.anchorId && n.anchorText) {
-        records.push({ anchorId: n.anchorId, kind: "note", text: n.anchorText });
+      const ta = getTextAnchor(n);
+      if (ta && ta.anchorText) {
+        records.push({ anchorId: ta.anchorId, kind: "note", text: ta.anchorText });
       }
     }
     for (const r of textRevisions) {
-      if (r.anchorId && r.selectedText) {
-        records.push({ anchorId: r.anchorId, kind: "revision", text: r.selectedText });
+      const ta = getTextAnchor(r);
+      if (ta) {
+        records.push({ anchorId: ta.anchorId, kind: "revision", text: ta.anchorText || r.selectedText });
       }
     }
     for (const c of cuts) {
-      if (c.anchorId && c.anchorText) {
-        records.push({ anchorId: c.anchorId, kind: "cut", text: c.anchorText });
+      const ta = getTextAnchor(c);
+      if (ta && ta.anchorText) {
+        records.push({ anchorId: ta.anchorId, kind: "cut", text: ta.anchorText });
       }
     }
     if (records.length > 0) {
       editorRef.current.applyLinkedAnchors(records);
     }
 
-    // Legacy text revisions: no anchorId yet, only selectedText. Try to
-    // reanchor by searching for that text; on success, persist the new id.
+    // Legacy text revisions: no text-anchor link yet, only `selectedText`.
+    // Try to reanchor by searching for that text; on success, persist the
+    // new id onto the revision.
     for (const r of textRevisions) {
-      if (r.anchorId || !r.selectedText) continue;
+      if (getTextAnchor(r) || !r.selectedText) continue;
       const rec = reanchorByText(editorInstance, "revision", r.selectedText);
       if (rec) setRevisionAnchor(r.id, rec.anchorId);
     }
@@ -4120,7 +4144,7 @@ export default function EditorLayout() {
           onSelectTodo={setSelectedTodoId}
           onScrollToMarker={(id) => {
             const item = todoItems.find((t) => t.id === id);
-            const pid = item?.paragraphIds[0];
+            const pid = item ? getLinkedParagraphIds(item)[0] : undefined;
             if (pid) editorRef.current?.scrollToParagraphId(pid);
           }}
           aiRequests={aiRequests}
@@ -4213,8 +4237,9 @@ export default function EditorLayout() {
           onHoverRevision={(id) => {
             if (!id) { setHoveredAnchorId(null); return; }
             const r = textRevisions.find((x) => x.id === id);
-            if (r?.anchorId) {
-              setHoveredAnchorId(r.anchorId);
+            const anchorId = r ? getTextAnchor(r)?.anchorId : undefined;
+            if (anchorId) {
+              setHoveredAnchorId(anchorId);
               setActiveAnchorKind("revision");
             }
           }}
@@ -4272,7 +4297,7 @@ export default function EditorLayout() {
           onDelete={handleDeleteArchive}
           onScrollToMarker={(id) => {
             const snippet = archiveSnippets.find((s) => s.id === id);
-            const pid = snippet?.paragraphIds[0];
+            const pid = snippet ? getLinkedParagraphIds(snippet)[0] : undefined;
             if (pid) editorRef.current?.scrollToParagraphId(pid);
           }}
           anchoredIds={anchoredIds}
@@ -4704,7 +4729,7 @@ export default function EditorLayout() {
       case "note": {
         const note = notes.find((n) => n.id === id);
         if (!note) return null;
-        const pid = note.paragraphIds[0];
+        const pid = getLinkedParagraphIds(note)[0];
         return (
           <NoteCard
             key={key}
@@ -4764,7 +4789,7 @@ export default function EditorLayout() {
             onDelete={handleDeleteArchive}
             onScrollToMarker={(sid) => {
               const s = archiveSnippets.find((x) => x.id === sid);
-              const p = s?.paragraphIds[0];
+              const p = s ? getLinkedParagraphIds(s)[0] : undefined;
               if (p) editorRef.current?.scrollToParagraphId(p);
             }}
             onEditorFocus={setOverrideEditor}
@@ -4777,7 +4802,7 @@ export default function EditorLayout() {
       case "cut": {
         const cut = cuts.find((c) => c.id === id);
         if (!cut) return null;
-        const pid = cut.paragraphIds[0];
+        const pid = getLinkedParagraphIds(cut)[0];
         return (
           <CutCard
             key={key}
@@ -4796,7 +4821,8 @@ export default function EditorLayout() {
       case "todo": {
         const item = todoItems.find((t) => t.id === id);
         if (!item) return null;
-        const pid = item.paragraphIds[0];
+        const itemPids = getLinkedParagraphIds(item);
+        const pid = itemPids[0];
         return (
           <TodoRow
             key={key}
@@ -4807,7 +4833,7 @@ export default function EditorLayout() {
             onUpdateNotes={updateTodoNotes}
             onDelete={deleteTodo}
             onSelect={setSelectedTodoId}
-            isAnchored={item.paragraphIds.length > 0}
+            isAnchored={itemPids.length > 0}
             onJump={pid ? () => editorRef.current?.scrollToParagraphId(pid) : undefined}
             isPoppedOut
           />
@@ -4914,7 +4940,7 @@ export default function EditorLayout() {
       case "quotation": {
         const group = quotationGroups.find((g) => g.id === id);
         if (!group) return null;
-        const pid = group.paragraphIds[0];
+        const pid = getLinkedParagraphIds(group)[0];
         return (
           <QuotationGroupCard
             key={key}

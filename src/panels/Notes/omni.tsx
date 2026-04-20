@@ -5,6 +5,7 @@ import type { UserNote } from "@/lib/types";
 import { popKey } from "@/panels/panel-registry";
 import type { OmniItem } from "@/panels/_shared/types";
 import { NoteCard } from "./NoteCard";
+import { getLinkedParagraphIds } from "@/links/links";
 
 interface BuildArgs {
   notes: UserNote[];
@@ -24,7 +25,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
   const items: OmniItem[] = [];
 
   for (const note of a.notes) {
-    const pids = note.paragraphIds;
+    const pids = getLinkedParagraphIds(note);
     const isSelected = a.selectedNoteId === note.id;
     const baseId = popKey("notes", note.id);
 

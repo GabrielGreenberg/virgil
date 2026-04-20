@@ -6,9 +6,47 @@ import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { CutterState, CutItem } from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
-import { enrichCardsWithLinks, hydrateCardFromLinks } from "@/links/links";
+import {
+  addParagraphLink,
+  clearTextAnchorLink,
+  derivedLinksForCard,
+  getTextAnchor,
+  removeParagraphLink,
+  setTextAnchorLink,
+} from "@/links/links";
 
 const EMPTY_STATE: CutterState = { cuts: [] };
+
+function migrateCut(raw: unknown): CutItem {
+  const c = raw as Partial<CutItem> & {
+    paragraphIds?: string[];
+    anchorId?: string;
+    anchorText?: string;
+  };
+  if (Array.isArray(c.links) && c.links.length > 0) {
+    return {
+      id: c.id!,
+      title: typeof c.title === "string" ? c.title : "",
+      content: normalizeRichContent(c.content),
+      createdAt: c.createdAt!,
+      links: c.links,
+    };
+  }
+  const base: CutItem = {
+    id: c.id!,
+    title: typeof c.title === "string" ? c.title : "",
+    content: normalizeRichContent(c.content),
+    createdAt: c.createdAt!,
+    links: [],
+  };
+  base.links = derivedLinksForCard("cut", {
+    id: base.id,
+    paragraphIds: Array.isArray(c.paragraphIds) ? c.paragraphIds : [],
+    anchorId: typeof c.anchorId === "string" ? c.anchorId : undefined,
+    anchorText: typeof c.anchorText === "string" ? c.anchorText : undefined,
+  });
+  return base;
+}
 
 export function useCutter(docId: string | null) {
   const [state, setState] = useState<CutterState>(EMPTY_STATE);
@@ -23,21 +61,7 @@ export function useCutter(docId: string | null) {
     readSidecar<CutterState>(docId, "cutter.json", EMPTY_STATE)
       .then((data) => {
         if (currentDocIdRef.current !== docId || !data.cuts) return;
-        setState({
-          cuts: data.cuts.map((c) => {
-            const base: CutItem = {
-              id: c.id,
-              title: typeof c.title === "string" ? c.title : "",
-              content: normalizeRichContent(c.content),
-              createdAt: c.createdAt,
-              paragraphIds: Array.isArray(c.paragraphIds) ? c.paragraphIds : [],
-              anchorId: typeof c.anchorId === "string" ? c.anchorId : undefined,
-              anchorText: typeof c.anchorText === "string" ? c.anchorText : undefined,
-              links: Array.isArray(c.links) ? c.links : undefined,
-            };
-            return hydrateCardFromLinks(base);
-          }),
-        });
+        setState({ cuts: data.cuts.map(migrateCut) });
       })
       .catch(() => {});
   }, [docId]);
@@ -46,10 +70,7 @@ export function useCutter(docId: string | null) {
     const id = currentDocIdRef.current;
     if (!id) return;
     try {
-      const enriched: CutterState = {
-        cuts: enrichCardsWithLinks("cut", newState.cuts),
-      };
-      await writeSidecar(id, "cutter.json", enriched);
+      await writeSidecar(id, "cutter.json", newState);
     } catch (err) {
       console.error("Failed to save cuts:", err);
     }
@@ -61,15 +82,15 @@ export function useCutter(docId: string | null) {
       content?: JSONContent,
       anchor?: { anchorId: string; anchorText: string },
     ) => {
-      const cut: CutItem = {
+      let cut: CutItem = {
         id: generateEntityId(),
         title: "",
         content: content ?? emptyRichContent(),
-        paragraphIds: paragraphId ? [paragraphId] : [],
         createdAt: new Date().toISOString(),
-        anchorId: anchor?.anchorId,
-        anchorText: anchor?.anchorText,
+        links: [],
       };
+      if (paragraphId) cut = addParagraphLink(cut, "cut", paragraphId);
+      if (anchor) cut = setTextAnchorLink(cut, "cut", anchor.anchorId, anchor.anchorText);
       setState((prev) => {
         const next = { cuts: [...prev.cuts, cut] };
         persist(next);
@@ -111,9 +132,7 @@ export function useCutter(docId: string | null) {
       setState((prev) => {
         const next = {
           cuts: prev.cuts.map((c) =>
-            c.id === id && !c.paragraphIds.includes(paragraphId)
-              ? { ...c, paragraphIds: [...c.paragraphIds, paragraphId] }
-              : c,
+            c.id === id ? addParagraphLink(c, "cut", paragraphId) : c,
           ),
         };
         persist(next);
@@ -128,9 +147,7 @@ export function useCutter(docId: string | null) {
       setState((prev) => {
         const next = {
           cuts: prev.cuts.map((c) =>
-            c.id === id
-              ? { ...c, paragraphIds: c.paragraphIds.filter((p) => p !== paragraphId) }
-              : c,
+            c.id === id ? removeParagraphLink(c, paragraphId) : c,
           ),
         };
         persist(next);
@@ -154,10 +171,14 @@ export function useCutter(docId: string | null) {
   const clearCutAnchor = useCallback(
     (anchorId: string) => {
       setState((prev) => {
-        if (!prev.cuts.some((c) => c.anchorId === anchorId)) return prev;
+        if (!prev.cuts.some((c) => getTextAnchor(c)?.anchorId === anchorId)) {
+          return prev;
+        }
         const next = {
           cuts: prev.cuts.map((c) =>
-            c.anchorId === anchorId ? { ...c, anchorId: undefined } : c,
+            getTextAnchor(c)?.anchorId === anchorId
+              ? clearTextAnchorLink(c, "cut")
+              : c,
           ),
         };
         persist(next);

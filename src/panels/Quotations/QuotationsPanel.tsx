@@ -21,6 +21,7 @@ import {
   getParagraphAnchorPositions,
 } from "@/hooks/useInTextPositions";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { getLinkedParagraphIds } from "@/links/links";
 import { QuotationGroupCard } from "./QuotationGroupCard";
 
 export interface QuotationsPanelProps {
@@ -116,7 +117,7 @@ export default function QuotationsPanel({
   }, [onAddGroup, setSelectedGroupId]);
 
   const anchoredGroups = useMemo(
-    () => groups.filter((g) => g.paragraphIds.length > 0),
+    () => groups.filter((g) => getLinkedParagraphIds(g).length > 0),
     [groups],
   );
 
@@ -135,7 +136,8 @@ export default function QuotationsPanel({
   const onActivateGroup = useCallback(
     (g: QuotationGroup) => {
       setSelectedGroupId(g.id);
-      if (g.paragraphIds.length > 0) onScrollToParagraph?.(g.paragraphIds[0]);
+      const pid = getLinkedParagraphIds(g)[0];
+      if (pid) onScrollToParagraph?.(pid);
     },
     [onScrollToParagraph, setSelectedGroupId],
   );
@@ -162,11 +164,10 @@ export default function QuotationsPanel({
         selected={selected}
         onSelect={() => setSelectedGroupId(group.id)}
         onDelete={() => onDeleteGroup(group.id)}
-        onJump={
-          group.paragraphIds.length > 0
-            ? () => onScrollToParagraph?.(group.paragraphIds[0])
-            : undefined
-        }
+        onJump={(() => {
+          const pid = getLinkedParagraphIds(group)[0];
+          return pid ? () => onScrollToParagraph?.(pid) : undefined;
+        })()}
         onUpdateGroupTitle={onUpdateGroupTitle}
         onAddReference={onAddReference}
         onDeleteReference={onDeleteReference}

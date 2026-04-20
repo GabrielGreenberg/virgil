@@ -12,6 +12,7 @@ import {
   startTextDrag,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent } from "@/lib/footnote-content";
@@ -67,7 +68,7 @@ export function NoteCard({
     [note.id, onUpdate],
   );
 
-  const isOrphaned = note.paragraphIds.length === 0;
+  const isOrphaned = getLinkedParagraphIds(note).length === 0;
   const theme = useCardTheme("note");
   const popped = usePoppedCards();
   const cardKey = popKey("notes", note.id);
