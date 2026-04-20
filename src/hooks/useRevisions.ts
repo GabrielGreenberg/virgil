@@ -191,7 +191,7 @@ export function useRevisions(docId: string | null) {
   );
 
   const addTextRevision = useCallback(
-    (selectedText: string, anchorId: string | null, text: string) => {
+    (selectedText: string, anchorId: string | null, text: string): TextRevision | null => {
       const trimmed = text.trim();
       if (!trimmed) return null;
       const now = new Date().toISOString();

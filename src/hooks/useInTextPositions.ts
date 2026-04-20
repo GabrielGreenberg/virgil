@@ -85,7 +85,21 @@ export function useInTextPositions(
   editor: Editor | null,
   items: PositionItem[],
   enabled: boolean,
-  entryAttr: string = "data-citation-entry",
+  /**
+   * Strategy for querying the rendered DOM element for each item, used
+   * to measure its height for overlap resolution.
+   *
+   * - A string: an attribute name whose value equals `item.id`.
+   *   Example: `"data-omni-entry"` matches `<div data-omni-entry="id">`.
+   * - A function: builds the CSS selector for a given item id.
+   *   Example: `(id) => \`[data-link-card="note:${id}"]\``.
+   *
+   * Default: `(id) => \`[data-link-card$=":${id}"]\`` — matches any
+   * panel card regardless of its card kind (reads `data-link-card`
+   * per the Link Architecture DOM contract).
+   */
+  entry: string | ((id: string) => string) = (id) =>
+    `[data-link-card$=":${id}"]`,
   /** Ref whose `.current` holds the pixel height of content above the
    *  positioned container (e.g. an unanchored section). The scroll sync
    *  offsets by this amount so the panel can scroll above the document. */
@@ -150,7 +164,9 @@ export function useInTextPositions(
     const entryHeights = new Map<string, number>();
     if (panelEl) {
       for (const r of raw) {
-        const el = panelEl.querySelector(`[${entryAttr}="${r.id}"]`) as HTMLElement | null;
+        const selector =
+          typeof entry === "string" ? `[${entry}="${r.id}"]` : entry(r.id);
+        const el = panelEl.querySelector(selector) as HTMLElement | null;
         if (el) {
           entryHeights.set(r.id, el.getBoundingClientRect().height);
         }
@@ -171,7 +187,7 @@ export function useInTextPositions(
       map.set(r.id, r.top);
     }
     setPositions(map);
-  }, [editor, items, enabled, ready, entryAttr]);
+  }, [editor, items, enabled, ready, entry]);
 
   // Recompute on editor changes and scroll
   useEffect(() => {
@@ -208,7 +224,12 @@ export function useInTextPositions(
       resizeObs = new ResizeObserver(onUpdate);
       const observeEntries = () => {
         resizeObs?.disconnect();
-        panelEl.querySelectorAll(`[${entryAttr}]`).forEach((el) => {
+        // Observe every rendered card entry. For a function selector we
+        // don't have a bare-attribute form, so fall back to
+        // `data-link-card` which the Link Architecture guarantees on
+        // every panel card.
+        const bareAttr = typeof entry === "string" ? entry : "data-link-card";
+        panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => {
           resizeObs!.observe(el);
         });
       };
@@ -228,7 +249,7 @@ export function useInTextPositions(
       resizeObs?.disconnect();
       mutObs?.disconnect();
     };
-  }, [editor, compute, enabled, entryAttr]);
+  }, [editor, compute, enabled, entry]);
 
   // Bidirectional scroll sync
   useEffect(() => {

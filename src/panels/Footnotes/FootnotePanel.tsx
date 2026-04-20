@@ -154,7 +154,6 @@ function FootnotePanel({
           return (
             <div
               key={orphan.footnoteId}
-              data-footnote-entry={orphan.footnoteId}
               data-link-card={`footnote:${orphan.footnoteId}`}
               draggable
               onDragStart={(e) =>
@@ -287,7 +286,6 @@ function FootnotePanel({
         const preview = richJsonToPlainText(fn.content);
         return (
           <div
-            data-footnote-entry={fn.footnoteId}
             data-link-card={`footnote:${fn.footnoteId}`}
             draggable
             onDragStart={(e) =>

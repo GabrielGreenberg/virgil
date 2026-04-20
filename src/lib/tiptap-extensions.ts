@@ -591,13 +591,15 @@ export const Footnote = Node.create({
       // single-shared-default-mutation footgun).
       content: { default: null },
       number: { default: 1 },
-      footnoteId: { default: "" },
       title: { default: "" },
-      // Phase 0: additional link attrs (src/links/). Mirror footnoteId for
-      // back-compat. See src/links/link-registry.ts for the DOM contract.
-      linkId: { default: "" },
-      linkKind: { default: "footnote" },
-      linkCard: { default: "" },
+      // footnoteId stays in JSON (persistence) but doesn't render to HTML —
+      // data-link-id carries the same value and is the canonical address.
+      footnoteId: { default: "", renderHTML: () => ({}) },
+      // Unified link attrs — rendered as data-link-* via explicit renderHTML
+      // below; suppress auto-render here to avoid camelCase HTML attrs.
+      linkId: { default: "", renderHTML: () => ({}) },
+      linkKind: { default: "footnote", renderHTML: () => ({}) },
+      linkCard: { default: "", renderHTML: () => ({}) },
     };
   },
 
@@ -605,13 +607,13 @@ export const Footnote = Node.create({
     return [{ tag: 'span[data-type="footnote"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
     const footnoteId =
-      (HTMLAttributes.linkId as string) ||
-      (HTMLAttributes.footnoteId as string) ||
+      (node.attrs.linkId as string) ||
+      (node.attrs.footnoteId as string) ||
       "";
     const linkCard =
-      (HTMLAttributes.linkCard as string) ||
+      (node.attrs.linkCard as string) ||
       (footnoteId ? `footnote:${footnoteId}` : "");
     return [
       "span",
@@ -622,7 +624,7 @@ export const Footnote = Node.create({
         "data-link-kind": "footnote",
         "data-link-card": linkCard,
       }),
-      String(HTMLAttributes.number || "1"),
+      String(node.attrs.number || "1"),
     ];
   },
 
@@ -998,13 +1000,13 @@ export const Citation = Node.create({
 
   addAttributes() {
     return {
-      citationId: { default: "" },
       command: { default: "" },
       displayText: { default: "" },
-      // Phase 0: additional link attrs (src/links/). Mirror citationId.
-      linkId: { default: "" },
-      linkKind: { default: "citation" },
-      linkCard: { default: "" },
+      // citationId stays in JSON but doesn't render to HTML.
+      citationId: { default: "", renderHTML: () => ({}) },
+      linkId: { default: "", renderHTML: () => ({}) },
+      linkKind: { default: "citation", renderHTML: () => ({}) },
+      linkCard: { default: "", renderHTML: () => ({}) },
     };
   },
 
@@ -1012,13 +1014,13 @@ export const Citation = Node.create({
     return [{ tag: 'span[data-type="citation"]' }];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ HTMLAttributes, node }) {
     const citationId =
-      (HTMLAttributes.linkId as string) ||
-      (HTMLAttributes.citationId as string) ||
+      (node.attrs.linkId as string) ||
+      (node.attrs.citationId as string) ||
       "";
     const linkCard =
-      (HTMLAttributes.linkCard as string) ||
+      (node.attrs.linkCard as string) ||
       (citationId ? `citation:${citationId}` : "");
     return [
       "span",
@@ -1029,7 +1031,7 @@ export const Citation = Node.create({
         "data-link-kind": "citation",
         "data-link-card": linkCard,
       }),
-      HTMLAttributes.displayText || HTMLAttributes.command || "",
+      (node.attrs.displayText as string) || (node.attrs.command as string) || "",
     ];
   },
 
@@ -1531,37 +1533,37 @@ export const LinkedAnchor = Mark.create({
 
   addAttributes() {
     return {
-      anchorId: { default: "" },
-      kind: { default: "note" },
-      // Phase 0: additional link attrs (src/links/). `linkCard` is
-      // populated lazily in Phase 2 when the anchor kind is unified
-      // (the mark doesn't currently carry the card id — only the card
-      // knows its own id). For now linkId mirrors anchorId and
-      // linkKind is always "anchor".
-      linkId: { default: "" },
-      linkKind: { default: "anchor" },
-      linkCard: { default: "" },
+      // Legacy attrs kept in JSON for persistence but not emitted to HTML —
+      // data-link-* carry the same information for parsers.
+      anchorId: { default: "", renderHTML: () => ({}) },
+      kind: { default: "note", renderHTML: () => ({}) },
+      linkId: { default: "", renderHTML: () => ({}) },
+      linkKind: { default: "anchor", renderHTML: () => ({}) },
+      linkCard: { default: "", renderHTML: () => ({}) },
     };
   },
 
   parseHTML() {
-    return [{ tag: "span[data-anchor-id]" }];
+    // Accept both the historical `data-anchor-id` tag and the new
+    // `data-link-id` when `data-link-kind="anchor"`.
+    return [
+      { tag: "span[data-anchor-id]" },
+      { tag: 'span[data-link-kind="anchor"]' },
+    ];
   },
 
-  renderHTML({ HTMLAttributes }) {
+  renderHTML({ mark, HTMLAttributes }) {
     const anchorId =
-      (HTMLAttributes.linkId as string) ||
-      (HTMLAttributes.anchorId as string) ||
+      (mark.attrs.linkId as string) ||
+      (mark.attrs.anchorId as string) ||
       "";
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
-        "data-anchor-id": HTMLAttributes.anchorId || "",
-        "data-anchor-kind": HTMLAttributes.kind || "",
         class: "linked-anchor",
         "data-link-id": anchorId,
         "data-link-kind": "anchor",
-        "data-link-card": (HTMLAttributes.linkCard as string) || "",
+        "data-link-card": (mark.attrs.linkCard as string) || "",
       }),
       0,
     ];

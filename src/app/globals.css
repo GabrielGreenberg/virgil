@@ -678,21 +678,33 @@ body {
  * Default: invisible — the mark is semantic-only, activated by hover
  * or selection via `data-link-highlight`, or made subtly-visible
  * globally via `data-always-show-links` on the editor root.
+ *
+ * The highlight color is per-target-card-kind, read via attribute-prefix
+ * matching on `data-link-card="<cardKind>:<id>"`. Each card kind's color
+ * mirrors its margin icon via MARKER_META (see src/lib/marginalia.ts).
  * See src/links/_shared/useLinkHighlight.ts for the sync logic. */
 .linked-anchor {
+  --link-anchor-color: #fbbf24; /* amber fallback for unrecognised kinds */
   background: transparent;
   border-radius: 2px;
   transition: background-color 120ms ease-out;
 }
+.linked-anchor[data-link-card^="note:"]      { --link-anchor-color: #15803d; }
+.linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
+.linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
+.linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
+.linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
+.linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
+
 [data-always-show-links="true"] .linked-anchor {
-  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 18%, transparent);
+  background: color-mix(in oklab, var(--link-anchor-color) 18%, transparent);
 }
 .linked-anchor[data-link-highlight="hover"] {
-  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 45%, transparent);
+  background: color-mix(in oklab, var(--link-anchor-color) 45%, transparent);
 }
 .linked-anchor[data-link-highlight="active"] {
-  background: color-mix(in oklab, var(--link-anchor-color, #fbbf24) 60%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color, #fbbf24) 80%, transparent);
+  background: color-mix(in oklab, var(--link-anchor-color) 60%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
 /* Footnote markers */

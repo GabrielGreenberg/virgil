@@ -256,7 +256,6 @@ export function CitationCard({
 
   const card = (
     <PanelCard
-      data-citation-entry={cit.id}
       data-link-card={`citation:${cit.id}`}
       {...(extraDataAttrs || {})}
       theme={theme}

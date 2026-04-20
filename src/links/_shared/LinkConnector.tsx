@@ -33,6 +33,16 @@ interface LinkConnectorProps {
   panelEntrySelector?: string;
   /** Used to invalidate positions when the doc changes. */
   docVersion?: unknown;
+  /**
+   * Layout variant:
+   * - `"floating"` (default): panel is docked beside the editor. Uses a
+   *   curved bezier with corner radii to route around the margin lane.
+   *   Skipped when the entry is `position: absolute` (in-text mode).
+   * - `"in-text"`: panel items are positioned absolutely over the
+   *   editor's column. Uses a simpler horizontal + small-vertical-jog
+   *   path. Only renders when the entry is `position: absolute`.
+   */
+  variant?: "floating" | "in-text";
 }
 
 /**
@@ -53,6 +63,7 @@ export default function LinkConnector({
   mainRef,
   panelEntrySelector,
   docVersion,
+  variant = "floating",
 }: LinkConnectorProps) {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const rafRef = useRef(0);
@@ -98,13 +109,45 @@ export default function LinkConnector({
       setConnectors([]);
       return;
     }
-    if (getComputedStyle(entryEl).position === "absolute") {
+    // "floating" layout draws around the docked panel's margin lane and
+    // doesn't apply when the entry is positioned absolutely over the
+    // editor. "in-text" is the inverse: only when absolutely positioned.
+    const entryPosition = getComputedStyle(entryEl).position;
+    const isAbsoluteEntry = entryPosition === "absolute";
+    if (variant === "floating" && isAbsoluteEntry) {
+      setConnectors([]);
+      return;
+    }
+    if (variant === "in-text" && !isAbsoluteEntry) {
       setConnectors([]);
       return;
     }
 
     const mRect = markerEl.getBoundingClientRect();
     const eRect = entryEl.getBoundingClientRect();
+
+    if (variant === "in-text") {
+      // Simple L-shape: horizontal from entry edge to marker X, then a
+      // short vertical to the marker's vertical midpoint.
+      if (mRect.bottom < edRect.top || mRect.top > edRect.bottom) {
+        setConnectors([]);
+        return;
+      }
+      const markerY = (mRect.top + mRect.bottom) / 2 - cr.top;
+      const entryVisible =
+        eRect.top >= cr.top - 100 && eRect.bottom <= cr.bottom + 100;
+      const entryY = entryVisible ? eRect.top + 12 - cr.top : markerY;
+      const markerX = (mRect.left + mRect.right) / 2 - cr.left;
+      const entryX =
+        panelSide === "right" ? eRect.left - cr.left - 2 : eRect.right - cr.left + 2;
+      const needsJog = Math.abs(markerY - entryY) > 1;
+      const d = needsJog
+        ? `M ${entryX} ${entryY} L ${markerX} ${entryY} L ${markerX} ${markerY}`
+        : `M ${entryX} ${entryY} L ${markerX} ${markerY}`;
+      setConnectors([{ id: linkId, d }]);
+      return;
+    }
+
     if (eRect.bottom < cr.top || eRect.top > cr.bottom) {
       setConnectors([]);
       return;
@@ -178,7 +221,7 @@ export default function LinkConnector({
     setConnectors([{ id: linkId, d }]);
     // docVersion is consumed only to force recomputes when the doc changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, linkId, targetCard.kind, targetCard.id, panelSide, mainRef, panelEntrySelector, stroke, docVersion]);
+  }, [editor, linkId, targetCard.kind, targetCard.id, panelSide, mainRef, panelEntrySelector, stroke, docVersion, variant]);
 
   const scheduleCompute = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -193,12 +236,23 @@ export default function LinkConnector({
       capture: true,
     });
     window.addEventListener("resize", scheduleCompute);
+    // The in-text variant's geometry depends on the absolute positions
+    // of panel entries, which shift as the user types. Subscribe to
+    // doc/selection changes to re-route the line.
+    if (variant === "in-text" && editor) {
+      editor.on("update", scheduleCompute);
+      editor.on("selectionUpdate", scheduleCompute);
+    }
     return () => {
       cancelAnimationFrame(rafRef.current);
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
       window.removeEventListener("resize", scheduleCompute);
+      if (variant === "in-text" && editor) {
+        editor.off("update", scheduleCompute);
+        editor.off("selectionUpdate", scheduleCompute);
+      }
     };
-  }, [compute, scheduleCompute, mainRef]);
+  }, [editor, compute, scheduleCompute, mainRef, variant]);
 
   if (connectors.length === 0 || !stroke) return null;
 

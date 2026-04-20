@@ -17,7 +17,6 @@ import ArchivePanel, { ArchiveCard } from "@/panels/Archive";
 import ArchiveConnectors from "./ArchiveConnectors";
 import FootnotePanel from "@/panels/Footnotes";
 import LinkConnector from "@/links/_shared/LinkConnector";
-import InTextConnectors from "./InTextConnectors";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
@@ -68,7 +67,7 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   revision: "revision",
   cut: "cut",
 };
-import { createLinkedAnchor, removeLinkedAnchor, reanchorByText } from "@/links/links";
+import { createLinkedAnchor, removeLinkedAnchor, reanchorByText, updateLinkedAnchorCard } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -2723,6 +2722,7 @@ export default function EditorLayout() {
       undefined,
       { anchorId: record.anchorId, anchorText: record.text },
     );
+    updateLinkedAnchorCard(ed, record.anchorId, "note", note.id);
     setSelectedNoteId(note.id);
     // Drop the native DOM selection so the browser doesn't render a lingering
     // grey "inactive selection" rectangle after focus leaves the editor. The
@@ -2751,6 +2751,7 @@ export default function EditorLayout() {
         undefined,
         { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
       );
+      updateLinkedAnchorCard(ed, record.anchorId, "note", note.id);
       setSelectedNoteId(note.id);
     },
     [addNote],
@@ -2822,6 +2823,7 @@ export default function EditorLayout() {
       undefined,
       { anchorId: record.anchorId, anchorText: record.text },
     );
+    updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
     setSelectedCutId(cut.id);
     // Mirror handleAddNoteFromSelection: drop the native DOM selection so the
     // browser doesn't render a grey "inactive selection" ghost after the
@@ -2847,6 +2849,7 @@ export default function EditorLayout() {
         undefined,
         { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
       );
+      updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
       setSelectedCutId(cut.id);
     },
     [addCut],
@@ -3431,7 +3434,12 @@ export default function EditorLayout() {
   const handleSubmitComment = useCallback(
     (comment: string) => {
       if (pendingCommentText && comment.trim()) {
-        addTextRevision(pendingCommentText, pendingRevisionAnchorIdRef.current, comment.trim());
+        const anchorId = pendingRevisionAnchorIdRef.current;
+        const rev = addTextRevision(pendingCommentText, anchorId, comment.trim());
+        if (rev && anchorId) {
+          const ed = editorRef.current?.getEditor();
+          if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
+        }
       }
       pendingRevisionAnchorIdRef.current = null;
       setPendingCommentText(null);
@@ -5268,13 +5276,14 @@ export default function EditorLayout() {
           />
         )}
         {citationPanelSide && getPanelViewMode("citations") === "in-text" && selectedCitationId && (
-          <InTextConnectors
+          <LinkConnector
             editor={editorInstance}
-            selectedId={selectedCitationId}
+            linkId={selectedCitationId}
+            linkKind="citation"
+            targetCard={{ kind: "citation", id: selectedCitationId }}
             panelSide={citationPanelSide}
             mainRef={mainAreaRef}
-            markerAttr="data-link-id"
-            entryAttr="data-link-card"
+            variant="in-text"
           />
         )}
         {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (

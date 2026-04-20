@@ -642,6 +642,45 @@ export function removeLinkedAnchor(editor: Editor, anchorId: string): void {
 }
 
 /**
+ * Update a `linkedAnchor` mark's `linkCard` attr to point at the final
+ * card. Call this after the card is persisted, so the mark becomes
+ * self-describing (CSS can pick the per-kind highlight color, Cowork
+ * can read the target without consulting any sidecar).
+ */
+export function updateLinkedAnchorCard(
+  editor: Editor,
+  anchorId: string,
+  cardKind: CardKind,
+  cardId: string,
+): void {
+  const range = resolveTextRangeByAnchorId(editor, anchorId);
+  if (!range) return;
+  // Preserve legacy `kind` attr and other existing attrs.
+  let legacyKind = "note";
+  editor.state.doc.nodesBetween(range.from, range.to, (node) => {
+    if (!node.isText) return true;
+    for (const m of node.marks) {
+      if (m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId) {
+        legacyKind = (m.attrs.kind as string) || legacyKind;
+      }
+    }
+    return true;
+  });
+  editor
+    .chain()
+    .setTextSelection(range)
+    .setMark("linkedAnchor", {
+      anchorId,
+      kind: legacyKind,
+      linkId: anchorId,
+      linkKind: "anchor",
+      linkCard: `${cardKind}:${cardId}`,
+    })
+    .setTextSelection(range.from)
+    .run();
+}
+
+/**
  * Best-effort re-anchor by searching for `snapshot` text in the doc.
  * Used on load for items whose mark was lost across a parse.
  */
