@@ -279,8 +279,8 @@ export function StripButton({
         }
         handledByPointer.current = false;
       }}
-      className={`p-2 rounded transition-colors relative select-none ${
-        active ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
+      className={`p-1.5 rounded transition-colors relative select-none ${
+        active ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
       }`}
       title={label}
     >
