@@ -3170,19 +3170,19 @@ export default function EditorLayout() {
             {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
             <button
               onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
-              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={activeLeft ? "Collapse panel" : "Expand panel"}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="1.5" />
-                {activeLeft && <rect x="4" y="4" width="6" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
-                <line x1="10" y1="4" x2="10" y2="20" />
+                {activeLeft && <rect x="4" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
+                <line x1="9" y1="4" x2="9" y2="20" />
               </svg>
             </button>
             {/* OmniView — Shows all left-side elements (footnotes, citations, quotes). */}
             <button
               onClick={() => { setActiveLeft(activeLeft === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Omni-view — show all left panels"
             >
               <IconOmni active={activeLeft === "omni"} />
@@ -3190,7 +3190,7 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("left")}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit
@@ -3355,19 +3355,19 @@ export default function EditorLayout() {
             {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
             <button
               onClick={() => { activeRight ? collapseRight() : expandRight(); }}
-              className="p-1.5 rounded transition-colors text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={activeRight ? "Collapse panel" : "Expand panel"}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="1.5" />
-                {activeRight && <rect x="14" y="4" width="6" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
-                <line x1="14" y1="4" x2="14" y2="20" />
+                {activeRight && <rect x="15" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
+                <line x1="15" y1="4" x2="15" y2="20" />
               </svg>
             </button>
             {/* OmniView — Shows all right-side elements (notes, revisions, cuts, archive). */}
             <button
               onClick={() => { setActiveRight(activeRight === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title="Omni-view — show all right panels"
             >
               <IconOmni active={activeRight === "omni"} />
@@ -3375,7 +3375,7 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("right")}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
               title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit
