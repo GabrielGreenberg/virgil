@@ -569,11 +569,18 @@ body {
 }
 
 .tiptap blockquote {
-  border-left: 3px solid var(--blockquote-border, #d4cfc8);
-  padding-left: 1em;
   margin: 1em 0;
   color: var(--blockquote-text, #6b6560);
-  font-style: italic;
+}
+
+/* Vertical bar runs only along the text body, not the paragraph-title
+   annotation above it. When paragraphs are wrapped in a par-title-wrapper
+   node view, the bar lives on the body container so it starts at the first
+   text line. Fallback selector covers bare <p> children. */
+.tiptap blockquote .par-body-container,
+.tiptap blockquote > p {
+  border-left: 3px solid var(--blockquote-border, #d4cfc8);
+  padding-left: 1em;
 }
 
 .tiptap ul {
