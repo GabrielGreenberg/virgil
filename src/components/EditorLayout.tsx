@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
@@ -8,9 +8,6 @@ import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } fr
 import { Editor } from "@tiptap/react";
 import SelectionChip from "./SelectionChip";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
-import ArchiveConnectors from "./ArchiveConnectors";
-import LinkConnector from "@/links/_shared/LinkConnector";
-import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
@@ -79,14 +76,9 @@ import {
   migrateOmniCategories,
   deriveCategorySides,
 } from "@/panels/Omni";
-import { PANEL_REGISTRY } from "@/panels/panel-registry";
-import BibEntryCard from "./BibEntryCard";
-import { AiRequestCard } from "./panel-primitives";
-import EditorMirror from "./EditorMirror";
-import { useDragGap } from "@/hooks/useDragGap";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
-import { HSplit, PanelChromeProvider } from "./panel-primitives";
+import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import {
   FLOATING_PANEL_WIDTH,
@@ -97,9 +89,7 @@ import {
 } from "./editor-layout/constants";
 import {
   alignEntryToY,
-  findScrollParent,
   scrollEntryIntoView,
-  suppressReverseSync,
 } from "./editor-layout/layout-scroll";
 import {
   PANEL_ICONS,
@@ -163,12 +153,12 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
-import LabelRefPopover, { type LabelInfo } from "./LabelRefPopover";
+import LabelRefPopover from "./LabelRefPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import WordCountPanel from "@/panels/WordCount";
-import { useFocusMode, sectionRange } from "@/hooks/useFocusMode";
+import { useFocusMode } from "@/hooks/useFocusMode";
 import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
 
@@ -1385,7 +1375,6 @@ export default function EditorLayout() {
   const {
     handleUpdate,
     handleScrollToHeading,
-    handleScrollToPos,
     handleReorderBlocks,
     handleRenameHeading,
     handleUpdateLabel,
@@ -1778,18 +1767,6 @@ export default function EditorLayout() {
     setPendingCommentText,
     addTextRevision,
   });
-
-  const startRename = (id: string, name: string) => {
-    setNameInput(name);
-    setEditingTabId(id);
-  };
-
-  const finishRename = () => {
-    if (editingTabId && nameInput.trim()) {
-      renameFile(editingTabId, nameInput.trim());
-    }
-    setEditingTabId(null);
-  };
 
   const {
     handleDocPermissionGranted,
@@ -2301,14 +2278,7 @@ export default function EditorLayout() {
           ? currentSuggestion.original_text
           : null;
 
-  const saveLabel =
-    saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "";
-
   const suggestionPanelVisible = (activeLeft === "suggestions" || activeRight === "suggestions") && hasSuggestions;
-  const revisionsPanelActive =
-    activeLeft === "revisions" ||
-    activeRight === "revisions" ||
-    activeRight === "omni";
   // OmniView aggregates several child panels on one side; when omni is
   // active, the side-of-panel lookups must include its children so
   // connector lines render from the correct side.
@@ -2324,14 +2294,6 @@ export default function EditorLayout() {
     activeLeft === "cutter" ? "left" : activeRight === "cutter" || omniRightActive ? "right" : null;
   const revisionsPanelSide: "left" | "right" | null =
     activeLeft === "revisions" ? "left" : activeRight === "revisions" || omniRightActive ? "right" : null;
-  const quotationsPanelSide: "left" | "right" | null =
-    activeLeft === "quotations" || omniLeftActive ? "left" : activeRight === "quotations" ? "right" : null;
-  const archivePanelSide: "left" | "right" | null =
-    activeLeft === "archive" ? "left" : activeRight === "archive" || omniRightActive ? "right" : null;
-  const footnotePanelSide: "left" | "right" | null =
-    activeLeft === "footnotes" || omniLeftActive ? "left" : activeRight === "footnotes" ? "right" : null;
-  const citationPanelSide: "left" | "right" | null =
-    activeLeft === "citations" || omniLeftActive ? "left" : activeRight === "citations" ? "right" : null;
   const bibliographyPanelSide: "left" | "right" | null =
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 

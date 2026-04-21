@@ -8,9 +8,9 @@ import type { EditorHandle } from "../../Editor";
  * the main/mirror panes, and structural edits on top-level blocks
  * (reorder, rename heading, rename parTitle, update label).
  *
- * Scroll handlers (`handleScrollToHeading`, `handleScrollToPos`) route to
- * the mirror view when the split is open and the bottom pane is focused;
- * otherwise they delegate to the main editor's scroll methods.
+ * `handleScrollToHeading` routes to the mirror view when the split is
+ * open and the bottom pane is focused; otherwise delegates to the main
+ * editor's scrollToHeading.
  *
  * `handleUpdate` forwards to the document's `onUpdate`, then debounces a
  * `setLatestDoc(doc)` so outline / word-count subscribers don't re-derive
@@ -75,30 +75,6 @@ export function useEditorOps(deps: {
         return;
       }
       editorRef.current?.scrollToHeading(blockIndex);
-    },
-    [editorRef, mirrorViewRef, editorSplit, activeSplitPane],
-  );
-
-  const handleScrollToPos = useCallback(
-    (pos: number) => {
-      const mirrorView = mirrorViewRef.current;
-      if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
-        const editor = editorRef.current?.getEditor();
-        if (!editor) return;
-        const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
-        try {
-          editor.commands.setTextSelection(clamped);
-          const coords = mirrorView.coordsAtPos(clamped);
-          const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
-          if (scrollEl && coords) {
-            const scrollRect = scrollEl.getBoundingClientRect();
-            const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
-            scrollEl.scrollTop = Math.max(0, targetY);
-          }
-        } catch { /* pos out of range */ }
-        return;
-      }
-      editorRef.current?.scrollToPos(pos);
     },
     [editorRef, mirrorViewRef, editorSplit, activeSplitPane],
   );
@@ -194,7 +170,6 @@ export function useEditorOps(deps: {
   return {
     handleUpdate,
     handleScrollToHeading,
-    handleScrollToPos,
     handleReorderBlocks,
     handleRenameHeading,
     handleUpdateLabel,
