@@ -184,6 +184,23 @@ export function useViewPrefs() {
     update((p) => ({ ...p, activeRight: "blank", activeRightBottom: null }));
   }, [update]);
 
+  /** Close any open panels and pop-outs, but leave the side columns
+   *  themselves expanded (they fall back to the "blank" canvas). The
+   *  "blank" toolbar button's action. Leaves collapsed sides collapsed,
+   *  and leaves the editor split alone (that has its own toggle). */
+  const closeAllPanels = useCallback(() => {
+    update((p) => ({
+      ...p,
+      activeLeft: p.activeLeft != null ? "blank" : p.activeLeft,
+      activeLeftBottom: null,
+      activeRight: p.activeRight != null ? "blank" : p.activeRight,
+      activeRightBottom: null,
+      poppedOutPanels: [],
+      poppedOutOrigins: {},
+      poppedOutCards: [],
+    }));
+  }, [update]);
+
   const togglePanel = useCallback((id: PanelId) => {
     update((p) => {
       const placement = p.placements.find((pl) => pl.id === id);
@@ -426,6 +443,7 @@ export function useViewPrefs() {
     collapseRight,
     expandLeft,
     expandRight,
+    closeAllPanels,
     togglePanel,
     movePanel,
     setPanelWidth,
