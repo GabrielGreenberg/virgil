@@ -410,15 +410,19 @@ header slots (`headerLeading`, `headerTitleAfter`, `headerExtras`) plus
 
 Children (counters, toggles, extra buttons) are right-aligned via flex spacer.
 
-### Panel pop-out button
-The panel-level pop-out button sits at the **top far right** of every
-panel header (last element, after `PanelClose`). It uses the same
-`CardPopoutButton` as cards: 18×18 circle, translucent-black overlay,
-chevron when docked, X when popped. `Panel` (and the `PanelHeader`
-primitive it uses) wires this automatically via `PanelChromeContext`.
-Bespoke headers that don't go through `Panel`/`PanelHeader` should
-render `<PanelPopout />` as the rightmost element (wrapped in
-`<div className="-mr-2">` to sit flush with the right edge).
+### Panel close + pop-out buttons
+Every panel header ends with two buttons at the top right:
+- `PanelPopout` — small square pod with an up-facing chevron underneath,
+  pops the panel into a floating window. Greys out (disabled) when the
+  panel is already popped out.
+- `PanelClose` (rightmost) — an X that always closes the panel:
+  collapses the column in single mode, removes the half in split mode,
+  or closes the floater when popped out.
+
+`Panel` (and the `PanelHeader` primitive it uses) wires both
+automatically via `PanelChromeContext`. Bespoke headers that don't go
+through `Panel`/`PanelHeader` should render `<PanelPopout />` followed
+by `<PanelClose />` as the last two elements.
 
 ---
 
