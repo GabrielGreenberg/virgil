@@ -66,7 +66,6 @@ import {
   getLinkedParagraphIds,
   getTextAnchor,
 } from "@/links/links";
-import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -127,6 +126,12 @@ import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useMarkerActions } from "./editor-layout/card-actions/markers";
 import { useDropActions } from "./editor-layout/card-actions/drops";
 import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
+import { useLibraryBridge } from "./editor-layout/event-bridges/library";
+import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
+import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
+import { usePanelDropBridges } from "./editor-layout/event-bridges/panel-drops";
+import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
+import { useCommandInputBridges } from "./editor-layout/event-bridges/command-input";
 import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
@@ -219,17 +224,7 @@ export default function EditorLayout() {
     toggleActivePane,
   } = useFiles();
 
-  // Bibliography / citation UI dispatches `virgil-open-library` when the
-  // user clicks a library-status chip. Switch the current doc's shadow
-  // tab into its Library pane; LibraryTabView handles scrolling to the
-  // specific item via its own listener on the same event.
-  useEffect(() => {
-    const handler = () => {
-      if (currentDocId) activateLibraryPane(currentDocId);
-    };
-    window.addEventListener("virgil-open-library", handler);
-    return () => window.removeEventListener("virgil-open-library", handler);
-  }, [currentDocId, activateLibraryPane]);
+  useLibraryBridge({ currentDocId, activateLibraryPane });
 
   // Per-doc permission gate state. We query (without prompting) when
   // the active doc changes; if it isn't already granted we show the
@@ -1482,44 +1477,6 @@ export default function EditorLayout() {
   });
 
 
-  // Listen for quotation drops onto paragraphs (dispatched by Editor.tsx handleDrop)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.groupId && detail?.paragraphId) {
-        addQuotationParagraphId(detail.groupId, detail.paragraphId);
-        setSelectedQuotationGroupId(detail.groupId);
-      }
-    };
-    window.addEventListener("virgil-quotation-drop", handler);
-    return () => window.removeEventListener("virgil-quotation-drop", handler);
-  }, [addQuotationParagraphId]);
-
-  // Listen for todo drops onto paragraphs (dispatched by Editor.tsx handleDrop)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.todoId && detail?.paragraphId) {
-        addTodoParagraphId(detail.todoId, detail.paragraphId);
-        setSelectedTodoId(detail.todoId);
-      }
-    };
-    window.addEventListener("virgil-todo-drop", handler);
-    return () => window.removeEventListener("virgil-todo-drop", handler);
-  }, [addTodoParagraphId]);
-
-  // Listen for note drops onto paragraphs — anchor the note to the paragraph UUID.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.noteId && detail?.paragraphId) {
-        addNoteParagraphId(detail.noteId, detail.paragraphId);
-        setSelectedNoteId(detail.noteId);
-      }
-    };
-    window.addEventListener("virgil-note-drop", handler);
-    return () => window.removeEventListener("virgil-note-drop", handler);
-  }, [addNoteParagraphId]);
 
   // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
   // (notes, text revisions, cuts). Each hook:
@@ -1563,32 +1520,6 @@ export default function EditorLayout() {
     skipSelectors: ['[data-selection-chip]', '[data-add-comment-button]'],
   });
 
-  // Listen for marginalia reanchor events (dragging a gutter icon to a new
-  // paragraph). The per-entity add/remove mutators share the exact same
-  // (entityId, paragraphId) shape, so a small dispatch table replaces the
-  // if/else ladder this used to be.
-  useEffect(() => {
-    const mutators: Record<
-      string,
-      { remove: (id: string, pid: string) => void; add: (id: string, pid: string) => void } | undefined
-    > = {
-      quote: { remove: removeQuotationParagraphId, add: addQuotationParagraphId },
-      todo: { remove: removeTodoParagraphId, add: addTodoParagraphId },
-      note: { remove: removeNoteParagraphId, add: addNoteParagraphId },
-      archive: { remove: removeArchiveParagraphId, add: addArchiveParagraphId },
-      cut: { remove: removeCutParagraphId, add: addCutParagraphId },
-    };
-    const handler = (e: Event) => {
-      const { type, entityId, oldParagraphId, newParagraphId } = (e as CustomEvent).detail;
-      if (!type || !entityId || !newParagraphId) return;
-      const m = mutators[type];
-      if (!m) return;
-      m.remove(entityId, oldParagraphId);
-      m.add(entityId, newParagraphId);
-    };
-    window.addEventListener("virgil-marginalia-reanchor", handler);
-    return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId, addCutParagraphId, removeCutParagraphId]);
 
   // When the user clicks a linking element in the editor, route the
   // scroll target based on whether OmniView is currently visible. If a
@@ -1662,18 +1593,6 @@ export default function EditorLayout() {
 
 
 
-  // Listen for cut drops onto paragraphs (dispatched by Editor.tsx handleDrop / Marginalia)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.cutId && detail?.paragraphId) {
-        addCutParagraphId(detail.cutId, detail.paragraphId);
-        setSelectedCutId(detail.cutId);
-      }
-    };
-    window.addEventListener("virgil-cut-drop", handler);
-    return () => window.removeEventListener("virgil-cut-drop", handler);
-  }, [addCutParagraphId]);
 
 
   const {
@@ -1700,190 +1619,39 @@ export default function EditorLayout() {
   });
 
   // Listen for archive marker clicks from the editor
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.archiveId) {
-        setSelectedArchiveId(detail.archiveId);
-        // Route to OmniView if it has a card for this archive snippet
-        if (tryScrollOmniEntry(`ar:${detail.archiveId}`)) return;
-        // Force-open archive panel (don't toggle if already open)
-        const p = prefsRef.current;
-        const archivePlacement = p.placements.find((pl) => pl.id === "archive");
-        if (archivePlacement?.side === "left") {
-          if (p.activeLeft !== "archive") setActiveLeft("archive");
-        } else {
-          if (p.activeRight !== "archive") setActiveRight("archive");
-        }
-        // Scroll the archive entry into view
-        requestAnimationFrame(() => {
-          const entry = document.querySelector(
-            `[data-archive-entry="${detail.archiveId}"]`,
-          ) as HTMLElement | null;
-          if (entry) scrollEntryIntoView(entry);
-        });
-      }
-    };
-    window.addEventListener("virgil-archive-click", handler);
-    return () => window.removeEventListener("virgil-archive-click", handler);
-  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
+  useMarkerClickBridges({
+    prefsRef,
+    setActiveLeft,
+    setActiveRight,
+    setActiveHalf,
+    tryScrollOmniEntry,
+    setSelectedArchiveId,
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setActiveRefLabel,
+    setActiveRefRect,
+  });
 
-  // Listen for footnote marker clicks from the editor
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.footnoteId) {
-        setSelectedFootnoteId(detail.footnoteId);
-        // Route to OmniView if it has a card for this footnote
-        if (tryScrollOmniEntry(`fn:${detail.footnoteId}`)) return;
-        const p = prefsRef.current;
-        const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
-        if (fnPlacement?.side === "left") {
-          if (p.activeLeft !== "footnotes") setActiveLeft("footnotes");
-        } else {
-          if (p.activeRight !== "footnotes") setActiveRight("footnotes");
-        }
-        requestAnimationFrame(() => {
-          const entry = document.querySelector(
-            `[data-link-card="footnote:${detail.footnoteId}"]`,
-          ) as HTMLElement | null;
-          if (entry) scrollEntryIntoView(entry);
-        });
-      }
-    };
-    window.addEventListener("virgil-footnote-click", handler);
-    return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [setActiveLeft, setActiveRight, tryScrollOmniEntry]);
+  useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
 
-  // Listen for orphaned footnotes (deleted from editor but preserved in panel)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.footnoteId) return;
-      if (suppressOrphanRef.current.has(detail.footnoteId)) {
-        suppressOrphanRef.current.delete(detail.footnoteId);
-        return;
-      }
-      setOrphanedFootnotes((prev) => {
-        if (prev.some((o) => o.footnoteId === detail.footnoteId)) return prev;
-        return [...prev, {
-          footnoteId: detail.footnoteId,
-          content: detail.content,
-          orphanedAt: new Date().toISOString(),
-        }];
-      });
-    };
-    window.addEventListener("virgil-footnote-orphaned", handler);
-    return () => window.removeEventListener("virgil-footnote-orphaned", handler);
-  }, []);
+  usePanelDropBridges({
+    addQuotationParagraphId,
+    setSelectedQuotationGroupId,
+    addTodoParagraphId,
+    setSelectedTodoId,
+    addNoteParagraphId,
+    setSelectedNoteId,
+    addCutParagraphId,
+    setSelectedCutId,
+  });
 
-  // Listen for footnote panel drops (clean up orphan state)
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.footnoteId) return;
-      if (detail.isOrphan) {
-        setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== detail.footnoteId));
-      }
-    };
-    window.addEventListener("virgil-footnote-panel-dropped", handler);
-    return () => window.removeEventListener("virgil-footnote-panel-dropped", handler);
-  }, []);
-
-  // Footnote panel drop targets consume archive snippets — remove the marker
-  // and the archive entry on success.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      const archiveId = detail?.archiveId;
-      if (!archiveId) return;
-      deleteSnippet(archiveId);
-    };
-    window.addEventListener("virgil-footnote-consumed-archive", handler);
-    return () => window.removeEventListener("virgil-footnote-consumed-archive", handler);
-  }, [deleteSnippet]);
-
-  // Listen for citation marker clicks from the editor
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.citationId) {
-        setSelectedCitationId(detail.citationId);
-        const targetY: number | undefined =
-          typeof detail.clickY === "number" ? detail.clickY : undefined;
-        // Route to OmniView if it has a card for this citation
-        if (tryScrollOmniEntry(`ci:${detail.citationId}`, targetY)) return;
-        const p = prefsRef.current;
-        const citPlacement = p.placements.find((pl) => pl.id === "citations");
-        const targetSide: Side = citPlacement?.side ?? "left";
-        const sourceSide = detail.sourceSide as Side | undefined;
-        const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
-        const sourceHalf = detail.sourceHalf as Half | undefined;
-
-        // If the click came from inside the citations panel itself, don't
-        // re-route — just let the scroll logic below bring the entry into view.
-        if (sourcePanelId !== "citations") {
-          if (sourceSide && sourceSide === targetSide && sourcePanelId) {
-            // Same side as citations' home → open as a split so the source
-            // panel stays visible alongside citations.
-            const isSplit =
-              targetSide === "left"
-                ? p.activeLeftBottom != null
-                : p.activeRightBottom != null;
-            if (!isSplit) {
-              // Not split yet: pin source to top, open citations in bottom.
-              setActiveHalf(targetSide, "top", sourcePanelId);
-              setActiveHalf(targetSide, "bottom", "citations");
-            } else {
-              // Already split: put citations in the half opposite the source.
-              const oppHalf: Half = sourceHalf === "bottom" ? "top" : "bottom";
-              setActiveHalf(targetSide, oppHalf, "citations");
-            }
-          } else {
-            // From main text or from a panel on the opposite side — just
-            // activate citations on its home side.
-            if (targetSide === "left") {
-              if (p.activeLeft !== "citations") setActiveLeft("citations");
-            } else {
-              if (p.activeRight !== "citations") setActiveRight("citations");
-            }
-          }
-        }
-        // Scroll the panel entry into view, aligning it vertically with
-        // the clicked citation when we have its Y position.
-        requestAnimationFrame(() => {
-          const entry = document.querySelector(
-            `[data-link-card="citation:${detail.citationId}"]`,
-          ) as HTMLElement | null;
-          if (!entry) return;
-          if (typeof targetY === "number") {
-            alignEntryToY(entry, targetY);
-          } else {
-            scrollEntryIntoView(entry);
-          }
-        });
-      }
-    };
-    window.addEventListener("virgil-citation-click", handler);
-    return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry]);
-
-  // Listen for \ref node clicks → open the LabelRef popover
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.label) return;
-      const el = document.querySelector(
-        `.label-ref-node[data-label="${detail.label}"]`,
-      ) as HTMLElement | null;
-      if (el) {
-        setActiveRefLabel(detail.label);
-        setActiveRefRect(el.getBoundingClientRect());
-      }
-    };
-    window.addEventListener("virgil-label-ref-click", handler);
-    return () => window.removeEventListener("virgil-label-ref-click", handler);
-  }, []);
+  useAnchorRebindBridge({
+    addQuotationParagraphId, removeQuotationParagraphId,
+    addTodoParagraphId, removeTodoParagraphId,
+    addNoteParagraphId, removeNoteParagraphId,
+    addArchiveParagraphId, removeArchiveParagraphId,
+    addCutParagraphId, removeCutParagraphId,
+  });
 
   // Highlight the active \ref node with yellow while the popover is open
   useEffect(() => {
@@ -1924,72 +1692,17 @@ export default function EditorLayout() {
     return () => editorDom.removeEventListener("click", handler);
   }, [editorInstance]);
 
-  // Listen for bare \cite input rule → open panel with new-cite form
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.partial) {
-        setPendingCitationMode("anchored");
-        setPendingCitationCreate(detail.partial);
-        const p = prefsRef.current;
-        const citPlacement = p.placements.find((pl) => pl.id === "citations");
-        if (citPlacement?.side === "left") {
-          if (p.activeLeft !== "citations") setActiveLeft("citations");
-        } else {
-          if (p.activeRight !== "citations") setActiveRight("citations");
-        }
-      }
-    };
-    window.addEventListener("virgil-citation-create", handler);
-    return () => window.removeEventListener("virgil-citation-create", handler);
-  }, [setActiveLeft, setActiveRight]);
-
-  // Listen for \ref command → open ref-create popover at cursor
-  useEffect(() => {
-    const handler = () => {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      // Get the cursor position in screen coords for the popover
-      const { from } = editor.state.selection;
-      const coords = editor.view.coordsAtPos(from);
-      const rect = new DOMRect(coords.left, coords.top, 0, coords.bottom - coords.top);
-      setActiveRefLabel(""); // empty label = new ref, triggers popover in create mode
-      setActiveRefRect(rect);
-    };
-    window.addEventListener("virgil-ref-create", handler);
-    return () => window.removeEventListener("virgil-ref-create", handler);
-  }, []);
-
-  // Listen for \footnote command → create empty footnote at cursor
-  useEffect(() => {
-    const handler = () => {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      const footnoteId = generateEntityId();
-      const content = { type: "doc", content: [{ type: "paragraph" }] };
-      editor
-        .chain()
-        .focus()
-        .insertContent({ type: "footnote", attrs: { footnoteId, content, number: 0 } })
-        .run();
-      // Renumber all footnotes
-      editorRef.current?.renumberFootnotes();
-      // Open footnotes panel and select the new one
-      const p = prefsRef.current;
-      const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
-      if (fnPlacement?.side === "left") {
-        if (p.activeLeft !== "footnotes") setActiveLeft("footnotes");
-      } else {
-        if (p.activeRight !== "footnotes") setActiveRight("footnotes");
-      }
-      setSelectedFootnoteId(footnoteId);
-      window.dispatchEvent(
-        new CustomEvent("virgil-footnote-created", { detail: { footnoteId, content } }),
-      );
-    };
-    window.addEventListener("virgil-footnote-input", handler);
-    return () => window.removeEventListener("virgil-footnote-input", handler);
-  }, [setActiveLeft, setActiveRight]);
+  useCommandInputBridges({
+    editorRef,
+    prefsRef,
+    setActiveLeft,
+    setActiveRight,
+    setPendingCitationMode,
+    setPendingCitationCreate,
+    setActiveRefLabel,
+    setActiveRefRect,
+    setSelectedFootnoteId,
+  });
 
   // Handle drag-and-drop of archive snippets into the editor.
   // - "card" drag (application/x-virgil-archive-id): ProseMirror inserts the

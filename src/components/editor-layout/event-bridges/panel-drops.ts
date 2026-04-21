@@ -1,0 +1,82 @@
+import { useEffect, type Dispatch, type SetStateAction } from "react";
+
+/**
+ * "Drop on a paragraph" bridges for the four panel kinds that attach
+ * cards to paragraphs by UUID. The editor's drop handler dispatches a
+ * `virgil-{kind}-drop` CustomEvent with `{ [kindId], paragraphId }` when
+ * a panel chip is released over a paragraph node.
+ *
+ * Each bridge calls the hook's `addParagraphId` to attach the link, then
+ * sets the relevant "selected" slot so the panel highlights the just-
+ * linked card. Four near-identical listeners; kept in one file because
+ * they share the same shape and the same selection-setter dep pattern.
+ */
+export function usePanelDropBridges(deps: {
+  addQuotationParagraphId: (groupId: string, paragraphId: string) => void;
+  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
+  addTodoParagraphId: (todoId: string, paragraphId: string) => void;
+  setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
+  addNoteParagraphId: (noteId: string, paragraphId: string) => void;
+  setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
+  addCutParagraphId: (cutId: string, paragraphId: string) => void;
+  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+}) {
+  const {
+    addQuotationParagraphId,
+    setSelectedQuotationGroupId,
+    addTodoParagraphId,
+    setSelectedTodoId,
+    addNoteParagraphId,
+    setSelectedNoteId,
+    addCutParagraphId,
+    setSelectedCutId,
+  } = deps;
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.groupId && detail?.paragraphId) {
+        addQuotationParagraphId(detail.groupId, detail.paragraphId);
+        setSelectedQuotationGroupId(detail.groupId);
+      }
+    };
+    window.addEventListener("virgil-quotation-drop", handler);
+    return () => window.removeEventListener("virgil-quotation-drop", handler);
+  }, [addQuotationParagraphId, setSelectedQuotationGroupId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.todoId && detail?.paragraphId) {
+        addTodoParagraphId(detail.todoId, detail.paragraphId);
+        setSelectedTodoId(detail.todoId);
+      }
+    };
+    window.addEventListener("virgil-todo-drop", handler);
+    return () => window.removeEventListener("virgil-todo-drop", handler);
+  }, [addTodoParagraphId, setSelectedTodoId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.noteId && detail?.paragraphId) {
+        addNoteParagraphId(detail.noteId, detail.paragraphId);
+        setSelectedNoteId(detail.noteId);
+      }
+    };
+    window.addEventListener("virgil-note-drop", handler);
+    return () => window.removeEventListener("virgil-note-drop", handler);
+  }, [addNoteParagraphId, setSelectedNoteId]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.cutId && detail?.paragraphId) {
+        addCutParagraphId(detail.cutId, detail.paragraphId);
+        setSelectedCutId(detail.cutId);
+      }
+    };
+    window.addEventListener("virgil-cut-drop", handler);
+    return () => window.removeEventListener("virgil-cut-drop", handler);
+  }, [addCutParagraphId, setSelectedCutId]);
+}
