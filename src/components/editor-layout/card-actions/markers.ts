@@ -9,11 +9,12 @@ type AnchorKind = "note" | "revision" | "cut" | null;
  * Gutter-marker click + hover handlers for the four panel kinds that
  * anchor into the text (notes, cuts, todos, quotations).
  *
- * Click semantics:
+ * Click semantics (OmniView as a mode):
  * - Toggle selection (second click deselects). Selecting drives the
  *   linked-anchor highlight (for notes/cuts that carry a text anchor).
- * - Then try to scroll the OmniView entry into view; if the panel isn't
- *   in Omni, force-open the native panel on its placement side.
+ * - If OmniView hosts the card, scroll there.
+ * - Only force-open the native panel when neither OmniView nor the
+ *   native panel is already showing.
  *
  * Hover semantics: drive the transient `hoveredAnchorId` highlight.
  * Quotations don't expose per-marker hover because groups aren't
@@ -62,13 +63,14 @@ export function useMarkerActions(deps: {
   const handleQuotationMarkerClick = useCallback(
     (groupId: string) => {
       setSelectedQuotationGroupId(groupId);
-      if (tryScrollOmniEntry(`qu:${groupId}`)) return;
+      const omniHit = tryScrollOmniEntry(`quotation:${groupId}`);
       const p = prefsRef.current;
       const placement = p.placements.find((pl) => pl.id === "quotations");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "quotations") setActiveLeft("quotations");
-      } else {
-        if (p.activeRight !== "quotations") setActiveRight("quotations");
+      const side = placement?.side ?? "left";
+      const active = side === "left" ? p.activeLeft === "quotations" : p.activeRight === "quotations";
+      if (!omniHit && !active) {
+        if (side === "left") setActiveLeft("quotations");
+        else setActiveRight("quotations");
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, setSelectedQuotationGroupId],
@@ -89,13 +91,14 @@ export function useMarkerActions(deps: {
           setActiveAnchorKind(null);
         }
       }
-      if (nextSelected && tryScrollOmniEntry(`nt:${noteId}`)) return;
+      const omniHit = nextSelected ? tryScrollOmniEntry(`note:${noteId}`) : false;
       const p = prefsRef.current;
       const placement = p.placements.find((pl) => pl.id === "notes");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "notes") setActiveLeft("notes");
-      } else {
-        if (p.activeRight !== "notes") setActiveRight("notes");
+      const side = placement?.side ?? "right";
+      const active = side === "left" ? p.activeLeft === "notes" : p.activeRight === "notes";
+      if (nextSelected && !omniHit && !active) {
+        if (side === "left") setActiveLeft("notes");
+        else setActiveRight("notes");
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, setActiveAnchorId, setActiveAnchorKind],
@@ -160,13 +163,14 @@ export function useMarkerActions(deps: {
     (todoId: string) => {
       const nextSelected = selectedTodoId === todoId ? null : todoId;
       setSelectedTodoId(nextSelected);
-      if (nextSelected && tryScrollOmniEntry(`td:${todoId}`)) return;
+      const omniHit = nextSelected ? tryScrollOmniEntry(`todo:${todoId}`) : false;
       const p = prefsRef.current;
       const placement = p.placements.find((pl) => pl.id === "todo");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "todo") setActiveLeft("todo");
-      } else {
-        if (p.activeRight !== "todo") setActiveRight("todo");
+      const side = placement?.side ?? "right";
+      const active = side === "left" ? p.activeLeft === "todo" : p.activeRight === "todo";
+      if (nextSelected && !omniHit && !active) {
+        if (side === "left") setActiveLeft("todo");
+        else setActiveRight("todo");
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry],

@@ -111,7 +111,14 @@ export function useInTextPositions(
   const [editorScrollHeight, setEditorScrollHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef(0);
-  const syncingRef = useRef(false); // prevent scroll sync loops
+  // Expected scrollTop values written programmatically. When the panel's
+  // scroll event fires with a value matching `expectedPanelTop`, we know
+  // it's the echo of our own programmatic write and skip reverse-sync.
+  // This replaces the RAF-based flag, which races with the async scroll
+  // event dispatch and causes the editor to be yanked back during
+  // user-driven editor scrolling.
+  const expectedPanelTopRef = useRef<number | null>(null);
+  const expectedEditorTopRef = useRef<number | null>(null);
 
   // Delay activation to avoid state updates during initial mount
   const [ready, setReady] = useState(false);
@@ -267,24 +274,34 @@ export function useInTextPositions(
       if (!panelEl) return false;
 
       const syncEditorToPanel = () => {
-        if (syncingRef.current) return;
-        syncingRef.current = true;
+        // If this scroll event matches what we just wrote to the editor,
+        // it's our own echo from a reverse sync — don't ping-pong.
+        if (expectedEditorTopRef.current === editorScrollEl.scrollTop) {
+          expectedEditorTopRef.current = null;
+          return;
+        }
         const offset = topOffsetRef?.current ?? 0;
         panelEl.scrollTop = editorScrollEl.scrollTop + offset;
-        requestAnimationFrame(() => { syncingRef.current = false; });
+        // Record the clamped value the browser actually settled on, so
+        // the panel's echoing scroll event can be recognised and skipped.
+        expectedPanelTopRef.current = panelEl.scrollTop;
       };
 
       const syncPanelToEditor = () => {
-        if (syncingRef.current) return;
         // Skip when an external caller (e.g. click-to-align on a panel card)
         // has flagged this scroll as programmatic. Without this, aligning a
         // card in the panel would drag the editor's main text along with it.
         if (panelEl.dataset.virgilSuppressReverseSync === "1") return;
-        syncingRef.current = true;
+        // Echo of our own editor→panel sync? Ignore.
+        if (expectedPanelTopRef.current === panelEl.scrollTop) {
+          expectedPanelTopRef.current = null;
+          return;
+        }
         const offset = topOffsetRef?.current ?? 0;
         // When the panel is in the "above document" zone, pin editor to top
-        editorScrollEl.scrollTop = Math.max(0, panelEl.scrollTop - offset);
-        requestAnimationFrame(() => { syncingRef.current = false; });
+        const nextEditorTop = Math.max(0, panelEl.scrollTop - offset);
+        editorScrollEl.scrollTop = nextEditorTop;
+        expectedEditorTopRef.current = editorScrollEl.scrollTop;
       };
 
       editorScrollEl.addEventListener("scroll", syncEditorToPanel, { passive: true });
@@ -294,6 +311,7 @@ export function useInTextPositions(
       const doSync = () => {
         const offset = topOffsetRef?.current ?? 0;
         panelEl.scrollTop = editorScrollEl.scrollTop + offset;
+        expectedPanelTopRef.current = panelEl.scrollTop;
       };
       doSync();
       const t1 = setTimeout(doSync, 100);
