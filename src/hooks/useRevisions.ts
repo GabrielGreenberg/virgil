@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type {
@@ -17,6 +17,7 @@ import {
   getTextAnchor,
   setTextAnchorLink,
 } from "@/links/links";
+import { usePersistentState } from "./usePersistentState";
 
 const DEFAULT_USERS: RevisionUser[] = [
   { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
@@ -32,11 +33,52 @@ const EMPTY_STATE: RevisionsState = {
 
 export type RevisionKind = "general" | "text";
 
-/**
- * One-shot migration from comments.json (only used when revisions.json
- * doesn't exist yet — the original comments.json is left untouched as a
- * backup).
- */
+/** Upgrade a legacy TextRevision record (with anchorId/anchorPos) to links[]. */
+function migrateTextRevision(raw: TextRevision & { anchorPos?: number; anchorId?: string }): TextRevision {
+  if (Array.isArray(raw.links) && raw.links.length > 0) {
+    return {
+      id: raw.id,
+      authorId: raw.authorId,
+      createdAt: raw.createdAt,
+      resolved: raw.resolved,
+      selectedText: raw.selectedText,
+      text: raw.text,
+      turns: raw.turns,
+      links: raw.links,
+    };
+  }
+  return {
+    id: raw.id,
+    authorId: raw.authorId,
+    createdAt: raw.createdAt,
+    resolved: raw.resolved,
+    selectedText: raw.selectedText,
+    text: raw.text,
+    turns: raw.turns,
+    links: derivedLinksForCard("comment", {
+      id: raw.id,
+      anchorId: raw.anchorId,
+      anchorText: raw.selectedText,
+    }),
+  };
+}
+
+function migrateRevisions(raw: unknown): RevisionsState {
+  const s = raw as Partial<RevisionsState>;
+  if (!s || (!s.users && !s.generalRevisions && !s.textRevisions)) {
+    return EMPTY_STATE;
+  }
+  return {
+    users: s.users?.length ? s.users : [...DEFAULT_USERS],
+    generalRevisions: s.generalRevisions ?? [],
+    textRevisions: (s.textRevisions ?? []).map((r) =>
+      migrateTextRevision(r as TextRevision & { anchorPos?: number; anchorId?: string }),
+    ),
+    activeUserId: s.activeUserId ?? "me",
+  };
+}
+
+/** One-shot fallback: if revisions.json didn't exist, try comments.json. */
 function migrateFromComments(comments: CommentsState | null): RevisionsState | null {
   if (!comments?.comments?.length) return null;
   const textRevisions: TextRevision[] = comments.comments.map((c) => ({
@@ -65,121 +107,49 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
 }
 
 export function useRevisions(docId: string | null) {
-  const [state, setState] = useState<RevisionsState>(EMPTY_STATE);
-  const currentDocIdRef = useRef(docId);
+  const { state, setState, update, persist } = usePersistentState<RevisionsState>(
+    docId,
+    "revisions.json",
+    EMPTY_STATE,
+    { migrate: migrateRevisions, errorLabel: "revisions" },
+  );
 
-  const load = useCallback((id: string | null) => {
-    if (!id) {
-      setState(EMPTY_STATE);
-      return;
-    }
+  // One-shot fallback: if revisions.json was empty but comments.json has
+  // data, migrate and persist so this path only runs once per document.
+  useEffect(() => {
+    if (!docId) return;
+    let cancelled = false;
     (async () => {
       try {
-        // Read with a null sentinel so we can distinguish "missing" from
-        // "found and explicitly empty" — the migration only runs in the
-        // missing case.
-        const existing = await readSidecar<RevisionsState | null>(
-          id,
-          "revisions.json",
-          null,
-        );
-        if (currentDocIdRef.current !== id) return;
-        if (existing) {
-          // Strip legacy `anchorPos` — we track linked anchors via a mark
-          // in the doc now, keyed by `anchorId`. Legacy records keep only
-          // `selectedText` as a snapshot for re-anchoring on load.
-          const strippedRevs = (existing.textRevisions ?? []).map((r) => {
-            const raw = r as TextRevision & {
-              anchorPos?: number;
-              anchorId?: string;
-            };
-            // Already-migrated records have a non-empty links array.
-            if (Array.isArray(raw.links) && raw.links.length > 0) {
-              return {
-                id: raw.id,
-                authorId: raw.authorId,
-                createdAt: raw.createdAt,
-                resolved: raw.resolved,
-                selectedText: raw.selectedText,
-                text: raw.text,
-                turns: raw.turns,
-                links: raw.links,
-              };
-            }
-            // Legacy: build links from the old anchorId field.
-            return {
-              id: raw.id,
-              authorId: raw.authorId,
-              createdAt: raw.createdAt,
-              resolved: raw.resolved,
-              selectedText: raw.selectedText,
-              text: raw.text,
-              turns: raw.turns,
-              links: derivedLinksForCard("comment", {
-                id: raw.id,
-                anchorId: raw.anchorId,
-                anchorText: raw.selectedText,
-              }),
-            };
-          });
-          setState({
-            users: existing.users?.length ? existing.users : [...DEFAULT_USERS],
-            generalRevisions: existing.generalRevisions ?? [],
-            textRevisions: strippedRevs,
-            activeUserId: existing.activeUserId ?? "me",
-          });
-          return;
-        }
-        // No revisions.json — try one-shot migration from comments.json.
-        const legacy = await readSidecar<CommentsState | null>(
-          id,
-          "comments.json",
-          null,
-        );
-        const migrated = migrateFromComments(legacy) ?? EMPTY_STATE;
-        if (currentDocIdRef.current !== id) return;
+        const existing = await readSidecar<RevisionsState | null>(docId, "revisions.json", null);
+        if (cancelled || existing) return;
+        const legacy = await readSidecar<CommentsState | null>(docId, "comments.json", null);
+        const migrated = migrateFromComments(legacy);
+        if (cancelled || !migrated) return;
         setState(migrated);
-        // Persist so subsequent loads skip the migration.
-        await writeSidecar(id, "revisions.json", migrated);
+        await writeSidecar(docId, "revisions.json", migrated);
       } catch (err) {
-        console.error("Failed to load revisions:", err);
+        console.error("Failed to migrate comments:", err);
       }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [docId, setState]);
 
-  useEffect(() => {
-    currentDocIdRef.current = docId;
-    load(docId);
-  }, [docId, load]);
+  /** Re-read the sidecar (used by window-focus refresh). */
+  const reload = useCallback(() => {
+    if (!docId) return;
+    readSidecar<RevisionsState | null>(docId, "revisions.json", null)
+      .then((data) => { if (data) setState(migrateRevisions(data)); })
+      .catch(() => {});
+  }, [docId, setState]);
 
   // Refresh on window focus so Claude-authored turns show up after the
   // agent writes them directly to revisions.json.
   useEffect(() => {
-    const onFocus = () => load(currentDocIdRef.current);
+    const onFocus = () => reload();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [load]);
-
-  const persist = useCallback(async (newState: RevisionsState) => {
-    const id = currentDocIdRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "revisions.json", newState);
-    } catch (err) {
-      console.error("Failed to save revisions:", err);
-    }
-  }, []);
-
-  const update = useCallback(
-    (mut: (prev: RevisionsState) => RevisionsState) => {
-      setState((prev) => {
-        const next = mut(prev);
-        persist(next);
-        return next;
-      });
-    },
-    [persist],
-  );
+  }, [reload]);
 
   const setActiveUser = useCallback(
     (userId: string) => {
@@ -373,6 +343,10 @@ export function useRevisions(docId: string | null) {
     [update],
   );
 
+  // `persist` is exposed for callers that need imperative writes — currently
+  // unused, but matches the shape of the other migrated hooks.
+  void persist;
+
   return {
     state,
     users: state.users,
@@ -388,6 +362,6 @@ export function useRevisions(docId: string | null) {
     resolveRevision,
     reopenRevision,
     deleteRevision,
-    refresh: () => load(currentDocIdRef.current),
+    refresh: reload,
   };
 }

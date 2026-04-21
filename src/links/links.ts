@@ -807,6 +807,29 @@ export function hasTextAnchor(card: CardWithLinks): boolean {
   return getTextAnchor(card) !== null;
 }
 
+/**
+ * Single predicate for "this card has no anchor in the document."
+ *
+ * Two card shapes feed into this:
+ *   - Link-bearing cards (notes, cuts, archives, quotations, revisions, todos)
+ *     — unanchored iff `links[]` is empty.
+ *   - Citations — carry an explicit `unanchored?: true` flag because anchoring
+ *     is tracked by the editor's inline atoms, not by card-resident links.
+ *     The flag is the authoritative in-memory check and is persisted on disk
+ *     so an unanchored citation survives reload (the editor regenerates
+ *     anchored ids on every parse).
+ *
+ * Callers should not reach into either shape directly — go through here.
+ */
+export function isUnanchored(
+  card: { links?: readonly Link[]; unanchored?: boolean } | null | undefined,
+): boolean {
+  if (!card) return false;
+  if (card.unanchored === true) return true;
+  if (Array.isArray(card.links)) return card.links.length === 0;
+  return false;
+}
+
 /** Convenience: a Set of all paragraph UUIDs across a list of cards. */
 export function collectAllLinkedParagraphIds(
   cards: readonly CardWithLinks[],

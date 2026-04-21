@@ -1,0 +1,265 @@
+import { PanelId } from "@/hooks/useViewPrefs";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
+
+export function IconNotes({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <line x1="8" y1="13" x2="16" y2="13" />
+      <line x1="8" y1="17" x2="13" y2="17" />
+    </svg>
+  );
+}
+
+export function IconRevisions({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  const cx = 12, cy = 12, r = 8;
+  const gap = (14 * Math.PI) / 180;
+  const N = 28;
+  const pt = (t: number) => `${cx + r * Math.cos(t)} ${cy + r * Math.sin(t)}`;
+  const renderArc = (tStart: number, tEnd: number, key: string) => {
+    const dt = (tEnd - tStart) / N;
+    const segs = [];
+    for (let i = 0; i < N; i++) {
+      const a = tStart + i * dt;
+      const b = tStart + (i + 1) * dt;
+      const u = (i + 1) / N;
+      const opacity = Math.pow(u, 0.6);
+      const isHead = i === N - 1;
+      segs.push(
+        <path
+          key={`${key}-${i}`}
+          d={`M ${pt(a)} A ${r} ${r} 0 0 1 ${pt(b)}`}
+          stroke={c}
+          strokeOpacity={opacity}
+          strokeWidth="3.25"
+          strokeLinecap={isHead ? "round" : "butt"}
+          fill="none"
+        />
+      );
+    }
+    return segs;
+  };
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+      <g transform="rotate(45 12 12)">
+        {renderArc(Math.PI + gap, 2 * Math.PI - gap, "top")}
+        {renderArc(gap, Math.PI - gap, "bot")}
+      </g>
+    </svg>
+  );
+}
+
+export function IconSuggestions({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
+export function IconFolder() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+export function IconPlus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+export function IconX() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+// Outline icon: headline + two indented bullet+line sub-items
+export function IconOutline({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 5h16" />
+      <rect x="5.5" y="10.5" width="3" height="3" rx="0.75" fill={c} stroke="none" />
+      <path d="M11 12h9" />
+      <rect x="5.5" y="17.5" width="3" height="3" rx="0.75" fill={c} stroke="none" />
+      <path d="M11 19h7" />
+    </svg>
+  );
+}
+
+export function IconArchive({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8v13H3V8" />
+      <path d="M1 3h22v5H1z" />
+      <path d="M10 12h4" />
+    </svg>
+  );
+}
+
+// Footnote icon: "fn" in regular weight, larger
+export function IconFootnote({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill={c}>
+      <text x="2" y="15.5" fontSize="15" fontWeight="600" fontFamily="system-ui, sans-serif">fn</text>
+    </svg>
+  );
+}
+
+// Citation icon: open book with bookmark ribbon
+export function IconCitation({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {/* Page body */}
+      <path d="M9 6h9l3 3v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+      {/* Page fold */}
+      <path d="M18 6v3h3" />
+      {/* Arrow shaft going up-left off the page, base at mid-page */}
+      <path d="M13 15L3 3" />
+      {/* Arrow head — well clear of page */}
+      <path d="M7 3H3v4" />
+    </svg>
+  );
+}
+
+export function IconBibliography({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+      <path d="M8 7h8" />
+      <path d="M8 12h6" />
+    </svg>
+  );
+}
+
+// Todo icon: checkmarks with lines
+export function IconTodo({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7l2.5 2.5L11 5" />
+      <path d="M14 7h7" />
+      <path d="M4 17l2.5 2.5L11 15" />
+      <path d="M14 17h7" />
+    </svg>
+  );
+}
+
+export function IconCutter({ active }: { active?: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M20 4L8.12 15.88" />
+      <path d="M14.47 14.48L20 20" />
+      <path d="M8.12 8.12L12 12" />
+    </svg>
+  );
+}
+
+export function IconQuotations({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      {/* Rounded box */}
+      <rect x="2" y="2" width="20" height="20" rx="3" />
+      {/* Quote marks — toolbar style, centered in box */}
+      <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
+      <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
+    </svg>
+  );
+}
+
+export function IconSearch({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <path d="M21 21l-4.35-4.35" />
+    </svg>
+  );
+}
+
+export function IconSplit({ active, focusedHalf }: { active?: boolean; focusedHalf?: "top" | "bottom" }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {/* Shaded half indicating which pane is focused */}
+      {active && focusedHalf === "top" && (
+        <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+      )}
+      {active && focusedHalf === "bottom" && (
+        <rect x="4" y="12" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
+      )}
+      {/* Outline + single divider line */}
+      <rect x="4" y="4" width="16" height="16" rx="1.5" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+    </svg>
+  );
+}
+
+export function IconWordCount({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill={c}>
+      <text x="3" y="15.5" fontSize="16" fontWeight="700" fontFamily="system-ui, sans-serif">#</text>
+    </svg>
+  );
+}
+
+// OmniView icon: rounded square with three equal-length horizontal
+// lines inside, signaling "all panel content threaded together".
+export function IconOmni({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke={c}
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="0.75" y="0.75" width="12.5" height="12.5" rx="1.5" />
+      <line x1="3.25" y1="4" x2="10.75" y2="4" />
+      <line x1="3.25" y1="7" x2="10.75" y2="7" />
+      <line x1="3.25" y1="10" x2="10.75" y2="10" />
+    </svg>
+  );
+}
+
+// Per-panel-id icon renderer for the strip + omni button. Labels for
+// these ids come from PANEL_REGISTRY (or the "Blank" fallback below);
+// only the icon factory lives here, since icons reference local
+// components and aren't part of the registry.
+export const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> = {
+  outline: (a) => <IconOutline active={a} />,
+  todo: (a) => <IconTodo active={a} />,
+  notes: (a) => <IconNotes active={a} />,
+  revisions: (a) => <IconRevisions active={a} />,
+  archive: (a) => <IconArchive active={a} />,
+  footnotes: (a) => <IconFootnote active={a} />,
+  citations: (a) => <IconCitation active={a} />,
+  bibliography: (a) => <IconBibliography active={a} />,
+  suggestions: (a) => <IconSuggestions active={a} />,
+  cutter: (a) => <IconCutter active={a} />,
+  quotations: (a) => <IconQuotations active={a} />,
+  search: (a) => <IconSearch active={a} />,
+  wordcount: (a) => <IconWordCount active={a} />,
+  blank: () => null,
+  omni: (a) => <IconOmni active={a} />,
+};
+
+/** Display label for a panel id. Reads from PANEL_REGISTRY for real
+ *  panels and falls back for the layout-only "blank" slot. */
+export function panelLabel(id: PanelId): string {
+  if (id === "blank") return "Blank";
+  return PANEL_REGISTRY[id].label;
+}

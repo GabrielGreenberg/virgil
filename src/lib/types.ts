@@ -182,7 +182,9 @@ export interface CitationRef {
    *  into the document to anchor it. Anchored citations omit this flag.
    *  Persisted alongside the rest of the citation state so an unanchored
    *  card survives across reloads (the editor regenerates anchored ids
-   *  on every parse, so we can only carry forward entries flagged here). */
+   *  on every parse, so we can only carry forward entries flagged here).
+   *  Read this through `isUnanchored(card)` in @/links/links.ts rather
+   *  than accessing the field directly. */
   unanchored?: boolean;
 }
 

@@ -1,41 +1,24 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { CommentsState, UserComment } from "@/lib/types";
+import { usePersistentState } from "./usePersistentState";
 
 const EMPTY_STATE: CommentsState = { comments: [] };
 
+function migrate(raw: unknown): CommentsState {
+  const s = raw as Partial<CommentsState>;
+  return { comments: Array.isArray(s.comments) ? s.comments : [] };
+}
+
 export function useComments(docId: string | null) {
-  const [state, setState] = useState<CommentsState>(EMPTY_STATE);
-  const currentDocIdRef = useRef(docId);
-
-  useEffect(() => {
-    currentDocIdRef.current = docId;
-    if (!docId) {
-      setState(EMPTY_STATE);
-      return;
-    }
-
-    readSidecar<CommentsState>(docId, "comments.json", EMPTY_STATE)
-      .then((data) => {
-        if (currentDocIdRef.current === docId && data.comments) {
-          setState(data);
-        }
-      })
-      .catch(() => {});
-  }, [docId]);
-
-  const persist = useCallback(async (newState: CommentsState) => {
-    const id = currentDocIdRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "comments.json", newState);
-    } catch (err) {
-      console.error("Failed to save comments:", err);
-    }
-  }, []);
+  const { state, update } = usePersistentState<CommentsState>(
+    docId,
+    "comments.json",
+    EMPTY_STATE,
+    { migrate, errorLabel: "comments" },
+  );
 
   const addComment = useCallback(
     (selectedText: string, comment: string) => {
@@ -46,57 +29,37 @@ export function useComments(docId: string | null) {
         createdAt: new Date().toISOString(),
         resolved: false,
       };
-      setState((prev) => {
-        const newState = { comments: [...prev.comments, newComment] };
-        persist(newState);
-        return newState;
-      });
+      update((prev) => ({ comments: [...prev.comments, newComment] }));
       return newComment;
     },
-    [persist]
+    [update],
   );
 
   const updateComment = useCallback(
     (id: string, comment: string) => {
-      setState((prev) => {
-        const newState = {
-          comments: prev.comments.map((c) =>
-            c.id === id ? { ...c, comment } : c
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
+      update((prev) => ({
+        comments: prev.comments.map((c) => (c.id === id ? { ...c, comment } : c)),
+      }));
     },
-    [persist]
+    [update],
   );
 
   const resolveComment = useCallback(
     (id: string) => {
-      setState((prev) => {
-        const newState = {
-          comments: prev.comments.map((c) =>
-            c.id === id ? { ...c, resolved: true } : c
-          ),
-        };
-        persist(newState);
-        return newState;
-      });
+      update((prev) => ({
+        comments: prev.comments.map((c) =>
+          c.id === id ? { ...c, resolved: true } : c,
+        ),
+      }));
     },
-    [persist]
+    [update],
   );
 
   const deleteComment = useCallback(
     (id: string) => {
-      setState((prev) => {
-        const newState = {
-          comments: prev.comments.filter((c) => c.id !== id),
-        };
-        persist(newState);
-        return newState;
-      });
+      update((prev) => ({ comments: prev.comments.filter((c) => c.id !== id) }));
     },
-    [persist]
+    [update],
   );
 
   const activeComments = state.comments.filter((c) => !c.resolved);

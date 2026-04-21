@@ -1,71 +1,66 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar } from "@/lib/storage";
+import { readSidecar } from "@/lib/storage";
 import type { BibSettings, BibEntryRequest } from "@/lib/types";
+import { usePersistentState } from "./usePersistentState";
 
 const EMPTY: BibSettings = { generalBibPath: null, entryRequests: [] };
 
+function migrate(raw: unknown): BibSettings {
+  const s = raw as Partial<BibSettings>;
+  return {
+    generalBibPath: s.generalBibPath ?? null,
+    entryRequests: Array.isArray(s.entryRequests) ? s.entryRequests : [],
+  };
+}
+
 export function useBibSettings(docId: string | null) {
-  const [state, setState] = useState<BibSettings>(EMPTY);
-  const docIdRef = useRef(docId);
+  const { state, setState, update } = usePersistentState<BibSettings>(
+    docId,
+    "bib-settings.json",
+    EMPTY,
+    { migrate, errorLabel: "bib settings" },
+  );
 
-  const fetchState = useCallback(() => {
-    const id = docIdRef.current;
-    if (!id) return;
-    readSidecar<BibSettings>(id, "bib-settings.json", EMPTY)
-      .then((data) => {
-        if (docIdRef.current === id) setState(data ?? EMPTY);
-      })
+  /** Re-read the sidecar from disk. Used when another pane edits it. */
+  const refresh = useCallback(() => {
+    if (!docId) return;
+    readSidecar<BibSettings>(docId, "bib-settings.json", EMPTY)
+      .then((data) => setState(migrate(data)))
       .catch(() => {});
-  }, []);
+  }, [docId, setState]);
 
-  useEffect(() => {
-    docIdRef.current = docId;
-    if (!docId) { setState(EMPTY); return; }
-    fetchState();
-  }, [docId, fetchState]);
+  const setGeneralBibPath = useCallback(
+    (path: string | null) => {
+      update((prev) => ({ ...prev, generalBibPath: path }));
+    },
+    [update],
+  );
 
-  const persist = useCallback(async (s: BibSettings) => {
-    const id = docIdRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "bib-settings.json", s);
-    } catch (err) {
-      console.error("Failed to save bib settings:", err);
-    }
-  }, []);
+  const addEntryRequest = useCallback(
+    (description: string) => {
+      const req: BibEntryRequest = {
+        id: generateEntityId(),
+        description,
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+      update((prev) => ({ ...prev, entryRequests: [...prev.entryRequests, req] }));
+    },
+    [update],
+  );
 
-  const setGeneralBibPath = useCallback((path: string | null) => {
-    setState((prev) => {
-      const next = { ...prev, generalBibPath: path };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
-  const addEntryRequest = useCallback((description: string) => {
-    const req: BibEntryRequest = {
-      id: generateEntityId(),
-      description,
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    };
-    setState((prev) => {
-      const next = { ...prev, entryRequests: [...prev.entryRequests, req] };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
-
-  const removeEntryRequest = useCallback((id: string) => {
-    setState((prev) => {
-      const next = { ...prev, entryRequests: prev.entryRequests.filter((r) => r.id !== id) };
-      persist(next);
-      return next;
-    });
-  }, [persist]);
+  const removeEntryRequest = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        entryRequests: prev.entryRequests.filter((r) => r.id !== id),
+      }));
+    },
+    [update],
+  );
 
   return {
     generalBibPath: state.generalBibPath,
@@ -73,6 +68,6 @@ export function useBibSettings(docId: string | null) {
     setGeneralBibPath,
     addEntryRequest,
     removeEntryRequest,
-    refresh: fetchState,
+    refresh,
   };
 }
