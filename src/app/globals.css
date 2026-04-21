@@ -1598,6 +1598,10 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 /* Vertical drag gap (col-resize — between panels and editor) */
 .drag-gap-v {
   cursor: col-resize;
+  /* Raise above sibling editor-column so the ::before hit-area extension
+     (which visually overflows into the editor-column's padding) wins
+     pointer events instead of the editor-column div beneath it. */
+  z-index: 2;
 }
 .drag-gap-v::after {
   top: 0;
@@ -1609,12 +1613,28 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 /* Panel wrappers add 4px padding on each side, so the real visual
    gutter between panel pod and editor pod is 8px wider than the
    drag-gap element itself. Nudge the ::after highlight toward the
-   editor so it lands at the actual center of that gutter. */
+   editor so it lands at the actual center of that gutter, and extend
+   an invisible ::before hit area across the full gutter so users can
+   grab anywhere in that visible gap — not just the 10px centered strip. */
 .drag-gap-v.drag-gap-toward-editor-right::after {
   left: calc(50% + 4px);
 }
 .drag-gap-v.drag-gap-toward-editor-left::after {
   left: calc(50% - 4px);
+}
+.drag-gap-v::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.drag-gap-v.drag-gap-toward-editor-right::before {
+  left: 0;
+  right: -8px;
+}
+.drag-gap-v.drag-gap-toward-editor-left::before {
+  left: -8px;
+  right: 0;
 }
 /* Horizontal drag gap (row-resize — panel splits, editor splits) */
 .drag-gap-h {
