@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
-import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
+import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import SelectionChip from "./SelectionChip";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -404,6 +405,130 @@ export default function EditorLayout() {
   // (outline clicks, note jumps, etc.) to the pane the user is in.
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
   const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
+
+  // Floating menu bar position — each axis snaps independently to an
+  // editor-column edge (or floats freely when not near one). When both
+  // axes snap, the menu effectively sits at a corner; when only one
+  // snaps, the menu docks to that side and slides along it.
+  type AxisSnap = "start" | "end" | null;
+  type MenuPosition = {
+    xSnap: AxisSnap;
+    ySnap: AxisSnap;
+    freeLeft: number;
+    freeTop: number;
+  };
+  const [menuPos, setMenuPos] = useState<MenuPosition>({
+    xSnap: "end",
+    ySnap: "start",
+    freeLeft: 0,
+    freeTop: 0,
+  });
+  const [menuDragging, setMenuDragging] = useState(false);
+  const [menuOrientation, setMenuOrientation] = useState<ToolbarOrientation>("horizontal");
+  const editorColRef = useRef<HTMLDivElement>(null);
+  const menuWrapRef = useRef<HTMLDivElement>(null);
+  const [menuPortalReady, setMenuPortalReady] = useState(false);
+  const [colRect, setColRect] = useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
+  const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    setMenuPortalReady(true);
+  }, []);
+
+  const roRef = useRef<ResizeObserver | null>(null);
+  const readColRect = useCallback(() => {
+    const el = editorColRef.current;
+    if (el) {
+      const r = el.getBoundingClientRect();
+      setColRect({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+    setWinSize({ w: window.innerWidth, h: window.innerHeight });
+  }, []);
+  const editorColRefCb = useCallback((el: HTMLDivElement | null) => {
+    editorColRef.current = el;
+    roRef.current?.disconnect();
+    roRef.current = null;
+    if (el) {
+      readColRect();
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(readColRect);
+        ro.observe(el);
+        roRef.current = ro;
+      }
+    }
+  }, [readColRect]);
+
+  useEffect(() => {
+    window.addEventListener("resize", readColRect);
+    return () => {
+      window.removeEventListener("resize", readColRect);
+      roRef.current?.disconnect();
+    };
+  }, [readColRect]);
+
+  useEffect(() => {
+    if (!menuDragging) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [menuDragging]);
+
+  const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const menuEl = menuWrapRef.current;
+    if (!menuEl) return;
+    const menuRect = menuEl.getBoundingClientRect();
+    const offX = e.clientX - menuRect.left;
+    const offY = e.clientY - menuRect.top;
+    const menuW = menuRect.width;
+    const menuH = menuRect.height;
+    const HORIZ = 10;
+    const VERT = 16;
+    const SNAP = 40;
+    setMenuDragging(true);
+    const onMove = (ev: MouseEvent) => {
+      const rawLeft = ev.clientX - offX;
+      const rawTop = ev.clientY - offY;
+      let xSnap: AxisSnap = null;
+      let ySnap: AxisSnap = null;
+      const colEl = editorColRef.current;
+      if (colEl) {
+        const cr = colEl.getBoundingClientRect();
+        if (Math.abs(rawLeft - (cr.left + HORIZ)) < SNAP) xSnap = "start";
+        else if (Math.abs(rawLeft + menuW - (cr.right - HORIZ)) < SNAP) xSnap = "end";
+        if (Math.abs(rawTop - (cr.top + VERT)) < SNAP) ySnap = "start";
+        else if (Math.abs(rawTop + menuH - (cr.bottom - VERT)) < SNAP) ySnap = "end";
+      }
+      setMenuPos({ xSnap, ySnap, freeLeft: rawLeft, freeTop: rawTop });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setMenuDragging(false);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
+  const menuWrapStyle = useMemo<React.CSSProperties>(() => {
+    const needsColRect = menuPos.xSnap !== null || menuPos.ySnap !== null;
+    if (needsColRect && (!colRect || !winSize)) {
+      return { left: -10000, top: -10000, visibility: "hidden" as const };
+    }
+    const style: React.CSSProperties = {};
+    if (menuPos.ySnap === "start" && colRect) style.top = colRect.top + 16;
+    else if (menuPos.ySnap === "end" && colRect && winSize) style.bottom = winSize.h - colRect.bottom + 16;
+    else style.top = menuPos.freeTop;
+    if (menuPos.xSnap === "start" && colRect) style.left = colRect.left + 10;
+    else if (menuPos.xSnap === "end" && colRect && winSize) style.right = winSize.w - colRect.right + 10;
+    else style.left = menuPos.freeLeft;
+    return style;
+  }, [menuPos, colRect, winSize]);
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -3158,16 +3283,21 @@ export default function EditorLayout() {
         {/* Editor column: floating toolbar overlays the editor pod's
             top-right corner; the editor pod itself runs all the way to
             the top of the column so the text reaches the tab area. */}
-        <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
+        <div ref={editorColRefCb} className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
           paddingRight: 4,
         }}>
-          {/* Floating toolbar — top-right of the editor column, overlays
-              the editor pod. Sits above the pod via z-index. */}
-          <div className="absolute z-30 pointer-events-none" style={{ top: 'calc(var(--pod-gap) + 6px)', right: 10, left: 10 }}>
-            <div className="flex justify-end pointer-events-auto">
+          {/* Floating toolbar — rendered via portal so it can move freely
+              across the viewport and always sits above every panel. Snaps
+              to the four editor-column corners when dragged near them. */}
+          {menuPortalReady && createPortal(
+            <div
+              ref={menuWrapRef}
+              className="fixed z-[9999] pointer-events-auto"
+              style={menuWrapStyle}
+            >
               <MenuBar
                 editor={overrideEditor ?? editorInstance}
                 onAddComment={handleAddComment}
@@ -3204,9 +3334,13 @@ export default function EditorLayout() {
                 onExpandAllSections={() => editorRef.current?.expandAllSections()}
                 onCollapseAllSections={() => editorRef.current?.collapseAllSections()}
                 onCloseAllPanels={closeAllPanels}
+                onGrabStart={handleMenuGrabStart}
+                orientation={menuOrientation}
+                onSetOrientation={setMenuOrientation}
               />
-            </div>
-          </div>
+            </div>,
+            document.body,
+          )}
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
               /* When split, each pane is its own pod so the gap reveals the canvas */
