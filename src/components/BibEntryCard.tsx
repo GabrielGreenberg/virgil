@@ -418,8 +418,6 @@ export default function BibEntryCard({
   }
 
   const theme = useCardTheme("bib");
-  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (

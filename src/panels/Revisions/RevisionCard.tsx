@@ -219,8 +219,6 @@ export function RevisionCard({
   const firstTurn = turns[0];
   const firstAuthor = firstTurn ? userById(users, firstTurn.authorId) : null;
   const dataAttrs = kind === "text" ? { "data-revision-entry": id } : {};
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
   const card = (
