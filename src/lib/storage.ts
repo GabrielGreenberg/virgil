@@ -39,6 +39,8 @@ export const renameDoc = backend.renameDoc;
 export const deleteDocFromIndex = backend.deleteDocFromIndex;
 export const flushDoc = backend.flushDoc;
 export const detectBibPackage = backend.detectBibPackage;
+export const readPaperFolder = backend.readPaperFolder;
+export const getTexFilename = backend.getTexFilename;
 
 // Re-export types (these are the same in both backends).
-export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult, PaperFile } from "@/lib/storage-fsa";

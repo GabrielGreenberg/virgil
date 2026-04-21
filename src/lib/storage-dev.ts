@@ -324,6 +324,39 @@ export async function deleteDocFromIndex(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Paper folder enumeration (for the compile pipeline)
+// ---------------------------------------------------------------------------
+
+export interface PaperFile {
+  path: string;
+  bytes: Uint8Array;
+}
+
+export async function readPaperFolder(docId: string): Promise<PaperFile[]> {
+  const resp = await fetch(`${API}/doc/${docId}/_all-files`);
+  if (!resp.ok) {
+    throw new Error(`readPaperFolder failed: ${resp.status}`);
+  }
+  const { files } = (await resp.json()) as {
+    files: { path: string; base64: string }[];
+  };
+  return files.map((f) => ({ path: f.path, bytes: base64ToBytes(f.base64) }));
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+export async function getTexFilename(docId: string): Promise<string> {
+  const docs = await getDevIndex();
+  const entry = findEntry(docs, docId);
+  return entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
+}
+
+// ---------------------------------------------------------------------------
 // Drain helpers — no-op in dev mode (no write queue)
 // ---------------------------------------------------------------------------
 
