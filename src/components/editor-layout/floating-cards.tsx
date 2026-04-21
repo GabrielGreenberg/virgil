@@ -21,7 +21,6 @@ import type {
   CitationRef,
   GeneralRevision,
   TextRevision,
-  RevisionUser,
   QuotationGroup,
   Quote,
   AiRequest,
@@ -47,8 +46,6 @@ export interface PoppedCardDeps {
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
   generalRevisions: GeneralRevision[];
   textRevisions: TextRevision[];
-  revisionUsers: RevisionUser[];
-  activeRevisionUserId: string;
   quotationGroups: QuotationGroup[];
   aiRequests: AiRequest[];
   anchoredIds?: Set<string>;
@@ -124,10 +121,7 @@ export interface PoppedCardDeps {
   updateCitation: (id: string, command: string) => void;
 
   // Revisions
-  resolveRevision: (kind: "general" | "text", id: string) => void;
-  reopenRevision: (kind: "general" | "text", id: string) => void;
   deleteRevision: (kind: "general" | "text", id: string) => void;
-  addRevisionTurn: (kind: "general" | "text", id: string, text: string) => void;
 
   // Quotations
   deleteQuotationGroup: (id: string) => void;
@@ -337,37 +331,18 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       const rev = gen ?? text;
       if (!rev) return null;
       const rkind: "general" | "text" = gen ? "general" : "text";
-      const activeUser =
-        d.revisionUsers.find((u) => u.id === d.activeRevisionUserId) ??
-        d.revisionUsers[0];
-      if (!activeUser) return null;
-      const header = gen ? (
-        <div className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
-          Document-wide
-        </div>
-      ) : (
-        <div className="text-xs text-[var(--muted)] truncate font-medium">
-          &ldquo;{text!.selectedText}&rdquo;
-        </div>
-      );
       return (
         <RevisionCard
           key={key}
-          kind={rkind}
           id={rev.id}
-          users={d.revisionUsers}
-          activeUser={activeUser}
-          turns={rev.turns}
-          resolved={false}
+          text={rev.text}
+          isAiRequest={rev.authorId === "claude"}
+          quotedText={text?.selectedText}
           selected={d.selectedCommentId === rev.id}
-          header={header}
           onSelect={() =>
             d.setSelectedCommentId(d.selectedCommentId === rev.id ? null : rev.id)
           }
-          onResolve={() => d.resolveRevision(rkind, rev.id)}
-          onReopen={() => d.reopenRevision(rkind, rev.id)}
           onDelete={() => d.deleteRevision(rkind, rev.id)}
-          onReply={(t) => d.addRevisionTurn(rkind, rev.id, t)}
           isPoppedOut
         />
       );

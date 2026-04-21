@@ -15,21 +15,14 @@ type AnchorKind = "note" | "revision" | "cut" | null;
 export interface RevisionsHostProps {
   side: Side;
   panelSide: Side | null;
-  revisionUsers: RevisionsHook["users"];
-  activeRevisionUserId: RevisionsHook["activeUserId"];
   generalRevisions: RevisionsHook["generalRevisions"];
   textRevisions: RevisionsHook["textRevisions"];
-  setActiveRevisionUser: RevisionsHook["setActiveUser"];
-  addRevisionUser: RevisionsHook["addUser"];
   addGeneralRevision: RevisionsHook["addGeneralRevision"];
-  addRevisionTurn: RevisionsHook["addTurn"];
-  resolveRevision: RevisionsHook["resolveRevision"];
-  reopenRevision: RevisionsHook["reopenRevision"];
   deleteRevision: RevisionsHook["deleteRevision"];
   pendingCommentText: string | null;
   setPendingCommentText: Dispatch<SetStateAction<string | null>>;
   pendingRevisionAnchorIdRef: MutableRefObject<string | null>;
-  handleSubmitComment: (comment: string) => void;
+  handleSubmitComment: (comment: string, authorIdOverride?: string) => void;
   handleCancelComment: () => void;
   setCommentHighlight: Dispatch<SetStateAction<string | null>>;
   setHoveredAnchorId: Dispatch<SetStateAction<string | null>>;
@@ -43,16 +36,9 @@ export function RevisionsHost(p: RevisionsHostProps) {
   const { pendingRevisionAnchorIdRef, setPendingCommentText, setHoveredAnchorId, setActiveAnchorKind } = p;
   return (
     <RevisionsPanel
-      users={p.revisionUsers}
-      activeUserId={p.activeRevisionUserId}
       generalRevisions={p.generalRevisions}
       textRevisions={p.textRevisions}
-      onSetActiveUser={p.setActiveRevisionUser}
-      onAddUser={p.addRevisionUser}
       onAddGeneral={(text, authorId) => { p.addGeneralRevision(text, authorId); }}
-      onAddTurn={p.addRevisionTurn}
-      onResolve={p.resolveRevision}
-      onReopen={p.reopenRevision}
       onDelete={p.deleteRevision}
       visible={true}
       pendingSelectedText={p.pendingCommentText}

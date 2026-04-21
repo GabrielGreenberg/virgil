@@ -28,7 +28,7 @@ export function useCommentActions(deps: {
   setActiveRight: (id: PanelId) => void;
   pendingCommentText: string | null;
   setPendingCommentText: Dispatch<SetStateAction<string | null>>;
-  addTextRevision: (selectedText: string, anchorId: string | null, comment: string) => { id: string } | null | undefined;
+  addTextRevision: (selectedText: string, anchorId: string | null, comment: string, authorIdOverride?: string) => { id: string } | null | undefined;
 }) {
   const {
     editorRef,
@@ -62,10 +62,10 @@ export function useCommentActions(deps: {
   }, [editorRef, pendingRevisionAnchorIdRef, setPendingCommentText, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   const handleSubmitComment = useCallback(
-    (comment: string) => {
+    (comment: string, authorIdOverride?: string) => {
       if (pendingCommentText && comment.trim()) {
         const anchorId = pendingRevisionAnchorIdRef.current;
-        const rev = addTextRevision(pendingCommentText, anchorId, comment.trim());
+        const rev = addTextRevision(pendingCommentText, anchorId, comment.trim(), authorIdOverride);
         if (rev && anchorId) {
           const ed = editorRef.current?.getEditor();
           if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
