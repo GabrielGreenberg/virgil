@@ -7,12 +7,13 @@ import { alignEntryToY, scrollEntryIntoView } from "../layout-scroll";
  * (archive, footnote, citation, \ref). Each listens on a `virgil-*-click`
  * event that the Editor's node views dispatch on mousedown.
  *
- * All four share the same shape: set the selection slot, try to scroll
- * an Omni entry into view, and if Omni doesn't host the item, force-open
- * the native panel on its placement side and scroll the entry there.
+ * Routing when OmniView is treated as a mode:
+ * - If OmniView hosts the card (on any side), scroll there.
+ * - If the native panel is already open on its home side, scroll there too.
+ * - Only force-open the native panel when neither is already showing.
  *
- * Citation clicks get the extra split-aware routing (same-side source →
- * split; opposite side or main text → activate on home side).
+ * Citation clicks get the extra split-aware routing — but only when
+ * neither OmniView nor the citations panel is already showing.
  */
 export function useMarkerClickBridges(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
@@ -42,16 +43,19 @@ export function useMarkerClickBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.archiveId) {
-        setSelectedArchiveId(detail.archiveId);
-        if (tryScrollOmniEntry(`ar:${detail.archiveId}`)) return;
-        const p = prefsRef.current;
-        const archivePlacement = p.placements.find((pl) => pl.id === "archive");
-        if (archivePlacement?.side === "left") {
-          if (p.activeLeft !== "archive") setActiveLeft("archive");
-        } else {
-          if (p.activeRight !== "archive") setActiveRight("archive");
-        }
+      if (!detail?.archiveId) return;
+      setSelectedArchiveId(detail.archiveId);
+      const omniHit = tryScrollOmniEntry(`archive:${detail.archiveId}`);
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "archive");
+      const side: Side = placement?.side ?? "right";
+      const active = side === "left" ? p.activeLeft === "archive" : p.activeRight === "archive";
+      const shouldOpen = !omniHit && !active;
+      if (shouldOpen) {
+        if (side === "left") setActiveLeft("archive");
+        else setActiveRight("archive");
+      }
+      if (active || shouldOpen) {
         requestAnimationFrame(() => {
           const entry = document.querySelector(
             `[data-archive-entry="${detail.archiveId}"]`,
@@ -67,16 +71,19 @@ export function useMarkerClickBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.footnoteId) {
-        setSelectedFootnoteId(detail.footnoteId);
-        if (tryScrollOmniEntry(`fn:${detail.footnoteId}`)) return;
-        const p = prefsRef.current;
-        const fnPlacement = p.placements.find((pl) => pl.id === "footnotes");
-        if (fnPlacement?.side === "left") {
-          if (p.activeLeft !== "footnotes") setActiveLeft("footnotes");
-        } else {
-          if (p.activeRight !== "footnotes") setActiveRight("footnotes");
-        }
+      if (!detail?.footnoteId) return;
+      setSelectedFootnoteId(detail.footnoteId);
+      const omniHit = tryScrollOmniEntry(`footnote:${detail.footnoteId}`);
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "footnotes");
+      const side: Side = placement?.side ?? "left";
+      const active = side === "left" ? p.activeLeft === "footnotes" : p.activeRight === "footnotes";
+      const shouldOpen = !omniHit && !active;
+      if (shouldOpen) {
+        if (side === "left") setActiveLeft("footnotes");
+        else setActiveRight("footnotes");
+      }
+      if (active || shouldOpen) {
         requestAnimationFrame(() => {
           const entry = document.querySelector(
             `[data-link-card="footnote:${detail.footnoteId}"]`,
@@ -92,20 +99,23 @@ export function useMarkerClickBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.citationId) {
-        setSelectedCitationId(detail.citationId);
-        const targetY: number | undefined =
-          typeof detail.clickY === "number" ? detail.clickY : undefined;
-        if (tryScrollOmniEntry(`ci:${detail.citationId}`, targetY)) return;
-        const p = prefsRef.current;
-        const citPlacement = p.placements.find((pl) => pl.id === "citations");
-        const targetSide: Side = citPlacement?.side ?? "left";
-        const sourceSide = detail.sourceSide as Side | undefined;
-        const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
-        const sourceHalf = detail.sourceHalf as Half | undefined;
+      if (!detail?.citationId) return;
+      setSelectedCitationId(detail.citationId);
+      const targetY: number | undefined =
+        typeof detail.clickY === "number" ? detail.clickY : undefined;
+      const omniHit = tryScrollOmniEntry(`citation:${detail.citationId}`, targetY);
+      const p = prefsRef.current;
+      const citPlacement = p.placements.find((pl) => pl.id === "citations");
+      const targetSide: Side = citPlacement?.side ?? "left";
+      const active = targetSide === "left" ? p.activeLeft === "citations" : p.activeRight === "citations";
+      const sourceSide = detail.sourceSide as Side | undefined;
+      const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
+      const sourceHalf = detail.sourceHalf as Half | undefined;
+      const shouldOpen = !omniHit && !active;
 
+      if (shouldOpen) {
         // If the click came from inside the citations panel itself, don't
-        // re-route — just let the scroll logic below bring the entry into view.
+        // re-route — just scroll. Otherwise apply split-aware routing.
         if (sourcePanelId !== "citations") {
           if (sourceSide && sourceSide === targetSide && sourcePanelId) {
             // Same side as citations' home → open as a split so the source
@@ -115,24 +125,19 @@ export function useMarkerClickBridges(deps: {
                 ? p.activeLeftBottom != null
                 : p.activeRightBottom != null;
             if (!isSplit) {
-              // Not split yet: pin source to top, open citations in bottom.
               setActiveHalf(targetSide, "top", sourcePanelId);
               setActiveHalf(targetSide, "bottom", "citations");
             } else {
-              // Already split: put citations in the half opposite the source.
               const oppHalf: Half = sourceHalf === "bottom" ? "top" : "bottom";
               setActiveHalf(targetSide, oppHalf, "citations");
             }
           } else {
-            // From main text or from a panel on the opposite side — just
-            // activate citations on its home side.
-            if (targetSide === "left") {
-              if (p.activeLeft !== "citations") setActiveLeft("citations");
-            } else {
-              if (p.activeRight !== "citations") setActiveRight("citations");
-            }
+            if (targetSide === "left") setActiveLeft("citations");
+            else setActiveRight("citations");
           }
         }
+      }
+      if (active || shouldOpen) {
         requestAnimationFrame(() => {
           const entry = document.querySelector(
             `[data-link-card="citation:${detail.citationId}"]`,
