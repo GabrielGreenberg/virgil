@@ -633,35 +633,63 @@ export function PanelChromeProvider({
 }
 
 /**
- * Pop-out button bound to the surrounding PanelChromeProvider.
+ * Pop-out button bound to the surrounding PanelChromeProvider. Renders a
+ * small square pod resting on top of a rectangular page, suggesting a
+ * floating window over the document. Greys out (disabled) once the panel
+ * is already popped out — closing is handled by the adjacent X button.
  * Renders nothing when there is no chrome (e.g. panel not popped-out aware).
- * Use this in custom panel headers that don't go through PanelHeader.
- * Styled identically to the per-card popout — 18px translucent-black circle,
- * chevron when docked / X when popped. Place it as the last element on the
- * top-right of a panel header.
  */
 export function PanelPopout() {
   const chrome = useContext(PanelChromeContext);
   if (!chrome) return null;
-  return <CardPopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />;
+  const { isPoppedOut, onTogglePopout } = chrome;
+  return (
+    <button
+      type="button"
+      onClick={isPoppedOut ? undefined : onTogglePopout}
+      disabled={isPoppedOut}
+      className={`w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 ${
+        isPoppedOut
+          ? "text-ink-faint cursor-default"
+          : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
+      }`}
+      title={isPoppedOut ? "Already popped out" : "Pop out panel"}
+      aria-label={isPoppedOut ? "Already popped out" : "Pop out panel"}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path
+          d="M15 7 L15 4 A2 2 0 0 0 13 2 L4 2 A2 2 0 0 0 2 4 L2 20 A2 2 0 0 0 4 22 L13 22 A2 2 0 0 0 15 20 L15 17"
+          strokeLinecap="butt"
+        />
+        <rect x="10" y="7" width="11" height="10" rx="2" />
+      </svg>
+    </button>
+  );
 }
 
 /**
- * Close button bound to the surrounding PanelChromeProvider. Renders a single
- * chevron pointing toward the toolbar strip (outward — left side points left,
- * right side points right). Click closes the panel: collapses the column in
- * single mode, removes just the half in split mode, or closes the floater
- * in pop-out mode (without re-docking).
+ * Close button bound to the surrounding PanelChromeProvider. Renders an X
+ * and always closes the panel — collapses the column in single mode,
+ * removes just the half in split mode, or closes the floater in pop-out
+ * mode. Always the rightmost element of a panel header.
  */
 export function PanelClose() {
   const chrome = useContext(PanelChromeContext);
   if (!chrome) return null;
-  const pointsLeft = chrome.side === "left";
   return (
     <button
       type="button"
       onClick={chrome.onClose}
-      className="w-5 h-5 -ml-1.5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
+      className="w-5 h-5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
       title="Close panel"
       aria-label="Close panel"
     >
@@ -675,17 +703,8 @@ export function PanelClose() {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        {pointsLeft ? (
-          <>
-            <polyline points="11 18 5 12 11 6" />
-            <polyline points="19 18 13 12 19 6" />
-          </>
-        ) : (
-          <>
-            <polyline points="5 18 11 12 5 6" />
-            <polyline points="13 18 19 12 13 6" />
-          </>
-        )}
+        <line x1="6" y1="6" x2="18" y2="18" />
+        <line x1="18" y1="6" x2="6" y2="18" />
       </svg>
     </button>
   );
@@ -955,12 +974,8 @@ export function PanelHeader({
       )}
       <div className="flex-1" />
       {children}
+      {chrome && <PanelPopout />}
       <PanelClose />
-      {chrome && (
-        <div className="-mr-2">
-          <CardPopoutButton isPoppedOut={chrome.isPoppedOut} onClick={chrome.onTogglePopout} />
-        </div>
-      )}
     </div>
   );
 }
