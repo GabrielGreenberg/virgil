@@ -374,7 +374,7 @@ const QuoteEntry = memo(function QuoteEntry({
             value={text}
             onChange={handleTextChange}
             placeholder="Enter quoted text..."
-            className="text-sm text-ink-body leading-relaxed italic"
+            className="text-sm text-ink-body leading-relaxed"
             rows={1}
           />
         </div>
