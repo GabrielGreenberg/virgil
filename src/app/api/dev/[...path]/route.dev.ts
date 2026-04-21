@@ -60,6 +60,46 @@ export async function GET(
     }
   }
 
+  // /api/dev/doc/:id/_all-files → all files in paper folder, base64-encoded,
+  // skipping virgil/. Used by the compile pipeline so SwiftLaTeX can see
+  // figures and \include'd files.
+  if (
+    segments[0] === "doc" &&
+    segments.length === 3 &&
+    segments[2] === "_all-files"
+  ) {
+    const docId = segments[1];
+    const folder = resolveDocFolder(docId);
+    if (!folder) {
+      return NextResponse.json({ error: "doc not found" }, { status: 404 });
+    }
+    const rootPath = path.join(DATA_DIR, folder);
+    if (!rootPath.startsWith(DATA_DIR)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    const files: { path: string; base64: string }[] = [];
+    const walk = (dirAbs: string, rel: string) => {
+      for (const name of fs.readdirSync(dirAbs)) {
+        if (rel === "" && name === "virgil") continue;
+        const abs = path.join(dirAbs, name);
+        const nextRel = rel ? `${rel}/${name}` : name;
+        const stat = fs.statSync(abs);
+        if (stat.isDirectory()) {
+          walk(abs, nextRel);
+        } else if (stat.isFile()) {
+          const buf = fs.readFileSync(abs);
+          files.push({ path: nextRel, base64: buf.toString("base64") });
+        }
+      }
+    };
+    try {
+      walk(rootPath, "");
+    } catch {
+      return NextResponse.json({ error: "read failed" }, { status: 500 });
+    }
+    return NextResponse.json({ files });
+  }
+
   // /api/dev/doc/:id/... → resolve to virgil-data/<folder>/...
   if (segments[0] === "doc" && segments.length >= 3) {
     const docId = segments[1];

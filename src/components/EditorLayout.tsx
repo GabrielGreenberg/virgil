@@ -13,6 +13,7 @@ import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
+import { useLatexCompile } from "@/hooks/useLatexCompile";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
@@ -240,6 +241,7 @@ export default function EditorLayout() {
     docPermState === "granted" ? currentDocId : null;
 
   const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(docIdForHooks);
+  const { compile: compilePdf, isCompiling } = useLatexCompile(docIdForHooks);
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -3137,6 +3139,26 @@ export default function EditorLayout() {
                 Code
               </>
             )}
+          </button>
+          {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder and
+              opens the resulting PDF in a new window. Disabled while a
+              compile is in flight; spinner replaces the play-triangle. */}
+          <button
+            onClick={compilePdf}
+            disabled={!currentDocId || isCompiling}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-subtle"
+            title={isCompiling ? "Compiling…" : "Compile to PDF"}
+          >
+            {isCompiling ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <polygon points="6 4 20 12 6 20 6 4" />
+              </svg>
+            )}
+            Compile
           </button>
         </div>
       </div>

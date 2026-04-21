@@ -625,6 +625,53 @@ async function touchDocTimestamp(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Paper folder enumeration (for the compile pipeline)
+// ---------------------------------------------------------------------------
+
+export interface PaperFile {
+  /** Path relative to the paper folder root, e.g. "main.tex", "figs/plot.png". */
+  path: string;
+  /** File contents as bytes. */
+  bytes: Uint8Array;
+}
+
+/**
+ * Read every file in the doc's paper folder (recursively), skipping the
+ * `virgil/` sidecar subdir. Used by the compile pipeline to feed the
+ * SwiftLaTeX engine's memfs.
+ */
+export async function readPaperFolder(docId: string): Promise<PaperFile[]> {
+  const docHandle = await requireDocHandle(docId);
+  const out: PaperFile[] = [];
+  await collectFiles(docHandle, "", out);
+  return out;
+}
+
+async function collectFiles(
+  dir: FileSystemDirectoryHandle,
+  prefix: string,
+  out: PaperFile[],
+): Promise<void> {
+  for await (const entry of dir.values()) {
+    if (prefix === "" && entry.name === VIRGIL_SUBDIR) continue;
+    const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.kind === "file") {
+      const file = await (entry as FileSystemFileHandle).getFile();
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      out.push({ path, bytes });
+    } else if (entry.kind === "directory") {
+      await collectFiles(entry as FileSystemDirectoryHandle, path, out);
+    }
+  }
+}
+
+/** The main .tex filename for a doc (e.g. "main.tex" or "paper.tex"). */
+export async function getTexFilename(docId: string): Promise<string> {
+  const meta = await getDocMetaOrThrow(docId);
+  return meta.texFilename;
+}
+
+// ---------------------------------------------------------------------------
 // Drain helpers
 // ---------------------------------------------------------------------------
 
