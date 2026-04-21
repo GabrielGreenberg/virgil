@@ -6,16 +6,9 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
 import { Editor } from "@tiptap/react";
-import SuggestionPanel from "@/panels/Suggestions";
-import RevisionsPanel, { RevisionCard } from "@/panels/Revisions";
-import NotesPanel, { NoteCard } from "@/panels/Notes";
-import CutterPanel, { CutCard } from "@/panels/Cutter";
 import SelectionChip from "./SelectionChip";
-import OutlinePanel, { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
-import TodoPanel, { TodoRow } from "@/panels/Todo";
-import ArchivePanel, { ArchiveCard } from "@/panels/Archive";
+import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import ArchiveConnectors from "./ArchiveConnectors";
-import FootnotePanel from "@/panels/Footnotes";
 import LinkConnector from "@/links/_shared/LinkConnector";
 import ViewToggle from "./ViewToggle";
 import ProgressBar from "./ProgressBar";
@@ -68,45 +61,25 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   cut: "cut",
 };
 import {
-  createLinkedAnchor,
   removeLinkedAnchor,
   reanchorByText,
-  updateLinkedAnchorCard,
   getLinkedParagraphIds,
   getTextAnchor,
-  collectAllLinkedParagraphIds,
 } from "@/links/links";
 import { generateEntityId } from "@/lib/uuid";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
-import CitationsPanel from "@/panels/Citations";
-import BibliographyPanel from "@/panels/Bibliography";
-import QuotationsPanel from "@/panels/Quotations";
-import SearchPanel, {
+import {
   type SearchPanelState,
   INITIAL_SEARCH_STATE,
 } from "@/panels/Search";
-import OmniViewPanel, {
-  type OmniItem,
+import {
   type OmniCategory,
   DEFAULT_OMNI_CATEGORIES,
   migrateOmniCategories,
   deriveCategorySides,
 } from "@/panels/Omni";
-import { CitationCard, buildCitationOmniItems } from "@/panels/Citations";
-import {
-  FootnoteCard,
-  OrphanedFootnoteCard,
-  buildFootnoteOmniItems,
-} from "@/panels/Footnotes";
-import {
-  QuotationGroupCard,
-  buildQuotationOmniItems,
-} from "@/panels/Quotations";
-import { buildNoteOmniItems } from "@/panels/Notes";
-import { buildArchiveOmniItems } from "@/panels/Archive";
-import { buildTodoOmniItems } from "@/panels/Todo";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import BibEntryCard from "./BibEntryCard";
 import { AiRequestCard } from "./panel-primitives";
@@ -142,8 +115,38 @@ import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { SplitEditorPanes } from "./editor-layout/split-editor-panes";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
+import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
+import { useFocusActions } from "./editor-layout/card-actions/focus";
+import { useCommentActions } from "./editor-layout/card-actions/comments";
+import { useFileActions } from "./editor-layout/card-actions/files";
+import { useArchiveActions } from "./editor-layout/card-actions/archive";
+import { useFootnoteActions } from "./editor-layout/card-actions/footnotes";
+import { useOrphanActions } from "./editor-layout/card-actions/orphans";
+import { useCitationActions } from "./editor-layout/card-actions/citations";
+import { useRefActions } from "./editor-layout/card-actions/ref";
+import { useMarkerActions } from "./editor-layout/card-actions/markers";
+import { useDropActions } from "./editor-layout/card-actions/drops";
+import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
 import { EditorLayoutProvider } from "./editor-layout/context";
+import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
+import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
+import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
+import { PanelViewModeProvider } from "./editor-layout/contexts/panel-view-mode";
+import { SelectionsProvider } from "./editor-layout/contexts/selections";
 import { renderPoppedCard } from "./editor-layout/floating-cards";
+import { OutlineHost } from "./editor-layout/panels/outline-host";
+import { CutterHost } from "./editor-layout/panels/cutter-host";
+import { TodoHost } from "./editor-layout/panels/todo-host";
+import { ArchiveHost } from "./editor-layout/panels/archive-host";
+import { QuotationsHost } from "./editor-layout/panels/quotations-host";
+import { BibliographyHost } from "./editor-layout/panels/bibliography-host";
+import { NotesHost } from "./editor-layout/panels/notes-host";
+import { FootnotesHost } from "./editor-layout/panels/footnotes-host";
+import { RevisionsHost } from "./editor-layout/panels/revisions-host";
+import { CitationsHost } from "./editor-layout/panels/citations-host";
+import { OmniHost } from "./editor-layout/panels/omni-host";
+import { SearchHost } from "./editor-layout/panels/search-host";
+import { SuggestionsHost } from "./editor-layout/panels/suggestions-host";
 import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
@@ -531,7 +534,6 @@ export default function EditorLayout() {
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
   const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
-  const latestDocTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
   const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
@@ -1385,19 +1387,22 @@ export default function EditorLayout() {
     };
   }, [currentDocId]);
 
-  const handleDocPermissionGranted = useCallback(() => {
-    setDocPermState("granted");
-    refetchDoc();
-  }, [refetchDoc]);
-
-  const handleUpdate = useCallback(
-    (doc: JSONContent) => {
-      onUpdate(doc);
-      if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
-      latestDocTimerRef.current = setTimeout(() => setLatestDoc(doc), 300);
-    },
-    [onUpdate]
-  );
+  const {
+    handleUpdate,
+    handleScrollToHeading,
+    handleScrollToPos,
+    handleReorderBlocks,
+    handleRenameHeading,
+    handleUpdateLabel,
+    handleRenameParTitle,
+  } = useEditorOps({
+    editorRef,
+    mirrorViewRef,
+    editorSplit,
+    activeSplitPane,
+    onUpdate,
+    setLatestDoc,
+  });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
   const docForOutline = latestDoc || content;
@@ -1419,21 +1424,12 @@ export default function EditorLayout() {
     [...activeDividerLevels].map((lvl) => `show-dividers-${lvl}`).join(" ")
   ), [activeDividerLevels]);
 
-  const handleFocusActivate = useCallback(() => {
-    focusMode.activate(outlineHeadings, outlineTotalBlocks);
-  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
-
-  const handleFocusMoveTo = useCallback((blockIndex: number) => {
-    focusMode.moveTo(blockIndex, outlineHeadings, outlineTotalBlocks);
-  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
-
-  const handleFocusExpandTo = useCallback((blockIndex: number) => {
-    focusMode.expandTo(blockIndex, outlineHeadings, outlineTotalBlocks);
-  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
-
-  const handleFocusSnapBoundary = useCallback((edge: "top" | "bottom", blockIndex: number) => {
-    focusMode.snapBoundary(edge, blockIndex, outlineHeadings, outlineTotalBlocks);
-  }, [focusMode, outlineHeadings, outlineTotalBlocks]);
+  const {
+    handleFocusActivate,
+    handleFocusMoveTo,
+    handleFocusExpandTo,
+    handleFocusSnapBoundary,
+  } = useFocusActions({ focusMode, outlineHeadings, outlineTotalBlocks });
 
   // Focus word count: sum per-block counts within the focused range
   const focusWordCount = useMemo(() => {
@@ -1443,262 +1439,48 @@ export default function EditorLayout() {
     return { words };
   }, [focusMode.state, docForOutline, focusWcConfig.include]);
 
-  const handleScrollToHeading = useCallback((blockIndex: number) => {
-    // If the split is open and the bottom pane is active, scroll the mirror
-    // view; otherwise fall back to the canonical editor's scroll behavior.
-    const mirrorView = mirrorViewRef.current;
-    if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      if (blockIndex === -1) {
-        editor.commands.setTextSelection(1);
-        const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
-        if (scrollEl) scrollEl.scrollTop = 0;
-        return;
-      }
-      let pos = 0;
-      let idx = 0;
-      editor.state.doc.forEach((_node, offset) => {
-        if (idx === blockIndex) pos = offset + 1;
-        idx++;
-      });
-      if (pos > 0) {
-        editor.commands.setTextSelection(pos);
-        try {
-          const domAtPos = mirrorView.domAtPos(pos);
-          const el = domAtPos.node instanceof HTMLElement
-            ? domAtPos.node
-            : domAtPos.node.parentElement;
-          el?.scrollIntoView({ behavior: "instant", block: "center" });
-        } catch { /* noop */ }
-      }
-      return;
-    }
-    editorRef.current?.scrollToHeading(blockIndex);
-  }, [editorSplit, activeSplitPane]);
-
-  // Scroll `pos` into view in whichever pane is currently active.
-  const handleScrollToPos = useCallback((pos: number) => {
-    const mirrorView = mirrorViewRef.current;
-    if (editorSplit && activeSplitPane === "bottom" && mirrorView) {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      const clamped = Math.max(0, Math.min(pos, editor.state.doc.content.size));
-      try {
-        editor.commands.setTextSelection(clamped);
-        const coords = mirrorView.coordsAtPos(clamped);
-        const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
-        if (scrollEl && coords) {
-          const scrollRect = scrollEl.getBoundingClientRect();
-          const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
-          scrollEl.scrollTop = Math.max(0, targetY);
-        }
-      } catch { /* pos out of range */ }
-      return;
-    }
-    editorRef.current?.scrollToPos(pos);
-  }, [editorSplit, activeSplitPane]);
-
-  const handleReorderBlocks = useCallback((fromIndex: number, count: number, toIndex: number) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    const doc = editor.state.doc;
-    // Collect absolute positions of each top-level block
-    const positions: { from: number; to: number }[] = [];
-    doc.forEach((node, offset) => {
-      positions.push({ from: offset, to: offset + node.nodeSize });
-    });
-    if (fromIndex < 0 || fromIndex + count > positions.length || toIndex < 0 || toIndex > positions.length) return;
-    if (toIndex >= fromIndex && toIndex <= fromIndex + count) return; // no-op
-
-    const sliceFrom = positions[fromIndex].from;
-    const sliceTo = positions[fromIndex + count - 1].to;
-    const slice = doc.slice(sliceFrom, sliceTo);
-
-    let tr = editor.state.tr;
-    if (toIndex < fromIndex) {
-      // Moving upward: insert first, then delete (positions shift correctly)
-      const insertPos = positions[toIndex].from;
-      tr = tr.insert(insertPos, slice.content);
-      // After insert, the original range shifted by slice size
-      const shift = slice.content.size;
-      tr = tr.delete(sliceFrom + shift, sliceTo + shift);
-    } else {
-      // Moving downward: delete first, then insert
-      tr = tr.delete(sliceFrom, sliceTo);
-      // After delete, positions above the deleted range shifted
-      const shift = sliceTo - sliceFrom;
-      const insertPos = toIndex >= positions.length
-        ? positions[positions.length - 1].to - shift
-        : positions[toIndex].from - shift;
-      tr = tr.insert(insertPos, slice.content);
-    }
-    editor.view.dispatch(tr);
-  }, []);
-
-  const handleRenameHeading = useCallback((blockIndex: number, newText: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    let idx = 0;
-    editor.state.doc.forEach((node, offset) => {
-      if (idx === blockIndex && node.type.name === "heading") {
-        const from = offset + 1; // inside the heading node
-        const to = offset + node.nodeSize - 1; // end of heading content
-        const tr = editor.state.tr.delete(from, to).insertText(newText, from);
-        editor.view.dispatch(tr);
-      }
-      idx++;
-    });
-  }, []);
-
-  const handleUpdateLabel = useCallback((blockIndex: number, newLabel: string | null) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    let idx = 0;
-    editor.state.doc.forEach((node, offset) => {
-      if (idx === blockIndex && node.type.name === "heading") {
-        const tr = editor.state.tr.setNodeMarkup(offset, undefined, {
-          ...node.attrs,
-          label: newLabel && newLabel.trim() ? newLabel.trim() : null,
-        });
-        editor.view.dispatch(tr);
-      }
-      idx++;
-    });
-  }, []);
-
-  const handleRenameParTitle = useCallback((blockIndex: number, newTitle: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    let idx = 0;
-    editor.state.doc.forEach((node, offset) => {
-      if (idx === blockIndex) {
-        const tr = editor.state.tr.setNodeMarkup(offset, undefined, { ...node.attrs, parTitle: newTitle });
-        editor.view.dispatch(tr);
-      }
-      idx++;
-    });
-  }, []);
-
-  const handleAct = useCallback(
-    (id: string, action: "accepted" | "rejected" | "skipped") => {
-      if (action === "accepted" && currentSuggestion && currentSuggestion.id === id) {
-        const replacement = currentSuggestion.revision || currentSuggestion.suggested_text;
-        editorRef.current?.replaceText(currentSuggestion.original_text, replacement);
-      }
-      actOnSuggestion(id, action);
-    },
-    [actOnSuggestion, currentSuggestion]
-  );
-
-  const handleArchive = useCallback(() => {
-    if (!editorRef.current) return;
-    const selectedText = editorRef.current.getSelectedText();
-    if (!selectedText || !selectedText.trim()) return;
-    // Create snippet with plain text to get an ID
-    const snippet = archiveContent(selectedText);
-    // archiveSelection deletes the selection and returns rich content + paragraphId
-    const result = editorRef.current.archiveSelection(snippet.id);
-    if (result) {
-      if (result.content) updateArchiveSnippet(snippet.id, result.content);
-      if (result.paragraphId) addArchiveParagraphId(snippet.id, result.paragraphId);
-    }
-    // Ensure archive panel is open
-    const archivePlacement = prefs.placements.find((p) => p.id === "archive");
-    if (archivePlacement?.side === "left") {
-      if (prefs.activeLeft !== "archive") setActiveLeft("archive");
-    } else {
-      if (prefs.activeRight !== "archive") setActiveRight("archive");
-    }
-  }, [archiveContent, updateArchiveSnippet, addArchiveParagraphId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
-
-  // Archive-capture handler: receives content extracted from the editor
-  // by usePanelCapture (paragraph grip drag or text-selection drag) and
-  // creates a new snippet anchored to the source paragraph. The empty
-  // paragraph shell / inline deletion was already performed by the hook.
-  const handleArchiveCapture = useCallback(
-    ({ content, paragraphId }: { content: unknown; paragraphId: string | null }) => {
-      const snippet = archiveContent(content);
-      if (paragraphId) addArchiveParagraphId(snippet.id, paragraphId);
-      const archivePlacement = prefs.placements.find((p) => p.id === "archive");
-      if (archivePlacement?.side === "left") {
-        if (prefs.activeLeft !== "archive") setActiveLeft("archive");
-      } else {
-        if (prefs.activeRight !== "archive") setActiveRight("archive");
-      }
-    },
-    [archiveContent, addArchiveParagraphId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
-  );
-
-  const insertingRef = useRef(false);
-  const handleInsertArchive = useCallback((id: string) => {
-    if (insertingRef.current) return;
-    insertingRef.current = true;
-    const found = archiveSnippets.find((s) => s.id === id);
-    if (found && editorRef.current) {
-      editorRef.current.restoreArchive(found.content);
-      deleteSnippet(id);
-      setSelectedArchiveId(null);
-    }
-    requestAnimationFrame(() => { insertingRef.current = false; });
-  }, [archiveSnippets, deleteSnippet]);
-
-  const handleRestoreArchive = useCallback((id: string) => {
-    const snippet = restoreSnippet(id);
-    if (snippet) {
-      editorRef.current?.restoreArchive(snippet.content);
-    }
-    setSelectedArchiveId(null);
-  }, [restoreSnippet]);
-
-  const handleDeleteArchive = useCallback((id: string) => {
-    deleteSnippet(id);
-    setSelectedArchiveId(null);
-  }, [deleteSnippet]);
-
-  // --- Footnote handlers ---
-  const handleCreateFootnote = useCallback(() => {
-    if (!editorRef.current) return;
-    const result = editorRef.current.createFootnoteFromSelection();
-    if (!result) return;
-    editorRef.current.renumberFootnotes();
-    // Open footnotes panel
-    const fnPlacement = prefs.placements.find((p) => p.id === "footnotes");
-    if (fnPlacement?.side === "left") {
-      if (prefs.activeLeft !== "footnotes") setActiveLeft("footnotes");
-    } else {
-      if (prefs.activeRight !== "footnotes") setActiveRight("footnotes");
-    }
-    setSelectedFootnoteId(result.footnoteId);
-  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
-
-  // --- Quotation handlers ---
-  const handleQuoteSelection = useCallback(() => {
-    if (!editorRef.current) return;
-    const ed = editorRef.current.getEditor();
-    if (!ed) return;
-    const { from, to } = ed.state.selection;
-    if (from === to) return; // nothing selected
-    const text = ed.state.doc.textBetween(from, to, " ").trim();
-    if (!text) return;
-    const paragraphId = editorRef.current.ensureParagraphUuid(from);
-    const group = addQuotationGroup({ text, paragraphId });
-    // Open quotations panel
-    const placement = prefs.placements.find((p) => p.id === "quotations");
-    if (placement?.side === "left") {
-      if (prefs.activeLeft !== "quotations") setActiveLeft("quotations");
-    } else {
-      if (prefs.activeRight !== "quotations") setActiveRight("quotations");
-    }
-    setSelectedQuotationGroupId(group.id);
-  }, [
+  const {
+    handleAct,
+    handleCreateFootnote,
+    handleQuoteSelection,
+    handleAddNoteFromSelection,
+    handleCutSelection,
+  } = useSelectionToCardActions({
+    editorRef,
+    addNote,
+    addCut,
     addQuotationGroup,
-    prefs.placements,
-    prefs.activeLeft,
-    prefs.activeRight,
+    actOnSuggestion,
+    currentSuggestion,
+    setSelectedNoteId,
+    setSelectedCutId,
+    setSelectedQuotationGroupId,
+    setSelectedFootnoteId,
+    prefs,
     setActiveLeft,
     setActiveRight,
-  ]);
+  });
+
+  const {
+    handleArchive,
+    handleArchiveCapture,
+    handleInsertArchive,
+    handleRestoreArchive,
+    handleDeleteArchive,
+  } = useArchiveActions({
+    editorRef,
+    archiveContent,
+    updateArchiveSnippet,
+    addArchiveParagraphId,
+    archiveSnippets,
+    deleteSnippet,
+    restoreSnippet,
+    setSelectedArchiveId,
+    prefs,
+    setActiveLeft,
+    setActiveRight,
+  });
+
 
   // Listen for quotation drops onto paragraphs (dispatched by Editor.tsx handleDrop)
   useEffect(() => {
@@ -1837,227 +1619,48 @@ export default function EditorLayout() {
     [],
   );
 
-  const handleQuotationMarkerClick = useCallback(
-    (groupId: string) => {
-      setSelectedQuotationGroupId(groupId);
-      // Route to OmniView if it has a card for this group
-      if (tryScrollOmniEntry(`qu:${groupId}`)) return;
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "quotations");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "quotations") setActiveLeft("quotations");
-      } else {
-        if (p.activeRight !== "quotations") setActiveRight("quotations");
-      }
-    },
-    [setActiveLeft, setActiveRight, tryScrollOmniEntry]
-  );
+  const {
+    handleQuotationMarkerClick,
+    handleNoteMarkerClick,
+    handleHoverNote,
+    handleCutMarkerClick,
+    handleHoverCut,
+    handleTodoMarkerClick,
+  } = useMarkerActions({
+    prefsRef,
+    setActiveLeft,
+    setActiveRight,
+    tryScrollOmniEntry,
+    setActiveAnchorId,
+    setHoveredAnchorId,
+    setActiveAnchorKind,
+    notes,
+    selectedNoteId,
+    setSelectedNoteId,
+    cuts,
+    selectedCutId,
+    setSelectedCutId,
+    selectedTodoId,
+    setSelectedTodoId,
+    setSelectedQuotationGroupId,
+    quotationGroups,
+  });
 
-  const handleNoteMarkerClick = useCallback(
-    (noteId: string) => {
-      const nextSelected = selectedNoteId === noteId ? null : noteId;
-      setSelectedNoteId(nextSelected);
-      // Also drive the linked-anchor highlight if the note has one.
-      const note = notes.find((n) => n.id === noteId);
-      const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
-      if (anchorId) {
-        if (nextSelected) {
-          setActiveAnchorId(anchorId);
-          setActiveAnchorKind("note");
-        } else {
-          setActiveAnchorId(null);
-          setActiveAnchorKind(null);
-        }
-      }
-      // Route to OmniView if selecting (not deselecting) and it has a card
-      if (nextSelected && tryScrollOmniEntry(`nt:${noteId}`)) return;
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "notes");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "notes") setActiveLeft("notes");
-      } else {
-        if (p.activeRight !== "notes") setActiveRight("notes");
-      }
-    },
-    [setActiveLeft, setActiveRight, selectedNoteId, notes, tryScrollOmniEntry]
-  );
 
-  const handleHoverNote = useCallback(
-    (noteId: string | null) => {
-      if (!noteId) {
-        setHoveredAnchorId(null);
-        return;
-      }
-      const note = notes.find((n) => n.id === noteId);
-      const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
-      if (anchorId) {
-        setHoveredAnchorId(anchorId);
-        setActiveAnchorKind("note");
-      }
-    },
-    [notes],
-  );
+  const {
+    handleDropSelectionOnNotes,
+    handleDropParagraphOnNotes,
+    handleDropSelectionOnCutter,
+    handleDropParagraphOnCutter,
+  } = useDropActions({
+    editorRef,
+    addNote,
+    addCut,
+    setSelectedNoteId,
+    setSelectedCutId,
+  });
 
-  // Create a linked note from the current selection. Toolbar button +
-  // selection-chip drop both go through this.
-  const handleAddNoteFromSelection = useCallback(() => {
-    const ed = editorRef.current?.getEditor();
-    if (!ed || !editorRef.current) return;
-    const { from, to } = ed.state.selection;
-    if (from === to) return;
-    const paragraphId = editorRef.current.ensureParagraphUuid(from);
-    const record = createLinkedAnchor(ed, "note");
-    if (!record) return;
-    const note = addNote(
-      paragraphId,
-      undefined,
-      { anchorId: record.anchorId, anchorText: record.text },
-    );
-    updateLinkedAnchorCard(ed, record.anchorId, "note", note.id);
-    setSelectedNoteId(note.id);
-    // Drop the native DOM selection so the browser doesn't render a lingering
-    // grey "inactive selection" rectangle after focus leaves the editor. The
-    // linked-anchor highlight (driven by the selection-sync effect) is now
-    // the authoritative visual.
-    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    const placement = prefs.placements.find((p) => p.id === "notes");
-    if (placement?.side === "left") {
-      if (prefs.activeLeft !== "notes") setActiveLeft("notes");
-    } else {
-      if (prefs.activeRight !== "notes") setActiveRight("notes");
-    }
-  }, [addNote, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
-  // Create a linked note from an arbitrary range (used by the selection chip
-  // when dropped on the Notes panel — selection may no longer be live).
-  const handleDropSelectionOnNotes = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      const ed = editorRef.current?.getEditor();
-      if (!ed || !editorRef.current) return;
-      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
-      const record = createLinkedAnchor(ed, "note", { from: payload.from, to: payload.to });
-      if (!record) return;
-      const note = addNote(
-        paragraphId,
-        undefined,
-        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
-      );
-      updateLinkedAnchorCard(ed, record.anchorId, "note", note.id);
-      setSelectedNoteId(note.id);
-    },
-    [addNote],
-  );
-
-  // Drag a whole paragraph (via its grab handle) into the Notes panel:
-  // creates a new note anchored to that paragraph's UUID. No text-range
-  // linkedAnchor — the binding is at paragraph granularity — and the
-  // paragraph stays intact in the document (unlike capture-style drops
-  // that extract content).
-  const handleDropParagraphOnNotes = useCallback(
-    (paragraphId: string) => {
-      if (!paragraphId) return;
-      const note = addNote(paragraphId);
-      setSelectedNoteId(note.id);
-    },
-    [addNote],
-  );
-
-  // --- Cutter handlers ---
-  const handleCutMarkerClick = useCallback(
-    (cutId: string) => {
-      const nextSelected = selectedCutId === cutId ? null : cutId;
-      setSelectedCutId(nextSelected);
-      const cut = cuts.find((c) => c.id === cutId);
-      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
-      if (anchorId) {
-        if (nextSelected) {
-          setActiveAnchorId(anchorId);
-          setActiveAnchorKind("cut");
-        } else {
-          setActiveAnchorId(null);
-          setActiveAnchorKind(null);
-        }
-      }
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "cutter");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "cutter") setActiveLeft("cutter");
-      } else {
-        if (p.activeRight !== "cutter") setActiveRight("cutter");
-      }
-    },
-    [cuts, selectedCutId, setActiveLeft, setActiveRight],
-  );
-
-  const handleHoverCut = useCallback(
-    (cutId: string | null) => {
-      if (!cutId) { setHoveredAnchorId(null); return; }
-      const cut = cuts.find((c) => c.id === cutId);
-      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
-      if (anchorId) {
-        setHoveredAnchorId(anchorId);
-        setActiveAnchorKind("cut");
-      }
-    },
-    [cuts],
-  );
-
-  const handleCutSelection = useCallback(() => {
-    const ed = editorRef.current?.getEditor();
-    if (!ed || !editorRef.current) return;
-    const { from, to } = ed.state.selection;
-    if (from === to) return;
-    const paragraphId = editorRef.current.ensureParagraphUuid(from);
-    const record = createLinkedAnchor(ed, "cut");
-    if (!record) return;
-    const cut = addCut(
-      paragraphId,
-      undefined,
-      { anchorId: record.anchorId, anchorText: record.text },
-    );
-    updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
-    setSelectedCutId(cut.id);
-    // Mirror handleAddNoteFromSelection: drop the native DOM selection so the
-    // browser doesn't render a grey "inactive selection" ghost after the
-    // toolbar button steals focus.
-    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    const placement = prefs.placements.find((p) => p.id === "cutter");
-    if (placement?.side === "left") {
-      if (prefs.activeLeft !== "cutter") setActiveLeft("cutter");
-    } else {
-      if (prefs.activeRight !== "cutter") setActiveRight("cutter");
-    }
-  }, [addCut, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
-
-  const handleDropSelectionOnCutter = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      const ed = editorRef.current?.getEditor();
-      if (!ed || !editorRef.current) return;
-      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
-      const record = createLinkedAnchor(ed, "cut", { from: payload.from, to: payload.to });
-      if (!record) return;
-      const cut = addCut(
-        paragraphId,
-        undefined,
-        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
-      );
-      updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
-      setSelectedCutId(cut.id);
-    },
-    [addCut],
-  );
-
-  // Mirrors handleDropParagraphOnNotes: drag a whole paragraph by its grab
-  // handle into the Cutter panel → create a cut anchored to that paragraph
-  // (no text-range linkedAnchor; paragraph stays in the doc).
-  const handleDropParagraphOnCutter = useCallback(
-    (paragraphId: string) => {
-      if (!paragraphId) return;
-      const cut = addCut(paragraphId);
-      setSelectedCutId(cut.id);
-    },
-    [addCut],
-  );
 
   // Listen for cut drops onto paragraphs (dispatched by Editor.tsx handleDrop / Marginalia)
   useEffect(() => {
@@ -2072,101 +1675,29 @@ export default function EditorLayout() {
     return () => window.removeEventListener("virgil-cut-drop", handler);
   }, [addCutParagraphId]);
 
-  const handleTodoMarkerClick = useCallback(
-    (todoId: string) => {
-      const nextSelected = selectedTodoId === todoId ? null : todoId;
-      setSelectedTodoId(nextSelected);
-      if (nextSelected && tryScrollOmniEntry(`td:${todoId}`)) return;
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "todo");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "todo") setActiveLeft("todo");
-      } else {
-        if (p.activeRight !== "todo") setActiveRight("todo");
-      }
-    },
-    [setActiveLeft, setActiveRight, selectedTodoId, tryScrollOmniEntry]
-  );
 
-  const handleEditFootnote = useCallback((id: string, newContent: JSONContent) => {
-    editorRef.current?.updateFootnoteContent(id, newContent);
-  }, []);
+  const {
+    handleEditFootnote,
+    handleEditFootnoteTitle,
+    handleDeleteFootnote,
+    handleAddFootnote,
+  } = useFootnoteActions({
+    editorRef,
+    suppressOrphanRef,
+    setSelectedFootnoteId,
+    setOrphanedFootnotes,
+  });
 
-  const handleEditFootnoteTitle = useCallback((id: string, title: string) => {
-    editorRef.current?.updateFootnoteTitle(id, title);
-  }, []);
+  const { handleCitationCreated, handleCitationDrop } = useCitationActions({
+    editorRef,
+    getCitationDisplayText,
+    addCitation,
+  });
 
-  // Used by the footnote/note rich-text panels when the user drops a brand-new
-  // citation. Mirrors the main editor's onCitationDrop: register the
-  // command in the citations store so it shows up in the side panel and
-  // gets a stable id, then return the resolved id + display text for the
-  // mini-editor to attach to the new Citation node.
-  const handleCitationCreated = useCallback(
-    (command: string) => {
-      const display = getCitationDisplayText(command);
-      const ref = addCitation(command);
-      return { id: ref.id, displayText: display };
-    },
-    [getCitationDisplayText, addCitation],
-  );
 
-  // Citation drop into the main editor. Two flavours:
-  //  • new citation (no id, or id already anchored elsewhere) → mint a
-  //    fresh ref and insert
-  //  • dragging an unanchored citation card from the panel → reuse its
-  //    existing id so the panel card transitions to "anchored" instead
-  //    of leaving a duplicate behind
-  const handleCitationDrop = useCallback(
-    (command: string, citationId?: string) => {
-      const display = getCitationDisplayText(command);
-      let targetId: string | undefined;
-      if (citationId) {
-        const editorCits = editorRef.current?.getCitations() ?? [];
-        const alreadyAnchored = editorCits.some(
-          (c) => c.citationId === citationId,
-        );
-        if (!alreadyAnchored) targetId = citationId;
-      }
-      const ref = addCitation(command, targetId);
-      return { id: ref.id, displayText: display };
-    },
-    [getCitationDisplayText, addCitation],
-  );
-
-  const handleDeleteFootnote = useCallback((id: string) => {
-    suppressOrphanRef.current.add(id);
-    editorRef.current?.deleteFootnote(id);
-    setSelectedFootnoteId(null);
-  }, []);
-
-  const handleAddFootnote = useCallback(() => {
-    const id = generateEntityId();
-    setOrphanedFootnotes((prev) => [
-      ...prev,
-      {
-        footnoteId: id,
-        content: { type: "doc", content: [{ type: "paragraph" }] },
-        orphanedAt: new Date().toISOString(),
-      },
-    ]);
-    return id;
-  }, []);
-
-  const handleDeleteOrphan = useCallback((id: string) => {
-    setOrphanedFootnotes((prev) => prev.filter((o) => o.footnoteId !== id));
-  }, []);
-
-  const handleEditOrphan = useCallback((id: string, newContent: unknown) => {
-    setOrphanedFootnotes((prev) => prev.map((o) =>
-      o.footnoteId === id ? { ...o, content: newContent } : o
-    ));
-  }, []);
-
-  const handleEditOrphanTitle = useCallback((id: string, title: string) => {
-    setOrphanedFootnotes((prev) => prev.map((o) =>
-      o.footnoteId === id ? { ...o, title } : o
-    ));
-  }, []);
+  const { handleDeleteOrphan, handleEditOrphan, handleEditOrphanTitle } = useOrphanActions({
+    setOrphanedFootnotes,
+  });
 
   // Listen for archive marker clicks from the editor
   useEffect(() => {
@@ -2367,85 +1898,10 @@ export default function EditorLayout() {
   }, [activeRefLabel]);
 
   // ── LabelRef popover helpers ──
-  const gatherLabels = useCallback((): LabelInfo[] => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return [];
-    const result: LabelInfo[] = [];
-    editor.state.doc.descendants((nd) => {
-      if (nd.type.name === "heading" && nd.attrs.label) {
-        const titleParts: string[] = [];
-        nd.content.forEach((child) => {
-          if (child.isText && child.text) titleParts.push(child.text);
-        });
-        result.push({
-          label: nd.attrs.label,
-          title: titleParts.join("") || "(untitled)",
-          sectionNumber: nd.attrs.sectionNumber || "?",
-          level: nd.attrs.level,
-        });
-      }
-    });
-    return result;
-  }, []);
-
-  const handleRefChangeLabel = useCallback(
-    (oldLabel: string, newLabel: string) => {
-      const editor = editorRef.current?.getEditor();
-      if (!editor) return;
-      editor.state.doc.descendants((nd, pos) => {
-        if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
-          let display = "??";
-          editor.state.doc.descendants((h) => {
-            if (h.type.name === "heading" && h.attrs.label === newLabel && h.attrs.sectionNumber) {
-              display = h.attrs.sectionNumber;
-            }
-          });
-          const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
-            ...nd.attrs,
-            label: newLabel,
-            displayText: display,
-          });
-          editor.view.dispatch(tr);
-          return false;
-        }
-        return true;
-      });
-      setActiveRefLabel(newLabel);
-    },
-    [],
-  );
-
-  const handleRefJump = useCallback((label: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    let targetPos = -1;
-    editor.state.doc.descendants((nd, pos) => {
-      if (nd.type.name === "heading" && nd.attrs.label === label) {
-        targetPos = pos + 1;
-        return false;
-      }
-      return true;
-    });
-    if (targetPos >= 0) {
-      editor.chain().focus().setTextSelection(targetPos).scrollIntoView().run();
-    }
-  }, []);
-
-  const handleInsertRef = useCallback((newLabel: string) => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    // Resolve display text from heading labels
-    let display = "??";
-    editor.state.doc.descendants((h) => {
-      if (h.type.name === "heading" && h.attrs.label === newLabel && h.attrs.sectionNumber) {
-        display = h.attrs.sectionNumber;
-      }
-    });
-    editor.chain().focus().insertContent({
-      type: "labelRef",
-      attrs: { label: newLabel, displayText: display },
-    }).run();
-  }, []);
+  const { gatherLabels, handleRefChangeLabel, handleRefJump, handleInsertRef } = useRefActions({
+    editorRef,
+    setActiveRefLabel,
+  });
 
   // Click on empty editor space → deselect all panel items.
   // Marker click handlers call stopPropagation(), so this only fires
@@ -2599,55 +2055,16 @@ export default function EditorLayout() {
 
   const pendingRevisionAnchorIdRef = useRef<string | null>(null);
 
-  const handleAddComment = useCallback(() => {
-    const selectedText = editorRef.current?.getSelectedText();
-    if (!selectedText || selectedText.trim().length === 0) return;
-    const ed = editorRef.current?.getEditor();
-    if (ed) {
-      const record = createLinkedAnchor(ed, "revision");
-      pendingRevisionAnchorIdRef.current = record?.anchorId ?? null;
-    } else {
-      pendingRevisionAnchorIdRef.current = null;
-    }
-    setPendingCommentText(selectedText);
-    // Mirror other toolbar actions: drop the native DOM selection so the
-    // browser doesn't leave a grey ghost over the editor after the button
-    // steals focus.
-    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    // Ensure revisions panel is open (setActiveLeft/Right are toggles, so only call if not already active)
-    const revPlacement = prefs.placements.find((p) => p.id === "revisions");
-    if (revPlacement?.side === "left") {
-      if (prefs.activeLeft !== "revisions") setActiveLeft("revisions");
-    } else {
-      if (prefs.activeRight !== "revisions") setActiveRight("revisions");
-    }
-  }, [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
-
-  const handleSubmitComment = useCallback(
-    (comment: string) => {
-      if (pendingCommentText && comment.trim()) {
-        const anchorId = pendingRevisionAnchorIdRef.current;
-        const rev = addTextRevision(pendingCommentText, anchorId, comment.trim());
-        if (rev && anchorId) {
-          const ed = editorRef.current?.getEditor();
-          if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
-        }
-      }
-      pendingRevisionAnchorIdRef.current = null;
-      setPendingCommentText(null);
-    },
-    [addTextRevision, pendingCommentText]
-  );
-
-  const handleCancelComment = useCallback(() => {
-    // If we created an anchor mark for this pending revision and the user
-    // cancels, tear down the mark so we don't leave an orphan behind.
-    const ed = editorRef.current?.getEditor();
-    const id = pendingRevisionAnchorIdRef.current;
-    if (ed && id) removeLinkedAnchor(ed, id);
-    pendingRevisionAnchorIdRef.current = null;
-    setPendingCommentText(null);
-  }, []);
+  const { handleAddComment, handleSubmitComment, handleCancelComment } = useCommentActions({
+    editorRef,
+    pendingRevisionAnchorIdRef,
+    prefs,
+    setActiveLeft,
+    setActiveRight,
+    pendingCommentText,
+    setPendingCommentText,
+    addTextRevision,
+  });
 
   const startRename = (id: string, name: string) => {
     setNameInput(name);
@@ -2661,36 +2078,20 @@ export default function EditorLayout() {
     setEditingTabId(null);
   };
 
-  const handleNativeOpen = useCallback(async () => {
-    try {
-      await openExistingFile();
-    } catch (err) {
-      console.error("Failed to open file:", err);
-    }
-  }, [openExistingFile]);
-
-  const handleNewDocStart = useCallback(() => {
-    setNewDocName("");
-  }, []);
-
-  const handleNewDocSubmit = useCallback(async () => {
-    const name = (newDocName ?? "").trim();
-    if (!name) {
-      setNewDocName(null);
-      return;
-    }
-    try {
-      const meta = await createFile(name);
-      if (meta) setNewDocName(null);
-    } catch (err) {
-      console.error("Failed to create new paper:", err);
-      // Keep the input open so the user can retry or cancel.
-    }
-  }, [newDocName, createFile]);
-
-  const handleNewDocCancel = useCallback(() => {
-    setNewDocName(null);
-  }, []);
+  const {
+    handleDocPermissionGranted,
+    handleNativeOpen,
+    handleNewDocStart,
+    handleNewDocSubmit,
+    handleNewDocCancel,
+  } = useFileActions({
+    openExistingFile,
+    createFile,
+    newDocName,
+    setNewDocName,
+    setDocPermState,
+    refetchDoc,
+  });
 
 
   const switchToCodeView = useCallback(() => {
@@ -3263,53 +2664,38 @@ export default function EditorLayout() {
 
     if (panelId === "suggestions" && hasSuggestions) {
       return (
-        <SuggestionPanel
-          suggestion={currentSuggestion}
+        <SuggestionsHost
+          side={side}
+          currentSuggestion={currentSuggestion}
           isComplete={isComplete}
           onAct={handleAct}
-          onUpdateField={updateSuggestionField}
-          onClose={() => {
-            if (side === "left") setActiveLeft("blank");
-            else setActiveRight("blank");
-            clearSuggestions();
-          }}
-          visible={true}
+          updateSuggestionField={updateSuggestionField}
+          clearSuggestions={clearSuggestions}
+          setActiveLeft={setActiveLeft}
+          setActiveRight={setActiveRight}
         />
       );
     }
 
     if (panelId === "todo") {
       return (
-        <TodoPanel
-          items={todoItems}
-          onAdd={addTodo}
-          onToggle={toggleTodo}
-          onUpdate={updateTodo}
-          onUpdateNotes={updateTodoNotes}
-          onDelete={deleteTodo}
-          onArchiveDone={archiveTodos}
-          selectedTodoId={selectedTodoId}
-          onSelectTodo={setSelectedTodoId}
-          onScrollToMarker={(id) => {
-            const item = todoItems.find((t) => t.id === id);
-            const pid = item ? getLinkedParagraphIds(item)[0] : undefined;
-            if (pid) editorRef.current?.scrollToParagraphId(pid);
-          }}
-          aiRequests={aiRequests}
-          onAddAiRequest={() => addAiRequest("todo")}
-          onUpdateAiRequestText={updateAiRequestText}
-          onDeleteAiRequest={deleteAiRequest}
-          editor={editorInstance}
-          panelSide={todoPanelSide ?? side}
-          viewMode={getPanelViewMode("todo")}
-          onViewModeChange={(m) => setPanelViewMode("todo", m)}
+        <TodoHost
+          side={side}
+          panelSide={todoPanelSide}
+          todoItems={todoItems}
+          addTodo={addTodo}
+          toggleTodo={toggleTodo}
+          updateTodo={updateTodo}
+          updateTodoNotes={updateTodoNotes}
+          deleteTodo={deleteTodo}
+          archiveTodos={archiveTodos}
         />
       );
     }
 
     if (panelId === "outline") {
       return (
-        <OutlinePanel
+        <OutlineHost
           content={latestDoc || content}
           onScrollTo={handleScrollToHeading}
           onReorderBlocks={handleReorderBlocks}
@@ -3334,128 +2720,61 @@ export default function EditorLayout() {
 
     if (panelId === "notes") {
       return (
-        <NotesPanel
+        <NotesHost
+          side={side}
+          panelSide={notesPanelSide}
           notes={notes}
-          onAdd={() => addNote(null)}
-          onUpdate={updateNote}
-          onUpdateTitle={updateNoteTitle}
-          onDelete={deleteNote}
-          onSelectNote={setSelectedNoteId}
-          selectedNoteId={selectedNoteId}
-          onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
-          getCitationDisplayText={getCitationDisplayText}
-          onCitationCreated={handleCitationCreated}
-          aiRequests={aiRequests}
-          onAddAiRequest={() => addAiRequest("note")}
-          onUpdateAiRequestText={updateAiRequestText}
-          onDeleteAiRequest={deleteAiRequest}
-          onEditorFocus={setOverrideEditor}
+          addNote={addNote}
+          updateNote={updateNote}
+          updateNoteTitle={updateNoteTitle}
+          deleteNote={deleteNote}
           onHoverNote={handleHoverNote}
           onDropSelection={handleDropSelectionOnNotes}
           onDropParagraph={handleDropParagraphOnNotes}
-          editor={editorInstance}
-          panelSide={notesPanelSide ?? side}
-          viewMode={getPanelViewMode("notes")}
-          onViewModeChange={(m) => setPanelViewMode("notes", m)}
         />
       );
     }
 
     if (panelId === "revisions") {
       return (
-        <RevisionsPanel
-          users={revisionUsers}
-          activeUserId={activeRevisionUserId}
+        <RevisionsHost
+          side={side}
+          panelSide={revisionsPanelSide}
+          revisionUsers={revisionUsers}
+          activeRevisionUserId={activeRevisionUserId}
           generalRevisions={generalRevisions}
           textRevisions={textRevisions}
-          onSetActiveUser={setActiveRevisionUser}
-          onAddUser={addRevisionUser}
-          onAddGeneral={(text, authorId) => { addGeneralRevision(text, authorId); }}
-          onAddTurn={addRevisionTurn}
-          onResolve={resolveRevision}
-          onReopen={reopenRevision}
-          onDelete={deleteRevision}
-          visible={true}
-          pendingSelectedText={pendingCommentText}
-          onSubmitNew={handleSubmitComment}
-          onCancelNew={handleCancelComment}
-          selectedRevisionId={selectedCommentId}
-          onSelectRevision={setSelectedCommentId}
-          onHighlight={setCommentHighlight}
-          onHoverRevision={(id) => {
-            if (!id) { setHoveredAnchorId(null); return; }
-            const r = textRevisions.find((x) => x.id === id);
-            const anchorId = r ? getTextAnchor(r)?.anchorId : undefined;
-            if (anchorId) {
-              setHoveredAnchorId(anchorId);
-              setActiveAnchorKind("revision");
-            }
-          }}
-          onDropSelection={(payload) => {
-            const ed = editorRef.current?.getEditor();
-            if (!ed || !editorRef.current) return;
-            const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
-            if (!record) return;
-            pendingRevisionAnchorIdRef.current = record.anchorId;
-            setPendingCommentText(payload.selectedText || record.text);
-          }}
-          onDropParagraph={(paragraphId) => {
-            // Dragging a paragraph into Revisions: anchor a new revision over
-            // the whole paragraph's text range, then open the form with that
-            // range as `pendingCommentText` so the user can write their note.
-            // Revisions are always thread-rooted in a text span, so this
-            // matches the chip-drop flow rather than the Notes shortcut.
-            const ed = editorRef.current?.getEditor();
-            if (!ed) return;
-            let from: number | null = null;
-            let to: number | null = null;
-            ed.state.doc.descendants((node, pos) => {
-              if (from !== null) return false;
-              if (node.attrs?.uuid === paragraphId) {
-                from = pos + 1;
-                to = pos + node.nodeSize - 1;
-                return false;
-              }
-              return true;
-            });
-            if (from === null || to === null || from >= to) return;
-            const record = createLinkedAnchor(ed, "revision", { from, to });
-            if (!record) return;
-            pendingRevisionAnchorIdRef.current = record.anchorId;
-            setPendingCommentText(record.text);
-          }}
-          editor={editorInstance}
-          panelSide={revisionsPanelSide ?? side}
-          viewMode={getPanelViewMode("revisions")}
-          onViewModeChange={(m) => setPanelViewMode("revisions", m)}
+          setActiveRevisionUser={setActiveRevisionUser}
+          addRevisionUser={addRevisionUser}
+          addGeneralRevision={addGeneralRevision}
+          addRevisionTurn={addRevisionTurn}
+          resolveRevision={resolveRevision}
+          reopenRevision={reopenRevision}
+          deleteRevision={deleteRevision}
+          pendingCommentText={pendingCommentText}
+          setPendingCommentText={setPendingCommentText}
+          pendingRevisionAnchorIdRef={pendingRevisionAnchorIdRef}
+          handleSubmitComment={handleSubmitComment}
+          handleCancelComment={handleCancelComment}
+          setCommentHighlight={setCommentHighlight}
+          setHoveredAnchorId={setHoveredAnchorId}
+          setActiveAnchorKind={setActiveAnchorKind}
         />
       );
     }
 
     if (panelId === "archive") {
       return (
-        <ArchivePanel
-          snippets={sortedArchiveSnippets}
-          selectedId={selectedArchiveId}
-          onSelect={setSelectedArchiveId}
-          onEdit={(id, content) => updateArchiveSnippet(id, content)}
-          onUpdateTitle={updateArchiveSnippetTitle}
+        <ArchiveHost
+          side={side}
+          sortedArchiveSnippets={sortedArchiveSnippets}
+          archiveSnippets={archiveSnippets}
+          updateArchiveSnippet={updateArchiveSnippet}
+          updateArchiveSnippetTitle={updateArchiveSnippetTitle}
           onInsert={handleInsertArchive}
           onRestore={handleRestoreArchive}
           onDelete={handleDeleteArchive}
-          onScrollToMarker={(id) => {
-            const snippet = archiveSnippets.find((s) => s.id === id);
-            const pid = snippet ? getLinkedParagraphIds(snippet)[0] : undefined;
-            if (pid) editorRef.current?.scrollToParagraphId(pid);
-          }}
           anchoredIds={anchoredIds}
-          editor={editorInstance}
-          panelSide={side}
-          viewMode={getPanelViewMode("archive")}
-          onViewModeChange={(m) => setPanelViewMode("archive", m)}
-          getCitationDisplayText={getCitationDisplayText}
-          onCitationCreated={handleCitationCreated}
-          onEditorFocus={setOverrideEditor}
           onCapture={handleArchiveCapture}
         />
       );
@@ -3463,123 +2782,79 @@ export default function EditorLayout() {
 
     if (panelId === "footnotes") {
       return (
-        <FootnotePanel
+        <FootnotesHost
+          side={side}
           footnotes={footnotes}
-          selectedId={selectedFootnoteId}
-          onSelect={setSelectedFootnoteId}
-          onEdit={handleEditFootnote}
-          onDelete={handleDeleteFootnote}
-          onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
-          editor={editorInstance}
-          panelSide={side}
-          viewMode={getPanelViewMode("footnotes")}
-          onViewModeChange={(m) => setPanelViewMode("footnotes", m)}
           orphanedFootnotes={orphanedFootnotes}
+          onEdit={handleEditFootnote}
+          onEditTitle={handleEditFootnoteTitle}
+          onDelete={handleDeleteFootnote}
+          onAdd={handleAddFootnote}
           onDeleteOrphan={handleDeleteOrphan}
           onEditOrphan={handleEditOrphan}
           onEditOrphanTitle={handleEditOrphanTitle}
-          onAdd={handleAddFootnote}
-          getCitationDisplayText={getCitationDisplayText}
-          onCitationCreated={handleCitationCreated}
-          aiRequests={aiRequests}
-          onAddAiRequest={() => addAiRequest("footnote")}
-          onUpdateAiRequestText={updateAiRequestText}
-          onDeleteAiRequest={deleteAiRequest}
-          onEditTitle={handleEditFootnoteTitle}
-          onEditorFocus={setOverrideEditor}
         />
       );
     }
 
     if (panelId === "citations") {
       return (
-        <CitationsPanel
+        <CitationsHost
+          side={side}
           citations={citations}
           bibEntries={bibEntries}
           citationStyle={citationStyle}
           bibPackage={bibPackage}
           bibPath={bibPath}
-          selectedId={selectedCitationId}
           citationOrder={citationOrder}
-          onSelect={setSelectedCitationId}
-          onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
-          onUpdateCitation={updateCitation}
-          onDeleteCitation={deleteCitation}
-          onSetStyle={setCitationStyle}
-          onSetBibPackage={setBibPackage}
-          getDisplayText={getCitationDisplayText}
-          pendingCreate={pendingCitationCreate}
-          pendingCreateMode={pendingCitationMode}
-          onCreateCitation={(cmd) => {
-            const ref = addCitation(
-              cmd,
-              undefined,
-              pendingCitationMode === "unanchored",
-            );
-            return ref.id;
-          }}
-          onInsertCitation={(cmd, citId, display) => {
-            editorRef.current?.insertCitation(cmd, citId, display);
-          }}
-          onClearPendingCreate={() => setPendingCitationCreate(null)}
-          onStartCreate={() => {
-            // Panel + button creates an unanchored citation; user can
-            // drag it into the editor later to anchor it.
-            setPendingCitationMode("unanchored");
-            setPendingCitationCreate("\\cite");
-          }}
-          editor={editorInstance}
-          panelSide={side}
-          citationPositions={citationPositionMap}
-          viewMode={getPanelViewMode("citations")}
-          onViewModeChange={(m) => setPanelViewMode("citations", m)}
+          addCitation={addCitation}
+          updateCitation={updateCitation}
+          deleteCitation={deleteCitation}
+          setCitationStyle={setCitationStyle}
+          setBibPackage={setBibPackage}
+          updateBibEntry={updateBibEntry}
+          updateBibKeyAndType={updateBibKeyAndType}
           getFormattedBib={getFormattedBib}
           getAnnotation={getAnnotation}
           setAnnotation={setAnnotation}
-          onRequestReview={requestBibReview}
-          onCancelReview={cancelBibReview}
-          getReviewStatus={getBibReviewStatus}
-          onUpdateBibEntry={updateBibEntry}
-          onUpdateBibKeyAndType={updateBibKeyAndType}
-          aiRequests={aiRequests}
-          onAddAiRequest={() => addAiRequest("citation")}
-          onUpdateAiRequestText={updateAiRequestText}
-          onDeleteAiRequest={deleteAiRequest}
+          requestBibReview={requestBibReview}
+          cancelBibReview={cancelBibReview}
+          getBibReviewStatus={getBibReviewStatus}
+          citationPositionMap={citationPositionMap}
+          pendingCitationCreate={pendingCitationCreate}
+          setPendingCitationCreate={setPendingCitationCreate}
+          pendingCitationMode={pendingCitationMode}
+          setPendingCitationMode={setPendingCitationMode}
         />
       );
     }
 
     if (panelId === "bibliography") {
       return (
-        <BibliographyPanel
+        <BibliographyHost
+          side={side}
+          panelSide={bibliographyPanelSide}
           citations={citations}
           bibEntries={bibEntries}
-          selectedBibKey={selectedBibKey}
-          onSelectBibKey={setSelectedBibKey}
-          onUpdateBibEntry={updateBibEntry}
-          onUpdateBibKeyAndType={updateBibKeyAndType}
+          bibPackage={bibPackage}
+          addBibEntry={addBibEntry}
+          updateBibEntry={updateBibEntry}
+          updateBibKeyAndType={updateBibKeyAndType}
           getFormattedBib={getFormattedBib}
           getAnnotation={getAnnotation}
           setAnnotation={setAnnotation}
-          onRequestReview={requestBibReview}
-          onCancelReview={cancelBibReview}
-          getReviewStatus={getBibReviewStatus}
+          requestBibReview={requestBibReview}
+          cancelBibReview={cancelBibReview}
+          getBibReviewStatus={getBibReviewStatus}
           allEditorCitations={allEditorCitations}
-          onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
-          onActiveCitationChange={setBibActiveCitationId}
-          bibPackage={bibPackage}
-          onAddBibEntry={addBibEntry}
-          docId={currentDocId}
+          citationPositionMap={citationPositionMap}
+          setBibActiveCitationId={setBibActiveCitationId}
+          currentDocId={currentDocId}
           generalBibPath={generalBibPath}
-          onSetGeneralBibPath={setGeneralBibPath}
+          setGeneralBibPath={setGeneralBibPath}
           entryRequests={entryRequests}
-          onAddEntryRequest={addEntryRequest}
-          onRemoveEntryRequest={removeEntryRequest}
-          editor={editorInstance}
-          citationPositions={citationPositionMap}
-          panelSide={bibliographyPanelSide ?? side}
-          viewMode={getPanelViewMode("bibliography")}
-          onViewModeChange={(m) => setPanelViewMode("bibliography", m)}
+          addEntryRequest={addEntryRequest}
+          removeEntryRequest={removeEntryRequest}
         />
       );
     }
@@ -3590,181 +2865,100 @@ export default function EditorLayout() {
 
     if (panelId === "quotations") {
       return (
-        <QuotationsPanel
-          groups={quotationGroups}
+        <QuotationsHost
+          side={side}
+          quotationGroups={quotationGroups}
           bibEntries={bibEntries}
           bibPackage={bibPackage}
           citationStyle={citationStyle}
-          onAddGroup={addQuotationGroup}
-          onDeleteGroup={deleteQuotationGroup}
-          onUpdateGroupTitle={updateQuotationGroupTitle}
-          onAddReference={addQuotationReference}
-          onDeleteReference={deleteQuotationReference}
-          onUpdateReferenceCiteKey={updateQuotationReferenceCiteKey}
-          onAddQuote={addQuotationQuote}
-          onUpdateQuote={updateQuotationQuote}
-          onDeleteQuote={deleteQuotationQuote}
-          onUpdateNotes={updateQuotationNotes}
-          selectedGroupId={selectedQuotationGroupId}
-          onSelectGroup={setSelectedQuotationGroupId}
-          onScrollToParagraph={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
-          aiRequests={aiRequests}
-          onAddAiRequest={() => addAiRequest("quotation")}
-          onUpdateAiRequestText={updateAiRequestText}
-          onDeleteAiRequest={deleteAiRequest}
-          editor={editorInstance}
-          panelSide={side}
-          viewMode={getPanelViewMode("quotations")}
-          onViewModeChange={(m) => setPanelViewMode("quotations", m)}
+          addQuotationGroup={addQuotationGroup}
+          deleteQuotationGroup={deleteQuotationGroup}
+          updateQuotationGroupTitle={updateQuotationGroupTitle}
+          addQuotationReference={addQuotationReference}
+          deleteQuotationReference={deleteQuotationReference}
+          updateQuotationReferenceCiteKey={updateQuotationReferenceCiteKey}
+          addQuotationQuote={addQuotationQuote}
+          updateQuotationQuote={updateQuotationQuote}
+          deleteQuotationQuote={deleteQuotationQuote}
+          updateQuotationNotes={updateQuotationNotes}
         />
       );
     }
 
     if (panelId === "search") {
       return (
-        <SearchPanel
-          editor={editorInstance}
-          onHighlightRange={setSearchHighlightRange}
+        <SearchHost
           footnotes={footnotes}
           orphanedFootnotes={orphanedFootnotes}
           notes={notes}
           citations={citations}
-          editorCitations={allEditorCitations}
-          getCitationDisplayText={getCitationDisplayText}
-          todos={todoItems}
+          allEditorCitations={allEditorCitations}
+          todoItems={todoItems}
           archiveSnippets={archiveSnippets}
           cuts={cuts}
           quotationGroups={quotationGroups}
           textRevisions={textRevisions}
           generalRevisions={generalRevisions}
           bibEntries={bibEntries}
-          onOpenItem={openItemInPanel}
-          state={searchState}
-          onStateChange={setSearchState}
+          openItemInPanel={openItemInPanel}
+          searchState={searchState}
+          setSearchState={setSearchState}
+          setSearchHighlightRange={setSearchHighlightRange}
         />
       );
     }
 
     if (panelId === "omni") {
-      // Resolve a paragraph UUID to its doc position (used by panels
-      // that anchor by paragraphId not pos).
-      const findParagraphPos = (uuid: string | null): number | null => {
-        if (!uuid || !editorInstance) return null;
-        let result: number | null = null;
-        editorInstance.state.doc.descendants((node, pos) => {
-          if (result != null) return false;
-          if (node.attrs?.uuid === uuid) {
-            result = pos;
-            return false;
-          }
-          return true;
-        });
-        return result;
-      };
-      const scrollToParagraphId = (uuid: string) =>
-        editorRef.current?.scrollToParagraphId(uuid);
-
-      const items: OmniItem[] = [
-        ...buildFootnoteOmniItems({
-          footnotes,
-          orphanedFootnotes,
-          selectedFootnoteId,
-          setSelectedFootnoteId,
-          scrollToFootnote: (id) => editorRef.current?.scrollToFootnote(id),
-          onEditFootnote: handleEditFootnote,
-          onDeleteFootnote: handleDeleteFootnote,
-          onEditFootnoteTitle: handleEditFootnoteTitle,
-          onEditOrphan: handleEditOrphan,
-          onDeleteOrphan: handleDeleteOrphan,
-          onEditOrphanTitle: handleEditOrphanTitle,
-          setOverrideEditor,
-          getCitationDisplayText,
-          onCitationCreated: handleCitationCreated,
-        }),
-        ...buildCitationOmniItems({
-          citations,
-          citationPositionMap,
-          selectedCitationId,
-          setSelectedCitationId,
-          scrollToCitation: (id) => editorRef.current?.scrollToCitation(id),
-          bibEntries,
-          bibPackage,
-          getCitationDisplayText,
-          updateCitation,
-          getFormattedBib,
-          getAnnotation,
-          setAnnotation,
-          requestBibReview,
-          cancelBibReview,
-          getBibReviewStatus,
-          updateBibEntry,
-          updateBibKeyAndType,
-        }),
-        ...buildQuotationOmniItems({
-          quotationGroups,
-          selectedQuotationGroupId,
-          setSelectedQuotationGroupId,
-          scrollToParagraphId,
-          findParagraphPos,
-          bibEntries,
-          bibPackage,
-          deleteQuotationGroup,
-          updateQuotationGroupTitle,
-          addQuotationReference,
-          deleteQuotationReference,
-          updateQuotationReferenceCiteKey,
-          addQuotationQuote,
-          updateQuotationQuote,
-          deleteQuotationQuote,
-          updateQuotationNotes,
-        }),
-        ...buildNoteOmniItems({
-          notes,
-          selectedNoteId,
-          setSelectedNoteId,
-          scrollToParagraphId,
-          findParagraphPos,
-          updateNote,
-          updateNoteTitle,
-          deleteNote,
-          setOverrideEditor,
-          getCitationDisplayText,
-          onCitationCreated: handleCitationCreated,
-        }),
-        ...buildArchiveOmniItems({
-          archiveSnippets: sortedArchiveSnippets,
-          anchoredIds,
-          selectedArchiveId,
-          setSelectedArchiveId,
-          scrollToParagraphId,
-          findParagraphPos,
-          updateArchiveSnippet,
-          updateArchiveSnippetTitle,
-          handleDeleteArchive,
-          setOverrideEditor,
-          getCitationDisplayText,
-          onCitationCreated: handleCitationCreated,
-        }),
-        ...buildTodoOmniItems({
-          todoItems,
-          selectedTodoId,
-          setSelectedTodoId,
-          scrollToParagraphId,
-          findParagraphPos,
-          toggleTodo,
-          updateTodo,
-          updateTodoNotes,
-          deleteTodo,
-        }),
-      ];
-
       return (
-        <OmniViewPanel
+        <OmniHost
           side={side}
-          items={items}
-          editor={editorInstance}
-          enabledCategories={getOmniEnabled(side)}
-          onToggleCategory={(cat) => toggleOmniCategory(side, cat)}
+          footnotes={footnotes}
+          orphanedFootnotes={orphanedFootnotes}
+          handleEditFootnote={handleEditFootnote}
+          handleDeleteFootnote={handleDeleteFootnote}
+          handleEditFootnoteTitle={handleEditFootnoteTitle}
+          handleEditOrphan={handleEditOrphan}
+          handleDeleteOrphan={handleDeleteOrphan}
+          handleEditOrphanTitle={handleEditOrphanTitle}
+          citations={citations}
+          citationPositionMap={citationPositionMap}
+          bibEntries={bibEntries}
+          bibPackage={bibPackage}
+          updateCitation={updateCitation}
+          getFormattedBib={getFormattedBib}
+          updateBibEntry={updateBibEntry}
+          updateBibKeyAndType={updateBibKeyAndType}
+          getAnnotation={getAnnotation}
+          setAnnotation={setAnnotation}
+          requestBibReview={requestBibReview}
+          cancelBibReview={cancelBibReview}
+          getBibReviewStatus={getBibReviewStatus}
+          quotationGroups={quotationGroups}
+          deleteQuotationGroup={deleteQuotationGroup}
+          updateQuotationGroupTitle={updateQuotationGroupTitle}
+          addQuotationReference={addQuotationReference}
+          deleteQuotationReference={deleteQuotationReference}
+          updateQuotationReferenceCiteKey={updateQuotationReferenceCiteKey}
+          addQuotationQuote={addQuotationQuote}
+          updateQuotationQuote={updateQuotationQuote}
+          deleteQuotationQuote={deleteQuotationQuote}
+          updateQuotationNotes={updateQuotationNotes}
+          notes={notes}
+          updateNote={updateNote}
+          updateNoteTitle={updateNoteTitle}
+          deleteNote={deleteNote}
+          sortedArchiveSnippets={sortedArchiveSnippets}
+          anchoredIds={anchoredIds}
+          updateArchiveSnippet={updateArchiveSnippet}
+          updateArchiveSnippetTitle={updateArchiveSnippetTitle}
+          handleDeleteArchive={handleDeleteArchive}
+          todoItems={todoItems}
+          toggleTodo={toggleTodo}
+          updateTodo={updateTodo}
+          updateTodoNotes={updateTodoNotes}
+          deleteTodo={deleteTodo}
+          getOmniEnabled={getOmniEnabled}
+          toggleOmniCategory={toggleOmniCategory}
           categorySides={categorySides}
         />
       );
@@ -3772,22 +2966,17 @@ export default function EditorLayout() {
 
     if (panelId === "cutter") {
       return (
-        <CutterPanel
+        <CutterHost
+          side={side}
+          panelSide={cutterPanelSide}
           cuts={cuts}
-          onAdd={() => addCut(null)}
-          onUpdate={updateCut}
-          onUpdateTitle={updateCutTitle}
-          onDelete={deleteCut}
-          onSelect={setSelectedCutId}
-          selectedId={selectedCutId}
-          onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+          addCut={addCut}
+          updateCut={updateCut}
+          updateCutTitle={updateCutTitle}
+          deleteCut={deleteCut}
           onHoverCut={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
           onDropParagraph={handleDropParagraphOnCutter}
-          editor={editorInstance}
-          panelSide={cutterPanelSide ?? side}
-          viewMode={getPanelViewMode("cutter")}
-          onViewModeChange={(m) => setPanelViewMode("cutter", m)}
         />
       );
     }
@@ -3899,6 +3088,21 @@ export default function EditorLayout() {
       state={{ prefs, focusedHalfLeft, focusedHalfRight }}
       actions={{ togglePanel, movePanel, setActiveHalf }}
     >
+    <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
+    <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
+    <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated }}>
+    <PanelViewModeProvider value={{ getPanelViewMode, setPanelViewMode }}>
+    <SelectionsProvider value={{
+      selectedNoteId, setSelectedNoteId,
+      selectedFootnoteId, setSelectedFootnoteId,
+      selectedCitationId, setSelectedCitationId,
+      selectedTodoId, setSelectedTodoId,
+      selectedArchiveId, setSelectedArchiveId,
+      selectedCutId, setSelectedCutId,
+      selectedQuotationGroupId, setSelectedQuotationGroupId,
+      selectedCommentId, setSelectedCommentId,
+      selectedBibKey, setSelectedBibKey,
+    }}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Preference mode picker — renders nothing until a ctrl+click on an
@@ -4618,6 +3822,11 @@ export default function EditorLayout() {
       })}
     </div>
     </PoppedCardsContext.Provider>
+    </SelectionsProvider>
+    </PanelViewModeProvider>
+    </CitationDisplayProvider>
+    </AiRequestsProvider>
+    </EditorRefProvider>
     </EditorLayoutProvider>
   );
 }
