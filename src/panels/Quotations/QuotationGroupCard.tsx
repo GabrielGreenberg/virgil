@@ -688,8 +688,6 @@ export function QuotationGroupCard({
     [selected, tryDelete],
   );
 
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

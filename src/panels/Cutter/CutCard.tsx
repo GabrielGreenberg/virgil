@@ -55,8 +55,6 @@ export function CutCard({
   const isOrphaned = getLinkedParagraphIds(cut).length === 0 && !hasTextAnchor(cut);
   const popped = usePoppedCards();
   const cardKey = popKey("cutter", cut.id);
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

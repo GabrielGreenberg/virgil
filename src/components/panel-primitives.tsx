@@ -1063,8 +1063,6 @@ export function AiRequestCard({
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
   const theme = CARD_THEMES.aiRequest;
 
-  const isPoppedInCtx = popped?.isPopped(popKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (

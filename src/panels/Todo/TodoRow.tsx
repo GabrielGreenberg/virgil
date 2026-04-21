@@ -78,8 +78,6 @@ export function TodoRow({
     [item.id],
   );
 
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

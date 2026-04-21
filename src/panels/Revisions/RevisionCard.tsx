@@ -69,8 +69,6 @@ export function RevisionCard({
   const theme = CARD_THEMES.comment;
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", id);
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

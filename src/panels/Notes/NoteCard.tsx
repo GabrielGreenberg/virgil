@@ -72,8 +72,6 @@ export function NoteCard({
   const theme = useCardTheme("note");
   const popped = usePoppedCards();
   const cardKey = popKey("notes", note.id);
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

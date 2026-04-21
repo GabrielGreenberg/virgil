@@ -95,8 +95,6 @@ export function FootnoteCard({
   const theme = useCardTheme("footnote");
   const popped = usePoppedCards();
   const cardKey = popKey("footnotes", fn.footnoteId);
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 

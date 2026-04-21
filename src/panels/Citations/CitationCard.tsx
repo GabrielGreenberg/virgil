@@ -249,8 +249,6 @@ export function CitationCard({
       ? "border-dashed opacity-80"
       : "";
 
-  const isPoppedInCtx = popped?.isPopped(cardKey) ?? false;
-  if (!isPoppedOut && isPoppedInCtx) return null;
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 
