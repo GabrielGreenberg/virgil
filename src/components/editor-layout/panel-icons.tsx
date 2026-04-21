@@ -1,10 +1,10 @@
 import { PanelId } from "@/hooks/useViewPrefs";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 
-export function IconNotes({ active }: { active?: boolean }) {
+export function IconNotes({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
       <line x1="8" y1="13" x2="16" y2="13" />
@@ -13,7 +13,7 @@ export function IconNotes({ active }: { active?: boolean }) {
   );
 }
 
-export function IconRevisions({ active }: { active?: boolean }) {
+export function IconRevisions({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   const cx = 12, cy = 12, r = 8;
   const gap = (14 * Math.PI) / 180;
@@ -43,7 +43,7 @@ export function IconRevisions({ active }: { active?: boolean }) {
     return segs;
   };
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <g transform="rotate(45 12 12)">
         {renderArc(Math.PI + gap, 2 * Math.PI - gap, "top")}
         {renderArc(gap, Math.PI - gap, "bot")}
@@ -99,9 +99,9 @@ export function IconOutline({ active }: { active?: boolean }) {
   );
 }
 
-export function IconArchive({ active }: { active?: boolean }) {
+export function IconArchive({ active, size = 18 }: { active?: boolean; size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21 8v13H3V8" />
       <path d="M1 3h22v5H1z" />
       <path d="M10 12h4" />
@@ -169,9 +169,9 @@ export function IconLibrary() {
 }
 
 // Todo icon: checkmarks with lines
-export function IconTodo({ active }: { active?: boolean }) {
+export function IconTodo({ active, size = 18 }: { active?: boolean; size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 7l2.5 2.5L11 5" />
       <path d="M14 7h7" />
       <path d="M4 17l2.5 2.5L11 15" />
@@ -180,9 +180,9 @@ export function IconTodo({ active }: { active?: boolean }) {
   );
 }
 
-export function IconCutter({ active }: { active?: boolean }) {
+export function IconCutter({ active, size = 18 }: { active?: boolean; size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="6" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
       <path d="M20 4L8.12 15.88" />
@@ -192,12 +192,12 @@ export function IconCutter({ active }: { active?: boolean }) {
   );
 }
 
-export function IconQuotations({ active }: { active?: boolean }) {
+export function IconQuotations({ active, size = 18, hideFrame }: { active?: boolean; size?: number; hideFrame?: boolean }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {/* Rounded box */}
-      <rect x="2" y="2" width="20" height="20" rx="3" />
+      {!hideFrame && <rect x="2" y="2" width="20" height="20" rx="3" />}
       {/* Quote marks — toolbar style, centered in box */}
       <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
       <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill={c} stroke="none" />
