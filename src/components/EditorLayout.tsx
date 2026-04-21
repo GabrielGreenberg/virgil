@@ -94,7 +94,6 @@ import {
 import {
   PANEL_ICONS,
   panelLabel,
-  IconFolder,
   IconPlus,
   IconX,
   IconOmni,
@@ -208,7 +207,6 @@ export default function EditorLayout() {
     currentDocId,
     currentDoc,
     loading: filesLoading,
-    createFile,
     deleteFile,
     renameFile,
     openFile,
@@ -1302,14 +1300,6 @@ export default function EditorLayout() {
   }, [archiveSnippets, latestDoc, editorInstance]);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
-  // New-doc name input shown when the user clicks +. We can't use
-  // window.prompt() here because it consumes the user gesture, and
-  // showDirectoryPicker() requires a fresh activation. Pressing Enter
-  // in this inline input is itself a real user gesture, which is what
-  // lets the picker open.
-  const [newDocName, setNewDocName] = useState<string | null>(null);
-  const newDocInputRef = useRef<HTMLInputElement>(null);
-
   // FSA browser support — defaults to true for SSR/initial render to
   // avoid a flash, then re-checks after mount.
   const [fsaSupported, setFsaSupported] = useState(true);
@@ -1332,10 +1322,6 @@ export default function EditorLayout() {
   useEffect(() => {
     if (editingTabId) nameInputRef.current?.focus();
   }, [editingTabId]);
-
-  useEffect(() => {
-    if (newDocName !== null) newDocInputRef.current?.focus();
-  }, [newDocName]);
 
   // Whenever the active doc changes, look up its handle in idb and
   // query (don't request) readwrite permission. The result drives the
@@ -1775,14 +1761,8 @@ export default function EditorLayout() {
   const {
     handleDocPermissionGranted,
     handleNativeOpen,
-    handleNewDocStart,
-    handleNewDocSubmit,
-    handleNewDocCancel,
   } = useFileActions({
     openExistingFile,
-    createFile,
-    newDocName,
-    setNewDocName,
     setDocPermState,
     refetchDoc,
   });
@@ -2801,42 +2781,14 @@ export default function EditorLayout() {
       }`}>
         {/* Logo + file buttons + tabs — all bottom-aligned */}
         <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
-          {/* VIRGIL + file icons as first "tab-like" items */}
+          {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
             <h1
-              className="text-[var(--accent)] text-base font-semibold tracking-widest mr-1"
+              className="text-[var(--accent)] text-base font-semibold tracking-widest"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
             >
               VIRGIL
             </h1>
-            <button
-              onClick={handleNativeOpen}
-              className="p-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
-              title="Open .tex file"
-            >
-              <IconFolder />
-            </button>
-            <button
-              onClick={handleNewDocStart}
-              className="p-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
-              title="New document"
-            >
-              <IconPlus />
-            </button>
-            {newDocName !== null && (
-              <input
-                ref={newDocInputRef}
-                value={newDocName}
-                onChange={(e) => setNewDocName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleNewDocSubmit();
-                  else if (e.key === "Escape") handleNewDocCancel();
-                }}
-                onBlur={handleNewDocCancel}
-                placeholder="Paper name…"
-                className="ml-1 px-2 py-0.5 text-xs border border-[var(--border)] rounded bg-surface/70 focus:outline-none focus:border-[var(--accent)]"
-              />
-            )}
           </div>
           {openTabs.map((doc) => {
             const isCurrentDoc = doc.id === currentDocId;
@@ -2888,6 +2840,13 @@ export default function EditorLayout() {
               </div>
             );
           })}
+          <button
+            onClick={handleNativeOpen}
+            className="p-1 mb-1 ml-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors shrink-0"
+            title="Open folder"
+          >
+            <IconPlus />
+          </button>
         </div>
 
         <div className="shrink-0 flex items-center px-2 gap-1">
