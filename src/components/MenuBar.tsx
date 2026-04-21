@@ -6,6 +6,7 @@ import { Editor } from "@tiptap/react";
 export type MarginaliaType = "quote" | "note" | "archive" | "todo";
 export type DividerLevel = 1 | 2 | 3 | 4;
 export type DividerWidth = "full" | "mid" | "text";
+export type ToolbarOrientation = "horizontal" | "vertical";
 
 const DIVIDER_LEVEL_LABELS: Record<DividerLevel, string> = {
   1: "Chapters",
@@ -56,6 +57,9 @@ interface MenuBarProps {
   onExpandAllSections?: () => void;
   onCollapseAllSections?: () => void;
   onCloseAllPanels?: () => void;
+  onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
+  orientation: ToolbarOrientation;
+  onSetOrientation: (o: ToolbarOrientation) => void;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -130,7 +134,7 @@ const BLOCK_TYPES = [
 function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
 
   const current = editor.isActive("heading", { level: 1 })
     ? "1"
@@ -154,7 +158,15 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const handleToggle = () => {
     if (!open && ref.current) {
       const r = ref.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, left: r.left });
+      // Popup height: 5 items × ~30px + 8px padding ≈ 158px. Flip up if below overflows.
+      const POPUP_H = 160;
+      const POPUP_W = 160;
+      const GAP = 4;
+      const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
+      const flipLeft = r.left + POPUP_W > window.innerWidth - 4 && window.innerWidth - r.right > POPUP_W;
+      const vertical = flipUp ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP };
+      const horizontal = flipLeft ? { right: window.innerWidth - r.right } : { left: r.left };
+      setPos({ ...vertical, ...horizontal });
     }
     setOpen(!open);
   };
@@ -170,7 +182,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
       {open && (
-        <div className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[160px]" style={{ top: pos.top, left: pos.left }}>
+        <div className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[160px]" style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right }}>
           {BLOCK_TYPES.map((bt) => (
             <button
               key={bt.value}
@@ -212,7 +224,7 @@ function AttachedPopover({
   active?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
@@ -238,7 +250,22 @@ function AttachedPopover({
   const toggle = () => {
     if (!open && wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right });
+      // Popup is a fixed-height horizontal row (var(--header-h) = 34px).
+      // Flip above the trigger when it would overflow the viewport below.
+      const POPUP_H = 34;
+      const GAP = 6;
+      const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
+      // Popup width is estimated from its children (~5 × 28px ≈ 140–220px).
+      // Flip to left-anchored when right-anchoring would push it off-screen left.
+      const POPUP_W_EST = 240;
+      const flipLeft = r.right - POPUP_W_EST < 4 && window.innerWidth - r.left > POPUP_W_EST;
+      const vertical = flipUp
+        ? { bottom: window.innerHeight - r.top + GAP }
+        : { top: r.bottom + GAP };
+      const horizontal = flipLeft
+        ? { left: r.left }
+        : { right: window.innerWidth - r.right };
+      setPos({ ...vertical, ...horizontal });
     }
     setOpen(!open);
   };
@@ -261,7 +288,9 @@ function AttachedPopover({
           className="fixed flex items-center bg-[var(--pod-toolbar)] z-[55] px-2 gap-0.5"
           style={{
             top: pos.top,
+            bottom: pos.bottom,
             right: pos.right,
+            left: pos.left,
             height: 'var(--header-h)',
             borderRadius: 'var(--pod-radius)',
             border: 'var(--pod-border)',
@@ -296,6 +325,8 @@ function ViewMenu({
   onToggleDividerLevel,
   dividerWidth,
   onSetDividerWidth,
+  orientation,
+  onSetOrientation,
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
   | "showLatexComments" | "onToggleLatexComments"
@@ -306,12 +337,15 @@ function ViewMenu({
   | "alwaysShowLinkedText" | "onToggleAlwaysShowLinkedText"
   | "availableDividerLevels" | "dividerLevels" | "onToggleDividerLevel"
   | "dividerWidth" | "onSetDividerWidth"
+  | "orientation" | "onSetOrientation"
 >) {
   const [open, setOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
   const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [placement, setPlacement] = useState<{ v: "below" | "above"; h: "right" | "left" }>({ v: "below", h: "right" });
 
   useEffect(() => {
     if (!open) return;
@@ -321,6 +355,22 @@ function ViewMenu({
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !ref.current || !dropdownRef.current) return;
+    const tr = ref.current.getBoundingClientRect();
+    const pr = dropdownRef.current.getBoundingClientRect();
+    const GAP = 6;
+    const v: "below" | "above" = tr.bottom + pr.height + GAP > window.innerHeight && tr.top > pr.height + GAP ? "above" : "below";
+    const h: "right" | "left" = tr.right - pr.width < 4 && window.innerWidth - tr.left > pr.width ? "left" : "right";
+    setPlacement((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
+  }, [open, marginaliaExpanded, dividersExpanded, dividerPrefsExpanded]);
+
+  const dropdownClass = [
+    "absolute bg-surface border border-[var(--border)] rounded-lg shadow-lg z-[55] w-52 py-1",
+    placement.v === "below" ? "top-full mt-1.5" : "bottom-full mb-1.5",
+    placement.h === "right" ? "right-0" : "left-0",
+  ].join(" ");
 
   return (
     <div className="relative" ref={ref}>
@@ -336,7 +386,19 @@ function ViewMenu({
         </svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-[55] w-52 py-1">
+        <div ref={dropdownRef} className={dropdownClass}>
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Tool bar</div>
+          {(["horizontal", "vertical"] as const).map((o) => (
+            <button
+              key={o}
+              onClick={() => { onSetOrientation(o); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            >
+              <span>{o === "horizontal" ? "Horizontal" : "Vertical"}</span>
+              <span className="text-[var(--accent)]">{orientation === o ? "\u2713" : ""}</span>
+            </button>
+          ))}
+          <div className="my-1 border-t border-edge-subtle" />
           <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
           <button
             onClick={() => { onToggleParTitles(); setOpen(false); }}
@@ -461,7 +523,7 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections, onCloseAllPanels }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections, onCloseAllPanels, onGrabStart, orientation, onSetOrientation }: MenuBarProps) {
   if (!editor) return null;
 
   // Track whether any formatting mark is active — the Format button
@@ -475,9 +537,10 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
     editor.isActive("blockquote") ||
     editor.isActive("heading");
 
+  const isVert = orientation === "vertical";
   return (
     <div
-      className="flex items-center bg-[var(--pod-toolbar)] h-[var(--header-h)] px-1.5 gap-0.5"
+      className={`flex items-center bg-[var(--pod-toolbar)] gap-0.5 ${isVert ? "flex-col w-[var(--header-h)] py-1.5" : "h-[var(--header-h)] px-1.5"}`}
       style={{
         borderRadius: 'var(--pod-radius)',
         border: 'var(--pod-border)',
@@ -692,19 +755,17 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         )}
       </AttachedPopover>
 
-      <div className="w-px h-4 bg-[var(--border)] mx-1" />
-
       {/* Paragraph navigation — back/forward, kerned tight together */}
       {(onParaNavBack || onParaNavForward) && (
-        <div className="flex items-center">
+        <div className={`flex items-center${isVert ? " flex-col" : ""}`}>
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               title="Go back"
-              className="py-1 pl-1 pr-0 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              className={`rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body ${isVert ? "px-1 pt-1 pb-0" : "py-1 pl-1 pr-0"}`}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
@@ -714,9 +775,9 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               title="Go forward"
-              className="py-1 pl-0 pr-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              className={`rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body ${isVert ? "px-1 pt-0 pb-1" : "py-1 pl-0 pr-1"}`}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
@@ -775,7 +836,23 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         onToggleDividerLevel={onToggleDividerLevel}
         dividerWidth={dividerWidth}
         onSetDividerWidth={onSetDividerWidth}
+        orientation={orientation}
+        onSetOrientation={onSetOrientation}
       />
+
+      {/* Grab handle — drag to reposition. Invisible until hovered,
+          then reveals a solid black bar. Pulled tight against the
+          view-options button. */}
+      {onGrabStart && (
+        <div
+          onMouseDown={onGrabStart}
+          title="Drag to reposition"
+          className={`group/grab cursor-grab active:cursor-grabbing flex items-center ${isVert ? "-mt-0.5 px-1 pt-0 pb-1" : "-ml-0.5 py-1 pl-0 pr-1"}`}
+          style={{ touchAction: "none", userSelect: "none" }}
+        >
+          <div className={`rounded-full bg-transparent group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 ${isVert ? "h-[3px] w-[18px]" : "w-[3px] h-[18px]"}`} />
+        </div>
+      )}
     </div>
   );
 }
