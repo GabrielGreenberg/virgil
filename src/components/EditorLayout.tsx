@@ -7,7 +7,6 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
-import SelectionChip from "./SelectionChip";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import ProgressBar from "./ProgressBar";
 import { useFiles } from "@/hooks/useFiles";
@@ -3398,7 +3397,6 @@ export default function EditorLayout() {
                       markers={visibleMarginaliaMarkers}
                       panelSides={marginaliaPanelSides}
                     />
-                    <SelectionChip editor={editorInstance} />
                   </>
                 }
               />
@@ -3431,7 +3429,6 @@ export default function EditorLayout() {
                   markers={visibleMarginaliaMarkers}
                   panelSides={marginaliaPanelSides}
                 />
-                <SelectionChip editor={editorInstance} />
                 {showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
               </div>
             )
