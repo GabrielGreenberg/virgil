@@ -193,13 +193,18 @@ export function useRevisions(docId: string | null) {
   );
 
   const addTextRevision = useCallback(
-    (selectedText: string, anchorId: string | null, text: string): TextRevision | null => {
+    (
+      selectedText: string,
+      anchorId: string | null,
+      text: string,
+      authorIdOverride?: string,
+    ): TextRevision | null => {
       const trimmed = text.trim();
       if (!trimmed) return null;
       const now = new Date().toISOString();
       let created: TextRevision | null = null;
       update((prev) => {
-        const authorId = prev.activeUserId ?? "me";
+        const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
         const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
         let rev: TextRevision = {
           id: generateEntityId(),

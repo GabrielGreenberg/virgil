@@ -243,17 +243,11 @@ export default function EditorLayout() {
   } = useSuggestions(docIdForHooks);
   const {
     users: revisionUsers,
-    activeUserId: activeRevisionUserId,
     generalRevisions,
     textRevisions,
-    setActiveUser: setActiveRevisionUser,
-    addUser: addRevisionUser,
     addGeneralRevision,
     addTextRevision,
     setRevisionAnchor,
-    addTurn: addRevisionTurn,
-    resolveRevision,
-    reopenRevision,
     deleteRevision,
     refresh: refreshRevisions,
   } = useRevisions(docIdForHooks);
@@ -2415,16 +2409,9 @@ export default function EditorLayout() {
         <RevisionsHost
           side={side}
           panelSide={revisionsPanelSide}
-          revisionUsers={revisionUsers}
-          activeRevisionUserId={activeRevisionUserId}
           generalRevisions={generalRevisions}
           textRevisions={textRevisions}
-          setActiveRevisionUser={setActiveRevisionUser}
-          addRevisionUser={addRevisionUser}
           addGeneralRevision={addGeneralRevision}
-          addRevisionTurn={addRevisionTurn}
-          resolveRevision={resolveRevision}
-          reopenRevision={reopenRevision}
           deleteRevision={deleteRevision}
           pendingCommentText={pendingCommentText}
           setPendingCommentText={setPendingCommentText}
@@ -2731,7 +2718,7 @@ export default function EditorLayout() {
   const poppedCardDeps = {
     notes, footnotes, archiveSnippets, cuts, todoItems, bibEntries,
     citations, citationPositionMap, allEditorCitations,
-    generalRevisions, textRevisions, revisionUsers, activeRevisionUserId,
+    generalRevisions, textRevisions,
     quotationGroups, aiRequests, anchoredIds,
     selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutId,
     selectedTodoId, selectedBibKey, selectedCitationId, selectedCommentId,
@@ -2751,7 +2738,7 @@ export default function EditorLayout() {
     requestBibReview, cancelBibReview, getBibReviewStatus,
     updateBibEntry, updateBibKeyAndType,
     updateCitation,
-    resolveRevision, reopenRevision, deleteRevision, addRevisionTurn,
+    deleteRevision,
     deleteQuotationGroup, updateQuotationGroupTitle,
     addQuotationReference, deleteQuotationReference, updateQuotationReferenceCiteKey,
     addQuotationQuote, updateQuotationQuote, deleteQuotationQuote, updateQuotationNotes,
