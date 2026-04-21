@@ -2881,6 +2881,7 @@ export default function EditorLayout() {
                   type="button"
                   onClick={showLibraryUnderConstruction}
                   title={`Virgil library (under construction)`}
+                  style={{ marginBottom: "-1px" }}
                   className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#cbc8c2] text-ink-subtle hover:bg-[#bcb8b2] hover:text-ink-body"
                 >
                   <IconLibrary />

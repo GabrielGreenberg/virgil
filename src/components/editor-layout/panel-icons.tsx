@@ -148,22 +148,17 @@ export function IconBibliography({ active }: { active?: boolean }) {
 }
 
 // Library icon — a shelf of upright books with the rightmost leaning
-// left, resting against its neighbor. Used for the shadow "library"
-// tab attached behind each doc tab. Each book is a filled spine with
-// a thin title band so it reads as a book rather than a plain vertical
-// line at small sizes.
+// left, resting against its neighbor. Each book is a solid block of
+// color at a different opacity so they read as distinct spines.
 export function IconLibrary() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="16" height="16" viewBox="0 0 24 24">
       {/* Book 1 — upright */}
-      <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.18" />
-      <line x1="3.6" y1="9" x2="6.4" y2="9" />
+      <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.55" />
       {/* Book 2 — upright, taller */}
-      <rect x="8" y="3" width="4" height="17" rx="0.6" fill="currentColor" fillOpacity="0.18" />
-      <line x1="8.6" y1="7" x2="11.4" y2="7" />
+      <rect x="8" y="3" width="4" height="17" rx="0.6" fill="currentColor" fillOpacity="0.9" />
       {/* Book 3 — leaning LEFT, top resting against Book 2 */}
-      <path d="M12 5 L16 5 L20 20 L16 20 Z" fill="currentColor" fillOpacity="0.18" />
-      <line x1="13.3" y1="9" x2="16.8" y2="9.9" />
+      <path d="M12 5 L16 5 L20 20 L16 20 Z" fill="currentColor" fillOpacity="0.4" />
     </svg>
   );
 }
