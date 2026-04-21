@@ -207,117 +207,23 @@ export interface PositionedMarker extends MarginaliaMarker {
 }
 
 import * as React from "react";
+import {
+  IconQuotations,
+  IconNotes,
+  IconArchive,
+  IconRevisions,
+  IconCutter,
+  IconTodo,
+} from "@/components/editor-layout/panel-icons";
 
-const QuoteIcon = React.createElement(
-  "svg",
-  {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 16 16",
-    fill: "currentColor",
-    stroke: "none",
-  },
-  React.createElement("path", {
-    d: "M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4z",
-    transform: "translate(0, 3)",
-  }),
-  React.createElement("path", {
-    d: "M10 3.5C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z",
-    transform: "translate(0, 3)",
-  })
-);
+const MARGIN_ICON_SIZE = 16;
 
-const NoteIcon = React.createElement(
-  "span",
-  {
-    style: {
-      fontSize: 11,
-      fontWeight: 700,
-      fontFamily: "var(--font-sans), system-ui, sans-serif",
-      lineHeight: 1,
-    },
-  },
-  "N"
-);
-
-const ArchiveIcon = React.createElement(
-  "svg",
-  {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 16 16",
-    fill: "none",
-  },
-  React.createElement("text", {
-    x: 8,
-    y: 11.5,
-    textAnchor: "middle",
-    fontSize: 10,
-    fontWeight: 600,
-    fontFamily: "var(--font-sans), sans-serif",
-    fill: "currentColor",
-  }, "A")
-);
-
-const RevisionIcon = React.createElement(
-  "svg",
-  {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 16 16",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.3,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  },
-  React.createElement("path", {
-    d: "M2 2.5h12a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H4.5L2 13.5V3a.5.5 0 0 1 .5-.5z",
-  })
-);
-
-const CutIcon = React.createElement(
-  "svg",
-  {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 16 16",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.3,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  },
-  React.createElement("circle", { cx: 4, cy: 4, r: 2 }),
-  React.createElement("circle", { cx: 4, cy: 12, r: 2 }),
-  React.createElement("path", { d: "M13 3L5.5 10.5" }),
-  React.createElement("path", { d: "M9.5 9.5L13 13" })
-);
-
-const TodoIcon = React.createElement(
-  "svg",
-  {
-    width: 14,
-    height: 14,
-    viewBox: "0 0 16 16",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: 1.4,
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-  },
-  React.createElement("rect", { x: 2, y: 2, width: 12, height: 12, rx: 2.5 }),
-  React.createElement("text", {
-    x: 8,
-    y: 11.2,
-    textAnchor: "middle",
-    fontSize: 9,
-    fontWeight: 600,
-    fontFamily: "var(--font-sans), sans-serif",
-    fill: "currentColor",
-    stroke: "none",
-  }, "T")
-);
+const QuoteIcon = React.createElement(IconQuotations, { size: MARGIN_ICON_SIZE, hideFrame: true });
+const NoteIcon = React.createElement(IconNotes, { size: MARGIN_ICON_SIZE });
+const ArchiveIcon = React.createElement(IconArchive, { size: MARGIN_ICON_SIZE });
+const RevisionIcon = React.createElement(IconRevisions, { size: MARGIN_ICON_SIZE });
+const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
+const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
   quote: {
