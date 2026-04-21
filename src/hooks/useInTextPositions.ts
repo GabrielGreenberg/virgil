@@ -72,6 +72,12 @@ export function findTextPosition(editor: Editor | null, text: string): number {
 const MIN_GAP = 4; // small extra gap between entries beyond their height
 const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
 
+// Module-level default so callers that don't pass `entry` get a stable
+// reference. An inline `entry = (id) => ...` default recreates the
+// function on every call, which breaks the useCallback identity for
+// `compute` and in turn loops the effect that watches it.
+const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
+
 /**
  * Computes scroll-relative Y positions for panel items so they align
  * with their corresponding positions in the TipTap editor.
@@ -100,8 +106,7 @@ export function useInTextPositions(
    * panel card regardless of its card kind (reads `data-link-card`
    * per the Link Architecture DOM contract).
    */
-  entry: string | ((id: string) => string) = (id) =>
-    `[data-link-card$=":${id}"]`,
+  entry: string | ((id: string) => string) = DEFAULT_ENTRY,
   /** Ref whose `.current` holds the pixel height of content above the
    *  positioned container (e.g. an unanchored section). The scroll sync
    *  offsets by this amount so the panel can scroll above the document. */
