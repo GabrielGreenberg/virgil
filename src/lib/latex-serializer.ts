@@ -4,7 +4,7 @@ import { ANCHORABLE_NODES } from "@/lib/marginalia";
 import { generateNodeUuid } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 
-const PREAMBLE = `\\documentclass{article}
+const DEFAULT_PREAMBLE = `\\documentclass{article}
 \\usepackage[utf8]{inputenc}
 \\usepackage{amsmath}
 \\usepackage{amssymb}
@@ -20,9 +20,35 @@ const PREAMBLE = `\\documentclass{article}
 
 `;
 
-const POSTAMBLE = `
+const DEFAULT_POSTAMBLE = `
 \\end{document}
 `;
+
+/**
+ * If the preserved user preamble doesn't already declare `\vfid`/`\vcid`,
+ * inject `\providecommand` definitions for them right before
+ * `\begin{document}`. Virgil emits these markers inline to carry stable
+ * UUIDs for footnotes/citations across parse cycles; without a matching
+ * declaration in the preamble, LaTeX compilation fails with "Undefined
+ * control sequence."
+ */
+function ensureVirgilCommands(preamble: string): string {
+  const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
+  const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
+  if (hasVfid && hasVcid) return preamble;
+
+  const beginMarker = "\\begin{document}";
+  const beginIdx = preamble.indexOf(beginMarker);
+  if (beginIdx === -1) return preamble;
+
+  const additions: string[] = [];
+  if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
+  if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
+
+  const before = preamble.slice(0, beginIdx).replace(/\s*$/, "");
+  const after = preamble.slice(beginIdx);
+  return before + "\n\n" + additions.join("\n") + "\n\n" + after;
+}
 
 function serializeMarks(
   text: string,
@@ -268,9 +294,16 @@ function serializeInline(node: JSONContent): string {
   return "";
 }
 
-export function serializeToLatex(doc: JSONContent): string {
+export function serializeToLatex(
+  doc: JSONContent,
+  options?: { preamble?: string; postamble?: string },
+): string {
   const body = serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
-  return PREAMBLE + body + POSTAMBLE;
+  const preamble = options?.preamble
+    ? ensureVirgilCommands(options.preamble)
+    : DEFAULT_PREAMBLE;
+  const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
+  return preamble + body + postamble;
 }
 
 export function serializeBodyOnly(doc: JSONContent): string {

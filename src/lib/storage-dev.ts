@@ -9,7 +9,7 @@
 
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
-import { parseLatex } from "@/lib/latex-parser";
+import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
@@ -175,7 +175,11 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   // Also persist back to disk so the .tex file stays in sync.
   assignUuids(content);
   const newSidecar = extractSidecarData(content);
-  const newLatex = serializeToLatex(content);
+  // Preserve the user's preamble/postamble — the parser strips them, so
+  // without this the fire-and-forget write below would overwrite the
+  // user's .tex header with the default preamble.
+  const delimiters = extractPreambleAndPostamble(latex);
+  const newLatex = serializeToLatex(content, delimiters ?? undefined);
   // Fire-and-forget write — don't block the editor from opening.
   Promise.all([
     putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
@@ -202,8 +206,14 @@ export async function writeDocBundle(
   // Lost UUIDs get fresh ones via assignUuids instead.
   assignUuids(content);
 
+  // Preserve the user's preamble/postamble by re-reading the existing
+  // .tex file. The editor never sees these chunks, so the disk is the
+  // only source of truth for them.
+  const existingLatex = (await fetchText(`${API}/doc/${docId}/${texFilename}`)) ?? "";
+  const delimiters = extractPreambleAndPostamble(existingLatex);
+
   const newSidecar = extractSidecarData(content);
-  const latex = serializeToLatex(content);
+  const latex = serializeToLatex(content, delimiters ?? undefined);
 
   await Promise.all([
     putText(`${API}/doc/${docId}/${texFilename}`, latex),
