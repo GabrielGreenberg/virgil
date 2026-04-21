@@ -634,10 +634,9 @@ export function PanelChromeProvider({
 
 /**
  * Pop-out button bound to the surrounding PanelChromeProvider. Renders a
- * small square pod resting on top of a rectangular page, suggesting a
- * floating window over the document. Greys out (disabled) once the panel
- * is already popped out — closing is handled by the adjacent X button.
- * Renders nothing when there is no chrome (e.g. panel not popped-out aware).
+ * rounded square with an arrow inside: up when docked (pops out) and down
+ * when popped (re-docks to its origin). Renders nothing when there is no
+ * chrome (e.g. panel not popped-out aware).
  */
 export function PanelPopout() {
   const chrome = useContext(PanelChromeContext);
@@ -646,15 +645,10 @@ export function PanelPopout() {
   return (
     <button
       type="button"
-      onClick={isPoppedOut ? undefined : onTogglePopout}
-      disabled={isPoppedOut}
-      className={`w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 ${
-        isPoppedOut
-          ? "text-ink-faint cursor-default"
-          : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
-      }`}
-      title={isPoppedOut ? "Already popped out" : "Pop out panel"}
-      aria-label={isPoppedOut ? "Already popped out" : "Pop out panel"}
+      onClick={onTogglePopout}
+      className="w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
+      title={isPoppedOut ? "Dock panel" : "Pop out panel"}
+      aria-label={isPoppedOut ? "Dock panel" : "Pop out panel"}
     >
       <svg
         width="14"
@@ -666,11 +660,18 @@ export function PanelPopout() {
         strokeLinecap="round"
         strokeLinejoin="round"
       >
-        <path
-          d="M15 7 L15 4 A2 2 0 0 0 13 2 L4 2 A2 2 0 0 0 2 4 L2 20 A2 2 0 0 0 4 22 L13 22 A2 2 0 0 0 15 20 L15 17"
-          strokeLinecap="butt"
-        />
-        <rect x="10" y="7" width="11" height="10" rx="2" />
+        <rect x="2" y="2" width="20" height="20" rx="3" />
+        {isPoppedOut ? (
+          <>
+            <line x1="12" y1="7" x2="12" y2="17" />
+            <polyline points="7 12 12 17 17 12" />
+          </>
+        ) : (
+          <>
+            <line x1="12" y1="17" x2="12" y2="7" />
+            <polyline points="7 12 12 7 17 12" />
+          </>
+        )}
       </svg>
     </button>
   );
@@ -712,10 +713,9 @@ export function PanelClose() {
 
 /**
  * Per-card popout toggle. Always rendered as the last element of the card
- * header (top-right). The fill is a translucent-black overlay so the button
- * always reads as "a shade darker than the local card header" regardless of
- * which theme (or user color override) the card is using. Always visible;
- * docked state shows a chevron, popped state shows an X (click-to-dock).
+ * header (top-right). Styled identically to PanelPopout / PanelClose:
+ * docked state shows a pod with an up arrow; popped state shows a bare X
+ * glyph that re-docks the card.
  */
 export function CardPopoutButton({
   isPoppedOut,
@@ -737,37 +737,31 @@ export function CardPopoutButton({
         e.stopPropagation();
         e.preventDefault();
       }}
-      className="opacity-80 hover:opacity-100 focus:opacity-100 w-[18px] h-[18px] flex items-center justify-center rounded-full border transition-colors shrink-0 text-ink-body"
-      style={{
-        backgroundColor: "rgba(0, 0, 0, 0.08)",
-        borderColor: "rgba(0, 0, 0, 0.18)",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.16)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "rgba(0, 0, 0, 0.08)";
-      }}
+      className="w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
       title={isPoppedOut ? "Dock card" : "Pop out card"}
       aria-label={isPoppedOut ? "Dock card" : "Pop out card"}
     >
       <svg
-        width="12"
-        height="12"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
-        strokeWidth="3"
+        strokeWidth="2"
         strokeLinecap="round"
         strokeLinejoin="round"
       >
         {isPoppedOut ? (
           <>
-            <line x1="6" y1="6" x2="18" y2="18" />
-            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" strokeWidth="2.5" />
+            <line x1="18" y1="6" x2="6" y2="18" strokeWidth="2.5" />
           </>
         ) : (
-          <polyline points="6 15 12 9 18 15" />
+          <>
+            <rect x="2" y="2" width="20" height="20" rx="3" />
+            <line x1="12" y1="17" x2="12" y2="7" />
+            <polyline points="7 12 12 7 17 12" />
+          </>
         )}
       </svg>
     </button>
@@ -893,7 +887,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       {onTogglePopout && (
         <div
           className="absolute right-1.5 z-10"
-          style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 9px)" }}
+          style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
         >
           <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
         </div>
