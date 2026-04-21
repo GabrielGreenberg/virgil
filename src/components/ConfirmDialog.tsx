@@ -49,6 +49,8 @@ export interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: ConfirmTone;
+  /** Hide the cancel button — turns the dialog into a single-button info modal. */
+  hideCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   /** When provided, the dialog positions near this element instead of dead-center screen. */
@@ -62,6 +64,7 @@ export default function ConfirmDialog({
   confirmLabel = "Continue",
   cancelLabel = "Cancel",
   tone = "default",
+  hideCancel = false,
   onConfirm,
   onCancel,
   anchorRef,
@@ -156,13 +159,15 @@ export default function ConfirmDialog({
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-3 border-t border-[var(--border)] bg-surface-muted/60">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover:bg-surface-muted transition-colors"
-          >
-            {cancelLabel}
-          </button>
+          {hideCancel ? null : (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover:bg-surface-muted transition-colors"
+            >
+              {cancelLabel}
+            </button>
+          )}
           <button
             ref={confirmBtnRef}
             type="button"
@@ -185,6 +190,7 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: ConfirmTone;
+  hideCancel?: boolean;
 }
 
 interface PendingConfirm extends ConfirmOptions {
@@ -227,6 +233,7 @@ export function useConfirmDialog() {
       confirmLabel={pending.confirmLabel}
       cancelLabel={pending.cancelLabel}
       tone={pending.tone}
+      hideCancel={pending.hideCancel}
       onConfirm={handleConfirm}
       onCancel={handleCancel}
     />

@@ -99,6 +99,7 @@ import {
   IconX,
   IconOmni,
   IconSplit,
+  IconLibrary,
 } from "./editor-layout/panel-icons";
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
@@ -189,6 +190,17 @@ export default function EditorLayout() {
       }),
     [runConfirm],
   );
+  // The per-doc library tab is visually in place but the feature is
+  // still under construction — clicking the shadow tab surfaces a
+  // single-button info dialog rather than activating the pane.
+  const showLibraryUnderConstruction = useCallback(() => {
+    runConfirm({
+      title: "Virgil library",
+      message: "This function is still under construction.",
+      confirmLabel: "Got it",
+      hideCancel: true,
+    });
+  }, [runConfirm]);
 
   const {
     docs,
@@ -205,10 +217,7 @@ export default function EditorLayout() {
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
-    libraryOpenFor,
     activePane,
-    openLibraryFor,
-    closeLibraryFor,
     activateDocPane,
     activateLibraryPane,
     toggleActivePane,
@@ -2844,13 +2853,11 @@ export default function EditorLayout() {
           {openTabs.map((doc) => {
             const isCurrentDoc = doc.id === currentDocId;
             const isDocPaneActive = isCurrentDoc && activePane === "doc";
-            const isLibPaneActive = isCurrentDoc && activePane === "library";
-            const libraryOpen = libraryOpenFor.includes(doc.id);
             return (
               <div key={doc.id} className="flex items-end shrink-0">
                 {/* Doc tab */}
                 <div
-                  className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative ${
+                  className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
                     isDocPaneActive
                       ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10"
                       : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
@@ -2875,37 +2882,21 @@ export default function EditorLayout() {
                     <IconX />
                   </button>
                 </div>
-                {/* Attached library pill (shadow tab) */}
-                {libraryOpen ? (
-                  <div
-                    className={`group flex items-center gap-1 -ml-1 pl-2 pr-1 pt-[1px] pb-0 text-[11px] cursor-default shrink-0 transition-all rounded-t-[8px] relative ${
-                      isLibPaneActive
-                        ? "bg-[var(--background)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
-                        : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body opacity-80"
-                    }`}
-                    title={`Library for ${doc.folderName}`}
-                    onClick={() => {
-                      if (!isLibPaneActive) activateLibraryPane(doc.id);
-                    }}
-                  >
-                    <span className="text-[10px] leading-none py-[5px] font-medium tracking-wide">Lib</span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); closeLibraryFor(doc.id); }}
-                      className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover:bg-surface/40 transition-all"
-                      title="Close library tab"
-                    >
-                      <IconX />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => openLibraryFor(doc.id)}
-                    className="-ml-0.5 px-1 py-[3px] text-[10px] text-ink-subtle hover:text-ink-body hover:bg-surface/30 rounded transition-colors"
-                    title={`Open library tab for ${doc.folderName}`}
-                  >
-                    +Lib
-                  </button>
-                )}
+                {/* Library shadow tab — a full-width tab (matches a
+                    regular doc tab) tucked behind the main tab; only
+                    the right ~30px peeks out. The swoop (library-tab-
+                    swoop) flares the cup color outward so the tab
+                    silhouette matches a browser tab, just darker.
+                    Feature is WIP, so clicking pops an under-
+                    construction notice. */}
+                <button
+                  type="button"
+                  onClick={showLibraryUnderConstruction}
+                  title={`Virgil library (under construction)`}
+                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#cbc8c2] text-ink-subtle hover:bg-[#bcb8b2] hover:text-ink-body"
+                >
+                  <IconLibrary />
+                </button>
               </div>
             );
           })}

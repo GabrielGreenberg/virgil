@@ -1501,6 +1501,35 @@ body {
           mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
 }
 
+/* Library shadow-tab swoop — same concave hook as the active doc tab.
+   The cup fill matches the TAB body color (not the surrounding topbar)
+   so the tab visually extends outward with a flared base, rather than
+   having the topbar bite inward at the corners. */
+.library-tab-swoop::before,
+.library-tab-swoop::after {
+  content: '';
+  position: absolute;
+  bottom: 1px;
+  width: 13px;
+  height: 12px;
+  background: #cbc8c2;
+  pointer-events: none;
+}
+.library-tab-swoop:hover::before,
+.library-tab-swoop:hover::after {
+  background: #bcb8b2;
+}
+.library-tab-swoop::before {
+  left: -12px;
+  -webkit-mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
+          mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
+}
+.library-tab-swoop::after {
+  right: -12px;
+  -webkit-mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
+          mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
+}
+
 /* Editor mirror — match canonical view scroll behavior */
 .editor-mirror .ProseMirror {
   outline: none;
