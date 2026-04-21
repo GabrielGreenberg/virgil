@@ -21,6 +21,31 @@ function stripPreamble(latex: string): string {
 }
 
 /**
+ * Extract the preamble (everything up to and including `\begin{document}`)
+ * and postamble (`\end{document}` onward) from a LaTeX source. Returns
+ * `null` if the source has no `\begin{document}` marker.
+ *
+ * The returned strings are shaped so that
+ *   `preamble + body + postamble`
+ * reproduces a well-formed `.tex` file. The serializer uses this to
+ * preserve the user's original preamble across parse/serialize cycles.
+ */
+export function extractPreambleAndPostamble(
+  latex: string,
+): { preamble: string; postamble: string } | null {
+  const beginDoc = latex.indexOf("\\begin{document}");
+  if (beginDoc === -1) return null;
+  const endDoc = latex.indexOf("\\end{document}");
+  const preamble =
+    latex.slice(0, beginDoc + "\\begin{document}".length) + "\n\n";
+  const postamble =
+    endDoc !== -1
+      ? "\n" + latex.slice(endDoc).replace(/\n*$/, "\n")
+      : "\n\\end{document}\n";
+  return { preamble, postamble };
+}
+
+/**
  * Parse a run of inline LaTeX into Tiptap inline nodes.
  *
  * `\vfid{uuid}` and `\vcid{uuid}` are no-op markers the serializer emits

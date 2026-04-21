@@ -28,7 +28,7 @@
 import { generateEntityId } from "@/lib/uuid";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorStateData, VirgilSidecar } from "@/lib/types";
-import { parseLatex } from "@/lib/latex-parser";
+import { parseLatex, extractPreambleAndPostamble } from "@/lib/latex-parser";
 import {
   serializeToLatex,
   assignUuids,
@@ -250,8 +250,14 @@ export async function writeDocBundle(
     // Lost UUIDs get fresh ones via assignUuids instead.
     assignUuids(content);
 
+    // Preserve the user's preamble/postamble verbatim across the
+    // parse/serialize round-trip. The editor never sees them, so we
+    // read them straight off the existing .tex file on every save.
+    const existingLatex = await safeReadText(docHandle, meta.texFilename, "");
+    const delimiters = extractPreambleAndPostamble(existingLatex);
+
     const newSidecar = extractSidecarData(content);
-    const latex = serializeToLatex(content);
+    const latex = serializeToLatex(content, delimiters ?? undefined);
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,
