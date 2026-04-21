@@ -9,7 +9,7 @@ import {
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
-  formatMinimalCitation,
+  formatMediumCitationParts,
   parseCiteCommand,
   serializeCiteCommand,
 } from "@/lib/bib-parser";
@@ -150,52 +150,6 @@ export function CitationCard({
     setExpandedBibKey((prev) => (prev === key ? null : key));
   }, []);
 
-  const expandedEntry = expandedBibKey
-    ? bibEntryMap.get(expandedBibKey)
-    : undefined;
-
-  const buildSingleKeyCommand = useCallback(
-    (key: string): string => {
-      const parsed = parseCiteCommand(cit.command);
-      if (!parsed) return `\\cite{${key}}`;
-      return serializeCiteCommand(
-        {
-          type: parsed.type,
-          starred: parsed.starred,
-          capitalized: parsed.capitalized,
-          entries: [{ key }],
-        },
-        bibPackage,
-      );
-    },
-    [cit.command, bibPackage],
-  );
-
-  const handleBibPodDragStart = useCallback(
-    (e: React.DragEvent) => {
-      if (!expandedBibKey) return;
-      e.stopPropagation();
-      const cmd = buildSingleKeyCommand(expandedBibKey);
-      const display = getDisplayText(cmd);
-      const plain = display.replace(/<[^>]+>/g, "");
-      e.dataTransfer.setData("text/plain", cmd);
-      e.dataTransfer.setData(
-        MIME_CITATION,
-        JSON.stringify({ command: cmd, bibKey: expandedBibKey }),
-      );
-      e.dataTransfer.effectAllowed = "copy";
-      const ghost = document.createElement("div");
-      ghost.textContent =
-        plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
-      ghost.style.cssText =
-        "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, 10, 14);
-      requestAnimationFrame(() => document.body.removeChild(ghost));
-    },
-    [expandedBibKey, buildSingleKeyCommand, getDisplayText],
-  );
-
   const handleCardDragOver = useCallback(
     (e: React.DragEvent) => {
       if (!e.dataTransfer.types.includes(MIME_CITATION)) return;
@@ -296,33 +250,20 @@ export function CitationCard({
             className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
             style={headerOverrideStyle(theme, isSelected)}
           >
-            <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
-              {cit.keys.map((key) => {
-                const entry = bibEntryMap.get(key);
-                const isActive = expandedBibKey === key;
-                const label = entry
-                  ? formatMinimalCitation(key, bibEntries)
-                  : key;
-                return (
-                  <button
-                    key={key}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleBibKey(key);
-                    }}
-                    className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
-                      !entry
-                        ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
-                        : isActive
-                          ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
-                          : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+            <div
+              className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
+              style={{
+                fontSize: "var(--par-title-size, 0.78rem)",
+                color: theme.titleColor,
+                fontWeight: 500,
+                fontFamily: "var(--font-sans), Inter, sans-serif",
+                letterSpacing: "0.02em",
+              }}
+              title={getDisplayText(cit.command).replace(/<[^>]+>/g, "")}
+              dangerouslySetInnerHTML={{
+                __html: getDisplayText(cit.command),
+              }}
+            />
             <div
               className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
               draggable={false}
@@ -343,21 +284,66 @@ export function CitationCard({
           <div
             className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
           >
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="text-xs font-mono text-ink-subtle truncate flex-1 min-w-0">
-                {cit.command}
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsEditing(true);
-                }}
-                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
-                title="Edit citation"
-              >
-                Edit
-              </button>
-            </div>
+            <ul className="flex flex-col gap-1 list-none m-0 p-0">
+              {cit.keys.map((key) => {
+                const entry = bibEntryMap.get(key);
+                const isActive = expandedBibKey === key;
+                const { author, year, title } = formatMediumCitationParts(
+                  key,
+                  bibEntries,
+                );
+                return (
+                  <li key={key} className="flex flex-col gap-1">
+                    <div className="flex items-start gap-2">
+                      <div
+                        className={`flex-1 min-w-0 text-xs leading-snug ${
+                          !entry ? "text-danger" : "text-ink-body"
+                        }`}
+                      >
+                        {entry ? (
+                          <>
+                            <span className="font-medium">{author}</span>
+                            <span className="text-ink-subtle"> ({year})</span>
+                            {title && (
+                              <span className="text-ink-subtle">
+                                {" — "}
+                                <span className="italic">{title}</span>
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="font-mono">{key}</span>
+                        )}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!entry) return;
+                          toggleBibKey(key);
+                        }}
+                        disabled={!entry}
+                        className={`shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border transition-colors ${
+                          !entry
+                            ? "border-dashed border-red-300 text-danger/70 bg-danger-soft/30 cursor-not-allowed"
+                            : isActive
+                              ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
+                              : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
+                        }`}
+                        title={
+                          entry
+                            ? isActive
+                              ? "Hide BibTeX entry"
+                              : "Show BibTeX entry"
+                            : "Entry not found in .bib"
+                        }
+                      >
+                        Bib
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
 
             {cit.keys
               .filter((k) => !bibEntryMap.has(k))
@@ -367,38 +353,62 @@ export function CitationCard({
                   <span className="font-mono">{k}</span>
                 </div>
               ))}
+          </div>
 
-            {expandedEntry && (
-              <div
-                draggable
-                onDragStart={handleBibPodDragStart}
-                onClick={(e) => e.stopPropagation()}
-                className="mt-2 rounded-md border border-edge-subtle bg-surface-muted/40 p-2 cursor-grab active:cursor-grabbing"
-                title="Drag to insert this citation"
-              >
-                <BibEntryCard
-                  entry={expandedEntry}
-                  isSelected={false}
-                  onClick={() => {}}
-                  getFormattedBib={getFormattedBib}
-                  getAnnotation={getAnnotation}
-                  setAnnotation={setAnnotation}
-                  onRequestReview={onRequestReview}
-                  onCancelReview={onCancelReview}
-                  getReviewStatus={getReviewStatus}
-                  onUpdateBibEntry={onUpdateBibEntry}
-                  onUpdateBibKeyAndType={onUpdateBibKeyAndType}
-                  bibPackage={bibPackage}
-                  bibEntries={bibEntries}
-                  compact
-                />
-              </div>
-            )}
+          <div
+            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={separatorOverrideStyle(theme, isSelected)}
+          />
+
+          <div className="flex items-center gap-1.5 min-w-0 px-3 py-1 bg-surface-muted/30">
+            <div className="text-[11px] font-mono text-ink-subtle truncate flex-1 min-w-0">
+              {cit.command}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsEditing(true);
+              }}
+              className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
+              title="Edit citation"
+            >
+              Edit
+            </button>
           </div>
         </>
       )}
     </PanelCard>
   );
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
-  return card;
+  const expandedEntry = expandedBibKey
+    ? bibEntryMap.get(expandedBibKey)
+    : undefined;
+
+  const grouped = expandedEntry ? (
+    <div className="space-y-2">
+      {card}
+      <div className="ml-4 [filter:brightness(0.96)_saturate(0.92)]">
+        <BibEntryCard
+          entry={expandedEntry}
+          isSelected={false}
+          onClick={() => {}}
+          getFormattedBib={getFormattedBib}
+          getAnnotation={getAnnotation}
+          setAnnotation={setAnnotation}
+          onRequestReview={onRequestReview}
+          onCancelReview={onCancelReview}
+          getReviewStatus={getReviewStatus}
+          onUpdateBibEntry={onUpdateBibEntry}
+          onUpdateBibKeyAndType={onUpdateBibKeyAndType}
+          bibPackage={bibPackage}
+          bibEntries={bibEntries}
+          isCited
+        />
+      </div>
+    </div>
+  ) : (
+    card
+  );
+
+  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{grouped}</FloatCard>;
+  return grouped;
 }

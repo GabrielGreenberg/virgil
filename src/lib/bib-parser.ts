@@ -354,6 +354,20 @@ export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): stri
   return `${author} (${year})`;
 }
 
+/** Returns author / year / title parts for a single bib key. Missing fields come back as empty strings. */
+export function formatMediumCitationParts(
+  key: string,
+  bibEntries: BibEntry[],
+): { author: string; year: string; title: string } {
+  const entry = bibEntries.find((e) => e.key === key);
+  if (!entry) return { author: key, year: "", title: "" };
+  return {
+    author: formatAuthorLastNames(entry, false, false),
+    year: getEntryYear(entry),
+    title: entry.fields.title || "",
+  };
+}
+
 // Natbib commands always read pre/post from the top-level command (it's a
 // single shared annotation). Biblatex multi-cite forms read per-entry. The
 // biblatex singular forms also use top-level (since there's only one entry).
