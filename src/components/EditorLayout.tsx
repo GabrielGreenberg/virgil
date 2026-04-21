@@ -373,6 +373,7 @@ export default function EditorLayout() {
     collapseRight,
     expandLeft,
     expandRight,
+    closeAllPanels,
     setActiveLeft,
     setActiveRight,
     setActiveHalf,
@@ -3216,54 +3217,58 @@ export default function EditorLayout() {
         {/* Left panel column (always present; collapsed when inactive) */}
         {renderPanelColumn("left")}
 
-        {/* Editor column: toolbar pod + gap + editor pod + breadcrumb.
-            Panel slots are always present in the flex layout (collapsed or not),
-            so the editor's position never changes. */}
+        {/* Editor column: floating toolbar overlays the editor pod's
+            top-right corner; the editor pod itself runs all the way to
+            the top of the column so the text reaches the tab area. */}
         <div className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
           paddingRight: 4,
         }}>
-          {/* Toolbar pod */}
-          <MenuBar
-            editor={overrideEditor ?? editorInstance}
-            onAddComment={handleAddComment}
-            onArchive={handleArchive}
-            onCreateFootnote={handleCreateFootnote}
-            onQuoteSelection={handleQuoteSelection}
-            onAddNote={handleAddNoteFromSelection}
-            onCutSelection={handleCutSelection}
-            showParTitles={showParTitles}
-            onToggleParTitles={() => setShowParTitles((p) => !p)}
-            showLatexComments={showLatexComments}
-            onToggleLatexComments={() => setShowLatexComments((p) => !p)}
-            showSectionIndicator={showSectionIndicator}
-            onToggleSectionIndicator={toggleSectionIndicator}
-            onOpenPreferences={() => setPreferencesOpen(true)}
-            editorSplit={editorSplit}
-            onToggleEditorSplit={() => setEditorSplit((s) => !s)}
-            activeSplitPane={editorSplit ? activeSplitPane : undefined}
-            showMarginalia={showMarginalia}
-            onToggleMarginalia={toggleMarginalia}
-            hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-            onToggleMarginaliaType={toggleMarginaliaType}
-            alwaysShowLinkedText={prefs.alwaysShowLinkedText}
-            onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
-            availableDividerLevels={availableDividerLevels}
-            dividerLevels={activeDividerLevels}
-            onToggleDividerLevel={toggleDividerLevel}
-            dividerWidth={dividerWidth}
-            onSetDividerWidth={setDividerWidth}
-            onParaNavBack={paraNavBack}
-            onParaNavForward={paraNavForward}
-            paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
-            paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-            onExpandAllSections={() => editorRef.current?.expandAllSections()}
-            onCollapseAllSections={() => editorRef.current?.collapseAllSections()}
-          />
-          {/* Gap between toolbar pod and editor pod */}
-          <div className="shrink-0" style={{ height: 'var(--pod-gap)' }} />
+          {/* Floating toolbar — top-right of the editor column, overlays
+              the editor pod. Sits above the pod via z-index. */}
+          <div className="absolute z-30 pointer-events-none" style={{ top: 'calc(var(--pod-gap) + 6px)', right: 10, left: 10 }}>
+            <div className="flex justify-end pointer-events-auto">
+              <MenuBar
+                editor={overrideEditor ?? editorInstance}
+                onAddComment={handleAddComment}
+                onArchive={handleArchive}
+                onCreateFootnote={handleCreateFootnote}
+                onQuoteSelection={handleQuoteSelection}
+                onAddNote={handleAddNoteFromSelection}
+                onCutSelection={handleCutSelection}
+                showParTitles={showParTitles}
+                onToggleParTitles={() => setShowParTitles((p) => !p)}
+                showLatexComments={showLatexComments}
+                onToggleLatexComments={() => setShowLatexComments((p) => !p)}
+                showSectionIndicator={showSectionIndicator}
+                onToggleSectionIndicator={toggleSectionIndicator}
+                onOpenPreferences={() => setPreferencesOpen(true)}
+                editorSplit={editorSplit}
+                onToggleEditorSplit={() => setEditorSplit((s) => !s)}
+                activeSplitPane={editorSplit ? activeSplitPane : undefined}
+                showMarginalia={showMarginalia}
+                onToggleMarginalia={toggleMarginalia}
+                hiddenMarginaliaTypes={hiddenMarginaliaTypes}
+                onToggleMarginaliaType={toggleMarginaliaType}
+                alwaysShowLinkedText={prefs.alwaysShowLinkedText}
+                onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
+                availableDividerLevels={availableDividerLevels}
+                dividerLevels={activeDividerLevels}
+                onToggleDividerLevel={toggleDividerLevel}
+                dividerWidth={dividerWidth}
+                onSetDividerWidth={setDividerWidth}
+                onParaNavBack={paraNavBack}
+                onParaNavForward={paraNavForward}
+                paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
+                paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
+                onExpandAllSections={() => editorRef.current?.expandAllSections()}
+                onCollapseAllSections={() => editorRef.current?.collapseAllSections()}
+                onCloseAllPanels={closeAllPanels}
+              />
+            </div>
+          </div>
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
               /* When split, each pane is its own pod so the gap reveals the canvas */
