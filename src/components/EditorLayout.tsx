@@ -34,9 +34,11 @@ import {
   isAnchorableNode,
   MIME_ARCHIVE,
   MIME_ARCHIVE_ANCHOR,
+  MIME_SELECTION_ANCHOR,
   MARKER_META,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
+import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE, extractParagraphByUuid, extractRange } from "@/hooks/usePanelCapture";
 import { useSyncExternalStore } from "react";
 import {
   deriveMarkerPalette,
@@ -2038,6 +2040,31 @@ export default function EditorLayout() {
     };
   }, [editorInstance, deleteSnippet, addArchiveParagraphId]);
 
+  // Todo drop actions — create a new todo, link its paragraph, seed its
+  // text from the dropped selection where applicable. Used both by the
+  // open TodoPanel (via onDropSelection/onDropParagraph props) and by
+  // the sidebar icon-drop router (`handleIconDrop`).
+  const handleDropSelectionOnTodo = useCallback(
+    (payload: { from: number; to: number; selectedText: string }) => {
+      if (!editorRef.current) return;
+      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
+      const todo = addTodo();
+      if (payload.selectedText) updateTodo(todo.id, payload.selectedText);
+      if (paragraphId) addTodoParagraphId(todo.id, paragraphId);
+      setSelectedTodoId(todo.id);
+    },
+    [editorRef, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId],
+  );
+  const handleDropParagraphOnTodo = useCallback(
+    (paragraphId: string) => {
+      if (!paragraphId) return;
+      const todo = addTodo();
+      addTodoParagraphId(todo.id, paragraphId);
+      setSelectedTodoId(todo.id);
+    },
+    [addTodo, addTodoParagraphId, setSelectedTodoId],
+  );
+
   const pendingRevisionAnchorIdRef = useRef<string | null>(null);
 
   const { handleAddComment } = useCommentActions({
@@ -2226,6 +2253,171 @@ export default function EditorLayout() {
     setSelectedQuotationGroupId(group.id);
     popCardAtAnchor("quotation", group.id, anchorRect);
   }, [readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
+
+  // ── Sidebar panel-icon drop routing ──────────────────────────────────
+  // Maps each drop-accepting panel to the MIME types its icon accepts,
+  // and a handler that takes the DataTransfer and routes to the same
+  // action the open panel would invoke. StripButton reads this per-icon
+  // and shows a blue pod highlight on dragover.
+  const iconDropMimesByPanel = useMemo<Partial<Record<PanelId, readonly string[]>>>(
+    () => ({
+      notes: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
+      cutter: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
+      revisions: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
+      todo: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
+      archive: [MIME_TEXT_CAPTURE, MIME_PAR_CAPTURE],
+    }),
+    [],
+  );
+  // Opens a panel on its placed side without toggling. Safe to call when
+  // the panel is already active (no-op in that case).
+  const ensurePanelActive = useCallback(
+    (id: PanelId) => {
+      const placement = prefs.placements.find((p) => p.id === id);
+      const side = placement?.side ?? "right";
+      if (side === "left") {
+        if (prefs.activeLeft !== id) setActiveLeft(id);
+      } else {
+        if (prefs.activeRight !== id) setActiveRight(id);
+      }
+    },
+    [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
+  );
+  const handleIconDrop = useCallback(
+    (targetPanelId: PanelId, dt: DataTransfer): boolean => {
+      const ed = editorRef.current?.getEditor();
+      if (!ed || !editorRef.current) return false;
+      // Notes / Cutter / Todo use the same selection+paragraph MIME contract.
+      if (
+        targetPanelId === "notes" ||
+        targetPanelId === "cutter" ||
+        targetPanelId === "todo"
+      ) {
+        const parRaw = dt.getData(MIME_PAR_CAPTURE);
+        if (parRaw) {
+          try {
+            const { uuid } = JSON.parse(parRaw) as { uuid: string };
+            if (uuid) {
+              if (targetPanelId === "notes") handleDropParagraphOnNotes(uuid);
+              else if (targetPanelId === "cutter") handleDropParagraphOnCutter(uuid);
+              else handleDropParagraphOnTodo(uuid);
+              ensurePanelActive(targetPanelId);
+              return true;
+            }
+          } catch { /* fall through */ }
+        }
+        const selRaw = dt.getData(MIME_SELECTION_ANCHOR);
+        if (selRaw) {
+          try {
+            const payload = JSON.parse(selRaw) as { from: number; to: number; selectedText: string };
+            if (typeof payload.from === "number" && typeof payload.to === "number") {
+              if (targetPanelId === "notes") handleDropSelectionOnNotes(payload);
+              else if (targetPanelId === "cutter") handleDropSelectionOnCutter(payload);
+              else handleDropSelectionOnTodo(payload);
+              ensurePanelActive(targetPanelId);
+              return true;
+            }
+          } catch { /* ignore */ }
+        }
+        return false;
+      }
+      if (targetPanelId === "revisions") {
+        // Mirror the inline logic in revisions-host — stash anchorId in
+        // the ref and set pendingCommentText so the RevisionsHost effect
+        // creates an empty text revision anchored to the dropped range.
+        const parRaw = dt.getData(MIME_PAR_CAPTURE);
+        if (parRaw) {
+          try {
+            const { uuid } = JSON.parse(parRaw) as { uuid: string };
+            if (uuid) {
+              let from: number | null = null;
+              let to: number | null = null;
+              ed.state.doc.descendants((node, pos) => {
+                if (from !== null) return false;
+                if (node.attrs?.uuid === uuid) {
+                  from = pos + 1;
+                  to = pos + node.nodeSize - 1;
+                  return false;
+                }
+                return true;
+              });
+              if (from !== null && to !== null && from < to) {
+                const record = createLinkedAnchor(ed, "revision", { from, to });
+                if (record) {
+                  pendingRevisionAnchorIdRef.current = record.anchorId;
+                  setPendingCommentText(record.text);
+                  ensurePanelActive("revisions");
+                  return true;
+                }
+              }
+            }
+          } catch { /* fall through */ }
+        }
+        const selRaw = dt.getData(MIME_SELECTION_ANCHOR);
+        if (selRaw) {
+          try {
+            const payload = JSON.parse(selRaw) as { from: number; to: number; selectedText: string };
+            if (typeof payload.from === "number" && typeof payload.to === "number") {
+              const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
+              if (record) {
+                pendingRevisionAnchorIdRef.current = record.anchorId;
+                setPendingCommentText(payload.selectedText || record.text);
+                ensurePanelActive("revisions");
+                return true;
+              }
+            }
+          } catch { /* ignore */ }
+        }
+        return false;
+      }
+      if (targetPanelId === "archive") {
+        // Archive uses the capture flow — extract content and hand to
+        // handleArchiveCapture, which creates an archive snippet and
+        // already activates the panel. No `ensurePanelActive` call here.
+        const parRaw = dt.getData(MIME_PAR_CAPTURE);
+        if (parRaw) {
+          try {
+            const { uuid } = JSON.parse(parRaw) as { uuid: string };
+            if (uuid) {
+              const captured = extractParagraphByUuid(ed, uuid);
+              if (captured) {
+                handleArchiveCapture({ content: captured.content, paragraphId: captured.paragraphId });
+                return true;
+              }
+            }
+          } catch { /* fall through */ }
+        }
+        const textRaw = dt.getData(MIME_TEXT_CAPTURE);
+        if (textRaw) {
+          try {
+            const { from, to } = JSON.parse(textRaw) as { from: number; to: number };
+            if (typeof from === "number" && typeof to === "number") {
+              const captured = extractRange(ed, from, to);
+              if (captured) {
+                handleArchiveCapture({ content: captured.content, paragraphId: captured.paragraphId });
+                return true;
+              }
+            }
+          } catch { /* ignore */ }
+        }
+        return false;
+      }
+      return false;
+    },
+    [
+      editorRef,
+      handleDropSelectionOnNotes,
+      handleDropParagraphOnNotes,
+      handleDropSelectionOnCutter,
+      handleDropParagraphOnCutter,
+      handleDropSelectionOnTodo,
+      handleDropParagraphOnTodo,
+      handleArchiveCapture,
+      ensurePanelActive,
+      pendingRevisionAnchorIdRef,
+      setPendingCommentText,
+    ],
+  );
 
   const {
     handleDocPermissionGranted,
@@ -2819,6 +3011,8 @@ export default function EditorLayout() {
           deleteTodo={deleteTodo}
           archiveTodos={archiveTodos}
           discardPristine={discardPristineTodos}
+          onDropSelection={handleDropSelectionOnTodo}
+          onDropParagraph={handleDropParagraphOnTodo}
         />
       );
     }
@@ -3709,6 +3903,8 @@ export default function EditorLayout() {
               side="left"
               badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
+              iconDropMimes={iconDropMimesByPanel[p.id]}
+              onIconDrop={(dt) => handleIconDrop(p.id, dt)}
             />
           ))}
         </div>
@@ -4009,6 +4205,8 @@ export default function EditorLayout() {
               side="right"
               badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
+              iconDropMimes={iconDropMimesByPanel[p.id]}
+              onIconDrop={(dt) => handleIconDrop(p.id, dt)}
             />
           ))}
         </div>

@@ -93,6 +93,7 @@ function ArchivePanel({
         ...dropProps,
         ...(isDragOver ? { "data-capture-drop-active": "true" } : {}),
       }}
+      showDropPlaceholder={isDragOver}
       items={snippets}
       getId={(s) => s.id}
       selectedId={selectedId}

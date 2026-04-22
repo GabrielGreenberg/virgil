@@ -38,6 +38,7 @@ export interface PanelProps {
   /** Ref to the scroll container (only meaningful for variant="list"). */
   scrollRef?: React.Ref<HTMLDivElement>;
   onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   /** Click on empty list area (typically used to deselect). */
   onClickEmpty?: (e: React.MouseEvent) => void;
@@ -71,6 +72,7 @@ export function Panel({
   variant = "list",
   scrollRef,
   onDragOver,
+  onDragLeave,
   onDrop,
   onClickEmpty,
   onKeyDown,
@@ -104,6 +106,7 @@ export function Panel({
           ref={scrollRef}
           className={`${PANEL.list}${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
           onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
           onClick={onClickEmpty}
           onKeyDown={onKeyDown}

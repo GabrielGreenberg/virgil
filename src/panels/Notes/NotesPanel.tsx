@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback, useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
 import {
@@ -115,6 +115,7 @@ export default function NotesPanel({
   }, [selectedNoteId, sortedNotes, idx, setIdx]);
 
   const dropEnabled = onDropSelection || onDropParagraph;
+  const [isDragOver, setIsDragOver] = useState(false);
   const handleDragOver = dropEnabled
     ? (e: React.DragEvent) => {
         const types = e.dataTransfer.types;
@@ -124,11 +125,22 @@ export default function NotesPanel({
         ) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
+          if (!isDragOver) setIsDragOver(true);
         }
+      }
+    : undefined;
+  const handleDragLeave = dropEnabled
+    ? (e: React.DragEvent) => {
+        // Fires when leaving any descendant too; only reset when we've
+        // actually left the scroll container (relatedTarget not contained).
+        const current = e.currentTarget as HTMLElement;
+        const next = e.relatedTarget as Node | null;
+        if (!next || !current.contains(next)) setIsDragOver(false);
       }
     : undefined;
   const handleDrop = dropEnabled
     ? (e: React.DragEvent) => {
+        setIsDragOver(false);
         if (onDropParagraph) {
           const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
           if (parRaw) {
@@ -203,7 +215,9 @@ export default function NotesPanel({
       inTextScrollHeight={editorScrollHeight}
       scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      showDropPlaceholder={isDragOver}
       renderCard={(note, { selected }) => (
         <NoteCard
           note={note}

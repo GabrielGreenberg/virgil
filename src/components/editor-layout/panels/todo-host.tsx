@@ -23,6 +23,8 @@ export interface TodoHostProps {
   archiveTodos: () => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
+  onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
+  onDropParagraph: (paragraphId: string) => void;
 }
 
 export function TodoHost(p: TodoHostProps) {
@@ -53,6 +55,8 @@ export function TodoHost(p: TodoHostProps) {
       aiRequests={aiRequests}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
+      onDropSelection={p.onDropSelection}
+      onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("todo")}

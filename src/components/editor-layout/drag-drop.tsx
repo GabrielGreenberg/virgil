@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 
@@ -86,6 +86,8 @@ export function StripButton({
   side,
   badge,
   stripRef,
+  iconDropMimes,
+  onIconDrop,
 }: {
   panelId: PanelId;
   active: boolean;
@@ -94,6 +96,12 @@ export function StripButton({
   side: Side;
   badge?: boolean;
   stripRef: React.RefObject<HTMLDivElement | null>;
+  /** MIME types this icon accepts as drop targets. Empty/undefined means
+   *  no icon-level drops (only click-to-open). */
+  iconDropMimes?: readonly string[];
+  /** Invoked when a compatible payload is dropped on the icon. Return
+   *  true if the drop was handled (panel will be opened). */
+  onIconDrop?: (dt: DataTransfer) => boolean;
 }) {
   const renderIcon = PANEL_ICONS[panelId];
   const label = panelLabel(panelId);
@@ -266,6 +274,51 @@ export function StripButton({
   // not used here; kept to preserve the calling contract after extraction.
   void stripRef;
 
+  const [iconDropOver, setIconDropOver] = useState(false);
+  const dropAccepts = useCallback(
+    (dt: DataTransfer) => {
+      if (!onIconDrop || !iconDropMimes || iconDropMimes.length === 0) return false;
+      return iconDropMimes.some((t) => dt.types.includes(t));
+    },
+    [iconDropMimes, onIconDrop],
+  );
+  const onDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropAccepts(e.dataTransfer)) return;
+      e.preventDefault();
+      setIconDropOver(true);
+    },
+    [dropAccepts],
+  );
+  const onDragOver = useCallback(
+    (e: React.DragEvent) => {
+      if (!dropAccepts(e.dataTransfer)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      if (!iconDropOver) setIconDropOver(true);
+    },
+    [dropAccepts, iconDropOver],
+  );
+  const onDragLeave = useCallback((e: React.DragEvent) => {
+    const current = e.currentTarget as HTMLElement;
+    const next = e.relatedTarget as Node | null;
+    if (!next || !current.contains(next)) setIconDropOver(false);
+  }, []);
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      setIconDropOver(false);
+      if (!dropAccepts(e.dataTransfer)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      // Handler is responsible for both creating the card and activating
+      // the panel. (We can't call `onClick` here because `onClick` toggles
+      // — and some handlers like Archive's already activate the panel,
+      // which would then be toggled back closed.)
+      onIconDrop!(e.dataTransfer);
+    },
+    [dropAccepts, onIconDrop],
+  );
+
   return (
     <button
       ref={btnRef}
@@ -273,6 +326,10 @@ export function StripButton({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onDragEnter={onDragEnter}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
       onClick={() => {
         if (!handledByPointer.current) {
           onClick();
@@ -281,7 +338,7 @@ export function StripButton({
       }}
       className={`p-1.5 rounded transition-colors relative select-none ${
         active ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"
-      }`}
+      }${iconDropOver ? " panel-icon-drop-active" : ""}`}
       title={label}
     >
       {renderIcon(active)}

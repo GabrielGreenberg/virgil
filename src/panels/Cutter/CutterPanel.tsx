@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { CutItem } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
@@ -73,6 +73,7 @@ export default function CutterPanel({
   );
 
   const dropEnabled = onDropSelection || onDropParagraph;
+  const [isDragOver, setIsDragOver] = useState(false);
   const handleDragOver = dropEnabled
     ? (e: React.DragEvent) => {
         const types = e.dataTransfer.types;
@@ -82,11 +83,20 @@ export default function CutterPanel({
         ) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
+          if (!isDragOver) setIsDragOver(true);
         }
+      }
+    : undefined;
+  const handleDragLeave = dropEnabled
+    ? (e: React.DragEvent) => {
+        const current = e.currentTarget as HTMLElement;
+        const next = e.relatedTarget as Node | null;
+        if (!next || !current.contains(next)) setIsDragOver(false);
       }
     : undefined;
   const handleDrop = dropEnabled
     ? (e: React.DragEvent) => {
+        setIsDragOver(false);
         if (onDropParagraph) {
           const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
           if (parRaw) {
@@ -150,7 +160,9 @@ export default function CutterPanel({
       inTextScrollHeight={editorScrollHeight}
       scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      showDropPlaceholder={isDragOver}
       renderCard={(cut, { selected }) => (
         <CutCard
           cut={cut}
