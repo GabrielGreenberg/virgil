@@ -8,7 +8,7 @@ import { DEFAULT_PREFS } from "@/hooks/usePreferences";
 
 // ─── Leaf Components ──────────────────────────────────────────────────────────
 
-function PrefLabel({ label, description }: { label: string; description?: string }) {
+export function PrefLabel({ label, description }: { label: string; description?: string }) {
   return (
     <div className="w-36 shrink-0">
       <span className="text-xs text-ink-body">{label}</span>
@@ -17,7 +17,7 @@ function PrefLabel({ label, description }: { label: string; description?: string
   );
 }
 
-function SliderPref({
+export function SliderPref({
   label,
   description,
   value,
@@ -55,7 +55,7 @@ function SliderPref({
   );
 }
 
-function ColorPref({
+export function ColorPref({
   label,
   description,
   value,
@@ -123,7 +123,7 @@ function ColorPref({
   );
 }
 
-function FontPref({
+export function FontPref({
   label,
   description,
   value,

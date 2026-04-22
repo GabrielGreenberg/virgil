@@ -10,6 +10,7 @@ import {
   CardTargetIcon,
 } from "@/components/panel-primitives";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
 
@@ -48,6 +49,7 @@ export function TodoRow({
   const cardRef = useRef<HTMLDivElement>(null);
   const popped = usePoppedCards();
   const cardKey = popKey("todo", item.id);
+  const todoBodyStyle = usePanelBodyStyle("todo");
 
   const commitNotes = useCallback(() => {
     if (notes !== item.notes) onUpdateNotes(item.id, notes);
@@ -139,9 +141,10 @@ export function TodoRow({
           onChange={(t) => onUpdate(item.id, t)}
           placeholder="Task"
           theme={theme}
-          style={
-            item.done ? { textDecoration: "line-through" } : undefined
-          }
+          style={{
+            ...(item.done ? { textDecoration: "line-through" } : null),
+            ...todoBodyStyle,
+          }}
         />
 
         <CardTargetIcon
@@ -169,6 +172,8 @@ export function TodoRow({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           placeholder="Notes..."
+          data-panel-kind="todo"
+          style={todoBodyStyle}
           className={`w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed${isPoppedOut ? " flex-1 min-h-0" : ""}`}
           rows={isPoppedOut ? undefined : 2}
         />

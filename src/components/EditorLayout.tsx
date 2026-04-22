@@ -50,11 +50,17 @@ import {
   subscribePanelColors,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
+import { loadPanelTypography } from "@/lib/panel-typography";
+import { loadPrefLinks } from "@/lib/pref-links";
 
 /** Subscribe the EditorLayout tree to panel-color changes. */
 function usePanelColorSubscription(): number {
   // Load overrides on first use (idempotent).
-  if (typeof window !== "undefined") loadPanelColors();
+  if (typeof window !== "undefined") {
+    loadPanelColors();
+    loadPanelTypography();
+    loadPrefLinks();
+  }
   return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
 }
 
@@ -3652,10 +3658,6 @@ export default function EditorLayout() {
     }}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
-      {/* Preference mode picker — renders nothing until a ctrl+click on an
-          annotated element opens it. Mounted at the layout root so its
-          global ctrl+click listener is active for the whole app. */}
-      <PreferenceModePicker />
       {/* Progress bar */}
       {suggestionPanelVisible && (
         <ProgressBar
@@ -3670,16 +3672,18 @@ export default function EditorLayout() {
         // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
         // the PWA/browser theme-color (see globals.css merger notes), so
         // changing it updates both the in-app bar and the browser chrome.
-        data-prefs="topbarBackground,topbarBorder"
-        className={`flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
+        data-prefs="topbarBackground,topbarBorder,virgilBarText"
+        className={`virgil-bar flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
         suggestionPanelVisible ? "mt-10" : ""
-      }`}>
+      }`}
+        style={{ color: "var(--virgil-bar-text)" }}
+      >
         {/* Logo + file buttons + tabs — all bottom-aligned */}
         <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
           {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
             <h1
-              className="text-[var(--accent)] text-base font-semibold tracking-widest"
+              className="text-base font-semibold tracking-widest"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
             >
               VIRGIL
@@ -3692,10 +3696,11 @@ export default function EditorLayout() {
               <div key={doc.id} className="flex items-end shrink-0">
                 {/* Doc tab */}
                 <div
+                  data-prefs={isDocPaneActive ? "mainTabBg,topbarBorder" : "tabBg,topbarBorder"}
                   className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
                     isDocPaneActive
-                      ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
-                      : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
+                      ? "browser-tab-swoop bg-[var(--main-tab-bg)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
+                      : "bg-[var(--tab-bg)] text-ink-subtle border border-[var(--topbar-border,#d5d3ce)] hover:brightness-[0.97] hover:text-ink-body"
                   }`}
                   onClick={() => {
                     if (!isDocPaneActive) activateDocPane(doc.id);
@@ -3725,6 +3730,7 @@ export default function EditorLayout() {
                     Clicking activates the library pane for this doc. */}
                 <button
                   type="button"
+                  data-prefs="libraryBg,topbarBorder"
                   onClick={() => activateLibraryPane(doc.id)}
                   title="Virgil library"
                   style={{ marginBottom: "0px" }}
@@ -3741,7 +3747,7 @@ export default function EditorLayout() {
           })}
           <button
             onClick={handleNativeOpen}
-            className="p-1 mb-1 ml-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors shrink-0"
+            className="p-1 mb-1 ml-1 rounded hover:bg-surface/30 hover:text-[var(--accent)] transition-colors shrink-0"
             title="Open folder"
           >
             <IconPlus />
@@ -3799,22 +3805,13 @@ export default function EditorLayout() {
               edit this JSX only. Don't hardcode the on/off logic anywhere
               else — always drive it through usePreferenceMode(). */}
           <button
-            onClick={togglePrefMode}
-            className={`p-1 rounded transition-colors ${
-              prefModeOn
-                ? "text-[var(--accent)] bg-[var(--accent-light)]"
-                : "text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
-            }`}
-            title={prefModeOn ? "Preference mode: on (ctrl-click to edit)" : "Preference mode: off"}
-            aria-pressed={prefModeOn}
+            onClick={() => setPreferencesOpen(true)}
+            className="p-1 rounded transition-colors hover:bg-surface/30 hover:text-[var(--accent)]"
+            title="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
                 thumb-hole cutout on the right and four color wells punched
-                through via fill-rule="evenodd". Solid (not stroked) so the
-                shape stays legible at 14px; this deliberately reads as
-                more visually present than the neighbouring (i) and
-                AI-star icons, because it toggles a *mode* rather than
-                opening a menu. */}
+                through via fill-rule="evenodd". */}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
             </svg>
@@ -3822,7 +3819,7 @@ export default function EditorLayout() {
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-              className="p-1 rounded transition-colors text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
+              className="p-1 rounded transition-colors hover:bg-surface/30 hover:text-[var(--accent)]"
               title={`Virgil v${APP_VERSION}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3882,7 +3879,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-ink-subtle hover:bg-sky-50/50 hover:text-sky-600"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "hover:bg-sky-50/50 hover:text-sky-600"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3909,7 +3906,7 @@ export default function EditorLayout() {
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
             title={codeView ? "Visual Editor" : "Code Editor"}
           >
             {codeView ? (
@@ -3936,7 +3933,7 @@ export default function EditorLayout() {
           <button
             onClick={compilePdf}
             disabled={!currentDocId || isCompiling}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-subtle"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover:bg-surface/30 hover:text-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             title={isCompiling ? "Compiling…" : "Compile to PDF"}
           >
             {isCompiling ? (

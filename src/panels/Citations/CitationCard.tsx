@@ -21,6 +21,7 @@ import {
   separatorOverrideStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import BibEntryCard from "@/components/BibEntryCard";
@@ -96,6 +97,7 @@ export function CitationCard({
   const editWrapperRef = useRef<HTMLDivElement>(null);
   const builderHandleRef = useRef<CitationBuilderHandle>(null);
   const theme = useCardTheme("citation");
+  const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
 
@@ -251,6 +253,7 @@ export function CitationCard({
             style={headerOverrideStyle(theme, isSelected)}
           >
             <div
+              data-panel-kind="citation"
               className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
               style={{
                 fontSize: "var(--par-title-size, 0.78rem)",
@@ -258,6 +261,7 @@ export function CitationCard({
                 fontWeight: 500,
                 fontFamily: "var(--font-sans), Inter, sans-serif",
                 letterSpacing: "0.02em",
+                ...bodyStyle,
               }}
               title={getDisplayText(cit.command).replace(/<[^>]+>/g, "")}
               dangerouslySetInnerHTML={{

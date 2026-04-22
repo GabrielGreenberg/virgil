@@ -259,6 +259,10 @@ export const PREF_TO_CSS: CssMapping[] = [
   // (--theme-color is aliased to --topbar-bg in globals.css)
   { key: "topbarBackground", cssVar: "--topbar-bg", isColor: true },
   { key: "topbarBorder", cssVar: "--topbar-border", isColor: true },
+  { key: "tabBg", cssVar: "--tab-bg", isColor: true },
+  { key: "mainTabBg", cssVar: "--main-tab-bg", isColor: true },
+  { key: "libraryBg", cssVar: "--library-bg", isColor: true },
+  { key: "virgilBarText", cssVar: "--virgil-bar-text", isColor: true },
 
   // Heading annotations
   { key: "headingAnnotationColor", cssVar: "--heading-annotation-color", isColor: true },
@@ -310,6 +314,8 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "podPanel", cssVar: "--pod-panel", isColor: true },
   { key: "podToolbar", cssVar: "--pod-toolbar", isColor: true },
   { key: "podDark", cssVar: "--pod-dark", isColor: true },
+  { key: "panelAdminTextColor", cssVar: "--panel-admin-text-color", isColor: true },
+  { key: "panelAdminTextFont", cssVar: "--panel-admin-text-font", isColor: false, transform: (v) => `"${v}"` },
 
   // Canvas & layout
   { key: "foreground", cssVar: "--foreground", isColor: true },

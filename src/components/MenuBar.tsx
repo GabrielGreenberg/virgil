@@ -881,17 +881,6 @@ function ViewMenu({
               )}
             </>
           )}
-          <div className="my-1 border-t border-edge-subtle" />
-          <button
-            onClick={() => { onOpenPreferences?.(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
-          >
-            <svg className="w-4 h-4 text-ink-muted" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
-              <circle cx="8" cy="8" r="2.5" />
-              <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.17 3.17l1.42 1.42M11.41 11.41l1.42 1.42M3.17 12.83l1.42-1.42M11.41 4.59l1.42-1.42" />
-            </svg>
-            Preferences&hellip;
-          </button>
         </div>
       )}
     </div>

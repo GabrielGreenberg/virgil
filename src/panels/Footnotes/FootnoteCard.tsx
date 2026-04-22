@@ -128,6 +128,7 @@ export function FootnoteCard({
       onDelete={onDelete}
       value={fn.content}
       variant="footnote"
+      panelKey="footnote"
       placeholder="Text here."
       onChange={handleEdit}
       onArchiveConsumed={onFootnoteArchiveConsumed}
@@ -206,6 +207,7 @@ export function OrphanedFootnoteCard({
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"
+      panelKey="footnote"
       placeholder="Text here."
       onChange={handleEdit}
       onArchiveConsumed={onFootnoteArchiveConsumed}

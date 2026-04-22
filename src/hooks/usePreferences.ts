@@ -61,11 +61,17 @@ export interface EditorPreferences {
   podPanel: string;
   podToolbar: string;
   podDark: string;
+  panelAdminTextColor: string;  // Panel header titles ("Footnotes", etc.)
+  panelAdminTextFont: string;
 
   // App Chrome
   // (themeColor is locked to topbarBackground and not user-editable)
   topbarBackground: string;
   topbarBorder: string;
+  tabBg: string;          // Inactive tab fill
+  mainTabBg: string;      // Active tab fill (the one joined to the canvas)
+  libraryBg: string;      // Library peek-tab fill
+  virgilBarText: string;  // Icons & text in the top bar
 
   // Canvas & Layout
   // (h1Color, h2h3Color, scrollbarHover are locked to foreground,
@@ -143,10 +149,16 @@ export const DEFAULT_PREFS: EditorPreferences = {
   podPanel: "#f3f0eb",
   podToolbar: "#f5f3ef",
   podDark: "#eae6df",
+  panelAdminTextColor: "#44403c",  // matches --ink-body
+  panelAdminTextFont: "Inter",
 
   // App Chrome
   topbarBackground: "#dcdbd7",
   topbarBorder: "#cbc3b8",
+  tabBg: "#dcdbd7",       // matches topbarBackground so inactive tabs blend in
+  mainTabBg: "#f8f3ed",   // matches backgroundColor so active tab joins the canvas
+  libraryBg: "#eae7e2",   // current hardcoded library-tab fill
+  virgilBarText: "#78716c", // current --ink-subtle
 
   // Canvas & Layout
   foreground: "#1a1a1a",

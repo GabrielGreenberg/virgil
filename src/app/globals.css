@@ -18,6 +18,10 @@
   --topbar-bg: #dcdbd7;
   --topbar-border: #cbc3b8;
   --theme-color: var(--topbar-bg);
+  --tab-bg: #dcdbd7;
+  --main-tab-bg: #f8f3ed;
+  --library-bg: #eae7e2;
+  --virgil-bar-text: #78716c;
 
   /* Pod system
      --pod-editor is locked to --surface so the editor pod and all
@@ -27,6 +31,8 @@
   --pod-toolbar: #f5f3ef;
   --pod-dark: #eae6df;
   --header-bg: #e8e5de;
+  --panel-admin-text-color: #44403c;
+  --panel-admin-text-font: "Inter";
   --header-h: 34px;
   --pod-radius: 8px;
   --pod-gap: 10px;
@@ -1532,6 +1538,8 @@ body {
 }
 .panel-container .panel-header-title {
   font-size: var(--panel-header-size, 14px);
+  color: var(--panel-admin-text-color, var(--ink-body));
+  font-family: var(--panel-admin-text-font, var(--font-sans-override, var(--font-sans))), Inter, system-ui, sans-serif;
 }
 
 /* Sidebar split — no visual indicator for focused half */
@@ -1570,14 +1578,14 @@ body {
   background: radial-gradient(circle 12px at top left,
     transparent 0 11px,
     var(--topbar-border, #d5d3ce) 11px 12px,
-    var(--background) 12px);
+    var(--main-tab-bg, var(--background)) 12px);
 }
 .browser-tab-swoop::after {
   right: -12px;
   background: radial-gradient(circle 12px at top right,
     transparent 0 11px,
     var(--topbar-border, #d5d3ce) 11px 12px,
-    var(--background) 12px);
+    var(--main-tab-bg, var(--background)) 12px);
 }
 
 /* Library shadow-tab swoop — same concave hook as the active doc tab.
@@ -1598,14 +1606,14 @@ body {
   background: radial-gradient(circle 12px at top left,
     transparent 0 11px,
     var(--topbar-border, #d5d3ce) 11px 12px,
-    #eae7e2 12px);
+    var(--library-bg, #eae7e2) 12px);
 }
 .library-tab-swoop::after {
   right: -12px;
   background: radial-gradient(circle 12px at top right,
     transparent 0 11px,
     var(--topbar-border, #d5d3ce) 11px 12px,
-    #eae7e2 12px);
+    var(--library-bg, #eae7e2) 12px);
 }
 .library-tab-swoop:hover::before {
   background: radial-gradient(circle 12px at top left,

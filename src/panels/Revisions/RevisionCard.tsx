@@ -159,6 +159,7 @@ export function RevisionCard({
       footer={footer}
       value={revision.content}
       variant="note"
+      panelKey="revision"
       placeholder="Revision text…"
       onChange={handleChange}
       onDelete={() => onDelete(kind, revision.id)}

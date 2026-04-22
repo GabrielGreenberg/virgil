@@ -8,6 +8,7 @@ import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import {
   useInTextPositions,
   type PositionItem,
@@ -85,6 +86,7 @@ function BibliographyPanel({
   onViewModeChange,
 }: BibliographyPanelProps) {
   const bibTheme = useCardTheme("bib");
+  const bibBodyStyle = usePanelBodyStyle("bib");
   const [keyOccurrenceIdx, setKeyOccurrenceIdx] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<"cited" | "all">("cited");
 
@@ -845,8 +847,10 @@ function BibliographyPanel({
             onClick={() => handleSelectBibKey(selected ? null : entry.key)}
           >
             <div
+              data-panel-kind="bib"
               className="text-xs text-ink-strong leading-snug truncate pr-6"
               title={`${author} ${year} — ${title}`}
+              style={bibBodyStyle}
             >
               {author && <span className="font-semibold">{author}</span>}
               {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}

@@ -22,6 +22,7 @@ import {
   headerOverrideStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import ConfirmDialog from "@/components/ConfirmDialog";
@@ -89,12 +90,16 @@ function AutoTextarea({
   placeholder,
   className,
   rows = 2,
+  style,
+  dataPanelKind,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   className?: string;
   rows?: number;
+  style?: React.CSSProperties;
+  dataPanelKind?: string;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const resize = useCallback(() => {
@@ -112,6 +117,8 @@ function AutoTextarea({
       onInput={resize}
       placeholder={placeholder}
       rows={rows}
+      data-panel-kind={dataPanelKind}
+      style={style}
       className={`w-full resize-none outline-none bg-transparent ${className ?? ""}`}
     />
   );
@@ -299,6 +306,7 @@ const QuoteEntry = memo(function QuoteEntry({
   const [text, setText] = useState(quote.text);
   const [page, setPage] = useState(quote.page);
   const debouncedUpdate = useDebouncedCallback(onUpdate, 400);
+  const quoteBodyStyle = usePanelBodyStyle("quote");
 
   const handleTextChange = useCallback(
     (v: string) => {
@@ -376,6 +384,8 @@ const QuoteEntry = memo(function QuoteEntry({
             placeholder="Enter quoted text..."
             className="text-sm text-ink-body leading-relaxed"
             rows={1}
+            dataPanelKind="quote"
+            style={quoteBodyStyle}
           />
         </div>
         {canDelete && (
