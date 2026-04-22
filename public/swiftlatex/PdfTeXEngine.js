@@ -60,7 +60,16 @@ var EngineStatus;
     EngineStatus[EngineStatus["Busy"] = 3] = "Busy";
     EngineStatus[EngineStatus["Error"] = 4] = "Error";
 })(EngineStatus = exports.EngineStatus || (exports.EngineStatus = {}));
-var ENGINE_PATH = '/swiftlatex/swiftlatexpdftex.js';
+// Patched from upstream: derive the worker URL from this script's own URL so
+// it survives subdirectory deploys (e.g. GitHub Pages at /virgil/) instead of
+// hardcoding the root-relative path.
+var ENGINE_PATH = (function () {
+    try {
+        var src = (typeof document !== 'undefined' && document.currentScript && document.currentScript.src) || '';
+        if (src) return src.replace(/[^/]*$/, 'swiftlatexpdftex.js');
+    } catch (e) {}
+    return '/swiftlatex/swiftlatexpdftex.js';
+})();
 var CompileResult = /** @class */ (function () {
     function CompileResult() {
         this.pdf = undefined;
