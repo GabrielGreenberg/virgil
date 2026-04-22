@@ -152,13 +152,13 @@ export function IconBibliography({ active }: { active?: boolean }) {
 // color at a different opacity so they read as distinct spines.
 export function IconLibrary() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24">
+    <svg width="20" height="20" viewBox="0 0 24 24">
       {/* Book 1 — upright */}
-      <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.55" />
+      <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.6" />
       {/* Book 2 — upright, taller */}
-      <rect x="8" y="3" width="4" height="17" rx="0.6" fill="currentColor" fillOpacity="0.9" />
+      <rect x="8" y="3" width="4" height="17" rx="0.6" fill="currentColor" fillOpacity="0.6" />
       {/* Book 3 — leaning LEFT, top resting against Book 2 */}
-      <path d="M12 5 L16 5 L20 20 L16 20 Z" fill="currentColor" fillOpacity="0.4" />
+      <path d="M12 5 L16 5 L20 20 L16 20 Z" fill="currentColor" fillOpacity="0.6" />
     </svg>
   );
 }
