@@ -18,6 +18,7 @@ import type { useBibReview } from "@/hooks/useBibReview";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet, OrphanedFootnote } from "@/lib/types";
 import type { FootnoteInfo } from "../../Editor";
+import type { CardWithLinks } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
@@ -119,8 +120,10 @@ export function OmniHost(p: OmniHostProps) {
     },
     [editorInstance],
   );
-  const scrollToParagraphId = useCallback(
-    (uuid: string) => editorRef.current?.scrollToParagraphId(uuid),
+  const jumpToCard = useCallback(
+    (card: CardWithLinks) => {
+      editorRef.current?.jumpToCard(card);
+    },
     [editorRef],
   );
   const scrollToFootnote = useCallback(
@@ -172,7 +175,7 @@ export function OmniHost(p: OmniHostProps) {
       quotationGroups: p.quotationGroups,
       selectedQuotationGroupId,
       setSelectedQuotationGroupId,
-      scrollToParagraphId,
+      jumpToCard,
       findParagraphPos,
       bibEntries: p.bibEntries,
       bibPackage: p.bibPackage,
@@ -190,7 +193,7 @@ export function OmniHost(p: OmniHostProps) {
       notes: p.notes,
       selectedNoteId,
       setSelectedNoteId,
-      scrollToParagraphId,
+      jumpToCard,
       findParagraphPos,
       updateNote: p.updateNote,
       updateNoteTitle: p.updateNoteTitle,
@@ -204,7 +207,7 @@ export function OmniHost(p: OmniHostProps) {
       anchoredIds: p.anchoredIds,
       selectedArchiveId,
       setSelectedArchiveId,
-      scrollToParagraphId,
+      jumpToCard,
       findParagraphPos,
       updateArchiveSnippet: p.updateArchiveSnippet,
       updateArchiveSnippetTitle: p.updateArchiveSnippetTitle,
@@ -217,7 +220,7 @@ export function OmniHost(p: OmniHostProps) {
       todoItems: p.todoItems,
       selectedTodoId,
       setSelectedTodoId,
-      scrollToParagraphId,
+      jumpToCard,
       findParagraphPos,
       toggleTodo: p.toggleTodo,
       updateTodo: p.updateTodo,

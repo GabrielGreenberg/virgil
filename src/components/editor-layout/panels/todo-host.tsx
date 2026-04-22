@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import TodoPanel from "@/panels/Todo";
 import type { TodoItem } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
-import { getLinkedParagraphIds } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
@@ -47,11 +46,7 @@ export function TodoHost(p: TodoHostProps) {
       onArchiveDone={p.archiveTodos}
       selectedTodoId={selectedTodoId}
       onSelectTodo={setSelectedTodoId}
-      onScrollToMarker={(id) => {
-        const item = p.todoItems.find((t) => t.id === id);
-        const pid = item ? getLinkedParagraphIds(item)[0] : undefined;
-        if (pid) editorRef.current?.scrollToParagraphId(pid);
-      }}
+      onJumpToCard={(item) => editorRef.current?.jumpToCard(item)}
       aiRequests={aiRequests}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}

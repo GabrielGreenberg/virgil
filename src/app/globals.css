@@ -748,6 +748,41 @@ body {
   border-radius: 3px;
 }
 
+/* Card-selection highlight on the in-editor anchor.
+ *
+ * A single `data-card-selected="true"` attribute is applied by
+ * `useCardSelectionHighlight` (src/links/_shared/useCardSelectionHighlight.ts)
+ * to whatever DOM element the selected card's link resolves to — inline
+ * atom, Mode B text-range span, or a paragraph block.
+ *
+ * Per-kind rules let each target type get a visually appropriate
+ * highlight: atoms get a box-shadow ring so their chip background is
+ * preserved; paragraphs and text ranges get a background tint. */
+
+/* Inline atoms (footnote, citation) — ring. */
+.footnote-marker[data-card-selected="true"],
+[data-type="citation"][data-card-selected="true"] {
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.9);
+  border-radius: 3px;
+}
+
+/* Mode B text-range spans — tint the range background. Uses the
+ * card-kind color inherited from `.linked-anchor[data-link-card^=...]`
+ * so notes stay green, cuts stay red, etc. Stronger than the
+ * `[data-link-highlight="active"]` tint below. */
+.linked-anchor[data-card-selected="true"] {
+  background: color-mix(in oklab, var(--link-anchor-color) 40%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 70%, transparent);
+}
+
+/* Mode A paragraph anchors — subtle left-border stripe so the body
+ * text stays readable. Applied to the paragraph wrapper element. */
+[data-card-selected="paragraph"] {
+  background: rgba(251, 191, 36, 0.07);
+  box-shadow: inset 3px 0 0 0 rgba(251, 191, 36, 0.85);
+  border-radius: 2px;
+}
+
 /* AI request marker — placeholder chip dropped from a draft AI request card */
 .ai-request-marker {
   display: inline-flex;

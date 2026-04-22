@@ -40,7 +40,7 @@ export function CutterHost(p: CutterHostProps) {
       onDelete={p.deleteCut}
       onSelect={setSelectedCutId}
       selectedId={selectedCutId}
-      onScrollToParagraphId={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+      onJumpToCard={(cut) => editorRef.current?.jumpToCard(cut)}
       onHoverCut={p.onHoverCut}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}

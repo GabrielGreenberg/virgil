@@ -31,7 +31,7 @@ interface NotesPanelProps {
   onDelete: (id: string) => void;
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
-  onScrollToParagraphId?: (uuid: string) => void;
+  onJumpToCard?: (card: UserNote) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   aiRequests?: AiRequest[];
@@ -56,7 +56,7 @@ export default function NotesPanel({
   onDelete,
   onSelectNote,
   selectedNoteId,
-  onScrollToParagraphId,
+  onJumpToCard,
   getCitationDisplayText,
   onCitationCreated,
   aiRequests,
@@ -101,10 +101,9 @@ export default function NotesPanel({
   const onActivateNote = useCallback(
     (note: UserNote) => {
       onSelectNote(note.id);
-      const firstPid = getLinkedParagraphIds(note)[0];
-      if (firstPid) onScrollToParagraphId?.(firstPid);
+      onJumpToCard?.(note);
     },
-    [onSelectNote, onScrollToParagraphId],
+    [onSelectNote, onJumpToCard],
   );
   const { idx, setIdx } = useCycle(sortedNotes, onActivateNote);
 
@@ -226,12 +225,11 @@ export default function NotesPanel({
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
           onSelect={onSelectNote}
-          onJump={(() => {
-            const pid = getLinkedParagraphIds(note)[0];
-            return onScrollToParagraphId && pid
-              ? () => onScrollToParagraphId(pid)
-              : undefined;
-          })()}
+          onJump={
+            onJumpToCard && getLinkedParagraphIds(note).length > 0
+              ? () => onJumpToCard(note)
+              : undefined
+          }
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}

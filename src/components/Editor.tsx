@@ -18,12 +18,13 @@ import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citatio
 import {
   collectLinksFromEditor,
   jumpToLink,
+  jumpToCard,
   deleteLink,
   reanchorByText,
   resolveAnchorRange,
   type LinkedAnchorKind,
 } from "@/links/links";
-import type { Link as VirgilLink } from "@/links/links";
+import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -219,6 +220,14 @@ export interface EditorHandle {
   insertCitation: (command: string, citationId: string, displayText: string) => void;
   getActiveParagraphId: () => string | null;
   scrollToParagraphId: (uuid: string) => void;
+  /** Jump to the first resolvable link on a card. Preferred over
+   *  scrollToParagraphId for any card that carries a `links[]` — it picks
+   *  the first anchor still present in the doc and respects Mode B
+   *  text-range anchors. */
+  jumpToCard: (card: CardWithLinks) => boolean;
+  /** Jump to a specific link. Exposed so callers (omni, popped-out cards)
+   *  can target a particular anchor when a card has several. */
+  jumpToLink: (link: VirgilLink) => void;
   /**
    * Returns the UUID of the paragraph (or list/heading with paragraph-like uuid)
    * containing the given doc position. If the node has no UUID yet, one is
@@ -2209,6 +2218,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           scrollEl.scrollTop = Math.max(0, targetY);
         }
       } catch { /* pos out of range */ }
+    },
+    jumpToCard(card: CardWithLinks): boolean {
+      if (!editor) return false;
+      return jumpToCard(editor, card);
+    },
+    jumpToLink(link: VirgilLink): void {
+      if (!editor) return;
+      jumpToLink(editor, link, "to-marker");
     },
     ensureParagraphUuid(pos: number): string | null {
       if (!editor) return null;

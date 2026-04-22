@@ -162,7 +162,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "note": {
       const note = d.notes.find((n) => n.id === id);
       if (!note) return null;
-      const pid = getLinkedParagraphIds(note)[0];
+      const canJump = getLinkedParagraphIds(note).length > 0;
       return (
         <NoteCard
           key={key}
@@ -172,7 +172,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onUpdateTitle={d.updateNoteTitle}
           onDelete={d.deleteNote}
           onSelect={d.setSelectedNoteId}
-          onJump={pid ? () => d.editorRef.current?.scrollToParagraphId(pid) : undefined}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(note) : undefined}
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
@@ -220,11 +220,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onEdit={d.updateArchiveSnippet}
           onUpdateTitle={d.updateArchiveSnippetTitle}
           onDelete={d.handleDeleteArchive}
-          onScrollToMarker={(sid) => {
-            const s = d.archiveSnippets.find((x) => x.id === sid);
-            const p = s ? getLinkedParagraphIds(s)[0] : undefined;
-            if (p) d.editorRef.current?.scrollToParagraphId(p);
-          }}
+          onJump={() => d.editorRef.current?.jumpToCard(snippet)}
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
@@ -235,7 +231,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "cut": {
       const cut = d.cuts.find((c) => c.id === id);
       if (!cut) return null;
-      const pid = getLinkedParagraphIds(cut)[0];
+      const canJump = getLinkedParagraphIds(cut).length > 0;
       return (
         <CutCard
           key={key}
@@ -245,7 +241,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onUpdateTitle={d.updateCutTitle}
           onDelete={d.deleteCut}
           onSelect={d.setSelectedCutId}
-          onJump={pid ? () => d.editorRef.current?.scrollToParagraphId(pid) : undefined}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(cut) : undefined}
           onHoverChange={(hovering) => d.handleHoverCut(hovering ? cut.id : null)}
           isPoppedOut
         />
@@ -254,8 +250,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "todo": {
       const item = d.todoItems.find((t) => t.id === id);
       if (!item) return null;
-      const itemPids = getLinkedParagraphIds(item);
-      const pid = itemPids[0];
+      const canJump = getLinkedParagraphIds(item).length > 0;
       return (
         <TodoRow
           key={key}
@@ -267,8 +262,8 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onSetAiRequest={d.setTodoAiRequest}
           onDelete={d.deleteTodo}
           onSelect={d.setSelectedTodoId}
-          isAnchored={itemPids.length > 0}
-          onJump={pid ? () => d.editorRef.current?.scrollToParagraphId(pid) : undefined}
+          isAnchored={canJump}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(item) : undefined}
           isPoppedOut
         />
       );
@@ -353,7 +348,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     case "quotation": {
       const group = d.quotationGroups.find((g) => g.id === id);
       if (!group) return null;
-      const pid = getLinkedParagraphIds(group)[0];
+      const canJump = getLinkedParagraphIds(group).length > 0;
       return (
         <QuotationGroupCard
           key={key}
@@ -367,7 +362,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
             )
           }
           onDelete={() => d.deleteQuotationGroup(group.id)}
-          onJump={pid ? () => d.editorRef.current?.scrollToParagraphId(pid) : undefined}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(group) : undefined}
           onUpdateGroupTitle={d.updateQuotationGroupTitle}
           onAddReference={d.addQuotationReference}
           onDeleteReference={d.deleteQuotationReference}

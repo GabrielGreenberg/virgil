@@ -12,7 +12,7 @@ interface BuildArgs {
   anchoredIds: Set<string> | undefined;
   selectedArchiveId: string | null;
   setSelectedArchiveId: (id: string | null) => void;
-  scrollToParagraphId: (uuid: string) => void;
+  jumpToCard: (card: ArchivedSnippet) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   updateArchiveSnippet: (id: string, content: JSONContent) => void;
   updateArchiveSnippetTitle: (id: string, title: string) => void;
@@ -70,7 +70,7 @@ export function buildArchiveOmniItems(a: BuildArgs): OmniItem[] {
               onEdit={(id, content) => a.updateArchiveSnippet(id, content)}
               onUpdateTitle={a.updateArchiveSnippetTitle}
               onDelete={a.handleDeleteArchive}
-              onScrollToMarker={() => a.scrollToParagraphId(pid)}
+              onJump={() => a.jumpToCard(snippet)}
               onEditorFocus={a.setOverrideEditor}
               getCitationDisplayText={a.getCitationDisplayText}
               onCitationCreated={a.onCitationCreated}

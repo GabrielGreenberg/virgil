@@ -405,9 +405,18 @@ export function resolveLink(
     const pos = findInlineAtomPos(editor, link.anchor.nodeName, link.id);
     if (pos == null) return null;
     const node = editor.state.doc.nodeAt(pos);
-    const domEl = editor.view.dom.querySelector(
+    // Prefer `data-link-id` (set by newer atoms); fall back to the atom's
+    // own DOM via view.nodeDOM — older atoms (footnote/citation) render
+    // their id as `data-footnote-id`/`data-citation-id`, not linkId.
+    const queried = editor.view.dom.querySelector(
       `[${DATA_LINK_ID}="${link.id}"]`,
     ) as HTMLElement | null;
+    const nodeDom = editor.view.nodeDOM(pos);
+    const domEl =
+      queried ??
+      (nodeDom instanceof HTMLElement
+        ? nodeDom
+        : (nodeDom?.parentElement as HTMLElement | null) ?? null);
     return {
       kind: "inline-atom",
       pos,
@@ -429,15 +438,28 @@ export function resolveLink(
         return { kind: "text-range", from: range.from, to: range.to, domEl };
       }
     }
-    // Mode A (or Mode B with a lost mark): fall back to the first paragraph.
-    const paragraphId = link.anchor.paragraphIds[0];
-    if (!paragraphId) return null;
-    const pos = findParagraphByUuid(editor, paragraphId);
-    if (pos == null) return null;
-    const domEl = editor.view.dom.querySelector(
-      `[data-uuid="${paragraphId}"]`,
-    ) as HTMLElement | null;
-    return { kind: "paragraph", paragraphId, pos, domEl };
+    // Mode A (or Mode B with a lost mark): try each paragraphId and take
+    // the first that still exists in the doc. Callers that passed multiple
+    // paragraphIds shouldn't fail just because the first one was edited
+    // away.
+    for (const paragraphId of link.anchor.paragraphIds) {
+      if (!paragraphId) continue;
+      const pos = findParagraphByUuid(editor, paragraphId);
+      if (pos == null) continue;
+      // `data-uuid` is not rendered to the DOM by our node specs
+      // (rendered: false) — fall back to view.nodeDOM(pos).
+      const queried = editor.view.dom.querySelector(
+        `[data-uuid="${paragraphId}"]`,
+      ) as HTMLElement | null;
+      const nodeDom = editor.view.nodeDOM(pos);
+      const domEl =
+        queried ??
+        (nodeDom instanceof HTMLElement
+          ? nodeDom
+          : (nodeDom?.parentElement as HTMLElement | null) ?? null);
+      return { kind: "paragraph", paragraphId, pos, domEl };
+    }
+    return null;
   }
   return null;
 }
@@ -446,7 +468,10 @@ export function resolveLink(
  *
  *  - `"to-marker"`: scroll the editor to the in-text marker.
  *  - `"to-card"`:   scroll the panel to the card entry.
- *  - `"both"`:      do both. */
+ *  - `"both"`:      do both.
+ *
+ *  The post-jump visual highlight is handled separately, driven by card
+ *  selection state via `useCardSelectionHighlight`. */
 export function jumpToLink(
   editor: Editor,
   link: Link,
@@ -465,6 +490,22 @@ export function jumpToLink(
     ) as HTMLElement | null;
     entryEl?.scrollIntoView({ behavior: "instant", block: "center" });
   }
+}
+
+/** Jump to the first resolvable link on a card. Iterates `card.links` and
+ *  scrolls to the first entry whose anchor still exists in the document —
+ *  `links[0].paragraphIds[0]` may be stale when a card has multiple
+ *  anchors and the earliest paragraph was edited away. Returns true if a
+ *  link was jumped to. */
+export function jumpToCard(editor: Editor, card: CardWithLinks): boolean {
+  const links = card.links ?? [];
+  for (const link of links) {
+    if (resolveLink(editor, link)) {
+      jumpToLink(editor, link, "to-marker");
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Delete `link` from the editor. For inline-atom kinds this removes the
@@ -771,7 +812,7 @@ type AnchorCardShape = {
 // the card type definitions entirely.
 // ---------------------------------------------------------------------------
 
-type CardWithLinks = { id: string; links?: Link[] };
+export type CardWithLinks = { id: string; links?: Link[] };
 
 /** All paragraph UUIDs any of this card's anchor-kind links cover. */
 export function getLinkedParagraphIds(card: CardWithLinks): string[] {

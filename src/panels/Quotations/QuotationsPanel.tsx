@@ -46,7 +46,7 @@ export interface QuotationsPanelProps {
   onUpdateNotes: (groupId: string, notes: string) => void;
   selectedGroupId?: string | null;
   onSelectGroup?: (groupId: string | null) => void;
-  onScrollToParagraph?: (uuid: string) => void;
+  onJumpToCard?: (card: QuotationGroup) => void;
   aiRequests?: AiRequest[];
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
@@ -73,7 +73,7 @@ export default function QuotationsPanel({
   onUpdateNotes,
   selectedGroupId: controlledSelectedGroupId,
   onSelectGroup,
-  onScrollToParagraph,
+  onJumpToCard,
   aiRequests,
   onAddAiRequest,
   onUpdateAiRequestText,
@@ -136,10 +136,9 @@ export default function QuotationsPanel({
   const onActivateGroup = useCallback(
     (g: QuotationGroup) => {
       setSelectedGroupId(g.id);
-      const pid = getLinkedParagraphIds(g)[0];
-      if (pid) onScrollToParagraph?.(pid);
+      onJumpToCard?.(g);
     },
-    [onScrollToParagraph, setSelectedGroupId],
+    [onJumpToCard, setSelectedGroupId],
   );
   const { idx: cycleIdx, setIdx: setCycleIdx } = useCycle(
     anchoredGroups,
@@ -164,10 +163,11 @@ export default function QuotationsPanel({
         selected={selected}
         onSelect={() => setSelectedGroupId(group.id)}
         onDelete={() => onDeleteGroup(group.id)}
-        onJump={(() => {
-          const pid = getLinkedParagraphIds(group)[0];
-          return pid ? () => onScrollToParagraph?.(pid) : undefined;
-        })()}
+        onJump={
+          onJumpToCard && getLinkedParagraphIds(group).length > 0
+            ? () => onJumpToCard(group)
+            : undefined
+        }
         onUpdateGroupTitle={onUpdateGroupTitle}
         onAddReference={onAddReference}
         onDeleteReference={onDeleteReference}
@@ -183,7 +183,7 @@ export default function QuotationsPanel({
       bibPackage,
       setSelectedGroupId,
       onDeleteGroup,
-      onScrollToParagraph,
+      onJumpToCard,
       onUpdateGroupTitle,
       onAddReference,
       onDeleteReference,

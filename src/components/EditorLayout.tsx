@@ -88,6 +88,7 @@ import {
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
+import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import {
@@ -1404,40 +1405,29 @@ export default function EditorLayout() {
     };
   }, [selectedBibKey, allEditorCitations]);
 
-  // Persistent highlight sync: whenever a citation card is selected in
-  // the Citations panel or OmniView, mirror that selection onto the
-  // citation node(s) in the editor with the `citation-highlight-bib`
-  // class. The highlight stays on until a different citation is
-  // selected or the selection is cleared. There can be multiple DOM
-  // nodes for the same citation id if the editor is split.
-  useEffect(() => {
-    if (!selectedCitationId) return;
-    const els = Array.from(
-      document.querySelectorAll(
-        `[data-link-kind="citation"][data-link-id="${selectedCitationId}"]`,
-      ),
-    ) as HTMLElement[];
-    for (const el of els) el.classList.add("citation-highlight-bib");
-    return () => {
-      for (const el of els) el.classList.remove("citation-highlight-bib");
-    };
-  }, [selectedCitationId, allEditorCitations]);
-
-  // Persistent highlight sync for footnotes: mirrors the citation
-  // pattern above, adding `footnote-highlight-marker` to the inline
-  // footnote marker in the editor when its card is selected.
-  useEffect(() => {
-    if (!selectedFootnoteId) return;
-    const els = Array.from(
-      document.querySelectorAll(
-        `[data-link-kind="footnote"][data-link-id="${selectedFootnoteId}"]`,
-      ),
-    ) as HTMLElement[];
-    for (const el of els) el.classList.add("footnote-highlight-marker");
-    return () => {
-      for (const el of els) el.classList.remove("footnote-highlight-marker");
-    };
-  }, [selectedFootnoteId]);
+  // Persistent in-editor highlight of whatever card is selected — one
+  // hook covers every card kind. Supersedes previously per-kind effects
+  // for footnote/citation and extends the coverage to paragraph (Mode A)
+  // anchors on notes/cuts/todos/archive/quotations/comments, which
+  // previously had no selected-state highlight at all.
+  useCardSelectionHighlight({
+    editor: editorInstance,
+    selectedNoteId,
+    selectedFootnoteId,
+    selectedCitationId,
+    selectedCutId,
+    selectedCommentId,
+    selectedTodoId,
+    selectedArchiveId,
+    selectedQuotationGroupId,
+    notes,
+    cuts,
+    archiveSnippets,
+    quotationGroups,
+    todos: todoItems,
+    generalRevisions,
+    textRevisions,
+  });
 
   // Clear the toolbar-override editor when the main editor regains focus,
   // so the MenuBar switches back to controlling the document editor.

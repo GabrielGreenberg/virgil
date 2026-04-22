@@ -3,7 +3,6 @@
 import ArchivePanel from "@/panels/Archive";
 import type { ArchivedSnippet } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
-import { getLinkedParagraphIds } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
@@ -37,11 +36,7 @@ export function ArchiveHost(p: ArchiveHostProps) {
       onInsert={p.onInsert}
       onRestore={p.onRestore}
       onDelete={p.onDelete}
-      onScrollToMarker={(id) => {
-        const snippet = p.archiveSnippets.find((s) => s.id === id);
-        const pid = snippet ? getLinkedParagraphIds(snippet)[0] : undefined;
-        if (pid) editorRef.current?.scrollToParagraphId(pid);
-      }}
+      onJumpToCard={(snippet) => editorRef.current?.jumpToCard(snippet)}
       anchoredIds={p.anchoredIds}
       editor={editorInstance}
       panelSide={p.side}

@@ -31,7 +31,7 @@ interface ArchivePanelProps {
   onInsert: (id: string) => void;
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
-  onScrollToMarker?: (id: string) => void;
+  onJumpToCard?: (card: ArchivedSnippet) => void;
   anchoredIds?: Set<string>;
   editor: Editor | null;
   panelSide: "left" | "right";
@@ -50,7 +50,7 @@ function ArchivePanel({
   onEdit,
   onUpdateTitle,
   onDelete,
-  onScrollToMarker,
+  onJumpToCard,
   anchoredIds,
   editor,
   panelSide,
@@ -116,7 +116,7 @@ function ArchivePanel({
           onEdit={onEdit}
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
-          onScrollToMarker={onScrollToMarker}
+          onJump={onJumpToCard ? () => onJumpToCard(s) : undefined}
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
@@ -134,10 +134,10 @@ function ArchivePanel({
             }`}
             onClick={() => onSelect(selected ? null : s.id)}
           >
-            {selected && onScrollToMarker && (
+            {selected && onJumpToCard && (
               <div className="absolute top-1 right-1">
                 <TargetIcon
-                  onClick={() => onScrollToMarker(s.id)}
+                  onClick={() => onJumpToCard(s)}
                   title="Jump to archive marker"
                 />
               </div>
