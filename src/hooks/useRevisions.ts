@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
+import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type {
@@ -17,7 +18,22 @@ import {
   getTextAnchor,
   setTextAnchorLink,
 } from "@/links/links";
+import {
+  emptyRichContent,
+  normalizeRichContent,
+  richJsonToPlainText,
+} from "@/lib/footnote-content";
 import { usePersistentState } from "./usePersistentState";
+
+/** Build a JSONContent doc from whatever shape the record has today.
+ *  Prefer existing `content`; fall back to the legacy `text` plaintext. */
+function deriveContent(raw: { content?: unknown; text?: string }): JSONContent {
+  if (raw.content) return normalizeRichContent(raw.content);
+  if (typeof raw.text === "string" && raw.text.length > 0) {
+    return normalizeRichContent(raw.text);
+  }
+  return emptyRichContent();
+}
 
 const DEFAULT_USERS: RevisionUser[] = [
   { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
@@ -33,28 +49,37 @@ const EMPTY_STATE: RevisionsState = {
 
 export type RevisionKind = "general" | "text";
 
+function migrateGeneralRevision(raw: GeneralRevision): GeneralRevision {
+  const content = deriveContent(raw);
+  return {
+    id: raw.id,
+    authorId: raw.authorId,
+    createdAt: raw.createdAt,
+    text: raw.text ?? richJsonToPlainText(content),
+    content,
+    turns: raw.turns ?? [],
+    resolved: raw.resolved ?? false,
+  };
+}
+
 /** Upgrade a legacy TextRevision record (with anchorId/anchorPos) to links[]. */
 function migrateTextRevision(raw: TextRevision & { anchorPos?: number; anchorId?: string }): TextRevision {
-  if (Array.isArray(raw.links) && raw.links.length > 0) {
-    return {
-      id: raw.id,
-      authorId: raw.authorId,
-      createdAt: raw.createdAt,
-      resolved: raw.resolved,
-      selectedText: raw.selectedText,
-      text: raw.text,
-      turns: raw.turns,
-      links: raw.links,
-    };
-  }
-  return {
+  const content = deriveContent(raw);
+  const base = {
     id: raw.id,
     authorId: raw.authorId,
     createdAt: raw.createdAt,
     resolved: raw.resolved,
     selectedText: raw.selectedText,
-    text: raw.text,
-    turns: raw.turns,
+    text: raw.text ?? richJsonToPlainText(content),
+    content,
+    turns: raw.turns ?? [],
+  };
+  if (Array.isArray(raw.links) && raw.links.length > 0) {
+    return { ...base, links: raw.links };
+  }
+  return {
+    ...base,
     links: derivedLinksForCard("comment", {
       id: raw.id,
       anchorId: raw.anchorId,
@@ -70,7 +95,7 @@ function migrateRevisions(raw: unknown): RevisionsState {
   }
   return {
     users: s.users?.length ? s.users : [...DEFAULT_USERS],
-    generalRevisions: s.generalRevisions ?? [],
+    generalRevisions: (s.generalRevisions ?? []).map(migrateGeneralRevision),
     textRevisions: (s.textRevisions ?? []).map((r) =>
       migrateTextRevision(r as TextRevision & { anchorPos?: number; anchorId?: string }),
     ),
@@ -88,6 +113,7 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
     resolved: c.resolved,
     selectedText: c.selectedText,
     text: c.comment,
+    content: normalizeRichContent(c.comment),
     turns: [
       {
         id: generateEntityId(),
@@ -168,20 +194,25 @@ export function useRevisions(docId: string | null) {
   );
 
   const addGeneralRevision = useCallback(
-    (text: string, authorIdOverride?: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return null;
+    (text: string = "", authorIdOverride?: string) => {
       const now = new Date().toISOString();
+      const body = text.trim();
+      const content = body
+        ? normalizeRichContent(body)
+        : emptyRichContent();
       let created: GeneralRevision | null = null;
       update((prev) => {
         const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
+        const turns: RevisionTurn[] = body
+          ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
+          : [];
         const rev: GeneralRevision = {
           id: generateEntityId(),
           authorId,
           createdAt: now,
-          text: trimmed,
-          turns: [turn],
+          text: body,
+          content,
+          turns,
           resolved: false,
         };
         created = rev;
@@ -196,24 +227,29 @@ export function useRevisions(docId: string | null) {
     (
       selectedText: string,
       anchorId: string | null,
-      text: string,
+      text: string = "",
       authorIdOverride?: string,
     ): TextRevision | null => {
-      const trimmed = text.trim();
-      if (!trimmed) return null;
       const now = new Date().toISOString();
+      const body = text.trim();
+      const content = body
+        ? normalizeRichContent(body)
+        : emptyRichContent();
       let created: TextRevision | null = null;
       update((prev) => {
         const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
+        const turns: RevisionTurn[] = body
+          ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
+          : [];
         let rev: TextRevision = {
           id: generateEntityId(),
           authorId,
           createdAt: now,
           resolved: false,
           selectedText,
-          text: trimmed,
-          turns: [turn],
+          text: body,
+          content,
+          turns,
           links: [],
         };
         if (anchorId) {
@@ -223,6 +259,52 @@ export function useRevisions(docId: string | null) {
         return { ...prev, textRevisions: [...prev.textRevisions, rev] };
       });
       return created;
+    },
+    [update],
+  );
+
+  const updateRevisionContent = useCallback(
+    (kind: RevisionKind, revisionId: string, content: JSONContent) => {
+      const normalized = normalizeRichContent(content);
+      const text = richJsonToPlainText(normalized);
+      update((prev) => {
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.map((r) =>
+              r.id === revisionId ? { ...r, content: normalized, text } : r,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.map((r) =>
+            r.id === revisionId ? { ...r, content: normalized, text } : r,
+          ),
+        };
+      });
+    },
+    [update],
+  );
+
+  const setRevisionAuthor = useCallback(
+    (kind: RevisionKind, revisionId: string, authorId: string) => {
+      update((prev) => {
+        if (kind === "general") {
+          return {
+            ...prev,
+            generalRevisions: prev.generalRevisions.map((r) =>
+              r.id === revisionId ? { ...r, authorId } : r,
+            ),
+          };
+        }
+        return {
+          ...prev,
+          textRevisions: prev.textRevisions.map((r) =>
+            r.id === revisionId ? { ...r, authorId } : r,
+          ),
+        };
+      });
     },
     [update],
   );
@@ -362,6 +444,8 @@ export function useRevisions(docId: string | null) {
     addUser,
     addGeneralRevision,
     addTextRevision,
+    updateRevisionContent,
+    setRevisionAuthor,
     setRevisionAnchor,
     addTurn,
     resolveRevision,
