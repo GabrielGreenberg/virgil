@@ -37,6 +37,7 @@ import {
   MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
   MIME_CUT,
+  MIME_SELECTION_ANCHOR,
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
@@ -287,7 +288,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // set there. We instead apply our MIME in a window-level dragstart
   // listener (bubble phase), which fires AFTER PM's handler.
   const pendingParCaptureUuidRef = useRef<string | null>(null);
-  const pendingTextCaptureRef = useRef<{ from: number; to: number; paragraphId: string | null } | null>(null);
+  const pendingTextCaptureRef = useRef<{ from: number; to: number; paragraphId: string | null; selectedText: string } | null>(null);
 
   const ParagraphWithTitle = Paragraph.extend({
     draggable: true,
@@ -1163,7 +1164,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           const sel = view.state.selection;
           if (!sel.empty) {
             const paragraphId = ensureAnchorUuid(view, sel.from);
-            pendingTextCaptureRef.current = { from: sel.from, to: sel.to, paragraphId };
+            const selectedText = view.state.doc.textBetween(sel.from, sel.to, " ");
+            pendingTextCaptureRef.current = { from: sel.from, to: sel.to, paragraphId, selectedText };
           }
           return false;
         },
@@ -1552,6 +1554,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const textPayload = pendingTextCaptureRef.current;
       if (textPayload) {
         try { dt.setData(MIME_TEXT_CAPTURE, JSON.stringify(textPayload)); } catch {}
+        try {
+          dt.setData(
+            MIME_SELECTION_ANCHOR,
+            JSON.stringify({
+              from: textPayload.from,
+              to: textPayload.to,
+              selectedText: textPayload.selectedText,
+            }),
+          );
+        } catch {}
       }
     };
     const onWindowDragEnd = () => {
