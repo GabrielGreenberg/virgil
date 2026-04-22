@@ -6,6 +6,7 @@ import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { readTex, writeTex } from "@/lib/storage";
+import { findParagraphUuids } from "@/lib/latex-paragraph-map";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -72,34 +73,6 @@ interface CodeEditorProps {
   compileLog?: string | null;
   compileStatus?: number | null;
   isCompiling?: boolean;
-}
-
-// Helper: find all paragraph UUIDs and their line ranges in LaTeX source
-// Only tracks actual content lines — pure comment lines (starting with %)
-// are not counted as part of the paragraph.
-function findParagraphUuids(text: string): Array<{ uuid: string; startLine: number; endLine: number }> {
-  const lines = text.split("\n");
-  const results: Array<{ uuid: string; startLine: number; endLine: number }> = [];
-  let contentStart = -1; // first content (non-comment) line in current block
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (line === "") {
-      contentStart = -1;
-      continue;
-    }
-    // Pure comment lines (starting with %) that don't carry a UUID anchor
-    // are not part of the paragraph content
-    const hasUuid = /%!v:[0-9a-f]{4}/.test(line);
-    const isPureComment = line.startsWith("%") && !hasUuid;
-    if (!isPureComment && contentStart === -1) contentStart = i;
-    if (hasUuid) {
-      const match = line.match(/%!v:([0-9a-f]{4})/)!;
-      const start = contentStart === -1 ? i : contentStart;
-      results.push({ uuid: match[1], startLine: start + 1, endLine: i + 1 }); // 1-based
-      contentStart = -1;
-    }
-  }
-  return results;
 }
 
 export default function CodeEditor({

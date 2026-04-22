@@ -58,12 +58,12 @@ const DEFAULT_PREFS: ViewPrefs = {
     { id: "citations", side: "left" },
     { id: "bibliography", side: "left" },
     { id: "quotations", side: "left" },
-    { id: "errors", side: "left" },
     // Right strip — writing / workflow tools
     { id: "wordcount", side: "right" },
     { id: "notes", side: "right" },
     { id: "todo", side: "right" },
     { id: "revisions", side: "right" },
+    { id: "errors", side: "right" },
     { id: "cutter", side: "right" },
     { id: "archive", side: "right" },
     // NOTE: "omni" and "blank" are presentation-tool pod panels — they

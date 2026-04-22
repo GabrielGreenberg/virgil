@@ -41,7 +41,8 @@ export type CardKind =
   | "comment"
   | "cut"
   | "quotation"
-  | "ai";
+  | "ai"
+  | "error";
 
 /** A single item to render inside the Omni view. */
 export interface OmniItem {

@@ -169,11 +169,11 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "errors",
     label: "Errors",
     folder: "src/panels/Errors",
-    card: null,
+    card: { kind: "error", keyPrefix: "error", themeKey: "error" },
     defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
-    defaultStripSide: "left",
+    defaultStripSide: "right",
   },
   suggestions: {
     kind: "suggestions",
@@ -211,6 +211,7 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   cut: "cut",
   quotation: "quotation",
   ai: "ai",
+  error: "error",
 };
 
 /** `${keyPrefix}:${id}` — canonical popout key for this card. Throws if
