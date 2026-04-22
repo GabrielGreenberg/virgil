@@ -379,7 +379,13 @@ function ViewMenu({
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
         title="View options"
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          style={orientation === "vertical" ? { transform: "rotate(90deg)" } : undefined}
+        >
           <circle cx="8" cy="3" r="1.5" />
           <circle cx="8" cy="8" r="1.5" />
           <circle cx="8" cy="13" r="1.5" />
@@ -538,15 +544,73 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
     editor.isActive("heading");
 
   const isVert = orientation === "vertical";
+  // SVG morphology filter that traces a pixel-accurate 1px outline around
+  // the merged (pod + tab) silhouette — sharp interior corners stay sharp,
+  // unlike a stack of offset drop-shadows which round them. The pod shadow
+  // is layered on after the outline via CSS drop-shadow.
+  const shellFilter = "url(#virgil-pod-outline) drop-shadow(0 1px 6px rgba(0,0,0,0.12)) drop-shadow(0 0 2px rgba(0,0,0,0.06))";
   return (
-    <div
-      className={`flex items-center bg-[var(--pod-toolbar)] gap-0.5 ${isVert ? "flex-col w-[var(--header-h)] py-1.5" : "h-[var(--header-h)] px-1.5"}`}
-      style={{
-        borderRadius: 'var(--pod-radius)',
-        border: 'var(--pod-border)',
-        boxShadow: 'var(--pod-shadow)',
-      }}
-    >
+    <div className="relative inline-flex">
+      {/* Outline filter definition — dilates the source by 1px, subtracts
+          the original to get a 1px ring, floods it with the border color,
+          then composites the original on top. */}
+      <svg aria-hidden className="absolute" width="0" height="0" style={{ position: "absolute", pointerEvents: "none" }}>
+        <defs>
+          <filter id="virgil-pod-outline">
+            <feMorphology operator="dilate" radius="1" in="SourceGraphic" result="dilated" />
+            <feComposite operator="out" in="dilated" in2="SourceGraphic" result="ring" />
+            <feFlood floodColor="#c9c5c5" result="flood" />
+            <feComposite operator="in" in="flood" in2="ring" result="outline" />
+            <feMerge>
+              <feMergeNode in="outline" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+      </svg>
+      {/* Shell: the combined pod-rectangle + tab, both filled with the pod
+          background. The SVG filter above wraps the merged silhouette in a
+          crisp 1px outline so the tab reads as part of the lozenge body. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{ filter: shellFilter }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "var(--pod-toolbar)",
+            // Square off the corner where the tab attaches, so the pod's
+            // rounded arc doesn't leave a sliver of empty alpha behind the
+            // tab — that sliver was showing up as a curve cutting into the
+            // strip when the drop-shadow filter outlined the union.
+            borderRadius: isVert
+              ? "var(--pod-radius) 0 var(--pod-radius) var(--pod-radius)"
+              : "var(--pod-radius) var(--pod-radius) 0 var(--pod-radius)",
+          }}
+        />
+        <div
+          className="absolute"
+          style={{
+            // Tab sticks out of the long side of the pod with a rounded
+            // outer end and a straight edge flush against the pod's short
+            // side. Tab overlaps the pod slightly so the drop-shadow filter
+            // merges the silhouettes into a single outline.
+            ...(isVert
+              ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
+              : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
+            background: "var(--pod-toolbar)",
+          }}
+        />
+      </div>
+
+      {/* Content: icons laid out on top of the shell. In vertical mode we
+          reverse the flex so the "trailing" end of the toolbar (where the
+          grab bar and knob live) ends up at the top — the knob rotates up,
+          the non-knob end rotates down. */}
+      <div
+        className={`relative flex items-center gap-0.5 ${isVert ? "flex-col-reverse w-[var(--header-h)] py-1.5" : "h-[var(--header-h)] px-1.5"}`}
+      >
       <ViewMenu
         showParTitles={showParTitles}
         onToggleParTitles={onToggleParTitles}
@@ -778,17 +842,21 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         )}
       </AttachedPopover>
 
-      {/* Paragraph navigation — back/forward, kerned tight together */}
+      {/* Paragraph navigation — back/forward. The pair shares a single
+          icon-slot footprint: two half-size buttons laid end-to-end along
+          the toolbar's main axis, each with a tiny chevron that rotates
+          with orientation. */}
       {(onParaNavBack || onParaNavForward) && (
-        <div className={`flex items-center${isVert ? " flex-col" : ""}`}>
+        <div className={`flex items-stretch ${isVert ? "flex-col" : "flex-row"}`}>
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               title="Go back"
-              className={`rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body ${isVert ? "px-1 pt-1 pb-0" : "py-1 pl-1 pr-0"}`}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              style={isVert ? { width: 22, height: 11 } : { width: 11, height: 22 }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
@@ -798,9 +866,10 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               title="Go forward"
-              className={`rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body ${isVert ? "px-1 pt-0 pb-1" : "py-1 pl-0 pr-1"}`}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+              style={isVert ? { width: 22, height: 11 } : { width: 11, height: 22 }}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
@@ -842,17 +911,44 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
 
       {/* Grab handle — drag to reposition. Grey bar always visible,
           darkens to foreground on hover. Pulled tight against the
-          view-options button. */}
+          neighbouring icon. Because vertical mode uses flex-col-reverse,
+          being the last DOM child keeps this bar at the top of the pod. */}
       {onGrabStart && (
         <div
           onMouseDown={onGrabStart}
           title="Drag to reposition"
-          className={`group/grab cursor-grab active:cursor-grabbing flex items-center ${isVert ? "-mt-0.5 px-1 pt-0 pb-1" : "-ml-0.5 py-1 pl-0 pr-1"}`}
+          className={`group/grab cursor-grab active:cursor-grabbing flex items-center ${isVert ? "-mt-0.5 px-1 pt-0 pb-0" : "-ml-0.5 py-1 pl-0 pr-0"}`}
           style={{ touchAction: "none", userSelect: "none" }}
         >
           <div className={`rounded-full bg-[var(--muted-light)] group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 ${isVert ? "h-[3px] w-[18px]" : "w-[3px] h-[18px]"}`} />
         </div>
       )}
+
+      </div>
+
+      {/* Rotate knob click target. The visible bulb is painted by the shell
+          above; this transparent button sits on top of it to catch clicks
+          and holds the dot that's the visual affordance (grey by default,
+          darkening to foreground on hover — mirrors the grab bar). */}
+      <button
+        onClick={() => onSetOrientation(isVert ? "horizontal" : "vertical")}
+        title={isVert ? "Rotate toolbar to horizontal" : "Rotate toolbar to vertical"}
+        data-toolbar-knob=""
+        className="group/knob absolute flex items-center justify-center"
+        style={{
+          ...(isVert
+            ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
+            : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
+          background: "transparent",
+          border: "none",
+          padding: 0,
+        }}
+      >
+        <div
+          className="rounded-full bg-[var(--muted-light)] group-hover/knob:bg-[var(--foreground)] transition-colors duration-150"
+          style={{ width: 4, height: 4 }}
+        />
+      </button>
     </div>
   );
 }

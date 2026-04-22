@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
@@ -464,9 +464,47 @@ export default function EditorLayout() {
   const [colRect, setColRect] = useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
 
+  // How far the toolbar's visible shape (e.g. the rotate bulb) extends past
+  // the measurable wrapper on each side. The grab handler and snap-style
+  // calc add these to the base breathing room so the bulb — not just the
+  // wrapper — ends up the correct distance from the column edge. Measured
+  // from the DOM so it stays correct if the toolbar shape changes later.
+  const [menuOverflow, setMenuOverflow] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
+
+  // Breathing room between the toolbar's *visible shape* (pod + bulb) and
+  // the column edge. The visible-shape-level targeting happens via the
+  // overflow adjustment below, so consistent margins here keep the same
+  // visual gap regardless of orientation.
+  const snapMargins = useMemo(() => ({ horiz: 10, vert: 16 }), []);
+
   useEffect(() => {
     setMenuPortalReady(true);
   }, []);
+
+  // Re-measure the toolbar's overflow (bulb protrusion) whenever orientation
+  // changes or the portal mounts. Uses useLayoutEffect so the measurement
+  // lands before the next paint.
+  useLayoutEffect(() => {
+    if (!menuPortalReady) return;
+    const menuEl = menuWrapRef.current;
+    if (!menuEl) return;
+    const knobEl = menuEl.querySelector("[data-toolbar-knob]") as HTMLElement | null;
+    const mRect = menuEl.getBoundingClientRect();
+    const kRect = knobEl?.getBoundingClientRect();
+    const next = kRect
+      ? {
+          left: Math.max(0, mRect.left - kRect.left),
+          right: Math.max(0, kRect.right - mRect.right),
+          top: Math.max(0, mRect.top - kRect.top),
+          bottom: Math.max(0, kRect.bottom - mRect.bottom),
+        }
+      : { left: 0, right: 0, top: 0, bottom: 0 };
+    setMenuOverflow((prev) =>
+      prev.left === next.left && prev.right === next.right && prev.top === next.top && prev.bottom === next.bottom
+        ? prev
+        : next,
+    );
+  }, [menuOrientation, menuPortalReady]);
 
   const roRef = useRef<ResizeObserver | null>(null);
   const readColRect = useCallback(() => {
@@ -520,8 +558,8 @@ export default function EditorLayout() {
     const offY = e.clientY - menuRect.top;
     const menuW = menuRect.width;
     const menuH = menuRect.height;
-    const HORIZ = 10;
-    const VERT = 16;
+    const { horiz: HORIZ, vert: VERT } = snapMargins;
+    const ov = menuOverflow;
     const SNAP = 40;
     setMenuDragging(true);
     const onMove = (ev: MouseEvent) => {
@@ -532,10 +570,12 @@ export default function EditorLayout() {
       const colEl = editorColRef.current;
       if (colEl) {
         const cr = colEl.getBoundingClientRect();
-        if (Math.abs(rawLeft - (cr.left + HORIZ)) < SNAP) xSnap = "start";
-        else if (Math.abs(rawLeft + menuW - (cr.right - HORIZ)) < SNAP) xSnap = "end";
-        if (Math.abs(rawTop - (cr.top + VERT)) < SNAP) ySnap = "start";
-        else if (Math.abs(rawTop + menuH - (cr.bottom - VERT)) < SNAP) ySnap = "end";
+        // Targets are expressed for the *visible shape* edge: the wrapper
+        // is shifted inward by the overflow so the bulb lands at HORIZ/VERT.
+        if (Math.abs(rawLeft - (cr.left + HORIZ + ov.left)) < SNAP) xSnap = "start";
+        else if (Math.abs(rawLeft + menuW - (cr.right - HORIZ - ov.right)) < SNAP) xSnap = "end";
+        if (Math.abs(rawTop - (cr.top + VERT + ov.top)) < SNAP) ySnap = "start";
+        else if (Math.abs(rawTop + menuH - (cr.bottom - VERT - ov.bottom)) < SNAP) ySnap = "end";
       }
       setMenuPos({ xSnap, ySnap, freeLeft: rawLeft, freeTop: rawTop });
     };
@@ -546,22 +586,27 @@ export default function EditorLayout() {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, []);
+  }, [snapMargins, menuOverflow]);
 
   const menuWrapStyle = useMemo<React.CSSProperties>(() => {
     const needsColRect = menuPos.xSnap !== null || menuPos.ySnap !== null;
     if (needsColRect && (!colRect || !winSize)) {
       return { left: -10000, top: -10000, visibility: "hidden" as const };
     }
+    const { horiz: HORIZ, vert: VERT } = snapMargins;
+    const ov = menuOverflow;
     const style: React.CSSProperties = {};
-    if (menuPos.ySnap === "start" && colRect) style.top = colRect.top + 16;
-    else if (menuPos.ySnap === "end" && colRect && winSize) style.bottom = winSize.h - colRect.bottom + 16;
+    // When snapped to an end edge, extend the wrapper's offset by the bulb
+    // overflow on that side — so the bulb (not the wrapper) lands VERT/HORIZ
+    // from the column edge.
+    if (menuPos.ySnap === "start" && colRect) style.top = colRect.top + VERT + ov.top;
+    else if (menuPos.ySnap === "end" && colRect && winSize) style.bottom = winSize.h - colRect.bottom + VERT + ov.bottom;
     else style.top = menuPos.freeTop;
-    if (menuPos.xSnap === "start" && colRect) style.left = colRect.left + 10;
-    else if (menuPos.xSnap === "end" && colRect && winSize) style.right = winSize.w - colRect.right + 10;
+    if (menuPos.xSnap === "start" && colRect) style.left = colRect.left + HORIZ + ov.left;
+    else if (menuPos.xSnap === "end" && colRect && winSize) style.right = winSize.w - colRect.right + HORIZ + ov.right;
     else style.left = menuPos.freeLeft;
     return style;
-  }, [menuPos, colRect, winSize]);
+  }, [menuPos, colRect, winSize, snapMargins, menuOverflow]);
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -3422,7 +3467,7 @@ export default function EditorLayout() {
           {menuPortalReady && createPortal(
             <div
               ref={menuWrapRef}
-              className="fixed z-[9999] pointer-events-auto"
+              className="fixed z-[9999] pointer-events-auto flex"
               style={menuWrapStyle}
             >
               <MenuBar
