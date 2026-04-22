@@ -307,6 +307,8 @@ export interface EditableCardProps {
   // ── RichTextField props ──
   value: unknown;
   variant?: "footnote" | "note";
+  /** Panel kind — drives per-panel body typography overrides. */
+  panelKey?: import("@/lib/panel-typography").PanelBodyKey;
   placeholder?: string;
   muted?: boolean;
   onChange: (json: JSONContent) => void;
@@ -352,7 +354,7 @@ export function EditableCard({
   badge, headerContent, headerTrailing, footer,
   menuContent, onDelete,
   onClick, onDragStart, onTextDragStart,
-  value, variant, placeholder, muted,
+  value, variant, placeholder, muted, panelKey,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
@@ -541,6 +543,7 @@ export function EditableCard({
             onFocusChange={handleFocusChange}
             toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
             hideToolbar={hideToolbar}
+            panelKey={panelKey}
           />
         </div>
       </div>
@@ -930,7 +933,7 @@ export function PanelHeader({
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
       {leading}
-      <h3 className={`text-sm font-semibold text-ink-body${leading ? " -ml-1" : ""}`}>
+      <h3 className={`panel-header-title text-sm font-semibold text-ink-body${leading ? " -ml-1" : ""}`}>
         {title}
         {count != null && count > 0 && (
           <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">

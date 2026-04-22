@@ -115,6 +115,7 @@ export function NoteCard({
       onDelete={() => onDelete(note.id)}
       value={note.content}
       variant="footnote"
+      panelKey="note"
       placeholder="Text here."
       onChange={handleChange}
       getCitationDisplayText={getCitationDisplayText}

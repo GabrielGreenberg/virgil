@@ -47,11 +47,17 @@ import {
   subscribePanelColors,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
+import { loadPanelTypography } from "@/lib/panel-typography";
+import { loadPrefLinks } from "@/lib/pref-links";
 
 /** Subscribe the EditorLayout tree to panel-color changes. */
 function usePanelColorSubscription(): number {
   // Load overrides on first use (idempotent).
-  if (typeof window !== "undefined") loadPanelColors();
+  if (typeof window !== "undefined") {
+    loadPanelColors();
+    loadPanelTypography();
+    loadPrefLinks();
+  }
   return useSyncExternalStore(subscribePanelColors, getPanelColorVersion, () => 0);
 }
 
@@ -149,10 +155,10 @@ import { SearchHost } from "./editor-layout/panels/search-host";
 import { SuggestionsHost } from "./editor-layout/panels/suggestions-host";
 import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
-// Preference mode — ctrl+click picker for live token editing. See
-// usePreferenceMode.ts for the full architecture / extension guide.
-import { usePreferenceMode } from "@/hooks/usePreferenceMode";
-import PreferenceModePicker from "./PreferenceModePicker";
+// Preference-mode (ctrl+click picker) is disabled — the palette button
+// now opens the Preferences modal directly. The picker is no longer
+// rendered, but the files (usePreferenceMode.ts, PreferenceModePicker.tsx)
+// are kept in the tree in case we revive the feature.
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
@@ -675,9 +681,11 @@ export default function EditorLayout() {
     panelAiRequests: aiRequests,
   }), [bibReviewRequests, entryRequests, generalRevisions, textRevisions, aiRequests]);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
-  // Preference mode toggle. `on` drives the top-bar button styling and gates
-  // the ctrl+click picker. Read-only here — the button itself calls toggle().
-  const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
+  // Preference mode is disabled — the palette button now opens the
+  // Preferences modal directly. The hook + ctrl+click picker are still
+  // compiled in (see usePreferenceMode.ts, PreferenceModePicker.tsx) but
+  // nothing flips `on` to true, so the picker never fires. Safe to delete
+  // if we're confident we won't revert.
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
@@ -2953,10 +2961,6 @@ export default function EditorLayout() {
     }}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
-      {/* Preference mode picker — renders nothing until a ctrl+click on an
-          annotated element opens it. Mounted at the layout root so its
-          global ctrl+click listener is active for the whole app. */}
-      <PreferenceModePicker />
       {/* Progress bar */}
       {suggestionPanelVisible && (
         <ProgressBar
@@ -2971,16 +2975,18 @@ export default function EditorLayout() {
         // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
         // the PWA/browser theme-color (see globals.css merger notes), so
         // changing it updates both the in-app bar and the browser chrome.
-        data-prefs="topbarBackground,topbarBorder"
-        className={`flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
+        data-prefs="topbarBackground,topbarBorder,virgilBarText"
+        className={`virgil-bar flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
         suggestionPanelVisible ? "mt-10" : ""
-      }`}>
+      }`}
+        style={{ color: "var(--virgil-bar-text)" }}
+      >
         {/* Logo + file buttons + tabs — all bottom-aligned */}
         <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
           {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
             <h1
-              className="text-[var(--accent)] text-base font-semibold tracking-widest"
+              className="text-base font-semibold tracking-widest"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
             >
               VIRGIL
@@ -2993,10 +2999,11 @@ export default function EditorLayout() {
               <div key={doc.id} className="flex items-end shrink-0">
                 {/* Doc tab */}
                 <div
+                  data-prefs={isDocPaneActive ? "mainTabBg,topbarBorder" : "tabBg,topbarBorder"}
                   className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
                     isDocPaneActive
-                      ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
-                      : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
+                      ? "browser-tab-swoop bg-[var(--main-tab-bg)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
+                      : "bg-[var(--tab-bg)] text-ink-subtle border border-[var(--topbar-border,#d5d3ce)] hover:brightness-[0.97] hover:text-ink-body"
                   }`}
                   onClick={() => {
                     if (!isDocPaneActive) activateDocPane(doc.id);
@@ -3027,10 +3034,11 @@ export default function EditorLayout() {
                     construction notice. */}
                 <button
                   type="button"
+                  data-prefs="libraryBg,topbarBorder"
                   onClick={showLibraryUnderConstruction}
                   title={`Virgil library (under construction)`}
                   style={{ marginBottom: "0px" }}
-                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#eae7e2] text-ink-subtle hover:bg-[#e4e1dc] hover:text-ink-body border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
+                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[var(--library-bg)] hover:brightness-[0.97] border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
                 >
                   <IconLibrary />
                 </button>
@@ -3039,7 +3047,7 @@ export default function EditorLayout() {
           })}
           <button
             onClick={handleNativeOpen}
-            className="p-1 mb-1 ml-1 rounded text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors shrink-0"
+            className="p-1 mb-1 ml-1 rounded hover:bg-surface/30 hover:text-[var(--accent)] transition-colors shrink-0"
             title="Open folder"
           >
             <IconPlus />
@@ -3060,40 +3068,21 @@ export default function EditorLayout() {
               Focus view
             </button>
           )}
-          {/* ── Preference Mode toggle ─────────────────────────────────
-              Flips the global preference-mode state. When on, every DOM
-              element with `data-prefs="<pref-key>"` becomes ctrl+clickable
-              and opens a picker showing just those preference entries.
-
-              Related files (keep in sync):
-                - src/hooks/usePreferenceMode.ts   — state + architecture guide
-                - src/components/PreferenceModePicker.tsx — picker + ctrl+click listener
-                - src/app/globals.css "Preference mode" — hover outline rule
-
-              The active-state styling matches the AI-requests button
-              directly below: accent text/bg when on, subtle ink-subtle
-              when off. Keep them visually parallel if you restyle either.
-
-              To move / restyle this button without changing its behaviour,
-              edit this JSX only. Don't hardcode the on/off logic anywhere
-              else — always drive it through usePreferenceMode(). */}
+          {/* ── Preferences button ─────────────────────────────────────
+              Opens the Preferences modal. Previously this button toggled
+              "preference mode" (ctrl+click to edit each element), but
+              that mode was disabled in favour of the explicit modal. The
+              hook + picker still exist (src/hooks/usePreferenceMode.ts,
+              src/components/PreferenceModePicker.tsx) but are no longer
+              reachable from the UI — safe to remove later. */}
           <button
-            onClick={togglePrefMode}
-            className={`p-1 rounded transition-colors ${
-              prefModeOn
-                ? "text-[var(--accent)] bg-[var(--accent-light)]"
-                : "text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
-            }`}
-            title={prefModeOn ? "Preference mode: on (ctrl-click to edit)" : "Preference mode: off"}
-            aria-pressed={prefModeOn}
+            onClick={() => setPreferencesOpen(true)}
+            className="p-1 rounded transition-colors hover:bg-surface/30 hover:text-[var(--accent)]"
+            title="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
                 thumb-hole cutout on the right and four color wells punched
-                through via fill-rule="evenodd". Solid (not stroked) so the
-                shape stays legible at 14px; this deliberately reads as
-                more visually present than the neighbouring (i) and
-                AI-star icons, because it toggles a *mode* rather than
-                opening a menu. */}
+                through via fill-rule="evenodd". */}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
             </svg>
@@ -3101,7 +3090,7 @@ export default function EditorLayout() {
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-              className="p-1 rounded transition-colors text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
+              className="p-1 rounded transition-colors hover:bg-surface/30 hover:text-[var(--accent)]"
               title={`Virgil v${APP_VERSION}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3161,7 +3150,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-ink-subtle hover:bg-sky-50/50 hover:text-sky-600"}`}
+            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "hover:bg-sky-50/50 hover:text-sky-600"}`}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -3188,7 +3177,7 @@ export default function EditorLayout() {
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover:bg-surface/30 hover:text-[var(--accent)] transition-colors"
             title={codeView ? "Visual Editor" : "Code Editor"}
           >
             {codeView ? (
@@ -3215,7 +3204,7 @@ export default function EditorLayout() {
           <button
             onClick={compilePdf}
             disabled={!currentDocId || isCompiling}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-ink-subtle"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover:bg-surface/30 hover:text-[var(--accent)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             title={isCompiling ? "Compiling…" : "Compile to PDF"}
           >
             {isCompiling ? (

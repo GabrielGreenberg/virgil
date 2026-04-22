@@ -105,6 +105,7 @@ export function ArchiveCard({
       onDelete={() => onDelete(snippet.id)}
       value={snippet.content}
       variant="footnote"
+      panelKey="archive"
       placeholder="Text here."
       onChange={handleEditContent}
       getCitationDisplayText={getCitationDisplayText}

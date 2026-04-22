@@ -97,6 +97,7 @@ export function CutCard({
       onDelete={() => onDelete(cut.id)}
       value={cut.content}
       variant="footnote"
+      panelKey="cut"
       placeholder="Cut text…"
       onChange={handleChange}
       dataAttr={{ name: "cut-entry", value: cut.id }}

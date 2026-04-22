@@ -27,6 +27,8 @@ import {
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateEntityId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_NOTE, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
+import type { PanelBodyKey } from "@/lib/panel-typography";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -62,6 +64,10 @@ interface RichTextFieldProps {
   toolbarPortalTarget?: HTMLElement | null;
   /** When true, suppress the FormatToolbar entirely (keyboard shortcuts still work). */
   hideToolbar?: boolean;
+  /** Panel kind — when set, body text picks up the user's per-panel
+   *  typography overrides (font family, size, color) from
+   *  `panel-typography.ts`. Omit when the field isn't inside a themed panel. */
+  panelKey?: PanelBodyKey;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -162,7 +168,9 @@ function RichTextFieldImpl({
   onCitationCreated,
   toolbarPortalTarget,
   hideToolbar = false,
+  panelKey,
 }: RichTextFieldProps) {
+  const bodyStyle = usePanelBodyStyle(panelKey);
   const onChangeRef = useRef(onChange);
   const onFocusChangeRef = useRef(onFocusChange);
   const onArchiveConsumedRef = useRef(onArchiveConsumed);
@@ -377,6 +385,23 @@ function RichTextFieldImpl({
       editor.commands.setContent(desired, { emitUpdate: false });
     }
   }, [editor, value, refreshCitationDisplay]);
+
+  // Sync per-panel body style (only overridden fields) onto the ProseMirror
+  // DOM. Leaving a field unset lets the class-based defaults in globals.css
+  // take over — so enabling `panelKey` by itself doesn't change anything
+  // visually until the user actually overrides a field.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    if (panelKey) dom.setAttribute("data-panel-kind", panelKey);
+    else dom.removeAttribute("data-panel-kind");
+    if (bodyStyle.fontFamily) dom.style.fontFamily = String(bodyStyle.fontFamily);
+    else dom.style.removeProperty("font-family");
+    if (bodyStyle.fontSize) dom.style.fontSize = String(bodyStyle.fontSize);
+    else dom.style.removeProperty("font-size");
+    if (bodyStyle.color) dom.style.color = String(bodyStyle.color);
+    else dom.style.removeProperty("color");
+  }, [editor, panelKey, bodyStyle]);
 
   // Drop visual cue (handled at the wrapper, ProseMirror handles the actual drop)
   const handleDragOver = useCallback((e: React.DragEvent) => {

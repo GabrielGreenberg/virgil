@@ -5,6 +5,7 @@ import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { PanelCard, PANEL, Chevron, TargetIcon, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
 import { MIME_CITATION } from "@/lib/marginalia";
@@ -418,6 +419,7 @@ export default function BibEntryCard({
   }
 
   const theme = useCardTheme("bib");
+  const bibBodyStyle = usePanelBodyStyle("bib");
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
   const card = (
@@ -438,6 +440,7 @@ export default function BibEntryCard({
         style={headerOverrideStyle(theme, isSelected)}
       >
         <div
+          data-panel-kind="bib"
           className="flex-1 min-w-0 leading-snug"
           style={{
             fontSize: "var(--par-title-size, 0.78rem)",
@@ -446,6 +449,7 @@ export default function BibEntryCard({
             fontFamily: "var(--font-sans), Inter, sans-serif",
             letterSpacing: "0.02em",
             overflowWrap: "anywhere",
+            ...bibBodyStyle,
           }}
           title={headerText}
         >
