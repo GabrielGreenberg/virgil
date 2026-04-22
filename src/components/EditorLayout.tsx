@@ -196,18 +196,6 @@ export default function EditorLayout() {
       }),
     [runConfirm],
   );
-  // The per-doc library tab is visually in place but the feature is
-  // still under construction — clicking the shadow tab surfaces a
-  // single-button info dialog rather than activating the pane.
-  const showLibraryUnderConstruction = useCallback(() => {
-    runConfirm({
-      title: "Virgil library",
-      message: "This function is still under construction.",
-      confirmLabel: "Got it",
-      hideCancel: true,
-    });
-  }, [runConfirm]);
-
   const {
     docs,
     openTabs,
@@ -3023,14 +3011,17 @@ export default function EditorLayout() {
                     the right ~30px peeks out. The swoop (library-tab-
                     swoop) flares the cup color outward so the tab
                     silhouette matches a browser tab, just darker.
-                    Feature is WIP, so clicking pops an under-
-                    construction notice. */}
+                    Clicking activates the library pane for this doc. */}
                 <button
                   type="button"
-                  onClick={showLibraryUnderConstruction}
-                  title={`Virgil library (under construction)`}
+                  onClick={() => activateLibraryPane(doc.id)}
+                  title="Virgil library"
                   style={{ marginBottom: "0px" }}
-                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#eae7e2] text-ink-subtle hover:bg-[#e4e1dc] hover:text-ink-body border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
+                  className={`library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)] ${
+                    isCurrentDoc && activePane === "library"
+                      ? "bg-[var(--background)] text-ink-strong z-10 -mb-px"
+                      : "bg-[#eae7e2] text-ink-subtle hover:bg-[#e4e1dc] hover:text-ink-body"
+                  }`}
                 >
                   <IconLibrary />
                 </button>
@@ -3250,7 +3241,7 @@ export default function EditorLayout() {
       {/* Main area */}
       {currentDoc && docPermState !== "granted" ? null : activePane === "library" && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
-          <LibraryTabView docId={currentDocId} />
+          <LibraryTabView />
         </div>
       ) : codeView && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
