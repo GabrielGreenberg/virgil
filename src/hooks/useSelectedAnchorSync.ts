@@ -24,11 +24,14 @@
  */
 
 import { useEffect } from "react";
-import type { LinkedAnchorKind } from "@/links/links";
+import type { Link, LinkedAnchorKind } from "@/links/links";
+import { getTextAnchor } from "@/links/links";
 
 interface Entity {
   id: string;
-  anchorId?: string;
+  /** Mode B text-range anchor lives inside `links[]`, not as a top-level
+   *  field. The hook resolves it via `getTextAnchor`. */
+  links?: Link[];
 }
 
 interface Options<T extends Entity> {
@@ -62,8 +65,9 @@ export function useSelectedAnchorSync<T extends Entity>({
   useEffect(() => {
     if (disabled) return;
     const entity = selectedId ? entities.find((e) => e.id === selectedId) : null;
-    if (entity?.anchorId) {
-      setActiveAnchorId(entity.anchorId);
+    const anchorId = entity ? getTextAnchor(entity)?.anchorId : undefined;
+    if (anchorId) {
+      setActiveAnchorId(anchorId);
       setActiveAnchorKind(kind);
       return;
     }
@@ -91,7 +95,8 @@ export function useSelectedAnchorSync<T extends Entity>({
       if (!target) return;
       if (target.closest(`[data-${dataAttrName}="${selectedId}"]`)) return;
       const entity = entities.find((x) => x.id === selectedId);
-      if (entity?.anchorId && target.closest(`[data-link-id="${entity.anchorId}"]`)) return;
+      const anchorId = entity ? getTextAnchor(entity)?.anchorId : undefined;
+      if (anchorId && target.closest(`[data-link-id="${anchorId}"]`)) return;
       for (const sel of skipSelectors ?? []) {
         if (target.closest(sel)) return;
       }
