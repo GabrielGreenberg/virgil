@@ -165,6 +165,16 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     omniSide: null,
     defaultStripSide: "right",
   },
+  errors: {
+    kind: "errors",
+    label: "Errors",
+    folder: "src/panels/Errors",
+    card: null,
+    defaultViewMode: null,
+    omniEligible: false,
+    omniSide: null,
+    defaultStripSide: "left",
+  },
   suggestions: {
     kind: "suggestions",
     label: "Suggestions",

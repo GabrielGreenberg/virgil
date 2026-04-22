@@ -6,6 +6,7 @@ import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { readTex, writeTex } from "@/lib/storage";
+import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
   "&": {
@@ -55,6 +56,7 @@ export interface CodeEditorHandle {
   getTextAroundCursor(): string;
   getActiveParagraphId(): string | null;
   scrollToParagraphId(uuid: string): void;
+  scrollToLine(line: number, column?: number): void;
 }
 
 interface CodeEditorProps {
@@ -63,6 +65,13 @@ interface CodeEditorProps {
   initialParagraphId?: string | null;
   onDirtyChange?: (dirty: boolean) => void;
   onReady?: (handle: CodeEditorHandle) => void;
+  /** Emit the current LaTeX text whenever it changes (and once on load).
+   *  Wire this to `useLatexLint`. */
+  onTextChange?: (text: string) => void;
+  /** Compile log + status to render in the bottom drawer. */
+  compileLog?: string | null;
+  compileStatus?: number | null;
+  isCompiling?: boolean;
 }
 
 // Helper: find all paragraph UUIDs and their line ranges in LaTeX source
@@ -93,7 +102,17 @@ function findParagraphUuids(text: string): Array<{ uuid: string; startLine: numb
   return results;
 }
 
-export default function CodeEditor({ docId, initialLine, initialParagraphId, onDirtyChange, onReady }: CodeEditorProps) {
+export default function CodeEditor({
+  docId,
+  initialLine,
+  initialParagraphId,
+  onDirtyChange,
+  onReady,
+  onTextChange,
+  compileLog = null,
+  compileStatus = null,
+  isCompiling = false,
+}: CodeEditorProps) {
   const [value, setValue] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -109,9 +128,13 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
         setValue(latexText);
         latestValueRef.current = latexText;
         savedValueRef.current = latexText;
+        onTextChange?.(latexText);
       })
-      .catch(() => setValue(""));
-  }, [docId]);
+      .catch(() => {
+        setValue("");
+        onTextChange?.("");
+      });
+  }, [docId, onTextChange]);
 
   // Scroll to initial position once editor + content are ready
   // Prefer paragraph UUID; fall back to line number
@@ -188,9 +211,10 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
     setValue(val);
     latestValueRef.current = val;
     onDirtyChange?.(val !== savedValueRef.current);
+    onTextChange?.(val);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => persist(val), 1500);
-  }, [persist, onDirtyChange]);
+  }, [persist, onDirtyChange, onTextChange]);
 
   if (value === null) {
     return (
@@ -324,8 +348,29 @@ export default function CodeEditor({ docId, initialLine, initialParagraphId, onD
                 });
               } catch { /* ignore */ }
             },
+            scrollToLine(line: number, column?: number) {
+              const v = editorViewRef.current;
+              if (!v) return;
+              try {
+                const targetLine = Math.min(Math.max(1, line), v.state.doc.lines);
+                const lineObj = v.state.doc.line(targetLine);
+                const pos = column != null
+                  ? Math.min(lineObj.from + Math.max(0, column - 1), lineObj.to)
+                  : lineObj.from;
+                v.dispatch({
+                  effects: EditorView.scrollIntoView(pos, { y: "center", yMargin: 60 }),
+                  selection: { anchor: pos },
+                });
+                v.focus();
+              } catch { /* ignore */ }
+            },
           });
         }}
+      />
+      <CodeEditorLogDrawer
+        log={compileLog}
+        status={compileStatus}
+        isCompiling={isCompiling}
       />
     </div>
   );

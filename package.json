@@ -24,12 +24,15 @@
     "@tiptap/react": "^3.20.5",
     "@tiptap/starter-kit": "^3.20.5",
     "@uiw/react-codemirror": "^4.25.9",
+    "@unified-latex/unified-latex-lint": "^1.8.4",
+    "@unified-latex/unified-latex-util-parse": "^1.8.4",
     "citation-js": "^0.7.22",
     "codemirror-lang-latex": "^0.2.0",
     "idb-keyval": "^6.2.2",
     "next": "16.2.1",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "vfile": "^6.0.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
