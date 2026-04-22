@@ -52,11 +52,36 @@ export function useMarginalia(editor: Editor | null) {
           const domTop = domRect.top - scrollRect.top + scrollEl!.scrollTop;
           const height = domRect.height;
 
+          // Find the actual text element (not wrapper divs or nested title
+          // annotations). For blockquotes/lists whose first child is a
+          // par-title-wrapper paragraph, we must drill past the title line so
+          // marginalia aligns with the first body text line.
+          let measureEl: HTMLElement = dom;
+          if (!isAtom) {
+            if (dom.classList.contains("par-title-wrapper")) {
+              measureEl = dom.querySelector(".par-body-container p, p") ?? dom;
+            } else if (dom.classList.contains("heading-wrapper")) {
+              measureEl = dom.querySelector("h1,h2,h3") ?? dom;
+            } else if (dom.classList.contains("list-title-wrapper")) {
+              measureEl =
+                dom.querySelector("ul > li, ol > li") ?? dom;
+            } else if (dom.tagName === "BLOCKQUOTE") {
+              measureEl =
+                dom.querySelector(".par-body-container p, :scope > p, :scope > h1, :scope > h2, :scope > h3") ??
+                dom;
+            }
+          }
+
           // `top` = first text line (for icon positioning in the grid)
           // `domTop` = element boundary (for hit-testing in drop resolution)
           let top: number;
           if (isAtom) {
             top = domTop;
+          } else if (measureEl !== dom) {
+            // Use the resolved text element's rect so title annotations inside
+            // wrappers or blockquotes don't shift the anchor upward.
+            const measureRect = measureEl.getBoundingClientRect();
+            top = measureRect.top - scrollRect.top + scrollEl!.scrollTop;
           } else {
             const coords = editor.view.coordsAtPos(pos + 1);
             top = coords.top - scrollRect.top + scrollEl!.scrollTop;
@@ -69,15 +94,6 @@ export function useMarginalia(editor: Editor | null) {
             lineHeight = height;
             lineCount = 1;
           } else {
-            // Find the actual text element (not wrapper divs)
-            let measureEl: HTMLElement = dom;
-            if (dom.classList.contains("par-title-wrapper")) {
-              measureEl = dom.querySelector("p") ?? dom;
-            } else if (dom.classList.contains("heading-wrapper")) {
-              measureEl =
-                dom.querySelector("h1,h2,h3") ?? dom;
-            }
-
             const style = window.getComputedStyle(measureEl);
             const lh = parseFloat(style.lineHeight);
             // "normal" line-height returns NaN — fall back to fontSize * 1.2
