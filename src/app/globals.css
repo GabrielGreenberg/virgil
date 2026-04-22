@@ -2,11 +2,11 @@
 
 :root {
   /* Canvas & Layout */
-  --background: #faf9f7;
+  --background: #f8f3ed;
   --foreground: #1a1a1a;
   --surface: #ffffff;
   --border: #e5e2dd;
-  --border-light: #e0ddd7;
+  --border-light: #c9c5c5;
   --muted: #8a8580;
   --muted-light: #b5b0aa;
   --accent: #7c5e3c;
@@ -15,8 +15,8 @@
   /* App Chrome
      --theme-color is locked to --topbar-bg so the in-app top bar and the
      PWA/browser chrome can't drift apart. */
-  --topbar-bg: #e5e4e1;
-  --topbar-border: #d5d3ce;
+  --topbar-bg: #dcdbd7;
+  --topbar-border: #cbc3b8;
   --theme-color: var(--topbar-bg);
 
   /* Pod system
@@ -38,8 +38,8 @@
      --h1-color and --h2h3-color are locked to the primary text tokens
      (H1 = --foreground, H2/H3 = --editor-text-color). */
   --editor-font-size: 1.05rem;
-  --editor-line-height: 1.8;
-  --editor-text-color: #2a2a2a;
+  --editor-line-height: 1.6;
+  --editor-text-color: #000000;
   --h1-color: var(--foreground);
   --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
@@ -1493,19 +1493,22 @@ body {
   bottom: 1px;
   width: 13px;
   height: 12px;
-  background: var(--background);
   pointer-events: none;
   z-index: 11;
 }
 .browser-tab-swoop::before {
   left: -12px;
-  -webkit-mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
-          mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
+  background: radial-gradient(circle 12px at top left,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    var(--background) 12px);
 }
 .browser-tab-swoop::after {
   right: -12px;
-  -webkit-mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
-          mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
+  background: radial-gradient(circle 12px at top right,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    var(--background) 12px);
 }
 
 /* Library shadow-tab swoop — same concave hook as the active doc tab.
@@ -1519,22 +1522,33 @@ body {
   bottom: 1px;
   width: 13px;
   height: 12px;
-  background: #cbc8c2;
   pointer-events: none;
-}
-.library-tab-swoop:hover::before,
-.library-tab-swoop:hover::after {
-  background: #bcb8b2;
 }
 .library-tab-swoop::before {
   left: -12px;
-  -webkit-mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
-          mask: radial-gradient(circle 12px at top left, transparent 0 11.5px, #000 12.5px);
+  background: radial-gradient(circle 12px at top left,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    #eae7e2 12px);
 }
 .library-tab-swoop::after {
   right: -12px;
-  -webkit-mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
-          mask: radial-gradient(circle 12px at top right, transparent 0 11.5px, #000 12.5px);
+  background: radial-gradient(circle 12px at top right,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    #eae7e2 12px);
+}
+.library-tab-swoop:hover::before {
+  background: radial-gradient(circle 12px at top left,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    #e4e1dc 12px);
+}
+.library-tab-swoop:hover::after {
+  background: radial-gradient(circle 12px at top right,
+    transparent 0 11px,
+    var(--topbar-border, #d5d3ce) 11px 12px,
+    #e4e1dc 12px);
 }
 
 /* Editor mirror — match canonical view scroll behavior */

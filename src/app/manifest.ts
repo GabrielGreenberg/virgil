@@ -17,7 +17,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: `${basePath}/`,
     scope: `${basePath}/`,
     display: "standalone",
-    background_color: "#faf9f7",
+    background_color: "#f8f3ed",
     theme_color: "#e5e4e1",
     icons: [
       {

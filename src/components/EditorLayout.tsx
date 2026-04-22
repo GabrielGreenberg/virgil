@@ -2925,7 +2925,7 @@ export default function EditorLayout() {
                 <div
                   className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
                     isDocPaneActive
-                      ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10"
+                      ? "browser-tab-swoop bg-[var(--background)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
                       : "border border-[var(--topbar-border,#d5d3ce)] text-ink-subtle hover:bg-surface/30 hover:text-ink-body"
                   }`}
                   onClick={() => {
@@ -2959,8 +2959,8 @@ export default function EditorLayout() {
                   type="button"
                   onClick={showLibraryUnderConstruction}
                   title={`Virgil library (under construction)`}
-                  style={{ marginBottom: "-1px" }}
-                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#cbc8c2] text-ink-subtle hover:bg-[#bcb8b2] hover:text-ink-body"
+                  style={{ marginBottom: "0px" }}
+                  className="library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 bg-[#eae7e2] text-ink-subtle hover:bg-[#e4e1dc] hover:text-ink-body border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
                 >
                   <IconLibrary />
                 </button>

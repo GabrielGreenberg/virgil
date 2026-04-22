@@ -89,8 +89,8 @@ export interface EditorPreferences {
 export const DEFAULT_PREFS: EditorPreferences = {
   // Editor > Body Text
   editorFontSize: 1.05,
-  editorLineHeight: 1.8,
-  editorTextColor: "#2a2a2a",
+  editorLineHeight: 1.6,
+  editorTextColor: "#000000",
 
   // Editor > Paragraph Titles
   parTitleSize: 0.78,
@@ -112,7 +112,7 @@ export const DEFAULT_PREFS: EditorPreferences = {
 
   // Editor > Inline Elements
   accentColor: "#7c5e3c",
-  backgroundColor: "#faf9f7",
+  backgroundColor: "#f8f3ed",
   commentColor: "#93c5fd",
   latexCommentColor: "#7191b0",
   citationColor: "#6b6245",
@@ -145,13 +145,13 @@ export const DEFAULT_PREFS: EditorPreferences = {
   podDark: "#eae6df",
 
   // App Chrome
-  topbarBackground: "#e5e4e1",
-  topbarBorder: "#d5d3ce",
+  topbarBackground: "#dcdbd7",
+  topbarBorder: "#cbc3b8",
 
   // Canvas & Layout
   foreground: "#1a1a1a",
   borderColor: "#e5e2dd",
-  borderLight: "#e0ddd7",
+  borderLight: "#c9c5c5",
   mutedColor: "#8a8580",
   mutedLight: "#b5b0aa",
   dragHighlight: "#3b82f6",
