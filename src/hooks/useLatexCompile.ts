@@ -1,8 +1,27 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { flushDoc, getTexFilename, readPaperFolder } from "@/lib/storage";
+import { flushDoc, getTexFilename, readPaperFolder, writeTex } from "@/lib/storage";
 import { getPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
+import {
+  detectDocumentClassMismatch,
+  rewriteDocumentClass,
+  type DocumentClassMismatch,
+} from "@/lib/document-class";
+
+/**
+ * Called when the compile hook finds that the document's
+ * `\documentclass` doesn't define one of the sectioning commands used.
+ * Host UI surfaces a prompt (dropdown of compatible classes) and
+ * resolves with the user's choice.
+ */
+export type DocumentClassMismatchHandler = (
+  mismatch: DocumentClassMismatch,
+) => Promise<
+  | { kind: "switch"; newClass: string }
+  | { kind: "compile-anyway" }
+  | { kind: "cancel" }
+>;
 
 // SwiftLaTeX bundles bibtex but not biber, so biblatex users get rewritten to
 // backend=bibtex. This loses some biblatex features (Unicode sorting, a few
@@ -27,7 +46,11 @@ function rewriteBiblatexBackend(text: string): string {
  * the resulting PDF in a new browser window. On failure the full log is
  * dumped to the console and a short alert is shown.
  */
-export function useLatexCompile(docId: string | null) {
+export function useLatexCompile(
+  docId: string | null,
+  opts?: { onDocumentClassMismatch?: DocumentClassMismatchHandler },
+) {
+  const onDocumentClassMismatch = opts?.onDocumentClassMismatch;
   const [isCompiling, setIsCompiling] = useState(false);
 
   const compile = useCallback(async () => {
@@ -37,10 +60,33 @@ export function useLatexCompile(docId: string | null) {
       // Flush any queued writes so the engine sees the latest .tex on disk.
       await flushDoc(docId);
 
-      const [files, texFilename] = await Promise.all([
+      const [initialFiles, texFilename] = await Promise.all([
         readPaperFolder(docId),
         getTexFilename(docId),
       ]);
+      let files = initialFiles;
+
+      // Check the main .tex for a documentclass/heading mismatch before
+      // handing off to pdfTeX. If the user picks a new class we rewrite
+      // the file on disk and re-read the folder so the engine sees it.
+      if (onDocumentClassMismatch) {
+        const mainTexFile = files.find((f) => f.path === texFilename);
+        if (mainTexFile) {
+          const mainTexText = new TextDecoder().decode(mainTexFile.bytes);
+          const mismatch = detectDocumentClassMismatch(mainTexText);
+          if (mismatch) {
+            const resolution = await onDocumentClassMismatch(mismatch);
+            if (resolution.kind === "cancel") return;
+            if (resolution.kind === "switch") {
+              const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
+              await writeTex(docId, rewritten);
+              await flushDoc(docId);
+              files = await readPaperFolder(docId);
+            }
+            // "compile-anyway" falls through with the original files.
+          }
+        }
+      }
 
       const engine = await getPdfTeXEngine();
       engine.flushCache();
@@ -128,7 +174,7 @@ export function useLatexCompile(docId: string | null) {
     } finally {
       setIsCompiling(false);
     }
-  }, [docId, isCompiling]);
+  }, [docId, isCompiling, onDocumentClassMismatch]);
 
   return { compile, isCompiling };
 }

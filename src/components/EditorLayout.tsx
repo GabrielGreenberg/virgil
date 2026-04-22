@@ -154,6 +154,7 @@ import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
 import AIWindow, { aiRequestDotStatus } from "./AIWindow";
 import { useConfirmDialog } from "./ConfirmDialog";
+import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -240,7 +241,15 @@ export default function EditorLayout() {
     docPermState === "granted" ? currentDocId : null;
 
   const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(docIdForHooks);
-  const { compile: compilePdf, isCompiling } = useLatexCompile(docIdForHooks);
+  // Mismatch prompt: fired by the compile hook when the source's
+  // `\documentclass` doesn't define one of the sectioning commands used
+  // (e.g. `\chapter` inside `article`). Mount `docClassDialog` near the
+  // other root-level dialogs so it overlays everything.
+  const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
+    useDocumentClassMismatchDialog();
+  const { compile: compilePdf, isCompiling } = useLatexCompile(docIdForHooks, {
+    onDocumentClassMismatch: promptDocClassMismatch,
+  });
   const {
     state: suggestionsState,
     currentSuggestion,
@@ -3533,6 +3542,7 @@ export default function EditorLayout() {
         }}
       />
       {confirmDialog}
+      {docClassDialog}
       {activeRefLabel != null && activeRefRect && (
         <LabelRefPopover
           label={activeRefLabel}
