@@ -547,6 +547,29 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         boxShadow: 'var(--pod-shadow)',
       }}
     >
+      <ViewMenu
+        showParTitles={showParTitles}
+        onToggleParTitles={onToggleParTitles}
+        showLatexComments={showLatexComments}
+        onToggleLatexComments={onToggleLatexComments}
+        showSectionIndicator={showSectionIndicator}
+        onToggleSectionIndicator={onToggleSectionIndicator}
+        onOpenPreferences={onOpenPreferences}
+        showMarginalia={showMarginalia}
+        onToggleMarginalia={onToggleMarginalia}
+        hiddenMarginaliaTypes={hiddenMarginaliaTypes}
+        onToggleMarginaliaType={onToggleMarginaliaType}
+        alwaysShowLinkedText={alwaysShowLinkedText}
+        onToggleAlwaysShowLinkedText={onToggleAlwaysShowLinkedText}
+        availableDividerLevels={availableDividerLevels}
+        dividerLevels={dividerLevels}
+        onToggleDividerLevel={onToggleDividerLevel}
+        dividerWidth={dividerWidth}
+        onSetDividerWidth={onSetDividerWidth}
+        orientation={orientation}
+        onSetOrientation={onSetOrientation}
+      />
+
       {/* Format popup — all text formatting (bold, italic, headings, lists, blockquote, math) */}
       <AttachedPopover
         title="Formatting"
@@ -817,31 +840,8 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         </IconBtn>
       )}
 
-      <ViewMenu
-        showParTitles={showParTitles}
-        onToggleParTitles={onToggleParTitles}
-        showLatexComments={showLatexComments}
-        onToggleLatexComments={onToggleLatexComments}
-        showSectionIndicator={showSectionIndicator}
-        onToggleSectionIndicator={onToggleSectionIndicator}
-        onOpenPreferences={onOpenPreferences}
-        showMarginalia={showMarginalia}
-        onToggleMarginalia={onToggleMarginalia}
-        hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-        onToggleMarginaliaType={onToggleMarginaliaType}
-        alwaysShowLinkedText={alwaysShowLinkedText}
-        onToggleAlwaysShowLinkedText={onToggleAlwaysShowLinkedText}
-        availableDividerLevels={availableDividerLevels}
-        dividerLevels={dividerLevels}
-        onToggleDividerLevel={onToggleDividerLevel}
-        dividerWidth={dividerWidth}
-        onSetDividerWidth={onSetDividerWidth}
-        orientation={orientation}
-        onSetOrientation={onSetOrientation}
-      />
-
-      {/* Grab handle — drag to reposition. Invisible until hovered,
-          then reveals a solid black bar. Pulled tight against the
+      {/* Grab handle — drag to reposition. Grey bar always visible,
+          darkens to foreground on hover. Pulled tight against the
           view-options button. */}
       {onGrabStart && (
         <div
@@ -850,7 +850,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           className={`group/grab cursor-grab active:cursor-grabbing flex items-center ${isVert ? "-mt-0.5 px-1 pt-0 pb-1" : "-ml-0.5 py-1 pl-0 pr-1"}`}
           style={{ touchAction: "none", userSelect: "none" }}
         >
-          <div className={`rounded-full bg-transparent group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 ${isVert ? "h-[3px] w-[18px]" : "w-[3px] h-[18px]"}`} />
+          <div className={`rounded-full bg-[var(--muted-light)] group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 ${isVert ? "h-[3px] w-[18px]" : "w-[3px] h-[18px]"}`} />
         </div>
       )}
     </div>
