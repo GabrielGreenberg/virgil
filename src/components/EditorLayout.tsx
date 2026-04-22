@@ -15,6 +15,7 @@ import { useDocument } from "@/hooks/useDocument";
 import { useLatexCompile } from "@/hooks/useLatexCompile";
 import { useLatexLint } from "@/hooks/useLatexLint";
 import type { LatexError } from "@/lib/latex-errors";
+import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { IconErrors } from "./editor-layout/panel-icons";
 import { useSuggestions } from "@/hooks/useSuggestions";
@@ -838,19 +839,17 @@ export default function EditorLayout() {
   const pendingScrollText = useRef<string | null>(null);
   const pendingParagraphId = useRef<string | null>(null);
 
-  // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook.
-  // null while the code editor is unmounted, which keeps lint inert
-  // (no parse, no diagnostics).
+  // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook
+  // and to the Errors panel for snippet/paragraph derivation. Persists
+  // across view switches so the Errors panel stays populated when the
+  // user returns to rich-text view.
   const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
-  useEffect(() => {
-    if (!codeView) setCodeEditorText(null);
-  }, [codeView]);
   const knownBibKeys = useMemo(
     () => bibEntries.map((e) => e.key),
     [bibEntries],
   );
   const lintErrors = useLatexLint({
-    text: codeView ? codeEditorText : null,
+    text: codeEditorText,
     knownBibKeys,
   });
   const allLatexErrors: LatexError[] = useMemo(
@@ -867,6 +866,156 @@ export default function EditorLayout() {
     [],
   );
   const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(true);
+
+  // Errors panel: selection + session dismissals. Dismissals are keyed
+  // by error.id and reset when the error list changes materially (new
+  // lint run may regenerate equivalent ids — that's fine, we want the
+  // error to re-surface if it's still present).
+  const [selectedErrorId, setSelectedErrorId] = useState<string | null>(null);
+  const [dismissedErrorIds, setDismissedErrorIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // Position range currently highlighted for the selected error. Scoped
+  // to the containing paragraph, narrowed to the offending key when one
+  // appears in the paragraph's plain text. Null when no selection or no
+  // resolvable location.
+  const [errorHighlightRange, setErrorHighlightRange] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
+  const dismissError = useCallback((id: string) => {
+    setDismissedErrorIds((prev) => {
+      const next = new Set(prev);
+      next.add(id);
+      return next;
+    });
+    setSelectedErrorId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  // Resolve `error.id → paragraphUuid` when the error's line falls inside
+  // a UUID-tagged paragraph block. Drives the margin markers and the
+  // "jump to in text" target label.
+  const paragraphByErrorId = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!codeEditorText) return m;
+    const ranges = findParagraphUuids(codeEditorText);
+    if (ranges.length === 0) return m;
+    for (const err of allLatexErrors) {
+      const uuid = paragraphForLine(ranges, err.line);
+      if (uuid) m.set(err.id, uuid);
+    }
+    return m;
+  }, [codeEditorText, allLatexErrors]);
+
+  // Snippet per error (one trimmed source line), computed once from the
+  // latest LaTeX text. Shared with ErrorsHost via props and used by
+  // jumpToError to seed the editor highlight.
+  const errorSnippets = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!codeEditorText) return m;
+    const lines = codeEditorText.split("\n");
+    for (const err of allLatexErrors) {
+      if (err.line <= 0 || err.line > lines.length) continue;
+      const raw = lines[err.line - 1].trim();
+      if (!raw) continue;
+      m.set(err.id, raw.length > 140 ? raw.slice(0, 140) + "\u2026" : raw);
+    }
+    return m;
+  }, [codeEditorText, allLatexErrors]);
+
+  // Compute the rich-text range to highlight for an error.
+  // Strategy:
+  //   1. If `err.detail` (the offending key, e.g. "missingKey") is
+  //      present as plain text in any text node, pin the range to that
+  //      occurrence. Handles ref/cite undefined errors exactly.
+  //   2. Else if the error's paragraph UUID resolves in the doc, scope
+  //      to the whole paragraph. Handles structural errors.
+  //   3. Else return null (no clean way to pin the error to a range).
+  // Paragraph UUIDs can drift across view switches (rich-text re-parse
+  // may regenerate them), so the text-first path is the robust one.
+  const computeErrorHighlightRange = useCallback(
+    (err: LatexError): { from: number; to: number } | null => {
+      const ed = editorRef.current?.getEditor();
+      if (!ed) return null;
+
+      if (err.detail) {
+        let hit: { from: number; to: number } | null = null;
+        ed.state.doc.descendants((node, pos) => {
+          if (hit) return false;
+          if (!node.isText || !node.text) return true;
+          const i = node.text.indexOf(err.detail!);
+          if (i !== -1) {
+            hit = { from: pos + i, to: pos + i + err.detail!.length };
+            return false;
+          }
+          return true;
+        });
+        if (hit) return hit;
+      }
+
+      const paraId = paragraphByErrorId.get(err.id);
+      if (paraId) {
+        let paraFrom: number | null = null;
+        let paraTo: number | null = null;
+        ed.state.doc.descendants((node, pos) => {
+          if (paraFrom !== null) return false;
+          if (node.attrs?.uuid === paraId) {
+            paraFrom = pos + 1;
+            paraTo = pos + node.nodeSize - 1;
+            return false;
+          }
+          return true;
+        });
+        if (paraFrom !== null && paraTo !== null) {
+          return { from: paraFrom, to: paraTo };
+        }
+      }
+
+      return null;
+    },
+    [paragraphByErrorId],
+  );
+
+  // Jump to the error's location. Always switches to the rich-text
+  // editor (never code), scrolls the mapped paragraph into view, and
+  // sets the range highlight so the offending passage lights up.
+  const jumpToError = useCallback(
+    (err: LatexError) => {
+      setSelectedErrorId(err.id);
+      if (codeView) {
+        pendingParagraphId.current = paragraphByErrorId.get(err.id) ?? null;
+        pendingScrollText.current = null;
+        codeEditorHandleRef.current = null;
+        setCodeView(false);
+        // Range is computed once the editor mounts, via the selection-
+        // sync effect below. Scroll is handled by the mount effect.
+        return;
+      }
+      const range = computeErrorHighlightRange(err);
+      setErrorHighlightRange(range);
+      const paraId = paragraphByErrorId.get(err.id);
+      if (paraId) {
+        try {
+          editorRef.current?.scrollToParagraphId(paraId);
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    [codeView, paragraphByErrorId, computeErrorHighlightRange],
+  );
+
+  // Keep the error-highlight range in sync with the current selection.
+  // Runs when the selection, the error list, or the editor mount state
+  // changes (editorDocVersion is bumped on editor updates and mounts).
+  useEffect(() => {
+    if (!selectedErrorId) {
+      setErrorHighlightRange(null);
+      return;
+    }
+    const err = allLatexErrors.find((e) => e.id === selectedErrorId);
+    setErrorHighlightRange(err ? computeErrorHighlightRange(err) : null);
+  }, [selectedErrorId, allLatexErrors, computeErrorHighlightRange, editorInstance]);
 
   // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
   const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
@@ -2323,6 +2472,41 @@ export default function EditorLayout() {
       }
     }
 
+    // Error markers — one per error whose line resolved to a paragraph
+    // UUID. Dismissed errors are filtered out so they don't hang around
+    // in the gutter.
+    for (const err of allLatexErrors) {
+      if (dismissedErrorIds.has(err.id)) continue;
+      const pid = paragraphByErrorId.get(err.id);
+      if (!pid) continue;
+      result.push({
+        id: `${err.id}:${pid}`,
+        entityId: err.id,
+        type: "error",
+        paragraphId: pid,
+        selected: selectedErrorId === err.id,
+        title:
+          err.message.length > 80
+            ? err.message.slice(0, 80) + "\u2026"
+            : err.message,
+        muted: err.severity === "info",
+        onClick: () => {
+          const next = selectedErrorId === err.id ? null : err.id;
+          setSelectedErrorId(next);
+          if (next) {
+            const p = prefsRef.current;
+            const placement = p.placements.find((pl) => pl.id === "errors");
+            if (placement?.side === "left") {
+              if (p.activeLeft !== "errors") setActiveLeft("errors");
+            } else {
+              if (p.activeRight !== "errors") setActiveRight("errors");
+            }
+          }
+        },
+        onDelete: () => dismissError(err.id),
+      });
+    }
+
     return result;
   }, [
     quotationGroups,
@@ -2349,6 +2533,13 @@ export default function EditorLayout() {
     selectedCutId,
     removeCutParagraphId,
     handleCutMarkerClick,
+    allLatexErrors,
+    dismissedErrorIds,
+    paragraphByErrorId,
+    selectedErrorId,
+    dismissError,
+    setActiveLeft,
+    setActiveRight,
   ]);
 
   // Subscribe to panel-color changes so linked-anchor highlight updates live.
@@ -2438,7 +2629,7 @@ export default function EditorLayout() {
   const activeRight = prefs.activeRight;
 
   // Search range highlight takes priority — skip text-based highlight when active
-  const highlightText = searchHighlightRange
+  const highlightText = searchHighlightRange || errorHighlightRange
     ? null
     : pendingCommentText
       ? pendingCommentText
@@ -2447,6 +2638,9 @@ export default function EditorLayout() {
         : (activeLeft === "suggestions" || activeRight === "suggestions") && currentSuggestion
           ? currentSuggestion.original_text
           : null;
+  // Range-based highlights — search wins over error (search is an
+  // explicit user action, error highlight is derived from selection).
+  const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
 
   const suggestionPanelVisible = (activeLeft === "suggestions" || activeRight === "suggestions") && hasSuggestions;
   // OmniView aggregates several child panels on one side; when omni is
@@ -2749,7 +2943,18 @@ export default function EditorLayout() {
     }
 
     if (panelId === "errors") {
-      return <ErrorsHost errors={allLatexErrors} onJumpToLine={jumpToLineInCode} />;
+      return (
+        <ErrorsHost
+          errors={allLatexErrors}
+          selectedId={selectedErrorId}
+          onSelect={setSelectedErrorId}
+          dismissedIds={dismissedErrorIds}
+          onDismiss={dismissError}
+          onJump={jumpToError}
+          snippets={errorSnippets}
+          paragraphByErrorId={paragraphByErrorId}
+        />
+      );
     }
 
     if (panelId === "omni") {
@@ -2880,11 +3085,10 @@ export default function EditorLayout() {
   }
 
   // Build strip icon list, filtering out suggestions if none exist.
-  // The "errors" panel is gated to code view since both inputs (live
-  // unified-latex lint and SwiftLaTeX compile-log diagnostics) are
-  // meaningful only when the LaTeX source is being edited directly.
-  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions) && (p.id !== "errors" || codeView));
-  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions) && (p.id !== "errors" || codeView));
+  // The Errors panel lives in the strip on both sides — its cards (with
+  // jump-to, margin markers, etc.) are useful in the rich-text view too.
+  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
+  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
 
   if (!fsaSupported) {
     return <UnsupportedBrowserNotice />;
@@ -3265,7 +3469,16 @@ export default function EditorLayout() {
               >
                 ×
               </button>
-              <ErrorsHost errors={allLatexErrors} onJumpToLine={jumpToLineInCode} />
+              <ErrorsHost
+                errors={allLatexErrors}
+                selectedId={selectedErrorId}
+                onSelect={setSelectedErrorId}
+                dismissedIds={dismissedErrorIds}
+                onDismiss={dismissError}
+                onJump={jumpToError}
+                snippets={errorSnippets}
+                paragraphByErrorId={paragraphByErrorId}
+              />
             </div>
           ) : (
             <button
@@ -3488,7 +3701,7 @@ export default function EditorLayout() {
                       initialContent={content}
                       onUpdate={handleUpdate}
                       highlightText={highlightText}
-                      highlightRange={searchHighlightRange}
+                      highlightRange={effectiveHighlightRange}
                       onAddComment={handleAddComment}
                       onArchive={handleArchive}
                       onEditorReady={setEditorInstance}
@@ -3521,7 +3734,7 @@ export default function EditorLayout() {
                   initialContent={content}
                   onUpdate={handleUpdate}
                   highlightText={highlightText}
-                  highlightRange={searchHighlightRange}
+                  highlightRange={effectiveHighlightRange}
                   onAddComment={handleAddComment}
                   onArchive={handleArchive}
                   onEditorReady={setEditorInstance}

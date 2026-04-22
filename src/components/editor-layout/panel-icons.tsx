@@ -253,10 +253,10 @@ export function IconOmni({ active }: { active?: boolean }) {
 
 // Exclamation in a triangle — for the "Errors" panel (live LaTeX lint
 // + parsed compile log).
-export function IconErrors({ active }: { active?: boolean }) {
+export function IconErrors({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c}
       strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3 L22 20 L2 20 Z" />
       <line x1="12" y1="10" x2="12" y2="14" />

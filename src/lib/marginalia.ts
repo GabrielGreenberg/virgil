@@ -112,7 +112,7 @@ export function isAnchorDrag(dt: DataTransfer | null): boolean {
   return dt != null && ANCHOR_DRAG_TYPES.some((t) => dt.types.includes(t));
 }
 
-export type MarkerType = "quote" | "note" | "archive" | "revision" | "cut" | "todo";
+export type MarkerType = "quote" | "note" | "archive" | "revision" | "cut" | "todo" | "error";
 
 export interface MarginaliaMarker {
   /** Stable per-marker id — unique per marker instance (may be composite for multi-anchor) */
@@ -214,6 +214,7 @@ import {
   IconRevisions,
   IconCutter,
   IconTodo,
+  IconErrors,
 } from "@/components/editor-layout/panel-icons";
 
 const MARGIN_ICON_SIZE = 16;
@@ -224,6 +225,7 @@ const ArchiveIcon = React.createElement(IconArchive, { size: MARGIN_ICON_SIZE })
 const RevisionIcon = React.createElement(IconRevisions, { size: MARGIN_ICON_SIZE });
 const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
 const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
+const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
   quote: {
@@ -285,6 +287,16 @@ export const MARKER_META: Record<MarkerType, MarkerMeta> = {
     selectedBg: "#d6d3d1",
     border: "#a8a29e",
     icon: TodoIcon,
+  },
+  error: {
+    label: "Error",
+    panelId: "errors",
+    defaultSide: "right",
+    color: "#b45757",
+    bg: "#fef2f2",
+    selectedBg: "#fecaca",
+    border: "#f5a5a5",
+    icon: ErrorIcon,
   },
 };
 

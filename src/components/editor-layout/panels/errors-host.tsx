@@ -1,13 +1,42 @@
 "use client";
 
+import { useMemo } from "react";
 import ErrorsPanel from "@/panels/Errors";
 import type { LatexError } from "@/lib/latex-errors";
 
 export interface ErrorsHostProps {
   errors: LatexError[];
-  onJumpToLine: (line: number, column?: number) => void;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  dismissedIds: Set<string>;
+  onDismiss: (id: string) => void;
+  onJump: (err: LatexError) => void;
+  onHover?: (id: string | null) => void;
+  /** Pre-computed `error.id → trimmed source-line` snippet map. */
+  snippets: Map<string, string>;
+  /** Pre-computed `error.id → paragraphUuid` map. Determines which
+   *  errors render with the "Jump to in text" jump-target title (vs.
+   *  the fallback "Jump to line in code"). */
+  paragraphByErrorId: Map<string, string>;
 }
 
 export function ErrorsHost(p: ErrorsHostProps) {
-  return <ErrorsPanel errors={p.errors} onJumpToLine={p.onJumpToLine} />;
+  const anchoredIds = useMemo(
+    () => new Set(p.paragraphByErrorId.keys()),
+    [p.paragraphByErrorId],
+  );
+
+  return (
+    <ErrorsPanel
+      errors={p.errors}
+      selectedId={p.selectedId}
+      onSelect={p.onSelect}
+      onJump={p.onJump}
+      snippets={p.snippets}
+      anchoredIds={anchoredIds}
+      dismissedIds={p.dismissedIds}
+      onDismiss={p.onDismiss}
+      onHover={p.onHover}
+    />
+  );
 }
