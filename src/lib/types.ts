@@ -85,7 +85,12 @@ export interface GeneralRevision {
   id: string;
   authorId: string;
   createdAt: string;
+  /** Plain-text mirror of `content`, maintained on every write so agents
+   *  and legacy readers that only understand strings keep working. */
   text: string;
+  /** Tiptap JSONContent — canonical editable body. Legacy records that only
+   *  have `text` are migrated on read. */
+  content: unknown;
   turns: RevisionTurn[];
   resolved: boolean;
 }
@@ -96,7 +101,12 @@ export interface TextRevision {
   createdAt: string;
   resolved: boolean;
   selectedText: string;
+  /** Plain-text mirror of `content`, maintained on every write so agents
+   *  and legacy readers that only understand strings keep working. */
   text: string;
+  /** Tiptap JSONContent — canonical editable body. Legacy records that only
+   *  have `text` are migrated on read. */
+  content: unknown;
   turns: RevisionTurn[];
   /** All connections this revision makes to the editor: Mode B
    *  text-range anchor, paragraph anchors, etc. See src/links/links.ts. */

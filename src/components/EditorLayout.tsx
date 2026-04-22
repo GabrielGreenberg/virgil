@@ -265,6 +265,8 @@ export default function EditorLayout() {
     textRevisions,
     addGeneralRevision,
     addTextRevision,
+    updateRevisionContent,
+    setRevisionAuthor,
     setRevisionAnchor,
     deleteRevision,
     refresh: refreshRevisions,
@@ -1883,15 +1885,13 @@ export default function EditorLayout() {
 
   const pendingRevisionAnchorIdRef = useRef<string | null>(null);
 
-  const { handleAddComment, handleSubmitComment, handleCancelComment } = useCommentActions({
+  const { handleAddComment } = useCommentActions({
     editorRef,
     pendingRevisionAnchorIdRef,
     prefs,
     setActiveLeft,
     setActiveRight,
-    pendingCommentText,
     setPendingCommentText,
-    addTextRevision,
   });
 
   const {
@@ -2539,12 +2539,13 @@ export default function EditorLayout() {
           generalRevisions={generalRevisions}
           textRevisions={textRevisions}
           addGeneralRevision={addGeneralRevision}
+          addTextRevision={addTextRevision}
+          updateRevisionContent={updateRevisionContent}
+          setRevisionAuthor={setRevisionAuthor}
           deleteRevision={deleteRevision}
           pendingCommentText={pendingCommentText}
           setPendingCommentText={setPendingCommentText}
           pendingRevisionAnchorIdRef={pendingRevisionAnchorIdRef}
-          handleSubmitComment={handleSubmitComment}
-          handleCancelComment={handleCancelComment}
           setCommentHighlight={setCommentHighlight}
           setHoveredAnchorId={setHoveredAnchorId}
           setActiveAnchorKind={setActiveAnchorKind}
@@ -2865,7 +2866,7 @@ export default function EditorLayout() {
     requestBibReview, cancelBibReview, getBibReviewStatus,
     updateBibEntry, updateBibKeyAndType,
     updateCitation,
-    deleteRevision,
+    updateRevisionContent, setRevisionAuthor, deleteRevision,
     deleteQuotationGroup, updateQuotationGroupTitle,
     addQuotationReference, deleteQuotationReference, updateQuotationReferenceCiteKey,
     addQuotationQuote, updateQuotationQuote, deleteQuotationQuote, updateQuotationNotes,

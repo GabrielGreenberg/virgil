@@ -121,6 +121,8 @@ export interface PoppedCardDeps {
   updateCitation: (id: string, command: string) => void;
 
   // Revisions
+  updateRevisionContent: (kind: "general" | "text", id: string, content: JSONContent) => void;
+  setRevisionAuthor: (kind: "general" | "text", id: string, authorId: string) => void;
   deleteRevision: (kind: "general" | "text", id: string) => void;
 
   // Quotations
@@ -334,15 +336,13 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       return (
         <RevisionCard
           key={key}
-          id={rev.id}
-          text={rev.text}
-          isAiRequest={rev.authorId === "claude"}
-          quotedText={text?.selectedText}
+          kind={rkind}
+          revision={rev}
           selected={d.selectedCommentId === rev.id}
-          onSelect={() =>
-            d.setSelectedCommentId(d.selectedCommentId === rev.id ? null : rev.id)
-          }
-          onDelete={() => d.deleteRevision(rkind, rev.id)}
+          onSelect={(nextId) => d.setSelectedCommentId(nextId)}
+          onUpdateContent={d.updateRevisionContent}
+          onSetAuthor={d.setRevisionAuthor}
+          onDelete={d.deleteRevision}
           isPoppedOut
         />
       );

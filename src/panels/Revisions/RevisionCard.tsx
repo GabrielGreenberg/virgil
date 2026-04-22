@@ -1,16 +1,24 @@
 "use client";
 
+import { useCallback } from "react";
+import type { JSONContent } from "@tiptap/react";
+import type { GeneralRevision, TextRevision } from "@/lib/types";
 import {
-  PanelCard,
-  PANEL,
-  ItemMenu,
-  MenuDelete,
-  TargetIcon,
-  CARD_THEMES,
+  EditableCard,
+  BadgeLabel,
+  BadgeOrphaned,
+  CardTargetIcon,
+  startTextDrag,
 } from "@/components/panel-primitives";
+import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
+
+const CLAUDE_ID = "claude";
+const ME_ID = "me";
 
 function AiBadge() {
   return (
@@ -35,93 +43,139 @@ function AiBadge() {
   );
 }
 
+export type RevisionCardKind = "general" | "text";
+
 export interface RevisionCardProps {
-  id: string;
-  text: string;
-  isAiRequest: boolean;
-  quotedText?: string;
+  kind: RevisionCardKind;
+  revision: GeneralRevision | TextRevision;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (id: string | null) => void;
   onJump?: () => void;
-  onDelete: () => void;
+  onUpdateContent: (kind: RevisionCardKind, id: string, content: JSONContent) => void;
+  onSetAuthor: (kind: RevisionCardKind, id: string, authorId: string) => void;
+  onDelete: (kind: RevisionCardKind, id: string) => void;
   registerRef?: (el: HTMLDivElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
   onTogglePopout?: () => void;
   isPoppedOut?: boolean;
-  dataAttrs?: Record<string, string>;
+  extraDataAttrs?: Record<string, string>;
 }
 
 export function RevisionCard({
-  id,
-  text,
-  isAiRequest,
-  quotedText,
+  kind,
+  revision,
   selected,
   onSelect,
   onJump,
+  onUpdateContent,
+  onSetAuthor,
   onDelete,
   registerRef,
   onHoverChange,
   onTogglePopout,
   isPoppedOut,
-  dataAttrs,
+  extraDataAttrs,
 }: RevisionCardProps) {
-  const theme = CARD_THEMES.comment;
+  const theme = useCardTheme("revision");
   const popped = usePoppedCards();
-  const cardKey = popKey("revisions", id);
+  const cardKey = popKey("revisions", revision.id);
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 
-  const card = (
-    <PanelCard
-      ref={(el) => registerRef?.(el)}
-      theme={theme}
-      selected={selected}
-      isPoppedOut={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      extraCardClass="cursor-pointer"
-      onClick={onSelect}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
-      {...(dataAttrs ?? {})}
-    >
-      <div
-        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
-      >
-        {isAiRequest && <AiBadge />}
-        <div className="flex-1" />
-        <div
-          className="flex items-center gap-0.5 shrink-0"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {selected && onJump && (
-            <TargetIcon onClick={onJump} title="Jump to text in document" />
-          )}
-          <ItemMenu>
-            <MenuDelete onClick={onDelete} />
-          </ItemMenu>
-        </div>
-      </div>
+  const isAiRequest = revision.authorId === CLAUDE_ID;
+  const isTextKind = kind === "text";
+  const quotedText = isTextKind ? (revision as TextRevision).selectedText : undefined;
+  const isOrphaned =
+    isTextKind && getLinkedParagraphIds(revision as TextRevision).length === 0;
 
-      <div
-        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-      />
-
-      <div
-        className={`${PANEL.cardInner} space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-      >
-        {quotedText && (
-          <div className="text-xs italic text-[var(--muted)] border-l-2 border-edge-subtle pl-2 truncate">
-            &ldquo;{quotedText}&rdquo;
-          </div>
-        )}
-        <p className="text-sm text-ink-body leading-snug whitespace-pre-wrap">
-          {text}
-        </p>
-      </div>
-    </PanelCard>
+  const handleChange = useCallback(
+    (json: JSONContent) => {
+      onUpdateContent(kind, revision.id, normalizeRichContent(json));
+    },
+    [onUpdateContent, kind, revision.id],
   );
 
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
-  return card;
+  const handleToggleAi = useCallback(
+    (checked: boolean) => {
+      onSetAuthor(kind, revision.id, checked ? CLAUDE_ID : ME_ID);
+    },
+    [onSetAuthor, kind, revision.id],
+  );
+
+  const badge = isAiRequest ? (
+    <AiBadge />
+  ) : isTextKind && isOrphaned ? (
+    <BadgeOrphaned theme={theme} />
+  ) : (
+    <BadgeLabel label="R" theme={theme} />
+  );
+
+  const headerContent = quotedText ? (
+    <div className="flex-1 min-w-0 text-xs italic text-[var(--muted)] border-l-2 border-edge-subtle pl-2 truncate">
+      &ldquo;{quotedText}&rdquo;
+    </div>
+  ) : undefined;
+
+  const headerTrailing = isTextKind ? (
+    <CardTargetIcon
+      selected={selected}
+      disabled={!onJump || isOrphaned}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onJump && !isOrphaned) onJump();
+      }}
+      title="Jump to text in document"
+    />
+  ) : undefined;
+
+  const footer = (
+    <div
+      className="flex items-center justify-between gap-2 px-3 pb-2 pt-0.5"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <label className="flex items-center gap-1.5 cursor-pointer text-[10px] text-[var(--muted)] select-none">
+        <input
+          type="checkbox"
+          checked={isAiRequest}
+          onChange={(e) => handleToggleAi(e.target.checked)}
+          className="cursor-pointer accent-[var(--accent)]"
+        />
+        <span>AI request</span>
+      </label>
+    </div>
+  );
+
+  const card = (
+    <EditableCard
+      id={revision.id}
+      selected={selected}
+      theme={theme}
+      grabHandle={false}
+      hideToolbar={false}
+      inlineDelete
+      badge={badge}
+      headerContent={headerContent}
+      headerTrailing={headerTrailing}
+      footer={footer}
+      value={revision.content}
+      variant="note"
+      placeholder="Revision text…"
+      onChange={handleChange}
+      onDelete={() => onDelete(kind, revision.id)}
+      onClick={() => onSelect(selected ? null : revision.id)}
+      onTextDragStart={(e) => startTextDrag(e, revision.content, revision.text)}
+      onHoverChange={onHoverChange}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedOut}
+      dataAttr={isTextKind ? { name: "revision-entry", value: revision.id } : undefined}
+      extraDataAttrs={extraDataAttrs}
+      wrapperStyle={{}}
+    />
+  );
+
+  return (
+    <div ref={registerRef}>
+      {isPoppedOut ? <FloatCard cardKey={cardKey}>{card}</FloatCard> : card}
+    </div>
+  );
 }
