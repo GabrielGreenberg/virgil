@@ -25,6 +25,12 @@ function stripPreamble(latex: string): string {
  * and postamble (`\end{document}` onward) from a LaTeX source. Returns
  * `null` if the source has no `\begin{document}` marker.
  *
+ * The returned preamble has `\title{…}` / `\author{…}` / `\date{…}`
+ * commands stripped out — those are hoisted into the doc tree as
+ * `titleField` nodes, and the serializer re-injects them before
+ * `\begin{document}`. Leaving them in the preserved preamble would
+ * cause duplicate emission on save.
+ *
  * The returned strings are shaped so that
  *   `preamble + body + postamble`
  * reproduces a well-formed `.tex` file. The serializer uses this to
@@ -36,13 +42,110 @@ export function extractPreambleAndPostamble(
   const beginDoc = latex.indexOf("\\begin{document}");
   if (beginDoc === -1) return null;
   const endDoc = latex.indexOf("\\end{document}");
-  const preamble =
-    latex.slice(0, beginDoc + "\\begin{document}".length) + "\n\n";
+  const rawPreamble = latex.slice(0, beginDoc);
+  const strippedPreamble = stripTitleFieldsFromText(rawPreamble);
+  const preamble = strippedPreamble + "\\begin{document}\n\n";
   const postamble =
     endDoc !== -1
       ? "\n" + latex.slice(endDoc).replace(/\n*$/, "\n")
       : "\n\\end{document}\n";
   return { preamble, postamble };
+}
+
+/**
+ * Remove `\title{…}`, `\author{…}`, `\date{…}` commands from a LaTeX
+ * string. Matching follows the parser rules (balanced braces, allows
+ * optional `%!v:xxxx` UUID anchor right after the closing brace).
+ * Collapses the whitespace left behind so the result stays tidy.
+ */
+function stripTitleFieldsFromText(text: string): string {
+  let result = "";
+  let i = 0;
+  while (i < text.length) {
+    const rest = text.slice(i);
+    const m = rest.match(/^\\(title|author|date)\{/);
+    if (m) {
+      const bracedStart = i + m[0].length - 1;
+      const inner = extractBraced(text, bracedStart);
+      if (inner) {
+        let end = inner.end;
+        const afterMatch = text.slice(end).match(NODE_UUID_ANCHOR);
+        if (afterMatch) end += afterMatch[0].length;
+        // Swallow one trailing newline so we don't leave blank rows.
+        if (text[end] === "\n") end++;
+        i = end;
+        continue;
+      }
+    }
+    result += text[i];
+    i++;
+  }
+  return result;
+}
+
+/**
+ * Parse `\title{…}` / `\author{…}` / `\date{…}` commands from a
+ * preamble string into `titleField` nodes. Used so that title commands
+ * placed before `\begin{document}` are still visible and editable in
+ * the editor. Each returned node is flagged `fromPreamble: true` so
+ * the serializer knows to emit it back into the preamble.
+ */
+function parsePreambleTitleFields(preamble: string): JSONContent[] {
+  const nodes: JSONContent[] = [];
+  const seen = new Set<string>();
+  let i = 0;
+  while (i < preamble.length) {
+    const rest = preamble.slice(i);
+    const m = rest.match(/^\\(title|author|date)\{/);
+    if (!m) {
+      i++;
+      continue;
+    }
+    const field = m[1];
+    if (seen.has(field)) {
+      // Skip duplicate — still advance past the command to avoid re-matching.
+      i += m[0].length;
+      continue;
+    }
+    const bracedStart = i + m[0].length - 1;
+    const inner = extractBraced(preamble, bracedStart);
+    if (!inner) {
+      i++;
+      continue;
+    }
+    seen.add(field);
+    let pos = inner.end;
+    const afterTitle = preamble.slice(pos);
+    const uuidMatch = afterTitle.match(NODE_UUID_ANCHOR);
+    let uuid: string | null = null;
+    if (uuidMatch) {
+      uuid = uuidMatch[1];
+      pos += uuidMatch[0].length;
+    }
+    let rawContent = inner.content;
+    let rawPrefix = "";
+    const prefixMatch = rawContent.match(/^((?:\\(?:rmfamily|Large|large|huge|Huge|bfseries|itshape|sffamily|normalsize|small|footnotesize|tiny|textbf|textit|textsf)\s*)+)/);
+    if (prefixMatch) {
+      rawPrefix = prefixMatch[1];
+      rawContent = rawContent.slice(rawPrefix.length);
+    }
+    let isToday = false;
+    if (rawContent.trim() === "\\today") {
+      isToday = true;
+      const now = new Date();
+      rawContent = now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    }
+    nodes.push({
+      type: "titleField",
+      attrs: { field, rawPrefix: rawPrefix || null, isToday, uuid, fromPreamble: true },
+      content: parseInlineContent(rawContent),
+    });
+    i = pos;
+  }
+  // Stable canonical order: title, author, date.
+  const order: Record<string, number> = { title: 0, author: 1, date: 2 };
+  nodes.sort((a, b) => (order[a.attrs?.field as string] ?? 99) - (order[b.attrs?.field as string] ?? 99));
+  return nodes;
 }
 
 /**
@@ -461,8 +564,21 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   const body = stripPreamble(latex);
   const doc: JSONContent = { type: "doc", content: [] };
 
+  // Hoist \title/\author/\date from the preamble into the doc tree so
+  // they're visible and editable in the editor. Mark seen fields so the
+  // body parser doesn't emit duplicates if the same command appears
+  // again below \begin{document}.
+  const beginDoc = latex.indexOf("\\begin{document}");
+  const preambleText = beginDoc !== -1 ? latex.slice(0, beginDoc) : "";
+  const preambleTitleNodes = parsePreambleTitleFields(preambleText);
+  for (const n of preambleTitleNodes) {
+    const field = n.attrs?.field as string;
+    if (field) seenTitleFields.add(field);
+    doc.content!.push(n);
+  }
+
   if (!body) {
-    doc.content = [{ type: "paragraph" }];
+    if (doc.content!.length === 0) doc.content = [{ type: "paragraph" }];
     return doc;
   }
 
@@ -668,6 +784,24 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       }
     }
 
+
+    // \maketitle — hidden marker that renders as the title block in the output.
+    const maketitleMatch = rest.match(/^\\maketitle\b/);
+    if (maketitleMatch) {
+      ctx.pos += maketitleMatch[0].length;
+      let maketitleUuid: string | null = null;
+      const afterMaketitle = ctx.src.slice(ctx.pos);
+      const uuidMatch = afterMaketitle.match(NODE_UUID_ANCHOR);
+      if (uuidMatch) {
+        maketitleUuid = uuidMatch[1];
+        ctx.pos += uuidMatch[0].length;
+      }
+      parent.content.push({
+        type: "maketitleMarker",
+        attrs: maketitleUuid ? { uuid: maketitleUuid } : {},
+      });
+      continue;
+    }
 
     // Display math \[...\]
     if (rest.startsWith("\\[")) {

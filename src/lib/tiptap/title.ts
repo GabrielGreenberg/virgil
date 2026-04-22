@@ -54,6 +54,10 @@ export const TitleField = Node.create({
       rawPrefix: { default: null },
       isToday: { default: false },
       uuid: { default: null, rendered: false },
+      // True when this title/author/date originated from the preamble
+      // (i.e. before `\begin{document}`). Serializer uses this flag to
+      // emit the command back into the preamble instead of the body.
+      fromPreamble: { default: false, rendered: false },
     };
   },
 
@@ -100,11 +104,22 @@ export const TitleField = Node.create({
   },
 });
 
-/** Atom block acting as a visual separator for \maketitle. */
+/**
+ * Hidden atom block that stands in for `\maketitle`. The title block
+ * is already visible in the editor as `titleField` nodes, so we don't
+ * need to render the `\maketitle` command itself — but we do need a
+ * node to round-trip through the LaTeX source.
+ */
 export const MaketitleMarker = Node.create({
   name: "maketitleMarker",
   group: "block",
   atom: true,
+
+  addAttributes() {
+    return {
+      uuid: { default: null, rendered: false },
+    };
+  },
 
   parseHTML() {
     return [{ tag: 'div[data-type="maketitle-marker"]' }];
@@ -117,7 +132,6 @@ export const MaketitleMarker = Node.create({
         "data-type": "maketitle-marker",
         class: "maketitle-marker",
       }),
-      "\\maketitle",
     ];
   },
 
@@ -125,20 +139,7 @@ export const MaketitleMarker = Node.create({
     return () => {
       const wrapper = document.createElement("div");
       wrapper.className = "maketitle-marker";
-
-      const line1 = document.createElement("span");
-      line1.className = "maketitle-line";
-      wrapper.appendChild(line1);
-
-      const label = document.createElement("span");
-      label.className = "maketitle-label";
-      label.textContent = "maketitle";
-      wrapper.appendChild(label);
-
-      const line2 = document.createElement("span");
-      line2.className = "maketitle-line";
-      wrapper.appendChild(line2);
-
+      wrapper.setAttribute("data-type", "maketitle-marker");
       return { dom: wrapper };
     };
   },
