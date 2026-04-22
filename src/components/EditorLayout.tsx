@@ -157,6 +157,7 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
+import NewDocumentModal from "./NewDocumentModal";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useWordCountConfig } from "@/hooks/useWordCountConfig";
 import WordCountPanel from "@/panels/WordCount";
@@ -217,6 +218,8 @@ export default function EditorLayout() {
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
+    createFile,
+    createFileInPendingFolder,
     activePane,
     activateDocPane,
     activateLibraryPane,
@@ -224,6 +227,13 @@ export default function EditorLayout() {
   } = useFiles();
 
   useLibraryBridge({ currentDocId, activateLibraryPane });
+
+  // "New document" modal state. `mode: "fresh"` uses the OS directory
+  // picker; `mode: "inFolder"` writes into the already-picked folder
+  // that's behind the current TexFilePicker modal.
+  const [newDocModal, setNewDocModal] = useState<
+    { mode: "fresh" } | { mode: "inFolder"; folderName: string } | null
+  >(null);
 
   // Per-doc permission gate state. We query (without prompting) when
   // the active doc changes; if it isn't already granted we show the
@@ -3446,8 +3456,39 @@ export default function EditorLayout() {
             )
           ) : (
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
-              <div className="flex-1 flex items-center justify-center text-[var(--muted)] text-sm">
-                {docLoading ? "Loading..." : ""}
+              <div className="flex-1 flex items-center justify-center">
+                {docLoading ? (
+                  <div className="text-[var(--muted)] text-sm">Loading...</div>
+                ) : (
+                  <div className="flex flex-col items-center gap-3 px-6 py-8">
+                    <div className="text-ink-subtle text-sm">No document open</div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewDocModal({ mode: "fresh" })}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 5v14" />
+                          <path d="M5 12h14" />
+                        </svg>
+                        Create new document
+                      </button>
+                      {!process.env.NEXT_PUBLIC_DEV_STORAGE && (
+                        <button
+                          type="button"
+                          onClick={openExistingFile}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover:bg-surface-muted transition-colors"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                          </svg>
+                          Open existing folder
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -3560,12 +3601,38 @@ export default function EditorLayout() {
           }}
         />
       )}
-      {pendingFolderPick && (
+      {pendingFolderPick && !newDocModal && (
         <TexFilePickerModal
           folderName={pendingFolderPick.folderName}
           texFiles={pendingFolderPick.texFiles}
           onSelect={selectFileInFolder}
+          onCreateNew={() =>
+            setNewDocModal({
+              mode: "inFolder",
+              folderName: pendingFolderPick.folderName,
+            })
+          }
           onCancel={cancelFolderPick}
+        />
+      )}
+      {newDocModal && (
+        <NewDocumentModal
+          subtitle={
+            newDocModal.mode === "inFolder"
+              ? `Will be created in "${newDocModal.folderName}"`
+              : process.env.NEXT_PUBLIC_DEV_STORAGE
+                ? "Will be created in virgil-data/."
+                : "You'll pick where to save the folder after naming it."
+          }
+          onCancel={() => setNewDocModal(null)}
+          onCreate={async (name, templateId) => {
+            if (newDocModal.mode === "inFolder") {
+              await createFileInPendingFolder(name, templateId);
+            } else {
+              await createFile(name, templateId);
+            }
+            setNewDocModal(null);
+          }}
         />
       )}
       {/* Floating (popped-out) cards — rendered at the EditorLayout root so

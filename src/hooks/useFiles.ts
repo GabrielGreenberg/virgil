@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import {
   listDocs,
   createDocFromPicker,
+  createDocInFolder,
   pickProjectFolder,
   registerDocInFolder,
   renameDoc as renameDocStorage,
@@ -139,26 +140,31 @@ export function useFiles() {
   }, [currentDocId]);
 
   /**
-   * Create a new paper. Must be called from a user gesture — the
-   * directory picker requires transient activation.
+   * Create a new paper. In FSA mode this prompts for a parent folder —
+   * must be called from a user gesture because the directory picker
+   * requires transient activation. In dev mode it creates under
+   * `virgil-data/` with no prompt.
    */
-  const createFile = useCallback(async (name: string) => {
-    try {
-      const meta = await createDocFromPicker(name);
-      setDocs((prev) => [...prev, meta]);
-      setOpenTabIds((prev) => [...prev, meta.id]);
-      setCurrentDocId(meta.id);
-      setActivePaneState("doc");
-      setLibraryOpenFor((prev) =>
-        prev.includes(meta.id) ? prev : [...prev, meta.id],
-      );
-      return meta;
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return null;
-      console.error("Failed to create file:", err);
-      throw err;
-    }
-  }, []);
+  const createFile = useCallback(
+    async (name: string, templateId?: string) => {
+      try {
+        const meta = await createDocFromPicker(name, templateId);
+        setDocs((prev) => [...prev, meta]);
+        setOpenTabIds((prev) => [...prev, meta.id]);
+        setCurrentDocId(meta.id);
+        setActivePaneState("doc");
+        setLibraryOpenFor((prev) =>
+          prev.includes(meta.id) ? prev : [...prev, meta.id],
+        );
+        return meta;
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return null;
+        console.error("Failed to create file:", err);
+        throw err;
+      }
+    },
+    [],
+  );
 
   /** Helper: register a doc and activate its tab. */
   const activateDoc = useCallback((meta: FsaDocMeta) => {
@@ -218,6 +224,31 @@ export function useFiles() {
   }, []);
 
   /**
+   * Create a new doc inside the already-picked folder (the one backing
+   * the pending TexFilePicker modal). Uses the folder handle the user
+   * already granted, so no second directory prompt is needed.
+   */
+  const createFileInPendingFolder = useCallback(
+    async (name: string, templateId?: string) => {
+      if (!pendingFolderPick) return null;
+      try {
+        const meta = await createDocInFolder(
+          pendingFolderPick.handle,
+          name,
+          templateId,
+        );
+        activateDoc(meta);
+        setPendingFolderPick(null);
+        return meta;
+      } catch (err) {
+        console.error("Failed to create file in folder:", err);
+        throw err;
+      }
+    },
+    [pendingFolderPick, activateDoc],
+  );
+
+  /**
    * Forget a paper from the workspace. Does NOT touch the folder on
    * disk — the user's files are theirs.
    */
@@ -262,6 +293,7 @@ export function useFiles() {
     pendingFolderPick,
     selectFileInFolder,
     cancelFolderPick,
+    createFileInPendingFolder,
     // Library shadow tab
     libraryOpenFor,
     activePane,

@@ -45,6 +45,11 @@ import {
   type FsaDocMeta,
 } from "@/lib/doc-index";
 import { enqueueWrite, flushWrites } from "@/lib/write-queue";
+import {
+  DOCUMENT_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+  type DocumentTemplate,
+} from "@/lib/document-templates";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -439,22 +444,46 @@ function sanitizeFolderName(name: string): string {
     .slice(0, 120);
 }
 
+function resolveTemplate(id?: string): DocumentTemplate {
+  const chosen =
+    (id && DOCUMENT_TEMPLATES.find((t) => t.id === id)) ||
+    DOCUMENT_TEMPLATES.find((t) => t.id === DEFAULT_TEMPLATE_ID) ||
+    DOCUMENT_TEMPLATES[0];
+  if (!chosen) throw new Error("No document templates available");
+  return chosen;
+}
+
+async function writeTemplateFiles(
+  docHandle: FileSystemDirectoryHandle,
+  template: DocumentTemplate,
+): Promise<void> {
+  for (const [filename, content] of Object.entries(template.files)) {
+    const fh = await docHandle.getFileHandle(filename, { create: true });
+    await writeTextToHandle(fh, content);
+  }
+  // Pre-create virgil/ so the gate sees a valid layout immediately.
+  await docHandle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
+}
+
 /**
- * Create a new paper.
+ * Create a new paper, prompting the user to pick a parent folder.
  *
  * Flow (must be invoked from a user gesture):
  *   1. User has already typed a name (caller provides it).
  *   2. We open the parent-folder picker.
- *   3. We create `<parent>/<name>/document.tex` and `<parent>/<name>/virgil/`.
+ *   3. We create `<parent>/<name>/` with the template's files.
  *   4. We register the new doc in idb and store its folder handle.
  */
 export async function createDocFromPicker(
   rawName: string,
+  templateId?: string,
 ): Promise<FsaDocMeta> {
   const name = rawName.trim();
   if (!name) throw new Error("Paper name is required");
   const folderName = sanitizeFolderName(name);
   if (!folderName) throw new Error("Paper name produces an empty folder name");
+
+  const template = resolveTemplate(templateId);
 
   const parent = await window.showDirectoryPicker({ mode: "readwrite" });
 
@@ -470,24 +499,64 @@ export async function createDocFromPicker(
     create: true,
   });
 
-  const texFilename = "document.tex";
-  const texFh = await docHandle.getFileHandle(texFilename, { create: true });
-  await writeTextToHandle(texFh, DEFAULT_LATEX);
-
-  // Pre-create virgil/ so the gate sees a valid layout immediately.
-  await docHandle.getDirectoryHandle(VIRGIL_SUBDIR, { create: true });
+  await writeTemplateFiles(docHandle, template);
 
   const now = new Date().toISOString();
   const meta: FsaDocMeta = {
     id: generateEntityId().slice(0, 8),
     name,
-    texFilename,
+    texFilename: template.mainTexFilename,
     folderName,
     createdAt: now,
     lastModifiedAt: now,
   };
 
   await setDocHandle(meta.id, docHandle);
+  const idx = await readIndex();
+  idx.docs.push(meta);
+  await writeIndex(idx);
+
+  return meta;
+}
+
+/**
+ * Create a new doc inside an already-picked folder handle. Used by the
+ * "Create new document here" path in the folder-picker modal — the user
+ * has already chosen the project folder, so we just write the template
+ * files into it (no subfolder). If the template's main .tex already
+ * exists in the folder, we fail rather than overwrite.
+ */
+export async function createDocInFolder(
+  handle: FileSystemDirectoryHandle,
+  rawName: string,
+  templateId?: string,
+): Promise<FsaDocMeta> {
+  const name = rawName.trim();
+  if (!name) throw new Error("Paper name is required");
+
+  const template = resolveTemplate(templateId);
+
+  for (const filename of Object.keys(template.files)) {
+    if (await hasEntry(handle, filename)) {
+      throw new Error(
+        `A file named "${filename}" already exists in "${handle.name}".`,
+      );
+    }
+  }
+
+  await writeTemplateFiles(handle, template);
+
+  const now = new Date().toISOString();
+  const meta: FsaDocMeta = {
+    id: generateEntityId().slice(0, 8),
+    name,
+    texFilename: template.mainTexFilename,
+    folderName: handle.name,
+    createdAt: now,
+    lastModifiedAt: now,
+  };
+
+  await setDocHandle(meta.id, handle);
   const idx = await readIndex();
   idx.docs.push(meta);
   await writeIndex(idx);
@@ -509,6 +578,10 @@ export interface FolderPickResult {
 /**
  * Phase 1 — pick a project folder and discover its .tex files.
  * Must be called from a user gesture (showDirectoryPicker requires it).
+ *
+ * Returning an empty `texFiles` array is valid — the caller can route
+ * the user into the "Create new document" flow when the picked folder
+ * has no .tex yet.
  */
 export async function pickProjectFolder(): Promise<FolderPickResult> {
   const handle = await window.showDirectoryPicker({ mode: "readwrite" });
@@ -518,11 +591,6 @@ export async function pickProjectFolder(): Promise<FolderPickResult> {
     if (entry.kind === "file" && entry.name.endsWith(".tex")) {
       texFiles.push(entry.name);
     }
-  }
-  if (texFiles.length === 0) {
-    throw new Error(
-      `No .tex file found in "${handle.name}". Pick a folder that already contains a paper.`,
-    );
   }
 
   return { handle, texFiles, folderName: handle.name };
@@ -569,6 +637,12 @@ export async function registerDocInFolder(
  */
 export async function openExistingDocFromPicker(): Promise<FsaDocMeta> {
   const { handle, texFiles, folderName } = await pickProjectFolder();
+
+  if (texFiles.length === 0) {
+    throw new Error(
+      `No .tex file found in "${folderName}". Pick a folder that already contains a paper, or use "Create new document".`,
+    );
+  }
 
   let texFilename: string;
   if (texFiles.length === 1) {

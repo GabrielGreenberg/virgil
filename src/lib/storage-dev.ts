@@ -24,6 +24,10 @@ import {
   type GeneralBibPickResult,
   type GeneralBibContents,
 } from "@/lib/storage-fsa";
+import {
+  DOCUMENT_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+} from "@/lib/document-templates";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -277,9 +281,37 @@ export async function readGeneralBib(
 // ---------------------------------------------------------------------------
 
 export async function createDocFromPicker(
-  _rawName: string,
+  rawName: string,
+  templateId?: string,
 ): Promise<FsaDocMeta> {
-  throw new Error("createDocFromPicker is not available in dev storage mode");
+  const name = rawName.trim();
+  if (!name) throw new Error("Paper name is required");
+  const tid = templateId ?? DEFAULT_TEMPLATE_ID;
+  if (!DOCUMENT_TEMPLATES.some((t) => t.id === tid)) {
+    throw new Error(`Unknown template: ${tid}`);
+  }
+  const res = await fetch(`${API}/_create-doc`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, templateId: tid }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Failed to create doc: ${res.status} ${text}`);
+  }
+  const meta = (await res.json()) as FsaDocMeta;
+  _cachedIndex = null;
+  return meta;
+}
+
+export async function createDocInFolder(
+  _handle: FileSystemDirectoryHandle,
+  _rawName: string,
+  _templateId?: string,
+): Promise<FsaDocMeta> {
+  throw new Error(
+    "createDocInFolder is not available in dev storage mode — use createDocFromPicker",
+  );
 }
 
 export async function pickProjectFolder(): Promise<FolderPickResult> {
