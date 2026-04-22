@@ -15,6 +15,12 @@
 
 const TEXLIVE_ENDPOINT = "https://texlive.texlyre.org/";
 
+// Hand-rolled <script> tags bypass Next's automatic basePath prefixing, so we
+// have to apply it ourselves. Without this, subdirectory deploys (e.g. the
+// GitHub Pages deploy at /virgil/) 404 on the engine asset.
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const ENGINE_SCRIPT_URL = `${BASE_PATH}/swiftlatex/PdfTeXEngine.js`;
+
 let enginePromise: Promise<PdfTeXEngine> | null = null;
 
 function loadEngineScript(): Promise<void> {
@@ -22,27 +28,18 @@ function loadEngineScript(): Promise<void> {
     return Promise.reject(new Error("SwiftLaTeX requires a browser"));
   }
   if (window.PdfTeXEngine) return Promise.resolve();
+  // Drop any stale tag from a previous failed load: load/error fire once,
+  // so reattaching listeners to an already-errored <script> would hang.
+  document
+    .querySelector<HTMLScriptElement>('script[data-swiftlatex="pdftex"]')
+    ?.remove();
   return new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      'script[data-swiftlatex="pdftex"]',
-    );
-    if (existing) {
-      if (window.PdfTeXEngine) {
-        resolve();
-      } else {
-        existing.addEventListener("load", () => resolve());
-        existing.addEventListener("error", () =>
-          reject(new Error("Failed to load PdfTeXEngine.js")),
-        );
-      }
-      return;
-    }
     const script = document.createElement("script");
-    script.src = "/swiftlatex/PdfTeXEngine.js";
+    script.src = ENGINE_SCRIPT_URL;
     script.dataset.swiftlatex = "pdftex";
     script.onload = () => resolve();
     script.onerror = () =>
-      reject(new Error("Failed to load /swiftlatex/PdfTeXEngine.js"));
+      reject(new Error(`Failed to load ${ENGINE_SCRIPT_URL}`));
     document.head.appendChild(script);
   });
 }
