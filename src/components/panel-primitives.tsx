@@ -633,6 +633,127 @@ export function PanelChromeProvider({
   );
 }
 
+/* ── Centralized popout button ─────────────────────────────────────
+ * Single source of truth for the popout-button visual. Used by panel
+ * headers, card chrome, and imperative consumers (paragraph node view
+ * in the editor). Variants only differ in the popped-out glyph:
+ *   - "arrow": rect + down-arrow (PanelPopout)
+ *   - "x":     bare X glyph     (CardPopoutButton)
+ */
+
+export const POPOUT_BUTTON_CLASS =
+  "w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong";
+
+export type PopoutVariant = "arrow" | "x";
+
+function popoutSvgInner(isPoppedOut: boolean, variant: PopoutVariant): string {
+  if (isPoppedOut && variant === "x") {
+    return (
+      '<line x1="6" y1="6" x2="18" y2="18" stroke-width="2.5" />' +
+      '<line x1="18" y1="6" x2="6" y2="18" stroke-width="2.5" />'
+    );
+  }
+  if (isPoppedOut) {
+    return (
+      '<rect x="2" y="2" width="20" height="20" rx="3" />' +
+      '<line x1="12" y1="7" x2="12" y2="17" />' +
+      '<polyline points="7 12 12 17 17 12" />'
+    );
+  }
+  return (
+    '<rect x="2" y="2" width="20" height="20" rx="3" />' +
+    '<line x1="12" y1="17" x2="12" y2="7" />' +
+    '<polyline points="7 12 12 7 17 12" />'
+  );
+}
+
+function popoutSvgOuter(innerMarkup: string): string {
+  return (
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    `stroke-linejoin="round">${innerMarkup}</svg>`
+  );
+}
+
+/**
+ * React popout button. Prop-driven so it works outside a chrome context.
+ * Use `labelNoun` to customize the title/aria ("panel", "card",
+ * "paragraph", …).
+ */
+export function PopoutButton({
+  isPoppedOut,
+  onClick,
+  variant = "arrow",
+  labelNoun = "panel",
+  className,
+}: {
+  isPoppedOut: boolean;
+  onClick: () => void;
+  variant?: PopoutVariant;
+  labelNoun?: string;
+  className?: string;
+}) {
+  const title = isPoppedOut ? `Dock ${labelNoun}` : `Pop out ${labelNoun}`;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+      }}
+      className={className ?? POPOUT_BUTTON_CLASS}
+      title={title}
+      aria-label={title}
+      dangerouslySetInnerHTML={{
+        __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
+      }}
+    />
+  );
+}
+
+/**
+ * DOM factory for imperative callers (e.g. ProseMirror node views). Same
+ * visual as `PopoutButton` but returns a plain element so it can live
+ * inside a non-React DOM tree.
+ */
+export function createPopoutButtonEl(opts: {
+  isPoppedOut: boolean;
+  onClick: () => void;
+  variant?: PopoutVariant;
+  labelNoun?: string;
+  extraClass?: string;
+}): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.draggable = false;
+  const variant = opts.variant ?? "arrow";
+  const labelNoun = opts.labelNoun ?? "panel";
+  const title = opts.isPoppedOut ? `Dock ${labelNoun}` : `Pop out ${labelNoun}`;
+  btn.className = opts.extraClass
+    ? `${POPOUT_BUTTON_CLASS} ${opts.extraClass}`
+    : POPOUT_BUTTON_CLASS;
+  btn.title = title;
+  btn.setAttribute("aria-label", title);
+  btn.innerHTML = popoutSvgOuter(popoutSvgInner(opts.isPoppedOut, variant));
+  btn.addEventListener("mousedown", (e) => e.stopPropagation());
+  btn.addEventListener("dragstart", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+  });
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    opts.onClick();
+  });
+  return btn;
+}
+
 /**
  * Pop-out button bound to the surrounding PanelChromeProvider. Renders a
  * rounded square with an arrow inside: up when docked (pops out) and down
@@ -642,39 +763,13 @@ export function PanelChromeProvider({
 export function PanelPopout() {
   const chrome = useContext(PanelChromeContext);
   if (!chrome) return null;
-  const { isPoppedOut, onTogglePopout } = chrome;
   return (
-    <button
-      type="button"
-      onClick={onTogglePopout}
-      className="w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
-      title={isPoppedOut ? "Dock panel" : "Pop out panel"}
-      aria-label={isPoppedOut ? "Dock panel" : "Pop out panel"}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <rect x="2" y="2" width="20" height="20" rx="3" />
-        {isPoppedOut ? (
-          <>
-            <line x1="12" y1="7" x2="12" y2="17" />
-            <polyline points="7 12 12 17 17 12" />
-          </>
-        ) : (
-          <>
-            <line x1="12" y1="17" x2="12" y2="7" />
-            <polyline points="7 12 12 7 17 12" />
-          </>
-        )}
-      </svg>
-    </button>
+    <PopoutButton
+      isPoppedOut={chrome.isPoppedOut}
+      onClick={chrome.onTogglePopout}
+      variant="arrow"
+      labelNoun="panel"
+    />
   );
 }
 
@@ -726,46 +821,12 @@ export function CardPopoutButton({
   onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-      onMouseDown={(e) => e.stopPropagation()}
-      draggable={false}
-      onDragStart={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-      }}
-      className="w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
-      title={isPoppedOut ? "Dock card" : "Pop out card"}
-      aria-label={isPoppedOut ? "Dock card" : "Pop out card"}
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        {isPoppedOut ? (
-          <>
-            <line x1="6" y1="6" x2="18" y2="18" strokeWidth="2.5" />
-            <line x1="18" y1="6" x2="6" y2="18" strokeWidth="2.5" />
-          </>
-        ) : (
-          <>
-            <rect x="2" y="2" width="20" height="20" rx="3" />
-            <line x1="12" y1="17" x2="12" y2="7" />
-            <polyline points="7 12 12 7 17 12" />
-          </>
-        )}
-      </svg>
-    </button>
+    <PopoutButton
+      isPoppedOut={isPoppedOut}
+      onClick={onClick}
+      variant="x"
+      labelNoun="card"
+    />
   );
 }
 
