@@ -2935,10 +2935,10 @@ export default function EditorLayout() {
                   }}
                 >
                   <div className="flex flex-col min-w-0">
-                    <span className="text-sm leading-none truncate pt-[3px]" title={doc.folderName}>
+                    <span className="text-[13px] leading-4 truncate" title={doc.folderName}>
                       {doc.folderName}
                     </span>
-                    <span className="text-[10px] leading-none text-ink-muted truncate mt-[2px]" title={doc.texFilename}>
+                    <span className="text-[10px] leading-[13px] text-ink-muted truncate" title={doc.texFilename}>
                       {doc.texFilename}
                     </span>
                   </div>
