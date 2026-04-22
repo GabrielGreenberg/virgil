@@ -541,31 +541,17 @@ body {
   line-height: 1.3;
 }
 
-/* Maketitle separator */
+/*
+ * \maketitle marker — zero-height, non-interactive. The title block is
+ * already shown via `titleField` nodes, so we hide the command itself
+ * per the editor's "see title, hide \maketitle" convention.
+ */
 .maketitle-marker {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0.8em 0;
+  height: 0;
+  margin: 0;
+  padding: 0;
   user-select: none;
-}
-
-.maketitle-line {
-  flex: 1;
-  height: 1px;
-  background: var(--heading-annotation-border, #a8c4de);
-}
-
-.maketitle-label {
-  display: inline-block;
-  font-size: 0.68rem;
-  font-weight: 400;
-  color: var(--heading-annotation-color, #6b9ac4);
-  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
-  letter-spacing: 0.04em;
-  border: 1px solid var(--heading-annotation-border, #a8c4de);
-  border-radius: 3px;
-  padding: 1px 6px;
+  pointer-events: none;
 }
 
 .tiptap blockquote {

@@ -90,6 +90,39 @@ function escapeLatex(text: string): string {
     .replace(/\^/g, "\\textasciicircum{}");
 }
 
+function serializeTitleField(node: JSONContent): string {
+  const field = node.attrs?.field as string;
+  const rawPrefix = (node.attrs?.rawPrefix as string) || "";
+  const uuid = node.attrs?.uuid as string | null;
+  const anchor = uuid ? ` %!v:${uuid}` : "";
+  if (node.attrs?.isToday) {
+    return `\\${field}{\\today}${anchor}\n`;
+  }
+  const inner = (node.content || []).map(serializeInline).join("");
+  return `\\${field}{${rawPrefix}${inner}}${anchor}\n`;
+}
+
+function collectPreambleTitleFields(doc: JSONContent): JSONContent[] {
+  const out: JSONContent[] = [];
+  function walk(n: JSONContent) {
+    if (n.type === "titleField" && n.attrs?.fromPreamble) out.push(n);
+    n.content?.forEach(walk);
+  }
+  walk(doc);
+  return out;
+}
+
+function injectTitleFieldsIntoPreamble(preamble: string, titleFields: JSONContent[]): string {
+  if (titleFields.length === 0) return preamble;
+  const block = titleFields.map(serializeTitleField).join("") + "\n";
+  const beginMarker = "\\begin{document}";
+  const idx = preamble.indexOf(beginMarker);
+  if (idx === -1) return preamble + block;
+  const before = preamble.slice(0, idx).replace(/\s*$/, "");
+  const after = preamble.slice(idx);
+  return before + "\n\n" + block + after;
+}
+
 function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth = 0): string {
   switch (node.type) {
     case "doc":
@@ -119,15 +152,17 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "titleField": {
-      const field = node.attrs?.field as string;
-      const rawPrefix = (node.attrs?.rawPrefix as string) || "";
+      // When the title field came from the preamble, it's re-emitted
+      // by `serializeToLatex` directly into the preamble text — skip
+      // it here so it doesn't also appear in the body.
+      if (node.attrs?.fromPreamble) return "";
+      return serializeTitleField(node) + "\n";
+    }
+
+    case "maketitleMarker": {
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
-      if (node.attrs?.isToday) {
-        return `\\${field}{\\today}${anchor}\n\n`;
-      }
-      const inner = (node.content || []).map(serializeInline).join("");
-      return `\\${field}{${rawPrefix}${inner}}${anchor}\n\n`;
+      return `\\maketitle${anchor}\n\n`;
     }
 
     case "codeBlock": {
@@ -299,9 +334,14 @@ export function serializeToLatex(
   options?: { preamble?: string; postamble?: string },
 ): string {
   const body = serializeNode(doc).replace(/\n{3,}/g, "\n\n").trim();
-  const preamble = options?.preamble
+  const rawPreamble = options?.preamble
     ? ensureVirgilCommands(options.preamble)
     : DEFAULT_PREAMBLE;
+  // Re-inject preamble-sourced \title/\author/\date right before
+  // \begin{document}. They live in the doc tree (so the editor can show
+  // them), but the user intends them to live in the preamble.
+  const preambleFields = collectPreambleTitleFields(doc);
+  const preamble = injectTitleFieldsIntoPreamble(rawPreamble, preambleFields);
   const postamble = options?.postamble ?? DEFAULT_POSTAMBLE;
   return preamble + body + postamble;
 }
