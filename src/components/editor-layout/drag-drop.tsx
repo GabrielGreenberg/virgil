@@ -133,7 +133,7 @@ export function StripButton({
       ind.id = "virgil-drop-indicator";
       ind.style.cssText = `
         position: fixed; z-index: 9998; pointer-events: none;
-        height: 2px; background: var(--accent); border-radius: 1px;
+        height: 2px; background: var(--drag-highlight); border-radius: 1px;
         transition: top 0.1s ease, left 0.1s ease;
       `;
       document.body.appendChild(ind);

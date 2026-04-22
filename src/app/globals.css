@@ -450,18 +450,41 @@ body {
   cursor: grabbing;
 }
 
+/* Button-like pressed state — darkens + depresses while held */
+.par-drag-handle:active,
+.par-drag-handle.is-pressed {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+
 .par-title-wrapper.has-text.hovered .par-drag-handle,
 .par-title-wrapper.has-text:hover .par-drag-handle {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Card outline when dragging a paragraph via its grip handle */
-.par-title-wrapper.dragging {
-  outline: 1.5px solid var(--border, #d6d3d1);
-  outline-offset: 4px;
-  border-radius: 6px;
-  background: var(--background, #fff);
+/* Paragraph popout button — sits in the gutter above the grab handle.
+   Revealed only when the title row (par-title-annotation) is hovered,
+   matching the +T label. Stays visible while hovering the button itself
+   so the mouse can travel from annotation → button without the button
+   disappearing mid-move. */
+.par-popout-btn {
+  position: absolute;
+  /* Horizontally centered over the drag handle: the handle sits at
+     left: -14px with width 12px (center -8px); the button is 20px
+     wide, so left: -18px puts its center at the same -8px. */
+  left: -18px;
+  top: -18px;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.par-title-wrapper.has-text:has(.par-title-annotation:hover) .par-popout-btn,
+.par-title-wrapper.has-text .par-popout-btn:hover {
+  opacity: 1;
 }
 
 /* Input field for editing title */

@@ -565,6 +565,23 @@ export default function EditorLayout() {
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
+  // Read by the paragraph node view each render to flip the popout
+  // button's glyph between docked (arrow up) and popped (arrow down).
+  const paragraphIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
+  // When the list of popped-out paragraphs changes from anywhere other
+  // than the gutter button (e.g. float's own X, restored from prefs),
+  // ping the editor so every paragraph node view rebuilds its glyph.
+  const paragraphPoppedKeys = useMemo(
+    () =>
+      prefs.poppedOutCards
+        .filter((k) => k.startsWith("paragraph:"))
+        .sort()
+        .join("|"),
+    [prefs.poppedOutCards],
+  );
+  useEffect(() => {
+    editorRef.current?.refreshParagraphPopouts();
+  }, [paragraphPoppedKeys]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.
@@ -2899,6 +2916,14 @@ export default function EditorLayout() {
     setFloatPosition: setCardFloatPosition,
   };
 
+  // Paragraph popout: click the gutter button in the editor to toggle a
+  // floating paragraph card. Keyed as `paragraph:${uuid}` in poppedCards.
+  const handleToggleParagraphPopout = (uuid: string) => {
+    toggleCardPopout(`paragraph:${uuid}`);
+  };
+  paragraphIsPoppedRef.current = (uuid: string) =>
+    prefs.poppedOutCards.includes(`paragraph:${uuid}`);
+
   // Popped-out card rendering lives in ./editor-layout/floating-cards.tsx —
   // the deps bundle below is the contract for what a popped card needs.
   const poppedCardDeps = {
@@ -3497,6 +3522,8 @@ export default function EditorLayout() {
                       anchoredUuidsRef={anchoredUuidsRef}
                       activeAnchorId={effectiveAnchorId}
                       activeAnchorColor={effectiveAnchorColor}
+                      onToggleParagraphPopout={handleToggleParagraphPopout}
+                      paragraphIsPoppedRef={paragraphIsPoppedRef}
                     />
                     <Marginalia
                       editor={editorInstance}
@@ -3529,6 +3556,8 @@ export default function EditorLayout() {
                   onConfirmFootnoteMove={confirmFootnoteMove}
                   activeAnchorId={effectiveAnchorId}
                   activeAnchorColor={effectiveAnchorColor}
+                  onToggleParagraphPopout={handleToggleParagraphPopout}
+                  paragraphIsPoppedRef={paragraphIsPoppedRef}
                 />
                 <Marginalia
                   editor={editorInstance}

@@ -45,6 +45,7 @@ import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
+import { createPopoutButtonEl } from "./panel-primitives";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -167,6 +168,20 @@ interface EditorProps {
   activeAnchorId?: string | null;
   /** Color token used for the active anchor highlight. Defaults to yellow. */
   activeAnchorColor?: string | null;
+  /**
+   * Click handler for the gutter popout button on each paragraph. Called
+   * with the paragraph's UUID (generated if missing). When omitted, the
+   * button still renders but is a no-op — wire it up via EditorLayout to
+   * actually open/close the floating paragraph card.
+   */
+  onToggleParagraphPopout?: (uuid: string) => void;
+  /**
+   * Ref to a predicate that reports whether a given paragraph UUID is
+   * currently popped out. The node view consults this on each render to
+   * swap the popout button's glyph (up arrow ↔ down arrow). When omitted,
+   * the button always renders as "docked".
+   */
+  paragraphIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
 }
 
 export interface FootnoteInfo {
@@ -225,6 +240,11 @@ export interface EditorHandle {
   collapseAllSections: () => void;
   /** Expand all previously folded sections. */
   expandAllSections: () => void;
+  /** Tell every paragraph node view to re-read the popped predicate.
+   *  Called by EditorLayout whenever the popped-cards list changes so
+   *  the gutter popout-button glyph (arrow ↔ X) stays in sync when the
+   *  float is closed via its own X button. */
+  refreshParagraphPopouts: () => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -263,7 +283,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef, activeAnchorId, activeAnchorColor },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -277,6 +297,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
+  const onToggleParagraphPopoutRef = useRef(onToggleParagraphPopout);
+  onToggleParagraphPopoutRef.current = onToggleParagraphPopout;
+  const paragraphIsPoppedPredicateRef = useRef(paragraphIsPoppedRef);
+  paragraphIsPoppedPredicateRef.current = paragraphIsPoppedRef;
+  // Registry of live paragraph node views. Each node view adds itself on
+  // create and removes itself on destroy; EditorLayout triggers a refresh
+  // through this when the popped-cards list changes (e.g. the float's own
+  // close button runs, or state is restored from localStorage).
+  const paragraphPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
   // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
@@ -355,18 +384,79 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
         dragHandle.appendChild(svg);
         pContainer.appendChild(dragHandle);
+
+        // Popout button — sits in the gutter directly above the grab bar,
+        // hover-revealed. Wired via props so EditorLayout can open/close
+        // the floating paragraph card. The popped state lives in React;
+        // we mirror it locally so the glyph flips immediately on click
+        // (without waiting for a ProseMirror transaction to trigger
+        // update()). The authoritative predicate still overrides on any
+        // node-view update so we stay in sync if the float is closed
+        // from the float's own controls.
+        let popoutBtnEl: HTMLButtonElement | null = null;
+        let poppedState = false;
+        function syncPoppedFromPredicate() {
+          const uuid = currentNode.attrs?.uuid as string | null;
+          const predicate = paragraphIsPoppedPredicateRef.current?.current;
+          if (uuid && predicate) poppedState = predicate(uuid);
+        }
+        function renderPopoutBtn() {
+          const next = createPopoutButtonEl({
+            isPoppedOut: poppedState,
+            variant: "x",
+            labelNoun: "paragraph",
+            extraClass: "par-popout-btn",
+            onClick: () => {
+              const handlePos = typeof getPos === "function" ? getPos() : null;
+              if (handlePos == null) return;
+              let ensuredUuid = currentNode.attrs?.uuid as string | null;
+              if (!ensuredUuid) {
+                ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+              }
+              if (ensuredUuid) {
+                onToggleParagraphPopoutRef.current?.(ensuredUuid);
+                poppedState = !poppedState;
+                renderPopoutBtn();
+              }
+            },
+          });
+          if (popoutBtnEl && popoutBtnEl.parentNode === pContainer) {
+            pContainer.replaceChild(next, popoutBtnEl);
+          } else {
+            pContainer.appendChild(next);
+          }
+          popoutBtnEl = next;
+        }
+        syncPoppedFromPredicate();
+        renderPopoutBtn();
+
+        // Reconciler invoked by the React side when poppedCards changes
+        // (e.g. float-X close). Reads the live predicate and rebuilds if
+        // it disagrees with our local state.
+        const refresher = () => {
+          const uuid = currentNode.attrs?.uuid as string | null;
+          const predicate = paragraphIsPoppedPredicateRef.current?.current;
+          if (!uuid || !predicate) return;
+          const actual = predicate(uuid);
+          if (actual !== poppedState) {
+            poppedState = actual;
+            renderPopoutBtn();
+          }
+        };
+        paragraphPopoutRefreshersRef.current.add(refresher);
+
         wrapper.appendChild(pContainer);
         dragHandleEl = dragHandle;
 
-        // Card outline on mousedown (not dragstart) for immediate feedback
+        // Button-like press feedback on the grip itself
         dragHandle.addEventListener("mousedown", () => {
-          wrapper.classList.add("dragging");
+          dragHandle.classList.add("is-pressed");
         });
         dragHandle.addEventListener("dragend", () => {
-          wrapper.classList.remove("dragging");
+          dragHandle.classList.remove("is-pressed");
         });
         dragHandle.addEventListener("mouseup", () => {
-          wrapper.classList.remove("dragging");
+          dragHandle.classList.remove("is-pressed");
         });
 
         // Tag the drag with a paragraph-capture MIME so side panels can
@@ -380,7 +470,30 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // ProseMirror rebuilds the DataTransfer during its own dragstart
         // default (setting text/html + text/plain), wiping anything set
         // from this handle-level listener.
-        dragHandle.addEventListener("dragstart", () => {
+        dragHandle.addEventListener("dragstart", (e) => {
+          const dt = (e as DragEvent).dataTransfer;
+          if (dt) {
+            const ghost = p.cloneNode(true) as HTMLElement;
+            const cs = window.getComputedStyle(p);
+            const w = p.offsetWidth;
+            ghost.style.cssText =
+              "position:absolute;top:-9999px;left:-9999px;" +
+              (w > 0 ? `width:${w}px;` : "max-width:520px;") +
+              "opacity:0.5;margin:0;padding:0;background:transparent;" +
+              `color:${cs.color};` +
+              `font-family:${cs.fontFamily};` +
+              `font-size:${cs.fontSize};` +
+              `font-weight:${cs.fontWeight};` +
+              `font-style:${cs.fontStyle};` +
+              `line-height:${cs.lineHeight};` +
+              `letter-spacing:${cs.letterSpacing};` +
+              "pointer-events:none;";
+            document.body.appendChild(ghost);
+            dt.setDragImage(ghost, 12, 12);
+            requestAnimationFrame(() => {
+              try { document.body.removeChild(ghost); } catch {}
+            });
+          }
           const handlePos = typeof getPos === "function" ? getPos() : null;
           if (handlePos == null) return;
           let uuid = currentNode.attrs?.uuid as string | null;
@@ -533,6 +646,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (dragHandleEl && (dragHandleEl === event.target || dragHandleEl.contains(event.target as Node))) {
               return false;
             }
+            if (popoutBtnEl && (popoutBtnEl === event.target || popoutBtnEl.contains(event.target as Node))) {
+              return true;
+            }
             return (
               titleAnnot === event.target || titleAnnot.contains(event.target as Node)
             );
@@ -541,13 +657,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (titleAnnot.contains(mutation.target)) return true;
             if (mutation.target === wrapper) return true;
             if (dragHandle.contains(mutation.target)) return true;
+            if (popoutBtnEl && popoutBtnEl.contains(mutation.target as Node)) return true;
             return false;
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "paragraph") return false;
             currentNode = updatedNode;
             if (!titleAnnot.querySelector("input")) renderAnnot();
+            // Intentionally NOT resyncing popped state here: the React
+            // state update triggered by a gutter-button click races the
+            // ensureAnchorUuid transaction that also fires update(), and
+            // at the moment update() runs the predicate is still stale.
+            // The optimistic flip in the click handler is our source of
+            // truth; reconcile via paragraphPopoutRefreshersRef instead.
+            renderPopoutBtn();
             return true;
+          },
+          destroy() {
+            paragraphPopoutRefreshersRef.current.delete(refresher);
           },
         };
       };
@@ -1098,6 +1225,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         orderedList: false,
         blockquote: false,
         codeBlock: false,
+        dropcursor: { color: "var(--drag-highlight)", width: 2 },
       }),
       ParagraphWithTitle,
       HeadingWithLabel,
@@ -2167,6 +2295,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       tr.setMeta("addToHistory", false);
       editor.view.dispatch(tr);
+    },
+    refreshParagraphPopouts(): void {
+      paragraphPopoutRefreshersRef.current.forEach((fn) => fn());
     },
   }), [editor]);
 
