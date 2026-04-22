@@ -28,6 +28,7 @@ export type PanelKind =
   | "quotations"
   | "search"
   | "wordcount"
+  | "errors"
   | "omni";
 
 export type CardKind =

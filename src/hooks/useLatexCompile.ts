@@ -8,6 +8,8 @@ import {
   rewriteDocumentClass,
   type DocumentClassMismatch,
 } from "@/lib/document-class";
+import type { LatexError } from "@/lib/latex-errors";
+import { parseTexLog } from "@/lib/parse-tex-log";
 
 /**
  * Called when the compile hook finds that the document's
@@ -46,12 +48,34 @@ function rewriteBiblatexBackend(text: string): string {
  * the resulting PDF in a new browser window. On failure the full log is
  * dumped to the console and a short alert is shown.
  */
+export interface UseLatexCompileResult {
+  compile: () => Promise<void>;
+  isCompiling: boolean;
+  /** Raw pdfTeX log from the most recent compile, or null if none yet. */
+  lastLog: string | null;
+  /** Status code from the most recent compile (0 = success). */
+  lastStatus: number | null;
+  /** Parsed errors/warnings from the most recent compile log. Cleared on success. */
+  compileErrors: LatexError[];
+  /** Wipe lastLog/lastStatus/compileErrors (e.g. when switching docs). */
+  clearCompileErrors: () => void;
+}
+
 export function useLatexCompile(
   docId: string | null,
   opts?: { onDocumentClassMismatch?: DocumentClassMismatchHandler },
-) {
+): UseLatexCompileResult {
   const onDocumentClassMismatch = opts?.onDocumentClassMismatch;
   const [isCompiling, setIsCompiling] = useState(false);
+  const [lastLog, setLastLog] = useState<string | null>(null);
+  const [lastStatus, setLastStatus] = useState<number | null>(null);
+  const [compileErrors, setCompileErrors] = useState<LatexError[]>([]);
+
+  const clearCompileErrors = useCallback(() => {
+    setLastLog(null);
+    setLastStatus(null);
+    setCompileErrors([]);
+  }, []);
 
   const compile = useCallback(async () => {
     if (!docId || isCompiling) return;
@@ -150,7 +174,11 @@ export function useLatexCompile(
         result = await engine.compileLaTeX();
       }
 
+      setLastLog(result.log ?? "");
+      setLastStatus(result.status);
+
       if (result.status === 0 && result.pdf) {
+        setCompileErrors([]);
         const blob = new Blob([new Uint8Array(result.pdf)], {
           type: "application/pdf",
         });
@@ -159,11 +187,13 @@ export function useLatexCompile(
         // Revoke later so the new window has time to load the blob.
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       } else {
+        const parsed = parseTexLog(result.log ?? "");
+        setCompileErrors(parsed);
         console.error(
           `[compile] SwiftLaTeX failed (status=${result.status})\n\n${result.log}`,
         );
         window.alert(
-          `Compile failed (status ${result.status}). See the browser console for the full log.`,
+          `Compile failed (status ${result.status}). See the Errors panel or compile-log drawer for details.`,
         );
       }
     } catch (err) {
@@ -176,5 +206,5 @@ export function useLatexCompile(
     }
   }, [docId, isCompiling, onDocumentClassMismatch]);
 
-  return { compile, isCompiling };
+  return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
 }

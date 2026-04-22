@@ -13,6 +13,10 @@ import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
 import { useLatexCompile } from "@/hooks/useLatexCompile";
+import { useLatexLint } from "@/hooks/useLatexLint";
+import type { LatexError } from "@/lib/latex-errors";
+import { ErrorsHost } from "./editor-layout/panels/errors-host";
+import { IconErrors } from "./editor-layout/panel-icons";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
@@ -257,7 +261,13 @@ export default function EditorLayout() {
   // other root-level dialogs so it overlays everything.
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
-  const { compile: compilePdf, isCompiling } = useLatexCompile(docIdForHooks, {
+  const {
+    compile: compilePdf,
+    isCompiling,
+    lastLog: compileLog,
+    lastStatus: compileStatus,
+    compileErrors,
+  } = useLatexCompile(docIdForHooks, {
     onDocumentClassMismatch: promptDocClassMismatch,
   });
   const {
@@ -827,6 +837,36 @@ export default function EditorLayout() {
   const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
   const pendingScrollText = useRef<string | null>(null);
   const pendingParagraphId = useRef<string | null>(null);
+
+  // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook.
+  // null while the code editor is unmounted, which keeps lint inert
+  // (no parse, no diagnostics).
+  const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
+  useEffect(() => {
+    if (!codeView) setCodeEditorText(null);
+  }, [codeView]);
+  const knownBibKeys = useMemo(
+    () => bibEntries.map((e) => e.key),
+    [bibEntries],
+  );
+  const lintErrors = useLatexLint({
+    text: codeView ? codeEditorText : null,
+    knownBibKeys,
+  });
+  const allLatexErrors: LatexError[] = useMemo(
+    () =>
+      [...lintErrors, ...compileErrors].sort(
+        (a, b) => a.line - b.line || (a.column ?? 0) - (b.column ?? 0),
+      ),
+    [lintErrors, compileErrors],
+  );
+  const jumpToLineInCode = useCallback(
+    (line: number, column?: number) => {
+      codeEditorHandleRef.current?.scrollToLine?.(line, column);
+    },
+    [],
+  );
+  const [errorsSidebarOpen, setErrorsSidebarOpen] = useState(true);
 
   // Paragraph navigation history (back/forward) — ref-based to avoid stale closures
   const paraHistoryRef = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
@@ -2708,6 +2748,10 @@ export default function EditorLayout() {
       );
     }
 
+    if (panelId === "errors") {
+      return <ErrorsHost errors={allLatexErrors} onJumpToLine={jumpToLineInCode} />;
+    }
+
     if (panelId === "omni") {
       return (
         <OmniHost
@@ -2834,9 +2878,12 @@ export default function EditorLayout() {
     );
   }
 
-  // Build strip icon list, filtering out suggestions if none exist
-  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
-  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
+  // Build strip icon list, filtering out suggestions if none exist.
+  // The "errors" panel is gated to code view since both inputs (live
+  // unified-latex lint and SwiftLaTeX compile-log diagnostics) are
+  // meaningful only when the LaTeX source is being edited directly.
+  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions) && (p.id !== "errors" || codeView));
+  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions) && (p.id !== "errors" || codeView));
 
   if (!fsaSupported) {
     return <UnsupportedBrowserNotice />;
@@ -3206,11 +3253,47 @@ export default function EditorLayout() {
         </div>
       ) : codeView && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
+          {errorsSidebarOpen ? (
+            <div className="w-[260px] shrink-0 border-r border-edge-subtle bg-surface flex flex-col h-full relative">
+              <button
+                type="button"
+                onClick={() => setErrorsSidebarOpen(false)}
+                className="absolute top-2 right-2 z-10 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong text-sm leading-none"
+                title="Hide errors panel"
+                aria-label="Hide errors panel"
+              >
+                ×
+              </button>
+              <ErrorsHost errors={allLatexErrors} onJumpToLine={jumpToLineInCode} />
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setErrorsSidebarOpen(true)}
+              className="w-7 shrink-0 border-r border-edge-subtle bg-surface flex items-start justify-center pt-3 hover:bg-surface-muted-strong transition-colors relative text-ink-muted hover:text-ink-body"
+              title={`Show errors (${allLatexErrors.length})`}
+              aria-label="Show errors panel"
+            >
+              <IconErrors active={false} />
+              {allLatexErrors.length > 0 && (
+                <span
+                  className="absolute top-1 right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] leading-[14px] tabular-nums text-white text-center"
+                  style={{ backgroundColor: "var(--danger)" }}
+                >
+                  {allLatexErrors.length > 99 ? "99+" : allLatexErrors.length}
+                </span>
+              )}
+            </button>
+          )}
           <CodeEditor
             docId={currentDocId!}
             initialLine={codeViewLine}
             initialParagraphId={codeViewParagraphId}
             onReady={(handle) => { codeEditorHandleRef.current = handle; }}
+            onTextChange={setCodeEditorText}
+            compileLog={compileLog}
+            compileStatus={compileStatus}
+            isCompiling={isCompiling}
           />
         </div>
       ) : (
