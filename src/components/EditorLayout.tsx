@@ -2800,6 +2800,7 @@ export default function EditorLayout() {
           toggleTodo={toggleTodo}
           updateTodo={updateTodo}
           updateTodoNotes={updateTodoNotes}
+          setTodoAiRequest={setTodoAiRequest}
           deleteTodo={deleteTodo}
           getOmniEnabled={getOmniEnabled}
           toggleOmniCategory={toggleOmniCategory}
@@ -2918,7 +2919,7 @@ export default function EditorLayout() {
     handleEditFootnote, handleDeleteFootnote, handleEditFootnoteTitle,
     updateArchiveSnippet, updateArchiveSnippetTitle, handleDeleteArchive,
     updateCut, updateCutTitle, deleteCut,
-    toggleTodo, updateTodo, updateTodoNotes, deleteTodo,
+    toggleTodo, updateTodo, updateTodoNotes, deleteTodo, setTodoAiRequest,
     getFormattedBib, getAnnotation, setAnnotation,
     requestBibReview, cancelBibReview, getBibReviewStatus,
     updateBibEntry, updateBibKeyAndType,

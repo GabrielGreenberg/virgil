@@ -93,24 +93,24 @@ async function runLint(text: string, bibKeys?: Set<string>): Promise<LatexError[
     }
 
     const file = new VFile({ value: text });
-    await processor.process(file);
+    await processor.process(file as never);
     const messages = (file.messages ?? []) as VFileMessage[];
 
     const stylisticErrors = messages
-      .map((m) => {
+      .map((m): LatexError | null => {
         const message = (m.reason ?? m.message ?? "").trim();
         if (!message) return null;
         const line = m.line ?? 0;
         const column = m.column ?? undefined;
         return {
           id: makeErrorId({ source: "lint", line, column, message }),
-          source: "lint" as const,
-          severity: m.fatal ? ("error" as const) : ("warning" as const),
+          source: "lint",
+          severity: m.fatal ? "error" : "warning",
           line,
           column,
           message,
           ruleId: m.ruleId ?? undefined,
-        } satisfies LatexError;
+        };
       })
       .filter((x): x is LatexError => x !== null);
 

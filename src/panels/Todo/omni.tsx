@@ -15,6 +15,7 @@ interface BuildArgs {
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
   updateTodoNotes: (id: string, notes: string) => void;
+  setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
 }
 
@@ -39,6 +40,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
             onToggle={a.toggleTodo}
             onUpdate={a.updateTodo}
             onUpdateNotes={a.updateTodoNotes}
+            onSetAiRequest={a.setTodoAiRequest}
             onDelete={a.deleteTodo}
             onSelect={a.setSelectedTodoId}
             isAnchored={false}
@@ -63,6 +65,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
               onToggle={a.toggleTodo}
               onUpdate={a.updateTodo}
               onUpdateNotes={a.updateTodoNotes}
+              onSetAiRequest={a.setTodoAiRequest}
               onDelete={a.deleteTodo}
               onSelect={a.setSelectedTodoId}
               isAnchored={true}

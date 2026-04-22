@@ -105,6 +105,7 @@ export interface PoppedCardDeps {
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
   updateTodoNotes: (id: string, notes: string) => void;
+  setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
 
   // Bibliography
@@ -262,6 +263,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onToggle={d.toggleTodo}
           onUpdate={d.updateTodo}
           onUpdateNotes={d.updateTodoNotes}
+          onSetAiRequest={d.setTodoAiRequest}
           onDelete={d.deleteTodo}
           onSelect={d.setSelectedTodoId}
           isAnchored={itemPids.length > 0}

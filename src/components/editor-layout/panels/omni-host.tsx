@@ -81,6 +81,7 @@ export interface OmniHostProps {
   toggleTodo: TodosHook["toggleItem"];
   updateTodo: TodosHook["updateItem"];
   updateTodoNotes: TodosHook["updateNotes"];
+  setTodoAiRequest: TodosHook["setAiRequest"];
   deleteTodo: TodosHook["deleteItem"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
@@ -221,6 +222,7 @@ export function OmniHost(p: OmniHostProps) {
       toggleTodo: p.toggleTodo,
       updateTodo: p.updateTodo,
       updateTodoNotes: p.updateTodoNotes,
+      setTodoAiRequest: p.setTodoAiRequest,
       deleteTodo: p.deleteTodo,
     }),
   ];
