@@ -4,6 +4,24 @@ import { useCallback, useState } from "react";
 import { flushDoc, getTexFilename, readPaperFolder } from "@/lib/storage";
 import { getPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
 
+// SwiftLaTeX bundles bibtex but not biber, so biblatex users get rewritten to
+// backend=bibtex. This loses some biblatex features (Unicode sorting, a few
+// style options) but covers the vast majority of papers.
+function rewriteBiblatexBackend(text: string): string {
+  return text.replace(
+    /\\usepackage(?:\[([^\]]*)\])?\{biblatex\}/g,
+    (match, opts?: string) => {
+      if (!opts) return "\\usepackage[backend=bibtex]{biblatex}";
+      if (/\bbackend\s*=\s*bibtex\b/.test(opts)) return match;
+      if (/\bbackend\s*=\s*biber\b/.test(opts)) {
+        return `\\usepackage[${opts.replace(/\bbackend\s*=\s*biber\b/, "backend=bibtex")}]{biblatex}`;
+      }
+      if (/\bbackend\s*=/.test(opts)) return match;
+      return `\\usepackage[${opts.trim()},backend=bibtex]{biblatex}`;
+    },
+  );
+}
+
 /**
  * Compile the active document with SwiftLaTeX's pdfTeX engine and open
  * the resulting PDF in a new browser window. On failure the full log is
@@ -41,16 +59,50 @@ export function useLatexCompile(docId: string | null) {
         "def",
         "ltx",
       ]);
+
+      const decoder = new TextDecoder();
+      const decoded = new Map<string, string>();
       for (const f of files) {
         const ext = f.path.split(".").pop()?.toLowerCase() ?? "";
-        const data = textExts.has(ext)
-          ? new TextDecoder().decode(f.bytes)
-          : f.bytes;
+        if (textExts.has(ext)) decoded.set(f.path, decoder.decode(f.bytes));
+      }
+
+      const BIB_RE =
+        /\\usepackage\{natbib\}|\\bibliography\{|\\addbibresource\{|\\usepackage(?:\[[^\]]*\])?\{biblatex\}/;
+      const BIBLATEX_RE = /\\usepackage(?:\[[^\]]*\])?\{biblatex\}/;
+      let hasBibliography = false;
+      let hasBiblatex = false;
+      for (const text of decoded.values()) {
+        if (!hasBibliography && BIB_RE.test(text)) hasBibliography = true;
+        if (!hasBiblatex && BIBLATEX_RE.test(text)) hasBiblatex = true;
+        if (hasBibliography && hasBiblatex) break;
+      }
+
+      if (hasBiblatex) {
+        for (const [path, text] of decoded) {
+          const rewritten = rewriteBiblatexBackend(text);
+          if (rewritten !== text) {
+            decoded.set(path, rewritten);
+            console.warn(
+              `[compile] biber is not available in the browser; rewrote \\usepackage{biblatex} in ${path} to use backend=bibtex`,
+            );
+          }
+        }
+      }
+
+      for (const f of files) {
+        const text = decoded.get(f.path);
+        const data = text !== undefined ? text : f.bytes;
         writeEngineFile(engine, f.path, data, createdDirs);
       }
 
       engine.setEngineMainFile(texFilename);
-      const result = await engine.compileLaTeX();
+
+      const passes = hasBibliography ? 3 : 1;
+      let result = await engine.compileLaTeX();
+      for (let i = 1; i < passes && result.status === 0; i++) {
+        result = await engine.compileLaTeX();
+      }
 
       if (result.status === 0 && result.pdf) {
         const blob = new Blob([new Uint8Array(result.pdf)], {
