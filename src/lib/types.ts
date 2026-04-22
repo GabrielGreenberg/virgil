@@ -132,6 +132,7 @@ export interface TodoItem {
   text: string;
   notes: string;
   done: boolean;
+  aiRequest: boolean;
   createdAt: string;
   links: Link[];
 }

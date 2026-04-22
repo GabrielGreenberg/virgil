@@ -13,10 +13,11 @@ export interface TodoHostProps {
   side: Side;
   panelSide: Side | null;
   todoItems: TodoItem[];
-  addTodo: (text: string) => void;
+  addTodo: () => TodoItem;
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
   updateTodoNotes: (id: string, notes: string) => void;
+  setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
   archiveTodos: () => void;
 }
@@ -25,14 +26,15 @@ export function TodoHost(p: TodoHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
-  const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   return (
     <TodoPanel
       items={p.todoItems}
-      onAdd={p.addTodo}
+      onAdd={() => p.addTodo()}
       onToggle={p.toggleTodo}
       onUpdate={p.updateTodo}
       onUpdateNotes={p.updateTodoNotes}
+      onSetAiRequest={p.setTodoAiRequest}
       onDelete={p.deleteTodo}
       onArchiveDone={p.archiveTodos}
       selectedTodoId={selectedTodoId}
@@ -43,7 +45,6 @@ export function TodoHost(p: TodoHostProps) {
         if (pid) editorRef.current?.scrollToParagraphId(pid);
       }}
       aiRequests={aiRequests}
-      onAddAiRequest={() => addAiRequest("todo")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       editor={editorInstance}

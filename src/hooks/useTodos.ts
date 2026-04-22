@@ -16,6 +16,7 @@ function migrateTodo(raw: unknown): TodoItem {
     text: i.text ?? "",
     notes: i.notes ?? "",
     done: !!i.done,
+    aiRequest: !!i.aiRequest,
     createdAt: i.createdAt!,
     links: migrateCardLinks("todo", raw),
   };
@@ -34,17 +35,19 @@ export function useTodos(docId: string | null) {
     { migrate: migrateTodos, errorLabel: "todos" },
   );
 
-  const addItem = useCallback((text: string) => {
+  const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
       id: generateEntityId(),
-      text,
+      text: `Task ${state.items.length + 1}`,
       notes: "",
       done: false,
+      aiRequest: false,
       createdAt: new Date().toISOString(),
       links: [],
     };
     update((prev) => ({ items: [...prev.items, item] }));
-  }, [update]);
+    return item;
+  }, [update, state.items.length]);
 
   const toggleItem = useCallback((id: string) => {
     update((prev) => ({
@@ -61,6 +64,12 @@ export function useTodos(docId: string | null) {
   const updateNotes = useCallback((id: string, notes: string) => {
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, notes } : i),
+    }));
+  }, [update]);
+
+  const setAiRequest = useCallback((id: string, value: boolean) => {
+    update((prev) => ({
+      items: prev.items.map((i) => i.id === id ? { ...i, aiRequest: value } : i),
     }));
   }, [update]);
 
@@ -103,6 +112,7 @@ export function useTodos(docId: string | null) {
     toggleItem,
     updateItem,
     updateNotes,
+    setAiRequest,
     deleteItem,
     reorder,
     archiveDone,

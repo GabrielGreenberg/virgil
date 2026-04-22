@@ -304,6 +304,7 @@ export default function EditorLayout() {
     toggleItem: toggleTodo,
     updateItem: updateTodo,
     updateNotes: updateTodoNotes,
+    setAiRequest: setTodoAiRequest,
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
     addParagraphId: addTodoParagraphId,
@@ -2472,6 +2473,7 @@ export default function EditorLayout() {
           toggleTodo={toggleTodo}
           updateTodo={updateTodo}
           updateTodoNotes={updateTodoNotes}
+          setTodoAiRequest={setTodoAiRequest}
           deleteTodo={deleteTodo}
           archiveTodos={archiveTodos}
         />
