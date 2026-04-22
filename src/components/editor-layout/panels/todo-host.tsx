@@ -20,6 +20,8 @@ export interface TodoHostProps {
   setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
   archiveTodos: () => void;
+  onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
+  onDropParagraph: (paragraphId: string) => void;
 }
 
 export function TodoHost(p: TodoHostProps) {
@@ -47,6 +49,8 @@ export function TodoHost(p: TodoHostProps) {
       aiRequests={aiRequests}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
+      onDropSelection={p.onDropSelection}
+      onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("todo")}

@@ -76,7 +76,11 @@ export interface CardListPanelProps<T> {
   wrapperProps?: HTMLAttributes<HTMLDivElement>;
   scrollRef?: React.Ref<HTMLDivElement>;
   onDragOver?: (e: React.DragEvent) => void;
+  onDragLeave?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
+  /** When true, renders a blue "+" placeholder card at the top of the
+   *  list body, signalling that a drop will create a new card here. */
+  showDropPlaceholder?: boolean;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   scrollTabIndex?: number;
 }
@@ -110,12 +114,21 @@ export function CardListPanel<T>({
   wrapperProps,
   scrollRef,
   onDragOver,
+  onDragLeave,
   onDrop,
+  showDropPlaceholder,
   onKeyDown,
   scrollTabIndex,
 }: CardListPanelProps<T>) {
   const handleEmptyClick = useCallback(() => onSelect(null), [onSelect]);
   const hasAiRequests = aiRequests && aiRequests.length > 0;
+  const dropPlaceholder = showDropPlaceholder ? (
+    <div className="drop-placeholder-card" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+        <path d="M12 5v14M5 12h14" />
+      </svg>
+    </div>
+  ) : null;
 
   const aiRequestsSection = hasAiRequests ? (
     <>
@@ -152,6 +165,7 @@ export function CardListPanel<T>({
           className={`flex-1 overflow-y-auto${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
           onClick={handleEmptyClick}
           onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
           onDrop={onDrop}
           onKeyDown={onKeyDown}
           tabIndex={scrollTabIndex}
@@ -159,6 +173,7 @@ export function CardListPanel<T>({
           {aiRequestsSection && (
             <div className="px-2 pt-2 pb-2 space-y-2">{aiRequestsSection}</div>
           )}
+          {dropPlaceholder && <div className="px-2 pt-2">{dropPlaceholder}</div>}
           <div
             className="relative"
             style={{ height: inTextScrollHeight ?? "100%" }}
@@ -206,16 +221,18 @@ export function CardListPanel<T>({
       variant="list"
       scrollRef={scrollRef}
       onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
       onDrop={onDrop}
       onClickEmpty={handleEmptyClick}
       onKeyDown={onKeyDown}
       scrollTabIndex={scrollTabIndex}
     >
-      {showEmpty ? (
+      {showEmpty && !dropPlaceholder ? (
         emptyState
       ) : (
         <>
           {aiRequestsSection}
+          {dropPlaceholder}
           {items.map((item, index) => {
             const id = getId(item);
             return (

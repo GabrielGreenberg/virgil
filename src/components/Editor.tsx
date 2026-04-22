@@ -1148,24 +1148,41 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // drags start from margin/padding areas of the wrapper, causing
         // inadvertent paragraph moves.
         dragstart(view, event) {
-          const target = event.target as HTMLElement;
+          // `event.target` may be a text node (e.g., Chrome often dispatches
+          // the dragstart with the deepest node under the cursor, which is
+          // a text node for selection drags). Normalize to an Element so
+          // `.closest()` is always callable.
+          const rawTarget = event.target as Node | null;
+          const target =
+            rawTarget instanceof Element
+              ? rawTarget
+              : (rawTarget?.parentElement ?? null);
+          if (!target) return false;
           if (target.closest("[data-drag-handle]")) return false; // allow
-          // If the drag started on the paragraph wrapper but NOT inside
-          // the content <p> or a drag handle, it's an inadvertent node
-          // drag from margins/padding — cancel it.
-          const nodeView = target.closest(".par-title-wrapper");
-          if (nodeView && !target.closest("p")) {
-            event.preventDefault();
-            return true; // handled — suppress
-          }
-          // Text-selection drag: stash the capture payload so the
-          // window-level dragstart listener (registered below) can tag
-          // DataTransfer AFTER ProseMirror's default handler runs.
           const sel = view.state.selection;
+          // If a non-empty text selection exists, this is a text-selection
+          // drag — even when Chrome dispatches dragstart with target =
+          // `.par-title-wrapper` (because the wrapper has `draggable: true`,
+          // Chrome uses it as the drag source element regardless of where
+          // the cursor clicked). Stash the range and let the drag through;
+          // the window-level dragstart listener will attach MIME_SELECTION_ANCHOR.
           if (!sel.empty) {
             const paragraphId = ensureAnchorUuid(view, sel.from);
             const selectedText = view.state.doc.textBetween(sel.from, sel.to, " ");
             pendingTextCaptureRef.current = { from: sel.from, to: sel.to, paragraphId, selectedText };
+            // Clear any stale paragraph-capture stash so panels don't receive
+            // both MIMEs (they check MIME_PAR_CAPTURE first and would take
+            // the paragraph path instead of the selection path).
+            pendingParCaptureUuidRef.current = null;
+            return false;
+          }
+          // No text selection. If the drag started on the paragraph wrapper
+          // but NOT inside the content <p> or a drag handle, it's an
+          // inadvertent node drag from margins/padding — cancel it.
+          const nodeView = target.closest(".par-title-wrapper");
+          if (nodeView && !target.closest("p")) {
+            event.preventDefault();
+            return true; // handled — suppress
           }
           return false;
         },

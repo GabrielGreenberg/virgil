@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
 import type { GeneralRevision, TextRevision } from "@/lib/types";
 import type { RevisionKind } from "@/hooks/useRevisions";
@@ -111,6 +111,7 @@ export default function RevisionsPanel({
   }, [sortedGeneral, sortedText]);
 
   const dropEnabled = onDropSelection || onDropParagraph;
+  const [isDragOver, setIsDragOver] = useState(false);
   const handleDragOver = dropEnabled
     ? (e: React.DragEvent) => {
         const types = e.dataTransfer.types;
@@ -120,11 +121,20 @@ export default function RevisionsPanel({
         ) {
           e.preventDefault();
           e.dataTransfer.dropEffect = "copy";
+          if (!isDragOver) setIsDragOver(true);
         }
+      }
+    : undefined;
+  const handleDragLeave = dropEnabled
+    ? (e: React.DragEvent) => {
+        const current = e.currentTarget as HTMLElement;
+        const next = e.relatedTarget as Node | null;
+        if (!next || !current.contains(next)) setIsDragOver(false);
       }
     : undefined;
   const handleDrop = dropEnabled
     ? (e: React.DragEvent) => {
+        setIsDragOver(false);
         if (onDropParagraph) {
           const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
           if (parRaw) {
@@ -191,7 +201,9 @@ export default function RevisionsPanel({
       inTextScrollHeight={editorScrollHeight}
       scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      showDropPlaceholder={isDragOver}
       emptyState={
         <div className={PANEL.empty}>
           No revisions yet. Click + to add one, or drop a paragraph or
