@@ -3458,8 +3458,6 @@ export default function EditorLayout() {
                 onParaNavForward={paraNavForward}
                 paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
                 paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-                onExpandAllSections={() => editorRef.current?.expandAllSections()}
-                onCollapseAllSections={() => editorRef.current?.collapseAllSections()}
                 onCloseAllPanels={closeAllPanels}
                 onGrabStart={handleMenuGrabStart}
                 orientation={menuOrientation}
@@ -3530,6 +3528,33 @@ export default function EditorLayout() {
                   activeAnchorId={effectiveAnchorId}
                   activeAnchorColor={effectiveAnchorColor}
                 />
+                {/* Section expand/collapse — hover the top strip to reveal.
+                    Sits over the editor's 40px top padding so it doesn't
+                    obscure text. */}
+                <div className="group absolute top-0 left-0 right-0 h-6 z-20">
+                  <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                    <button
+                      onClick={() => editorRef.current?.expandAllSections()}
+                      className="text-[var(--muted)] hover:text-ink-body transition-colors"
+                      title="Expand all sections"
+                    >
+                      <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 1 L7 4.5 L12 1" />
+                        <path d="M2 5.5 L7 9 L12 5.5" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => editorRef.current?.collapseAllSections()}
+                      className="text-[var(--muted)] hover:text-ink-body transition-colors"
+                      title="Collapse all sections"
+                    >
+                      <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 4.5 L7 1 L12 4.5" />
+                        <path d="M2 9 L7 5.5 L12 9" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
                 <Marginalia
                   editor={editorInstance}
                   markers={visibleMarginaliaMarkers}

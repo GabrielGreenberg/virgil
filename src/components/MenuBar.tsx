@@ -54,8 +54,6 @@ interface MenuBarProps {
   onParaNavForward?: () => void;
   paraNavBackDisabled?: boolean;
   paraNavForwardDisabled?: boolean;
-  onExpandAllSections?: () => void;
-  onCollapseAllSections?: () => void;
   onCloseAllPanels?: () => void;
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
@@ -523,7 +521,7 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onExpandAllSections, onCollapseAllSections, onCloseAllPanels, onGrabStart, orientation, onSetOrientation }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation }: MenuBarProps) {
   if (!editor) return null;
 
   // Track whether any formatting mark is active — the Format button
@@ -662,8 +660,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       </AttachedPopover>
 
       {/* Actions popup — document-level actions the user can take against a
-          selection (revision, note, cut, archive, footnote, quote), plus
-          structural helpers (expand / collapse all sections). */}
+          selection (revision, note, cut, archive, footnote, quote). */}
       <AttachedPopover
         title="Actions"
         anchor={
@@ -746,33 +743,6 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                   <path d="M10 3.5C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
                 </svg>
               </button>
-            )}
-            {(onExpandAllSections || onCollapseAllSections) && (
-              <>
-                <div className="w-px h-4 bg-[var(--border)] mx-1" />
-                {onExpandAllSections && (
-                  <IconBtn
-                    onClick={() => { onExpandAllSections(); close(); }}
-                    title="Expand all sections"
-                  >
-                    <svg width="14" height="12" viewBox="0 0 14 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 1 L7 4.5 L12 1" />
-                      <path d="M2 6.5 L7 10 L12 6.5" />
-                    </svg>
-                  </IconBtn>
-                )}
-                {onCollapseAllSections && (
-                  <IconBtn
-                    onClick={() => { onCollapseAllSections(); close(); }}
-                    title="Collapse all sections"
-                  >
-                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M2 5.5 L7 2 L12 5.5" />
-                      <path d="M2 9 L7 5.5 L12 9" />
-                    </svg>
-                  </IconBtn>
-                )}
-              </>
             )}
           </>
         )}
