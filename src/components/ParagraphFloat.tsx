@@ -140,7 +140,7 @@ export function ParagraphFloat({
     // Find the paragraph by uuid — its position shifts as the doc
     // changes, so re-resolve on every write.
     let pos: number | null = null;
-    let targetNode: ReturnType<typeof ed.state.doc.nodeAt> = null;
+    let targetNode: NonNullable<ReturnType<typeof ed.state.doc.nodeAt>> | null = null;
     ed.state.doc.descendants((n, p) => {
       if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
         pos = p;
@@ -150,6 +150,7 @@ export function ParagraphFloat({
       return true;
     });
     if (pos == null || !targetNode) return;
+    const found: NonNullable<ReturnType<typeof ed.state.doc.nodeAt>> = targetNode;
     try {
       // Build a new paragraph node that carries the ORIGINAL attrs
       // (uuid, parTitle, …) and the float's inline content. Replacing
@@ -160,13 +161,13 @@ export function ParagraphFloat({
         ed.state.schema.nodeFromJSON(c),
       );
       const newPar = ed.state.schema.nodes.paragraph.create(
-        targetNode.attrs,
+        found.attrs,
         fragment,
-        targetNode.marks,
+        found.marks,
       );
       const tr = ed.state.tr.replaceWith(
         pos,
-        pos + targetNode.nodeSize,
+        pos + found.nodeSize,
         newPar,
       );
       // Don't push the float's routine updates onto the main undo stack

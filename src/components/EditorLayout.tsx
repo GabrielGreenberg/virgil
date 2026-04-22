@@ -2307,7 +2307,7 @@ export default function EditorLayout() {
     }
     const rev = addGeneralRevision(sel?.text ?? "");
     if (anchorId) {
-      setRevisionAnchor(rev.id, { anchorId, anchorText: sel?.text ?? "" });
+      setRevisionAnchor(rev.id, anchorId);
       const ed = editorRef.current?.getEditor();
       if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
     }
