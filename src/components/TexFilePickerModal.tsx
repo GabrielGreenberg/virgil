@@ -6,6 +6,7 @@ interface TexFilePickerModalProps {
   folderName: string;
   texFiles: string[];
   onSelect: (filename: string) => void;
+  onCreateNew: () => void;
   onCancel: () => void;
 }
 
@@ -26,6 +27,7 @@ export default function TexFilePickerModal({
   folderName,
   texFiles,
   onSelect,
+  onCreateNew,
   onCancel,
 }: TexFilePickerModalProps) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -52,6 +54,7 @@ export default function TexFilePickerModal({
   );
 
   const sorted = sortTexFiles(texFiles, folderName);
+  const isEmpty = sorted.length === 0;
 
   return (
     <div
@@ -60,39 +63,67 @@ export default function TexFilePickerModal({
       aria-modal="true"
       onClick={handleBackdrop}
     >
-      <div className="bg-[var(--surface,#ffffff)] border border-[var(--border,#e5e2dd)] rounded-xl shadow-xl w-full max-w-[340px] mx-4 overflow-hidden">
+      <div className="bg-[var(--surface,#ffffff)] border border-[var(--border,#e5e2dd)] rounded-xl shadow-xl w-full max-w-[360px] mx-4 overflow-hidden">
         <div className="px-5 pt-4 pb-3">
           <h2 className="text-sm font-semibold text-ink-body mb-0.5">
             {folderName}
           </h2>
           <p className="text-xs text-ink-subtle">
-            Choose a file to open
+            {isEmpty
+              ? "This folder has no .tex files yet."
+              : "Choose a file to open"}
           </p>
         </div>
-        <div ref={listRef} className="px-3 pb-3 flex flex-col gap-0.5">
-          {sorted.map((file) => (
-            <button
-              key={file}
-              onClick={() => onSelect(file)}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="text-ink-muted shrink-0"
+        {!isEmpty && (
+          <div ref={listRef} className="px-3 pb-1 flex flex-col gap-0.5">
+            {sorted.map((file) => (
+              <button
+                key={file}
+                onClick={() => onSelect(file)}
+                className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
               >
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              {file}
-            </button>
-          ))}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="text-ink-muted shrink-0"
+                >
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <polyline points="14 2 14 8 20 8" />
+                </svg>
+                {file}
+              </button>
+            ))}
+          </div>
+        )}
+        <div
+          className={`px-3 ${isEmpty ? "pt-0" : "pt-2 mt-1 border-t border-edge-subtle"} pb-3`}
+        >
+          <button
+            onClick={onCreateNew}
+            className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="text-ink-muted shrink-0"
+            >
+              <path d="M12 5v14" />
+              <path d="M5 12h14" />
+            </svg>
+            Create new document here
+          </button>
         </div>
         <div className="flex items-center justify-end px-4 py-3 border-t border-[var(--border,#e5e2dd)] bg-surface-muted/60">
           <button

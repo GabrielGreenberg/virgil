@@ -31,6 +31,7 @@ export const writeBib = backend.writeBib;
 export const readGeneralBib = backend.readGeneralBib;
 export const pickGeneralBib = backend.pickGeneralBib;
 export const createDocFromPicker = backend.createDocFromPicker;
+export const createDocInFolder = backend.createDocInFolder;
 export const pickProjectFolder = backend.pickProjectFolder;
 export const registerDocInFolder = backend.registerDocInFolder;
 export const openExistingDocFromPicker = backend.openExistingDocFromPicker;

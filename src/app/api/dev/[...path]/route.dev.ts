@@ -15,6 +15,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import {
+  DOCUMENT_TEMPLATES,
+  DEFAULT_TEMPLATE_ID,
+} from "@/lib/document-templates";
+import { generateEntityId } from "@/lib/uuid";
 
 const DATA_DIR = path.join(process.cwd(), "virgil-data");
 
@@ -125,6 +130,118 @@ export async function GET(
     } catch {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
+  }
+
+  return NextResponse.json({ error: "bad path" }, { status: 400 });
+}
+
+function sanitizeFolderName(name: string): string {
+  return name
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, " ")
+    .slice(0, 120);
+}
+
+function readIndexFile(): {
+  docs: Array<{
+    id: string;
+    name: string;
+    createdAt: string;
+    lastModifiedAt: string;
+    sourcePath: string;
+  }>;
+} {
+  try {
+    const raw = fs.readFileSync(path.join(DATA_DIR, "index.json"), "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return { docs: [] };
+  }
+}
+
+function writeIndexFile(index: { docs: unknown[] }) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFileSync(
+    path.join(DATA_DIR, "index.json"),
+    JSON.stringify(index, null, 2),
+    "utf-8",
+  );
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const segments = (await params).path;
+
+  // /api/dev/_create-doc — create a new doc folder under virgil-data/
+  // using a template, then register it in index.json.
+  if (segments.length === 1 && segments[0] === "_create-doc") {
+    let body: { name?: string; templateId?: string };
+    try {
+      body = (await req.json()) as { name?: string; templateId?: string };
+    } catch {
+      return NextResponse.json({ error: "bad json" }, { status: 400 });
+    }
+    const rawName = (body.name ?? "").trim();
+    if (!rawName) {
+      return NextResponse.json({ error: "name required" }, { status: 400 });
+    }
+    const tid = body.templateId ?? DEFAULT_TEMPLATE_ID;
+    const template = DOCUMENT_TEMPLATES.find((t) => t.id === tid);
+    if (!template) {
+      return NextResponse.json(
+        { error: `unknown template: ${tid}` },
+        { status: 400 },
+      );
+    }
+
+    const folderName = sanitizeFolderName(rawName);
+    if (!folderName) {
+      return NextResponse.json({ error: "invalid name" }, { status: 400 });
+    }
+
+    // Use a unique subfolder so names can collide across dev sessions.
+    const id = generateEntityId().slice(0, 8);
+    const dirName = `${folderName}_${id}`;
+    const absFolder = path.join(DATA_DIR, dirName);
+    if (!absFolder.startsWith(DATA_DIR)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    if (fs.existsSync(absFolder)) {
+      return NextResponse.json(
+        { error: `folder already exists: ${dirName}` },
+        { status: 409 },
+      );
+    }
+
+    fs.mkdirSync(absFolder, { recursive: true });
+    for (const [filename, content] of Object.entries(template.files)) {
+      fs.writeFileSync(path.join(absFolder, filename), content, "utf-8");
+    }
+    fs.mkdirSync(path.join(absFolder, "virgil"), { recursive: true });
+
+    const now = new Date().toISOString();
+    const sourcePath = path.join(absFolder, template.mainTexFilename);
+    const index = readIndexFile();
+    index.docs.push({
+      id,
+      name: rawName,
+      createdAt: now,
+      lastModifiedAt: now,
+      sourcePath,
+    });
+    writeIndexFile(index);
+
+    return NextResponse.json({
+      id,
+      name: rawName,
+      texFilename: template.mainTexFilename,
+      folderName: dirName,
+      createdAt: now,
+      lastModifiedAt: now,
+    });
   }
 
   return NextResponse.json({ error: "bad path" }, { status: 400 });
