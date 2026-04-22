@@ -14,6 +14,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
+import { usePristineTracker } from "./usePristineTracker";
 
 const EMPTY_STATE: NotesState = { notes: [] };
 
@@ -40,6 +41,7 @@ export function useNotes(docId: string | null) {
     EMPTY_STATE,
     { migrate: migrateNotes, errorLabel: "notes" },
   );
+  const pristine = usePristineTracker();
 
   const addNote = useCallback(
     (
@@ -58,10 +60,14 @@ export function useNotes(docId: string | null) {
       if (anchor) {
         newNote = setTextAnchorLink(newNote, "note", anchor.anchorId, anchor.anchorText);
       }
+      // Only a truly blank note (no content, no anchor, no paragraph) is
+      // pristine — a note seeded from a drop or selection counts as
+      // "written to" since the user already committed an intent.
+      if (!content && !anchor && !paragraphId) pristine.markNew(newNote.id);
       update((prev) => ({ notes: [...prev.notes, newNote] }));
       return newNote;
     },
-    [update],
+    [update, pristine],
   );
 
   const setNoteAnchor = useCallback(
@@ -107,20 +113,22 @@ export function useNotes(docId: string | null) {
 
   const updateNote = useCallback(
     (id: string, content: JSONContent) => {
+      pristine.markDirty(id);
       update((prev) => ({
         notes: prev.notes.map((n) => (n.id === id ? { ...n, content } : n)),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const updateNoteTitle = useCallback(
     (id: string, title: string) => {
+      pristine.markDirty(id);
       update((prev) => ({
         notes: prev.notes.map((n) => (n.id === id ? { ...n, title } : n)),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const addNoteParagraphId = useCallback(
@@ -147,10 +155,23 @@ export function useNotes(docId: string | null) {
 
   const deleteNote = useCallback(
     (id: string) => {
+      pristine.markDirty(id);
       update((prev) => ({ notes: prev.notes.filter((n) => n.id !== id) }));
     },
-    [update],
+    [update, pristine],
   );
+
+  /**
+   * Drop any notes that were created via `addNote()` but never edited.
+   * Call from panel-close / host-unmount so "press +, do nothing, leave"
+   * does not leave a blank card behind.
+   */
+  const discardPristineNotes = useCallback(() => {
+    const ids = pristine.takePristine();
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    update((prev) => ({ notes: prev.notes.filter((n) => !idSet.has(n.id)) }));
+  }, [update, pristine]);
 
   return {
     notes: state.notes,
@@ -162,5 +183,6 @@ export function useNotes(docId: string | null) {
     deleteNote,
     setNoteAnchor,
     clearNoteAnchor,
+    discardPristineNotes,
   };
 }
