@@ -106,6 +106,7 @@ import {
   IconLibrary,
 } from "./editor-layout/panel-icons";
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
+import { ZenMargin } from "./editor-layout/zen-margin";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { SplitEditorPanes } from "./editor-layout/split-editor-panes";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
@@ -152,6 +153,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
 import { usePreferenceMode } from "@/hooks/usePreferenceMode";
+import { useZenMode } from "@/hooks/useZenMode";
 import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
@@ -678,6 +680,17 @@ export default function EditorLayout() {
   // Preference mode toggle. `on` drives the top-bar button styling and gates
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
   const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
+  // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
+  // marginalia, popouts) so the document area appears alone. Top bar
+  // stays so the button is always reachable. See useZenMode.ts.
+  const {
+    on: zenModeOn,
+    toggle: toggleZenMode,
+    leftMargin: zenLeftMargin,
+    rightMargin: zenRightMargin,
+    setLeftMargin: setZenLeftMargin,
+    setRightMargin: setZenRightMargin,
+  } = useZenMode();
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
@@ -3060,6 +3073,25 @@ export default function EditorLayout() {
               Focus view
             </button>
           )}
+          {/* ── Zen mode toggle ────────────────────────────────────────
+              Render-gates editor chrome (icon strips, panel columns,
+              floating MenuBar, marginalia, popped-out panels/cards) so
+              the document area stands alone. Top bar stays visible so
+              this button is always reachable. State is render-only —
+              layout prefs are untouched, so toggling off restores the
+              exact prior layout. */}
+          <button
+            onClick={toggleZenMode}
+            className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
+              zenModeOn
+                ? "text-[var(--accent)] bg-[var(--accent-light)]"
+                : "text-ink-subtle hover:bg-surface/30 hover:text-[var(--accent)]"
+            }`}
+            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
+            aria-pressed={zenModeOn}
+          >
+            Zen
+          </button>
           {/* ── Preference Mode toggle ─────────────────────────────────
               Flips the global preference-mode state. When on, every DOM
               element with `data-prefs="<pref-key>"` becomes ctrl+clickable
@@ -3354,7 +3386,8 @@ export default function EditorLayout() {
         ── end suppressed linking lines ── */}
 
 
-        {/* Left icon strip */}
+        {/* Left icon strip — hidden in Zen mode */}
+        {!zenModeOn && (
         <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
@@ -3403,9 +3436,17 @@ export default function EditorLayout() {
             />
           ))}
         </div>
+        )}
 
-        {/* Left panel column (always present; collapsed when inactive) */}
-        {renderPanelColumn("left")}
+        {/* Left panel column (always present; collapsed when inactive).
+            In Zen mode this position becomes an empty adjustable margin —
+            width is shared with the panel column width so the dial
+            "is where the panel is". */}
+        {zenModeOn ? (
+          <ZenMargin side="left" width={zenLeftMargin} onWidthChange={setZenLeftMargin} />
+        ) : (
+          renderPanelColumn("left")
+        )}
 
         {/* Editor column: floating toolbar overlays the editor pod's
             top-right corner; the editor pod itself runs all the way to
@@ -3418,8 +3459,9 @@ export default function EditorLayout() {
         }}>
           {/* Floating toolbar — rendered via portal so it can move freely
               across the viewport and always sits above every panel. Snaps
-              to the four editor-column corners when dragged near them. */}
-          {menuPortalReady && createPortal(
+              to the four editor-column corners when dragged near them.
+              Hidden in Zen mode (top bar has the Zen toggle). */}
+          {menuPortalReady && !zenModeOn && createPortal(
             <div
               ref={menuWrapRef}
               className="fixed z-[9999] pointer-events-auto"
@@ -3498,11 +3540,13 @@ export default function EditorLayout() {
                       activeAnchorId={effectiveAnchorId}
                       activeAnchorColor={effectiveAnchorColor}
                     />
-                    <Marginalia
-                      editor={editorInstance}
-                      markers={visibleMarginaliaMarkers}
-                      panelSides={marginaliaPanelSides}
-                    />
+                    {!zenModeOn && (
+                      <Marginalia
+                        editor={editorInstance}
+                        markers={visibleMarginaliaMarkers}
+                        panelSides={marginaliaPanelSides}
+                      />
+                    )}
                   </>
                 }
               />
@@ -3530,12 +3574,14 @@ export default function EditorLayout() {
                   activeAnchorId={effectiveAnchorId}
                   activeAnchorColor={effectiveAnchorColor}
                 />
-                <Marginalia
-                  editor={editorInstance}
-                  markers={visibleMarginaliaMarkers}
-                  panelSides={marginaliaPanelSides}
-                />
-                {showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
+                {!zenModeOn && (
+                  <Marginalia
+                    editor={editorInstance}
+                    markers={visibleMarginaliaMarkers}
+                    panelSides={marginaliaPanelSides}
+                  />
+                )}
+                {!zenModeOn && showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
               </div>
             )
           ) : (
@@ -3578,10 +3624,17 @@ export default function EditorLayout() {
           )}
         </div>
 
-        {/* Right panel column (always present; collapsed when inactive) */}
-        {renderPanelColumn("right")}
+        {/* Right panel column (always present; collapsed when inactive).
+            In Zen mode this position becomes an empty adjustable margin —
+            width is shared with the panel column width. */}
+        {zenModeOn ? (
+          <ZenMargin side="right" width={zenRightMargin} onWidthChange={setZenRightMargin} />
+        ) : (
+          renderPanelColumn("right")
+        )}
 
-        {/* Right icon strip */}
+        {/* Right icon strip — hidden in Zen mode */}
+        {!zenModeOn && (
         <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
@@ -3630,6 +3683,7 @@ export default function EditorLayout() {
             />
           ))}
         </div>
+        )}
       </div>
       )}
       {preferencesOpen && (
@@ -3724,10 +3778,11 @@ export default function EditorLayout() {
           `isPoppedOut={true}`, which makes it wrap itself in a FloatCard
           (portal to document.body). The wrapper-internal null-return for
           in-list renders prevents double-mounting when the source panel
-          is also open. */}
-      {prefs.poppedOutCards.map((key) => renderPoppedCard(key, poppedCardDeps))}
-      {/* Floating (popped-out) panels — rendered via portal above everything. */}
-      {prefs.poppedOutPanels.map((pid, i) => {
+          is also open. Hidden in Zen mode — prefs state is retained. */}
+      {!zenModeOn && prefs.poppedOutCards.map((key) => renderPoppedCard(key, poppedCardDeps))}
+      {/* Floating (popped-out) panels — rendered via portal above everything.
+          Hidden in Zen mode. */}
+      {!zenModeOn && prefs.poppedOutPanels.map((pid, i) => {
         const placement = prefs.placements.find((pl) => pl.id === pid);
         const side: Side = placement?.side ?? "right";
         const saved = prefs.floatPositions[pid];
