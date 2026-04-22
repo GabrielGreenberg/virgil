@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
@@ -17,17 +17,17 @@ import { TodoRow } from "./TodoRow";
 
 interface TodoPanelProps {
   items: TodoItem[];
-  onAdd: (text: string) => void;
+  onAdd: () => TodoItem;
   onToggle: (id: string) => void;
   onUpdate: (id: string, text: string) => void;
   onUpdateNotes: (id: string, notes: string) => void;
+  onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onArchiveDone: () => void;
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
   onScrollToMarker?: (id: string) => void;
   aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   editor?: Editor | null;
@@ -42,13 +42,13 @@ export default function TodoPanel({
   onToggle,
   onUpdate,
   onUpdateNotes,
+  onSetAiRequest,
   onDelete,
   onArchiveDone,
   selectedTodoId,
   onSelectTodo,
   onScrollToMarker,
   aiRequests,
-  onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
   editor,
@@ -56,17 +56,7 @@ export default function TodoPanel({
   viewMode = "list",
   onViewModeChange,
 }: TodoPanelProps) {
-  const [newText, setNewText] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
   const todoTheme = useCardTheme("todo");
-
-  const handleAdd = () => {
-    if (newText.trim()) {
-      onAdd(newText.trim());
-      setNewText("");
-      inputRef.current?.focus();
-    }
-  };
 
   const pending = items.filter((i) => !i.done);
   const done = items.filter((i) => i.done);
@@ -91,8 +81,7 @@ export default function TodoPanel({
     <CardListPanel
       kind="todo"
       count={pending.length}
-      onAdd={() => inputRef.current?.focus()}
-      onAiRequest={onAddAiRequest}
+      onAdd={() => onAdd()}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -103,34 +92,15 @@ export default function TodoPanel({
           </div>
         </ItemMenu>
       }
-      panelExtras={
-        <div className="px-4 py-2.5 border-b border-[var(--border-light)]">
-          <div className="flex items-center gap-2">
-            <input
-              ref={inputRef}
-              value={newText}
-              onChange={(e) => setNewText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAdd();
-              }}
-              placeholder="Add a task..."
-              className="flex-1 text-sm bg-transparent border-none outline-none text-ink-strong placeholder:text-ink-muted"
-            />
-            <button
-              onClick={handleAdd}
-              disabled={!newText.trim()}
-              className="text-xs px-2 py-1 rounded bg-[var(--accent)] text-white hover:opacity-90 transition-colors disabled:opacity-30"
-            >
-              Add
-            </button>
-          </div>
-        </div>
-      }
       items={items}
       getId={(t) => t.id}
       selectedId={selectedTodoId}
       onSelect={onSelectTodo}
-      emptyState={<div className={PANEL.empty}>No tasks yet.</div>}
+      emptyState={
+        <div className={PANEL.empty}>
+          No tasks yet. Click &quot;+&quot; to create one.
+        </div>
+      }
       aiRequests={myAiRequests}
       onUpdateAiRequestText={onUpdateAiRequestText}
       onDeleteAiRequest={onDeleteAiRequest}
@@ -145,6 +115,7 @@ export default function TodoPanel({
           onToggle={onToggle}
           onUpdate={onUpdate}
           onUpdateNotes={onUpdateNotes}
+          onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectTodo}
           isAnchored={getLinkedParagraphIds(item).length > 0}
