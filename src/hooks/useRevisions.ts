@@ -133,7 +133,7 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
 }
 
 export function useRevisions(docId: string | null) {
-  const { state, setState, update, persist } = usePersistentState<RevisionsState>(
+  const { state, setState, update, persist, stateRef } = usePersistentState<RevisionsState>(
     docId,
     "revisions.json",
     EMPTY_STATE,
@@ -200,27 +200,32 @@ export function useRevisions(docId: string | null) {
       const content = body
         ? normalizeRichContent(body)
         : emptyRichContent();
-      let created: GeneralRevision | null = null;
-      update((prev) => {
-        const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
-        const turns: RevisionTurn[] = body
-          ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
-          : [];
-        const rev: GeneralRevision = {
-          id: generateEntityId(),
-          authorId,
-          createdAt: now,
-          text: body,
-          content,
-          turns,
-          resolved: false,
-        };
-        created = rev;
-        return { ...prev, generalRevisions: [...prev.generalRevisions, rev] };
-      });
-      return created;
+      // The revision must be fully constructed *outside* the updater: the
+      // updater runs asynchronously inside `setState`, so returning a value
+      // written from within the updater yields `null` to synchronous callers.
+      // We resolve `authorId` against the current state snapshot via stateRef,
+      // falling back to the default user id when no state has loaded yet.
+      const authorId =
+        authorIdOverride ?? stateRef.current.activeUserId ?? "me";
+      const turns: RevisionTurn[] = body
+        ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
+        : [];
+      const rev: GeneralRevision = {
+        id: generateEntityId(),
+        authorId,
+        createdAt: now,
+        text: body,
+        content,
+        turns,
+        resolved: false,
+      };
+      update((prev) => ({
+        ...prev,
+        generalRevisions: [...prev.generalRevisions, rev],
+      }));
+      return rev;
     },
-    [update],
+    [update, stateRef],
   );
 
   const addTextRevision = useCallback(

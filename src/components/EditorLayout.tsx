@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
-import MenuBar, { type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
+import MenuBar, { DetachedActionsToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import ProgressBar from "./ProgressBar";
@@ -67,6 +67,8 @@ import {
   reanchorByText,
   getLinkedParagraphIds,
   getTextAnchor,
+  createLinkedAnchor,
+  updateLinkedAnchorCard,
 } from "@/links/links";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -577,6 +579,60 @@ export default function EditorLayout() {
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
   }, [snapMargins, menuOverflow]);
+
+  // Detached Actions toolbar — the Actions popover in MenuBar can be torn
+  // off by grabbing its trailing grab bar. State lives here so the
+  // floating copy can outlive the popover (which closes on tear).
+  const [actionsDetached, setActionsDetached] = useState(false);
+  const [actionsPos, setActionsPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  const [actionsDragging, setActionsDragging] = useState(false);
+
+  // Shared drag routine used both when the popover tears off (seamless
+  // pick-up from the mousedown that triggered the detach) and when the
+  // user grabs the detached toolbar afterwards.
+  const beginActionsDrag = useCallback((clientX: number, clientY: number, podLeft: number, podTop: number) => {
+    const offX = clientX - podLeft;
+    const offY = clientY - podTop;
+    setActionsDragging(true);
+    const onMove = (ev: MouseEvent) => {
+      setActionsPos({ left: ev.clientX - offX, top: ev.clientY - offY });
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setActionsDragging(false);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, []);
+
+  const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
+    e.preventDefault();
+    setActionsPos({ left: rect.left, top: rect.top });
+    setActionsDetached(true);
+    beginActionsDrag(e.clientX, e.clientY, rect.left, rect.top);
+  }, [beginActionsDrag]);
+
+  const handleActionsDetachedGrab = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    beginActionsDrag(e.clientX, e.clientY, actionsPos.left, actionsPos.top);
+  }, [actionsPos, beginActionsDrag]);
+
+  const handleActionsReattach = useCallback(() => {
+    setActionsDetached(false);
+  }, []);
+
+  useEffect(() => {
+    if (!actionsDragging) return;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [actionsDragging]);
 
   const menuWrapStyle = useMemo<React.CSSProperties>(() => {
     const needsColRect = menuPos.xSnap !== null || menuPos.ySnap !== null;
@@ -1989,6 +2045,184 @@ export default function EditorLayout() {
     setActiveRight,
     setPendingCommentText,
   });
+
+  /** Default floating-card popup size (matches FloatingCards.tsx) and
+   *  viewport margin for clamping. */
+  const POPUP_W = 360;
+  const POPUP_H = 280;
+  const POPUP_GAP = 8;
+  const POPUP_MARGIN = 8;
+
+  /** Position-and-pop a newly-created card as a floating popover near
+   *  the action toolbar. Spawns below the toolbar by default; flips
+   *  above when the toolbar is close to the viewport bottom so the
+   *  popup stays fully visible. When no anchor rect is available
+   *  (e.g. a handler fired from a keyboard shortcut), the popup
+   *  centers in the viewport. */
+  const popCardAtAnchor = useCallback(
+    (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
+      const key = `${cardKind}:${cardId}`;
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let x: number;
+      let y: number;
+      if (anchorRect) {
+        const spaceBelow = vh - anchorRect.bottom;
+        const openAbove = spaceBelow < POPUP_H + POPUP_GAP + POPUP_MARGIN;
+        y = openAbove
+          ? anchorRect.top - POPUP_H - POPUP_GAP
+          : anchorRect.bottom + POPUP_GAP;
+        x = anchorRect.left;
+      } else {
+        x = (vw - POPUP_W) / 2;
+        y = (vh - POPUP_H) / 2;
+      }
+      x = Math.max(POPUP_MARGIN, Math.min(x, vw - POPUP_W - POPUP_MARGIN));
+      y = Math.max(POPUP_MARGIN, Math.min(y, vh - POPUP_H - POPUP_MARGIN));
+      setCardFloatPosition(key, { x, y, width: POPUP_W, height: POPUP_H });
+      if (!prefsRef.current.poppedOutCards.includes(key)) {
+        toggleCardPopout(key);
+      }
+    },
+    [setCardFloatPosition, toggleCardPopout],
+  );
+
+  /** Snapshot the live editor selection. Callers use this to branch
+   *  between selection-anchored and blank-card creation paths. */
+  const readSelection = useCallback(() => {
+    const ed = editorRef.current?.getEditor();
+    if (!ed || !editorRef.current) return null;
+    const { from, to } = ed.state.selection;
+    if (from === to) return null;
+    const text = ed.state.doc.textBetween(from, to, " ").trim();
+    if (!text) return null;
+    return { ed, from, to, text, editorHandle: editorRef.current };
+  }, []);
+
+  // ─── Toolbar action handlers ────────────────────────────────────────
+  // Each handler creates a card in its corresponding panel — selection-
+  // anchored when text is selected, blank otherwise — then spawns a
+  // floating popup via popCardAtAnchor. `anchorRect` comes from the
+  // Actions toolbar pod via the ActionButton click handler in MenuBar.
+
+  const handleToolbarAddComment = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    let anchorId: string | null = null;
+    if (sel) {
+      const record = createLinkedAnchor(sel.ed, "revision");
+      anchorId = record?.anchorId ?? null;
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    }
+    const rev = addGeneralRevision(sel?.text ?? "");
+    if (anchorId) {
+      setRevisionAnchor(rev.id, { anchorId, anchorText: sel?.text ?? "" });
+      const ed = editorRef.current?.getEditor();
+      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
+    }
+    popCardAtAnchor("revision", rev.id, anchorRect);
+  }, [readSelection, addGeneralRevision, setRevisionAnchor, popCardAtAnchor]);
+
+  const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    let note;
+    if (sel) {
+      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+      const record = createLinkedAnchor(sel.ed, "note");
+      note = addNote(
+        paragraphId,
+        undefined,
+        record ? { anchorId: record.anchorId, anchorText: record.text } : undefined,
+      );
+      if (record) updateLinkedAnchorCard(sel.ed, record.anchorId, "note", note.id);
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    } else {
+      note = addNote(null);
+    }
+    setSelectedNoteId(note.id);
+    popCardAtAnchor("note", note.id, anchorRect);
+  }, [readSelection, addNote, setSelectedNoteId, popCardAtAnchor]);
+
+  const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    const todo = addTodo();
+    if (sel) {
+      updateTodo(todo.id, sel.text);
+      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+      if (paragraphId) addTodoParagraphId(todo.id, paragraphId);
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    }
+    setSelectedTodoId(todo.id);
+    popCardAtAnchor("todo", todo.id, anchorRect);
+  }, [readSelection, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, popCardAtAnchor]);
+
+  const handleToolbarAddCut = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    let cut;
+    if (sel) {
+      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+      const record = createLinkedAnchor(sel.ed, "cut");
+      cut = addCut(
+        paragraphId,
+        undefined,
+        record ? { anchorId: record.anchorId, anchorText: record.text } : undefined,
+      );
+      if (record) updateLinkedAnchorCard(sel.ed, record.anchorId, "cut", cut.id);
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    } else {
+      cut = addCut(null);
+    }
+    setSelectedCutId(cut.id);
+    popCardAtAnchor("cut", cut.id, anchorRect);
+  }, [readSelection, addCut, setSelectedCutId, popCardAtAnchor]);
+
+  const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    if (sel && editorRef.current) {
+      const snippet = archiveContent(sel.text);
+      const result = editorRef.current.archiveSelection(snippet.id);
+      if (result) {
+        if (result.content) updateArchiveSnippet(snippet.id, result.content);
+        if (result.paragraphId) addArchiveParagraphId(snippet.id, result.paragraphId);
+      }
+      popCardAtAnchor("archive", snippet.id, anchorRect);
+    } else {
+      const snippet = archiveContent("");
+      popCardAtAnchor("archive", snippet.id, anchorRect);
+    }
+  }, [readSelection, archiveContent, updateArchiveSnippet, addArchiveParagraphId, popCardAtAnchor]);
+
+  const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {
+    if (!editorRef.current) return;
+    const result = readSelection()
+      ? editorRef.current.createFootnoteFromSelection()
+      : editorRef.current.createEmptyFootnote();
+    if (!result) return;
+    editorRef.current.renumberFootnotes();
+    setSelectedFootnoteId(result.footnoteId);
+    popCardAtAnchor("footnote", result.footnoteId, anchorRect);
+  }, [readSelection, setSelectedFootnoteId, popCardAtAnchor]);
+
+  const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
+    // Citations don't wrap selected text — a blank unanchored citation
+    // is created and popped; the user types the cite key in the card.
+    // The in-text atom is inserted separately from the panel's builder
+    // flow once the card has a key.
+    const ref = addCitation("\\cite{}", undefined, true);
+    setSelectedCitationId(ref.id);
+    popCardAtAnchor("citation", ref.id, anchorRect);
+  }, [addCitation, setSelectedCitationId, popCardAtAnchor]);
+
+  const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    const group = sel
+      ? addQuotationGroup({ text: sel.text, paragraphId: sel.editorHandle.ensureParagraphUuid(sel.from) })
+      : addQuotationGroup({});
+    if (sel) {
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    }
+    setSelectedQuotationGroupId(group.id);
+    popCardAtAnchor("quotation", group.id, anchorRect);
+  }, [readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
 
   const {
     handleDocPermissionGranted,
@@ -3505,12 +3739,14 @@ export default function EditorLayout() {
             >
               <MenuBar
                 editor={overrideEditor ?? editorInstance}
-                onAddComment={handleAddComment}
-                onArchive={handleArchive}
-                onCreateFootnote={handleCreateFootnote}
-                onQuoteSelection={handleQuoteSelection}
-                onAddNote={handleAddNoteFromSelection}
-                onCutSelection={handleCutSelection}
+                onAddComment={handleToolbarAddComment}
+                onArchive={handleToolbarArchive}
+                onCreateFootnote={handleToolbarCreateFootnote}
+                onQuoteSelection={handleToolbarQuoteSelection}
+                onAddNote={handleToolbarAddNote}
+                onAddTodo={handleToolbarAddTodo}
+                onCutSelection={handleToolbarAddCut}
+                onInsertCitation={handleToolbarInsertCitation}
                 showParTitles={showParTitles}
                 onToggleParTitles={() => setShowParTitles((p) => !p)}
                 showLatexComments={showLatexComments}
@@ -3540,6 +3776,33 @@ export default function EditorLayout() {
                 onGrabStart={handleMenuGrabStart}
                 orientation={menuOrientation}
                 onSetOrientation={setMenuOrientation}
+                actionsDetached={actionsDetached}
+                onActionsDetach={handleActionsDetach}
+                onActionsReattach={handleActionsReattach}
+              />
+            </div>,
+            document.body,
+          )}
+          {menuPortalReady && actionsDetached && createPortal(
+            <div
+              className="fixed z-[9999] pointer-events-auto"
+              style={{ left: actionsPos.left, top: actionsPos.top }}
+            >
+              <DetachedActionsToolbar
+                actions={{
+                  onAddComment: handleToolbarAddComment,
+                  onAddNote: handleToolbarAddNote,
+                  onAddTodo: handleToolbarAddTodo,
+                  onCutSelection: handleToolbarAddCut,
+                  onArchive: handleToolbarArchive,
+                  onCreateFootnote: handleToolbarCreateFootnote,
+                  onInsertCitation: handleToolbarInsertCitation,
+                  onQuoteSelection: handleToolbarQuoteSelection,
+                }}
+                onGrabStart={handleActionsDetachedGrab}
+                onReattach={handleActionsReattach}
+                pos={actionsPos}
+                onSetPos={setActionsPos}
               />
             </div>,
             document.body,

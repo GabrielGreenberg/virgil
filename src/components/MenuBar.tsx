@@ -1,7 +1,17 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { Editor } from "@tiptap/react";
+import {
+  IconNotes,
+  IconTodo,
+  IconRevisions,
+  IconCutter,
+  IconArchive,
+  IconFootnote,
+  IconCitation,
+  IconQuotations,
+} from "./editor-layout/panel-icons";
 
 export type MarginaliaType = "quote" | "note" | "archive" | "todo";
 export type DividerLevel = 1 | 2 | 3 | 4;
@@ -21,14 +31,32 @@ const DIVIDER_WIDTH_LABELS: Record<DividerWidth, string> = {
   text: "Text width",
 };
 
-interface MenuBarProps {
+/** Callbacks wired to every button in the Actions toolbar. Shared by the
+ *  attached popover in MenuBar and the detached floating toolbar rendered
+ *  at the EditorLayout level. Every entry corresponds 1:1 to a side-panel
+ *  whose "+" button creates a new item; the toolbar variant operates on
+ *  the live editor selection when one exists, or creates a blank card
+ *  otherwise — either way, a card popup spawns near the toolbar.
+ *
+ *  `anchorRect` is the bounding rect of the surrounding toolbar pod (the
+ *  popover or the detached floater), captured at click time so the
+ *  popup can spawn just below it (flipping above when near the viewport
+ *  bottom). Handlers accept `null` as a safe fallback. */
+export type ActionToolbarCallback = (anchorRect: DOMRect | null) => void;
+
+export interface ActionToolbarCallbacks {
+  onAddComment?: ActionToolbarCallback;
+  onAddNote?: ActionToolbarCallback;
+  onAddTodo?: ActionToolbarCallback;
+  onCutSelection?: ActionToolbarCallback;
+  onArchive?: ActionToolbarCallback;
+  onCreateFootnote?: ActionToolbarCallback;
+  onInsertCitation?: ActionToolbarCallback;
+  onQuoteSelection?: ActionToolbarCallback;
+}
+
+interface MenuBarProps extends ActionToolbarCallbacks {
   editor: Editor | null;
-  onAddComment?: () => void;
-  onArchive?: () => void;
-  onCreateFootnote?: () => void;
-  onQuoteSelection?: () => void;
-  onAddNote?: () => void;
-  onCutSelection?: () => void;
   showParTitles: boolean;
   onToggleParTitles: () => void;
   showLatexComments: boolean;
@@ -54,10 +82,22 @@ interface MenuBarProps {
   onParaNavForward?: () => void;
   paraNavBackDisabled?: boolean;
   paraNavForwardDisabled?: boolean;
+  /* expand/collapse-all-sections intentionally absent: the Actions toolbar
+     is reserved for "create new item" operations. */
   onCloseAllPanels?: () => void;
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
+  /** When true, the Actions popover is hidden because the row has been
+   *  torn off into a free-floating toolbar. Clicking the Actions anchor
+   *  in that state calls onActionsReattach instead of opening the popover. */
+  actionsDetached?: boolean;
+  /** Fired when the user mouseDowns on the Actions popover's grab bar.
+   *  Receives the pod's bounding rect so the detached toolbar can spawn
+   *  at the same spot, and the original mouse event so drag-to-move can
+   *  continue without a pickup re-grip. */
+  onActionsDetach?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
+  onActionsReattach?: () => void;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -209,21 +249,36 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
 
 /** Attached popover — renders `anchor` button and, while open, shows
  *  `children` in a fixed-positioned pod anchored just below the button's
- *  right edge. Styled like a miniature version of the main toolbar. */
+ *  right edge. Styled like a miniature version of the main toolbar.
+ *
+ *  When `onGrabStart` is provided, a grab handle is drawn at the trailing
+ *  end of the pod. MouseDown on that handle closes the popover and fires
+ *  the callback with the pod's rect — the caller can then spawn a
+ *  detached floating version that picks up the drag seamlessly. */
 function AttachedPopover({
   anchor,
   children,
   title,
   active,
+  forceOpen,
+  onAnchorClickWhenForced,
+  onGrabStart,
 }: {
   anchor: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   title: string;
   active?: boolean;
+  /** When true, clicking the anchor does not toggle the popover — it
+   *  fires `onAnchorClickWhenForced` instead. Used for "Actions detached"
+   *  mode where the trigger becomes a re-dock button. */
+  forceOpen?: boolean;
+  onAnchorClickWhenForced?: () => void;
+  onGrabStart?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; right?: number; left?: number } | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const podRef = useRef<HTMLDivElement>(null);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -246,6 +301,10 @@ function AttachedPopover({
   }, [open]);
 
   const toggle = () => {
+    if (forceOpen) {
+      onAnchorClickWhenForced?.();
+      return;
+    }
     if (!open && wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
       // Popup is a fixed-height horizontal row (var(--header-h) = 34px).
@@ -268,6 +327,13 @@ function AttachedPopover({
     setOpen(!open);
   };
 
+  const handleGrab = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!onGrabStart || !podRef.current) return;
+    const rect = podRef.current.getBoundingClientRect();
+    setOpen(false);
+    onGrabStart(e, rect);
+  };
+
   return (
     <div ref={wrapRef} className="relative">
       <button
@@ -283,7 +349,9 @@ function AttachedPopover({
       </button>
       {open && pos && (
         <div
-          className="fixed flex items-center bg-[var(--pod-toolbar)] z-[55] px-2 gap-0.5"
+          ref={podRef}
+          data-action-pod
+          className="fixed flex items-center bg-[var(--pod-toolbar)] z-[55] pl-2 gap-0.5"
           style={{
             top: pos.top,
             bottom: pos.bottom,
@@ -293,11 +361,314 @@ function AttachedPopover({
             borderRadius: 'var(--pod-radius)',
             border: 'var(--pod-border)',
             boxShadow: 'var(--pod-shadow)',
+            paddingRight: onGrabStart ? 0 : 8,
           }}
         >
           {children(close)}
+          {onGrabStart && <PodGrabHandle onMouseDown={handleGrab} title="Drag to detach toolbar" />}
         </div>
       )}
+    </div>
+  );
+}
+
+/** The 3px × 18px rounded-pill grab handle used by the main toolbar and
+ *  the detachable Actions sub-toolbar. Horizontal orientation only
+ *  (the Actions pod is always horizontal). */
+function PodGrabHandle({
+  onMouseDown,
+  title,
+}: {
+  onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
+  title: string;
+}) {
+  return (
+    <div
+      onMouseDown={onMouseDown}
+      title={title}
+      className="group/grab cursor-grab active:cursor-grabbing flex items-center -ml-0.5 py-1 pl-0 pr-1"
+      style={{ touchAction: "none", userSelect: "none" }}
+    >
+      <div className="rounded-full bg-[var(--muted-light)] group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 w-[3px] h-[18px]" />
+    </div>
+  );
+}
+
+/** A single action button. Uses the panel's own icon (from
+ *  panel-icons.tsx), tinted to the panel's default color
+ *  (DEFAULT_PANEL_COLORS in panel-theme.ts). The icon inherits the
+ *  button's text color via `currentColor`, so one prop drives both
+ *  stroke and hover text. `hoverBg` is a light-tinted chip background
+ *  keyed to each panel's color family.
+ *
+ *  On click, the button resolves the surrounding toolbar pod rect
+ *  (looking for the nearest `[data-action-pod]` ancestor) and passes
+ *  it to the callback. The handler uses that rect to spawn a popup
+ *  card directly below (or above) the pod. */
+function ActionButton({
+  onClick,
+  title,
+  color,
+  hoverBg,
+  hoverColor,
+  icon,
+}: {
+  onClick: ActionToolbarCallback;
+  title: string;
+  color: string;
+  hoverBg: string;
+  hoverColor: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={(e) => {
+        const pod = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-action-pod]");
+        onClick(pod?.getBoundingClientRect() ?? null);
+      }}
+      title={title}
+      className="p-1 rounded transition-colors"
+      style={{ color }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.backgroundColor = hoverBg;
+        e.currentTarget.style.color = hoverColor;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.backgroundColor = "";
+        e.currentTarget.style.color = color;
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
+/** Renders the full row of Actions buttons shared by the attached
+ *  popover (in MenuBar) and the detached floating toolbar (in
+ *  EditorLayout). `close` is the popover-close callback when rendered
+ *  inside AttachedPopover; it's a no-op when rendered detached.
+ *
+ *  Each button mirrors the corresponding side-panel's icon tinted to
+ *  that panel's color, so the toolbar reads as a color-coded index of
+ *  the panels it feeds. */
+export function ActionButtonsRow({
+  close,
+  onAddComment,
+  onAddNote,
+  onAddTodo,
+  onCutSelection,
+  onArchive,
+  onCreateFootnote,
+  onInsertCitation,
+  onQuoteSelection,
+}: { close: () => void } & ActionToolbarCallbacks) {
+  return (
+    <>
+      {onAddComment && (
+        <span data-add-comment-button>
+          <ActionButton
+            onClick={(rect) => onAddComment(rect)}
+            title="Add revision"
+            color="#9333ea"
+            hoverBg="#faf5ff"
+            hoverColor="#7e22ce"
+            icon={<IconRevisions size={16} />}
+          />
+        </span>
+      )}
+      {onAddNote && (
+        <span data-add-note-button>
+          <ActionButton
+            onClick={(rect) => onAddNote(rect)}
+            title="Add note"
+            color="#15803d"
+            hoverBg="#f0fdf4"
+            hoverColor="#166534"
+            icon={<IconNotes size={16} />}
+          />
+        </span>
+      )}
+      {onAddTodo && (
+        <span data-add-todo-button>
+          <ActionButton
+            onClick={(rect) => onAddTodo(rect)}
+            title="Add todo"
+            color="#44403c"
+            hoverBg="#f5f4f1"
+            hoverColor="#1c1917"
+            icon={<IconTodo size={16} />}
+          />
+        </span>
+      )}
+      {onCutSelection && (
+        <span data-cut-selection-button>
+          <ActionButton
+            onClick={(rect) => onCutSelection(rect)}
+            title="Add cut"
+            color="#b45757"
+            hoverBg="#fef2f2"
+            hoverColor="#993d3d"
+            icon={<IconCutter size={16} />}
+          />
+        </span>
+      )}
+      {onArchive && (
+        <ActionButton
+          onClick={(rect) => onArchive(rect)}
+          title="Add archive"
+          color="#7191b0"
+          hoverBg="#f0f5fa"
+          hoverColor="#5a7a99"
+          icon={<IconArchive size={16} />}
+        />
+      )}
+      {onCreateFootnote && (
+        <ActionButton
+          onClick={(rect) => onCreateFootnote(rect)}
+          title="Add footnote"
+          color="#b45757"
+          hoverBg="#fef2f2"
+          hoverColor="#993d3d"
+          icon={<IconFootnote />}
+        />
+      )}
+      {onInsertCitation && (
+        <span data-insert-citation-button>
+          <ActionButton
+            onClick={(rect) => onInsertCitation(rect)}
+            title="Add citation"
+            color="#d4a843"
+            hoverBg="#fdf8e1"
+            hoverColor="#a07d26"
+            icon={<IconCitation />}
+          />
+        </span>
+      )}
+      {onQuoteSelection && (
+        <ActionButton
+          onClick={(rect) => onQuoteSelection(rect)}
+          title="Add quotation"
+          color="#a16207"
+          hoverBg="#fffbeb"
+          hoverColor="#854d0e"
+          icon={<IconQuotations size={16} />}
+        />
+      )}
+    </>
+  );
+}
+
+/** Free-floating "detached" Actions toolbar rendered at the EditorLayout
+ *  root once the user drags the Actions popover's grab bar off the main
+ *  toolbar.
+ *
+ *  Two visual modes:
+ *  - Expanded: leading `»` collapse chevron, 8 action buttons, trailing X
+ *    re-dock, trailing grab bar.
+ *  - Collapsed: just the Actions star + the grab bar.
+ *
+ *  When the user toggles between modes, the pod's **right edge stays
+ *  anchored** — the collapsed pod appears where the grab bar used to be,
+ *  not where the chevron used to be. This keeps the collapse affordance
+ *  spatially stable so the user doesn't have to hunt for the toolbar
+ *  after collapsing. The adjustment is applied via `onSetPos`, which
+ *  writes back to the position state owned by EditorLayout. */
+export function DetachedActionsToolbar({
+  actions,
+  onGrabStart,
+  onReattach,
+  pos,
+  onSetPos,
+}: {
+  actions: ActionToolbarCallbacks;
+  onGrabStart: (e: React.MouseEvent<HTMLDivElement>) => void;
+  onReattach: () => void;
+  pos: { left: number; top: number };
+  onSetPos: (pos: { left: number; top: number }) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const podRef = useRef<HTMLDivElement>(null);
+  const prevRightRef = useRef<number | null>(null);
+  // Keep the latest pos in a ref so the layout effect can use it without
+  // re-running when only pos changes (that would cause a feedback loop
+  // since the effect itself calls onSetPos).
+  const posRef = useRef(pos);
+  posRef.current = pos;
+
+  useLayoutEffect(() => {
+    const pod = podRef.current;
+    if (!pod) return;
+    const r = pod.getBoundingClientRect();
+    if (prevRightRef.current != null) {
+      const delta = prevRightRef.current - r.right;
+      if (Math.abs(delta) > 0.5) {
+        onSetPos({ left: posRef.current.left + delta, top: posRef.current.top });
+        // The upcoming re-render with adjusted pos will slide the pod
+        // back to the remembered right edge; no further bookkeeping
+        // needed until the next collapse toggle.
+        return;
+      }
+    }
+    prevRightRef.current = r.right;
+  }, [collapsed, onSetPos]);
+
+  const podStyle: React.CSSProperties = {
+    height: 'var(--header-h)',
+    borderRadius: 'var(--pod-radius)',
+    border: 'var(--pod-border)',
+    boxShadow: 'var(--pod-shadow)',
+  };
+
+  if (collapsed) {
+    return (
+      <div
+        ref={podRef}
+        data-action-pod
+        className="flex items-center bg-[var(--pod-toolbar)] pl-1 gap-0.5"
+        style={podStyle}
+      >
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand actions toolbar"
+          className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 2.2L9.6 5.9L13.6 6.3L10.6 9L11.5 13L8 10.9L4.5 13L5.4 9L2.4 6.3L6.4 5.9z" />
+          </svg>
+        </button>
+        <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={podRef}
+      data-action-pod
+      className="flex items-center bg-[var(--pod-toolbar)] pl-0.5 gap-0.5"
+      style={podStyle}
+    >
+      <button
+        onClick={() => setCollapsed(true)}
+        title="Collapse actions toolbar"
+        className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5.5 4L9.5 8L5.5 12" />
+          <path d="M9.5 4L13.5 8L9.5 12" />
+        </svg>
+      </button>
+      <ActionButtonsRow close={() => {}} {...actions} />
+      <button
+        onClick={onReattach}
+        title="Re-dock actions toolbar"
+        className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+      >
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 4l8 8M12 4l-8 8" />
+        </svg>
+      </button>
+      <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" />
     </div>
   );
 }
@@ -527,7 +898,7 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onCutSelection, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, actionsDetached, onActionsDetach, onActionsReattach }: MenuBarProps) {
   if (!editor) return null;
 
   // Track whether any formatting mark is active — the Format button
@@ -724,9 +1095,19 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       </AttachedPopover>
 
       {/* Actions popup — document-level actions the user can take against a
-          selection (revision, note, cut, archive, footnote, quote). */}
+          selection (revision, note, cut, archive, footnote, quote), plus
+          structural helpers (expand / collapse all sections).
+
+          The popover carries a grab bar at its trailing edge: grabbing it
+          tears the toolbar off and hands a detached floating copy to the
+          EditorLayout (see onActionsDetach). While detached, the anchor
+          button becomes a re-dock trigger. */}
       <AttachedPopover
-        title="Actions"
+        title={actionsDetached ? "Re-dock actions" : "Actions"}
+        active={actionsDetached}
+        forceOpen={actionsDetached}
+        onAnchorClickWhenForced={onActionsReattach}
+        onGrabStart={onActionsDetach}
         anchor={
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 2.2L9.6 5.9L13.6 6.3L10.6 9L11.5 13L8 10.9L4.5 13L5.4 9L2.4 6.3L6.4 5.9z" />
@@ -734,81 +1115,17 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         }
       >
         {(close) => (
-          <>
-            {onAddComment && (
-              <IconBtn
-                onClick={() => { onAddComment(); close(); }}
-                data-add-comment-button
-                title="Add revision on selection (Cmd+Shift+M)"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 2.5h12a.5.5 0 0 1 .5.5v8a.5.5 0 0 1-.5.5H4.5L2 13.5V3a.5.5 0 0 1 .5-.5z" />
-                  <line x1="8" y1="5.5" x2="8" y2="9" />
-                  <line x1="6.25" y1="7.25" x2="9.75" y2="7.25" />
-                </svg>
-              </IconBtn>
-            )}
-            {onAddNote && (
-              <button
-                onClick={() => { onAddNote(); close(); }}
-                data-add-note-button
-                title="Add note linked to selection"
-                className="p-1 rounded text-sm transition-colors text-[#15803d] hover:bg-[#f0fdf4] hover:text-[#166534]"
-              >
-                <span style={{ fontSize: 11, fontWeight: 700, fontFamily: "var(--font-sans), system-ui, sans-serif", lineHeight: 1, display: "inline-block", width: 16, textAlign: "center" }}>N</span>
-              </button>
-            )}
-            {onCutSelection && (
-              <button
-                onClick={() => { onCutSelection(); close(); }}
-                data-cut-selection-button
-                title="Cut selection into Cutter panel"
-                className="p-1 rounded transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="4" cy="4" r="2" />
-                  <circle cx="4" cy="12" r="2" />
-                  <path d="M13 3L5.5 10.5" />
-                  <path d="M9.5 9.5L13 13" />
-                </svg>
-              </button>
-            )}
-            {onArchive && (
-              <button
-                onClick={() => { onArchive(); close(); }}
-                title="Archive selected text"
-                className="p-1 rounded transition-colors text-[#7191b0] hover:bg-[#f0f5fa] hover:text-[#5a7a99]"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="2" width="12" height="12" rx="2.5" />
-                  <text x="8" y="11.2" textAnchor="middle" fontSize="9" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor" stroke="none">A</text>
-                </svg>
-              </button>
-            )}
-            {onCreateFootnote && (
-              <button
-                onClick={() => { onCreateFootnote(); close(); }}
-                title="Create footnote from selection"
-                className="p-1 rounded transition-colors text-[#b45757] hover:bg-[#fef2f2] hover:text-[#993d3d]"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <text x="3" y="12" fontSize="12" fontWeight="600" fontFamily="var(--font-sans), sans-serif" fill="currentColor">fn</text>
-                </svg>
-              </button>
-            )}
-            {onQuoteSelection && (
-              <button
-                onClick={() => { onQuoteSelection(); close(); }}
-                title="Create quotation from selection"
-                className="p-1 rounded transition-colors text-[#a16207] hover:bg-[#fffbeb] hover:text-[#854d0e]"
-              >
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none">
-                  <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
-                  <path d="M10 3.5C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
-                </svg>
-              </button>
-            )}
-          </>
+          <ActionButtonsRow
+            close={close}
+            onAddComment={onAddComment}
+            onAddNote={onAddNote}
+            onAddTodo={onAddTodo}
+            onCutSelection={onCutSelection}
+            onArchive={onArchive}
+            onCreateFootnote={onCreateFootnote}
+            onInsertCitation={onInsertCitation}
+            onQuoteSelection={onQuoteSelection}
+          />
         )}
       </AttachedPopover>
 
