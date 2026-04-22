@@ -11,7 +11,7 @@ interface BuildArgs {
   notes: UserNote[];
   selectedNoteId: string | null;
   setSelectedNoteId: (id: string | null) => void;
-  scrollToParagraphId: (uuid: string) => void;
+  jumpToCard: (card: UserNote) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
@@ -67,7 +67,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
               onUpdateTitle={a.updateNoteTitle}
               onDelete={a.deleteNote}
               onSelect={a.setSelectedNoteId}
-              onJump={() => a.scrollToParagraphId(pid)}
+              onJump={() => a.jumpToCard(note)}
               onEditorFocus={a.setOverrideEditor}
               getCitationDisplayText={a.getCitationDisplayText}
               onCitationCreated={a.onCitationCreated}

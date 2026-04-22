@@ -53,7 +53,7 @@ export function QuotationsHost(p: QuotationsHostProps) {
       onUpdateNotes={p.updateQuotationNotes}
       selectedGroupId={selectedQuotationGroupId}
       onSelectGroup={setSelectedQuotationGroupId}
-      onScrollToParagraph={(uuid) => editorRef.current?.scrollToParagraphId(uuid)}
+      onJumpToCard={(group) => editorRef.current?.jumpToCard(group)}
       aiRequests={aiRequests}
       onAddAiRequest={() => addAiRequest("quotation")}
       onUpdateAiRequestText={updateAiRequestText}

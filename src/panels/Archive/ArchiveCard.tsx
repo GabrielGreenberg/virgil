@@ -33,7 +33,7 @@ export function ArchiveCard({
   onEdit,
   onUpdateTitle,
   onDelete,
-  onScrollToMarker,
+  onJump,
   onEditorFocus,
   getCitationDisplayText,
   onCitationCreated,
@@ -48,7 +48,7 @@ export function ArchiveCard({
   onEdit: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
-  onScrollToMarker?: (id: string) => void;
+  onJump?: () => void;
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
@@ -89,10 +89,10 @@ export function ArchiveCard({
         />
       }
       headerTrailing={
-        isAnchored && onScrollToMarker ? (
+        isAnchored && onJump ? (
           <CardTargetIcon
             selected={selected}
-            onClick={() => onScrollToMarker(snippet.id)}
+            onClick={onJump}
             title="Jump to archive marker"
           />
         ) : orphaned ? (
