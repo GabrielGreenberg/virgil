@@ -190,6 +190,11 @@ export interface EditorHandle {
   updateFootnoteTitle: (footnoteId: string, title: string) => void;
   deleteFootnote: (footnoteId: string) => void;
   createFootnoteFromSelection: () => { footnoteId: string } | null;
+  /** Insert an empty footnote atom at the current cursor position (or
+   *  the start of the doc if no cursor) and return its id. Used by
+   *  toolbar actions that need to create a footnote regardless of
+   *  whether text is selected. */
+  createEmptyFootnote: () => { footnoteId: string } | null;
   renumberFootnotes: () => void;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string) => void;
@@ -1819,6 +1824,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         .chain()
         .focus()
         .deleteSelection()
+        .insertContent({
+          type: "footnote",
+          attrs: { footnoteId, content, number: 0 },
+        })
+        .run();
+      return { footnoteId };
+    },
+    createEmptyFootnote(): { footnoteId: string } | null {
+      if (!editor) return null;
+      const footnoteId = generateEntityId();
+      const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
+      editor
+        .chain()
+        .focus()
         .insertContent({
           type: "footnote",
           attrs: { footnoteId, content, number: 0 },
