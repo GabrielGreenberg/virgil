@@ -303,6 +303,7 @@ export default function EditorLayout() {
     removeNoteParagraphId,
     deleteNote,
     setNoteAnchor,
+    discardPristineNotes,
   } = useNotes(docIdForHooks);
   const {
     cuts,
@@ -312,6 +313,7 @@ export default function EditorLayout() {
     addCutParagraphId,
     removeCutParagraphId,
     deleteCut,
+    discardPristineCuts,
   } = useCutter(docIdForHooks);
   const [selectedCutId, setSelectedCutId] = useState<string | null>(null);
   const {
@@ -340,6 +342,7 @@ export default function EditorLayout() {
     archiveDone: archiveTodos,
     addParagraphId: addTodoParagraphId,
     removeParagraphId: removeTodoParagraphId,
+    discardPristineTodos,
   } = useTodos(docIdForHooks);
 
   const {
@@ -2535,6 +2538,7 @@ export default function EditorLayout() {
           setTodoAiRequest={setTodoAiRequest}
           deleteTodo={deleteTodo}
           archiveTodos={archiveTodos}
+          discardPristine={discardPristineTodos}
         />
       );
     }
@@ -2574,6 +2578,7 @@ export default function EditorLayout() {
           updateNote={updateNote}
           updateNoteTitle={updateNoteTitle}
           deleteNote={deleteNote}
+          discardPristine={discardPristineNotes}
           onHoverNote={handleHoverNote}
           onDropSelection={handleDropSelectionOnNotes}
           onDropParagraph={handleDropParagraphOnNotes}
@@ -2819,6 +2824,7 @@ export default function EditorLayout() {
           updateCut={updateCut}
           updateCutTitle={updateCutTitle}
           deleteCut={deleteCut}
+          discardPristine={discardPristineCuts}
           onHoverCut={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
           onDropParagraph={handleDropParagraphOnCutter}

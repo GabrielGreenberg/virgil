@@ -6,6 +6,7 @@ import type { TodoState, TodoItem } from "@/lib/types";
 import { addParagraphLink, removeParagraphLink } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
+import { usePristineTracker } from "./usePristineTracker";
 
 const EMPTY: TodoState = { items: [] };
 
@@ -34,6 +35,7 @@ export function useTodos(docId: string | null) {
     EMPTY,
     { migrate: migrateTodos, errorLabel: "todos" },
   );
+  const pristine = usePristineTracker();
 
   const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
@@ -45,37 +47,43 @@ export function useTodos(docId: string | null) {
       createdAt: new Date().toISOString(),
       links: [],
     };
+    pristine.markNew(item.id);
     update((prev) => ({ items: [...prev.items, item] }));
     return item;
-  }, [update, state.items.length]);
+  }, [update, state.items.length, pristine]);
 
   const toggleItem = useCallback((id: string) => {
+    pristine.markDirty(id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, done: !i.done } : i),
     }));
-  }, [update]);
+  }, [update, pristine]);
 
   const updateItem = useCallback((id: string, text: string) => {
+    pristine.markDirty(id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, text } : i),
     }));
-  }, [update]);
+  }, [update, pristine]);
 
   const updateNotes = useCallback((id: string, notes: string) => {
+    pristine.markDirty(id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, notes } : i),
     }));
-  }, [update]);
+  }, [update, pristine]);
 
   const setAiRequest = useCallback((id: string, value: boolean) => {
+    pristine.markDirty(id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, aiRequest: value } : i),
     }));
-  }, [update]);
+  }, [update, pristine]);
 
   const deleteItem = useCallback((id: string) => {
+    pristine.markDirty(id);
     update((prev) => ({ items: prev.items.filter((i) => i.id !== id) }));
-  }, [update]);
+  }, [update, pristine]);
 
   const reorder = useCallback((fromIndex: number, toIndex: number) => {
     update((prev) => {
@@ -106,6 +114,18 @@ export function useTodos(docId: string | null) {
     }));
   }, [update]);
 
+  /**
+   * Drop todos that were created via `addItem()` but never edited. Call
+   * from panel-close so "press +, do nothing, leave" doesn't leave a
+   * blank "Task N" behind.
+   */
+  const discardPristineTodos = useCallback(() => {
+    const ids = pristine.takePristine();
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    update((prev) => ({ items: prev.items.filter((i) => !idSet.has(i.id)) }));
+  }, [update, pristine]);
+
   return {
     items: state.items,
     addItem,
@@ -118,5 +138,6 @@ export function useTodos(docId: string | null) {
     archiveDone,
     addParagraphId,
     removeParagraphId,
+    discardPristineTodos,
   };
 }

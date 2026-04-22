@@ -14,6 +14,7 @@ import {
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
+import { usePristineTracker } from "./usePristineTracker";
 
 const EMPTY_STATE: CutterState = { cuts: [] };
 
@@ -40,6 +41,7 @@ export function useCutter(docId: string | null) {
     EMPTY_STATE,
     { migrate: migrateCutter, errorLabel: "cuts" },
   );
+  const pristine = usePristineTracker();
 
   const addCut = useCallback(
     (
@@ -56,28 +58,33 @@ export function useCutter(docId: string | null) {
       };
       if (paragraphId) cut = addParagraphLink(cut, "cut", paragraphId);
       if (anchor) cut = setTextAnchorLink(cut, "cut", anchor.anchorId, anchor.anchorText);
+      // Only blank-on-creation cuts are pristine — a cut seeded with text,
+      // an anchor, or a paragraph link already carries user intent.
+      if (!content && !anchor && !paragraphId) pristine.markNew(cut.id);
       update((prev) => ({ cuts: [...prev.cuts, cut] }));
       return cut;
     },
-    [update],
+    [update, pristine],
   );
 
   const updateCut = useCallback(
     (id: string, content: JSONContent) => {
+      pristine.markDirty(id);
       update((prev) => ({
         cuts: prev.cuts.map((c) => (c.id === id ? { ...c, content } : c)),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const updateCutTitle = useCallback(
     (id: string, title: string) => {
+      pristine.markDirty(id);
       update((prev) => ({
         cuts: prev.cuts.map((c) => (c.id === id ? { ...c, title } : c)),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const addCutParagraphId = useCallback(
@@ -104,10 +111,22 @@ export function useCutter(docId: string | null) {
 
   const deleteCut = useCallback(
     (id: string) => {
+      pristine.markDirty(id);
       update((prev) => ({ cuts: prev.cuts.filter((c) => c.id !== id) }));
     },
-    [update],
+    [update, pristine],
   );
+
+  /**
+   * Drop cuts that were created via `addCut()` (with no seed content,
+   * anchor, or paragraph link) but never edited. Call from panel-close.
+   */
+  const discardPristineCuts = useCallback(() => {
+    const ids = pristine.takePristine();
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    update((prev) => ({ cuts: prev.cuts.filter((c) => !idSet.has(c.id)) }));
+  }, [update, pristine]);
 
   const clearCutAnchor = useCallback(
     (anchorId: string) => {
@@ -148,5 +167,6 @@ export function useCutter(docId: string | null) {
     removeCutParagraphId,
     deleteCut,
     clearCutAnchor,
+    discardPristineCuts,
   };
 }

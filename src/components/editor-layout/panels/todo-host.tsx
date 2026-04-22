@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import TodoPanel from "@/panels/Todo";
 import type { TodoItem } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -20,6 +21,8 @@ export interface TodoHostProps {
   setTodoAiRequest: (id: string, value: boolean) => void;
   deleteTodo: (id: string) => void;
   archiveTodos: () => void;
+  /** Called on host unmount to drop cards created via "+" but never edited. */
+  discardPristine: () => void;
 }
 
 export function TodoHost(p: TodoHostProps) {
@@ -27,6 +30,9 @@ export function TodoHost(p: TodoHostProps) {
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
   const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const discardRef = useRef(p.discardPristine);
+  discardRef.current = p.discardPristine;
+  useEffect(() => () => discardRef.current(), []);
   return (
     <TodoPanel
       items={p.todoItems}

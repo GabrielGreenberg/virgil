@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import NotesPanel from "@/panels/Notes";
 import type { useNotes } from "@/hooks/useNotes";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -19,6 +20,8 @@ export interface NotesHostProps {
   updateNote: NotesHook["updateNote"];
   updateNoteTitle: NotesHook["updateNoteTitle"];
   deleteNote: NotesHook["deleteNote"];
+  /** Called on host unmount to drop cards created via "+" but never edited. */
+  discardPristine: () => void;
   onHoverNote: (noteId: string | null) => void;
   onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph: (paragraphId: string) => void;
@@ -30,6 +33,9 @@ export function NotesHost(p: NotesHostProps) {
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
+  const discardRef = useRef(p.discardPristine);
+  discardRef.current = p.discardPristine;
+  useEffect(() => () => discardRef.current(), []);
   return (
     <NotesPanel
       notes={p.notes}

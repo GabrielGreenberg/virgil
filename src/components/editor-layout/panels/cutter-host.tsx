@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import CutterPanel from "@/panels/Cutter";
 import type { CutItem } from "@/lib/types";
@@ -16,6 +17,8 @@ export interface CutterHostProps {
   updateCut: (id: string, content: JSONContent) => void;
   updateCutTitle: (id: string, title: string) => void;
   deleteCut: (id: string) => void;
+  /** Called on host unmount to drop cards created via "+" but never edited. */
+  discardPristine: () => void;
   onHoverCut: (id: string | null) => void;
   onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph: (paragraphId: string) => void;
@@ -25,6 +28,9 @@ export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedCutId, setSelectedCutId } = useSelectionsContext();
+  const discardRef = useRef(p.discardPristine);
+  discardRef.current = p.discardPristine;
+  useEffect(() => () => discardRef.current(), []);
   return (
     <CutterPanel
       cuts={p.cuts}
