@@ -119,6 +119,7 @@ import {
 } from "./editor-layout/panel-icons";
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
 import { ZenMargin } from "./editor-layout/zen-margin";
+import { MarginActionToolbar } from "./MarginActionToolbar";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { SplitEditorPanes } from "./editor-layout/split-editor-panes";
 import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
@@ -2428,6 +2429,28 @@ export default function EditorLayout() {
     popCardAtAnchor("quotation", group.id, anchorRect);
   }, [readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
 
+  // Callbacks bag shared by the detached Actions toolbar and the per-margin
+  // toolbars shown when Omni-view is docked on a side.
+  const marginToolbarActions = useMemo(() => ({
+    onAddComment: handleToolbarAddComment,
+    onAddNote: handleToolbarAddNote,
+    onAddTodo: handleToolbarAddTodo,
+    onCutSelection: handleToolbarAddCut,
+    onArchive: handleToolbarArchive,
+    onCreateFootnote: handleToolbarCreateFootnote,
+    onInsertCitation: handleToolbarInsertCitation,
+    onQuoteSelection: handleToolbarQuoteSelection,
+  }), [
+    handleToolbarAddComment,
+    handleToolbarAddNote,
+    handleToolbarAddTodo,
+    handleToolbarAddCut,
+    handleToolbarArchive,
+    handleToolbarCreateFootnote,
+    handleToolbarInsertCitation,
+    handleToolbarQuoteSelection,
+  ]);
+
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
   // Maps each drop-accepting panel to the MIME types its icon accepts,
   // and a handler that takes the DataTransfer and routes to the same
@@ -3556,6 +3579,15 @@ export default function EditorLayout() {
       return null;
     }
 
+    const omniActive = top === "omni" || bottom === "omni";
+    const overlay = omniActive ? (
+      <MarginActionToolbar
+        side={side}
+        actions={marginToolbarActions}
+        placements={prefs.placements}
+      />
+    ) : undefined;
+
     if (bottom != null) {
       // Split mode
       return (
@@ -3568,6 +3600,7 @@ export default function EditorLayout() {
           onFocusHalf={setFocused}
           topPanelId={top ?? "blank"}
           bottomPanelId={bottom}
+          topOverlay={overlay}
         >
           {{
             top: top ? renderPanelWithChrome(top, side, "top") : <div className="w-full h-full bg-[var(--background)]" />,
@@ -3582,7 +3615,7 @@ export default function EditorLayout() {
     // Single mode. Omni-view renders chromeless — no pod background/border —
     // so its cards float directly on the blank canvas behind the panels.
     return (
-      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined}>
+      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined} topOverlay={overlay}>
 
         {renderPanelWithChrome(top!, side)}
       </PanelColumn>

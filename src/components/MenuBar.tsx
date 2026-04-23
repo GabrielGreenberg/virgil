@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useLayoutEffect, useCallback, useId } from "react";
+import { memo, useState, useRef, useEffect, useLayoutEffect, useCallback, useId, Fragment } from "react";
 import { Editor } from "@tiptap/react";
 import {
   IconNotes,
@@ -399,7 +399,7 @@ function PodGrabHandle({
  *  (looking for the nearest `[data-action-pod]` ancestor) and passes
  *  it to the callback. The handler uses that rect to spawn a popup
  *  card directly below (or above) the pod. */
-function ActionButton({
+export function ActionButton({
   onClick,
   title,
   color,
@@ -437,6 +437,34 @@ function ActionButton({
   );
 }
 
+/** Static registry for every user-creatable item surfaced by the Actions
+ *  toolbar. Each entry pairs a callback key with its source panel (used
+ *  to look up side placement in viewPrefs) and its visual identity.
+ *  Shared by `ActionButtonsRow` (main + detached) and `MarginActionToolbar`.
+ *  Order is the display order in the main toolbar. `dataAttr` keeps the
+ *  existing test/e2e hooks that some callers rely on. */
+export interface ActionButtonDef {
+  callbackKey: keyof ActionToolbarCallbacks;
+  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "quotations";
+  title: string;
+  color: string;
+  hoverBg: string;
+  hoverColor: string;
+  icon: React.ReactNode;
+  dataAttr?: string;
+}
+
+export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
+  { callbackKey: "onAddComment", panelId: "revisions", title: "Add revision", color: "#9333ea", hoverBg: "#faf5ff", hoverColor: "#7e22ce", icon: <IconRevisions size={16} />, dataAttr: "data-add-comment-button" },
+  { callbackKey: "onAddNote", panelId: "notes", title: "Add note", color: "#15803d", hoverBg: "#f0fdf4", hoverColor: "#166534", icon: <IconNotes size={16} />, dataAttr: "data-add-note-button" },
+  { callbackKey: "onAddTodo", panelId: "todo", title: "Add todo", color: "#44403c", hoverBg: "#f5f4f1", hoverColor: "#1c1917", icon: <IconTodo size={16} />, dataAttr: "data-add-todo-button" },
+  { callbackKey: "onCutSelection", panelId: "cutter", title: "Add cut", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconCutter size={16} />, dataAttr: "data-cut-selection-button" },
+  { callbackKey: "onArchive", panelId: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
+  { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote /> },
+  { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation />, dataAttr: "data-insert-citation-button" },
+  { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
+];
+
 /** Renders the full row of Actions buttons shared by the attached
  *  popover (in MenuBar) and the detached floating toolbar (in
  *  EditorLayout). `close` is the popover-close callback when rendered
@@ -447,107 +475,32 @@ function ActionButton({
  *  the panels it feeds. */
 export function ActionButtonsRow({
   close,
-  onAddComment,
-  onAddNote,
-  onAddTodo,
-  onCutSelection,
-  onArchive,
-  onCreateFootnote,
-  onInsertCitation,
-  onQuoteSelection,
+  ...callbacks
 }: { close: () => void } & ActionToolbarCallbacks) {
   return (
     <>
-      {onAddComment && (
-        <span data-add-comment-button>
+      {ACTION_BUTTON_DEFS.map((def) => {
+        const cb = callbacks[def.callbackKey];
+        if (!cb) return null;
+        const button = (
           <ActionButton
-            onClick={(rect) => onAddComment(rect)}
-            title="Add revision"
-            color="#9333ea"
-            hoverBg="#faf5ff"
-            hoverColor="#7e22ce"
-            icon={<IconRevisions size={16} />}
+            onClick={(rect) => cb(rect)}
+            title={def.title}
+            color={def.color}
+            hoverBg={def.hoverBg}
+            hoverColor={def.hoverColor}
+            icon={def.icon}
           />
-        </span>
-      )}
-      {onAddNote && (
-        <span data-add-note-button>
-          <ActionButton
-            onClick={(rect) => onAddNote(rect)}
-            title="Add note"
-            color="#15803d"
-            hoverBg="#f0fdf4"
-            hoverColor="#166534"
-            icon={<IconNotes size={16} />}
-          />
-        </span>
-      )}
-      {onAddTodo && (
-        <span data-add-todo-button>
-          <ActionButton
-            onClick={(rect) => onAddTodo(rect)}
-            title="Add todo"
-            color="#44403c"
-            hoverBg="#f5f4f1"
-            hoverColor="#1c1917"
-            icon={<IconTodo size={16} />}
-          />
-        </span>
-      )}
-      {onCutSelection && (
-        <span data-cut-selection-button>
-          <ActionButton
-            onClick={(rect) => onCutSelection(rect)}
-            title="Add cut"
-            color="#b45757"
-            hoverBg="#fef2f2"
-            hoverColor="#993d3d"
-            icon={<IconCutter size={16} />}
-          />
-        </span>
-      )}
-      {onArchive && (
-        <ActionButton
-          onClick={(rect) => onArchive(rect)}
-          title="Add archive"
-          color="#7191b0"
-          hoverBg="#f0f5fa"
-          hoverColor="#5a7a99"
-          icon={<IconArchive size={16} />}
-        />
-      )}
-      {onCreateFootnote && (
-        <ActionButton
-          onClick={(rect) => onCreateFootnote(rect)}
-          title="Add footnote"
-          color="#b45757"
-          hoverBg="#fef2f2"
-          hoverColor="#993d3d"
-          icon={<IconFootnote />}
-        />
-      )}
-      {onInsertCitation && (
-        <span data-insert-citation-button>
-          <ActionButton
-            onClick={(rect) => onInsertCitation(rect)}
-            title="Add citation"
-            color="#d4a843"
-            hoverBg="#fdf8e1"
-            hoverColor="#a07d26"
-            icon={<IconCitation />}
-          />
-        </span>
-      )}
-      {onQuoteSelection && (
-        <ActionButton
-          onClick={(rect) => onQuoteSelection(rect)}
-          title="Add quotation"
-          color="#a16207"
-          hoverBg="#fffbeb"
-          hoverColor="#854d0e"
-          icon={<IconQuotations size={16} />}
-        />
-      )}
+        );
+        if (def.dataAttr) {
+          return (
+            <span key={def.callbackKey} {...{ [def.dataAttr]: "" }}>
+              {button}
+            </span>
+          );
+        }
+        return <Fragment key={def.callbackKey}>{button}</Fragment>;
+      })}
     </>
   );
 }
