@@ -1,12 +1,10 @@
 // Generate a macOS .icns (plus the PWA / apple-touch set) from the
 // parchment-V source at icons/new_new_icon.png.
 //
-// The source art is already a squircle-shaped illustration with a
-// transparent canvas around it — so unlike generate-app-icons.mjs we
-// don't composite onto a ceramic background. We just pad to square,
-// inset inside a transparent canvas (Apple reserves ~10% breathing
-// room around the squircle for shadow/glow), add a soft ambient
-// shadow, and render out every size the iconset needs.
+// The source art already carries its own squircle shape. We pad to
+// square, inset slightly to leave room for a soft ambient drop shadow
+// (standard macOS look), and composite: shadow → artwork on a
+// transparent canvas.
 
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
@@ -22,15 +20,13 @@ const ICONSET_DIR = join(repoRoot, "icons/Virgil.iconset");
 const ICNS_OUT = join(repoRoot, "icons/Virgil.icns");
 const MASTER_1024 = join(repoRoot, "icons/app-icon-1024.png");
 
-// Apple reserves ~10% transparent padding around the squircle on the
-// 1024 canvas. The shadow lives in that margin.
-const SQUIRCLE_INSET_PCT = 0.10;
-
-// Soft ambient shadow below the squircle. Kept subtle so it doesn't
-// fight the watercolor's own painterly edges.
-const SHADOW_BLUR_PCT = 0.018;   // stdDeviation, at 1024 → ~18px
-const SHADOW_DY_PCT = 0.009;     // vertical offset, at 1024 → ~9px
-const SHADOW_OPACITY = 0.28;
+// Inset the squircle inside the canvas so the shadow has breathing
+// room. Kept modest (~6%) so the icon still looks big at small sizes.
+const INSET_PCT = 0.06;
+// Subtle ambient shadow.
+const SHADOW_BLUR_PCT = 0.014;  // stdDeviation, ~14px at 1024
+const SHADOW_DY_PCT = 0.006;    // vertical offset, ~6px at 1024
+const SHADOW_OPACITY = 0.30;
 
 /** Pad source to a perfect square on a transparent canvas. */
 async function loadSquareSource() {
@@ -50,74 +46,61 @@ async function loadSquareSource() {
     .toBuffer();
 }
 
-/** Compose the squircle artwork onto a transparent canvas of `size`
- *  with the Apple-style inset and a soft ambient drop shadow. */
-async function composeIcon(srcSquare, size) {
-  const inset = Math.round(size * SQUIRCLE_INSET_PCT);
-  const squircleSize = size - 2 * inset;
-  const shadowBlur = Math.max(1, Math.round(size * SHADOW_BLUR_PCT));
-  const shadowDy = Math.max(1, Math.round(size * SHADOW_DY_PCT));
-
-  // Resize art to squircle size.
-  const artwork = await sharp(srcSquare)
-    .resize(squircleSize, squircleSize, { fit: "contain" })
-    .toBuffer();
-
-  // Build the shadow by blurring the alpha channel of the artwork,
-  // then recolouring it to semi-transparent black, then offsetting.
-  const alphaOnly = await sharp(artwork)
-    .extractChannel("alpha")
-    .toBuffer();
-
-  // Turn the alpha mask into a black-on-transparent image, blur it,
-  // and dim it.
-  const shadowLayer = await sharp({
+/** Build a soft black silhouette of `artwork` (RGBA buffer, square). */
+async function makeShadow(artwork, artSize, blurPx) {
+  // Solid black square of the artwork's size, then mask it by the
+  // artwork's alpha using dest-in. The input to dest-in must be a
+  // full RGBA image (not a single-channel alpha), otherwise the
+  // blend degenerates into a filled square.
+  const blackBox = await sharp({
     create: {
-      width: squircleSize,
-      height: squircleSize,
+      width: artSize,
+      height: artSize,
       channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
+      background: { r: 0, g: 0, b: 0, alpha: 1 },
     },
   })
-    .composite([
-      {
-        input: await sharp({
-          create: {
-            width: squircleSize,
-            height: squircleSize,
-            channels: 3,
-            background: { r: 0, g: 0, b: 0 },
-          },
-        })
-          .png()
-          .toBuffer(),
-        blend: "over",
-      },
-      { input: alphaOnly, blend: "dest-in" },
-    ])
-    .blur(shadowBlur)
     .png()
     .toBuffer();
 
-  // Dim the shadow via linear (multiply alpha by SHADOW_OPACITY).
-  const shadowDimmed = await sharp(shadowLayer)
-    .ensureAlpha()
-    .linear([1, 1, 1, SHADOW_OPACITY], [0, 0, 0, 0])
+  const silhouette = await sharp(blackBox)
+    .composite([{ input: artwork, blend: "dest-in" }])
+    .png()
     .toBuffer();
 
-  // Composite: transparent canvas → shadow (offset down) → artwork.
-  const canvas = sharp({
+  // Blur, then dim the alpha to SHADOW_OPACITY.
+  return sharp(silhouette)
+    .blur(blurPx)
+    .ensureAlpha()
+    .linear([1, 1, 1, SHADOW_OPACITY], [0, 0, 0, 0])
+    .png()
+    .toBuffer();
+}
+
+/** Resize art → inset canvas, add soft drop shadow, emit PNG. */
+async function composeIcon(srcSquare, size) {
+  const inset = Math.round(size * INSET_PCT);
+  const artSize = size - 2 * inset;
+  const blurPx = Math.max(1, size * SHADOW_BLUR_PCT);
+  const dy = Math.max(1, Math.round(size * SHADOW_DY_PCT));
+
+  const artwork = await sharp(srcSquare)
+    .resize(artSize, artSize, { fit: "contain" })
+    .png()
+    .toBuffer();
+
+  const shadow = await makeShadow(artwork, artSize, blurPx);
+
+  return sharp({
     create: {
       width: size,
       height: size,
       channels: 4,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
-  });
-
-  return canvas
+  })
     .composite([
-      { input: shadowDimmed, left: inset, top: inset + shadowDy },
+      { input: shadow, left: inset, top: inset + dy },
       { input: artwork, left: inset, top: inset },
     ])
     .png();
@@ -144,32 +127,27 @@ async function main() {
   mkdirSync(ICONSET_DIR, { recursive: true });
 
   for (const { name, size } of ICONSET_SIZES) {
-    const outPath = join(ICONSET_DIR, name);
-    await (await composeIcon(srcSquare, size)).toFile(outPath);
+    await (await composeIcon(srcSquare, size)).toFile(join(ICONSET_DIR, name));
     console.log(`wrote iconset/${name} (${size}x${size})`);
   }
 
-  // Master PNG, re-used as the canonical 1024 archive.
   await (await composeIcon(srcSquare, 1024)).toFile(MASTER_1024);
-  console.log(`wrote ${MASTER_1024.replace(repoRoot + "/", "")} (1024x1024)`);
+  console.log(`wrote icons/app-icon-1024.png (1024x1024)`);
 
-  // PWA icons. These are baked transparent PNGs — no ceramic
-  // background, since the parchment art already carries its own look.
   const pwa = [
     { file: "public/apple-touch-icon.png", size: 180 },
     { file: "public/icon-192x192.png", size: 192 },
     { file: "public/icon-512x512.png", size: 512 },
   ];
   for (const { file, size } of pwa) {
-    const outPath = join(repoRoot, file);
-    await (await composeIcon(srcSquare, size)).toFile(outPath);
+    await (await composeIcon(srcSquare, size)).toFile(join(repoRoot, file));
     console.log(`wrote ${file} (${size}x${size})`);
   }
 
   execFileSync("iconutil", ["--convert", "icns", "--output", ICNS_OUT, ICONSET_DIR], {
     stdio: "inherit",
   });
-  console.log(`wrote ${ICNS_OUT.replace(repoRoot + "/", "")}`);
+  console.log(`wrote icons/Virgil.icns`);
 }
 
 await main();
