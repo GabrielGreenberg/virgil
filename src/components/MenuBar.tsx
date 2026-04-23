@@ -715,12 +715,23 @@ export function DetachedActionsToolbar({
           <>
             <ActionButtonsRow close={() => {}} {...actions} />
             <button
-              onClick={onReattach}
-              title="Re-dock actions toolbar"
+              onClick={() => { captureKnobCenter(); setCollapsed((c) => !c); }}
+              title="Collapse actions toolbar"
               className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 4l8 8M12 4l-8 8" />
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                style={isVert ? { transform: "rotate(-90deg)" } : undefined}
+              >
+                <path d="M5.5 4L9.5 8L5.5 12" />
+                <path d="M9.5 4L13.5 8L9.5 12" />
               </svg>
             </button>
             <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" orientation={orientation} />
@@ -738,10 +749,10 @@ export function DetachedActionsToolbar({
         style={tabStyle}
       >
         <button
-          onClick={() => { captureKnobCenter(); setCollapsed((c) => !c); }}
-          title={collapsed ? "Expand actions toolbar" : "Collapse actions toolbar"}
+          onClick={onReattach}
+          title="Re-dock actions toolbar"
           className="flex items-center justify-center text-[var(--muted-light)] hover:text-[var(--foreground)] transition-colors"
-          style={{ background: "transparent", border: "none", padding: 0, flex: "1 1 auto" }}
+          style={{ background: "transparent", border: "none", padding: 0, flex: "1 1 auto", paddingLeft: isVert ? 0 : 2 }}
         >
           <svg
             width="10"
@@ -752,10 +763,8 @@ export function DetachedActionsToolbar({
             strokeWidth="1.8"
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={isVert ? { transform: "rotate(-90deg)" } : undefined}
           >
-            <path d="M5.5 4L9.5 8L5.5 12" />
-            <path d="M9.5 4L13.5 8L9.5 12" />
+            <path d="M4 4l8 8M12 4l-8 8" />
           </svg>
         </button>
         <button
