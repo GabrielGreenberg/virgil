@@ -1,4 +1,4 @@
-<!-- last-verified: 860853c 2026-04-23 -->
+<!-- last-verified: 592874b 2026-04-23 -->
 
 # UI Chrome
 
@@ -8,13 +8,13 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (4594 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (4986 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
-- Mounts the `MenuBar` and `DetachedActionsToolbar` via portals to `document.body`
-- Manages panel state: `activeLeft`, `activeRight`, `prefs.activeLeftTop/Bottom`, `prefs.activeRightTop/Bottom`
-- Manages layout state: `prefs.leftWidth`, `prefs.rightWidth`, `prefs.placements` (which panels live on which side)
-- Manages floating state: `prefs.poppedOutPanels`, `prefs.poppedOutCards`, `menuPos`/`menuOrientation`, `actionsDetached`/`actionsPos`
+- Mounts the `MenuBar` and each `DetachedActionsToolbar` via portals to `document.body`
+- Manages panel state: `activeLeft`, `activeRight`, `prefs.activeLeftTop/Bottom`, `prefs.activeRightTop/Bottom` (default to `"omni"`, not null/"blank")
+- Manages layout state: `prefs.pageWidth`, panel-width map, `prefs.placements` (which panels live on which side)
+- Manages floating state: `prefs.poppedOutPanels`, `prefs.poppedOutCards`, `prefs.menuLocation` (`{kind:"home"}` or `{kind:"free", left, top}`), `menuOrientation`, `dragFreePos` (transient during drag), `detachedActions[]` (array of `{id, pos}` — multi-copy after successive tear-offs)
 - Handles all drag/drop, split/unsplit, collapse/expand logic
 
 When anything touches UI layout, chrome, or panel placement, EditorLayout is almost certainly where it happens.
@@ -23,21 +23,21 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4102
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4478
 │   ├─ View control pod: collapse, omni-view, split
 │   └─ StripButton × N (per left-sidebar panel, drag-to-reorder)
-├─ PanelColumn side="left"                            — ~line 4158
-│   └─ Active panel(s) — supports top/bottom split
+├─ PanelColumn side="left"                            — ~line 4470
+│   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar (portal)                               — ~line 4177
-│   ├─ DetachedActionsToolbar (portal, optional)      — ~line 4229
+│   ├─ MenuBar (portal) — home-docked or free-floating — ~line 4561
+│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4613
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatingPanel portals (popped-out panels)
 │   └─ FloatCard portals (popped-out cards)
-├─ PanelColumn side="right"                           — ~line 4399
+├─ PanelColumn side="right"                           — ~line 4724
 │   └─ Active panel(s)
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:4408
+└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:4797
     ├─ View control pod: collapse, omni-view, split
     └─ StripButton × N
 ```
@@ -64,12 +64,13 @@ Panel-side assignment is stored in `prefs.placements` and defaults come from `de
 
 [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) — `PanelColumn`
 
-Props: `side` ("left"|"right"), `width`, `onWidthChange`, `split` (bool), `collapsed`, `blank`.
+Props: `side` ("left"|"right"), `pageWidth`, `onPageWidthChange`, `panelPref`, `onPanelPrefChange`, `split` (bool), `collapsed`, `blank`, optional `topOverlay` (per-column action toolbar).
 
 Behavior:
 - Wraps a single panel, or a split: `{ top, bottom, ratio, onRatioChange }`
-- Edge-drag to resize width (min 240, max 600)
-- Collapses to zero width when `collapsed`
+- Inner-edge drag adjusts the **page** and this column's **panel preferred size** in lockstep, keeping the dragged edge glued to the cursor (the opposite column is unaffected). Min via `--panel-min`.
+- Flex `1 100 ${panelPref}px` — the column absorbs leftover window space when resized.
+- Collapses to zero width when `collapsed`.
 
 Panels render via `renderPanelWithChrome(panelId, side)` inside EditorLayout. Same renderer is used for sidebar-mounted and floating variants (floating wraps in `FloatingPanel`).
 
@@ -104,24 +105,27 @@ Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotatio
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 
-Free-floating pod, mounted via portal to `document.body`. Draggable, snappable to editor-column edges, rotatable between horizontal and vertical.
+Mounted via portal to `document.body`. Two-mode position model:
 
-Position state in EditorLayout: `menuPos`, `menuOrientation`.
+- **Home** (default): docked inside the Virgil top bar, centered between the tabs (left) and Zen/Prefs/Version cluster (right). Orientation is locked horizontal; rotation knob and tab silhouette are hidden; the pod shares the top-bar chrome (no drop shadow).
+- **Free**: dragged out of the top bar. Free-floating at a viewport coordinate. Rotation knob + tab silhouette visible; pod carries its own drop shadow. A dock-up button (chevron-up) in this mode re-pins to home.
+
+Position state in EditorLayout: `prefs.menuLocation` ({kind:"home"} | {kind:"free", left, top}), `menuOrientation`, transient `dragFreePos` during drag. Drop zone for home-snap is computed from `topbarGaps` (derived from `topbarLeftRef`/`topbarRightRef` via ResizeObserver). Zen mode force-pins to home regardless of persisted state.
 
 ### Contents in order (horizontal)
 
-1. **View menu** (three vertical dots) — `ViewMenu` at `MenuBar.tsx:780`. Dropdown with toolbar orientation, display toggles (paragraph titles, % comments, current section, marginalia, dividers), preferences link.
-2. **Format popup** (A-glyph anchor) — `AttachedPopover` at `MenuBar.tsx:1097`. Contents: Bold, Italic, `BlockTypeDropdown` (body/chapter/section/subsection/subsubsection at `MenuBar.tsx:172`), bullet list, ordered list, blockquote, inline math, display math.
-3. **Actions popup** (8-ray star anchor) — `AttachedPopover` at `MenuBar.tsx:1196` wrapping `ActionButtonsRow` (at `MenuBar.tsx:463`). Has a grab bar on its right edge — drag to tear off into `DetachedActionsToolbar`.
-4. **Paragraph nav** (back/forward chevrons, stacked vertically) — `MenuBar.tsx:1228`. Disabled at history bounds.
+1. **View menu** (three vertical dots) — `ViewMenu` at `MenuBar.tsx:735`. Dropdown with toolbar orientation, display toggles (paragraph titles, % comments, current section, marginalia, dividers), preferences link.
+2. **Format popup** (A-glyph anchor) — `AttachedPopover` at `MenuBar.tsx:1058`. Contents: Bold, Italic, `BlockTypeDropdown` (body/chapter/section/subsection/subsubsection at `MenuBar.tsx:176`), bullet list, ordered list, blockquote, inline math, display math.
+3. **Actions popup** (8-ray star anchor) — `AttachedPopover` at `MenuBar.tsx:1155` wrapping `ActionButtonsRow` (at `MenuBar.tsx:484`). Has a grab bar on its right edge — each drag tears off a **new** `DetachedActionsToolbar` copy (the anchor button stays a plain popover toggle; nothing special happens when detached copies exist).
+4. **Paragraph nav** (back/forward chevrons, stacked vertically) — `MenuBar.tsx:1205`. Disabled at history bounds.
 5. **Split editor toggle**.
 6. **Close all panels** (X).
-7. **Grab handle** (`PodGrabHandle` at `MenuBar.tsx:378`) — drag to reposition the whole pod.
-8. **Rotation knob** — click to toggle horizontal ↔ vertical.
+7. **Grab handle** (`PodGrabHandle` at `MenuBar.tsx:371`) — drag to reposition the whole pod (home → free, or move free-float position).
+8. **Rotation knob** — click to toggle horizontal ↔ vertical. Hidden when at home.
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:417`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached or detached.
+`ActionButtonsRow` (at `MenuBar.tsx:484`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:410`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
 
 | Button | Color | Opens/creates |
 |---|---|---|
@@ -138,24 +142,28 @@ Colors are coordinated with each panel's `CARD_THEME`.
 
 ## DetachedActionsToolbar
 
-`DetachedActionsToolbar` at `MenuBar.tsx:592`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar.
+`DetachedActionsToolbar` at `MenuBar.tsx:538`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
 
-State in EditorLayout: `actionsDetached`, `actionsPos`.
+State in EditorLayout: `detachedActions[]` (array of `{ id, pos }`, keyed on monotonic id). The close (X) button filters the entry out of the array; dragging routes through `beginActionsDrag(id, …)` which looks up the wrapper by `data-actions-id` and runs snap-grid math ([src/components/editor-layout/snap-grid.ts](../../src/components/editor-layout/snap-grid.ts)) against editor-column and panel-column edges.
 
-Modes:
-- **Expanded**: full `ActionButtonsRow` + re-dock (X) + grab bar.
-- **Collapsed**: just the star icon + grab bar.
+Modes (per instance):
+- **Expanded**: full `ActionButtonsRow` + collapse chevron + grab bar (X re-dock lives on the tab edge).
+- **Collapsed**: just the star icon + tab with re-dock X.
 - **Orientation**: horizontal or vertical; rotation knob on the tab sticking out from a corner. When rotated, the knob's corner stays put so the pivot is predictable.
 
 ## Formatting popup
 
-Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx:1097`. Flips above/left when near viewport edges. Escape or outside-click closes.
+Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx:1058`. Flips above/left when near viewport edges. Escape or outside-click closes.
 
 ## Shared popover primitive
 
-`AttachedPopover` at `MenuBar.tsx:258`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, `forceOpen`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
+`AttachedPopover` at `MenuBar.tsx:262`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
 
 Behavior: click anchor toggles; fixed-positioned below-right by default; flips as needed; Escape + outside-click close.
+
+## MarginActionToolbar
+
+[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Wired into EditorLayout via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Shares `ActionButton` + `ActionButtonsRow` styling with the main/detached toolbars.
 
 ## Panel icons
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 860853c 2026-04-23 -->
+<!-- last-verified: 592874b 2026-04-23 -->
 
 # Glossary
 
@@ -12,28 +12,30 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Virgil bar** / **main toolbar** / **floating toolbar** | `MenuBar` (code name is misleading — it's the floating top toolbar) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4177 |
+| **Virgil bar** / **main toolbar** / **floating toolbar** | `MenuBar` (code name is misleading — it's the floating top toolbar) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4561. Docks "home" in the Virgil top bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
 | **Menu toolbar** | Same as Virgil bar above | Same |
-| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4102` |
-| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:4408` |
+| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4478` |
+| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:4797` |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
-| **Navigation strip** | No dedicated component — paragraph-nav chevrons live inside `MenuBar` | `MenuBar.tsx` around line 1228 |
+| **Navigation strip** | No dedicated component — paragraph-nav chevrons live inside `MenuBar` | `MenuBar.tsx` around line 1205 |
 
 ## Toolbars inside the Virgil bar
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1097 |
-| **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:463` |
-| **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` | `MenuBar.tsx:592`; mounted via portal in `EditorLayout.tsx` ~line 4229 |
-| **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:780` |
-| **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:172` |
-| **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx` ~line 1228 |
+| **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1058 |
+| **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:484` |
+| **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` — multi-instance; each tear-off spawns a new copy stored in `detachedActions[]` with its own id | `MenuBar.tsx:538`; mounted via portal in `EditorLayout.tsx` ~line 4613 |
+| **Margin action toolbar** (per-column, shown when Omni-view is docked in a side) | `MarginActionToolbar` — rendered as `topOverlay` on `PanelColumn` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) |
+| **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:735` |
+| **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:176` |
+| **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx` ~line 1205 |
 | **Split screen toggle** | Inline button in MenuBar | `MenuBar.tsx` |
 | **Close all panels** (X button) | Inline button in MenuBar | `MenuBar.tsx` |
-| **Grab handle** (pill on Virgil bar for dragging) | `PodGrabHandle` | `MenuBar.tsx:378` |
+| **Grab handle** (pill on Virgil bar for dragging) | `PodGrabHandle` | `MenuBar.tsx:371` |
 | **Rotation knob** (toggles horizontal/vertical) | Inline SVG on the pod corner | `MenuBar.tsx` |
+| **Dock-up button** (re-pins a dragged-out Virgil bar back to its home) | Inline button in MenuBar, rendered only when `!atHome` | `MenuBar.tsx` |
 
 ## Panels (what "panel" means)
 
@@ -71,7 +73,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Main text** | The TipTap editor document | [src/components/Editor.tsx](../../src/components/Editor.tsx) |
-| **Heading** | TipTap `heading` node (levels 1–4 = Chapter/Section/Subsection/Subsubsection) | TipTap schema; block-type dropdown at `MenuBar.tsx:172` |
+| **Heading** | TipTap `heading` node (levels 1–4 = Chapter/Section/Subsection/Subsubsection) | TipTap schema; block-type dropdown at `MenuBar.tsx:176` |
 | **Paragraph** | TipTap `paragraph` node (carries `uuid` attr) | See `main-text.md` |
 | **Paragraph title** | Stored in `virgil.json` sidecar (`ParagraphMeta.title`), **not** a Tiptap attr | Loaded in [src/hooks/useDocument.ts](../../src/hooks/useDocument.ts); shown in Omni view + search breadcrumbs |
 | **Marginalia** | Gutter icons in left/right margin of main text, anchored to paragraphs | [src/components/Marginalia.tsx](../../src/components/Marginalia.tsx); metadata in [src/lib/marginalia.ts](../../src/lib/marginalia.ts); grid math in [src/lib/marginalia-grid.ts](../../src/lib/marginalia-grid.ts) |
@@ -132,11 +134,29 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Bib review requests** | Per-entry bibliography field/notes reviews | `bib-review-requests.json` |
 | **FSA** (File System Access API) | Disk boundary — only place disk is touched | [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) |
 
+## System dialogs
+
+| User term | Code name(s) | Where |
+|---|---|---|
+| **System dialog** (reusable modal primitive) | `SystemDialog` | [src/components/system-dialog.tsx](../../src/components/system-dialog.tsx) |
+| **System dialog host** (top-level mount point) | `SystemDialogHost` | [src/components/system-dialog-host.tsx](../../src/components/system-dialog-host.tsx) |
+| **Confirm dialog** | `ConfirmDialog` — thin wrapper over `SystemDialog` | [src/components/ConfirmDialog.tsx](../../src/components/ConfirmDialog.tsx) |
+| **New document modal** | `NewDocumentModal` — uses `SystemDialog` | [src/components/NewDocumentModal.tsx](../../src/components/NewDocumentModal.tsx) |
+| **Tex file picker** | `TexFilePickerModal` — uses `SystemDialog` | [src/components/TexFilePickerModal.tsx](../../src/components/TexFilePickerModal.tsx) |
+| **Document class mismatch dialog** | `DocumentClassMismatchDialog` — uses `SystemDialog` | [src/components/DocumentClassMismatchDialog.tsx](../../src/components/DocumentClassMismatchDialog.tsx) |
+
+## Card creation / pristine cards
+
+| User term | Code name(s) | Where |
+|---|---|---|
+| **Card-creation helpers** (unified create-from-selection flow) | `cardCreation` context with `.createNote`, `.createCut`, `.createTodo`, `.createFootnote`, `.createCitation`, `.createQuotation` | [src/components/editor-layout/contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [src/components/editor-layout/card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts) |
+| **Pristine card** (freshly-created, no user edits yet — auto-discarded if closed untouched) | `usePristineCardManager` + `pristine-cards` context | [src/hooks/usePristineCardManager.ts](../../src/hooks/usePristineCardManager.ts) + [src/components/editor-layout/contexts/pristine-cards.tsx](../../src/components/editor-layout/contexts/pristine-cards.tsx) |
+
 ## Name mismatches to keep in mind
 
 - **"Virgil bar"** (user) = **`MenuBar`** (code). Code name is historical and misleading; don't confuse it with the three-dot View menu.
 - **"Navigation strip"** (user) — no single component. Paragraph-nav chevrons are inline in `MenuBar`. Panel navigation (what's open) is split between left/right strips plus the Outline panel.
-- **"Action toolbar"** (user) — three different shapes depending on state: attached popover (inside MenuBar), `ActionButtonsRow` (the buttons themselves), and `DetachedActionsToolbar` (when torn off).
+- **"Action toolbar"** (user) — three different shapes depending on state: attached popover (inside MenuBar), `ActionButtonsRow` (the buttons themselves), and `DetachedActionsToolbar` (when torn off — **multiple can coexist** after successive tear-offs).
 - **"Formatting toolbar"** (user) — not a dedicated component, just an `AttachedPopover` with inline buttons.
 
 ## Pending terminology

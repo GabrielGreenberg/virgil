@@ -1,4 +1,4 @@
-<!-- last-verified: 860853c 2026-04-23 -->
+<!-- last-verified: 592874b 2026-04-23 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -18,7 +18,7 @@ Before adding a new panel, link kind, or theme, extend the registry instead of c
 
 ## Key hooks
 
-All in `src/hooks/`. Full list (39 files) is large; these are the ones most often touched:
+All in `src/hooks/`. Full list (41 files) is large; these are the ones most often touched:
 
 | Hook | What it owns |
 |---|---|
@@ -37,6 +37,7 @@ All in `src/hooks/`. Full list (39 files) is large; these are the ones most ofte
 | `useViewPrefs` | Panel visibility, layout state, placements, all user-layout prefs |
 | `usePersistentState` | IndexedDB persistence abstraction |
 | `useInTextPositions` | Omni-view positioning |
+| `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
 
 ## Persistence layers
 
@@ -72,8 +73,8 @@ Agents never touch this app — they read the same `.tex`/`.bib` and write these
 
 Entry points for rendering a panel instance:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (around line 3199).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 4571).
+1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (around line 3524).
+2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 4962).
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.
@@ -86,6 +87,17 @@ Popout key prefixes (DO NOT rename without migration — they're persisted):
 ## Panel context
 
 `PanelChromeProvider` in `panel-primitives.tsx` injects the current panel id so context-aware buttons (`PanelPopout`, `PanelClose`) know which panel they belong to without prop drilling.
+
+## Card creation + pristine cards
+
+Two related abstractions, both mounted in EditorLayout:
+
+- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createQuotation` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points.
+- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this.
+
+## System dialog primitive
+
+[src/components/system-dialog.tsx](../../src/components/system-dialog.tsx) + [src/components/system-dialog-host.tsx](../../src/components/system-dialog-host.tsx) provide a shared modal primitive. `ConfirmDialog`, `NewDocumentModal`, `TexFilePickerModal`, and `DocumentClassMismatchDialog` are thin wrappers over it. See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for the dialog conventions.
 
 ## Per-panel color overrides
 
