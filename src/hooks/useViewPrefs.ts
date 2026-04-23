@@ -12,6 +12,14 @@ export interface PanelPlacement {
 
 export type Half = "top" | "bottom";
 
+/** Where the floating MenuBar sits. "home" = docked in the Virgil top bar,
+ *  centered over the document (the default). "free" = free-floating at a
+ *  specific viewport coordinate (after the user dragged the toolbar out
+ *  of the top bar). */
+export type MenuLocation =
+  | { kind: "home" }
+  | { kind: "free"; left: number; top: number };
+
 export interface ViewPrefs {
   placements: PanelPlacement[];
   /** Top half (or only half when not split). */
@@ -47,6 +55,9 @@ export interface ViewPrefs {
    *  persistent background, intensifying on hover/select. Off by default
    *  to preserve the clean reading surface. */
   alwaysShowLinkedText: boolean;
+  /** Location of the floating MenuBar. Defaults to "home" (docked in the
+   *  Virgil top bar, centered over the document). */
+  menuLocation: MenuLocation;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -84,6 +95,7 @@ const DEFAULT_PREFS: ViewPrefs = {
   poppedOutCards: [],
   cardFloatPositions: {},
   alwaysShowLinkedText: false,
+  menuLocation: { kind: "home" },
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -364,6 +376,13 @@ export function useViewPrefs() {
     }));
   }, [update]);
 
+  const setMenuLocation = useCallback((v: MenuLocation | ((prev: MenuLocation) => MenuLocation)) => {
+    update((p) => ({
+      ...p,
+      menuLocation: typeof v === "function" ? v(p.menuLocation) : v,
+    }));
+  }, [update]);
+
   /**
    * Close a floating panel without re-docking it into the sidebar (unlike
    * togglePopout, which re-docks if the side column is open).
@@ -497,6 +516,7 @@ export function useViewPrefs() {
     setEditorSplit,
     setEditorSplitRatio,
     setAlwaysShowLinkedText,
+    setMenuLocation,
     togglePopout,
     closePopout,
     setFloatPosition,
