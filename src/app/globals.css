@@ -163,6 +163,10 @@
   --color-ring-drag-target: var(--ring-drag-target);
 }
 
+html, body {
+  overscroll-behavior: none;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
