@@ -442,7 +442,8 @@ function Gutter({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              m.onClick?.();
+              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+              m.onClick?.(rect.top);
             }}
             onMouseEnter={() => m.onHover?.(true)}
             onMouseLeave={() => m.onHover?.(false)}

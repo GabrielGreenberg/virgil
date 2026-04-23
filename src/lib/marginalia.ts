@@ -127,8 +127,10 @@ export interface MarginaliaMarker {
   side?: "left" | "right";
   /** Whether this marker is currently selected/highlighted */
   selected?: boolean;
-  /** Click handler — typically opens the panel and selects the item */
-  onClick?: () => void;
+  /** Click handler — typically opens the panel and selects the item.
+   *  `clickY` is the viewport Y of the clicked gutter marker, used by
+   *  the panel host to align the opened card next to the source. */
+  onClick?: (clickY?: number) => void;
   /** Remove this anchor (not the underlying data) */
   onDelete?: () => void;
   /** Tooltip text */
