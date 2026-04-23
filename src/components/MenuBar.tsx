@@ -88,16 +88,12 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
-  /** When true, the Actions popover is hidden because the row has been
-   *  torn off into a free-floating toolbar. Clicking the Actions anchor
-   *  in that state calls onActionsReattach instead of opening the popover. */
-  actionsDetached?: boolean;
   /** Fired when the user mouseDowns on the Actions popover's grab bar.
    *  Receives the pod's bounding rect so the detached toolbar can spawn
    *  at the same spot, and the original mouse event so drag-to-move can
-   *  continue without a pickup re-grip. */
+   *  continue without a pickup re-grip. Each grab spawns a new detached
+   *  toolbar; the anchor button itself is a plain popover toggle. */
   onActionsDetach?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
-  onActionsReattach?: () => void;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -260,19 +256,12 @@ function AttachedPopover({
   children,
   title,
   active,
-  forceOpen,
-  onAnchorClickWhenForced,
   onGrabStart,
 }: {
   anchor: React.ReactNode;
   children: (close: () => void) => React.ReactNode;
   title: string;
   active?: boolean;
-  /** When true, clicking the anchor does not toggle the popover — it
-   *  fires `onAnchorClickWhenForced` instead. Used for "Actions detached"
-   *  mode where the trigger becomes a re-dock button. */
-  forceOpen?: boolean;
-  onAnchorClickWhenForced?: () => void;
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -301,10 +290,6 @@ function AttachedPopover({
   }, [open]);
 
   const toggle = () => {
-    if (forceOpen) {
-      onAnchorClickWhenForced?.();
-      return;
-    }
     if (!open && wrapRef.current) {
       const r = wrapRef.current.getBoundingClientRect();
       // Popup is a fixed-height horizontal row (var(--header-h) = 34px).
@@ -989,7 +974,7 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, actionsDetached, onActionsDetach, onActionsReattach }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, onActionsDetach }: MenuBarProps) {
   if (!editor) return null;
 
   // Track whether any formatting mark is active — the Format button
@@ -1189,15 +1174,12 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           selection (revision, note, cut, archive, footnote, quote), plus
           structural helpers (expand / collapse all sections).
 
-          The popover carries a grab bar at its trailing edge: grabbing it
-          tears the toolbar off and hands a detached floating copy to the
-          EditorLayout (see onActionsDetach). While detached, the anchor
-          button becomes a re-dock trigger. */}
+          The popover carries a grab bar at its trailing edge: each grab
+          spawns a new detached floating copy (see onActionsDetach). The
+          anchor button itself is a plain popover toggle — clicking it
+          never touches already-detached copies. */}
       <AttachedPopover
-        title={actionsDetached ? "Re-dock actions" : "Actions"}
-        active={actionsDetached}
-        forceOpen={actionsDetached}
-        onAnchorClickWhenForced={onActionsReattach}
+        title="Actions"
         onGrabStart={onActionsDetach}
         anchor={
           <svg width="19.64" height="18" viewBox="-26.06 -24.2 175 160.4" fill="currentColor" fillRule="evenodd">

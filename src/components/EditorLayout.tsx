@@ -593,22 +593,27 @@ export default function EditorLayout() {
     document.addEventListener("mouseup", onUp);
   }, [snapMargins, menuOverflow]);
 
-  // Detached Actions toolbar — the Actions popover in MenuBar can be torn
-  // off by grabbing its trailing grab bar. State lives here so the
-  // floating copy can outlive the popover (which closes on tear).
-  const [actionsDetached, setActionsDetached] = useState(false);
-  const [actionsPos, setActionsPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
+  // Detached Actions toolbars — the Actions popover in MenuBar can be
+  // torn off by grabbing its trailing grab bar. State lives here so each
+  // floating copy can outlive the popover (which closes on tear), and
+  // so multiple copies can coexist: every tear-off spawns a new entry.
+  type DetachedActions = { id: string; pos: { left: number; top: number } };
+  const [detachedActions, setDetachedActions] = useState<DetachedActions[]>([]);
   const [actionsDragging, setActionsDragging] = useState(false);
+  const nextActionsIdRef = useRef(0);
 
   // Shared drag routine used both when the popover tears off (seamless
   // pick-up from the mousedown that triggered the detach) and when the
-  // user grabs the detached toolbar afterwards.
-  const beginActionsDrag = useCallback((clientX: number, clientY: number, podLeft: number, podTop: number) => {
+  // user grabs a detached toolbar afterwards. Updates only the entry
+  // whose id is passed in.
+  const beginActionsDrag = useCallback((id: string, clientX: number, clientY: number, podLeft: number, podTop: number) => {
     const offX = clientX - podLeft;
     const offY = clientY - podTop;
     setActionsDragging(true);
     const onMove = (ev: MouseEvent) => {
-      setActionsPos({ left: ev.clientX - offX, top: ev.clientY - offY });
+      setDetachedActions(prev =>
+        prev.map(tb => tb.id === id ? { ...tb, pos: { left: ev.clientX - offX, top: ev.clientY - offY } } : tb)
+      );
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -621,19 +626,10 @@ export default function EditorLayout() {
 
   const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
     e.preventDefault();
-    setActionsPos({ left: rect.left, top: rect.top });
-    setActionsDetached(true);
-    beginActionsDrag(e.clientX, e.clientY, rect.left, rect.top);
+    const id = `actions-${++nextActionsIdRef.current}`;
+    setDetachedActions(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
+    beginActionsDrag(id, e.clientX, e.clientY, rect.left, rect.top);
   }, [beginActionsDrag]);
-
-  const handleActionsDetachedGrab = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    beginActionsDrag(e.clientX, e.clientY, actionsPos.left, actionsPos.top);
-  }, [actionsPos, beginActionsDrag]);
-
-  const handleActionsReattach = useCallback(() => {
-    setActionsDetached(false);
-  }, []);
 
   useEffect(() => {
     if (!actionsDragging) return;
@@ -4219,17 +4215,16 @@ export default function EditorLayout() {
                 onGrabStart={handleMenuGrabStart}
                 orientation={menuOrientation}
                 onSetOrientation={setMenuOrientation}
-                actionsDetached={actionsDetached}
                 onActionsDetach={handleActionsDetach}
-                onActionsReattach={handleActionsReattach}
               />
             </div>,
             document.body,
           )}
-          {menuPortalReady && actionsDetached && createPortal(
+          {menuPortalReady && detachedActions.map(tb => createPortal(
             <div
+              key={tb.id}
               className="fixed z-[9999] pointer-events-auto"
-              style={{ left: actionsPos.left, top: actionsPos.top }}
+              style={{ left: tb.pos.left, top: tb.pos.top }}
             >
               <DetachedActionsToolbar
                 actions={{
@@ -4242,14 +4237,17 @@ export default function EditorLayout() {
                   onInsertCitation: handleToolbarInsertCitation,
                   onQuoteSelection: handleToolbarQuoteSelection,
                 }}
-                onGrabStart={handleActionsDetachedGrab}
-                onReattach={handleActionsReattach}
-                pos={actionsPos}
-                onSetPos={setActionsPos}
+                onGrabStart={(e) => {
+                  e.preventDefault();
+                  beginActionsDrag(tb.id, e.clientX, e.clientY, tb.pos.left, tb.pos.top);
+                }}
+                onReattach={() => setDetachedActions(prev => prev.filter(x => x.id !== tb.id))}
+                pos={tb.pos}
+                onSetPos={(pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
               />
             </div>,
             document.body,
-          )}
+          ))}
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
               /* When split, each pane is its own pod so the gap reveals the canvas */
