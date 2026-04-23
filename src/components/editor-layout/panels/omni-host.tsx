@@ -102,6 +102,127 @@ export function OmniHost(p: OmniHostProps) {
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
+  // Omniview is a single-selection surface: selecting any card clears the
+  // other omni-eligible selections. Non-omni fields (bib, comments, cuts)
+  // are left alone.
+  const clearAllOmniSelections = useCallback(() => {
+    setSelectedFootnoteId(null);
+    setSelectedCitationId(null);
+    setSelectedQuotationGroupId(null);
+    setSelectedNoteId(null);
+    setSelectedArchiveId(null);
+    setSelectedTodoId(null);
+  }, [
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedQuotationGroupId,
+    setSelectedNoteId,
+    setSelectedArchiveId,
+    setSelectedTodoId,
+  ]);
+  const setFootnoteInOmni = useCallback((id: string | null) => {
+    setSelectedFootnoteId(id);
+    if (id !== null) {
+      setSelectedCitationId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedNoteId(null);
+      setSelectedArchiveId(null);
+      setSelectedTodoId(null);
+    }
+  }, [
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedQuotationGroupId,
+    setSelectedNoteId,
+    setSelectedArchiveId,
+    setSelectedTodoId,
+  ]);
+  const setCitationInOmni = useCallback((id: string | null) => {
+    setSelectedCitationId(id);
+    if (id !== null) {
+      setSelectedFootnoteId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedNoteId(null);
+      setSelectedArchiveId(null);
+      setSelectedTodoId(null);
+    }
+  }, [
+    setSelectedCitationId,
+    setSelectedFootnoteId,
+    setSelectedQuotationGroupId,
+    setSelectedNoteId,
+    setSelectedArchiveId,
+    setSelectedTodoId,
+  ]);
+  const setQuotationGroupInOmni = useCallback((id: string | null) => {
+    setSelectedQuotationGroupId(id);
+    if (id !== null) {
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedNoteId(null);
+      setSelectedArchiveId(null);
+      setSelectedTodoId(null);
+    }
+  }, [
+    setSelectedQuotationGroupId,
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedNoteId,
+    setSelectedArchiveId,
+    setSelectedTodoId,
+  ]);
+  const setNoteInOmni = useCallback((id: string | null) => {
+    setSelectedNoteId(id);
+    if (id !== null) {
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedArchiveId(null);
+      setSelectedTodoId(null);
+    }
+  }, [
+    setSelectedNoteId,
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedQuotationGroupId,
+    setSelectedArchiveId,
+    setSelectedTodoId,
+  ]);
+  const setArchiveInOmni = useCallback((id: string | null) => {
+    setSelectedArchiveId(id);
+    if (id !== null) {
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedNoteId(null);
+      setSelectedTodoId(null);
+    }
+  }, [
+    setSelectedArchiveId,
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedQuotationGroupId,
+    setSelectedNoteId,
+    setSelectedTodoId,
+  ]);
+  const setTodoInOmni = useCallback((id: string | null) => {
+    setSelectedTodoId(id);
+    if (id !== null) {
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedNoteId(null);
+      setSelectedArchiveId(null);
+    }
+  }, [
+    setSelectedTodoId,
+    setSelectedFootnoteId,
+    setSelectedCitationId,
+    setSelectedQuotationGroupId,
+    setSelectedNoteId,
+    setSelectedArchiveId,
+  ]);
+
   // Resolve a paragraph UUID to its doc position (used by panels that
   // anchor by paragraphId not pos).
   const findParagraphPos = useCallback(
@@ -140,7 +261,7 @@ export function OmniHost(p: OmniHostProps) {
       footnotes: p.footnotes,
       orphanedFootnotes: p.orphanedFootnotes,
       selectedFootnoteId,
-      setSelectedFootnoteId,
+      setSelectedFootnoteId: setFootnoteInOmni,
       scrollToFootnote,
       onEditFootnote: p.handleEditFootnote,
       onDeleteFootnote: p.handleDeleteFootnote,
@@ -156,7 +277,7 @@ export function OmniHost(p: OmniHostProps) {
       citations: p.citations,
       citationPositionMap: p.citationPositionMap,
       selectedCitationId,
-      setSelectedCitationId,
+      setSelectedCitationId: setCitationInOmni,
       scrollToCitation,
       bibEntries: p.bibEntries,
       bibPackage: p.bibPackage,
@@ -174,7 +295,7 @@ export function OmniHost(p: OmniHostProps) {
     ...buildQuotationOmniItems({
       quotationGroups: p.quotationGroups,
       selectedQuotationGroupId,
-      setSelectedQuotationGroupId,
+      setSelectedQuotationGroupId: setQuotationGroupInOmni,
       jumpToCard,
       findParagraphPos,
       bibEntries: p.bibEntries,
@@ -192,7 +313,7 @@ export function OmniHost(p: OmniHostProps) {
     ...buildNoteOmniItems({
       notes: p.notes,
       selectedNoteId,
-      setSelectedNoteId,
+      setSelectedNoteId: setNoteInOmni,
       jumpToCard,
       findParagraphPos,
       updateNote: p.updateNote,
@@ -206,7 +327,7 @@ export function OmniHost(p: OmniHostProps) {
       archiveSnippets: p.sortedArchiveSnippets,
       anchoredIds: p.anchoredIds,
       selectedArchiveId,
-      setSelectedArchiveId,
+      setSelectedArchiveId: setArchiveInOmni,
       jumpToCard,
       findParagraphPos,
       updateArchiveSnippet: p.updateArchiveSnippet,
@@ -219,7 +340,7 @@ export function OmniHost(p: OmniHostProps) {
     ...buildTodoOmniItems({
       todoItems: p.todoItems,
       selectedTodoId,
-      setSelectedTodoId,
+      setSelectedTodoId: setTodoInOmni,
       jumpToCard,
       findParagraphPos,
       toggleTodo: p.toggleTodo,
@@ -238,6 +359,7 @@ export function OmniHost(p: OmniHostProps) {
       enabledCategories={p.getOmniEnabled(p.side)}
       onToggleCategory={(cat) => p.toggleOmniCategory(p.side, cat)}
       categorySides={p.categorySides}
+      onBackgroundClick={clearAllOmniSelections}
     />
   );
 }
