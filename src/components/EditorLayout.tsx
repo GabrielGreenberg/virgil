@@ -113,7 +113,7 @@ import {
   panelLabel,
   IconPlus,
   IconX,
-  IconOmni,
+  IconBlank,
   IconSplit,
   IconLibrary,
 } from "./editor-layout/panel-icons";
@@ -414,6 +414,8 @@ export default function EditorLayout() {
     expandLeft,
     expandRight,
     closeAllPanels,
+    setBlank,
+    clearBlankIfSet,
     setActiveLeft,
     setActiveRight,
     setActiveHalf,
@@ -2314,6 +2316,7 @@ export default function EditorLayout() {
   // Actions toolbar pod via the ActionButton click handler in MenuBar.
 
   const handleToolbarAddComment = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     let anchorId: string | null = null;
     if (sel) {
@@ -2328,9 +2331,10 @@ export default function EditorLayout() {
       if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
     }
     popCardAtAnchor("revision", rev.id, anchorRect);
-  }, [readSelection, addGeneralRevision, setRevisionAnchor, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, addGeneralRevision, setRevisionAnchor, popCardAtAnchor]);
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     let note;
     if (sel) {
@@ -2348,9 +2352,10 @@ export default function EditorLayout() {
     }
     setSelectedNoteId(note.id);
     popCardAtAnchor("note", note.id, anchorRect);
-  }, [readSelection, addNote, setSelectedNoteId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, addNote, setSelectedNoteId, popCardAtAnchor]);
 
   const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     const todo = addTodo();
     if (sel) {
@@ -2361,9 +2366,10 @@ export default function EditorLayout() {
     }
     setSelectedTodoId(todo.id);
     popCardAtAnchor("todo", todo.id, anchorRect);
-  }, [readSelection, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, popCardAtAnchor]);
 
   const handleToolbarAddCut = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     let cut;
     if (sel) {
@@ -2381,9 +2387,10 @@ export default function EditorLayout() {
     }
     setSelectedCutId(cut.id);
     popCardAtAnchor("cut", cut.id, anchorRect);
-  }, [readSelection, addCut, setSelectedCutId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, addCut, setSelectedCutId, popCardAtAnchor]);
 
   const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     if (sel && editorRef.current) {
       const snippet = archiveContent(sel.text);
@@ -2397,10 +2404,11 @@ export default function EditorLayout() {
       const snippet = archiveContent("");
       popCardAtAnchor("archive", snippet.id, anchorRect);
     }
-  }, [readSelection, archiveContent, updateArchiveSnippet, addArchiveParagraphId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, archiveContent, updateArchiveSnippet, addArchiveParagraphId, popCardAtAnchor]);
 
   const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {
     if (!editorRef.current) return;
+    clearBlankIfSet();
     const result = readSelection()
       ? editorRef.current.createFootnoteFromSelection()
       : editorRef.current.createEmptyFootnote();
@@ -2408,19 +2416,21 @@ export default function EditorLayout() {
     editorRef.current.renumberFootnotes();
     setSelectedFootnoteId(result.footnoteId);
     popCardAtAnchor("footnote", result.footnoteId, anchorRect);
-  }, [readSelection, setSelectedFootnoteId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, setSelectedFootnoteId, popCardAtAnchor]);
 
   const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
     // Citations don't wrap selected text — a blank unanchored citation
     // is created and popped; the user types the cite key in the card.
     // The in-text atom is inserted separately from the panel's builder
     // flow once the card has a key.
+    clearBlankIfSet();
     const ref = addCitation("\\cite{}", undefined, true);
     setSelectedCitationId(ref.id);
     popCardAtAnchor("citation", ref.id, anchorRect);
-  }, [addCitation, setSelectedCitationId, popCardAtAnchor]);
+  }, [clearBlankIfSet, addCitation, setSelectedCitationId, popCardAtAnchor]);
 
   const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
+    clearBlankIfSet();
     const sel = readSelection();
     const group = sel
       ? addQuotationGroup({ text: sel.text, paragraphId: sel.editorHandle.ensureParagraphUuid(sel.from) })
@@ -2430,7 +2440,7 @@ export default function EditorLayout() {
     }
     setSelectedQuotationGroupId(group.id);
     popCardAtAnchor("quotation", group.id, anchorRect);
-  }, [readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
+  }, [clearBlankIfSet, readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
 
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
   // Maps each drop-accepting panel to the MIME types its icon accepts,
@@ -2451,6 +2461,7 @@ export default function EditorLayout() {
   // the panel is already active (no-op in that case).
   const ensurePanelActive = useCallback(
     (id: PanelId) => {
+      clearBlankIfSet();
       const placement = prefs.placements.find((p) => p.id === id);
       const side = placement?.side ?? "right";
       if (side === "left") {
@@ -2459,7 +2470,7 @@ export default function EditorLayout() {
         if (prefs.activeRight !== id) setActiveRight(id);
       }
     },
-    [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
+    [clearBlankIfSet, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
   );
   const handleIconDrop = useCallback(
     (targetPanelId: PanelId, dt: DataTransfer): boolean => {
@@ -4114,13 +4125,14 @@ export default function EditorLayout() {
                 <line x1="9" y1="4" x2="9" y2="20" />
               </svg>
             </button>
-            {/* OmniView — Shows all left-side elements (footnotes, citations, quotes). */}
+            {/* Blank — suppresses the default omni-view on this side. Auto-clears
+                when a strip panel is opened or a new card is created. */}
             <button
-              onClick={() => { setActiveLeft(activeLeft === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
-              title="Omni-view — show all left panels"
+              onClick={() => { activeLeft === "blank" ? setActiveLeft("omni") : setBlank("left"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              title={activeLeft === "blank" ? "Show omni-view" : "Hide omni-view"}
             >
-              <IconOmni active={activeLeft === "omni"} />
+              <IconBlank active={activeLeft === "blank"} />
             </button>
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
@@ -4420,13 +4432,14 @@ export default function EditorLayout() {
                 <line x1="15" y1="4" x2="15" y2="20" />
               </svg>
             </button>
-            {/* OmniView — Shows all right-side elements (notes, revisions, cuts, archive). */}
+            {/* Blank — suppresses the default omni-view on this side. Auto-clears
+                when a strip panel is opened or a new card is created. */}
             <button
-              onClick={() => { setActiveRight(activeRight === "omni" ? "blank" : "omni"); }}
-              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "omni" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
-              title="Omni-view — show all right panels"
+              onClick={() => { activeRight === "blank" ? setActiveRight("omni") : setBlank("right"); }}
+              className={`p-1.5 rounded transition-colors flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover:bg-surface-muted-strong hover:text-ink-body"}`}
+              title={activeRight === "blank" ? "Show omni-view" : "Hide omni-view"}
             >
-              <IconOmni active={activeRight === "omni"} />
+              <IconBlank active={activeRight === "blank"} />
             </button>
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button

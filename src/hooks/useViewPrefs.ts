@@ -69,8 +69,8 @@ const DEFAULT_PREFS: ViewPrefs = {
     // NOTE: "omni" and "blank" are presentation-tool pod panels — they
     // are not placed in the strip and are not part of `placements`.
   ],
-  activeLeft: null,
-  activeRight: null,
+  activeLeft: "omni",
+  activeRight: "omni",
   activeLeftBottom: null,
   activeRightBottom: null,
   splitLeftRatio: 0.5,
@@ -152,11 +152,11 @@ export function useViewPrefs() {
   }, [persist]);
 
   const setActiveLeft = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeLeft: p.activeLeft === id ? "blank" : id }));
+    update((p) => ({ ...p, activeLeft: p.activeLeft === id ? "omni" : id }));
   }, [update]);
 
   const setActiveRight = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeRight: p.activeRight === id ? "blank" : id }));
+    update((p) => ({ ...p, activeRight: p.activeRight === id ? "omni" : id }));
   }, [update]);
 
   const collapseLeft = useCallback(() => {
@@ -178,23 +178,23 @@ export function useViewPrefs() {
   }, [update]);
 
   const expandLeft = useCallback(() => {
-    update((p) => ({ ...p, activeLeft: "blank", activeLeftBottom: null }));
+    update((p) => ({ ...p, activeLeft: "omni", activeLeftBottom: null }));
   }, [update]);
 
   const expandRight = useCallback(() => {
-    update((p) => ({ ...p, activeRight: "blank", activeRightBottom: null }));
+    update((p) => ({ ...p, activeRight: "omni", activeRightBottom: null }));
   }, [update]);
 
   /** Close any open panels and pop-outs, but leave the side columns
-   *  themselves expanded (they fall back to the "blank" canvas). The
-   *  "blank" toolbar button's action. Leaves collapsed sides collapsed,
-   *  and leaves the editor split alone (that has its own toggle). */
+   *  themselves expanded (they fall back to the omni-view background).
+   *  Leaves collapsed sides collapsed, and leaves the editor split alone
+   *  (that has its own toggle). */
   const closeAllPanels = useCallback(() => {
     update((p) => ({
       ...p,
-      activeLeft: p.activeLeft != null ? "blank" : p.activeLeft,
+      activeLeft: p.activeLeft != null ? "omni" : p.activeLeft,
       activeLeftBottom: null,
-      activeRight: p.activeRight != null ? "blank" : p.activeRight,
+      activeRight: p.activeRight != null ? "omni" : p.activeRight,
       activeRightBottom: null,
       poppedOutPanels: [],
       poppedOutOrigins: {},
@@ -202,14 +202,54 @@ export function useViewPrefs() {
     }));
   }, [update]);
 
+  /** Suppress omni on a side: set its top slot to the truly-blank canvas.
+   *  No-op for fully-collapsed sides (`null`). */
+  const setBlank = useCallback((side: Side) => {
+    update((p) => {
+      if (side === "left") {
+        return p.activeLeft == null ? p : { ...p, activeLeft: "blank" };
+      }
+      return p.activeRight == null ? p : { ...p, activeRight: "blank" };
+    });
+  }, [update]);
+
+  /** Restore omni on any side currently in the explicit "blank" state.
+   *  Called when the user does something that should re-reveal the
+   *  omni background (opens a panel, creates a card). */
+  const clearBlankIfSet = useCallback(() => {
+    update((p) => {
+      const leftBlank = p.activeLeft === "blank";
+      const rightBlank = p.activeRight === "blank";
+      if (!leftBlank && !rightBlank) return p;
+      return {
+        ...p,
+        activeLeft: leftBlank ? "omni" : p.activeLeft,
+        activeRight: rightBlank ? "omni" : p.activeRight,
+      };
+    });
+  }, [update]);
+
   const togglePanel = useCallback((id: PanelId) => {
     update((p) => {
       const placement = p.placements.find((pl) => pl.id === id);
       if (!placement) return p;
+      // Opening any strip panel auto-clears the blank-suppression on the
+      // OTHER side (the side we're toggling naturally has its "blank"
+      // replaced by the panel id below).
+      const otherLeft = placement.side === "right" && p.activeLeft === "blank" ? "omni" : p.activeLeft;
+      const otherRight = placement.side === "left" && p.activeRight === "blank" ? "omni" : p.activeRight;
       if (placement.side === "left") {
-        return { ...p, activeLeft: p.activeLeft === id ? "blank" : id };
+        return {
+          ...p,
+          activeLeft: p.activeLeft === id ? "omni" : id,
+          activeRight: otherRight,
+        };
       } else {
-        return { ...p, activeRight: p.activeRight === id ? "blank" : id };
+        return {
+          ...p,
+          activeRight: p.activeRight === id ? "omni" : id,
+          activeLeft: otherLeft,
+        };
       }
     });
   }, [update]);
@@ -284,22 +324,22 @@ export function useViewPrefs() {
         if (isSplit) {
           return { ...p, activeLeftBottom: null };
         }
-        // Splitting: ensure top is something visible; bottom defaults to blank
-        const top = p.activeLeft ?? "blank";
+        // Splitting: ensure top is something visible; bottom defaults to omni
+        const top = p.activeLeft ?? "omni";
         return {
           ...p,
           activeLeft: top,
-          activeLeftBottom: "blank",
+          activeLeftBottom: "omni",
         };
       } else {
         if (isSplit) {
           return { ...p, activeRightBottom: null };
         }
-        const top = p.activeRight ?? "blank";
+        const top = p.activeRight ?? "omni";
         return {
           ...p,
           activeRight: top,
-          activeRightBottom: "blank",
+          activeRightBottom: "omni",
         };
       }
     });
@@ -376,10 +416,10 @@ export function useViewPrefs() {
       let activeLeftBottom = p.activeLeftBottom;
       let activeRightBottom = p.activeRightBottom;
       let origin: Half | undefined;
-      if (activeLeft === id) { activeLeft = "blank"; origin = "top"; }
-      if (activeRight === id) { activeRight = "blank"; origin = "top"; }
-      if (activeLeftBottom === id) { activeLeftBottom = "blank"; origin = "bottom"; }
-      if (activeRightBottom === id) { activeRightBottom = "blank"; origin = "bottom"; }
+      if (activeLeft === id) { activeLeft = "omni"; origin = "top"; }
+      if (activeRight === id) { activeRight = "omni"; origin = "top"; }
+      if (activeLeftBottom === id) { activeLeftBottom = "omni"; origin = "bottom"; }
+      if (activeRightBottom === id) { activeRightBottom = "omni"; origin = "bottom"; }
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
@@ -445,6 +485,8 @@ export function useViewPrefs() {
     expandLeft,
     expandRight,
     closeAllPanels,
+    setBlank,
+    clearBlankIfSet,
     togglePanel,
     movePanel,
     setPanelWidth,

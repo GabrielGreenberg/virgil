@@ -251,6 +251,18 @@ export function IconOmni({ active }: { active?: boolean }) {
   );
 }
 
+// Blank icon: rounded square with a dashed interior, signaling
+// "suppress omni — leave a truly empty canvas on this side".
+export function IconBlank({ active }: { active?: boolean }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c}
+      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="4" y="4" width="16" height="16" rx="1.5" strokeDasharray="2.5 2.5" />
+    </svg>
+  );
+}
+
 // Exclamation in a triangle — for the "Errors" panel (live LaTeX lint
 // + parsed compile log).
 export function IconErrors({ active, size = 18 }: { active?: boolean; size?: number }) {
