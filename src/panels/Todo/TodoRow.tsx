@@ -75,6 +75,7 @@ export function TodoRow({
   const card = (
     <PanelCard
       ref={cardRef}
+      data-todo-entry={item.id}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={selected}

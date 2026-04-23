@@ -1,7 +1,9 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { UserNote, CutItem, QuotationGroup } from "@/lib/types";
+import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
+import { openForCard } from "../event-bridges/open-for-card";
 
 type AnchorKind = "note" | "revision" | "cut" | null;
 
@@ -9,24 +11,27 @@ type AnchorKind = "note" | "revision" | "cut" | null;
  * Gutter-marker click + hover handlers for the four panel kinds that
  * anchor into the text (notes, cuts, todos, quotations).
  *
- * Click semantics (OmniView as a mode):
- * - Toggle selection (second click deselects). Selecting drives the
- *   linked-anchor highlight (for notes/cuts that carry a text anchor).
- * - If OmniView hosts the card, scroll there.
- * - Only force-open the native panel when neither OmniView nor the
- *   native panel is already showing.
+ * Click semantics (Omni-first):
+ *  - Toggle selection (second click deselects). Selecting drives the
+ *    linked-anchor highlight (for notes/cuts that carry a text anchor).
+ *  - Route to panels the same way as main-text atoms do: prefer Omni,
+ *    fall back to the native panel if Omni can't host the kind. See
+ *    `openForCard` for details.
  *
  * Hover semantics: drive the transient `hoveredAnchorId` highlight.
  * Quotations don't expose per-marker hover because groups aren't
  * anchored by a single span.
  *
- * Note and Cut use identical structure; todo is simpler (no anchor).
+ * Cutter isn't omni-eligible, so its marker click keeps the old
+ * "always open native cutter panel" behavior.
  */
 export function useMarkerActions(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
   setActiveLeft: (id: PanelId) => void;
   setActiveRight: (id: PanelId) => void;
+  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
+  getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setActiveAnchorId: Dispatch<SetStateAction<string | null>>;
   setHoveredAnchorId: Dispatch<SetStateAction<string | null>>;
   setActiveAnchorKind: Dispatch<SetStateAction<AnchorKind>>;
@@ -45,7 +50,9 @@ export function useMarkerActions(deps: {
     prefsRef,
     setActiveLeft,
     setActiveRight,
+    setActiveHalf,
     tryScrollOmniEntry,
+    getOmniEnabled,
     setActiveAnchorId,
     setHoveredAnchorId,
     setActiveAnchorKind,
@@ -61,23 +68,31 @@ export function useMarkerActions(deps: {
   } = deps;
 
   const handleQuotationMarkerClick = useCallback(
-    (groupId: string) => {
+    (groupId: string, clickY?: number) => {
       setSelectedQuotationGroupId(groupId);
-      const omniHit = tryScrollOmniEntry(`quotation:${groupId}`);
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "quotations");
-      const side = placement?.side ?? "left";
-      const active = side === "left" ? p.activeLeft === "quotations" : p.activeRight === "quotations";
-      if (!omniHit && !active) {
-        if (side === "left") setActiveLeft("quotations");
-        else setActiveRight("quotations");
-      }
+      openForCard(
+        {
+          omniKey: `quotation:${groupId}`,
+          entrySelector: `[data-quotation-group-id="${groupId}"]`,
+          panelId: "quotations",
+          cardKind: "quotation",
+          targetY: clickY,
+        },
+        {
+          prefs: prefsRef.current,
+          setActiveLeft,
+          setActiveRight,
+          setActiveHalf,
+          tryScrollOmniEntry,
+          getOmniEnabled,
+        },
+      );
     },
-    [prefsRef, setActiveLeft, setActiveRight, tryScrollOmniEntry, setSelectedQuotationGroupId],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedQuotationGroupId],
   );
 
   const handleNoteMarkerClick = useCallback(
-    (noteId: string) => {
+    (noteId: string, clickY?: number) => {
       const nextSelected = selectedNoteId === noteId ? null : noteId;
       setSelectedNoteId(nextSelected);
       const note = notes.find((n) => n.id === noteId);
@@ -91,17 +106,26 @@ export function useMarkerActions(deps: {
           setActiveAnchorKind(null);
         }
       }
-      const omniHit = nextSelected ? tryScrollOmniEntry(`note:${noteId}`) : false;
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "notes");
-      const side = placement?.side ?? "right";
-      const active = side === "left" ? p.activeLeft === "notes" : p.activeRight === "notes";
-      if (nextSelected && !omniHit && !active) {
-        if (side === "left") setActiveLeft("notes");
-        else setActiveRight("notes");
-      }
+      if (!nextSelected) return;
+      openForCard(
+        {
+          omniKey: `note:${noteId}`,
+          entrySelector: `[data-note-entry="${noteId}"]`,
+          panelId: "notes",
+          cardKind: "note",
+          targetY: clickY,
+        },
+        {
+          prefs: prefsRef.current,
+          setActiveLeft,
+          setActiveRight,
+          setActiveHalf,
+          tryScrollOmniEntry,
+          getOmniEnabled,
+        },
+      );
     },
-    [prefsRef, setActiveLeft, setActiveRight, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, setActiveAnchorId, setActiveAnchorKind],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind],
   );
 
   const handleHoverNote = useCallback(
@@ -160,20 +184,29 @@ export function useMarkerActions(deps: {
   );
 
   const handleTodoMarkerClick = useCallback(
-    (todoId: string) => {
+    (todoId: string, clickY?: number) => {
       const nextSelected = selectedTodoId === todoId ? null : todoId;
       setSelectedTodoId(nextSelected);
-      const omniHit = nextSelected ? tryScrollOmniEntry(`todo:${todoId}`) : false;
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "todo");
-      const side = placement?.side ?? "right";
-      const active = side === "left" ? p.activeLeft === "todo" : p.activeRight === "todo";
-      if (nextSelected && !omniHit && !active) {
-        if (side === "left") setActiveLeft("todo");
-        else setActiveRight("todo");
-      }
+      if (!nextSelected) return;
+      openForCard(
+        {
+          omniKey: `todo:${todoId}`,
+          entrySelector: `[data-todo-entry="${todoId}"]`,
+          panelId: "todo",
+          cardKind: "todo",
+          targetY: clickY,
+        },
+        {
+          prefs: prefsRef.current,
+          setActiveLeft,
+          setActiveRight,
+          setActiveHalf,
+          tryScrollOmniEntry,
+          getOmniEnabled,
+        },
+      );
     },
-    [prefsRef, setActiveLeft, setActiveRight, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry, getOmniEnabled],
   );
 
   return {

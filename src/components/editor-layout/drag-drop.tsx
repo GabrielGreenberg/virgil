@@ -1,6 +1,9 @@
 import { useCallback, useRef, useState } from "react";
 import { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
+import { scrollEntryIntoView } from "./layout-scroll";
+import type { SelectionsContextValue } from "./contexts/selections";
+import { getPanelSelection } from "./panel-selection";
 
 /**
  * Strip-icon click + move handlers.
@@ -20,6 +23,7 @@ export function useStripHandlers(deps: {
   togglePanel: (id: PanelId) => void;
   movePanel: (id: PanelId, side: Side, index?: number) => void;
   setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
+  selections: SelectionsContextValue;
 }) {
   const {
     prefs,
@@ -28,6 +32,7 @@ export function useStripHandlers(deps: {
     togglePanel,
     movePanel,
     setActiveHalf,
+    selections,
   } = deps;
 
   const handleMove = useCallback(
@@ -41,24 +46,43 @@ export function useStripHandlers(deps: {
     (id: PanelId, side: Side) => {
       const split =
         side === "left" ? prefs.activeLeftBottom != null : prefs.activeRightBottom != null;
+
+      // Predict whether this click will OPEN the panel vs close it.
+      // Non-split: togglePanel closes to "blank" when the panel is already
+      // active on its side. Split: setActiveHalf closes the focused half to
+      // "blank" when the focused half already holds this panel.
+      let willOpen: boolean;
       if (!split) {
+        const active = side === "left" ? prefs.activeLeft : prefs.activeRight;
+        willOpen = active !== id;
         togglePanel(id);
-        return;
+      } else {
+        const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
+        const currentInFocus =
+          side === "left"
+            ? focused === "top"
+              ? prefs.activeLeft
+              : prefs.activeLeftBottom
+            : focused === "top"
+              ? prefs.activeRight
+              : prefs.activeRightBottom;
+        willOpen = currentInFocus !== id;
+        const next: PanelId = willOpen ? id : "blank";
+        setActiveHalf(side, focused, next);
       }
-      const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
-      const currentInFocus =
-        side === "left"
-          ? focused === "top"
-            ? prefs.activeLeft
-            : prefs.activeLeftBottom
-          : focused === "top"
-            ? prefs.activeRight
-            : prefs.activeRightBottom;
-      // Toggling: clicking the icon for what's already in the focused half
-      // closes it (sets that half to "blank" — we never want a null half
-      // when split).
-      const next: PanelId = currentInFocus === id ? "blank" : id;
-      setActiveHalf(side, focused, next);
+
+      // If the panel just opened AND has a selected card, scroll to it.
+      // Runs in a rAF so the panel has mounted its list by the time we
+      // query the DOM.
+      if (!willOpen) return;
+      const sel = getPanelSelection(id, selections);
+      if (!sel) return;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const entry = document.querySelector(sel.selector) as HTMLElement | null;
+          if (entry) scrollEntryIntoView(entry, { behavior: "instant", block: "start" });
+        });
+      });
     },
     [
       togglePanel,
@@ -69,6 +93,7 @@ export function useStripHandlers(deps: {
       prefs.activeRightBottom,
       focusedHalfLeft,
       focusedHalfRight,
+      selections,
     ],
   );
 

@@ -45,9 +45,10 @@ export const ArchiveMarker = Node.create({
       dom.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
+        const rect = dom.getBoundingClientRect();
         window.dispatchEvent(
           new CustomEvent("virgil-archive-click", {
-            detail: { archiveId: node.attrs.archiveId },
+            detail: { archiveId: node.attrs.archiveId, clickY: rect.top },
           })
         );
       });

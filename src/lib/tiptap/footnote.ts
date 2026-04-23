@@ -188,9 +188,10 @@ export const Footnote = Node.create({
         e.preventDefault();
         e.stopPropagation();
         if (node.attrs.footnoteId) {
+          const rect = dom.getBoundingClientRect();
           window.dispatchEvent(
             new CustomEvent("virgil-footnote-click", {
-              detail: { footnoteId: node.attrs.footnoteId },
+              detail: { footnoteId: node.attrs.footnoteId, clickY: rect.top },
             })
           );
         }

@@ -2013,7 +2013,9 @@ export default function EditorLayout() {
     prefsRef,
     setActiveLeft,
     setActiveRight,
+    setActiveHalf,
     tryScrollOmniEntry,
+    getOmniEnabled,
     setActiveAnchorId,
     setHoveredAnchorId,
     setActiveAnchorKind,
@@ -2077,6 +2079,7 @@ export default function EditorLayout() {
     setActiveRight,
     setActiveHalf,
     tryScrollOmniEntry,
+    getOmniEnabled,
     setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
@@ -2667,6 +2670,31 @@ export default function EditorLayout() {
     refetchDoc();
   }, [refetchDoc]);
 
+  const selectionsForStrip = useMemo(
+    () => ({
+      selectedNoteId, setSelectedNoteId,
+      selectedFootnoteId, setSelectedFootnoteId,
+      selectedCitationId, setSelectedCitationId,
+      selectedTodoId, setSelectedTodoId,
+      selectedArchiveId, setSelectedArchiveId,
+      selectedCutId, setSelectedCutId,
+      selectedQuotationGroupId, setSelectedQuotationGroupId,
+      selectedCommentId, setSelectedCommentId,
+      selectedBibKey, setSelectedBibKey,
+    }),
+    [
+      selectedNoteId, setSelectedNoteId,
+      selectedFootnoteId, setSelectedFootnoteId,
+      selectedCitationId, setSelectedCitationId,
+      selectedTodoId, setSelectedTodoId,
+      selectedArchiveId, setSelectedArchiveId,
+      selectedCutId, setSelectedCutId,
+      selectedQuotationGroupId, setSelectedQuotationGroupId,
+      selectedCommentId, setSelectedCommentId,
+      selectedBibKey, setSelectedBibKey,
+    ],
+  );
+
   const { handleStripClick, handleMove } = useStripHandlers({
     prefs,
     focusedHalfLeft,
@@ -2674,6 +2702,7 @@ export default function EditorLayout() {
     togglePanel,
     movePanel,
     setActiveHalf,
+    selections: selectionsForStrip,
   });
 
   // Clear search highlight when the search panel is no longer visible
@@ -2785,7 +2814,7 @@ export default function EditorLayout() {
           paragraphId: pid,
           selected: selectedQuotationGroupId === g.id,
           title: g.title || g.references[0]?.citeKey || "Quotation",
-          onClick: () => handleQuotationMarkerClick(g.id),
+          onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
           onDelete: () => removeQuotationParagraphId(g.id, pid),
         });
       }
@@ -2804,7 +2833,7 @@ export default function EditorLayout() {
           paragraphId: pid,
           selected: selectedNoteId === n.id,
           title: n.title || "Note",
-          onClick: () => handleNoteMarkerClick(n.id),
+          onClick: (clickY?: number) => handleNoteMarkerClick(n.id, clickY),
           onDelete: () => {
             // Drop the text anchor first so the highlight clears. The
             // orphan guard fires `virgil-anchor-orphaned` which clears
@@ -2970,7 +2999,7 @@ export default function EditorLayout() {
           selected: selectedTodoId === item.id,
           title: item.text || "Todo",
           muted: item.done,
-          onClick: () => handleTodoMarkerClick(item.id),
+          onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
           onDelete: () => removeTodoParagraphId(item.id, pid),
         });
       }
