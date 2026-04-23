@@ -14,12 +14,14 @@
 
   /* App Chrome
      --theme-color is locked to --topbar-bg so the in-app top bar and the
-     PWA/browser chrome can't drift apart. */
+     PWA/browser chrome can't drift apart.
+     --main-tab-bg is locked to --background so the active tab and the page
+     canvas it joins always share a color. */
   --topbar-bg: #dcdbd7;
   --topbar-border: #cbc3b8;
   --theme-color: var(--topbar-bg);
   --tab-bg: #dcdbd7;
-  --main-tab-bg: #f8f3ed;
+  --main-tab-bg: var(--background);
   --library-bg: #eae7e2;
   --virgil-bar-text: #78716c;
 

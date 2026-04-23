@@ -76,17 +76,11 @@ export const SMART_PREFERENCES: SmartSection[] = [
         label: "Virgil bar background",
         description: "Fill behind the logo and tabs (also sets browser chrome color).",
       }),
-      {
-        kind: "link-edge",
-        parent: "topbarBackground",
-        child: "tabBg",
-        label: "Tab background tracks Virgil bar",
-      },
       p({
         type: "color",
-        key: "tabBg",
-        label: "Tab background",
-        description: "Fill of inactive document tabs.",
+        key: "backgroundColor",
+        label: "Document background",
+        description: "Fill of the page canvas — the active tab joins this color.",
       }),
       {
         kind: "link-edge",
@@ -99,18 +93,6 @@ export const SMART_PREFERENCES: SmartSection[] = [
         key: "libraryBg",
         label: "Library tab background",
         description: "Fill of the darker library peek-tab next to each doc tab.",
-      }),
-      {
-        kind: "link-edge",
-        parent: "libraryBg",
-        child: "mainTabBg",
-        label: "Main tab steps up from library",
-      },
-      p({
-        type: "color",
-        key: "mainTabBg",
-        label: "Main tab background",
-        description: "Fill of the active tab — blends into the page canvas below.",
       }),
       p({
         type: "color",

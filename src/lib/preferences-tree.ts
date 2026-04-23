@@ -256,11 +256,11 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "editorTextColor", cssVar: "--editor-text-color", isColor: true },
 
   // App chrome
-  // (--theme-color is aliased to --topbar-bg in globals.css)
+  // (--theme-color is aliased to --topbar-bg, --main-tab-bg is aliased to
+  //  --background, both in globals.css)
   { key: "topbarBackground", cssVar: "--topbar-bg", isColor: true },
   { key: "topbarBorder", cssVar: "--topbar-border", isColor: true },
   { key: "tabBg", cssVar: "--tab-bg", isColor: true },
-  { key: "mainTabBg", cssVar: "--main-tab-bg", isColor: true },
   { key: "libraryBg", cssVar: "--library-bg", isColor: true },
   { key: "virgilBarText", cssVar: "--virgil-bar-text", isColor: true },
 

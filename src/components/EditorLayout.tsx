@@ -3696,7 +3696,7 @@ export default function EditorLayout() {
               <div key={doc.id} className="flex items-end shrink-0">
                 {/* Doc tab */}
                 <div
-                  data-prefs={isDocPaneActive ? "mainTabBg,topbarBorder" : "tabBg,topbarBorder"}
+                  data-prefs={isDocPaneActive ? "backgroundColor,topbarBorder" : "tabBg,topbarBorder"}
                   className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
                     isDocPaneActive
                       ? "browser-tab-swoop bg-[var(--main-tab-bg)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
