@@ -422,6 +422,7 @@ export default function EditorLayout() {
     setEditorSplit,
     setEditorSplitRatio,
     setAlwaysShowLinkedText,
+    setMenuLocation,
     togglePopout,
     closePopout,
     setFloatPosition,
@@ -444,72 +445,64 @@ export default function EditorLayout() {
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
   const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
-  // Floating menu bar position — each axis snaps independently to an
-  // editor-column edge (or floats freely when not near one). When both
-  // axes snap, the menu effectively sits at a corner; when only one
-  // snaps, the menu docks to that side and slides along it.
-  type AxisSnap = "start" | "end" | null;
-  type MenuPosition = {
-    xSnap: AxisSnap;
-    ySnap: AxisSnap;
-    freeLeft: number;
-    freeTop: number;
-  };
-  const [menuPos, setMenuPos] = useState<MenuPosition>({
-    xSnap: "end",
-    ySnap: "start",
-    freeLeft: 0,
-    freeTop: 0,
-  });
+  // Floating menu bar location — two-mode model. "home" = docked in the
+  // Virgil top bar, centered over the document (the default). "free" =
+  // free-floating at a specific viewport coordinate (set when the user
+  // drags the toolbar out of the top bar). Persisted via prefs.
+  const menuLocation = prefs.menuLocation;
   const [menuDragging, setMenuDragging] = useState(false);
   const [menuOrientation, setMenuOrientation] = useState<ToolbarOrientation>("horizontal");
   const editorColRef = useRef<HTMLDivElement>(null);
   const menuWrapRef = useRef<HTMLDivElement>(null);
+  const menuWrapRoRef = useRef<ResizeObserver | null>(null);
   const [menuPortalReady, setMenuPortalReady] = useState(false);
   const [colRect, setColRect] = useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
   const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
 
-  // How far the toolbar's visible shape (e.g. the rotate bulb) extends past
-  // the measurable wrapper on each side. The grab handler and snap-style
-  // calc add these to the base breathing room so the bulb — not just the
-  // wrapper — ends up the correct distance from the column edge. Measured
-  // from the DOM so it stays correct if the toolbar shape changes later.
-  const [menuOverflow, setMenuOverflow] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
+  // Rects of the two non-empty groups in the Virgil top bar — the
+  // MenuBar's home position clamps between these so it never overlaps the
+  // tabs on the left or the Zen/Prefs/Version cluster on the right.
+  const topbarLeftRef = useRef<HTMLDivElement>(null);
+  const topbarRightRef = useRef<HTMLDivElement>(null);
+  const [topbarGaps, setTopbarGaps] = useState<{
+    leftEnd: number;
+    rightStart: number;
+    top: number;
+    bottom: number;
+  } | null>(null);
 
-  // Breathing room between the toolbar's *visible shape* (pod + bulb) and
-  // the column edge. The visible-shape-level targeting happens via the
-  // overflow adjustment below, so consistent margins here keep the same
-  // visual gap regardless of orientation.
-  const snapMargins = useMemo(() => ({ horiz: 10, vert: 16 }), []);
+  // Measured size of the rendered menu wrap so we can clamp it against
+  // the topbar gaps and center it over the document at "home".
+  const [menuWrapSize, setMenuWrapSize] = useState<{ w: number; h: number } | null>(null);
 
   useEffect(() => {
     setMenuPortalReady(true);
   }, []);
 
-  // Re-measure the toolbar's overflow (bulb protrusion) whenever orientation
-  // changes or the portal mounts. Uses useLayoutEffect so the measurement
-  // lands before the next paint.
-  useLayoutEffect(() => {
-    if (!menuPortalReady) return;
-    const menuEl = menuWrapRef.current;
-    if (!menuEl) return;
-    const knobEl = menuEl.querySelector("[data-toolbar-knob]") as HTMLElement | null;
-    const mRect = menuEl.getBoundingClientRect();
-    const kRect = knobEl?.getBoundingClientRect();
-    const next = kRect
-      ? {
-          left: Math.max(0, mRect.left - kRect.left),
-          right: Math.max(0, kRect.right - mRect.right),
-          top: Math.max(0, mRect.top - kRect.top),
-          bottom: Math.max(0, kRect.bottom - mRect.bottom),
-        }
-      : { left: 0, right: 0, top: 0, bottom: 0 };
-    setMenuOverflow((prev) =>
-      prev.left === next.left && prev.right === next.right && prev.top === next.top && prev.bottom === next.bottom
-        ? prev
-        : next,
-    );
-  }, [menuOrientation, menuPortalReady]);
+  // Track the toolbar wrap's measured size via a ResizeObserver bound to
+  // the wrap element through a ref callback. This captures the size
+  // reliably across portal mount and orientation changes — the
+  // home-position calc uses this width to center the pod over the
+  // document and clamp it against the top-bar gaps.
+  const menuWrapRefCb = useCallback((el: HTMLDivElement | null) => {
+    menuWrapRef.current = el;
+    menuWrapRoRef.current?.disconnect();
+    menuWrapRoRef.current = null;
+    if (el) {
+      const read = () => {
+        const r = el.getBoundingClientRect();
+        setMenuWrapSize((prev) =>
+          prev && prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height },
+        );
+      };
+      read();
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(read);
+        ro.observe(el);
+        menuWrapRoRef.current = ro;
+      }
+    }
+  }, []);
 
   const roRef = useRef<ResizeObserver | null>(null);
   const readColRect = useCallback(() => {
@@ -539,8 +532,65 @@ export default function EditorLayout() {
     return () => {
       window.removeEventListener("resize", readColRect);
       roRef.current?.disconnect();
+      menuWrapRoRef.current?.disconnect();
     };
   }, [readColRect]);
+
+  // Track the end of the top bar's tab/logo content (via a zero-width
+  // sentinel placed after the "Open folder" "+" button) and the start of
+  // the right cluster (Focus / Zen / Prefs / Version / ...). The MenuBar's
+  // home position clamps between these so it never overlaps either side,
+  // even when tabs crowd the middle.
+  const topbarLeftRoRef = useRef<ResizeObserver | null>(null);
+  const topbarRightRoRef = useRef<ResizeObserver | null>(null);
+  const readTopbarGaps = useCallback(() => {
+    const l = topbarLeftRef.current;
+    const r = topbarRightRef.current;
+    if (!l || !r) return;
+    const lRect = l.getBoundingClientRect();
+    const rRect = r.getBoundingClientRect();
+    setTopbarGaps({
+      leftEnd: lRect.left,
+      rightStart: rRect.left,
+      top: rRect.top,
+      bottom: rRect.bottom,
+    });
+  }, []);
+  const topbarLeftRefCb = useCallback((el: HTMLDivElement | null) => {
+    topbarLeftRef.current = el;
+    topbarLeftRoRef.current?.disconnect();
+    topbarLeftRoRef.current = null;
+    if (el) {
+      readTopbarGaps();
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(readTopbarGaps);
+        ro.observe(el);
+        topbarLeftRoRef.current = ro;
+      }
+    }
+  }, [readTopbarGaps]);
+  const topbarRightRefCb = useCallback((el: HTMLDivElement | null) => {
+    topbarRightRef.current = el;
+    topbarRightRoRef.current?.disconnect();
+    topbarRightRoRef.current = null;
+    if (el) {
+      readTopbarGaps();
+      if (typeof ResizeObserver !== "undefined") {
+        const ro = new ResizeObserver(readTopbarGaps);
+        ro.observe(el);
+        topbarRightRoRef.current = ro;
+      }
+    }
+  }, [readTopbarGaps]);
+
+  useEffect(() => {
+    window.addEventListener("resize", readTopbarGaps);
+    return () => {
+      window.removeEventListener("resize", readTopbarGaps);
+      topbarLeftRoRef.current?.disconnect();
+      topbarRightRoRef.current?.disconnect();
+    };
+  }, [readTopbarGaps]);
 
   useEffect(() => {
     if (!menuDragging) return;
@@ -554,6 +604,12 @@ export default function EditorLayout() {
     };
   }, [menuDragging]);
 
+  // Active drag position — overrides the persisted menuLocation while the
+  // user is dragging, so mousemove updates don't thrash localStorage. On
+  // mouseup we commit to prefs (either { kind: "home" } if dropped in the
+  // top-bar snap zone, or { kind: "free", ...dragPos }).
+  const [dragFreePos, setDragFreePos] = useState<{ left: number; top: number } | null>(null);
+
   const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const menuEl = menuWrapRef.current;
@@ -563,35 +619,46 @@ export default function EditorLayout() {
     const offY = e.clientY - menuRect.top;
     const menuW = menuRect.width;
     const menuH = menuRect.height;
-    const { horiz: HORIZ, vert: VERT } = snapMargins;
-    const ov = menuOverflow;
-    const SNAP = 40;
+    // Seed drag position from the wrap's current viewport rect so the pod
+    // doesn't jump on the first mousemove. This works for both home and
+    // free starting states — if we were at home, the pod "pops down" in
+    // place and follows the cursor from there.
+    setDragFreePos({ left: menuRect.left, top: menuRect.top });
     setMenuDragging(true);
     const onMove = (ev: MouseEvent) => {
-      const rawLeft = ev.clientX - offX;
-      const rawTop = ev.clientY - offY;
-      let xSnap: AxisSnap = null;
-      let ySnap: AxisSnap = null;
-      const colEl = editorColRef.current;
-      if (colEl) {
-        const cr = colEl.getBoundingClientRect();
-        // Targets are expressed for the *visible shape* edge: the wrapper
-        // is shifted inward by the overflow so the bulb lands at HORIZ/VERT.
-        if (Math.abs(rawLeft - (cr.left + HORIZ + ov.left)) < SNAP) xSnap = "start";
-        else if (Math.abs(rawLeft + menuW - (cr.right - HORIZ - ov.right)) < SNAP) xSnap = "end";
-        if (Math.abs(rawTop - (cr.top + VERT + ov.top)) < SNAP) ySnap = "start";
-        else if (Math.abs(rawTop + menuH - (cr.bottom - VERT - ov.bottom)) < SNAP) ySnap = "end";
-      }
-      setMenuPos({ xSnap, ySnap, freeLeft: rawLeft, freeTop: rawTop });
+      setDragFreePos({ left: ev.clientX - offX, top: ev.clientY - offY });
     };
-    const onUp = () => {
+    const onUp = (ev: MouseEvent) => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       setMenuDragging(false);
+      const finalLeft = ev.clientX - offX;
+      const finalTop = ev.clientY - offY;
+      const centerX = finalLeft + menuW / 2;
+      const centerY = finalTop + menuH / 2;
+      // Snap-home zone: a horizontal band across the editor column at the
+      // Virgil top-bar height. If the pod's center lands inside, dock home.
+      const inHomeZone =
+        topbarGaps != null &&
+        colRect != null &&
+        centerX >= colRect.left &&
+        centerX <= colRect.right &&
+        centerY >= topbarGaps.top &&
+        centerY <= topbarGaps.bottom;
+      if (inHomeZone) {
+        setMenuLocation({ kind: "home" });
+      } else {
+        setMenuLocation({ kind: "free", left: finalLeft, top: finalTop });
+      }
+      setDragFreePos(null);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [snapMargins, menuOverflow]);
+  }, [topbarGaps, colRect, setMenuLocation]);
+
+  const handleMenuDockUp = useCallback(() => {
+    setMenuLocation({ kind: "home" });
+  }, [setMenuLocation]);
 
   // Detached Actions toolbar — the Actions popover in MenuBar can be torn
   // off by grabbing its trailing grab bar. State lives here so the
@@ -647,25 +714,9 @@ export default function EditorLayout() {
     };
   }, [actionsDragging]);
 
-  const menuWrapStyle = useMemo<React.CSSProperties>(() => {
-    const needsColRect = menuPos.xSnap !== null || menuPos.ySnap !== null;
-    if (needsColRect && (!colRect || !winSize)) {
-      return { left: -10000, top: -10000, visibility: "hidden" as const };
-    }
-    const { horiz: HORIZ, vert: VERT } = snapMargins;
-    const ov = menuOverflow;
-    const style: React.CSSProperties = {};
-    // When snapped to an end edge, extend the wrapper's offset by the bulb
-    // overflow on that side — so the bulb (not the wrapper) lands VERT/HORIZ
-    // from the column edge.
-    if (menuPos.ySnap === "start" && colRect) style.top = colRect.top + VERT + ov.top;
-    else if (menuPos.ySnap === "end" && colRect && winSize) style.bottom = winSize.h - colRect.bottom + VERT + ov.bottom;
-    else style.top = menuPos.freeTop;
-    if (menuPos.xSnap === "start" && colRect) style.left = colRect.left + HORIZ + ov.left;
-    else if (menuPos.xSnap === "end" && colRect && winSize) style.right = winSize.w - colRect.right + HORIZ + ov.right;
-    else style.left = menuPos.freeLeft;
-    return style;
-  }, [menuPos, colRect, winSize, snapMargins, menuOverflow]);
+  // (menuWrapStyle / atHomeForRender are declared below, after the zen
+  // mode hook is available — zen force-pins the toolbar at home regardless
+  // of the persisted location.)
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -810,6 +861,51 @@ export default function EditorLayout() {
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
   } = useZenMode();
+
+  // MenuBar placement — computed here (after zen is declared) because
+  // zen-mode force-pins the bar at its Virgil-bar home regardless of the
+  // persisted menuLocation.
+  const atHomeForRender =
+    zenModeOn
+      ? true
+      : dragFreePos != null
+        ? false
+        : menuLocation.kind === "home";
+
+  const menuWrapStyle = useMemo<React.CSSProperties>(() => {
+    if (dragFreePos != null) {
+      return { left: dragFreePos.left, top: dragFreePos.top };
+    }
+    if (atHomeForRender) {
+      if (!colRect || !topbarGaps || !menuWrapSize) {
+        return { left: -10000, top: -10000, visibility: "hidden" as const };
+      }
+      const PAD = 8;
+      const homeCenterX = (colRect.left + colRect.right) / 2;
+      const availMin = topbarGaps.leftEnd + PAD;
+      const availMax = topbarGaps.rightStart - PAD;
+      const availWidth = availMax - availMin;
+      let left: number;
+      if (availWidth < menuWrapSize.w) {
+        // Not enough room — anchor to the left of the available band and
+        // accept overflow into the right cluster (worst case when tabs
+        // fully crowd the middle).
+        left = availMin;
+      } else {
+        const desired = homeCenterX - menuWrapSize.w / 2;
+        left = Math.max(availMin, Math.min(desired, availMax - menuWrapSize.w));
+      }
+      const top =
+        topbarGaps.top +
+        Math.max(0, (topbarGaps.bottom - topbarGaps.top - menuWrapSize.h) / 2);
+      return { left, top };
+    }
+    if (menuLocation.kind === "free") {
+      return { left: menuLocation.left, top: menuLocation.top };
+    }
+    return { left: 0, top: 0 };
+  }, [atHomeForRender, dragFreePos, menuLocation, colRect, topbarGaps, menuWrapSize]);
+
   // Preserve the editor column's current L/R position when turning Zen
   // on: measure the chrome widths flanking the editor and use those as
   // the Zen margins, so the "page" doesn't jump.
@@ -3688,13 +3784,19 @@ export default function EditorLayout() {
         // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
         // the PWA/browser theme-color (see globals.css merger notes), so
         // changing it updates both the in-app bar and the browser chrome.
+        // min-height gives the docked MenuBar breathing room inside the
+        // bar without pushing the tabs taller (tabs are items-end anchored
+        // at the bottom edge, so the extra space accumulates above them).
         data-prefs="topbarBackground,topbarBorder,virgilBarText"
-        className={`virgil-bar flex items-center relative bg-[var(--topbar-bg)] top-bar-border ${
+        className={`virgil-bar flex items-center relative bg-[var(--topbar-bg)] top-bar-border min-h-[34px] ${
         suggestionPanelVisible ? "mt-10" : ""
       }`}
         style={{ color: "var(--virgil-bar-text)" }}
       >
-        {/* Logo + file buttons + tabs — all bottom-aligned */}
+        {/* Logo + file buttons + tabs — all bottom-aligned. The MenuBar's
+            "home" position clamps against the topbar-left sentinel at the
+            end of this group (after the "Open folder" "+" button), so the
+            toolbar never overlaps tabs even when they crowd the middle. */}
         <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
           {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
@@ -3768,9 +3870,15 @@ export default function EditorLayout() {
           >
             <IconPlus />
           </button>
+          {/* Zero-width sentinel marking the end of the top-bar's left
+              content (tabs + logo + "+" button). The floating MenuBar's
+              home position uses this x-coordinate as its left clamp —
+              measuring the flex-1 parent's right edge would be wrong
+              because flex-1 expands to fill the whole middle gap. */}
+          <div ref={topbarLeftRefCb} aria-hidden className="shrink-0 self-stretch" style={{ width: 0 }} />
         </div>
 
-        <div className="shrink-0 flex items-center px-2 gap-1">
+        <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2 gap-1">
           {focusMode.state.active && (
             <button
               onClick={focusMode.deactivate}
@@ -4171,12 +4279,14 @@ export default function EditorLayout() {
           paddingRight: 4,
         }}>
           {/* Floating toolbar — rendered via portal so it can move freely
-              across the viewport and always sits above every panel. Snaps
-              to the four editor-column corners when dragged near them.
-              Hidden in Zen mode (top bar has the Zen toggle). */}
-          {menuPortalReady && !zenModeOn && createPortal(
+              across the viewport and always sits above every panel. Home
+              position sits centered in the Virgil top bar above the
+              document; dragging the grab bar pops it down into the
+              document area as a free-floating pod. In Zen mode it stays
+              pinned to home so the toolbar remains reachable. */}
+          {menuPortalReady && createPortal(
             <div
-              ref={menuWrapRef}
+              ref={menuWrapRefCb}
               className="fixed z-[9999] pointer-events-auto flex"
               style={menuWrapStyle}
             >
@@ -4217,11 +4327,13 @@ export default function EditorLayout() {
                 paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
                 onCloseAllPanels={closeAllPanels}
                 onGrabStart={handleMenuGrabStart}
-                orientation={menuOrientation}
+                orientation={atHomeForRender ? "horizontal" : menuOrientation}
                 onSetOrientation={setMenuOrientation}
                 actionsDetached={actionsDetached}
                 onActionsDetach={handleActionsDetach}
                 onActionsReattach={handleActionsReattach}
+                atHome={atHomeForRender}
+                onDockUp={handleMenuDockUp}
               />
             </div>,
             document.body,

@@ -98,6 +98,14 @@ interface MenuBarProps extends ActionToolbarCallbacks {
    *  continue without a pickup re-grip. */
   onActionsDetach?: (e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => void;
   onActionsReattach?: () => void;
+  /** When true, the toolbar is docked in the Virgil top bar (its "home"):
+   *  rotation knob and tab silhouette are hidden, orientation is locked
+   *  horizontal, and the pod outlines with a uniform rounded radius. The
+   *  grab bar stays visible so the user can drag the toolbar out. */
+  atHome?: boolean;
+  /** Fired when the user clicks the dock-up button (only rendered when
+   *  !atHome) to return the toolbar to its Virgil-bar home. */
+  onDockUp?: () => void;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -335,7 +343,7 @@ function AttachedPopover({
   };
 
   return (
-    <div ref={wrapRef} className="relative">
+    <div ref={wrapRef} className="relative flex items-center">
       <button
         onClick={toggle}
         title={title}
@@ -844,7 +852,7 @@ function ViewMenu({
   ].join(" ");
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative flex items-center" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
@@ -989,26 +997,19 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, actionsDetached, onActionsDetach, onActionsReattach }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, actionsDetached, onActionsDetach, onActionsReattach, atHome, onDockUp }: MenuBarProps) {
   if (!editor) return null;
-
-  // Track whether any formatting mark is active — the Format button
-  // highlights when the cursor is inside styled content, making the
-  // collapsed state still communicative.
-  const formatActive =
-    editor.isActive("bold") ||
-    editor.isActive("italic") ||
-    editor.isActive("bulletList") ||
-    editor.isActive("orderedList") ||
-    editor.isActive("blockquote") ||
-    editor.isActive("heading");
 
   const isVert = orientation === "vertical";
   // SVG morphology filter that traces a pixel-accurate 1px outline around
   // the merged (pod + tab) silhouette — sharp interior corners stay sharp,
-  // unlike a stack of offset drop-shadows which round them. The pod shadow
-  // is layered on after the outline via CSS drop-shadow.
-  const shellFilter = "url(#virgil-pod-outline) drop-shadow(0 1px 6px rgba(0,0,0,0.12)) drop-shadow(0 0 2px rgba(0,0,0,0.06))";
+  // unlike a stack of offset drop-shadows which round them. At home the
+  // pod sits inside the Virgil top-bar chrome and reads as part of it, so
+  // we drop the ambient drop-shadow and keep just the outline; off-home
+  // the shadow anchors the floating pod visually above the document.
+  const shellFilter = atHome
+    ? "url(#virgil-pod-outline)"
+    : "url(#virgil-pod-outline) drop-shadow(0 1px 6px rgba(0,0,0,0.12)) drop-shadow(0 0 2px rgba(0,0,0,0.06))";
   return (
     <div className="relative inline-flex">
       {/* Outline filter definition — dilates the source by 1px, subtracts
@@ -1040,36 +1041,48 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
           className="absolute inset-0"
           style={{
             background: "var(--pod-toolbar)",
-            // Square off the corner where the tab attaches, so the pod's
-            // rounded arc doesn't leave a sliver of empty alpha behind the
-            // tab — that sliver was showing up as a curve cutting into the
-            // strip when the drop-shadow filter outlined the union.
-            borderRadius: isVert
-              ? "var(--pod-radius) 0 var(--pod-radius) var(--pod-radius)"
-              : "var(--pod-radius) var(--pod-radius) 0 var(--pod-radius)",
+            // At home the pod has no tab, so round all four corners
+            // uniformly. Off-home, square off the corner where the tab
+            // attaches so the pod's rounded arc doesn't leave a sliver
+            // of empty alpha behind the tab.
+            borderRadius: atHome
+              ? "var(--pod-radius)"
+              : isVert
+                ? "var(--pod-radius) 0 var(--pod-radius) var(--pod-radius)"
+                : "var(--pod-radius) var(--pod-radius) 0 var(--pod-radius)",
           }}
         />
-        <div
-          className="absolute"
-          style={{
-            // Tab sticks out of the long side of the pod with a rounded
-            // outer end and a straight edge flush against the pod's short
-            // side. Tab overlaps the pod slightly so the drop-shadow filter
-            // merges the silhouettes into a single outline.
-            ...(isVert
-              ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
-              : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
-            background: "var(--pod-toolbar)",
-          }}
-        />
+        {!atHome && (
+          <div
+            className="absolute"
+            style={{
+              // Tab sticks out of the long side of the pod with a rounded
+              // outer end and a straight edge flush against the pod's short
+              // side. Tab overlaps the pod slightly so the drop-shadow filter
+              // merges the silhouettes into a single outline.
+              ...(isVert
+                ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
+                : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
+              background: "var(--pod-toolbar)",
+            }}
+          />
+        )}
       </div>
 
       {/* Content: icons laid out on top of the shell. In vertical mode we
           reverse the flex so the "trailing" end of the toolbar (where the
           grab bar and knob live) ends up at the top — the knob rotates up,
-          the non-knob end rotates down. */}
+          the non-knob end rotates down. At home, the pod compresses
+          vertically to fit inside the Virgil top bar (no tab/knob
+          protrusion means the shell shrinks to just the content row). */}
       <div
-        className={`relative flex items-center gap-0.5 ${isVert ? "flex-col-reverse w-[var(--header-h)] py-1.5" : "h-[var(--header-h)] px-1.5"}`}
+        className={`relative flex items-center gap-0.5 ${
+          atHome
+            ? "h-[26px] px-1.5"
+            : isVert
+              ? "flex-col-reverse w-[var(--header-h)] py-1.5"
+              : "h-[var(--header-h)] px-1.5"
+        }`}
       >
       <ViewMenu
         showParTitles={showParTitles}
@@ -1097,7 +1110,6 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       {/* Format popup — all text formatting (bold, italic, headings, lists, blockquote, math) */}
       <AttachedPopover
         title="Formatting"
-        active={formatActive}
         anchor={
           <svg width="17.53" height="18" viewBox="-5.89 -6.385 37.31 38.30" fill="currentColor">
             <path d="M25.198,6.273c-0.014,0.23-0.045,0.389-0.087,0.467c-0.045,0.084-0.176,0.145-0.392,0.183c-0.469,0.104-0.781-0.074-0.935-0.533C23.239,4.7,22.59,3.578,21.84,3.016c-1.041-0.773-2.862-1.161-5.469-1.161c-1.054,0-1.633,0.115-1.734,0.343c-0.036,0.075-0.057,0.184-0.057,0.324v18.999c0,0.812,0.188,1.383,0.571,1.709c0.382,0.32,1.069,0.731,2.201,0.999c0.483,0.103,0.97,0.2,1.034,0.239c0.46,0,0.504,1.057-0.376,1.057c-0.025,0.016-10.375-0.008-10.375-0.008s-0.723-0.439-0.074-1.023c0.271-0.121,0.767-0.343,0.767-0.343s1.83-0.614,2.211-1.009c0.434-0.445,0.648-1.164,0.648-2.154V2.521c0-0.369-0.229-0.585-0.687-0.647c-0.049-0.015-0.425-0.02-1.122-0.02c-2.415,0-4.191,0.418-5.338,1.259C3.176,3.735,2.411,4.877,1.737,6.545C1.52,7.065,1.22,7.234,0.84,7.058C0.408,6.957,0.251,6.719,0.363,6.353c0.445-1.374,0.668-3.31,0.668-5.814c0-0.292,0.387-0.586,1.163-0.533L23.56,0.064c0.709-0.104,1.096,0.012,1.16,0.343C25.076,2.096,25.234,4.052,25.198,6.273z" />
@@ -1290,6 +1302,23 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
         </IconBtn>
       )}
 
+      {/* Dock-up button — only shown when the toolbar is free-floating.
+          Returns the toolbar to its Virgil-bar home. Mirrors the
+          DetachedActionsToolbar re-dock affordance but with an arrow-up
+          glyph so it reads as "send back up to the top". */}
+      {!atHome && onDockUp && (
+        <button
+          onClick={onDockUp}
+          title="Dock toolbar to top bar"
+          className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(-90deg)" } : undefined}>
+            <polyline points="4 8 8 4 12 8" />
+            <line x1="8" y1="4" x2="8" y2="13" />
+          </svg>
+        </button>
+      )}
+
       {/* Grab handle — drag to reposition. Grey bar always visible,
           darkens to foreground on hover. Pulled tight against the
           neighbouring icon. Because vertical mode uses flex-col-reverse,
@@ -1310,26 +1339,29 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
       {/* Rotate knob click target. The visible bulb is painted by the shell
           above; this transparent button sits on top of it to catch clicks
           and holds the dot that's the visual affordance (grey by default,
-          darkening to foreground on hover — mirrors the grab bar). */}
-      <button
-        onClick={() => onSetOrientation(isVert ? "horizontal" : "vertical")}
-        title={isVert ? "Rotate toolbar to horizontal" : "Rotate toolbar to vertical"}
-        data-toolbar-knob=""
-        className="group/knob absolute flex items-center justify-center"
-        style={{
-          ...(isVert
-            ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
-            : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
-          background: "transparent",
-          border: "none",
-          padding: 0,
-        }}
-      >
-        <div
-          className="rounded-full bg-[var(--muted-light)] group-hover/knob:bg-[var(--foreground)] transition-colors duration-150"
-          style={{ width: 4, height: 4 }}
-        />
-      </button>
+          darkening to foreground on hover — mirrors the grab bar). Hidden
+          while docked at home — the pod is a simple rounded lozenge there. */}
+      {!atHome && (
+        <button
+          onClick={() => onSetOrientation(isVert ? "horizontal" : "vertical")}
+          title={isVert ? "Rotate toolbar to horizontal" : "Rotate toolbar to vertical"}
+          data-toolbar-knob=""
+          className="group/knob absolute flex items-center justify-center"
+          style={{
+            ...(isVert
+              ? { width: 14, height: 24, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
+              : { width: 24, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" }),
+            background: "transparent",
+            border: "none",
+            padding: 0,
+          }}
+        >
+          <div
+            className="rounded-full bg-[var(--muted-light)] group-hover/knob:bg-[var(--foreground)] transition-colors duration-150"
+            style={{ width: 4, height: 4 }}
+          />
+        </button>
+      )}
     </div>
   );
 }
