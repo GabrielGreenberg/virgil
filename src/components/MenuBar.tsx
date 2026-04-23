@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useLayoutEffect, useCallback } from "react";
+import { memo, useState, useRef, useEffect, useLayoutEffect, useCallback, useId } from "react";
 import { Editor } from "@tiptap/react";
 import {
   IconNotes,
@@ -373,23 +373,32 @@ function AttachedPopover({
 }
 
 /** The 3px × 18px rounded-pill grab handle used by the main toolbar and
- *  the detachable Actions sub-toolbar. Horizontal orientation only
- *  (the Actions pod is always horizontal). */
+ *  the detachable Actions sub-toolbar. Defaults to horizontal; the
+ *  detached Actions pod passes `orientation="vertical"` when rotated. */
 function PodGrabHandle({
   onMouseDown,
   title,
+  orientation = "horizontal",
 }: {
   onMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   title: string;
+  orientation?: ToolbarOrientation;
 }) {
+  const isVert = orientation === "vertical";
   return (
     <div
       onMouseDown={onMouseDown}
       title={title}
-      className="group/grab cursor-grab active:cursor-grabbing flex items-center -ml-0.5 py-1 pl-0 pr-1"
+      className={`group/grab cursor-grab active:cursor-grabbing flex items-center justify-center ${
+        isVert ? "-mt-0.5 px-1 pt-0 pb-0" : "-ml-0.5 py-1 pl-0 pr-1"
+      }`}
       style={{ touchAction: "none", userSelect: "none" }}
     >
-      <div className="rounded-full bg-[var(--muted-light)] group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 w-[3px] h-[18px]" />
+      <div
+        className={`rounded-full bg-[var(--muted-light)] group-hover/grab:bg-[var(--foreground)] transition-colors duration-150 ${
+          isVert ? "w-[18px] h-[3px]" : "w-[3px] h-[18px]"
+        }`}
+      />
     </div>
   );
 }
@@ -567,12 +576,19 @@ export function ActionButtonsRow({
  *    re-dock, trailing grab bar.
  *  - Collapsed: just the Actions star + the grab bar.
  *
- *  When the user toggles between modes, the pod's **right edge stays
- *  anchored** — the collapsed pod appears where the grab bar used to be,
- *  not where the chevron used to be. This keeps the collapse affordance
- *  spatially stable so the user doesn't have to hunt for the toolbar
- *  after collapsing. The adjustment is applied via `onSetPos`, which
- *  writes back to the position state owned by EditorLayout. */
+ *  Carries its own rotation knob (like the main toolbar). The knob
+ *  toggles between horizontal and vertical orientation; the pod's tab
+ *  follows the knob to whichever corner it's anchored in. Orientation
+ *  is local state — detaching again resets to horizontal.
+ *
+ *  Rotation and collapse both **pivot around the knob**: the dot stays
+ *  put in the viewport and the pod body swings around it. Click
+ *  handlers snapshot the knob's current viewport center into a ref; a
+ *  useLayoutEffect measures where the knob landed after the re-render
+ *  and shifts pos to restore the snapshotted point. `onSetPos` writes
+ *  back to the position state owned by EditorLayout. Drag doesn't go
+ *  through these handlers, so the ref stays null during free movement
+ *  and the effect is a no-op. */
 export function DetachedActionsToolbar({
   actions,
   onGrabStart,
@@ -587,89 +603,174 @@ export function DetachedActionsToolbar({
   onSetPos: (pos: { left: number; top: number }) => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [orientation, setOrientation] = useState<ToolbarOrientation>("horizontal");
+  const isVert = orientation === "vertical";
   const podRef = useRef<HTMLDivElement>(null);
-  const prevRightRef = useRef<number | null>(null);
   // Keep the latest pos in a ref so the layout effect can use it without
   // re-running when only pos changes (that would cause a feedback loop
   // since the effect itself calls onSetPos).
   const posRef = useRef(pos);
   posRef.current = pos;
 
-  useLayoutEffect(() => {
-    const pod = podRef.current;
-    if (!pod) return;
-    const r = pod.getBoundingClientRect();
-    if (prevRightRef.current != null) {
-      const delta = prevRightRef.current - r.right;
-      if (Math.abs(delta) > 0.5) {
-        onSetPos({ left: posRef.current.left + delta, top: posRef.current.top });
-        // The upcoming re-render with adjusted pos will slide the pod
-        // back to the remembered right edge; no further bookkeeping
-        // needed until the next collapse toggle.
-        return;
-      }
-    }
-    prevRightRef.current = r.right;
-  }, [collapsed, onSetPos]);
-
-  const podStyle: React.CSSProperties = {
-    height: 'var(--header-h)',
-    borderRadius: 'var(--pod-radius)',
-    border: 'var(--pod-border)',
-    boxShadow: 'var(--pod-shadow)',
+  const targetKnobCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const readKnobCenter = (): { x: number; y: number } | null => {
+    const knob = podRef.current?.parentElement?.querySelector<HTMLElement>("[data-toolbar-knob]");
+    if (!knob) return null;
+    const r = knob.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  };
+  const captureKnobCenter = () => {
+    targetKnobCenterRef.current = readKnobCenter();
   };
 
-  if (collapsed) {
-    return (
+  useLayoutEffect(() => {
+    const target = targetKnobCenterRef.current;
+    if (!target) return;
+    const current = readKnobCenter();
+    if (!current) return;
+    const dx = target.x - current.x;
+    const dy = target.y - current.y;
+    if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+      onSetPos({ left: posRef.current.left + dx, top: posRef.current.top + dy });
+    }
+    targetKnobCenterRef.current = null;
+  }, [collapsed, orientation, onSetPos]);
+
+  // Unique filter ID so we don't collide with the main toolbar's shell
+  // outline filter (SVG filter IDs are document-scoped).
+  const filterId = useId();
+  const shellFilter = `url(#${filterId}) drop-shadow(0 1px 6px rgba(0,0,0,0.12)) drop-shadow(0 0 2px rgba(0,0,0,0.06))`;
+
+  // Tab sticks out from the corner shared by the main-axis trailing end
+  // (where the grab bar lives) and the cross-axis trailing end:
+  // - horizontal: right end × bottom edge → bottom-right corner, tab down
+  // - vertical (flex-col-reverse, grab bar at top): top end × right edge → top-right corner, tab right
+  // It's sized to fit a small collapse chevron next to the rotation dot,
+  // with the dot anchored at the end closest to the grab bar.
+  const tabStyle: React.CSSProperties = isVert
+    ? { width: 14, height: 26, top: 0, right: -10, borderRadius: "0 5px 5px 0" }
+    : { width: 26, height: 14, right: 0, bottom: -10, borderRadius: "0 0 5px 5px" };
+  const podBorderRadius = isVert
+    ? "var(--pod-radius) 0 var(--pod-radius) var(--pod-radius)"
+    : "var(--pod-radius) var(--pod-radius) 0 var(--pod-radius)";
+
+  return (
+    <div className="relative inline-flex">
+      <svg aria-hidden className="absolute" width="0" height="0" style={{ position: "absolute", pointerEvents: "none" }}>
+        <defs>
+          <filter id={filterId}>
+            <feMorphology operator="dilate" radius="1" in="SourceGraphic" result="dilated" />
+            <feComposite operator="out" in="dilated" in2="SourceGraphic" result="ring" />
+            <feFlood floodColor="#c9c5c5" result="flood" />
+            <feComposite operator="in" in="flood" in2="ring" result="outline" />
+            <feMerge>
+              <feMergeNode in="outline" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+      </svg>
+      {/* Shell: pod + tab, filled with the pod background and wrapped in
+          a crisp 1px outline by the SVG filter above. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 pointer-events-none"
+        style={{ filter: shellFilter }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background: "var(--pod-toolbar)",
+            borderRadius: podBorderRadius,
+          }}
+        />
+        <div className="absolute" style={{ ...tabStyle, background: "var(--pod-toolbar)" }} />
+      </div>
+
+      {/* Content */}
       <div
         ref={podRef}
         data-action-pod
-        className="flex items-center bg-[var(--pod-toolbar)] pl-1 gap-0.5"
-        style={podStyle}
+        className={`relative flex items-center gap-0.5 ${
+          isVert
+            ? `flex-col-reverse w-[var(--header-h)] ${collapsed ? "pt-1 pb-1" : "py-1"}`
+            : `h-[var(--header-h)] ${collapsed ? "pl-1 pr-0" : "pl-0.5 pr-0"}`
+        }`}
+      >
+        {collapsed ? (
+          <>
+            <button
+              onClick={() => { captureKnobCenter(); setCollapsed(false); }}
+              title="Expand actions toolbar"
+              className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+            >
+              <svg width="19.64" height="18" viewBox="-26.06 -24.2 175 160.4" fill="currentColor" fillRule="evenodd">
+                <path stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" d="M109.28,19.61l12.21,9.88a3.77,3.77,0,0,1,.56,5.29l-5.46,6.75L98.53,26.93,104,20.17a3.79,3.79,0,0,1,5.29-.56ZM9.49,0H85.71A9.53,9.53,0,0,1,95.2,9.49v5.63l-4.48,5.53a9.81,9.81,0,0,0-1.18,1.85c-.24.19-.48.4-.71.62V9.49a3.14,3.14,0,0,0-3.12-3.13H9.49A3.14,3.14,0,0,0,6.36,9.49v93.06a3.16,3.16,0,0,0,.92,2.21,3.11,3.11,0,0,0,2.21.92H85.71a3.12,3.12,0,0,0,3.12-3.13V88.2l1.91-.81a10,10,0,0,0,4.34-3.13l.12-.14v18.43A9.54,9.54,0,0,1,85.71,112H9.49A9.51,9.51,0,0,1,0,102.55V9.49A9.53,9.53,0,0,1,9.49,0ZM87.25,78,74.43,83.47c-9.35,3.47-8.93,5.43-8-3.85L69.24,63.4h0l0,0,26.56-33,18,14.6L87.27,78ZM72.31,65.89l11.86,9.59-8.42,3.6c-6.6,2.83-6.42,4.23-5.27-2.53l1.83-10.66Z" />
+                <path d="M21.07,30.81a3.18,3.18,0,0,1,0-6.36H74.12a3.18,3.18,0,0,1,0,6.36ZM21.07,87.6a3.19,3.19,0,0,1,0-6.37H56.19a37.1,37.1,0,0,0-.3,6.37Zm0-18.93a3.19,3.19,0,0,1,0-6.37H59.22l0,.27-1.05,6.1Zm0-18.93a3.18,3.18,0,0,1,0-6.36H72.44l-5.11,6.36Z" />
+              </svg>
+            </button>
+            <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" orientation={orientation} />
+          </>
+        ) : (
+          <>
+            <ActionButtonsRow close={() => {}} {...actions} />
+            <button
+              onClick={onReattach}
+              title="Re-dock actions toolbar"
+              className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4l8 8M12 4l-8 8" />
+              </svg>
+            </button>
+            <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" orientation={orientation} />
+          </>
+        )}
+      </div>
+
+      {/* Tab affordances — two click targets laid out along the tab
+          (painted by the shell above): a small collapse chevron next to
+          the rotation dot. The dot is anchored at the end closest to
+          the grab bar so it reads as the pivot point; collapsing uses
+          the same pivot. */}
+      <div
+        className={`absolute flex items-stretch ${isVert ? "flex-col-reverse" : "flex-row"}`}
+        style={tabStyle}
       >
         <button
-          onClick={() => setCollapsed(false)}
-          title="Expand actions toolbar"
-          className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+          onClick={() => { captureKnobCenter(); setCollapsed((c) => !c); }}
+          title={collapsed ? "Expand actions toolbar" : "Collapse actions toolbar"}
+          className="flex items-center justify-center text-[var(--muted-light)] hover:text-[var(--foreground)] transition-colors"
+          style={{ background: "transparent", border: "none", padding: 0, flex: "1 1 auto" }}
         >
-          <svg width="19.64" height="18" viewBox="-26.06 -24.2 175 160.4" fill="currentColor" fillRule="evenodd">
-            <path stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" d="M109.28,19.61l12.21,9.88a3.77,3.77,0,0,1,.56,5.29l-5.46,6.75L98.53,26.93,104,20.17a3.79,3.79,0,0,1,5.29-.56ZM9.49,0H85.71A9.53,9.53,0,0,1,95.2,9.49v5.63l-4.48,5.53a9.81,9.81,0,0,0-1.18,1.85c-.24.19-.48.4-.71.62V9.49a3.14,3.14,0,0,0-3.12-3.13H9.49A3.14,3.14,0,0,0,6.36,9.49v93.06a3.16,3.16,0,0,0,.92,2.21,3.11,3.11,0,0,0,2.21.92H85.71a3.12,3.12,0,0,0,3.12-3.13V88.2l1.91-.81a10,10,0,0,0,4.34-3.13l.12-.14v18.43A9.54,9.54,0,0,1,85.71,112H9.49A9.51,9.51,0,0,1,0,102.55V9.49A9.53,9.53,0,0,1,9.49,0ZM87.25,78,74.43,83.47c-9.35,3.47-8.93,5.43-8-3.85L69.24,63.4h0l0,0,26.56-33,18,14.6L87.27,78ZM72.31,65.89l11.86,9.59-8.42,3.6c-6.6,2.83-6.42,4.23-5.27-2.53l1.83-10.66Z" />
-            <path d="M21.07,30.81a3.18,3.18,0,0,1,0-6.36H74.12a3.18,3.18,0,0,1,0,6.36ZM21.07,87.6a3.19,3.19,0,0,1,0-6.37H56.19a37.1,37.1,0,0,0-.3,6.37Zm0-18.93a3.19,3.19,0,0,1,0-6.37H59.22l0,.27-1.05,6.1Zm0-18.93a3.18,3.18,0,0,1,0-6.36H72.44l-5.11,6.36Z" />
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={isVert ? { transform: "rotate(-90deg)" } : undefined}
+          >
+            <path d="M5.5 4L9.5 8L5.5 12" />
+            <path d="M9.5 4L13.5 8L9.5 12" />
           </svg>
         </button>
-        <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" />
+        <button
+          onClick={() => { captureKnobCenter(); setOrientation(isVert ? "horizontal" : "vertical"); }}
+          title={isVert ? "Rotate toolbar to horizontal" : "Rotate toolbar to vertical"}
+          data-toolbar-knob=""
+          className="group/knob flex items-center justify-center"
+          style={{ background: "transparent", border: "none", padding: 0, width: 14, height: 14 }}
+        >
+          <div
+            className="rounded-full bg-[var(--muted-light)] group-hover/knob:bg-[var(--foreground)] transition-colors duration-150"
+            style={{ width: 4, height: 4 }}
+          />
+        </button>
       </div>
-    );
-  }
-
-  return (
-    <div
-      ref={podRef}
-      data-action-pod
-      className="flex items-center bg-[var(--pod-toolbar)] pl-0.5 gap-0.5"
-      style={podStyle}
-    >
-      <button
-        onClick={() => setCollapsed(true)}
-        title="Collapse actions toolbar"
-        className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5.5 4L9.5 8L5.5 12" />
-          <path d="M9.5 4L13.5 8L9.5 12" />
-        </svg>
-      </button>
-      <ActionButtonsRow close={() => {}} {...actions} />
-      <button
-        onClick={onReattach}
-        title="Re-dock actions toolbar"
-        className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-      >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M4 4l8 8M12 4l-8 8" />
-        </svg>
-      </button>
-      <PodGrabHandle onMouseDown={onGrabStart} title="Drag to move toolbar" />
     </div>
   );
 }
