@@ -26,8 +26,11 @@ import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 const STORAGE_KEY = "virgil-zen-mode";
 const DEFAULT_MARGIN = 160;
-const MIN_MARGIN = 40;
-const MAX_MARGIN = 600;
+// Bounds are generous so Zen can preserve whatever margins the non-Zen
+// layout currently has (icon strip alone ≈ 42px; strip + wide panel can
+// easily exceed 600). Drag handle in ZenMargin has its own bounds.
+const MIN_MARGIN = 0;
+const MAX_MARGIN = 1200;
 
 interface ZenState {
   on: boolean;

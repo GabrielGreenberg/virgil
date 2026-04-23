@@ -28,7 +28,7 @@ export function ZenMargin({
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
-      onWidthChange(Math.max(80, Math.min(600, startWidth.current + delta)));
+      onWidthChange(Math.max(20, Math.min(1200, startWidth.current + delta)));
     },
     [side, onWidthChange],
   );
