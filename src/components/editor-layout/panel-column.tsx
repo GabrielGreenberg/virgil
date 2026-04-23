@@ -37,6 +37,7 @@ export function PanelColumn({
   onFocusHalf,
   topPanelId,
   bottomPanelId,
+  topOverlay,
 }: {
   side: "left" | "right";
   width: number;
@@ -56,6 +57,10 @@ export function PanelColumn({
   onFocusHalf?: (half: "top" | "bottom") => void;
   topPanelId?: PanelId;
   bottomPanelId?: PanelId;
+  /** Absolutely-positioned overlay rendered at the top of the column,
+   *  centered horizontally. Used for per-column action toolbars when the
+   *  column is showing Omni-view. */
+  topOverlay?: React.ReactNode;
 }) {
   const startX = useRef(0);
   const startWidth = useRef(0);
@@ -162,6 +167,13 @@ export function PanelColumn({
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />
+      {topOverlay && (
+        <div
+          className="absolute top-[14px] left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
+        >
+          {topOverlay}
+        </div>
+      )}
     </div>
   );
 }
