@@ -10,6 +10,7 @@ import {
 } from "@/lib/document-class";
 import type { LatexError } from "@/lib/latex-errors";
 import { parseTexLog } from "@/lib/parse-tex-log";
+import { useSystemDialog } from "@/components/system-dialog-host";
 
 /**
  * Called when the compile hook finds that the document's
@@ -66,6 +67,7 @@ export function useLatexCompile(
   opts?: { onDocumentClassMismatch?: DocumentClassMismatchHandler },
 ): UseLatexCompileResult {
   const onDocumentClassMismatch = opts?.onDocumentClassMismatch;
+  const systemDialog = useSystemDialog();
   const [isCompiling, setIsCompiling] = useState(false);
   const [lastLog, setLastLog] = useState<string | null>(null);
   const [lastStatus, setLastStatus] = useState<number | null>(null);
@@ -192,19 +194,23 @@ export function useLatexCompile(
         console.error(
           `[compile] SwiftLaTeX failed (status=${result.status})\n\n${result.log}`,
         );
-        window.alert(
-          `Compile failed (status ${result.status}). See the Errors panel or compile-log drawer for details.`,
-        );
+        void systemDialog.alert({
+          title: "Compile failed",
+          message: `Status ${result.status}. See the Errors panel or compile-log drawer for details.`,
+          tone: "danger",
+        });
       }
     } catch (err) {
       console.error("[compile] error:", err);
-      window.alert(
-        `Compile failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      void systemDialog.alert({
+        title: "Compile failed",
+        message: err instanceof Error ? err.message : String(err),
+        tone: "danger",
+      });
     } finally {
       setIsCompiling(false);
     }
-  }, [docId, isCompiling, onDocumentClassMismatch]);
+  }, [docId, isCompiling, onDocumentClassMismatch, systemDialog]);
 
   return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
 }

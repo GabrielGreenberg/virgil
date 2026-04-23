@@ -7,6 +7,7 @@ import { PREFERENCES_TREE } from "@/lib/preferences-tree";
 import { useDragPosition } from "@/hooks/useDragPosition";
 import PreferenceTree from "./PreferenceTree";
 import SmartPreferences from "./SmartPreferences";
+import { SYSTEM_DIALOG_TOKENS } from "./system-dialog";
 
 interface PreferencesModalProps {
   prefs: EditorPreferences;
@@ -195,7 +196,7 @@ export default function PreferencesModal({
   return (
     <div
       ref={panelRef}
-      className="fixed z-[9999] bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-xl w-full max-w-[560px] max-h-[85vh] flex flex-col"
+      className={`fixed z-[9999] ${SYSTEM_DIALOG_TOKENS.surface} w-full max-w-[560px] max-h-[85vh] flex flex-col`}
       style={
         position
           ? { top: position.y, left: position.x }

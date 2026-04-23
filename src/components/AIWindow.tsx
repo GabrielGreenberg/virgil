@@ -46,6 +46,7 @@ import type {
   TextRevision,
 } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
+import SystemDialog from "./system-dialog";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -449,26 +450,6 @@ export default function AIWindow({
     wasOpen.current = open;
   }, [open, refreshAll]);
 
-  // ESC to close.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
-  const handleBackdrop = useCallback(
-    (e: React.MouseEvent) => {
-      if (e.target === e.currentTarget) onClose();
-    },
-    [onClose],
-  );
-
   const requests = useMemo(
     () =>
       buildRequests({
@@ -551,14 +532,14 @@ export default function AIWindow({
     composerKind === "bib-fields" || composerKind === "bib-notes";
 
   return (
-    <div
-      className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/30"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="ai-window-title"
-      onClick={handleBackdrop}
+    <SystemDialog
+      open
+      onClose={onClose}
+      size="full"
+      labelledBy="ai-window-title"
+      frameClassName="max-h-[82vh] flex flex-col"
     >
-      <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl shadow-2xl w-full max-w-[900px] max-h-[82vh] mx-4 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 px-5 py-3 border-b border-[var(--border)]">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -773,7 +754,7 @@ export default function AIWindow({
           </div>
         </div>
       </div>
-    </div>
+    </SystemDialog>
   );
 }
 
