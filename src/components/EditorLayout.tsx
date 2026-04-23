@@ -810,6 +810,22 @@ export default function EditorLayout() {
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
   } = useZenMode();
+  // Preserve the editor column's current L/R position when turning Zen
+  // on: measure the chrome widths flanking the editor and use those as
+  // the Zen margins, so the "page" doesn't jump.
+  const handleToggleZen = useCallback(() => {
+    if (!zenModeOn) {
+      const mainEl = mainAreaRef.current;
+      const editorEl = editorColRef.current;
+      if (mainEl && editorEl) {
+        const mRect = mainEl.getBoundingClientRect();
+        const eRect = editorEl.getBoundingClientRect();
+        setZenLeftMargin(eRect.left - mRect.left);
+        setZenRightMargin(mRect.right - eRect.right);
+      }
+    }
+    toggleZenMode();
+  }, [zenModeOn, toggleZenMode, setZenLeftMargin, setZenRightMargin]);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
@@ -3776,7 +3792,7 @@ export default function EditorLayout() {
               layout prefs are untouched, so toggling off restores the
               exact prior layout. */}
           <button
-            onClick={toggleZenMode}
+            onClick={handleToggleZen}
             className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
               zenModeOn
                 ? "text-[var(--accent)] bg-[var(--accent-light)]"
