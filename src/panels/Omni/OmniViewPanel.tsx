@@ -82,6 +82,7 @@ interface OmniViewPanelProps {
   enabledCategories: Set<OmniCategory>;
   onToggleCategory: (cat: OmniCategory) => void;
   categorySides: Record<OmniCategory, "left" | "right">;
+  onBackgroundClick?: () => void;
 }
 
 /** Extract the category prefix from an OmniItem id (e.g. "note" from "note:abc"). */
@@ -188,6 +189,7 @@ function OmniViewPanel({
   enabledCategories,
   onToggleCategory,
   categorySides,
+  onBackgroundClick,
 }: OmniViewPanelProps) {
   const visibleItems = useMemo(() => {
     return items.filter((item) => {
@@ -245,6 +247,19 @@ function OmniViewPanel({
       <div
         ref={panelScrollRef}
         className="w-full h-full overflow-y-auto hide-scrollbar"
+        style={{
+          maskImage:
+            "linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)",
+          WebkitMaskImage:
+            "linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)",
+        }}
+        onMouseDown={(e) => {
+          if (!onBackgroundClick) return;
+          const target = e.target as HTMLElement;
+          if (!target.closest("[data-omni-entry]")) {
+            onBackgroundClick();
+          }
+        }}
       >
         {visibleItems.length === 0 && (
           <div className="text-center text-ink-muted text-xs px-3 py-6">
