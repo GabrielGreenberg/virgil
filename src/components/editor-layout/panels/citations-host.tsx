@@ -11,6 +11,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useCardCreationContext } from "../contexts/card-creation";
 
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
@@ -52,6 +53,7 @@ export function CitationsHost(p: CitationsHostProps) {
   const { selectedCitationId, setSelectedCitationId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
+  const { createCitation } = useCardCreationContext();
   return (
     <CitationsPanel
       citations={p.citations}
@@ -71,11 +73,10 @@ export function CitationsHost(p: CitationsHostProps) {
       pendingCreate={p.pendingCitationCreate}
       pendingCreateMode={p.pendingCitationMode}
       onCreateCitation={(cmd) => {
-        const ref = p.addCitation(
-          cmd,
-          undefined,
-          p.pendingCitationMode === "unanchored",
-        );
+        const ref = createCitation({
+          command: cmd,
+          unanchored: p.pendingCitationMode === "unanchored",
+        });
         return ref.id;
       }}
       onInsertCitation={(cmd, citId, display) => {

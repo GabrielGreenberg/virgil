@@ -715,6 +715,7 @@ export function QuotationGroupCard({
         onSelect();
       }}
       data-quotation-group-id={group.id}
+      data-pristine-card-id={group.id}
       tabIndex={selected ? 0 : -1}
       onFocusCapture={() => {
         if (!selected) onSelect();

@@ -77,6 +77,7 @@ export function TodoRow({
       ref={cardRef}
       data-todo-entry={item.id}
       {...(extraDataAttrs || {})}
+      data-pristine-card-id={item.id}
       theme={theme}
       selected={selected}
       isPoppedOut={isPoppedOut}

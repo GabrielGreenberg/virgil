@@ -38,6 +38,10 @@ export function FloatCard({
     rect?.y ?? Math.max(40, vh / 2 - DEFAULT_H / 2 + indexHint * 24);
   const initialWidth = rect?.width ?? DEFAULT_W;
   const initialHeight = rect?.height ?? DEFAULT_H;
+  // Extract the card id from `cardKey` ("<kind>:<id>") so the floating
+  // wrapper (including its chrome) counts as "inside" the pristine card —
+  // clicks on the drag handle or resize grip shouldn't trip auto-discard.
+  const pristineId = cardKey.includes(":") ? cardKey.slice(cardKey.indexOf(":") + 1) : cardKey;
   return (
     <FloatingPanel
       initialX={initialX}
@@ -47,7 +51,9 @@ export function FloatCard({
       zIndex={1200 + indexHint}
       onChange={(pos) => ctx.setFloatPosition(cardKey, pos)}
     >
-      {children}
+      <div data-pristine-card-id={pristineId} style={{ display: "contents" }}>
+        {children}
+      </div>
     </FloatingPanel>
   );
 }

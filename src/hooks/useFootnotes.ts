@@ -6,10 +6,11 @@ import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateEntityId } from "@/lib/uuid";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: FootnotesState = { footnotes: [] };
 
-export function useFootnotes(docId: string | null) {
+export function useFootnotes(docId: string | null, pristine?: PristineKindApi | null) {
   const [state, setState] = useState<FootnotesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -60,6 +61,7 @@ export function useFootnotes(docId: string | null) {
   }, [persist]);
 
   const updateFootnoteContent = useCallback((id: string, content: JSONContent) => {
+    pristine?.markDirty(id);
     setState((prev) => {
       const next = {
         footnotes: prev.footnotes.map((f) =>
@@ -70,16 +72,17 @@ export function useFootnotes(docId: string | null) {
       persist(next);
       return next;
     });
-  }, [persist]);
+  }, [persist, pristine]);
 
   const deleteFootnote = useCallback((id: string) => {
+    pristine?.markDirty(id);
     setState((prev) => {
       const next = { footnotes: prev.footnotes.filter((f) => f.id !== id) };
       stateRef.current = next;
       persist(next);
       return next;
     });
-  }, [persist]);
+  }, [persist, pristine]);
 
   const syncFromEditor = useCallback(
     (editorFootnotes: Array<{ footnoteId: string; content: JSONContent }>) => {

@@ -121,7 +121,7 @@ export function NoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
-      extraDataAttrs={extraDataAttrs}
+      extraDataAttrs={{ "data-pristine-card-id": note.id, ...(extraDataAttrs || {}) }}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}

@@ -7,6 +7,7 @@ import { addParagraphLink, removeParagraphLink } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: TodoState = { items: [] };
 
@@ -28,14 +29,15 @@ function migrateTodos(raw: unknown): TodoState {
   return { items: Array.isArray(s.items) ? s.items.map(migrateTodo) : [] };
 }
 
-export function useTodos(docId: string | null) {
+export function useTodos(docId: string | null, externalPristine?: PristineKindApi | null) {
   const { state, update } = usePersistentState<TodoState>(
     docId,
     "todos.json",
     EMPTY,
     { migrate: migrateTodos, errorLabel: "todos" },
   );
-  const pristine = usePristineTracker();
+  const localPristine = usePristineTracker();
+  const pristine = externalPristine ?? localPristine;
 
   const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
@@ -117,14 +119,19 @@ export function useTodos(docId: string | null) {
   /**
    * Drop todos that were created via `addItem()` but never edited. Call
    * from panel-close so "press +, do nothing, leave" doesn't leave a
-   * blank "Task N" behind.
+   * blank "Task N" behind. When the external pristine manager is in use,
+   * it owns discard via the registered delete callback.
    */
   const discardPristineTodos = useCallback(() => {
-    const ids = pristine.takePristine();
+    if (externalPristine) {
+      externalPristine.discardAll();
+      return;
+    }
+    const ids = localPristine.takePristine();
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     update((prev) => ({ items: prev.items.filter((i) => !idSet.has(i.id)) }));
-  }, [update, pristine]);
+  }, [update, externalPristine, localPristine]);
 
   return {
     items: state.items,

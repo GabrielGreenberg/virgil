@@ -135,7 +135,7 @@ export function FootnoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: fn.footnoteId }}
-      extraDataAttrs={extraDataAttrs}
+      extraDataAttrs={{ "data-pristine-card-id": fn.footnoteId, ...(extraDataAttrs || {}) }}
       wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
       onTogglePopout={onToggleFromCtx}

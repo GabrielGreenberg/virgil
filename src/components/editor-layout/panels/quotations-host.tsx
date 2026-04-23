@@ -8,6 +8,7 @@ import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
+import { useCardCreationContext } from "../contexts/card-creation";
 
 type QuotationsHook = ReturnType<typeof useQuotations>;
 type CitationsHook = ReturnType<typeof useCitations>;
@@ -35,13 +36,14 @@ export function QuotationsHost(p: QuotationsHostProps) {
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedQuotationGroupId, setSelectedQuotationGroupId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { createQuotation } = useCardCreationContext();
   return (
     <QuotationsPanel
       groups={p.quotationGroups}
       bibEntries={p.bibEntries}
       bibPackage={p.bibPackage}
       citationStyle={p.citationStyle}
-      onAddGroup={p.addQuotationGroup}
+      onAddGroup={() => createQuotation({})}
       onDeleteGroup={p.deleteQuotationGroup}
       onUpdateGroupTitle={p.updateQuotationGroupTitle}
       onAddReference={p.addQuotationReference}
