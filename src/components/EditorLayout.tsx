@@ -118,6 +118,14 @@ import {
   IconLibrary,
 } from "./editor-layout/panel-icons";
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
+import {
+  computeSnapGrid,
+  snapWrapper,
+  applySnapStyle,
+  type AxisSnap as GridAxisSnap,
+  type SnapGrid,
+  type RectLike,
+} from "./editor-layout/snap-grid";
 import { ZenMargin } from "./editor-layout/zen-margin";
 import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { SplitEditorPanes } from "./editor-layout/split-editor-panes";
@@ -444,43 +452,35 @@ export default function EditorLayout() {
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
   const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
-  // Floating menu bar position — each axis snaps independently to an
-  // editor-column edge (or floats freely when not near one). When both
-  // axes snap, the menu effectively sits at a corner; when only one
-  // snaps, the menu docks to that side and slides along it.
-  type AxisSnap = "start" | "end" | null;
+  // Floating menu bar position — each axis snaps independently to a
+  // directional grid line (see editor-layout/snap-grid.ts). Non-snapped
+  // axes float at `freeLeft/freeTop`.
   type MenuPosition = {
-    xSnap: AxisSnap;
-    ySnap: AxisSnap;
+    xSnap: GridAxisSnap;
+    ySnap: GridAxisSnap;
     freeLeft: number;
     freeTop: number;
   };
+  // Initial dock: editor-col top-right corner. Resolved lazily once the
+  // grid is populated (see useLayoutEffect below).
   const [menuPos, setMenuPos] = useState<MenuPosition>({
-    xSnap: "end",
-    ySnap: "start",
+    xSnap: null,
+    ySnap: null,
     freeLeft: 0,
     freeTop: 0,
   });
+  const menuInitialDockRef = useRef(true);
   const [menuDragging, setMenuDragging] = useState(false);
   const [menuOrientation, setMenuOrientation] = useState<ToolbarOrientation>("horizontal");
   const editorColRef = useRef<HTMLDivElement>(null);
   const menuWrapRef = useRef<HTMLDivElement>(null);
   const [menuPortalReady, setMenuPortalReady] = useState(false);
-  const [colRect, setColRect] = useState<{ left: number; top: number; right: number; bottom: number } | null>(null);
-  const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
 
   // How far the toolbar's visible shape (e.g. the rotate bulb) extends past
-  // the measurable wrapper on each side. The grab handler and snap-style
-  // calc add these to the base breathing room so the bulb — not just the
-  // wrapper — ends up the correct distance from the column edge. Measured
-  // from the DOM so it stays correct if the toolbar shape changes later.
+  // the measurable wrapper on each side. The snap math aligns the
+  // *visible body* (wrapper shrunk by overflow) to grid lines, so the
+  // bulb ends up HORIZ/VERT + overflow from the edge.
   const [menuOverflow, setMenuOverflow] = useState({ left: 0, right: 0, top: 0, bottom: 0 });
-
-  // Breathing room between the toolbar's *visible shape* (pod + bulb) and
-  // the column edge. The visible-shape-level targeting happens via the
-  // overflow adjustment below, so consistent margins here keep the same
-  // visual gap regardless of orientation.
-  const snapMargins = useMemo(() => ({ horiz: 10, vert: 16 }), []);
 
   useEffect(() => {
     setMenuPortalReady(true);
@@ -511,36 +511,147 @@ export default function EditorLayout() {
     );
   }, [menuOrientation, menuPortalReady]);
 
-  const roRef = useRef<ResizeObserver | null>(null);
-  const readColRect = useCallback(() => {
-    const el = editorColRef.current;
-    if (el) {
+  // Live rects for every region that contributes grid lines. The
+  // editor-col ref comes from a callback ref (so we can re-attach an
+  // observer when the column remounts); panel pods use
+  // `[data-panel-side]` attributes since they mount/unmount dynamically
+  // and we don't own their refs.
+  const [colRect, setColRect] = useState<RectLike | null>(null);
+  const [leftPanelRect, setLeftPanelRect] = useState<RectLike | null>(null);
+  const [rightPanelRect, setRightPanelRect] = useState<RectLike | null>(null);
+  const [rightSplit, setRightSplit] = useState<{ upperY: number; lowerY: number } | null>(null);
+  const [leftSplit, setLeftSplit] = useState<{ upperY: number; lowerY: number } | null>(null);
+  const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
+
+  // Merge the bounding rects of a list of elements into one. Returns
+  // null when the list is empty.
+  const mergeRects = useCallback((els: Element[]): RectLike | null => {
+    if (els.length === 0) return null;
+    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+    for (const el of els) {
       const r = el.getBoundingClientRect();
-      setColRect({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+      if (r.left < left) left = r.left;
+      if (r.top < top) top = r.top;
+      if (r.right > right) right = r.right;
+      if (r.bottom > bottom) bottom = r.bottom;
     }
-    setWinSize({ w: window.innerWidth, h: window.innerHeight });
+    return { left, top, right, bottom };
   }, []);
+
+  const rectsEqual = (a: RectLike | null, b: RectLike | null): boolean => {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
+  };
+  const splitsEqual = (
+    a: { upperY: number; lowerY: number } | null,
+    b: { upperY: number; lowerY: number } | null,
+  ): boolean => {
+    if (!a && !b) return true;
+    if (!a || !b) return false;
+    return a.upperY === b.upperY && a.lowerY === b.lowerY;
+  };
+
+  const readAllRects = useCallback(() => {
+    setWinSize((prev) => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      return prev && prev.w === w && prev.h === h ? prev : { w, h };
+    });
+    const el = editorColRef.current;
+    const nextCol: RectLike | null = el
+      ? (() => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        })()
+      : null;
+    setColRect((prev) => (rectsEqual(prev, nextCol) ? prev : nextCol));
+
+    const pickSplit = (side: "left" | "right"): { upperY: number; lowerY: number } | null => {
+      const top = document.querySelector(`[data-panel-side="${side}"][data-panel-half="top"]`);
+      const bot = document.querySelector(`[data-panel-side="${side}"][data-panel-half="bottom"]`);
+      if (!top || !bot) return null;
+      const tr = top.getBoundingClientRect();
+      const br = bot.getBoundingClientRect();
+      return { upperY: tr.bottom, lowerY: br.top };
+    };
+
+    const lefts = Array.from(document.querySelectorAll('[data-panel-side="left"]'));
+    const rights = Array.from(document.querySelectorAll('[data-panel-side="right"]'));
+    const nextLeft = mergeRects(lefts);
+    const nextRight = mergeRects(rights);
+    const nextLeftSplit = pickSplit("left");
+    const nextRightSplit = pickSplit("right");
+    setLeftPanelRect((prev) => (rectsEqual(prev, nextLeft) ? prev : nextLeft));
+    setRightPanelRect((prev) => (rectsEqual(prev, nextRight) ? prev : nextRight));
+    setLeftSplit((prev) => (splitsEqual(prev, nextLeftSplit) ? prev : nextLeftSplit));
+    setRightSplit((prev) => (splitsEqual(prev, nextRightSplit) ? prev : nextRightSplit));
+  }, [mergeRects]);
+
+  const roRef = useRef<ResizeObserver | null>(null);
+  const moRef = useRef<MutationObserver | null>(null);
   const editorColRefCb = useCallback((el: HTMLDivElement | null) => {
     editorColRef.current = el;
     roRef.current?.disconnect();
     roRef.current = null;
-    if (el) {
-      readColRect();
-      if (typeof ResizeObserver !== "undefined") {
-        const ro = new ResizeObserver(readColRect);
-        ro.observe(el);
-        roRef.current = ro;
-      }
+    if (el && typeof ResizeObserver !== "undefined") {
+      readAllRects();
+      const ro = new ResizeObserver(readAllRects);
+      ro.observe(el);
+      roRef.current = ro;
     }
-  }, [readColRect]);
+  }, [readAllRects]);
+
+  // Watch panel-pod mount/unmount (panels are conditionally rendered)
+  // and re-measure. A MutationObserver on document.body with subtree +
+  // attribute watching is coarse but cheap and the measurement is
+  // cheap too.
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    let rafId = 0;
+    const schedule = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        readAllRects();
+      });
+    };
+    const mo = new MutationObserver(schedule);
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["data-panel-side", "data-panel-half", "data-panel-id", "style", "class"],
+    });
+    moRef.current = mo;
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      mo.disconnect();
+      moRef.current = null;
+    };
+  }, [readAllRects]);
 
   useEffect(() => {
-    window.addEventListener("resize", readColRect);
+    window.addEventListener("resize", readAllRects);
     return () => {
-      window.removeEventListener("resize", readColRect);
+      window.removeEventListener("resize", readAllRects);
       roRef.current?.disconnect();
     };
-  }, [readColRect]);
+  }, [readAllRects]);
+
+  // The live grid fed to both toolbar drag handlers.
+  const snapGrid = useMemo<SnapGrid>(
+    () => computeSnapGrid({
+      editorCol: colRect,
+      leftPanel: leftPanelRect,
+      rightPanel: rightPanelRect,
+      leftSplit,
+      rightSplit,
+    }),
+    [colRect, leftPanelRect, rightPanelRect, leftSplit, rightSplit],
+  );
+  const snapGridRef = useRef(snapGrid);
+  snapGridRef.current = snapGrid;
 
   useEffect(() => {
     if (!menuDragging) return;
@@ -554,6 +665,25 @@ export default function EditorLayout() {
     };
   }, [menuDragging]);
 
+  // Measure the main menu's knob overflow from the current DOM. This
+  // re-reads on each drag start so it stays correct across orientation
+  // changes and HMR remounts (the useLayoutEffect-cached value can go
+  // stale in edge cases).
+  const readMenuOverflow = useCallback((): { left: number; right: number; top: number; bottom: number } => {
+    const menuEl = menuWrapRef.current;
+    if (!menuEl) return menuOverflow;
+    const knobEl = menuEl.querySelector("[data-toolbar-knob]") as HTMLElement | null;
+    if (!knobEl) return menuOverflow;
+    const mRect = menuEl.getBoundingClientRect();
+    const kRect = knobEl.getBoundingClientRect();
+    return {
+      left: Math.max(0, mRect.left - kRect.left),
+      right: Math.max(0, kRect.right - mRect.right),
+      top: Math.max(0, mRect.top - kRect.top),
+      bottom: Math.max(0, kRect.bottom - mRect.bottom),
+    };
+  }, [menuOverflow]);
+
   const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const menuEl = menuWrapRef.current;
@@ -563,25 +693,27 @@ export default function EditorLayout() {
     const offY = e.clientY - menuRect.top;
     const menuW = menuRect.width;
     const menuH = menuRect.height;
-    const { horiz: HORIZ, vert: VERT } = snapMargins;
-    const ov = menuOverflow;
-    const SNAP = 40;
+    const freshOverflow = readMenuOverflow();
+    // Keep the stored state in sync so the post-drag render uses the
+    // same overflow as the drag (applySnapStyle reads it from state).
+    if (
+      freshOverflow.left !== menuOverflow.left ||
+      freshOverflow.right !== menuOverflow.right ||
+      freshOverflow.top !== menuOverflow.top ||
+      freshOverflow.bottom !== menuOverflow.bottom
+    ) {
+      setMenuOverflow(freshOverflow);
+    }
+    menuInitialDockRef.current = false;
     setMenuDragging(true);
     const onMove = (ev: MouseEvent) => {
       const rawLeft = ev.clientX - offX;
       const rawTop = ev.clientY - offY;
-      let xSnap: AxisSnap = null;
-      let ySnap: AxisSnap = null;
-      const colEl = editorColRef.current;
-      if (colEl) {
-        const cr = colEl.getBoundingClientRect();
-        // Targets are expressed for the *visible shape* edge: the wrapper
-        // is shifted inward by the overflow so the bulb lands at HORIZ/VERT.
-        if (Math.abs(rawLeft - (cr.left + HORIZ + ov.left)) < SNAP) xSnap = "start";
-        else if (Math.abs(rawLeft + menuW - (cr.right - HORIZ - ov.right)) < SNAP) xSnap = "end";
-        if (Math.abs(rawTop - (cr.top + VERT + ov.top)) < SNAP) ySnap = "start";
-        else if (Math.abs(rawTop + menuH - (cr.bottom - VERT - ov.bottom)) < SNAP) ySnap = "end";
-      }
+      const { xSnap, ySnap } = snapWrapper({
+        wrapper: { left: rawLeft, top: rawTop, width: menuW, height: menuH },
+        overflow: freshOverflow,
+        grid: snapGridRef.current,
+      });
       setMenuPos({ xSnap, ySnap, freeLeft: rawLeft, freeTop: rawTop });
     };
     const onUp = () => {
@@ -591,7 +723,7 @@ export default function EditorLayout() {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [snapMargins, menuOverflow]);
+  }, [menuOverflow, readMenuOverflow]);
 
   // Detached Actions toolbar — the Actions popover in MenuBar can be torn
   // off by grabbing its trailing grab bar. State lives here so the
@@ -599,16 +731,65 @@ export default function EditorLayout() {
   const [actionsDetached, setActionsDetached] = useState(false);
   const [actionsPos, setActionsPos] = useState<{ left: number; top: number }>({ left: 0, top: 0 });
   const [actionsDragging, setActionsDragging] = useState(false);
+  const actionsWrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Measure the detached pod's current knob overflow (the rotation-knob
+  // bulb that sticks past the pod body). Called at the start of each
+  // drag since orientation/collapse can change the shape. A zero-vector
+  // is returned when the knob can't be found (the drag just won't snap
+  // its bulb-edge correctly, which is fine — the body still snaps).
+  const readActionsOverflow = useCallback((): { left: number; right: number; top: number; bottom: number } => {
+    const wrap = actionsWrapRef.current;
+    if (!wrap) return { left: 0, right: 0, top: 0, bottom: 0 };
+    const knob = wrap.querySelector("[data-toolbar-knob]") as HTMLElement | null;
+    const wRect = wrap.getBoundingClientRect();
+    const kRect = knob?.getBoundingClientRect();
+    if (!kRect) return { left: 0, right: 0, top: 0, bottom: 0 };
+    return {
+      left: Math.max(0, wRect.left - kRect.left),
+      right: Math.max(0, kRect.right - wRect.right),
+      top: Math.max(0, wRect.top - kRect.top),
+      bottom: Math.max(0, kRect.bottom - wRect.bottom),
+    };
+  }, []);
 
   // Shared drag routine used both when the popover tears off (seamless
   // pick-up from the mousedown that triggered the detach) and when the
-  // user grabs the detached toolbar afterwards.
+  // user grabs the detached toolbar afterwards. The wrapper rect +
+  // overflow are re-read on each move: the portal may not have mounted
+  // yet when a tear-off begins, and re-reading keeps the snap accurate
+  // if the pod resizes mid-drag (e.g. a child popover closes).
   const beginActionsDrag = useCallback((clientX: number, clientY: number, podLeft: number, podTop: number) => {
     const offX = clientX - podLeft;
     const offY = clientY - podTop;
     setActionsDragging(true);
     const onMove = (ev: MouseEvent) => {
-      setActionsPos({ left: ev.clientX - offX, top: ev.clientY - offY });
+      const rawLeft = ev.clientX - offX;
+      const rawTop = ev.clientY - offY;
+      const wrap = actionsWrapRef.current;
+      const wRect = wrap?.getBoundingClientRect();
+      const width = wRect?.width ?? 0;
+      const height = wRect?.height ?? 0;
+      if (width > 0 && height > 0) {
+        const overflow = readActionsOverflow();
+        const { xSnap, ySnap } = snapWrapper({
+          wrapper: { left: rawLeft, top: rawTop, width, height },
+          overflow,
+          grid: snapGridRef.current,
+        });
+        const style = applySnapStyle({
+          overflow,
+          xSnap,
+          ySnap,
+          free: { left: rawLeft, top: rawTop },
+          winSize: { w: window.innerWidth, h: window.innerHeight },
+        });
+        const left = style.left !== undefined ? style.left : window.innerWidth - (style.right ?? 0) - width;
+        const top = style.top !== undefined ? style.top : window.innerHeight - (style.bottom ?? 0) - height;
+        setActionsPos({ left, top });
+      } else {
+        setActionsPos({ left: rawLeft, top: rawTop });
+      }
     };
     const onUp = () => {
       document.removeEventListener("mousemove", onMove);
@@ -617,7 +798,7 @@ export default function EditorLayout() {
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, []);
+  }, [readActionsOverflow]);
 
   const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
     e.preventDefault();
@@ -647,25 +828,40 @@ export default function EditorLayout() {
     };
   }, [actionsDragging]);
 
+  // Default dock: editor-col top edge + right edge. Resolved from the
+  // live grid so panel/resize changes keep the menu flush. Only used
+  // until the user first drags (menuInitialDockRef flips false).
+  const initialDockSnap = useMemo<{ xSnap: GridAxisSnap; ySnap: GridAxisSnap } | null>(() => {
+    if (!colRect) return null;
+    const top = snapGrid.h.find((l) => l.source === "editor-col.top");
+    const right = snapGrid.v.find((l) => l.source === "editor-col.right");
+    if (!top || !right) return null;
+    return {
+      xSnap: { kind: "v", line: right, edge: "right", target: right.x - 10 },
+      ySnap: { kind: "h", line: top, edge: "top", target: top.y + 16 },
+    };
+  }, [colRect, snapGrid]);
+
   const menuWrapStyle = useMemo<React.CSSProperties>(() => {
-    const needsColRect = menuPos.xSnap !== null || menuPos.ySnap !== null;
-    if (needsColRect && (!colRect || !winSize)) {
+    const useInitialDock = menuInitialDockRef.current;
+    const xSnap = useInitialDock ? (initialDockSnap?.xSnap ?? null) : menuPos.xSnap;
+    const ySnap = useInitialDock ? (initialDockSnap?.ySnap ?? null) : menuPos.ySnap;
+
+    if (useInitialDock && !initialDockSnap) {
       return { left: -10000, top: -10000, visibility: "hidden" as const };
     }
-    const { horiz: HORIZ, vert: VERT } = snapMargins;
-    const ov = menuOverflow;
-    const style: React.CSSProperties = {};
-    // When snapped to an end edge, extend the wrapper's offset by the bulb
-    // overflow on that side — so the bulb (not the wrapper) lands VERT/HORIZ
-    // from the column edge.
-    if (menuPos.ySnap === "start" && colRect) style.top = colRect.top + VERT + ov.top;
-    else if (menuPos.ySnap === "end" && colRect && winSize) style.bottom = winSize.h - colRect.bottom + VERT + ov.bottom;
-    else style.top = menuPos.freeTop;
-    if (menuPos.xSnap === "start" && colRect) style.left = colRect.left + HORIZ + ov.left;
-    else if (menuPos.xSnap === "end" && colRect && winSize) style.right = winSize.w - colRect.right + HORIZ + ov.right;
-    else style.left = menuPos.freeLeft;
-    return style;
-  }, [menuPos, colRect, winSize, snapMargins, menuOverflow]);
+    if (!winSize) {
+      return { left: -10000, top: -10000, visibility: "hidden" as const };
+    }
+
+    return applySnapStyle({
+      overflow: menuOverflow,
+      xSnap,
+      ySnap,
+      free: { left: menuPos.freeLeft, top: menuPos.freeTop },
+      winSize,
+    }) as React.CSSProperties;
+  }, [menuPos, menuOverflow, initialDockSnap, winSize]);
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
@@ -4228,6 +4424,7 @@ export default function EditorLayout() {
           )}
           {menuPortalReady && actionsDetached && createPortal(
             <div
+              ref={actionsWrapRef}
               className="fixed z-[9999] pointer-events-auto"
               style={{ left: actionsPos.left, top: actionsPos.top }}
             >
