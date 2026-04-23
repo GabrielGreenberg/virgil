@@ -468,11 +468,90 @@ and `PrevNextCounter` in the header to show position. The counter shows:
 
 ---
 
-## Confirmation Dialogs
+## System Dialogs
 
-`ConfirmDialog` positions near the element being acted on, not dead-center
-screen. Pass `anchorRef` to position the dialog just below the triggering
-element. Without `anchorRef`, it falls back to centered (legacy behavior).
+Every app-level modal (confirm, alert, prompt, new-document, tex-file
+picker, document-class mismatch, AI window, preferences) composes from
+the centralized primitives in
+[`src/components/system-dialog.tsx`](components/system-dialog.tsx). The
+tokens object in that file is the **one place to edit** to re-skin every
+dialog in the app.
+
+```tsx
+import SystemDialog, {
+  SystemDialogHeader,
+  SystemDialogBody,
+  SystemDialogFooter,
+  SystemDialogButton,
+} from "@/components/system-dialog";
+
+<SystemDialog open onClose={cancel} size="sm" anchorRef={cardRef}>
+  <SystemDialogHeader title="Delete this?" subtitle="Optional subtitle" />
+  <SystemDialogBody>
+    <p>This item has text. Delete it?</p>
+  </SystemDialogBody>
+  <SystemDialogFooter>
+    <SystemDialogButton onClick={cancel}>Cancel</SystemDialogButton>
+    <SystemDialogButton variant="danger" autoFocus onClick={confirm}>
+      Delete
+    </SystemDialogButton>
+  </SystemDialogFooter>
+</SystemDialog>
+```
+
+### Size presets
+
+| size   | max-width              | Use for                          |
+|--------|------------------------|----------------------------------|
+| `sm`   | `340px`                | confirm, alert                   |
+| `md`   | `380px`                | prompt, document-class mismatch  |
+| `lg`   | `520px`                | new-document                     |
+| `xl`   | `720px`                | larger forms                     |
+| `full` | `min(96vw, 1100px)`    | AI window, preferences, dashboards |
+
+### Button variants
+
+| variant     | Use for                          |
+|-------------|----------------------------------|
+| `primary`   | Default destructive-confirm (stone-800) |
+| `danger`    | Delete / irreversible (red-tinted)      |
+| `secondary` | Cancel / dismiss                        |
+| `accent`    | "Create" / positive commit (var(--accent)) |
+
+The `autoFocus` prop on a button captures focus when the dialog opens and
+enables Enter-to-confirm. Exactly one button per dialog should have it.
+
+### Anchored vs. centered
+
+`SystemDialog` accepts an optional `anchorRef` — a ref to the element that
+triggered the dialog. When provided, the dialog positions just below the
+anchor (clamped to viewport) instead of dead-center screen. Use this for
+inline confirmations (e.g. "delete card" prompts near the card itself).
+
+### Imperative API: `useSystemDialog`
+
+For hook-level code that can't conveniently render a dialog component
+(e.g. [useLatexCompile](hooks/useLatexCompile.ts)), use the imperative
+API provided by `<SystemDialogProvider>` (mounted in
+[`src/app/page.tsx`](app/page.tsx)):
+
+```tsx
+import { useSystemDialog } from "@/components/system-dialog-host";
+
+const dialog = useSystemDialog();
+await dialog.alert({ title: "Compile failed", message: "...", tone: "danger" });
+const ok = await dialog.confirm({ title: "Move?", message: "..." });
+const name = await dialog.prompt({ title: "Rename", initial: "foo" });
+```
+
+### ConfirmDialog convenience
+
+For the common "confirm an action" pattern, use
+[`ConfirmDialog`](components/ConfirmDialog.tsx) — a thin wrapper that
+composes `SystemDialog` for you, plus `useConfirmDialog()` which returns
+`{ confirm, dialog }` for in-tree imperative use. The dialog node mounts
+once near the layout root; `confirm(...)` pops a confirmation from any
+descendant.
 
 ```tsx
 <ConfirmDialog
@@ -480,11 +559,22 @@ element. Without `anchorRef`, it falls back to centered (legacy behavior).
   message="This item has text. Delete it?"
   confirmLabel="Delete"
   tone="danger"
-  anchorRef={cardRef}    // positions near the card
+  anchorRef={cardRef}
   onConfirm={...}
   onCancel={...}
 />
 ```
+
+### Do / don't
+
+- **Don't** call `window.alert` / `window.confirm` / `window.prompt` in
+  app code — these drop the user into OS chrome and can't be themed. Use
+  `useSystemDialog()` instead.
+- **Don't** hand-roll a modal shell (`fixed inset-0 … bg-black/20` + a
+  `rounded-xl` frame). Compose from `SystemDialog` so one edit re-skins
+  everything.
+- **Do** add a new button variant to `SYSTEM_DIALOG_TOKENS.button` rather
+  than reaching for arbitrary Tailwind classnames inline.
 
 ---
 

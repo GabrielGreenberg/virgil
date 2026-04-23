@@ -1642,19 +1642,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               performMove();
             } else {
               const requestConfirm = onConfirmFootnoteMoveRef.current;
+              // Fire-and-forget: the drop event is already prevented, so
+              // we can safely do async work and dispatch the move when
+              // the user resolves the dialog. EditorLayout always wires
+              // the callback — if it's missing we log and skip silently
+              // rather than dropping into a native browser dialog.
               if (requestConfirm) {
-                // Fire-and-forget: the drop event is already prevented,
-                // so we can safely do async work and dispatch the move
-                // when the user resolves the dialog.
-                requestConfirm().then((ok) => {
-                  if (ok) performMove();
-                }).catch(() => { /* swallow: user cancelled */ });
-              } else if (
-                window.confirm(
-                  "This will move the footnote from its current position in the document. Continue?",
-                )
-              ) {
-                performMove();
+                requestConfirm()
+                  .then((ok) => { if (ok) performMove(); })
+                  .catch(() => { /* swallow: user cancelled */ });
+              } else {
+                console.warn(
+                  "[editor] footnote drop without onConfirmFootnoteMove handler — skipping",
+                );
               }
             }
           } catch { /* ignore bad data */ }
