@@ -33,6 +33,11 @@ const nextConfig: NextConfig = {
   assetPrefix: basePath || undefined,
 
   devIndicators: false,
+
+  // Force the worktree to be its own Turbopack workspace root so edits
+  // in the worktree's src/ are watched and served, not the parent repo's
+  // copy.
+  turbopack: { root: __dirname },
 };
 
 export default nextConfig;

@@ -42,6 +42,15 @@
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
   --pod-shadow-light: 0 1px 5px rgba(0,0,0,0.09), 0 0 2px rgba(0,0,0,0.05);
 
+  /* Page-as-solid-object sizing. Editor column prefers --page-preferred
+     and only shrinks toward --page-min when the window is too narrow to
+     keep both the page and its surrounding canvas/margins at their
+     preferred widths. See EditorLayout.tsx and zen-margin.tsx. */
+  --page-preferred: 880px;
+  --page-min: 640px;
+  --panel-min: 160px;
+  --zen-margin-min: 20px;
+
   /* Editor colors
      --h1-color and --h2h3-color are locked to the primary text tokens
      (H1 = --foreground, H2/H3 = --editor-text-color). */

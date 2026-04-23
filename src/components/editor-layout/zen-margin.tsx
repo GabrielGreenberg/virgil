@@ -7,30 +7,38 @@ import type { Side } from "@/hooks/useViewPrefs";
 /**
  * Empty page margin shown on each side of the editor in Zen mode, in
  * place of the icon strip + panel column that would normally live there.
- * The inner edge (toward the editor) is a drag handle that adjusts the
- * margin width. Width is shared with the panel column width so the
- * mental model stays simple: "the margin is where the panel is."
+ * The inner edge (toward the editor) is a drag handle — dragging toward
+ * center shrinks the page and grows this margin's preferred size in
+ * lockstep, so the edge stays glued to the cursor. The other margin is
+ * unaffected. The margin itself flexes to fill whatever window space
+ * remains after icons + page + opposite margin.
  */
 export function ZenMargin({
   side,
-  width,
-  onWidthChange,
+  pageWidth,
+  onPageWidthChange,
+  marginPref,
+  onMarginPrefChange,
 }: {
   side: Side;
-  width: number;
-  onWidthChange: (w: number) => void;
+  pageWidth: number;
+  onPageWidthChange: (w: number) => void;
+  marginPref: number;
+  onMarginPrefChange: (w: number) => void;
 }) {
   const startX = useRef(0);
-  const startWidth = useRef(0);
+  const startPage = useRef(0);
+  const startMargin = useRef(0);
 
   const onMove = useCallback(
     (e: MouseEvent) => {
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
-      onWidthChange(Math.max(20, Math.min(1200, startWidth.current + delta)));
+      onPageWidthChange(startPage.current - delta);
+      onMarginPrefChange(Math.max(0, startMargin.current + delta));
     },
-    [side, onWidthChange],
+    [side, onPageWidthChange, onMarginPrefChange],
   );
 
   const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
@@ -42,14 +50,15 @@ export function ZenMargin({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       startX.current = e.clientX;
-      startWidth.current = width;
+      startPage.current = pageWidth;
+      startMargin.current = marginPref;
       gapMouseDown(e);
     },
-    [width, gapMouseDown],
+    [pageWidth, marginPref, gapMouseDown],
   );
 
   return (
-    <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div className="relative flex" style={{ flex: `1 100 ${marginPref}px`, minWidth: 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       <div
         ref={gapRef}

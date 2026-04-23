@@ -421,6 +421,7 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setPageWidth,
     setAlwaysShowLinkedText,
     togglePopout,
     closePopout,
@@ -3552,11 +3553,9 @@ export default function EditorLayout() {
     const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
     const setFocused = side === "left" ? setFocusedHalfLeft : setFocusedHalfRight;
 
-    const width = getPanelWidth(side, top ?? "blank");
-    const onWidthChange = (w: number) => setPanelWidth(side, top ?? "blank", w);
-
     if (!top && !bottom) {
-      // Fully collapsed — column gone, text extends to strip edge
+      // Fully collapsed — column gone, caller renders a flex-grow spacer
+      // in its place so the editor still has surrounding space to absorb.
       return null;
     }
 
@@ -3565,8 +3564,8 @@ export default function EditorLayout() {
       return (
         <PanelColumn
           side={side}
-          width={width}
-          onWidthChange={onWidthChange}
+          pageWidth={prefs.pageWidth}
+          onPageWidthChange={setPageWidth}
           split
           focusedHalf={focused}
           onFocusHalf={setFocused}
@@ -3586,7 +3585,7 @@ export default function EditorLayout() {
     // Single mode. Omni-view renders chromeless — no pod background/border —
     // so its cards float directly on the blank canvas behind the panels.
     return (
-      <PanelColumn side={side} width={width} onWidthChange={onWidthChange} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined}>
+      <PanelColumn side={side} pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} panelPref={getPanelWidth(side, top ?? "blank")} onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined}>
 
         {renderPanelWithChrome(top!, side)}
       </PanelColumn>
@@ -4041,7 +4040,7 @@ export default function EditorLayout() {
           />
         </div>
       ) : (
-      <div ref={mainAreaRef} className="flex flex-1 overflow-hidden relative">
+      <div ref={mainAreaRef} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>
         {/* ── Linking lines suppressed (may re-enable later) ──
         {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
           <ArchiveConnectors
@@ -4156,15 +4155,20 @@ export default function EditorLayout() {
             width is shared with the panel column width so the dial
             "is where the panel is". */}
         {zenModeOn ? (
-          <ZenMargin side="left" width={zenLeftMargin} onWidthChange={setZenLeftMargin} />
+          <ZenMargin side="left" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenLeftMargin} onMarginPrefChange={setZenLeftMargin} />
         ) : (
-          renderPanelColumn("left")
+          /* Panel column when open; blank flex-grow spacer when closed,
+             so the editor page stays flush against the panel's inner
+             edge in both cases. */
+          renderPanelColumn("left") ?? <div aria-hidden style={{ flex: '1 1 0', minWidth: 0 }} />
         )}
 
         {/* Editor column: floating toolbar overlays the editor pod's
             top-right corner; the editor pod itself runs all the way to
             the top of the column so the text reaches the tab area. */}
-        <div ref={editorColRefCb} className={`flex-1 flex flex-col min-w-0 min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
+        <div ref={editorColRefCb} className={`flex flex-col min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
+          flex: '0 1 var(--page-preferred)',
+          minWidth: 'var(--page-min)',
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
@@ -4396,11 +4400,11 @@ export default function EditorLayout() {
 
         {/* Right panel column (always present; collapsed when inactive).
             In Zen mode this position becomes an empty adjustable margin —
-            width is shared with the panel column width. */}
+            drag its inner edge to adjust the page width. */}
         {zenModeOn ? (
-          <ZenMargin side="right" width={zenRightMargin} onWidthChange={setZenRightMargin} />
+          <ZenMargin side="right" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenRightMargin} onMarginPrefChange={setZenRightMargin} />
         ) : (
-          renderPanelColumn("right")
+          renderPanelColumn("right") ?? <div aria-hidden style={{ flex: '1 1 0', minWidth: 0 }} />
         )}
 
         {/* Right icon strip — hidden in Zen mode */}
