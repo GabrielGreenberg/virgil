@@ -58,6 +58,11 @@ export interface ViewPrefs {
   /** Location of the floating MenuBar. Defaults to "home" (docked in the
    *  Virgil top bar, centered over the document). */
   menuLocation: MenuLocation;
+  /** Preferred width of the editor "page" in pixels. The page is the
+   *  solid element of the layout — panels and margins flex around it to
+   *  absorb window resizes. Drag on panel or zen-margin inner edges
+   *  updates this pref. */
+  pageWidth: number;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -96,6 +101,7 @@ const DEFAULT_PREFS: ViewPrefs = {
   cardFloatPositions: {},
   alwaysShowLinkedText: false,
   menuLocation: { kind: "home" },
+  pageWidth: 880,
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -490,6 +496,10 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplitRatio: Math.max(0.15, Math.min(0.85, ratio)) }));
   }, [update]);
 
+  const setPageWidth = useCallback((w: number) => {
+    update((p) => ({ ...p, pageWidth: Math.max(400, Math.min(1600, w)) }));
+  }, [update]);
+
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
@@ -515,6 +525,7 @@ export function useViewPrefs() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
+    setPageWidth,
     setAlwaysShowLinkedText,
     setMenuLocation,
     togglePopout,

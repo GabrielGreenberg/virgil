@@ -27,8 +27,10 @@ export function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasV
  */
 export function PanelColumn({
   side,
-  width,
-  onWidthChange,
+  pageWidth,
+  onPageWidthChange,
+  panelPref,
+  onPanelPrefChange,
   children,
   split,
   collapsed,
@@ -40,8 +42,16 @@ export function PanelColumn({
   topOverlay,
 }: {
   side: "left" | "right";
-  width: number;
-  onWidthChange: (w: number) => void;
+  /** Current preferred page width. Dragging the panel's inner edge
+   *  adjusts this — toward center shrinks the page, away widens it —
+   *  and the panel flexes to fill the remainder. */
+  pageWidth: number;
+  onPageWidthChange: (w: number) => void;
+  /** This side's panel flex-basis. Dragging updates it in lockstep with
+   *  pageWidth so the panel edge tracks the cursor exactly instead of
+   *  splitting the delta with the opposite side. */
+  panelPref: number;
+  onPanelPrefChange: (w: number) => void;
   children?:
     | React.ReactNode
     | {
@@ -63,17 +73,22 @@ export function PanelColumn({
   topOverlay?: React.ReactNode;
 }) {
   const startX = useRef(0);
-  const startWidth = useRef(0);
+  const startPage = useRef(0);
+  const startPanel = useRef(0);
   const stackRef = useRef<HTMLDivElement>(null);
 
   const onMove = useCallback(
     (e: MouseEvent) => {
+      // Inner-edge drag toward editor-center → panel grows, page shrinks.
+      // Away from center → panel shrinks, page grows. Updating both in
+      // lockstep keeps the dragged edge glued to the cursor.
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
-      onWidthChange(Math.max(240, Math.min(600, startWidth.current + delta)));
+      onPageWidthChange(startPage.current - delta);
+      onPanelPrefChange(Math.max(0, startPanel.current + delta));
     },
-    [side, onWidthChange],
+    [side, onPageWidthChange, onPanelPrefChange],
   );
 
   const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
@@ -85,10 +100,11 @@ export function PanelColumn({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       startX.current = e.clientX;
-      startWidth.current = width;
+      startPage.current = pageWidth;
+      startPanel.current = panelPref;
       gapMouseDown(e);
     },
-    [width, gapMouseDown],
+    [pageWidth, panelPref, gapMouseDown],
   );
 
   // Determine if children is a split spec or single ReactNode
@@ -105,7 +121,7 @@ export function PanelColumn({
   const podRadius = 'var(--pod-radius)';
 
   return (
-    <div className="relative flex shrink-0" style={{ width, paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div className="relative flex" style={{ flex: `1 100 ${panelPref}px`, minWidth: 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
       {collapsed ? (
         /* Collapsed: empty placeholder preserving layout space */
