@@ -11,6 +11,7 @@ import type {
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
 import { addParagraphLink, removeParagraphLink } from "@/links/links";
 import { usePersistentState } from "./usePersistentState";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: QuotationsState = { groups: [] };
 
@@ -26,7 +27,7 @@ function makeReference(citeKey = "", quotes?: Quote[]): Reference {
   };
 }
 
-export function useQuotations(docId: string | null) {
+export function useQuotations(docId: string | null, pristine?: PristineKindApi | null) {
   const { state, update } = usePersistentState<QuotationsState>(
     docId,
     "quotations.json",
@@ -62,31 +63,36 @@ export function useQuotations(docId: string | null) {
       if (init?.paragraphId) {
         newGroup = addParagraphLink(newGroup, "quotation", init.paragraphId);
       }
+      const isBlank = !init || (!init.text && !init.paragraphId);
+      if (isBlank) pristine?.markNew(newGroup.id);
       update((prev) => ({ ...prev, groups: [newGroup, ...prev.groups] }));
       return newGroup;
     },
-    [update],
+    [update, pristine],
   );
 
   const deleteGroup = useCallback(
     (groupId: string) => {
+      pristine?.markDirty(groupId);
       update((prev) => ({ groups: prev.groups.filter((g) => g.id !== groupId) }));
     },
-    [update],
+    [update, pristine],
   );
 
   const updateGroupTitle = useCallback(
     (groupId: string, title: string) => {
+      pristine?.markDirty(groupId);
       updateGroup(groupId, (g) => ({ ...g, title }));
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   const updateNotes = useCallback(
     (groupId: string, notes: string) => {
+      pristine?.markDirty(groupId);
       updateGroup(groupId, (g) => ({ ...g, notes }));
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   const addParagraphId = useCallback(
@@ -107,6 +113,7 @@ export function useQuotations(docId: string | null) {
 
   const addReference = useCallback(
     (groupId: string) => {
+      pristine?.markDirty(groupId);
       const newRef = makeReference();
       updateGroup(groupId, (g) => ({
         ...g,
@@ -114,7 +121,7 @@ export function useQuotations(docId: string | null) {
       }));
       return newRef.id;
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   const deleteReference = useCallback(
@@ -129,6 +136,7 @@ export function useQuotations(docId: string | null) {
 
   const updateReferenceCiteKey = useCallback(
     (groupId: string, referenceId: string, citeKey: string) => {
+      pristine?.markDirty(groupId);
       updateGroup(groupId, (g) => ({
         ...g,
         references: g.references.map((r) =>
@@ -136,13 +144,14 @@ export function useQuotations(docId: string | null) {
         ),
       }));
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   // --- Quote ops ---
 
   const addQuote = useCallback(
     (groupId: string, referenceId: string) => {
+      pristine?.markDirty(groupId);
       const newQuote = makeQuote();
       updateGroup(groupId, (g) => ({
         ...g,
@@ -152,7 +161,7 @@ export function useQuotations(docId: string | null) {
       }));
       return newQuote.id;
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   const updateQuote = useCallback(
@@ -162,6 +171,7 @@ export function useQuotations(docId: string | null) {
       quoteId: string,
       fields: Partial<Pick<Quote, "text" | "page">>,
     ) => {
+      pristine?.markDirty(groupId);
       updateGroup(groupId, (g) => ({
         ...g,
         references: g.references.map((r) =>
@@ -176,7 +186,7 @@ export function useQuotations(docId: string | null) {
         ),
       }));
     },
-    [updateGroup],
+    [updateGroup, pristine],
   );
 
   const deleteQuote = useCallback(

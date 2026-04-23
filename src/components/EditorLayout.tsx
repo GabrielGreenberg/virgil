@@ -146,6 +146,10 @@ import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
 import { PanelViewModeProvider } from "./editor-layout/contexts/panel-view-mode";
 import { SelectionsProvider } from "./editor-layout/contexts/selections";
+import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
+import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
+import { usePristineCardManager } from "@/hooks/usePristineCardManager";
+import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { renderPoppedCard } from "./editor-layout/floating-cards";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
 import { CutterHost } from "./editor-layout/panels/cutter-host";
@@ -296,6 +300,16 @@ export default function EditorLayout() {
   const activeRevisionsCount =
     generalRevisions.filter((r) => !r.resolved).length +
     textRevisions.filter((r) => !r.resolved).length;
+  // Unified pristine-card manager — tracks blank-on-create cards across all
+  // kinds and discards them via a global click-away listener once the user
+  // clicks outside the card's DOM. Each per-kind hook gets its slice here.
+  const pristineManager = usePristineCardManager();
+  const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
+  const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
+  const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
+  const quotationPristine = useMemo(() => pristineManager.forKind("quotation"), [pristineManager]);
+  const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
+  const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
   const {
     notes,
     addNote,
@@ -306,7 +320,7 @@ export default function EditorLayout() {
     deleteNote,
     setNoteAnchor,
     discardPristineNotes,
-  } = useNotes(docIdForHooks);
+  } = useNotes(docIdForHooks, notePristine);
   const {
     cuts,
     addCut,
@@ -316,7 +330,7 @@ export default function EditorLayout() {
     removeCutParagraphId,
     deleteCut,
     discardPristineCuts,
-  } = useCutter(docIdForHooks);
+  } = useCutter(docIdForHooks, cutPristine);
   const [selectedCutId, setSelectedCutId] = useState<string | null>(null);
   const {
     groups: quotationGroups,
@@ -332,7 +346,7 @@ export default function EditorLayout() {
     addQuote: addQuotationQuote,
     updateQuote: updateQuotationQuote,
     deleteQuote: deleteQuotationQuote,
-  } = useQuotations(docIdForHooks);
+  } = useQuotations(docIdForHooks, quotationPristine);
   const {
     items: todoItems,
     addItem: addTodo,
@@ -345,7 +359,7 @@ export default function EditorLayout() {
     addParagraphId: addTodoParagraphId,
     removeParagraphId: removeTodoParagraphId,
     discardPristineTodos,
-  } = useTodos(docIdForHooks);
+  } = useTodos(docIdForHooks, todoPristine);
 
   const {
     requests: aiRequests,
@@ -382,7 +396,7 @@ export default function EditorLayout() {
     getDisplayText: getCitationDisplayText,
     getFormattedBib,
     syncFromEditor: syncCitationsFromEditor,
-  } = useCitations(docIdForHooks);
+  } = useCitations(docIdForHooks, citationPristine);
 
   const { getAnnotation, setAnnotation } = useAnnotations(docIdForHooks);
   const {
@@ -2307,6 +2321,58 @@ export default function EditorLayout() {
     return { ed, from, to, text, editorHandle: editorRef.current };
   }, []);
 
+  // Footnotes live in the editor rather than a per-doc hook, so pristine
+  // marking is done explicitly from the card-creation layer and discarded
+  // via the editor's deleteFootnote handle.
+  const markFootnotePristine = useCallback(
+    (id: string) => { footnotePristine.markNew(id); },
+    [footnotePristine],
+  );
+
+  // Central card-creation API — every "+" / toolbar / drop / selection
+  // path routes through this so pristine marking, selection setting,
+  // panel activation, and floating-popup spawning stay consistent.
+  const cardCreation = useCardCreation({
+    editorRef,
+    addNote,
+    addCut,
+    addTodo,
+    updateTodo,
+    addTodoParagraphId,
+    addQuotationGroup,
+    addCitation,
+    setSelectedNoteId,
+    setSelectedCutId,
+    setSelectedTodoId,
+    setSelectedFootnoteId,
+    setSelectedQuotationGroupId,
+    setSelectedCitationId,
+    prefs,
+    setActiveLeft,
+    setActiveRight,
+    popCardAtAnchor,
+    markFootnotePristine,
+  });
+
+  // Register per-kind discard callbacks. When the click-away watcher in
+  // the pristine manager sees a pointerdown outside a pristine card, it
+  // calls the kind's registered discard callback to remove the card.
+  useEffect(() => notePristine.registerDiscard((id) => deleteNote(id)), [notePristine, deleteNote]);
+  useEffect(() => cutPristine.registerDiscard((id) => deleteCut(id)), [cutPristine, deleteCut]);
+  useEffect(() => todoPristine.registerDiscard((id) => deleteTodo(id)), [todoPristine, deleteTodo]);
+  useEffect(
+    () => quotationPristine.registerDiscard((id) => deleteQuotationGroup(id)),
+    [quotationPristine, deleteQuotationGroup],
+  );
+  useEffect(
+    () => citationPristine.registerDiscard((id) => deleteCitation(id)),
+    [citationPristine, deleteCitation],
+  );
+  useEffect(
+    () => footnotePristine.registerDiscard((id) => handleDeleteFootnote(id)),
+    [footnotePristine, handleDeleteFootnote],
+  );
+
   // ─── Toolbar action handlers ────────────────────────────────────────
   // Each handler creates a card in its corresponding panel — selection-
   // anchored when text is selected, blank otherwise — then spawns a
@@ -2332,56 +2398,44 @@ export default function EditorLayout() {
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
-    let note;
+    let anchor: { anchorId: string; anchorText: string } | undefined;
+    let paragraphId: string | null = null;
     if (sel) {
-      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
       const record = createLinkedAnchor(sel.ed, "note");
-      note = addNote(
-        paragraphId,
-        undefined,
-        record ? { anchorId: record.anchorId, anchorText: record.text } : undefined,
-      );
-      if (record) updateLinkedAnchorCard(sel.ed, record.anchorId, "note", note.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    } else {
-      note = addNote(null);
+      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
     }
-    setSelectedNoteId(note.id);
-    popCardAtAnchor("note", note.id, anchorRect);
-  }, [readSelection, addNote, setSelectedNoteId, popCardAtAnchor]);
+    const note = cardCreation.createNote({ paragraphId, anchor, anchorRect });
+    if (sel && anchor) {
+      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "note", note.id);
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    }
+  }, [readSelection, cardCreation]);
 
   const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
-    const todo = addTodo();
+    const paragraphId = sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null;
+    cardCreation.createTodo({ text: sel?.text, paragraphId, anchorRect });
     if (sel) {
-      updateTodo(todo.id, sel.text);
-      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      if (paragraphId) addTodoParagraphId(todo.id, paragraphId);
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
-    setSelectedTodoId(todo.id);
-    popCardAtAnchor("todo", todo.id, anchorRect);
-  }, [readSelection, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, popCardAtAnchor]);
+  }, [readSelection, cardCreation]);
 
   const handleToolbarAddCut = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
-    let cut;
+    let anchor: { anchorId: string; anchorText: string } | undefined;
+    let paragraphId: string | null = null;
     if (sel) {
-      const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
       const record = createLinkedAnchor(sel.ed, "cut");
-      cut = addCut(
-        paragraphId,
-        undefined,
-        record ? { anchorId: record.anchorId, anchorText: record.text } : undefined,
-      );
-      if (record) updateLinkedAnchorCard(sel.ed, record.anchorId, "cut", cut.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    } else {
-      cut = addCut(null);
+      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
     }
-    setSelectedCutId(cut.id);
-    popCardAtAnchor("cut", cut.id, anchorRect);
-  }, [readSelection, addCut, setSelectedCutId, popCardAtAnchor]);
+    const cut = cardCreation.createCut({ paragraphId, anchor, anchorRect });
+    if (sel && anchor) {
+      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "cut", cut.id);
+      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+    }
+  }, [readSelection, cardCreation]);
 
   const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
@@ -2400,37 +2454,28 @@ export default function EditorLayout() {
   }, [readSelection, archiveContent, updateArchiveSnippet, addArchiveParagraphId, popCardAtAnchor]);
 
   const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {
-    if (!editorRef.current) return;
-    const result = readSelection()
-      ? editorRef.current.createFootnoteFromSelection()
-      : editorRef.current.createEmptyFootnote();
-    if (!result) return;
-    editorRef.current.renumberFootnotes();
-    setSelectedFootnoteId(result.footnoteId);
-    popCardAtAnchor("footnote", result.footnoteId, anchorRect);
-  }, [readSelection, setSelectedFootnoteId, popCardAtAnchor]);
+    cardCreation.createFootnote({ fromSelection: !!readSelection(), anchorRect });
+  }, [readSelection, cardCreation]);
 
   const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
     // Citations don't wrap selected text — a blank unanchored citation
     // is created and popped; the user types the cite key in the card.
     // The in-text atom is inserted separately from the panel's builder
     // flow once the card has a key.
-    const ref = addCitation("\\cite{}", undefined, true);
-    setSelectedCitationId(ref.id);
-    popCardAtAnchor("citation", ref.id, anchorRect);
-  }, [addCitation, setSelectedCitationId, popCardAtAnchor]);
+    cardCreation.createCitation({ anchorRect });
+  }, [cardCreation]);
 
   const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
-    const group = sel
-      ? addQuotationGroup({ text: sel.text, paragraphId: sel.editorHandle.ensureParagraphUuid(sel.from) })
-      : addQuotationGroup({});
+    cardCreation.createQuotation({
+      text: sel?.text,
+      paragraphId: sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null,
+      anchorRect,
+    });
     if (sel) {
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
-    setSelectedQuotationGroupId(group.id);
-    popCardAtAnchor("quotation", group.id, anchorRect);
-  }, [readSelection, addQuotationGroup, setSelectedQuotationGroupId, popCardAtAnchor]);
+  }, [readSelection, cardCreation]);
 
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
   // Maps each drop-accepting panel to the MIME types its icon accepts,
@@ -3672,6 +3717,8 @@ export default function EditorLayout() {
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
     }}>
+    <PristineCardsProvider value={pristineManager}>
+    <CardCreationProvider value={cardCreation}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Progress bar */}
@@ -4584,6 +4631,8 @@ export default function EditorLayout() {
       })}
     </div>
     </PoppedCardsContext.Provider>
+    </CardCreationProvider>
+    </PristineCardsProvider>
     </SelectionsProvider>
     </PanelViewModeProvider>
     </CitationDisplayProvider>

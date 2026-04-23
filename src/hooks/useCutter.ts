@@ -15,6 +15,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: CutterState = { cuts: [] };
 
@@ -34,14 +35,15 @@ function migrateCutter(raw: unknown): CutterState {
   return { cuts: Array.isArray(s.cuts) ? s.cuts.map(migrateCut) : [] };
 }
 
-export function useCutter(docId: string | null) {
+export function useCutter(docId: string | null, externalPristine?: PristineKindApi | null) {
   const { state, update } = usePersistentState<CutterState>(
     docId,
     "cutter.json",
     EMPTY_STATE,
     { migrate: migrateCutter, errorLabel: "cuts" },
   );
-  const pristine = usePristineTracker();
+  const localPristine = usePristineTracker();
+  const pristine = externalPristine ?? localPristine;
 
   const addCut = useCallback(
     (
@@ -120,13 +122,19 @@ export function useCutter(docId: string | null) {
   /**
    * Drop cuts that were created via `addCut()` (with no seed content,
    * anchor, or paragraph link) but never edited. Call from panel-close.
+   * When the external pristine manager is in use, it owns discard via
+   * the registered delete callback.
    */
   const discardPristineCuts = useCallback(() => {
-    const ids = pristine.takePristine();
+    if (externalPristine) {
+      externalPristine.discardAll();
+      return;
+    }
+    const ids = localPristine.takePristine();
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     update((prev) => ({ cuts: prev.cuts.filter((c) => !idSet.has(c.id)) }));
-  }, [update, pristine]);
+  }, [update, externalPristine, localPristine]);
 
   const clearCutAnchor = useCallback(
     (anchorId: string) => {

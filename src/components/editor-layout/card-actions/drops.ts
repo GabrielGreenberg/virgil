@@ -27,6 +27,10 @@ type AddCut = (
  *   and the source paragraph stays intact in the document (unlike
  *   capture-style drops that extract content).
  *
+ * Every card created here is seeded (anchor or paragraph link), so the
+ * per-hook pristine check recognizes it as "already carrying intent" and
+ * skips pristine enrollment — the card is never auto-discarded.
+ *
  * Quotation and Todo drops are not here — they're dispatched via
  * `virgil-quotation-drop` / `virgil-todo-drop` window events and handled
  * in `event-bridges/panel-drops.ts` (E7).

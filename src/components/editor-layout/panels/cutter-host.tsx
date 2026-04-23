@@ -8,6 +8,7 @@ import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
+import { useCardCreationContext } from "../contexts/card-creation";
 
 export interface CutterHostProps {
   side: Side;
@@ -28,13 +29,14 @@ export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedCutId, setSelectedCutId } = useSelectionsContext();
+  const { createCut } = useCardCreationContext();
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
   return (
     <CutterPanel
       cuts={p.cuts}
-      onAdd={() => p.addCut(null)}
+      onAdd={() => createCut({})}
       onUpdate={p.updateCut}
       onUpdateTitle={p.updateCutTitle}
       onDelete={p.deleteCut}

@@ -76,6 +76,7 @@ export function TodoRow({
     <PanelCard
       ref={cardRef}
       {...(extraDataAttrs || {})}
+      data-pristine-card-id={item.id}
       theme={theme}
       selected={selected}
       isPoppedOut={isPoppedOut}

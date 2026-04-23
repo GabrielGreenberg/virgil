@@ -13,6 +13,7 @@ import {
   formatBibliography,
 } from "@/lib/bib-parser";
 import { usePersistentState } from "./usePersistentState";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: CitationsState = {
   citations: [],
@@ -32,7 +33,7 @@ function migrate(raw: unknown): CitationsState {
   };
 }
 
-export function useCitations(docId: string | null) {
+export function useCitations(docId: string | null, pristine?: PristineKindApi | null) {
   const {
     state,
     setState,
@@ -95,6 +96,9 @@ export function useCitations(docId: string | null) {
         createdAt: new Date().toISOString(),
         ...(markUnanchored ? { unanchored: true as const } : {}),
       };
+      // Pristine when created with no cite keys (e.g. toolbar "+" insert:
+      // `\cite{}`). Once the user fills in a key, updateCitation clears it.
+      if (ref.keys.length === 0) pristine?.markNew(ref.id);
       update((prev) => {
         const existing = prev.citations.find((c) => c.id === ref.id);
         if (existing) {
@@ -116,12 +120,13 @@ export function useCitations(docId: string | null) {
       });
       return ref;
     },
-    [update],
+    [update, pristine],
   );
 
   const updateCitation = useCallback(
     (id: string, command: string) => {
       const parsed = parseCiteCommand(command);
+      if (parsed?.keys && parsed.keys.length > 0) pristine?.markDirty(id);
       update((prev) => ({
         ...prev,
         citations: prev.citations.map((c) =>
@@ -129,17 +134,18 @@ export function useCitations(docId: string | null) {
         ),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const deleteCitation = useCallback(
     (id: string) => {
+      pristine?.markDirty(id);
       update((prev) => ({
         ...prev,
         citations: prev.citations.filter((c) => c.id !== id),
       }));
     },
-    [update],
+    [update, pristine],
   );
 
   const setStyle = useCallback(

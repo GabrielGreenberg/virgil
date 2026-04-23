@@ -101,6 +101,7 @@ export function CutCard({
       placeholder="Cut text…"
       onChange={handleChange}
       dataAttr={{ name: "cut-entry", value: cut.id }}
+      extraDataAttrs={{ "data-pristine-card-id": cut.id }}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}

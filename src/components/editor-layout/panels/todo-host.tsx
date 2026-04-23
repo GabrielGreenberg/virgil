@@ -8,6 +8,7 @@ import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
+import { useCardCreationContext } from "../contexts/card-creation";
 
 export interface TodoHostProps {
   side: Side;
@@ -31,13 +32,14 @@ export function TodoHost(p: TodoHostProps) {
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
   const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { createTodo } = useCardCreationContext();
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
   return (
     <TodoPanel
       items={p.todoItems}
-      onAdd={() => p.addTodo()}
+      onAdd={() => createTodo({})}
       onToggle={p.toggleTodo}
       onUpdate={p.updateTodo}
       onUpdateNotes={p.updateTodoNotes}

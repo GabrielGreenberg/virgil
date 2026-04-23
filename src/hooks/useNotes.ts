@@ -15,6 +15,7 @@ import {
 import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
+import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY_STATE: NotesState = { notes: [] };
 
@@ -34,14 +35,15 @@ function migrateNotes(raw: unknown): NotesState {
   return { notes: Array.isArray(s.notes) ? s.notes.map(migrateNote) : [] };
 }
 
-export function useNotes(docId: string | null) {
+export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
   const { state, update } = usePersistentState<NotesState>(
     docId,
     "notes.json",
     EMPTY_STATE,
     { migrate: migrateNotes, errorLabel: "notes" },
   );
-  const pristine = usePristineTracker();
+  const localPristine = usePristineTracker();
+  const pristine = externalPristine ?? localPristine;
 
   const addNote = useCallback(
     (
@@ -164,14 +166,19 @@ export function useNotes(docId: string | null) {
   /**
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
-   * does not leave a blank card behind.
+   * does not leave a blank card behind. When the external pristine manager
+   * is in use, it owns discard via the registered delete callback.
    */
   const discardPristineNotes = useCallback(() => {
-    const ids = pristine.takePristine();
+    if (externalPristine) {
+      externalPristine.discardAll();
+      return;
+    }
+    const ids = localPristine.takePristine();
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     update((prev) => ({ notes: prev.notes.filter((n) => !idSet.has(n.id)) }));
-  }, [update, pristine]);
+  }, [update, externalPristine, localPristine]);
 
   return {
     notes: state.notes,

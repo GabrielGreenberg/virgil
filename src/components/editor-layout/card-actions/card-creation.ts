@@ -1,0 +1,221 @@
+import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateAction } from "react";
+import type { JSONContent } from "@tiptap/react";
+import type {
+  UserNote,
+  CutItem,
+  TodoItem,
+  QuotationGroup,
+  CitationRef,
+} from "@/lib/types";
+import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import type { EditorHandle } from "../../Editor";
+
+/**
+ * Centralized card creation — every "+" / toolbar / drop / selection path
+ * that produces a new card funnels through here. Each `create*` function
+ * owns the same post-create chores:
+ *
+ *   1. Delegate to the kind's hook `add*` method (which handles pristine
+ *      marking for blank creates internally via the injected manager).
+ *   2. Set the kind's panel selection so the new card is highlighted.
+ *   3. Activate the panel on its placed side (no-op if already active).
+ *   4. Optionally pop the card into a floating wrapper when called from a
+ *      toolbar path (with an `anchorRect`).
+ *
+ * Click-away discard for blank cards is not a concern here — it's owned
+ * entirely by the pristine manager's global pointerdown watcher.
+ */
+
+export type AnchorRef = { anchorId: string; anchorText: string };
+
+export interface CardCreationDeps {
+  editorRef: RefObject<EditorHandle | null>;
+  addNote: (
+    paragraphId: string | null,
+    content?: JSONContent,
+    anchor?: AnchorRef,
+  ) => UserNote;
+  addCut: (
+    paragraphId: string | null,
+    content?: JSONContent,
+    anchor?: AnchorRef,
+  ) => CutItem;
+  addTodo: () => TodoItem;
+  updateTodo: (id: string, text: string) => void;
+  addTodoParagraphId: (id: string, paragraphId: string) => void;
+  addQuotationGroup: (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
+  addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
+  setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
+  setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
+  setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
+  prefs: ViewPrefs;
+  setActiveLeft: (id: PanelId) => void;
+  setActiveRight: (id: PanelId) => void;
+  popCardAtAnchor: (kind: string, id: string, anchorRect: DOMRect | null) => void;
+  markFootnotePristine: (id: string) => void;
+}
+
+export interface CardCreationApi {
+  createNote: (opts: {
+    paragraphId?: string | null;
+    content?: JSONContent;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+  }) => UserNote;
+  createCut: (opts: {
+    paragraphId?: string | null;
+    content?: JSONContent;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+  }) => CutItem;
+  createTodo: (opts: {
+    text?: string;
+    paragraphId?: string | null;
+    anchorRect?: DOMRect | null;
+  }) => TodoItem;
+  createFootnote: (opts: {
+    fromSelection?: boolean;
+    anchorRect?: DOMRect | null;
+  }) => { footnoteId: string } | null;
+  createQuotation: (opts: {
+    text?: string;
+    paragraphId?: string | null;
+    anchorRect?: DOMRect | null;
+  }) => QuotationGroup;
+  createCitation: (opts: {
+    command?: string;
+    unanchored?: boolean;
+    anchorRect?: DOMRect | null;
+  }) => CitationRef;
+}
+
+export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
+  const {
+    editorRef,
+    addNote,
+    addCut,
+    addTodo,
+    updateTodo,
+    addTodoParagraphId,
+    addQuotationGroup,
+    addCitation,
+    setSelectedNoteId,
+    setSelectedCutId,
+    setSelectedTodoId,
+    setSelectedFootnoteId,
+    setSelectedQuotationGroupId,
+    setSelectedCitationId,
+    prefs,
+    setActiveLeft,
+    setActiveRight,
+    popCardAtAnchor,
+    markFootnotePristine,
+  } = deps;
+
+  const ensurePanelActive = useCallback(
+    (id: PanelId) => {
+      const placement = prefs.placements.find((p) => p.id === id);
+      const side = placement?.side ?? "right";
+      if (side === "left") {
+        if (prefs.activeLeft !== id) setActiveLeft(id);
+      } else {
+        if (prefs.activeRight !== id) setActiveRight(id);
+      }
+    },
+    [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
+  );
+
+  const createNote = useCallback<CardCreationApi["createNote"]>(
+    (opts) => {
+      const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor);
+      setSelectedNoteId(note.id);
+      ensurePanelActive("notes");
+      if (opts.anchorRect !== undefined) popCardAtAnchor("note", note.id, opts.anchorRect);
+      return note;
+    },
+    [addNote, setSelectedNoteId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createCut = useCallback<CardCreationApi["createCut"]>(
+    (opts) => {
+      const cut = addCut(opts.paragraphId ?? null, opts.content, opts.anchor);
+      setSelectedCutId(cut.id);
+      ensurePanelActive("cutter");
+      if (opts.anchorRect !== undefined) popCardAtAnchor("cut", cut.id, opts.anchorRect);
+      return cut;
+    },
+    [addCut, setSelectedCutId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createTodo = useCallback<CardCreationApi["createTodo"]>(
+    (opts) => {
+      const todo = addTodo();
+      if (opts.text) updateTodo(todo.id, opts.text);
+      if (opts.paragraphId) addTodoParagraphId(todo.id, opts.paragraphId);
+      setSelectedTodoId(todo.id);
+      ensurePanelActive("todo");
+      if (opts.anchorRect !== undefined) popCardAtAnchor("todo", todo.id, opts.anchorRect);
+      return todo;
+    },
+    [addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createFootnote = useCallback<CardCreationApi["createFootnote"]>(
+    (opts) => {
+      const handle = editorRef.current;
+      if (!handle) return null;
+      const result = opts.fromSelection
+        ? handle.createFootnoteFromSelection()
+        : handle.createEmptyFootnote();
+      if (!result) return null;
+      handle.renumberFootnotes();
+      if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
+      setSelectedFootnoteId(result.footnoteId);
+      ensurePanelActive("footnotes");
+      if (opts.anchorRect !== undefined)
+        popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect);
+      return result;
+    },
+    [editorRef, markFootnotePristine, setSelectedFootnoteId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createQuotation = useCallback<CardCreationApi["createQuotation"]>(
+    (opts) => {
+      const group =
+        opts.text || opts.paragraphId
+          ? addQuotationGroup({ text: opts.text, paragraphId: opts.paragraphId })
+          : addQuotationGroup();
+      setSelectedQuotationGroupId(group.id);
+      ensurePanelActive("quotations");
+      if (opts.anchorRect !== undefined) popCardAtAnchor("quotation", group.id, opts.anchorRect);
+      return group;
+    },
+    [addQuotationGroup, setSelectedQuotationGroupId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createCitation = useCallback<CardCreationApi["createCitation"]>(
+    (opts) => {
+      const ref = addCitation(opts.command ?? "\\cite{}", undefined, opts.unanchored ?? true);
+      setSelectedCitationId(ref.id);
+      ensurePanelActive("citations");
+      if (opts.anchorRect !== undefined) popCardAtAnchor("citation", ref.id, opts.anchorRect);
+      return ref;
+    },
+    [addCitation, setSelectedCitationId, ensurePanelActive, popCardAtAnchor],
+  );
+
+  return useMemo<CardCreationApi>(
+    () => ({
+      createNote,
+      createCut,
+      createTodo,
+      createFootnote,
+      createQuotation,
+      createCitation,
+    }),
+    [createNote, createCut, createTodo, createFootnote, createQuotation, createCitation],
+  );
+}

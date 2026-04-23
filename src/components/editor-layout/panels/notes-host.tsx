@@ -9,6 +9,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useCardCreationContext } from "../contexts/card-creation";
 
 type NotesHook = ReturnType<typeof useNotes>;
 
@@ -33,13 +34,14 @@ export function NotesHost(p: NotesHostProps) {
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
+  const { createNote } = useCardCreationContext();
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
   return (
     <NotesPanel
       notes={p.notes}
-      onAdd={() => p.addNote(null)}
+      onAdd={() => createNote({})}
       onUpdate={p.updateNote}
       onUpdateTitle={p.updateNoteTitle}
       onDelete={p.deleteNote}
