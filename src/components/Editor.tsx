@@ -1125,6 +1125,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // the doc shifted (shouldn't happen while modal is open, but
             // cheap insurance).
             const headingPos = typeof getPos === "function" ? getPos() : p;
+            if (headingPos == null) return;
             const headingNode = nodeEditor.state.doc.nodeAt(headingPos);
             if (!headingNode || headingNode.type.name !== "heading") return;
 

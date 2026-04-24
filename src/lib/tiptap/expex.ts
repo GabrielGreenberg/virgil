@@ -385,7 +385,7 @@ export const ExampleBlock = Node.create({
         // focus on the very first character typed — PM reclaims selection
         // for the editable content.
         stopEvent(event) {
-          const target = event.target as Node | null;
+          const target = event.target as globalThis.Node | null;
           if (!target) return false;
           if (titleAnnot === target || titleAnnot.contains(target)) return true;
           if (labelAnnot === target || labelAnnot.contains(target)) return true;
@@ -393,7 +393,7 @@ export const ExampleBlock = Node.create({
           return false;
         },
         ignoreMutation(mutation) {
-          const t = mutation.target as Node;
+          const t = mutation.target as globalThis.Node;
           if (titleAnnot.contains(t)) return true;
           if (labelAnnot.contains(t)) return true;
           if (dragHandle.contains(t)) return true;
