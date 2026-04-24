@@ -3895,8 +3895,9 @@ export default function EditorLayout() {
     return <PlaceholderPanel title={panelLabel(panelId)} hasViewToggle={false} />;
   }
 
-  // Render a side's panel column. Always returns a PanelColumn so the
-  // editor's flex context never changes — collapsed slots reserve space.
+  // Render a side's panel column, or null when the side is collapsed so
+  // the editor runs flush to the icon strip (the editor column's flex
+  // basis flips to grow in that case — see the main-area JSX below).
   function renderPanelColumn(side: Side): React.ReactNode {
     const top = side === "left" ? activeLeft : activeRight;
     const bottom = side === "left" ? prefs.activeLeftBottom : prefs.activeRightBottom;
@@ -3904,11 +3905,7 @@ export default function EditorLayout() {
     const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
     const setFocused = side === "left" ? setFocusedHalfLeft : setFocusedHalfRight;
 
-    if (!top && !bottom) {
-      // Fully collapsed — column gone, caller renders a flex-grow spacer
-      // in its place so the editor still has surrounding space to absorb.
-      return null;
-    }
+    if (!top && !bottom) return null;
 
     const omniActive = top === "omni" || bottom === "omni";
     const overlay = omniActive ? (
@@ -4528,25 +4525,27 @@ export default function EditorLayout() {
         </div>
         )}
 
-        {/* Left panel column (always present; collapsed when inactive).
-            In Zen mode this position becomes an empty adjustable margin —
-            width is shared with the panel column width so the dial
-            "is where the panel is". */}
+        {/* Left panel column. In Zen mode this position becomes an empty
+            adjustable margin; when the side is collapsed the column is
+            simply absent so the editor runs flush to the icon strip. */}
         {zenModeOn ? (
           <ZenMargin side="left" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenLeftMargin} onMarginPrefChange={setZenLeftMargin} />
         ) : (
-          /* Panel column when open; blank flex-grow spacer when closed,
-             so the editor page stays flush against the panel's inner
-             edge in both cases. */
-          renderPanelColumn("left") ?? <div aria-hidden style={{ flex: '1 1 0', minWidth: 0 }} />
+          renderPanelColumn("left")
         )}
 
-        {/* Editor column: floating toolbar overlays the editor pod's
-            top-right corner; the editor pod itself runs all the way to
-            the top of the column so the text reaches the tab area. */}
+        {/* Editor column. Flex behavior flips on panel collapse state:
+            both open → fixed at --page-preferred (panels absorb leftover);
+            one collapsed → grows from --page-preferred up to --page-max
+            (the open panel absorbs past-max leftover);
+            both collapsed → grows uncapped so the right strip stays
+            flush to the window edge. */}
         <div ref={editorColRefCb} className={`flex flex-col min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
-          flex: '0 1 var(--page-preferred)',
+          flex: (activeLeft == null || activeRight == null)
+            ? '1 1 var(--page-preferred)'
+            : '0 1 var(--page-preferred)',
           minWidth: 'var(--page-min)',
+          maxWidth: ((activeLeft == null) !== (activeRight == null)) ? 'var(--page-max)' : undefined,
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
@@ -4783,13 +4782,13 @@ export default function EditorLayout() {
           )}
         </div>
 
-        {/* Right panel column (always present; collapsed when inactive).
-            In Zen mode this position becomes an empty adjustable margin —
-            drag its inner edge to adjust the page width. */}
+        {/* Right panel column. In Zen mode this position becomes an empty
+            adjustable margin; when the side is collapsed the column is
+            simply absent so the editor runs flush to the icon strip. */}
         {zenModeOn ? (
           <ZenMargin side="right" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenRightMargin} onMarginPrefChange={setZenRightMargin} />
         ) : (
-          renderPanelColumn("right") ?? <div aria-hidden style={{ flex: '1 1 0', minWidth: 0 }} />
+          renderPanelColumn("right")
         )}
 
         {/* Right icon strip — hidden in Zen mode */}

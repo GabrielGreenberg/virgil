@@ -48,6 +48,7 @@
      preferred widths. See EditorLayout.tsx and zen-margin.tsx. */
   --page-preferred: 880px;
   --page-min: 640px;
+  --page-max: 1400px;
   --panel-min: 160px;
   --zen-margin-min: 20px;
 
