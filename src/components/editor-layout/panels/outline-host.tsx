@@ -11,6 +11,7 @@ export interface OutlineHostProps {
   onRenameHeading: (blockIndex: number, newText: string) => void;
   onRenameParTitle: (blockIndex: number, newTitle: string) => void;
   onUpdateLabel: (blockIndex: number, newLabel: string | null) => void;
+  isLabelTaken: (candidate: string, excludeLabel: string | null) => boolean;
   activeSectionPath: SectionPathEntry[];
   activeParTitleIndex: number | null;
   editorSplit: boolean;
@@ -34,6 +35,7 @@ export function OutlineHost(p: OutlineHostProps) {
       onRenameHeading={p.onRenameHeading}
       onRenameParTitle={p.onRenameParTitle}
       onUpdateLabel={p.onUpdateLabel}
+      isLabelTaken={p.isLabelTaken}
       activeSectionPath={p.activeSectionPath}
       activeParTitleIndex={p.activeParTitleIndex}
       editorSplit={p.editorSplit}

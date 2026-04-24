@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
+/**
+ * A discoverable target for a `\ref`. Headings carry their own section
+ * number and title; labels pulled out of raw-tex blocks (figure /
+ * equation / table environments, or stray `\label{...}` occurrences)
+ * only get a kind badge so they can at least be chosen from the popover
+ * even though Virgil can't render the reference yet.
+ */
 export interface LabelInfo {
   label: string;
-  title: string;        // heading text content
-  sectionNumber: string; // e.g. "1.2.3"
-  level: number;
+  kind: "heading" | "equation" | "figure" | "table" | "label";
+  /** Short type badge, e.g. "Section 1.2", "Figure", "Equation", "Label". */
+  typeLabel: string;
+  /** Display title: heading text, or a snippet, or empty. */
+  title: string;
 }
 
 interface Props {
@@ -121,8 +130,6 @@ export default function LabelRefPopover({
     (l) => l.label.toLowerCase().includes(inputValue.toLowerCase()),
   );
 
-  const TYPE_NAMES = ["Chapter", "Section", "Subsection", "Subsubsection"];
-
   return (
     <div
       ref={popoverRef}
@@ -148,10 +155,10 @@ export default function LabelRefPopover({
       >
         {target ? (
           <>
-            <span className="label-ref-popover-type">
-              {TYPE_NAMES[Math.min(target.level - 1, 3)]} {target.sectionNumber}
-            </span>
-            <span className="label-ref-popover-title">{target.title}</span>
+            <span className="label-ref-popover-type">{target.typeLabel}</span>
+            {target.title && (
+              <span className="label-ref-popover-title">{target.title}</span>
+            )}
           </>
         ) : (
           <span className="label-ref-popover-unresolved">Unresolved reference</span>
@@ -202,9 +209,7 @@ export default function LabelRefPopover({
                     }}
                   >
                     <span className="label-ref-option-label">{l.label}</span>
-                    <span className="label-ref-option-info">
-                      {TYPE_NAMES[Math.min(l.level - 1, 3)]} {l.sectionNumber}
-                    </span>
+                    <span className="label-ref-option-info">{l.typeLabel}</span>
                   </div>
                 ))}
               </div>

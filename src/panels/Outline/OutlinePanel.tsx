@@ -148,7 +148,18 @@ function PositionLozenge({ scrollRef, attr, color }: {
 }
 
 /** Inline label: shows existing label (click to edit) or a "+" on hover to create one. */
-function InlineLabel({ label, onCommit }: { label: string | null; onCommit: (value: string | null) => void }) {
+function InlineLabel({
+  label,
+  onCommit,
+  isTaken,
+}: {
+  label: string | null;
+  onCommit: (value: string | null) => void;
+  /** Consults the central label registry via EditorLayout's
+   *  `checkLabelTaken`. Called on each keystroke so the warning stays
+   *  live as the user types. */
+  isTaken?: (candidate: string, excludeLabel: string | null) => boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState(label ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -167,21 +178,35 @@ function InlineLabel({ label, onCommit }: { label: string | null; onCommit: (val
     setEditing(false);
   };
 
+  const conflict =
+    editing && isTaken ? isTaken(text.trim(), label ?? null) : false;
+
   if (editing) {
     return (
-      <input
-        ref={inputRef}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit();
-          if (e.key === "Escape") setEditing(false);
-        }}
-        onBlur={commit}
-        onClick={(e) => e.stopPropagation()}
-        className="text-[11px] text-blue-500 leading-tight mt-0.5 bg-transparent outline-none border-b border-blue-400 w-full"
-        placeholder="label key"
-      />
+      <>
+        <input
+          ref={inputRef}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          onBlur={commit}
+          onClick={(e) => e.stopPropagation()}
+          className={`text-[11px] leading-tight mt-0.5 bg-transparent outline-none border-b w-full ${
+            conflict
+              ? "text-[#b45757] border-[#b45757]"
+              : "text-blue-500 border-blue-400"
+          }`}
+          placeholder="label key"
+        />
+        {conflict && (
+          <div className="text-[10px] text-[#b45757] leading-tight mt-0.5">
+            ⚠ label already in use
+          </div>
+        )}
+      </>
     );
   }
 
@@ -216,6 +241,9 @@ interface OutlinePanelProps {
   onRenameHeading?: (blockIndex: number, newText: string) => void;
   onRenameParTitle?: (blockIndex: number, newTitle: string) => void;
   onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
+  /** Central label-conflict predicate — thread down to every label
+      input so they all agree on what counts as a collision. */
+  isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Heading chain currently visible in the editor viewport. The last
       entry is the closest enclosing heading. Empty means the reader
       is in the Document start region. */
@@ -522,6 +550,7 @@ function OutlineNode({
   sectionWordCount,
   perSectionCounts,
   onUpdateLabel,
+  isLabelTaken,
   focusState,
   onFocusMoveTo,
   onFocusExpandTo,
@@ -538,6 +567,7 @@ function OutlineNode({
   sectionWordCount: number;
   perSectionCounts: Map<string, number>;
   onUpdateLabel?: (blockIndex: number, newLabel: string | null) => void;
+  isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   focusState?: FocusState | null;
   onFocusMoveTo?: (blockIndex: number) => void;
   onFocusExpandTo?: (blockIndex: number) => void;
@@ -616,6 +646,7 @@ function OutlineNode({
             <InlineLabel
               label={node.heading.label}
               onCommit={(val) => onUpdateLabel(node.heading.index, val)}
+              isTaken={isLabelTaken}
             />
           )}
         </div>
@@ -673,6 +704,7 @@ function OutlineNode({
               sectionWordCount={perSectionCounts.get(child.heading.id) ?? 0}
               perSectionCounts={perSectionCounts}
               onUpdateLabel={onUpdateLabel}
+              isLabelTaken={isLabelTaken}
               focusState={focusState}
               onFocusMoveTo={onFocusMoveTo}
               onFocusExpandTo={onFocusExpandTo}
@@ -1335,7 +1367,7 @@ function FocusBand({
 
 /* ── Main OutlinePanel ─────────────────────────────────────────────── */
 
-function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
+function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, onRenameParTitle, onUpdateLabel, isLabelTaken, activeSectionPath, activeParTitleIndex, editorSplit, mirrorSectionPath, mirrorParTitleIndex, focusState, onFocusActivate, onFocusDeactivate, onFocusToggleLock, onFocusMoveTo, onFocusExpandTo, onFocusSnapBoundary }: OutlinePanelProps) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [showLabels, setShowLabels] = useState(true);
   const [showTitles, setShowTitles] = useState(true);
@@ -1744,6 +1776,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   sectionWordCount={perSectionCounts.get(node.heading.id) ?? 0}
                   perSectionCounts={perSectionCounts}
                   onUpdateLabel={onUpdateLabel}
+                  isLabelTaken={isLabelTaken}
                   focusState={focusState}
                   onFocusMoveTo={onFocusMoveTo}
                   onFocusExpandTo={onFocusExpandTo}
