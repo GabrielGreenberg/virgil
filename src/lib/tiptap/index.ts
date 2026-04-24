@@ -10,6 +10,15 @@ export { LatexComment } from "./latex-comment";
 export { ArchiveMarker } from "./archive-marker";
 export { Citation, consumePendingCitationCreate, markPendingCitationCreate } from "./citation";
 export { LabelRef, LabelHandler } from "./label";
+export {
+  ExampleBlock,
+  ExampleItem,
+  ExampleGloss,
+  AlignedGlossRow,
+  ProseGlossRow,
+  GlossCell,
+  ExpexNumbering,
+} from "./expex";
 export { EmptyParagraphTitleCleaner, TitleField, MaketitleMarker } from "./title";
 export { AiRequestMarker } from "./ai-request";
 export { LinkedAnchor, LinkedAnchorGuard, MarginaliaAnchorGuard } from "./linked-anchor";

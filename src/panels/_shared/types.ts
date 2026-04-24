@@ -26,6 +26,7 @@ export type PanelKind =
   | "suggestions"
   | "cutter"
   | "quotations"
+  | "examples"
   | "search"
   | "wordcount"
   | "errors"
@@ -41,6 +42,7 @@ export type CardKind =
   | "comment"
   | "cut"
   | "quotation"
+  | "example"
   | "ai"
   | "error";
 

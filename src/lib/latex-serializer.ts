@@ -10,11 +10,12 @@ const DEFAULT_PREAMBLE = `\\documentclass{article}
 \\usepackage{amssymb}
 
 % Virgil entity-id markers — no-op commands that carry stable UUIDs for
-% inline entities (footnotes, citations) across .tex parse cycles. Without
-% these, every re-parse regenerates the ids and any UI state keyed by them
-% (e.g. popped-out cards) becomes stale.
+% inline entities (footnotes, citations, examples) across .tex parse
+% cycles. Without these, every re-parse regenerates the ids and any UI
+% state keyed by them (e.g. popped-out cards) becomes stale.
 \\providecommand{\\vfid}[1]{}
 \\providecommand{\\vcid}[1]{}
+\\providecommand{\\vexid}[1]{}
 
 \\begin{document}
 
@@ -35,7 +36,8 @@ const DEFAULT_POSTAMBLE = `
 function ensureVirgilCommands(preamble: string): string {
   const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
   const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
-  if (hasVfid && hasVcid) return preamble;
+  const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
+  if (hasVfid && hasVcid && hasVexid) return preamble;
 
   const beginMarker = "\\begin{document}";
   const beginIdx = preamble.indexOf(beginMarker);
@@ -44,6 +46,7 @@ function ensureVirgilCommands(preamble: string): string {
   const additions: string[] = [];
   if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
   if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
+  if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
 
   const before = preamble.slice(0, beginIdx).replace(/\s*$/, "");
   const after = preamble.slice(beginIdx);
@@ -266,7 +269,22 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "labelRef":
-      return `\\ref{${node.attrs?.label || ""}}`;
+      return serializeLabelRef(node);
+
+    case "exampleBlock":
+      return serializeExampleBlock(node);
+
+    case "exampleItem":
+      return serializeExampleItem(node);
+
+    case "exampleGloss":
+      return serializeExampleGloss(node);
+
+    case "alignedGlossRow":
+    case "proseGlossRow":
+    case "glossCell":
+      // These only appear inside exampleGloss and are consumed there.
+      return "";
 
     case "aiRequestMarker": {
       const kind = String(node.attrs?.kind || "footnote");
@@ -285,6 +303,134 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       }
       return "";
   }
+}
+
+function serializeLabelRef(node: JSONContent): string {
+  const label = node.attrs?.label || "";
+  const cmd = (node.attrs?.refCommand as string) || "ref";
+  if (cmd === "getref") return `\\getref{${label}}`;
+  if (cmd === "getfullref") return `\\getfullref{${label}}`;
+  return `\\ref{${label}}`;
+}
+
+function serializeExampleInlineChildren(nodes: JSONContent[] | undefined): string {
+  if (!nodes) return "";
+  return nodes.map(serializeInline).join("");
+}
+
+function serializeExampleBlockBodyParagraphs(
+  nodes: JSONContent[] | undefined,
+): string {
+  if (!nodes) return "";
+  // Collapse paragraph children to inline (no blank-line separators — the
+  // \ex…\xe envelope owns its own spacing). Multiple paragraphs are joined
+  // by blank lines so the source stays readable.
+  const pieces: string[] = [];
+  for (const child of nodes) {
+    if (child.type === "paragraph") {
+      pieces.push(serializeExampleInlineChildren(child.content));
+    } else if (child.type === "exampleGloss") {
+      pieces.push(serializeExampleGloss(child).trimEnd());
+    }
+  }
+  return pieces.join("\n\n");
+}
+
+function serializeExampleBlock(node: JSONContent): string {
+  const kind = node.attrs?.kind === "multi" ? "pex" : "ex";
+  const uuid = node.attrs?.uuid as string | null;
+  const idMarker = uuid ? `\\vexid{${uuid}}` : "";
+  const tag = (node.attrs?.tag as string) || "";
+  const tagStr = tag ? `<${tag}>` : "";
+  const override = (node.attrs?.exnoOverride as string | null) || null;
+  const optStr = override ? `[exno=${override}]` : "";
+  const suppress = (node.attrs?.suppressSpace as boolean) ? "~" : "";
+  const label = (node.attrs?.label as string) || "";
+  const labelStr = label ? `\\label{${label}}` : "";
+
+  // Partition children into: leading (paragraphs/gloss before first item),
+  // items, trailing (paragraphs/gloss after the last item).
+  const children = node.content || [];
+  const firstItemIdx = children.findIndex((c) => c.type === "exampleItem");
+  const lastItemIdx = (() => {
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (children[i].type === "exampleItem") return i;
+    }
+    return -1;
+  })();
+  const leading =
+    firstItemIdx === -1 ? children : children.slice(0, firstItemIdx);
+  const items =
+    firstItemIdx === -1
+      ? []
+      : children.slice(firstItemIdx, lastItemIdx + 1).filter((c) => c.type === "exampleItem");
+  const trailing =
+    lastItemIdx === -1 ? [] : children.slice(lastItemIdx + 1);
+
+  const leadingStr = serializeExampleBlockBodyParagraphs(leading);
+  const itemsStr = items.map(serializeExampleItem).join("");
+  const trailingStr = serializeExampleBlockBodyParagraphs(trailing);
+
+  const bodyPieces: string[] = [];
+  if (leadingStr) bodyPieces.push(leadingStr);
+  if (itemsStr) bodyPieces.push(itemsStr.trimEnd());
+  if (trailingStr) bodyPieces.push(trailingStr);
+  const body = bodyPieces.join("\n");
+
+  return (
+    `${idMarker}\\${kind}${suppress}${optStr}${tagStr}${labelStr}\n` +
+    (body ? body + "\n" : "") +
+    `\\xe\n\n`
+  );
+}
+
+function serializeExampleItem(node: JSONContent): string {
+  const tag = (node.attrs?.tag as string) || "";
+  const tagStr = tag ? `<${tag}>` : "";
+  const label = (node.attrs?.label as string) || "";
+  const labelStr = label ? `\\label{${label}}` : "";
+  const pieces: string[] = [];
+  for (const child of node.content || []) {
+    if (child.type === "paragraph") {
+      pieces.push(serializeExampleInlineChildren(child.content));
+    } else if (child.type === "exampleGloss") {
+      pieces.push(serializeExampleGloss(child).trimEnd());
+    }
+  }
+  const body = pieces.join("\n");
+  return `\\a${tagStr}${labelStr} ${body}\n`;
+}
+
+function glossCellToText(cell: JSONContent): string {
+  // One cell = inline content; preserve any backslash commands verbatim.
+  // Plain text tokens are whitespace-joined; wrap in braces if the
+  // serialized form contains a top-level space.
+  const inner = serializeExampleInlineChildren(cell.content);
+  const trimmed = inner.trim();
+  if (!trimmed) return "{}";
+  // If the cell contains whitespace at top level, we must brace it so
+  // expex doesn't split it into multiple columns.
+  if (/\s/.test(trimmed)) return `{${trimmed}}`;
+  return trimmed;
+}
+
+function serializeExampleGloss(node: JSONContent): string {
+  const rows = node.content || [];
+  const lines: string[] = [];
+  for (const row of rows) {
+    if (row.type === "alignedGlossRow") {
+      const tier = (row.attrs?.tier as string) || "gla";
+      const cells = (row.content || [])
+        .filter((c) => c.type === "glossCell")
+        .map(glossCellToText);
+      lines.push(`\\${tier} ${cells.join(" ")} //`);
+    } else if (row.type === "proseGlossRow") {
+      const tier = (row.attrs?.tier as string) || "glft";
+      const inner = serializeExampleInlineChildren(row.content);
+      lines.push(`\\${tier} ${inner} //`);
+    }
+  }
+  return `\\begingl\n${lines.join("\n")}\n\\endgl\n`;
 }
 
 function serializeInline(node: JSONContent): string {
@@ -309,7 +455,7 @@ function serializeInline(node: JSONContent): string {
     return `${idMarker}${node.attrs?.command || ""}`;
   }
   if (node.type === "labelRef") {
-    return `\\ref{${node.attrs?.label || ""}}`;
+    return serializeLabelRef(node);
   }
   if (node.type === "aiRequestMarker") {
     // AI request markers are placeholders. Emit them as a LaTeX comment

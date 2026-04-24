@@ -30,6 +30,8 @@ export interface SelectionsContextValue {
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   selectedBibKey: string | null;
   setSelectedBibKey: Dispatch<SetStateAction<string | null>>;
+  selectedExampleId: string | null;
+  setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 }
 
 const SelectionsCtx = createContext<SelectionsContextValue | null>(null);

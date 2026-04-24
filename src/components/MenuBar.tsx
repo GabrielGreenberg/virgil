@@ -11,7 +11,223 @@ import {
   IconFootnote,
   IconCitation,
   IconQuotations,
+  IconExample,
 } from "./editor-layout/panel-icons";
+import { generateEntityId } from "@/lib/uuid";
+import { TextSelection } from "@tiptap/pm/state";
+
+/** Build a fresh example-block JSONContent template for insertion. The
+ *  template includes a pre-assigned uuid so callers can locate the node
+ *  after insertion to place the cursor inside its first paragraph. */
+export function buildExampleTemplate(kind: "single" | "multi"): {
+  uuid: string;
+  node: Record<string, unknown>;
+} {
+  const uuid = generateEntityId();
+  if (kind === "single") {
+    return {
+      uuid,
+      node: {
+        type: "exampleBlock",
+        attrs: {
+          uuid,
+          tag: "",
+          label: "",
+          kind: "single",
+          exnoOverride: null,
+          suppressSpace: false,
+          number: 0,
+        },
+        content: [{ type: "paragraph" }],
+      },
+    };
+  }
+  return {
+    uuid,
+    node: {
+      type: "exampleBlock",
+      attrs: {
+        uuid,
+        tag: "",
+        label: "",
+        kind: "multi",
+        exnoOverride: null,
+        suppressSpace: false,
+        number: 0,
+      },
+      content: [
+        {
+          type: "exampleItem",
+          attrs: { tag: "", label: "", subLabel: "" },
+          content: [{ type: "paragraph" }],
+        },
+        {
+          type: "exampleItem",
+          attrs: { tag: "", label: "", subLabel: "" },
+          content: [{ type: "paragraph" }],
+        },
+        {
+          type: "exampleGloss",
+          attrs: { glossId: null, colCount: 1 },
+          content: [
+            {
+              type: "alignedGlossRow",
+              attrs: { tier: "gla" },
+              content: [{ type: "glossCell", content: [] }],
+            },
+            {
+              type: "proseGlossRow",
+              attrs: { tier: "glft" },
+              content: [],
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+/** Insert a blank example block at the cursor and move selection into
+ *  its first editable paragraph. Shared by the Format popover button
+ *  and the Action-toolbar button's host. */
+export function insertExampleAtCursor(
+  editor: Editor,
+  kind: "single" | "multi",
+): { uuid: string } {
+  const { uuid, node } = buildExampleTemplate(kind);
+  editor.chain().focus().insertContent(node).run();
+  let target = -1;
+  editor.state.doc.descendants((nd, pos) => {
+    if (nd.type.name === "exampleBlock" && nd.attrs.uuid === uuid) {
+      nd.descendants((child, relPos) => {
+        if (target >= 0) return false;
+        if (child.type.name === "paragraph") {
+          target = pos + 1 + relPos + 1;
+          return false;
+        }
+        return true;
+      });
+      return false;
+    }
+    return true;
+  });
+  if (target >= 0) {
+    editor.chain().focus().setTextSelection(target).scrollIntoView().run();
+  }
+  return { uuid };
+}
+
+/** Dispatch an "insert example" request from the Format-popover dropdown.
+ *
+ *  - If the cursor is already inside an `exampleBlock`, the "a." option
+ *    extends that block in place: a new `\a` sub-item is appended, with
+ *    the cursor parked inside it. If the host block was a single `\ex`,
+ *    it's converted to a `\pex` first (existing paragraph content moves
+ *    into the first `\a` item).
+ *  - The "(1)" option, or either option from outside any example, inserts
+ *    a fresh block at the cursor.
+ *
+ *  Returns true if the request was handled (so the popover can close). */
+export function handleExampleMenuPick(
+  editor: Editor,
+  kind: "single" | "multi",
+): boolean {
+  const { state } = editor;
+  const { $from } = state.selection;
+
+  // Walk ancestors to find an enclosing exampleBlock.
+  let blockDepth = -1;
+  for (let d = $from.depth; d >= 0; d--) {
+    if ($from.node(d).type.name === "exampleBlock") {
+      blockDepth = d;
+      break;
+    }
+  }
+
+  // Outside any example, or user picked "(1)": fall back to fresh insert.
+  if (blockDepth < 0 || kind === "single") {
+    insertExampleAtCursor(editor, kind);
+    return true;
+  }
+
+  // Inside an example + "a." request: extend in place.
+  const block = $from.node(blockDepth);
+  const blockPos = $from.before(blockDepth);
+  const itemType = state.schema.nodes.exampleItem;
+  const paragraphType = state.schema.nodes.paragraph;
+  if (!itemType || !paragraphType) return false;
+
+  if (block.attrs.kind === "multi") {
+    // Append a fresh `\a` item just after the last existing item so
+    // sub-labels stay monotonic.
+    const newItem = itemType.create(
+      { tag: "", label: "", subLabel: "" },
+      paragraphType.create(),
+    );
+    let insertPos = blockPos + 1; // start of block content
+    let lastItemEndInContent = -1;
+    block.forEach((child, offset) => {
+      if (child.type.name === "exampleItem") {
+        lastItemEndInContent = offset + child.nodeSize;
+      }
+    });
+    if (lastItemEndInContent >= 0) {
+      insertPos = blockPos + 1 + lastItemEndInContent;
+    } else {
+      insertPos = blockPos + block.nodeSize - 1;
+    }
+    const tr = state.tr.insert(insertPos, newItem);
+    // Park cursor inside the new item's first paragraph:
+    //   insertPos = start of the item → +1 steps into item → +1 steps into paragraph content.
+    const cursorPos = insertPos + 2;
+    tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+    editor.view.dispatch(tr);
+    editor.view.focus();
+    return true;
+  }
+
+  // Single `\ex` → convert to `\pex` with the existing content wrapped
+  // as the first item and a blank second item for the user to type in.
+  const blockType = state.schema.nodes.exampleBlock;
+  if (!blockType) return false;
+  const carriedChildren: import("@tiptap/pm/model").Node[] = [];
+  const trailingChildren: import("@tiptap/pm/model").Node[] = [];
+  block.forEach((child) => {
+    if (child.type.name === "paragraph" || child.type.name === "exampleGloss") {
+      carriedChildren.push(child);
+    } else {
+      trailingChildren.push(child);
+    }
+  });
+  const firstItemContent =
+    carriedChildren.length > 0 ? carriedChildren : [paragraphType.create()];
+  const firstItem = itemType.create(
+    { tag: "", label: "", subLabel: "" },
+    firstItemContent,
+  );
+  const secondItem = itemType.create(
+    { tag: "", label: "", subLabel: "" },
+    paragraphType.create(),
+  );
+  const newBlockChildren = [firstItem, secondItem, ...trailingChildren];
+  const newBlock = blockType.create(
+    { ...block.attrs, kind: "multi" },
+    newBlockChildren,
+  );
+  const tr = state.tr.replaceRangeWith(
+    blockPos,
+    blockPos + block.nodeSize,
+    newBlock,
+  );
+  // Cursor into the second item's first paragraph:
+  //   blockPos + 1 (into block) + firstItem.nodeSize (past first item)
+  //   + 1 (into secondItem) + 1 (into its first paragraph content).
+  const cursorPos = blockPos + 1 + firstItem.nodeSize + 2;
+  tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+  editor.view.dispatch(tr);
+  editor.view.focus();
+  return true;
+}
 
 export type MarginaliaType = "quote" | "note" | "archive" | "todo";
 export type DividerLevel = 1 | 2 | 3 | 4;
@@ -53,6 +269,7 @@ export interface ActionToolbarCallbacks {
   onCreateFootnote?: ActionToolbarCallback;
   onInsertCitation?: ActionToolbarCallback;
   onQuoteSelection?: ActionToolbarCallback;
+  onCreateExample?: ActionToolbarCallback;
 }
 
 interface MenuBarProps extends ActionToolbarCallbacks {
@@ -245,6 +462,114 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
               {bt.label}
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Format-popover dropdown for inserting an expex example. Two options:
+ *  `(1)` — a single `\ex`-style numbered example (default), and
+ *  `a.` — a multi-part `\pex` with two `\a` items and a blank gloss. */
+function ExampleDropdown({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  }>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const POPUP_H = 88;
+      const POPUP_W = 150;
+      const GAP = 4;
+      const flipUp =
+        r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
+      const flipLeft =
+        r.left + POPUP_W > window.innerWidth - 4 &&
+        window.innerWidth - r.right > POPUP_W;
+      const vertical = flipUp
+        ? { bottom: window.innerHeight - r.top + GAP }
+        : { top: r.bottom + GAP };
+      const horizontal = flipLeft
+        ? { right: window.innerWidth - r.right }
+        : { left: r.left };
+      setPos({ ...vertical, ...horizontal });
+    }
+    setOpen(!open);
+  };
+
+  const pickOption = (kind: "single" | "multi") => {
+    handleExampleMenuPick(editor, kind);
+    setOpen(false);
+  };
+
+  const active = editor.isActive("exampleBlock");
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={handleToggle}
+        title="Insert expex example"
+        className={`px-1 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
+          active
+            ? "bg-[var(--accent-light)] text-[var(--accent)]"
+            : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+        }`}
+      >
+        <IconExample size={16} />
+        <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor">
+          <path d="M0 0l4 5 4-5z" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[150px]"
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right }}
+        >
+          <button
+            onClick={() => pickOption("single")}
+            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-3"
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-serif), Georgia, serif",
+                fontWeight: 600,
+                minWidth: "2em",
+              }}
+            >
+              (1)
+            </span>
+            <span className="text-xs text-[var(--muted)]">Single example</span>
+          </button>
+          <button
+            onClick={() => pickOption("multi")}
+            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-3"
+          >
+            <span
+              style={{
+                fontFamily: "var(--font-serif), Georgia, serif",
+                fontWeight: 600,
+                minWidth: "2em",
+              }}
+            >
+              a.
+            </span>
+            <span className="text-xs text-[var(--muted)]">Multi-part + gloss</span>
+          </button>
         </div>
       )}
     </div>
@@ -453,7 +778,7 @@ export function ActionButton({
  *  existing test/e2e hooks that some callers rely on. */
 export interface ActionButtonDef {
   callbackKey: keyof ActionToolbarCallbacks;
-  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "quotations";
+  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "quotations" | "examples";
   title: string;
   color: string;
   hoverBg: string;
@@ -471,6 +796,7 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote /> },
   { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation />, dataAttr: "data-insert-citation-button" },
   { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
+  { callbackKey: "onCreateExample", panelId: "examples", title: "Add example (expex)", color: "#0d9488", hoverBg: "#f0fdfa", hoverColor: "#115e59", icon: <IconExample size={16} /> },
 ];
 
 /** Renders the full row of Actions buttons shared by the attached
@@ -944,7 +1270,7 @@ function ViewMenu({
   );
 }
 
-function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, onActionsDetach, atHome, onDockUp }: MenuBarProps) {
+function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, onCreateExample, showParTitles, onToggleParTitles, showLatexComments, onToggleLatexComments, showSectionIndicator, onToggleSectionIndicator, onOpenPreferences, editorSplit, onToggleEditorSplit, activeSplitPane, showMarginalia, onToggleMarginalia, hiddenMarginaliaTypes, onToggleMarginaliaType, alwaysShowLinkedText, onToggleAlwaysShowLinkedText, availableDividerLevels, dividerLevels, onToggleDividerLevel, dividerWidth, onSetDividerWidth, onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled, onCloseAllPanels, onGrabStart, orientation, onSetOrientation, onActionsDetach, atHome, onDockUp }: MenuBarProps) {
   if (!editor) return null;
 
   const isVert = orientation === "vertical";
@@ -1123,6 +1449,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
                 <path d="M3 3.5C3 5.5 4 7 5.5 7.5L4.5 9C3 8.5 1.5 6.8 1.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S5.5 5.2 4.2 5.2c-.4 0-.8-.1-1.2-.3v-1.4zm7 0C10 5.5 11 7 12.5 7.5L11.5 9C10 8.5 8.5 6.8 8.5 4.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" transform="translate(0, 3)"/>
               </svg>
             </IconBtn>
+            <ExampleDropdown editor={editor} />
             <div className="w-px h-4 bg-[var(--border)] mx-1" />
             <TextBtn
               onClick={() => {
@@ -1173,6 +1500,7 @@ function MenuBar({ editor, onAddComment, onArchive, onCreateFootnote, onQuoteSel
             onCreateFootnote={onCreateFootnote}
             onInsertCitation={onInsertCitation}
             onQuoteSelection={onQuoteSelection}
+            onCreateExample={onCreateExample}
           />
         )}
       </AttachedPopover>

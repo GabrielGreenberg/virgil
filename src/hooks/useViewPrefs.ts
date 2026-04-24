@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "search" | "wordcount" | "errors" | "blank" | "omni";
+export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -74,6 +74,7 @@ const DEFAULT_PREFS: ViewPrefs = {
     { id: "citations", side: "left" },
     { id: "bibliography", side: "left" },
     { id: "quotations", side: "left" },
+    { id: "examples", side: "left" },
     // Right strip — writing / workflow tools
     { id: "wordcount", side: "right" },
     { id: "notes", side: "right" },

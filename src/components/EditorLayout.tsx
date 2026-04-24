@@ -172,6 +172,7 @@ import { RevisionsHost } from "./editor-layout/panels/revisions-host";
 import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
+import ExamplesPanel from "@/panels/Examples";
 import { SuggestionsHost } from "./editor-layout/panels/suggestions-host";
 import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
@@ -1145,6 +1146,7 @@ export default function EditorLayout() {
   const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
   const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
   const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
+  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
   const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
@@ -1173,6 +1175,9 @@ export default function EditorLayout() {
   // ── LabelRef popover state ──
   const [activeRefLabel, setActiveRefLabel] = useState<string | null>(null);
   const [activeRefRect, setActiveRefRect] = useState<DOMRect | null>(null);
+  const [activeRefCommand, setActiveRefCommand] = useState<
+    "ref" | "getref" | "getfullref"
+  >("ref");
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
   // Whether the in-flight pending create should be inserted into the
@@ -2046,6 +2051,13 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, content, editorInstance]);
 
+  // Derive expex examples list from the editor on the same trigger cadence
+  // as footnotes — numbering + sub-labels come from the live plugin.
+  const examples = useMemo(() => {
+    return editorRef.current?.getExamples() ?? [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestDoc, content, editorInstance]);
+
   // Set of archive snippet IDs that have at least one paragraph anchor
   const anchoredIds = useMemo<Set<string>>(() => {
     const ids = new Set<string>();
@@ -2395,6 +2407,7 @@ export default function EditorLayout() {
     setSelectedCitationId,
     setActiveRefLabel,
     setActiveRefRect,
+    setActiveRefCommand,
   });
 
   useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
@@ -2431,7 +2444,13 @@ export default function EditorLayout() {
   }, [activeRefLabel]);
 
   // ── LabelRef popover helpers ──
-  const { gatherLabels, handleRefChangeLabel, handleRefJump, handleInsertRef } = useRefActions({
+  const {
+    gatherLabels,
+    handleRefChangeLabel,
+    handleRefChangeCommand,
+    handleRefJump,
+    handleInsertRef,
+  } = useRefActions({
     editorRef,
     setActiveRefLabel,
   });
@@ -2764,6 +2783,28 @@ export default function EditorLayout() {
     cardCreation.createCitation({ anchorRect });
   }, [cardCreation]);
 
+  const handleToolbarCreateExample = useCallback(
+    (_anchorRect: DOMRect | null) => {
+      // Insert a blank single-part example at the cursor. Users can
+      // Alt-click the Format-popover button for the multi-part variant;
+      // the Actions toolbar button always inserts a simple `\ex`.
+      const result = editorRef.current?.insertExample("single");
+      if (result) {
+        setSelectedExampleId(result.exampleId);
+        if (!prefs.activeLeft && !prefs.activeRight) return;
+        // Ensure the Examples panel is visible on whichever side it's
+        // placed on so the user sees the card spring in.
+        const side = prefs.placements.find((p) => p.id === "examples")?.side ?? "left";
+        if (side === "left" && prefs.activeLeft !== "examples") {
+          setActiveLeft("examples");
+        } else if (side === "right" && prefs.activeRight !== "examples") {
+          setActiveRight("examples");
+        }
+      }
+    },
+    [prefs.activeLeft, prefs.activeRight, prefs.placements, setActiveLeft, setActiveRight],
+  );
+
   const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
     cardCreation.createQuotation({
@@ -2787,6 +2828,7 @@ export default function EditorLayout() {
     onCreateFootnote: handleToolbarCreateFootnote,
     onInsertCitation: handleToolbarInsertCitation,
     onQuoteSelection: handleToolbarQuoteSelection,
+    onCreateExample: handleToolbarCreateExample,
   }), [
     handleToolbarAddComment,
     handleToolbarAddNote,
@@ -2796,6 +2838,7 @@ export default function EditorLayout() {
     handleToolbarCreateFootnote,
     handleToolbarInsertCitation,
     handleToolbarQuoteSelection,
+    handleToolbarCreateExample,
   ]);
 
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
@@ -3045,6 +3088,7 @@ export default function EditorLayout() {
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
+      selectedExampleId, setSelectedExampleId,
     }),
     [
       selectedNoteId, setSelectedNoteId,
@@ -3056,6 +3100,7 @@ export default function EditorLayout() {
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
+      selectedExampleId, setSelectedExampleId,
     ],
   );
 
@@ -3821,6 +3866,27 @@ export default function EditorLayout() {
       );
     }
 
+    if (panelId === "examples") {
+      const examplesPanelSide: "left" | "right" =
+        prefs.placements.find((p) => p.id === "examples")?.side ?? "left";
+      return (
+        <ExamplesPanel
+          examples={examples}
+          selectedId={selectedExampleId}
+          onSelect={setSelectedExampleId}
+          onJump={(id) => editorRef.current?.scrollToExample(id)}
+          editor={editorRef.current?.getEditor() ?? null}
+          panelSide={examplesPanelSide}
+          viewMode={getPanelViewMode("examples")}
+          onViewModeChange={(m) => setPanelViewMode("examples", m)}
+          onAdd={() => {
+            const res = editorRef.current?.insertExample("single");
+            if (res) setSelectedExampleId(res.exampleId);
+          }}
+        />
+      );
+    }
+
     if (panelId === "search") {
       return (
         <SearchHost
@@ -3909,6 +3975,7 @@ export default function EditorLayout() {
           updateTodoNotes={updateTodoNotes}
           setTodoAiRequest={setTodoAiRequest}
           deleteTodo={deleteTodo}
+          examples={examples}
           getOmniEnabled={getOmniEnabled}
           toggleOmniCategory={toggleOmniCategory}
           categorySides={categorySides}
@@ -4097,6 +4164,7 @@ export default function EditorLayout() {
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
+      selectedExampleId, setSelectedExampleId,
     }}>
     <PristineCardsProvider value={pristineManager}>
     <CardCreationProvider value={cardCreation}>
@@ -4640,6 +4708,7 @@ export default function EditorLayout() {
                 onAddTodo={handleToolbarAddTodo}
                 onCutSelection={handleToolbarAddCut}
                 onInsertCitation={handleToolbarInsertCitation}
+                onCreateExample={handleToolbarCreateExample}
                 showParTitles={showParTitles}
                 onToggleParTitles={() => setShowParTitles((p) => !p)}
                 showLatexComments={showLatexComments}
@@ -4693,6 +4762,7 @@ export default function EditorLayout() {
                   onCreateFootnote: handleToolbarCreateFootnote,
                   onInsertCitation: handleToolbarInsertCitation,
                   onQuoteSelection: handleToolbarQuoteSelection,
+                  onCreateExample: handleToolbarCreateExample,
                 }}
                 onGrabStart={(e) => {
                   e.preventDefault();
@@ -4962,7 +5032,12 @@ export default function EditorLayout() {
           label={activeRefLabel}
           anchorRect={activeRefRect}
           labels={gatherLabels()}
+          refCommand={activeRefCommand}
           onChangeLabel={handleRefChangeLabel}
+          onChangeRefCommand={(lbl, cmd) => {
+            handleRefChangeCommand(lbl, cmd);
+            setActiveRefCommand(cmd);
+          }}
           onJumpToLabel={handleRefJump}
           onInsertRef={handleInsertRef}
           onClose={() => {

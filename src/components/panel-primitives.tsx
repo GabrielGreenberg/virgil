@@ -179,6 +179,7 @@ export const CARD_THEMES = {
   aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-100/50",    headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
   cut:       { cardClass: cutCard,      headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
   error:     { cardClass: panelCard,    headerDefault: "bg-[#fef2f2]/70",  headerSelected: "bg-[#fee2e2]",     separatorSelected: "border-red-300",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#f5a5a5", titleColor: "#b45757" },
+  example:   { cardClass: panelCard,    headerDefault: "bg-teal-100/50",   headerSelected: "bg-teal-100",      separatorSelected: "border-teal-200",    badgeBg: "#f0fdfa", badgeColor: "#0f766e", badgeBorder: "#14b8a6", titleColor: "#115e59" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
