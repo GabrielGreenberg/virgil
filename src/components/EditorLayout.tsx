@@ -10,6 +10,7 @@ import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMen
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import ProgressBar from "./ProgressBar";
+import { useDragGap } from "@/hooks/useDragGap";
 import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
@@ -474,7 +475,8 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
-    setPageWidth,
+    setTopGutter,
+    setBottomGutter,
     setAlwaysShowLinkedText,
     togglePopout,
     closePopout,
@@ -735,6 +737,27 @@ export default function EditorLayout() {
   const [detachedFormatting, setDetachedFormatting] = useState<DetachedToolbarEntry[]>([]);
   const [detachedMenus, setDetachedMenus] = useState<DetachedToolbarEntry[]>([]);
   const [toolbarDragging, setToolbarDragging] = useState(false);
+  // True while a panel inner-edge is being dragged. Freezes panel flex
+  // (grow/shrink to 0) so the dragged edge stays glued to the cursor —
+  // outside drag, panels shrink 100× faster than the editor so window
+  // downsize pulls from panels first, then the text area.
+  const [isResizingPanels, setIsResizingPanels] = useState(false);
+  // Dynamic flex-basis for the editor column. Updated only when the
+  // panel layout changes (drag, panel toggle, zen). NOT updated on
+  // window resize — that's what makes window-shrink pull from panels
+  // first: the editor holds its basis while panels' flex-shrink (100)
+  // eats the shortage before the editor's (1) contributes.
+  const [editorBasis, setEditorBasis] = useState(880);
+
+  // Vertical gutters around the text page. Same design as horizontal
+  // panels: gutters absorb window-shrink first, page height is held.
+  // Persisted in view-prefs so heights survive reload.
+  const topGutterPref = prefs.topGutter;
+  const bottomGutterPref = prefs.bottomGutter;
+  const setTopGutterPref = setTopGutter;
+  const setBottomGutterPref = setBottomGutter;
+  const [pageHeightBasis, setPageHeightBasis] = useState(0);
+  const [isResizingGutters, setIsResizingGutters] = useState(false);
   const nextActionsIdRef = useRef(0);
   const nextFormattingIdRef = useRef(0);
   const nextMenuIdRef = useRef(0);
@@ -844,6 +867,14 @@ export default function EditorLayout() {
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
+  const [mainAreaMounted, setMainAreaMounted] = useState(false);
+  const mainAreaRefCb = useCallback((el: HTMLDivElement | null) => {
+    (mainAreaRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+    setMainAreaMounted(prev => {
+      const next = !!el;
+      return prev === next ? prev : next;
+    });
+  }, []);
 
   // Central "is this label key already claimed" predicate — consulted
   // by every label-editing surface (heading input in the main editor,
@@ -997,6 +1028,159 @@ export default function EditorLayout() {
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
   } = useZenMode();
+
+  // Snap all panel/margin prefs to their current rendered widths. Called
+  // on drag start so that when the flex switches from "1 100 pref"
+  // (shrinkable) to "0 0 pref" (pinned), shrunk panels don't snap back
+  // to pref and jump the editor.
+  const syncPanelPrefsToRendered = useCallback(() => {
+    const main = mainAreaRef.current;
+    if (!main) return;
+    const cols = main.querySelectorAll<HTMLElement>('[data-flex-col]');
+    cols.forEach(col => {
+      const side = col.getAttribute('data-flex-col') as 'left' | 'right' | null;
+      if (side !== 'left' && side !== 'right') return;
+      const rendered = col.getBoundingClientRect().width;
+      if (zenModeOn) {
+        if (side === 'left') {
+          if (Math.abs(rendered - zenLeftMargin) > 0.5) setZenLeftMargin(rendered);
+        } else {
+          if (Math.abs(rendered - zenRightMargin) > 0.5) setZenRightMargin(rendered);
+        }
+      } else {
+        const active = side === 'left' ? prefs.activeLeft : prefs.activeRight;
+        if (active == null) return;
+        const currentPref = getPanelWidth(side, active);
+        if (Math.abs(rendered - currentPref) > 0.5) {
+          setPanelWidth(side, active, rendered);
+        }
+      }
+    });
+  }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.activeLeft, prefs.activeRight, setPanelWidth, getPanelWidth]);
+
+  // Same pattern for vertical gutters (top/bottom of the text page).
+  const syncGutterPrefsToRendered = useCallback(() => {
+    const col = editorColRef.current;
+    if (!col) return;
+    const rows = col.querySelectorAll<HTMLElement>('[data-flex-row]');
+    rows.forEach(row => {
+      const side = row.getAttribute('data-flex-row');
+      const rendered = row.getBoundingClientRect().height;
+      if (side === 'top' && Math.abs(rendered - topGutterPref) > 0.5) setTopGutterPref(rendered);
+      if (side === 'bottom' && Math.abs(rendered - bottomGutterPref) > 0.5) setBottomGutterPref(rendered);
+    });
+  }, [topGutterPref, bottomGutterPref]);
+
+  // Recompute the editor's flex-basis whenever the panel layout
+  // changes — drag, panel toggle, zen mode. The basis captures the
+  // "intended" editor width given current panel prefs + window, so
+  // during window resize the editor holds that width and panel
+  // flex-shrink eats the shortage first (panels first, then text area).
+  useLayoutEffect(() => {
+    const main = mainAreaRef.current;
+    if (!main) return;
+    let reserved = 0;
+    for (const child of main.children) {
+      const el = child as HTMLElement;
+      if (el.hasAttribute('data-editor-col')) continue;
+      const basis = parseFloat(getComputedStyle(el).flexBasis);
+      reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
+    }
+    const available = main.clientWidth - reserved;
+    const next = Math.max(400, Math.min(1400, available));
+    setEditorBasis(prev => prev !== next ? next : prev);
+  }, [prefs.panelWidths, prefs.activeLeft, prefs.activeRight, prefs.activeLeftBottom, prefs.activeRightBottom, zenLeftMargin, zenRightMargin, zenModeOn, mainAreaMounted]);
+
+  // Page height basis: "intended" page height = editor column height
+  // minus padding, gutter prefs, and gap heights. Updated only when
+  // gutter prefs change; on window resize the basis holds and gutters
+  // shrink first.
+  useLayoutEffect(() => {
+    const col = editorColRef.current;
+    if (!col) return;
+    const cs = getComputedStyle(col);
+    let reserved = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    for (const child of col.children) {
+      const el = child as HTMLElement;
+      if (el.hasAttribute('data-editor-page')) continue;
+      if (el.hasAttribute('data-flex-row')) {
+        const basis = parseFloat(getComputedStyle(el).flexBasis);
+        reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().height;
+      } else if (el.classList.contains('drag-gap-h') && el.hasAttribute('data-gutter-gap')) {
+        reserved += el.getBoundingClientRect().height;
+      }
+    }
+    const available = col.clientHeight - reserved;
+    const next = Math.max(400, available);
+    setPageHeightBasis(prev => prev !== next ? next : prev);
+  }, [topGutterPref, bottomGutterPref, mainAreaMounted, currentDocId, docLoading, editorSplit]);
+
+  // Gutter drag state + handlers.
+  const gutterStartY = useRef(0);
+  const gutterStartVal = useRef(0);
+
+  const clampGutter = useCallback((requested: number, side: 'top' | 'bottom') => {
+    const col = editorColRef.current;
+    if (!col) return Math.max(0, requested);
+    // Reserve: column padding + page min + other gutter + both drag-gap heights.
+    const cs = getComputedStyle(col);
+    let reserved = 400 + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+    const rows = col.querySelectorAll<HTMLElement>('[data-flex-row]');
+    rows.forEach(row => {
+      if (row.getAttribute('data-flex-row') !== side) {
+        const basis = parseFloat(getComputedStyle(row).flexBasis);
+        reserved += Number.isFinite(basis) ? basis : row.getBoundingClientRect().height;
+      }
+    });
+    col.querySelectorAll<HTMLElement>('[data-gutter-gap]').forEach(gap => {
+      reserved += gap.getBoundingClientRect().height;
+    });
+    const max = Math.max(0, col.clientHeight - reserved);
+    return Math.max(0, Math.min(requested, max));
+  }, []);
+
+  const onTopGutterMove = useCallback((e: MouseEvent) => {
+    const delta = e.clientY - gutterStartY.current;
+    setTopGutterPref(clampGutter(gutterStartVal.current + delta, 'top'));
+  }, [clampGutter]);
+
+  const onBottomGutterMove = useCallback((e: MouseEvent) => {
+    const delta = gutterStartY.current - e.clientY;
+    setBottomGutterPref(clampGutter(gutterStartVal.current + delta, 'bottom'));
+  }, [clampGutter]);
+
+  const topGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onTopGutterMove, deadzone: 3 });
+  const bottomGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onBottomGutterMove, deadzone: 3 });
+
+  const onTopGutterDown = useCallback((e: React.MouseEvent) => {
+    gutterStartY.current = e.clientY;
+    syncGutterPrefsToRendered();
+    const col = editorColRef.current;
+    const top = col?.querySelector<HTMLElement>('[data-flex-row="top"]');
+    gutterStartVal.current = top ? top.getBoundingClientRect().height : topGutterPref;
+    setIsResizingGutters(true);
+    const onUp = () => {
+      setIsResizingGutters(false);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mouseup', onUp);
+    topGutterDrag.onMouseDown(e);
+  }, [syncGutterPrefsToRendered, topGutterDrag, topGutterPref]);
+
+  const onBottomGutterDown = useCallback((e: React.MouseEvent) => {
+    gutterStartY.current = e.clientY;
+    syncGutterPrefsToRendered();
+    const col = editorColRef.current;
+    const bottom = col?.querySelector<HTMLElement>('[data-flex-row="bottom"]');
+    gutterStartVal.current = bottom ? bottom.getBoundingClientRect().height : bottomGutterPref;
+    setIsResizingGutters(true);
+    const onUp = () => {
+      setIsResizingGutters(false);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mouseup', onUp);
+    bottomGutterDrag.onMouseDown(e);
+  }, [syncGutterPrefsToRendered, bottomGutterDrag, bottomGutterPref]);
 
   // MenuBar is always home-docked in the Virgil top bar, centered
   // between the tabs (left) and Zen/Prefs cluster (right). No free
@@ -1194,10 +1378,13 @@ export default function EditorLayout() {
     for (const entry of DERIVED_CSS) {
       s.setProperty(entry.cssVar, entry.compute(editorPrefs));
     }
-    // Update browser theme-color meta tag (locked to topbarBackground)
-    const tc = applyTransforms(editorPrefs.topbarBackground, editorTransforms);
+    // Update browser theme-color meta tag. Zen mode hides the in-app top
+    // bar, so we let the OS/PWA chrome blend into the page canvas; normally
+    // it mirrors the topbar background.
+    const tcSource = zenModeOn ? editorPrefs.backgroundColor : editorPrefs.topbarBackground;
+    const tc = applyTransforms(tcSource, editorTransforms);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
-  }, [editorPrefs, editorTransforms]);
+  }, [editorPrefs, editorTransforms, zenModeOn]);
 
   const [codeView, setCodeView] = useState(false);
   const [codeViewLine, setCodeViewLine] = useState<number | undefined>(undefined);
@@ -1780,8 +1967,8 @@ export default function EditorLayout() {
       // animates straight to it.
       const referenceY = scrollRect.top + scrollRect.height / 2;
 
-      const stack: { level: number; text: string; index: number }[] = [];
-      let lastCrossedStack: { level: number; text: string; index: number }[] = [];
+      const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
+      let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       // Track the last parTitle paragraph whose top has scrolled past
       // the reference line, within the current section scope. Reset
       // whenever a heading is crossed.
@@ -1815,7 +2002,7 @@ export default function EditorLayout() {
             while (stack.length > 0 && stack[stack.length - 1].level >= level) {
               stack.pop();
             }
-            stack.push({ level, text: node.textContent || "Untitled", index });
+            stack.push({ level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
             lastCrossedStack = [...stack];
             // New section scope — clear any active parTitle from the
             // previous section so we re-scan within this one.
@@ -1846,9 +2033,9 @@ export default function EditorLayout() {
         }
       });
 
-      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index }));
+      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index, sectionNumber: s.sectionNumber }));
       setCurrentSectionPath((prev) => {
-        if (prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index)) {
+        if (prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index && v.sectionNumber === path[i].sectionNumber)) {
           return prev;
         }
         return path;
@@ -1898,8 +2085,8 @@ export default function EditorLayout() {
       const scrollRect = scrollEl.getBoundingClientRect();
       const referenceY = scrollRect.top + scrollRect.height / 2;
 
-      const stack: { level: number; text: string; index: number }[] = [];
-      let lastCrossedStack: { level: number; text: string; index: number }[] = [];
+      const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
+      let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let activeParTitleIdx: number | null = null;
 
       doc.forEach((node, offset, index) => {
@@ -1910,7 +2097,7 @@ export default function EditorLayout() {
           if (headingTop == null) return;
           if (headingTop <= referenceY) {
             while (stack.length > 0 && stack[stack.length - 1].level >= level) stack.pop();
-            stack.push({ level, text: node.textContent || "Untitled", index });
+            stack.push({ level, text: node.textContent || "Untitled", index, sectionNumber: (node.attrs?.sectionNumber as string) ?? null });
             lastCrossedStack = [...stack];
             activeParTitleIdx = null;
           }
@@ -1926,9 +2113,9 @@ export default function EditorLayout() {
         }
       });
 
-      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index }));
+      const path: SectionPathEntry[] = lastCrossedStack.map((s) => ({ text: s.text, index: s.index, sectionNumber: s.sectionNumber }));
       setMirrorSectionPath((prev) =>
-        prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index) ? prev : path,
+        prev.length === path.length && prev.every((v, i) => v.text === path[i].text && v.index === path[i].index && v.sectionNumber === path[i].sectionNumber) ? prev : path,
       );
       setMirrorParTitleIndex((prev) => (prev === activeParTitleIdx ? prev : activeParTitleIdx));
     };
@@ -3953,10 +4140,11 @@ export default function EditorLayout() {
       return (
         <PanelColumn
           side={side}
-          pageWidth={prefs.pageWidth}
-          onPageWidthChange={setPageWidth}
           panelPref={getPanelWidth(side, top ?? "blank")}
           onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)}
+          isResizing={isResizingPanels}
+          onResizingChange={setIsResizingPanels}
+          onSyncBeforeDrag={syncPanelPrefsToRendered}
           split
           focusedHalf={focused}
           onFocusHalf={setFocused}
@@ -3979,10 +4167,11 @@ export default function EditorLayout() {
     return (
       <PanelColumn
         side={side}
-        pageWidth={prefs.pageWidth}
-        onPageWidthChange={setPageWidth}
         panelPref={getPanelWidth(side, top ?? "blank")}
         onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)}
+        isResizing={isResizingPanels}
+        onResizingChange={setIsResizingPanels}
+        onSyncBeforeDrag={syncPanelPrefsToRendered}
         topPanelId={top ?? undefined}
         topOverlay={toolbarOverlay}
       >
@@ -4454,7 +4643,7 @@ export default function EditorLayout() {
           )}
         </div>
       ) : (
-      <div ref={mainAreaRef} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>
+      <div ref={mainAreaRefCb} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>
         {/* ── Linking lines suppressed (may re-enable later) ──
         {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
           <ArchiveConnectors
@@ -4569,7 +4758,7 @@ export default function EditorLayout() {
             adjustable margin; when the side is collapsed the column is
             simply absent so the editor runs flush to the icon strip. */}
         {zenModeOn ? (
-          <ZenMargin side="left" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenLeftMargin} onMarginPrefChange={setZenLeftMargin} />
+          <ZenMargin side="left" marginPref={zenLeftMargin} onMarginPrefChange={setZenLeftMargin} isResizing={isResizingPanels} onResizingChange={setIsResizingPanels} onSyncBeforeDrag={syncPanelPrefsToRendered} />
         ) : (
           renderPanelColumn("left")
         )}
@@ -4580,12 +4769,18 @@ export default function EditorLayout() {
             (the open panel absorbs past-max leftover);
             both collapsed → grows uncapped so the right strip stays
             flush to the window edge. */}
-        <div ref={editorColRefCb} className={`flex flex-col min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
-          flex: (activeLeft == null || activeRight == null)
-            ? '1 1 var(--page-preferred)'
-            : '0 1 var(--page-preferred)',
-          minWidth: 'var(--page-min)',
-          maxWidth: ((activeLeft == null) !== (activeRight == null)) ? 'var(--page-max)' : undefined,
+        <div ref={editorColRefCb} data-editor-col="true" className={`flex flex-col min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
+          // Grow 1000 vs panel grow 1 → window-upsize feeds the text
+          // area almost entirely until it hits page-max, then panels
+          // absorb the leftover. Shrink 1 vs panel shrink 100 → window-
+          // downsize pulls from panels first, then the text area shrinks
+          // toward its 400 min. Basis is dynamic (state): it captures
+          // the intended editor width given current panel prefs, so
+          // window-resize flex-shrink math yields "panels first" until
+          // they hit their min, only then does the editor give way.
+          flex: `1000 1 ${editorBasis}px`,
+          minWidth: 400,
+          maxWidth: (activeLeft != null || activeRight != null) ? 'var(--page-max)' : undefined,
           paddingTop: 'var(--pod-gap)',
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
@@ -4773,6 +4968,34 @@ export default function EditorLayout() {
             </div>,
             document.body,
           ))}
+          {/* Top gutter — flex-shrink 100 so window-downsize eats it first
+              before touching the page height. */}
+          <div
+            data-flex-row="top"
+            style={{
+              flex: isResizingGutters ? `0 0 ${topGutterPref}px` : `1 100 ${topGutterPref}px`,
+              minHeight: 0,
+            }}
+          />
+          {/* Top drag gap — grab bar above the page */}
+          <div
+            data-gutter-gap="top"
+            ref={topGutterDrag.gapRef}
+            className="drag-gap drag-gap-h shrink-0"
+            style={{ height: 'var(--pod-gap)' }}
+            onMouseDown={onTopGutterDown}
+          />
+          {/* Page wrapper — holds the pref page height; panels/omni are
+              unaffected. Flex-grow 1000 so window-upsize feeds the page
+              first, shrink 1 so panels absorb window-downsize first. */}
+          <div
+            data-editor-page="true"
+            className="flex flex-col min-h-0 relative"
+            style={{
+              flex: `1000 1 ${pageHeightBasis}px`,
+              minHeight: 400,
+            }}
+          >
           {currentDocId && content && !docLoading ? (
             editorSplit ? (
               /* When split, each pane is its own pod so the gap reveals the canvas */
@@ -4919,13 +5142,30 @@ export default function EditorLayout() {
               </div>
             </div>
           )}
+          </div>
+          {/* Bottom drag gap — grab bar below the page */}
+          <div
+            data-gutter-gap="bottom"
+            ref={bottomGutterDrag.gapRef}
+            className="drag-gap drag-gap-h shrink-0"
+            style={{ height: 'var(--pod-gap)' }}
+            onMouseDown={onBottomGutterDown}
+          />
+          {/* Bottom gutter */}
+          <div
+            data-flex-row="bottom"
+            style={{
+              flex: isResizingGutters ? `0 0 ${bottomGutterPref}px` : `1 100 ${bottomGutterPref}px`,
+              minHeight: 0,
+            }}
+          />
         </div>
 
         {/* Right panel column. In Zen mode this position becomes an empty
             adjustable margin; when the side is collapsed the column is
             simply absent so the editor runs flush to the icon strip. */}
         {zenModeOn ? (
-          <ZenMargin side="right" pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} marginPref={zenRightMargin} onMarginPrefChange={setZenRightMargin} />
+          <ZenMargin side="right" marginPref={zenRightMargin} onMarginPrefChange={setZenRightMargin} isResizing={isResizingPanels} onResizingChange={setIsResizingPanels} onSyncBeforeDrag={syncPanelPrefsToRendered} />
         ) : (
           renderPanelColumn("right")
         )}

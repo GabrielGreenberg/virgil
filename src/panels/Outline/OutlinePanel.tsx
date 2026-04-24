@@ -24,7 +24,7 @@ interface HeadingItem {
 /* ── Position indicator helpers ─────────────────────────────────────── */
 
 /** An entry in the section path: heading text + its top-level block index. */
-export type SectionPathEntry = { text: string; index: number };
+export type SectionPathEntry = { text: string; index: number; sectionNumber: string | null };
 
 /** Where a pane's position chevron should appear in the outline. */
 interface ResolvedPosition {
