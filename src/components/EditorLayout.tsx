@@ -4281,11 +4281,15 @@ export default function EditorLayout() {
         // min-height gives the docked MenuBar breathing room inside the
         // bar without pushing the tabs taller (tabs are items-end anchored
         // at the bottom edge, so the extra space accumulates above them).
-        data-prefs="topbarBackground,topbarBorder,virgilBarText"
-        className={`virgil-bar flex items-center relative bg-[var(--topbar-bg)] top-bar-border min-h-[34px] ${
+        data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
+        className={`virgil-bar flex items-center relative min-h-[34px] ${
         suggestionPanelVisible ? "mt-10" : ""
       }`}
-        style={{ color: "var(--virgil-bar-text)" }}
+        style={{
+          color: "var(--virgil-bar-text)",
+          background: "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
+          boxShadow: "inset 0 -2px 4px -1px rgba(0,0,0,0.10)",
+        }}
       >
         {/* Logo + file buttons + tabs — all bottom-aligned. The MenuBar's
             "home" position clamps against the topbar-left sentinel at the
@@ -4305,7 +4309,7 @@ export default function EditorLayout() {
             const isCurrentDoc = doc.id === currentDocId;
             const isDocPaneActive = isCurrentDoc && activePane === "doc";
             return (
-              <div key={doc.id} className="flex items-end shrink-0">
+              <div key={doc.id} className="flex items-end shrink-0" style={{ filter: "var(--shadow-ambient-filter)" }}>
                 {/* Doc tab */}
                 <div
                   data-prefs={isDocPaneActive ? "backgroundColor,topbarBorder" : "tabBg,topbarBorder"}
@@ -4334,26 +4338,7 @@ export default function EditorLayout() {
                     <IconX />
                   </button>
                 </div>
-                {/* Library shadow tab — a full-width tab (matches a
-                    regular doc tab) tucked behind the main tab; only
-                    the right ~30px peeks out. The swoop (library-tab-
-                    swoop) flares the cup color outward so the tab
-                    silhouette matches a browser tab, just darker.
-                    Clicking activates the library pane for this doc. */}
-                <button
-                  type="button"
-                  data-prefs="libraryBg,topbarBorder"
-                  onClick={() => activateLibraryPane(doc.id)}
-                  title="Virgil library"
-                  style={{ marginBottom: "0px" }}
-                  className={`library-tab-swoop group flex items-center justify-end h-[30px] w-[140px] -ml-[108px] pr-1.5 cursor-pointer shrink-0 transition-colors rounded-t-[10px] relative z-0 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)] ${
-                    isCurrentDoc && activePane === "library"
-                      ? "bg-[var(--background)] text-ink-strong z-10 -mb-px"
-                      : "bg-[#eae7e2] text-ink-subtle hover:bg-[#e4e1dc] hover:text-ink-body"
-                  }`}
-                >
-                  <IconLibrary />
-                </button>
+                {/* Library shadow tab suppressed for now. */}
               </div>
             );
           })}

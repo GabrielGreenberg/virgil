@@ -19,8 +19,9 @@ export type ToolbarOrientation = "horizontal" | "vertical";
  *  etc.) via `children`. Keeping state like `collapsed` and drag
  *  position in the caller lets each toolbar make its own decisions.
  *
- *  `atHome` is the MenuBar's docked mode: no tab, no knob, no drop
- *  shadow, uniform corner radius. Only MenuBar uses this mode today. */
+ *  `atHome` is the MenuBar's docked mode: no tab, no knob, uniform
+ *  corner radius, and a softer ambient shadow (the free-floating state
+ *  uses a stronger lifted shadow). Only MenuBar uses this mode today. */
 export function FloatingToolbarShell({
   orientation,
   atHome = false,
@@ -65,7 +66,7 @@ export function FloatingToolbarShell({
   const isVert = orientation === "vertical";
 
   const shellFilter = atHome
-    ? `url(#${filterId})`
+    ? `url(#${filterId}) drop-shadow(0 2px 6px rgba(0,0,0,0.10)) drop-shadow(0 1px 2px rgba(0,0,0,0.06))`
     : `url(#${filterId}) drop-shadow(0 1px 6px rgba(0,0,0,0.12)) drop-shadow(0 0 2px rgba(0,0,0,0.06))`;
 
   // Tab is sized to fit the knob plus (optionally) one end button. We

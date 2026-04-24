@@ -74,7 +74,13 @@ export const SMART_PREFERENCES: SmartSection[] = [
         type: "color",
         key: "topbarBackground",
         label: "Virgil bar background",
-        description: "Fill behind the logo and tabs (also sets browser chrome color).",
+        description: "Fill behind the logo and tabs (also sets browser chrome color). Top edge of the Virgil bar gradient.",
+      }),
+      p({
+        type: "color",
+        key: "topbarBackgroundBottom",
+        label: "Virgil bar background (bottom)",
+        description: "Bottom edge of the Virgil bar gradient. Set equal to the top for a flat bar.",
       }),
       p({
         type: "color",

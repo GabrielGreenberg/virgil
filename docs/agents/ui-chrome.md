@@ -1,4 +1,4 @@
-<!-- last-verified: 55c9e44 2026-04-24 -->
+<!-- last-verified: 0e3139c 2026-04-24 -->
 
 # UI Chrome
 
@@ -101,7 +101,7 @@ See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, 
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive.
 
-## MenuBar (the "Virgil bar")
+## MenuBar (the menu pod inside the Virgil bar)
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 

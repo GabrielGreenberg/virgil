@@ -68,6 +68,7 @@ export interface EditorPreferences {
   // (themeColor is locked to topbarBackground, mainTabBg is locked to
   //  backgroundColor — both derived in globals.css, not user-editable)
   topbarBackground: string;
+  topbarBackgroundBottom: string; // Bottom color of the Virgil-bar gradient
   topbarBorder: string;
   tabBg: string;          // Inactive tab fill
   libraryBg: string;      // Library peek-tab fill
@@ -154,6 +155,7 @@ export const DEFAULT_PREFS: EditorPreferences = {
 
   // App Chrome
   topbarBackground: "#dcdbd7",
+  topbarBackgroundBottom: "#dcdbd7", // equal to top → no gradient by default
   topbarBorder: "#cbc3b8",
   tabBg: "#dcdbd7",       // matches topbarBackground so inactive tabs blend in
   libraryBg: "#eae7e2",   // current hardcoded library-tab fill

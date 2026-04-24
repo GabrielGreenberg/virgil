@@ -1,4 +1,4 @@
-<!-- last-verified: 55c9e44 2026-04-24 -->
+<!-- last-verified: 0e3139c 2026-04-24 -->
 
 # Glossary
 
@@ -12,8 +12,9 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Virgil bar** / **main toolbar** / **floating toolbar** | `MenuBar` (code name is misleading — it's the floating top toolbar) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4561. Docks "home" in the Virgil top bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
-| **Menu toolbar** | Same as Virgil bar above | Same |
+| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | [src/components/EditorLayout.tsx:4285](../../src/components/EditorLayout.tsx:4285); fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
+| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4561. Docks "home" in the Virgil bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
+| **Menu toolbar** | Same as Menu pod above | Same |
 | **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4478` |
 | **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:4797` |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
@@ -158,7 +159,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 
 ## Name mismatches to keep in mind
 
-- **"Virgil bar"** (user) = **`MenuBar`** (code). Code name is historical and misleading; don't confuse it with the three-dot View menu.
+- **"Virgil bar"** (user) = the whole horizontal top strip (`<div class="virgil-bar">`, inline in EditorLayout.tsx) — **not** the `MenuBar` component. The `MenuBar` is the menu pod that docks inside the Virgil bar by default. Don't confuse either with the three-dot View menu.
 - **"Navigation strip"** (user) — no single component. Paragraph-nav chevrons are inline in `MenuBar`. Panel navigation (what's open) is split between left/right strips plus the Outline panel.
 - **"Action toolbar"** (user) — three different shapes depending on state: attached popover (inside MenuBar), `ActionButtonsRow` (the buttons themselves), and `DetachedActionsToolbar` (when torn off — **multiple can coexist** after successive tear-offs).
 - **"Formatting toolbar"** (user) — not a dedicated component, just an `AttachedPopover` with inline buttons.

@@ -18,6 +18,7 @@
      --main-tab-bg is locked to --background so the active tab and the page
      canvas it joins always share a color. */
   --topbar-bg: #dcdbd7;
+  --topbar-bg-bottom: var(--topbar-bg); /* default: no gradient; pref overrides this */
   --topbar-border: #cbc3b8;
   --theme-color: var(--topbar-bg);
   --tab-bg: #dcdbd7;
@@ -44,6 +45,10 @@
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
    * than the main editor pod's shadow but still readable as "raised". */
   --card-shadow-ambient: 0 2px 6px rgba(0,0,0,0.10), 0 1px 2px rgba(0,0,0,0.06);
+  /* Filter form of the ambient shadow, for applying via `filter:` so the
+   * shadow hugs composited alpha (e.g. tabs with swoop pseudo-elements,
+   * or the MenuBar pod + tab merged via SVG outline). */
+  --shadow-ambient-filter: drop-shadow(0 2px 6px rgba(0,0,0,0.10)) drop-shadow(0 1px 2px rgba(0,0,0,0.06));
 
   /* Page-as-solid-object sizing. Editor column prefers --page-preferred
      and only shrinks toward --page-min when the window is too narrow to
@@ -1815,17 +1820,10 @@ body {
 
 /* Sidebar split — no visual indicator for focused half */
 
-/* Top bar border — drawn as a pseudo-element so active tabs can overlap it */
-.top-bar-border::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--topbar-border, #d5d3ce);
-  z-index: 0;
-}
+/* Ambient shadow is applied directly on the Virgil bar as an inset
+   box-shadow — see the .virgil-bar style in EditorLayout.tsx. Inset
+   shadows paint above the bar's own background but below its children,
+   so tabs naturally create a gap in the shadow where they sit. */
 
 /* ── Apple/Chrome-style tab swoop ──
    Active tab widens at the bottom with a concave hook on each side so it

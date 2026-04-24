@@ -88,7 +88,8 @@ export const PREFERENCES_TREE: PrefNode[] = [
   {
     label: "Top Bar & Browser",
     children: [
-      { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar (also sets the browser/PWA chrome color)" },
+      { type: "color", key: "topbarBackground", label: "Top bar background", description: "Fill color of the application title bar (also sets the browser/PWA chrome color). Top edge of the Virgil bar gradient." },
+      { type: "color", key: "topbarBackgroundBottom", label: "Top bar background (bottom)", description: "Bottom color of the Virgil bar gradient — fades down from the top-bar background. Set equal to the top for a flat bar." },
       { type: "color", key: "topbarBorder", label: "Top bar border", description: "Bottom edge separating title bar from content" },
     ],
   },
@@ -259,6 +260,7 @@ export const PREF_TO_CSS: CssMapping[] = [
   // (--theme-color is aliased to --topbar-bg, --main-tab-bg is aliased to
   //  --background, both in globals.css)
   { key: "topbarBackground", cssVar: "--topbar-bg", isColor: true },
+  { key: "topbarBackgroundBottom", cssVar: "--topbar-bg-bottom", isColor: true },
   { key: "topbarBorder", cssVar: "--topbar-border", isColor: true },
   { key: "tabBg", cssVar: "--tab-bg", isColor: true },
   { key: "libraryBg", cssVar: "--library-bg", isColor: true },
