@@ -1,4 +1,4 @@
-<!-- last-verified: 592874b 2026-04-23 -->
+<!-- last-verified: 3de2062 2026-04-23 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -18,7 +18,7 @@ Before adding a new panel, link kind, or theme, extend the registry instead of c
 
 ## Key hooks
 
-All in `src/hooks/`. Full list (41 files) is large; these are the ones most often touched:
+All in `src/hooks/`. Full list (42 files) is large; these are the ones most often touched:
 
 | Hook | What it owns |
 |---|---|
@@ -30,6 +30,7 @@ All in `src/hooks/`. Full list (41 files) is large; these are the ones most ofte
 | `useArchive` | Archived snippets |
 | `useTodos` | Todo items |
 | `useQuotations` | Quotation groups |
+| `useExamples` | Expex example blocks (harvests `exampleBlock` nodes from editor doc) |
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
@@ -82,7 +83,7 @@ Cards inside a `CardListPanel`:
 3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
 
 Popout key prefixes (DO NOT rename without migration — they're persisted):
-`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision`, `quotation`, `cut`, `ai`, `error`.
+`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision`, `quotation`, `example`, `cut`, `ai`, `error`.
 
 ## Panel context
 

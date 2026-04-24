@@ -1,4 +1,4 @@
-<!-- last-verified: 592874b 2026-04-23 -->
+<!-- last-verified: 3de2062 2026-04-23 -->
 
 # Glossary
 
@@ -39,7 +39,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 ## Panels (what "panel" means)
 
-All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 10 card panels, 5 non-card panels.
+All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 11 card panels, 5 non-card panels.
 
 ### Card panels (have cards anchored in the document)
 
@@ -50,6 +50,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `citations` | Citations | `citation` | left | warm yellow |
 | `bibliography` | Bibliography | `bib` | left | warm tan |
 | `quotations` | Quotations | `quotation` | left | (default) |
+| `examples` | Examples | `example` | left | (default) |
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
 | `revisions` | Revisions | `comment` (key prefix `revision`) | right | stone |
@@ -83,8 +84,9 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Inline math** | TipTap atom node `inlineMath` (`$…$`) | [src/lib/tiptap/math.ts](../../src/lib/tiptap/math.ts) |
 | **Display math** | TipTap atom node `displayMath` (`$$…$$`) | Same file |
 | **LaTeX comment** | TipTap node `latexComment` (`%…`) | [src/lib/tiptap/latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
-| **Label** | TipTap mark `label` (`\label{ref}`) | [src/lib/tiptap/label.ts](../../src/lib/tiptap/label.ts) |
+| **Label** | TipTap mark `label` (`\label{ref}`); `LabelRef` node for `\ref{}` / `\getref{}` / `\getfullref{}` with `refCommand` + `targetKind` attrs | [src/lib/tiptap/label.ts](../../src/lib/tiptap/label.ts) |
 | **Title field** | TipTap node `titleField` for hoisted `\title{}`, `\author{}`, `\date{}` from preamble | [src/lib/tiptap/title.ts](../../src/lib/tiptap/title.ts) |
+| **Example block** (expex `\ex`/`\pex`) | TipTap node `exampleBlock`; sub-items are `exampleItem`; glosses nest as `exampleGloss` → `alignedGlossRow`/`proseGlossRow` → `glossCell` | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) |
 
 ## Cards
 
@@ -122,6 +124,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Mode A** | Paragraph-only anchor (no text range) | `isModeB(link) === false`; see `src/links/links.ts` |
 | **Mode B** | Paragraph + text-range anchor (linkedAnchor mark) | `isModeB(link) === true` |
 | **DOM contract** | `data-link-id`, `data-link-kind`, `data-link-card` attrs on in-editor markers; `data-link-card` on cards | [src/links/link-registry.ts](../../src/links/link-registry.ts) |
+| **Label candidate list** (ref popover) | `LabelInfo { label, kind, typeLabel, title }`; `kind ∈ {heading, equation, figure, table, label, example}` | [src/lib/labels.ts](../../src/lib/labels.ts) + [src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx) |
 
 ## Persistence & sidecars
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 592874b 2026-04-23 -->
+<!-- last-verified: 3de2062 2026-04-23 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (2449 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (2806 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
 
 Key props: `initialContent: JSONContent`, `onUpdate: (doc) => void`, `highlightText`, `highlightRange` (position-based highlight takes priority over text).
 
@@ -40,10 +40,12 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `displayMath` | atom node | `$$…$$` | `math.ts` |
 | `latexComment` | node | `%…` | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |
+| `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
 | `linkedAnchor` | mark | (invisible) | `linked-anchor.ts` |
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
+| `exampleBlock` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft` | `expex.ts` |
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
 
 Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also re-exported from [src/lib/tiptap-extensions.ts](../../src/lib/tiptap-extensions.ts).

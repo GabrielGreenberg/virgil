@@ -1,4 +1,4 @@
-<!-- last-verified: 592874b 2026-04-23 -->
+<!-- last-verified: 3de2062 2026-04-23 -->
 
 # UI Chrome
 
@@ -8,7 +8,7 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (4986 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (5129 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
 - Mounts the `MenuBar` and each `DetachedActionsToolbar` via portals to `document.body`
@@ -97,9 +97,9 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 ### Panel list
 
-See `glossary.md` for the full table. Quick reference: 10 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 5 non-card panels (`outline`, `search`, `wordcount`, `suggestions`, `omni`).
+See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 5 non-card panels (`outline`, `search`, `wordcount`, `suggestions`, `omni`).
 
-Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, todo, archive.
+Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive.
 
 ## MenuBar (the "Virgil bar")
 
@@ -160,6 +160,10 @@ Not a dedicated component — `AttachedPopover` anchored to the A-glyph button i
 `AttachedPopover` at `MenuBar.tsx:262`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
 
 Behavior: click anchor toggles; fixed-positioned below-right by default; flips as needed; Escape + outside-click close.
+
+## Shared toolbar shell
+
+[src/components/editor-layout/floating-toolbar-shell.tsx](../../src/components/editor-layout/floating-toolbar-shell.tsx) exports `FloatingToolbarShell`, `DetachedToolbar`, and `PodGrabHandle`. All three floating toolbars (home-docked `MenuBar`, `DetachedActionsToolbar`, `DetachedFormattingToolbar`) share this shell — it draws the pod + tab + rotation knob so tear-off behavior stays consistent. `atHome` mode suppresses the tab/knob/shadow for the Virgil-bar docked case.
 
 ## MarginActionToolbar
 
