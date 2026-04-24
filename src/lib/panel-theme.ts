@@ -20,7 +20,8 @@ export type PanelThemeKey =
   | "quote"
   | "todo"
   | "cut"
-  | "revision";
+  | "revision"
+  | "example";
 
 /** Base hex used to seed each panel's palette by default. */
 export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> = {
@@ -33,6 +34,7 @@ export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> = {
   todo:     "#44403c",
   cut:      "#b45757",
   revision: "#9333ea",
+  example:  "#0d9488",
 };
 
 /** Curated palette for the color picker. */

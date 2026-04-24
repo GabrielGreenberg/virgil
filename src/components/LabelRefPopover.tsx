@@ -4,10 +4,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 
 export interface LabelInfo {
   label: string;
-  title: string;        // heading text content
-  sectionNumber: string; // e.g. "1.2.3"
-  level: number;
+  title: string;        // heading text or example preview
+  sectionNumber: string; // e.g. "1.2.3" for headings, "3" or "3b" for examples
+  level: number;         // heading level, or 0 for examples
+  kind?: "heading" | "example";
 }
+
+export type RefCommand = "ref" | "getref" | "getfullref";
 
 interface Props {
   /** The label key of the ref that was clicked (empty string = creating new ref) */
@@ -16,12 +19,16 @@ interface Props {
   anchorRect: DOMRect;
   /** All labels available in the document */
   labels: LabelInfo[];
+  /** Current ref-command of the clicked labelRef (for the tri-toggle). */
+  refCommand?: RefCommand;
   /** Called when the user picks a different label */
   onChangeLabel: (oldLabel: string, newLabel: string) => void;
   /** Called when the user clicks the target heading link */
   onJumpToLabel: (label: string) => void;
   /** Called when creating a new ref (via \ref command) — inserts a labelRef node */
-  onInsertRef?: (label: string) => void;
+  onInsertRef?: (label: string, refCommand?: RefCommand) => void;
+  /** Called when the user flips the ref-command via the tri-toggle. */
+  onChangeRefCommand?: (label: string, next: RefCommand) => void;
   /** Close the popover */
   onClose: () => void;
 }
@@ -30,9 +37,11 @@ export default function LabelRefPopover({
   label,
   anchorRect,
   labels,
+  refCommand = "ref",
   onChangeLabel,
   onJumpToLabel,
   onInsertRef,
+  onChangeRefCommand,
   onClose,
 }: Props) {
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -107,21 +116,28 @@ export default function LabelRefPopover({
       setDropdownOpen(false);
       if (!newLabel) return;
       if (isCreateMode && onInsertRef) {
-        onInsertRef(newLabel);
+        onInsertRef(newLabel, refCommand);
         onClose();
       } else if (newLabel !== label) {
         onChangeLabel(label, newLabel);
       }
     },
-    [label, isCreateMode, onChangeLabel, onInsertRef, onClose],
+    [label, isCreateMode, onChangeLabel, onInsertRef, refCommand, onClose],
   );
 
-  // Filter labels for dropdown
+  // Filter labels for dropdown and split by kind.
   const filteredLabels = labels.filter(
     (l) => l.label.toLowerCase().includes(inputValue.toLowerCase()),
   );
+  const filteredHeadings = filteredLabels.filter((l) => l.kind !== "example");
+  const filteredExamples = filteredLabels.filter((l) => l.kind === "example");
 
   const TYPE_NAMES = ["Chapter", "Section", "Subsection", "Subsubsection"];
+
+  const labelTypeString = (l: LabelInfo): string =>
+    l.kind === "example"
+      ? `Example (${l.sectionNumber})`
+      : `${TYPE_NAMES[Math.min(Math.max(l.level, 1) - 1, 3)]} ${l.sectionNumber}`;
 
   return (
     <div
@@ -148,15 +164,32 @@ export default function LabelRefPopover({
       >
         {target ? (
           <>
-            <span className="label-ref-popover-type">
-              {TYPE_NAMES[Math.min(target.level - 1, 3)]} {target.sectionNumber}
-            </span>
+            <span className="label-ref-popover-type">{labelTypeString(target)}</span>
             <span className="label-ref-popover-title">{target.title}</span>
           </>
         ) : (
           <span className="label-ref-popover-unresolved">Unresolved reference</span>
         )}
       </div>
+
+      {/* Ref-command tri-toggle: flip between \ref / \getref / \getfullref. */}
+      {!isCreateMode && onChangeRefCommand && (
+        <div className="label-ref-popover-pod label-ref-popover-refcmd">
+          {(["ref", "getref", "getfullref"] as RefCommand[]).map((cmd) => (
+            <button
+              key={cmd}
+              type="button"
+              className={`label-ref-popover-refcmd-btn${cmd === refCommand ? " active" : ""}`}
+              onClick={(e) => {
+                e.preventDefault();
+                if (cmd !== refCommand) onChangeRefCommand(label, cmd);
+              }}
+            >
+              \{cmd}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Bottom pod: label (click to edit) */}
       <div className="label-ref-popover-pod label-ref-popover-label">
@@ -192,9 +225,12 @@ export default function LabelRefPopover({
             />
             {dropdownOpen && filteredLabels.length > 0 && (
               <div className="label-ref-popover-dropdown">
-                {filteredLabels.map((l) => (
+                {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
+                  <div className="label-ref-popover-group-heading">Sections</div>
+                )}
+                {filteredHeadings.map((l) => (
                   <div
-                    key={l.label}
+                    key={`h-${l.label}`}
                     className={`label-ref-popover-option${l.label === label ? " current" : ""}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
@@ -202,9 +238,23 @@ export default function LabelRefPopover({
                     }}
                   >
                     <span className="label-ref-option-label">{l.label}</span>
-                    <span className="label-ref-option-info">
-                      {TYPE_NAMES[Math.min(l.level - 1, 3)]} {l.sectionNumber}
-                    </span>
+                    <span className="label-ref-option-info">{labelTypeString(l)}</span>
+                  </div>
+                ))}
+                {filteredHeadings.length > 0 && filteredExamples.length > 0 && (
+                  <div className="label-ref-popover-group-heading">Examples</div>
+                )}
+                {filteredExamples.map((l) => (
+                  <div
+                    key={`e-${l.label}`}
+                    className={`label-ref-popover-option${l.label === label ? " current" : ""}`}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      commitLabel(l.label);
+                    }}
+                  >
+                    <span className="label-ref-option-label">{l.label}</span>
+                    <span className="label-ref-option-info">{labelTypeString(l)}</span>
                   </div>
                 ))}
               </div>

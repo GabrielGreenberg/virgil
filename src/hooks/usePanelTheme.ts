@@ -27,6 +27,7 @@ const CARD_THEME_BY_KEY: Record<PanelThemeKey, keyof typeof CARD_THEMES> = {
   todo:     "todo",
   cut:      "cut",
   revision: "note",     // placeholder — revision cards aren't themed yet
+  example:  "example",
 };
 
 /** Return the CardTheme for `key`, augmented with `override` derived from the

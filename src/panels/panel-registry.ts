@@ -95,6 +95,16 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     omniSide: "left",
     defaultStripSide: "left",
   },
+  examples: {
+    kind: "examples",
+    label: "Examples",
+    folder: "src/panels/Examples",
+    card: { kind: "example", keyPrefix: "example", themeKey: "example" },
+    defaultViewMode: "list",
+    omniEligible: true,
+    omniSide: "left",
+    defaultStripSide: "left",
+  },
   todo: {
     kind: "todo",
     label: "Todo List",
@@ -210,6 +220,7 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   comment: "revision",
   cut: "cut",
   quotation: "quotation",
+  example: "example",
   ai: "ai",
   error: "error",
 };

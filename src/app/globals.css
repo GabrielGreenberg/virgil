@@ -1402,6 +1402,228 @@ body {
   border-radius: 2px;
 }
 
+/* ── Label-ref popover: group headings + ref-command tri-toggle ── */
+
+.label-ref-popover-group-heading {
+  padding: 4px 8px 2px;
+  font-size: 0.64rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, #8a8580);
+  background: transparent;
+  border-bottom: 1px solid var(--border, #e5e2dd);
+}
+
+.label-ref-popover-refcmd {
+  display: flex;
+  gap: 4px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border, #e5e2dd);
+}
+
+.label-ref-popover-refcmd-btn {
+  flex: 1;
+  padding: 2px 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.7rem;
+  color: var(--muted, #8a8580);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+
+.label-ref-popover-refcmd-btn:hover {
+  background: #f7f4ef;
+  color: var(--foreground, #1a1a1a);
+}
+
+.label-ref-popover-refcmd-btn.active {
+  background: #fef3c3;
+  border-color: #d4a843;
+  color: #4a3f20;
+}
+
+/* ── expex: \ex / \pex / \begingl blocks ── */
+
+/* Outer wrapper around an example — holds the par-title annotation strip
+ * above the block and the block itself below. The wrapper makes room on
+ * the left for the drag handle (which sits outside the number column). */
+.expex-par-wrapper {
+  position: relative;
+  margin: 1em 0;
+}
+
+.expex-par-wrapper > .par-title-annotation {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+/* Blue "Example" annotation pod — sits flush with the left edge of the
+ * teal example-block above it (no number-column indent). */
+.expex-label-annotation {
+  margin-left: 0;
+  margin-top: 0.25em;
+  margin-bottom: 0.6em;
+}
+
+.expex-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3em 1fr;
+  column-gap: 0.5em;
+  row-gap: 0;
+  align-items: start;
+  margin: 0;
+  padding: 0.2em 0.5em;
+  border-left: 3px solid transparent;
+  border-radius: 4px;
+  background: linear-gradient(to right, rgba(13, 148, 136, 0.06), transparent 240px);
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.expex-block:hover {
+  background: linear-gradient(to right, rgba(13, 148, 136, 0.11), transparent 260px);
+  border-left-color: rgba(13, 148, 136, 0.3);
+}
+
+/* Drag handle on the block's left edge — positioned relative to the
+ * block so its top aligns with the first line of text, horizontally
+ * matching the regular paragraph drag handle (left: -14px). Hidden
+ * until the block is hovered. */
+.expex-drag-handle {
+  position: absolute;
+  /* -17px = -14px (paragraph handle offset) minus the 3px border-left
+   * on .expex-block, so the handle sits in the same visual column as a
+   * regular paragraph's grab bar. */
+  left: -17px;
+  top: 0.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
+  cursor: grab;
+  color: var(--muted-light, #b5b0aa);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+
+.expex-par-wrapper:hover .expex-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.expex-drag-handle:hover {
+  color: var(--muted, #8a8580);
+}
+
+.expex-drag-handle:active {
+  cursor: grabbing;
+  color: var(--ink, #3a362f);
+}
+
+.expex-number {
+  grid-column: 1;
+  padding-top: 0.15em;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 0.95em;
+  /* Match the muted-grey tone used by heading section numbers so the
+   * example number reads as an auto-generated annotation rather than
+   * body text. */
+  color: var(--muted, #8a8580);
+  user-select: none;
+}
+
+.expex-body {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* Sub-item — a/b/c rows inside a \pex */
+.expex-item {
+  display: grid;
+  grid-template-columns: 1.6em 1fr;
+  column-gap: 0.35em;
+  align-items: start;
+  margin: 0.2em 0;
+}
+
+.expex-item-marker {
+  grid-column: 1;
+  padding-top: 0.15em;
+  font-family: var(--font-serif), Georgia, serif;
+  font-size: 0.95em;
+  color: var(--muted, #8a8580);
+  user-select: none;
+  text-align: right;
+}
+
+.expex-item-body {
+  grid-column: 2;
+  min-width: 0;
+}
+
+/* Gloss — interlinear tiers aligned on a CSS grid. Each aligned row
+ * forms its own subgrid; column count is set as a CSS var by the
+ * numbering plugin (`--expex-col-count`). */
+.expex-gloss {
+  margin: 0.4em 0;
+  padding: 0.35em 0;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.88em;
+  line-height: 1.35;
+}
+
+.expex-gloss-row {
+  display: grid;
+  grid-template-columns: repeat(var(--expex-col-count, 1), max-content);
+  column-gap: 1.2em;
+  margin-bottom: 0.1em;
+}
+
+.expex-gloss-row-prose {
+  display: block;
+  font-style: italic;
+  margin-top: 0.25em;
+  color: var(--ink-body);
+}
+
+.expex-gloss-row-glpreamble {
+  font-style: normal;
+  margin-bottom: 0.3em;
+}
+
+.expex-gloss-row-gla {
+  font-style: italic;
+}
+
+.expex-gloss-row-glb,
+.expex-gloss-row-glc {
+  font-variant: small-caps;
+  color: var(--ink-muted, #555);
+  font-size: 0.85em;
+}
+
+.expex-gloss-cell {
+  min-width: 1ch;
+  padding: 0 0.1em;
+}
+
+.expex-gloss-cell:empty::before {
+  content: "";
+}
+
+/* Keyboard focus: when cursor is inside an example, add a soft focus ring. */
+.expex-block.ProseMirror-selectednode,
+.expex-block[data-node-selection="true"] {
+  outline: 2px solid rgba(13, 148, 136, 0.35);
+  outline-offset: 2px;
+}
+
 /* Bibliography formatted output from citation-js */
 .bib-formatted .csl-bib-body {
   font-size: inherit;

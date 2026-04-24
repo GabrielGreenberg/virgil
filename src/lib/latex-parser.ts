@@ -7,6 +7,9 @@ import { generateEntityId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid"
 interface ParseContext {
   pos: number;
   src: string;
+  /** Stashed example id from a preceding `\vexid{uuid}`. Consumed by
+   *  the next `\ex` / `\pex` block. */
+  pendingExampleId?: string | null;
 }
 
 function stripPreamble(latex: string): string {
@@ -434,15 +437,26 @@ function parseInlineContent(text: string): JSONContent[] {
         continue;
       }
 
-      // \ref{key} — cross-reference to a \label
-      const refMatch = rest.match(/^\\ref\{/);
-      if (refMatch) {
+      // \ref{key} / \getref{key} / \getfullref{key.sub} — cross-reference
+      const refCmdMatch = rest.match(/^\\(getfullref|getref|ref)\{/);
+      if (refCmdMatch) {
         flush();
-        const inner = extractBraced(text, i + refMatch[0].length - 1);
+        const inner = extractBraced(text, i + refCmdMatch[0].length - 1);
         if (inner) {
+          const refCommand =
+            refCmdMatch[1] === "getfullref"
+              ? "getfullref"
+              : refCmdMatch[1] === "getref"
+                ? "getref"
+                : "ref";
           nodes.push({
             type: "labelRef",
-            attrs: { label: inner.content, displayText: "" },
+            attrs: {
+              label: inner.content,
+              displayText: "",
+              refCommand,
+              targetKind: null,
+            },
           });
           i = inner.end;
           continue;
@@ -595,7 +609,11 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // Assign hierarchical section numbers
   numberHeadings(doc);
 
-  // Resolve \ref{} display text from heading labels
+  // Number expex examples (and assign sub-labels to items) so that
+  // `resolveRefs` can look up their numbers.
+  numberExamples(doc);
+
+  // Resolve \ref / \getref / \getfullref display text
   resolveRefs(doc);
 
   // Merge sidecar titles into paragraph nodes by UUID
@@ -667,22 +685,131 @@ function numberHeadings(node: JSONContent): void {
   walk(node);
 }
 
-/** Resolve \ref{label} nodes: build label→sectionNumber map from headings, then fill displayText. */
+/** Assign sequential numbers to exampleBlocks (global) and sub-labels
+ *  ("a", "b", …) to exampleItems within each multi-part block. Also
+ *  recomputes colCount on every exampleGloss. Mirrors the live
+ *  ExpexNumbering ProseMirror plugin for the initial parse pass. */
+function numberExamples(node: JSONContent): void {
+  function toSubLabel(n: number): string {
+    let s = "";
+    let i = n;
+    while (i > 0) {
+      i--;
+      s = String.fromCharCode(97 + (i % 26)) + s;
+      i = Math.floor(i / 26);
+    }
+    return s || "a";
+  }
+
+  let exampleCounter = 0;
+  function walk(n: JSONContent) {
+    if (n.type === "exampleBlock") {
+      exampleCounter++;
+      const override = n.attrs?.exnoOverride;
+      const num = override ? override : exampleCounter;
+      n.attrs = { ...(n.attrs || {}), number: num };
+      let itemCounter = 0;
+      function walkItems(m: JSONContent) {
+        if (m.type === "exampleItem") {
+          itemCounter++;
+          m.attrs = { ...(m.attrs || {}), subLabel: toSubLabel(itemCounter) };
+          return;
+        }
+        m.content?.forEach(walkItems);
+      }
+      n.content?.forEach(walkItems);
+    }
+    if (n.type === "exampleGloss") {
+      let max = 1;
+      for (const row of n.content || []) {
+        if (row.type === "alignedGlossRow") {
+          const cells = row.content?.length || 0;
+          if (cells > max) max = cells;
+        }
+      }
+      n.attrs = { ...(n.attrs || {}), colCount: max };
+    }
+    n.content?.forEach(walk);
+  }
+  walk(node);
+}
+
+/** Resolve `\ref` / `\getref` / `\getfullref` display text.
+ *
+ *  Builds a unified map from labels to display strings:
+ *  - Heading labels → bare section number (e.g. `"2.1"`).
+ *  - Example tag OR inner `\label{…}` → example number (e.g. `"3"`).
+ *  - Dotted `"parent.sub"` → `"3b"` using the sub-item's computed label.
+ *
+ *  The `refCommand` attr selects the template:
+ *  - `ref` → bare text (`"3"`).
+ *  - `getref` / `getfullref` → parenthesized (`"(3)"`, `"(3b)"`).
+ */
 function resolveRefs(node: JSONContent): void {
-  const labelMap = new Map<string, string>();
-  // Collect labels from headings
+  const headingMap = new Map<string, string>();
+  const exampleMap = new Map<
+    string,
+    { number: string; items: Map<string, string> }
+  >();
+
   function collect(n: JSONContent) {
     if (n.type === "heading" && n.attrs?.label && n.attrs?.sectionNumber) {
-      labelMap.set(n.attrs.label as string, n.attrs.sectionNumber as string);
+      headingMap.set(n.attrs.label as string, n.attrs.sectionNumber as string);
+    }
+    if (n.type === "exampleBlock" && n.attrs?.number) {
+      const num = String(n.attrs.number);
+      const entry = { number: num, items: new Map<string, string>() };
+      if (n.attrs.tag) exampleMap.set(n.attrs.tag as string, entry);
+      if (n.attrs.label) exampleMap.set(n.attrs.label as string, entry);
+      function walkItems(m: JSONContent) {
+        if (m.type === "exampleItem") {
+          const sub = (m.attrs?.subLabel as string) || "";
+          if (sub) {
+            if (m.attrs?.tag) entry.items.set(m.attrs.tag as string, sub);
+            if (m.attrs?.label) entry.items.set(m.attrs.label as string, sub);
+          }
+          return;
+        }
+        m.content?.forEach(walkItems);
+      }
+      n.content?.forEach(walkItems);
     }
     n.content?.forEach(collect);
   }
   collect(node);
-  // Fill displayText on labelRef nodes
+
+  function resolve(label: string, refCommand: string): string {
+    if (!label) return "??";
+    const heading = headingMap.get(label);
+    if (heading) return refCommand === "ref" ? heading : `(${heading})`;
+    const ex = exampleMap.get(label);
+    if (ex) return refCommand === "ref" ? ex.number : `(${ex.number})`;
+    const dot = label.lastIndexOf(".");
+    if (dot > 0) {
+      const parent = exampleMap.get(label.slice(0, dot));
+      if (parent) {
+        const subKey = label.slice(dot + 1);
+        const sub = parent.items.get(subKey) || subKey;
+        const full = `${parent.number}${sub}`;
+        return refCommand === "ref" ? full : `(${full})`;
+      }
+    }
+    return "??";
+  }
+
   function fill(n: JSONContent) {
     if (n.type === "labelRef" && n.attrs?.label) {
-      const num = labelMap.get(n.attrs.label as string);
-      n.attrs = { ...n.attrs, displayText: num || "??" };
+      const refCommand = (n.attrs.refCommand as string) || "ref";
+      const display = resolve(n.attrs.label as string, refCommand);
+      // Set targetKind as advisory for the popover.
+      const targetKind = headingMap.has(n.attrs.label as string)
+        ? "heading"
+        : exampleMap.has(n.attrs.label as string)
+          ? "example"
+          : n.attrs.label && (n.attrs.label as string).includes(".")
+            ? "example"
+            : null;
+      n.attrs = { ...n.attrs, displayText: display, targetKind };
     }
     n.content?.forEach(fill);
   }
@@ -823,6 +950,107 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         });
         continue;
       }
+    }
+
+    // \vexid{uuid} — no-op marker carrying a stable exampleId for the next
+    // \ex / \pex we encounter in block context. Emitted by the serializer.
+    const vexidBlockMatch = rest.match(/^\\vexid\{/);
+    if (vexidBlockMatch) {
+      const idArg = extractBraced(ctx.src, ctx.pos + "\\vexid".length);
+      if (idArg !== null) {
+        ctx.pendingExampleId = idArg.content || null;
+        ctx.pos = idArg.end;
+        continue;
+      }
+    }
+
+    // \ex / \pex … \xe  — expex single or multi-part example block.
+    const exStartMatch = rest.match(/^\\(ex|pex)(~?)/);
+    if (exStartMatch) {
+      const kind = exStartMatch[1] === "pex" ? "multi" : "single";
+      const suppressSpace = exStartMatch[2] === "~";
+      ctx.pos += exStartMatch[0].length;
+
+      // Optional [opts]
+      let exnoOverride: string | null = null;
+      while (ctx.pos < ctx.src.length && ctx.src[ctx.pos] === "[") {
+        const close = ctx.src.indexOf("]", ctx.pos);
+        if (close === -1) break;
+        const optStr = ctx.src.slice(ctx.pos + 1, close);
+        const exnoMatch = optStr.match(/exno\s*=\s*([^,\s]+)/);
+        if (exnoMatch) exnoOverride = exnoMatch[1];
+        ctx.pos = close + 1;
+      }
+      // Optional <tag>  (angle-bracket tag)
+      let tag = "";
+      if (ctx.src[ctx.pos] === "<") {
+        const close = ctx.src.indexOf(">", ctx.pos);
+        if (close !== -1) {
+          tag = ctx.src.slice(ctx.pos + 1, close);
+          ctx.pos = close + 1;
+        }
+      }
+      // Optional \label{…} immediately after (no body parsing yet)
+      let label = "";
+      while (true) {
+        const afterHeader = ctx.src.slice(ctx.pos);
+        const labelMatch = afterHeader.match(/^[ \t]*\n?[ \t]*\\label\{([^}]*)\}/);
+        if (labelMatch) {
+          label = labelMatch[1];
+          ctx.pos += labelMatch[0].length;
+          continue;
+        }
+        // Optional [opts] again (expex tolerates them either side of the tag)
+        const optsMatch = afterHeader.match(/^[ \t]*\[([^\]]*)\]/);
+        if (optsMatch) {
+          const exnoMatch = optsMatch[1].match(/exno\s*=\s*([^,\s]+)/);
+          if (exnoMatch && !exnoOverride) exnoOverride = exnoMatch[1];
+          ctx.pos += optsMatch[0].length;
+          continue;
+        }
+        break;
+      }
+
+      // Consume the body up to the matching \xe (handling nested \ex/\pex).
+      const bodyStart = ctx.pos;
+      const bodyEnd = findMatchingXe(ctx.src, bodyStart);
+      const bodyText =
+        bodyEnd !== -1 ? ctx.src.slice(bodyStart, bodyEnd) : ctx.src.slice(bodyStart);
+      ctx.pos = bodyEnd !== -1 ? bodyEnd + "\\xe".length : ctx.src.length;
+
+      const uuid = ctx.pendingExampleId || null;
+      ctx.pendingExampleId = null;
+
+      const exampleNode = buildExampleBlockFromBody(bodyText, {
+        kind,
+        tag,
+        label,
+        uuid,
+        exnoOverride,
+        suppressSpace,
+      });
+      parent.content.push(exampleNode);
+      continue;
+    }
+
+    // \begingl … \endgl — expex interlinear gloss block (top-level or
+    // nested inside an ex/pex body).
+    const beginGlMatch = rest.match(/^\\begingl\b/);
+    if (beginGlMatch) {
+      ctx.pos += beginGlMatch[0].length;
+      // Optional [opts] — preserved-but-ignored for now
+      if (ctx.src[ctx.pos] === "[") {
+        const close = ctx.src.indexOf("]", ctx.pos);
+        if (close !== -1) ctx.pos = close + 1;
+      }
+      const bodyStart = ctx.pos;
+      const endIdx = ctx.src.indexOf("\\endgl", bodyStart);
+      const bodyText =
+        endIdx !== -1 ? ctx.src.slice(bodyStart, endIdx) : ctx.src.slice(bodyStart);
+      ctx.pos = endIdx !== -1 ? endIdx + "\\endgl".length : ctx.src.length;
+      const glossNode = buildGlossFromBody(bodyText);
+      parent.content.push(glossNode);
+      continue;
     }
 
     // \begin{...}[optional]
@@ -1174,7 +1402,7 @@ function readParagraph(ctx: ParseContext): string {
     if (ctx.src[ctx.pos] === "\\" && result.trim()) {
       const rest = ctx.src.slice(ctx.pos);
       if (
-        /^\\(chapter|section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par)\b/.test(
+        /^\\(chapter|section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|begingl|endgl)\b/.test(
           rest
         )
       ) {
@@ -1191,4 +1419,337 @@ function readParagraph(ctx: ParseContext): string {
     ctx.pos++;
   }
   return result.trim();
+}
+
+// ---------------------------------------------------------------------------
+// expex helpers
+// ---------------------------------------------------------------------------
+
+/** Scan for the `\xe` that closes the `\ex`/`\pex` opened just before
+ *  `startPos`. Handles nested `\ex`/`\pex` by tracking depth. Returns the
+ *  index of the backslash in `\xe`, or -1 if not found. */
+function findMatchingXe(src: string, startPos: number): number {
+  let depth = 1;
+  let pos = startPos;
+  while (pos < src.length) {
+    if (src[pos] !== "\\") {
+      pos++;
+      continue;
+    }
+    const tail = src.slice(pos);
+    const openMatch = tail.match(/^\\(ex|pex)\b/);
+    if (openMatch) {
+      depth++;
+      pos += openMatch[0].length;
+      continue;
+    }
+    const closeMatch = tail.match(/^\\xe\b/);
+    if (closeMatch) {
+      depth--;
+      if (depth === 0) return pos;
+      pos += closeMatch[0].length;
+      continue;
+    }
+    pos++;
+  }
+  return -1;
+}
+
+/** Split a `\pex` body into [preambleText, ...itemSegments] where each
+ *  itemSegment starts just after an `\a` (with its option/tag consumed). */
+function splitPexBody(
+  body: string,
+): {
+  preamble: string;
+  items: Array<{
+    tag: string;
+    label: string;
+    exnoOverride: string | null;
+    text: string;
+  }>;
+} {
+  const items: Array<{
+    tag: string;
+    label: string;
+    exnoOverride: string | null;
+    text: string;
+  }> = [];
+  let preamble = "";
+  let pos = 0;
+  let firstAt = -1;
+  let current: {
+    tag: string;
+    label: string;
+    exnoOverride: string | null;
+    start: number;
+  } | null = null;
+
+  const flushCurrent = (endPos: number) => {
+    if (!current) return;
+    items.push({
+      tag: current.tag,
+      label: current.label,
+      exnoOverride: current.exnoOverride,
+      text: body.slice(current.start, endPos).trim(),
+    });
+    current = null;
+  };
+
+  while (pos < body.length) {
+    // Skip nested \begingl … \endgl and nested \ex/\pex blocks so their
+    // internal \a markers don't get confused with ours.
+    if (body.startsWith("\\begingl", pos)) {
+      const endIdx = body.indexOf("\\endgl", pos + "\\begingl".length);
+      pos = endIdx === -1 ? body.length : endIdx + "\\endgl".length;
+      continue;
+    }
+    const exStart = body.slice(pos).match(/^\\(ex|pex)\b/);
+    if (exStart) {
+      pos += exStart[0].length;
+      const innerEnd = findMatchingXe(body, pos);
+      pos = innerEnd === -1 ? body.length : innerEnd + "\\xe".length;
+      continue;
+    }
+    // Top-level \a with word-boundary
+    if (body.startsWith("\\a", pos)) {
+      const after = body[pos + 2];
+      const isAccent = after === " " && /[a-zA-Z]/.test(body[pos + 3] || "");
+      // `\a ` followed by a single letter is the LaTeX accent, not a part
+      // marker. Real part markers are `\a<tag>`, `\a[opts]`, `\a\label`, or
+      // `\a` at end of line followed by content. Heuristic: treat as part
+      // marker unless followed by " X" where X is a single letter and then
+      // whitespace/non-letter (true accent).
+      if (after === undefined || /[\s<\[\\]/.test(after)) {
+        if (firstAt === -1) firstAt = pos;
+        flushCurrent(pos);
+        let cursor = pos + 2;
+        // Optional [opts]
+        let exnoOverride: string | null = null;
+        while (cursor < body.length && body[cursor] === "[") {
+          const close = body.indexOf("]", cursor);
+          if (close === -1) break;
+          const optStr = body.slice(cursor + 1, close);
+          const m = optStr.match(/exno\s*=\s*([^,\s]+)/);
+          if (m) exnoOverride = m[1];
+          cursor = close + 1;
+        }
+        // Optional <tag>
+        let tag = "";
+        if (body[cursor] === "<") {
+          const close = body.indexOf(">", cursor);
+          if (close !== -1) {
+            tag = body.slice(cursor + 1, close);
+            cursor = close + 1;
+          }
+        }
+        // Optional \label{…}
+        let label = "";
+        const afterHdr = body.slice(cursor);
+        const labelMatch = afterHdr.match(/^[ \t]*\\label\{([^}]*)\}/);
+        if (labelMatch) {
+          label = labelMatch[1];
+          cursor += labelMatch[0].length;
+        }
+        // Consume one leading space for cleanliness
+        while (cursor < body.length && /[ \t]/.test(body[cursor])) cursor++;
+        current = { tag, label, exnoOverride, start: cursor };
+        pos = cursor;
+        continue;
+      }
+      void isAccent;
+    }
+    pos++;
+  }
+  flushCurrent(body.length);
+  if (firstAt > 0) preamble = body.slice(0, firstAt).trim();
+  else if (firstAt === -1) preamble = body.trim();
+  return { preamble, items };
+}
+
+function buildExampleBlockFromBody(
+  body: string,
+  opts: {
+    kind: "single" | "multi";
+    tag: string;
+    label: string;
+    uuid: string | null;
+    exnoOverride: string | null;
+    suppressSpace: boolean;
+  },
+): JSONContent {
+  const attrs: Record<string, unknown> = {
+    // Assign a fresh UUID when the source had no `\vexid{…}` marker so
+    // the panel and sidecar have a stable id to key by. The serializer
+    // then emits `\vexid{…}` on the next save, anchoring the id in the
+    // .tex itself.
+    uuid: opts.uuid || generateEntityId(),
+    kind: opts.kind,
+    tag: opts.tag,
+    label: opts.label,
+    exnoOverride: opts.exnoOverride,
+    suppressSpace: opts.suppressSpace,
+    number: 0,
+  };
+
+  const content: JSONContent[] = [];
+  if (opts.kind === "single") {
+    // Parse the body as a sequence of paragraphs + glosses.
+    const inner = parseExampleBodyAsBlocks(body);
+    content.push(...inner);
+    if (content.length === 0) content.push({ type: "paragraph" });
+  } else {
+    // \pex — split into preamble + items.
+    const { preamble, items } = splitPexBody(body);
+    if (preamble) {
+      const pNodes = parseExampleBodyAsBlocks(preamble);
+      content.push(...pNodes);
+    }
+    for (const item of items) {
+      const itemContent = parseExampleBodyAsBlocks(item.text);
+      // Ensure at least one paragraph child per schema ("paragraph+ exampleGloss?")
+      const normalized: JSONContent[] = [];
+      const paragraphs = itemContent.filter((n) => n.type === "paragraph");
+      const glosses = itemContent.filter((n) => n.type === "exampleGloss");
+      if (paragraphs.length === 0) normalized.push({ type: "paragraph" });
+      else normalized.push(...paragraphs);
+      if (glosses.length > 0) normalized.push(glosses[0]);
+      content.push({
+        type: "exampleItem",
+        attrs: {
+          tag: item.tag,
+          label: item.label,
+          subLabel: "",
+        },
+        content: normalized,
+      });
+    }
+    if (items.length === 0) {
+      // No \a markers — fall back to a single empty item so the schema holds.
+      content.push({
+        type: "exampleItem",
+        attrs: { tag: "", label: "", subLabel: "" },
+        content: [{ type: "paragraph" }],
+      });
+    }
+  }
+
+  return { type: "exampleBlock", attrs, content };
+}
+
+/** Parse an example body fragment (between `\ex`/`\pex` and `\xe`, or between
+ *  consecutive `\a` markers) as a sequence of paragraph + gloss blocks. */
+function parseExampleBodyAsBlocks(body: string): JSONContent[] {
+  const sub: JSONContent = { type: "__scratch", content: [] };
+  const subCtx: ParseContext = { pos: 0, src: body };
+  parseBody(subCtx, sub);
+  const out: JSONContent[] = [];
+  for (const child of sub.content || []) {
+    // Only keep paragraph + exampleGloss children; anything else collapses
+    // to an inline latex-command fallback paragraph.
+    if (child.type === "paragraph" || child.type === "exampleGloss") {
+      out.push(child);
+      continue;
+    }
+    out.push({
+      type: "paragraph",
+      content: [{ type: "text", text: body.trim(), marks: [{ type: "latexCommand" }] }],
+    });
+    break;
+  }
+  return out;
+}
+
+/** Parse a `\begingl … \endgl` body into an `exampleGloss` node with
+ *  `alignedGlossRow` + `proseGlossRow` children. */
+function buildGlossFromBody(body: string): JSONContent {
+  const rows: JSONContent[] = [];
+  // Split on \gla / \glb / \glc / \glft / \glpreamble markers at block-start.
+  const tierPattern = /\\gl(a|b|c|ft|preamble)\b/g;
+  const markers: Array<{ tier: string; start: number; end: number }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = tierPattern.exec(body)) !== null) {
+    const tier =
+      m[1] === "a"
+        ? "gla"
+        : m[1] === "b"
+          ? "glb"
+          : m[1] === "c"
+            ? "glc"
+            : m[1] === "ft"
+              ? "glft"
+              : "glpreamble";
+    markers.push({ tier, start: m.index, end: m.index + m[0].length });
+  }
+  for (let i = 0; i < markers.length; i++) {
+    const cur = markers[i];
+    const next = markers[i + 1];
+    let segment = body.slice(cur.end, next ? next.start : body.length);
+    // Strip the trailing `//` terminator if present.
+    segment = segment.replace(/\s*\/\/\s*$/, "").trim();
+    if (cur.tier === "gla" || cur.tier === "glb" || cur.tier === "glc") {
+      rows.push({
+        type: "alignedGlossRow",
+        attrs: { tier: cur.tier },
+        content: tokenizeGlossCells(segment),
+      });
+    } else {
+      // prose row — inline content
+      rows.push({
+        type: "proseGlossRow",
+        attrs: { tier: cur.tier },
+        content: parseInlineContent(segment),
+      });
+    }
+  }
+  if (rows.length === 0) {
+    rows.push({ type: "alignedGlossRow", attrs: { tier: "gla" }, content: [] });
+  }
+  // Initial colCount — recomputed live by the numbering plugin.
+  let maxCells = 1;
+  for (const r of rows) {
+    if (r.type === "alignedGlossRow" && r.content) {
+      if (r.content.length > maxCells) maxCells = r.content.length;
+    }
+  }
+  return {
+    type: "exampleGloss",
+    attrs: { glossId: null, colCount: maxCells },
+    content: rows,
+  };
+}
+
+/** Tokenize one aligned gloss line (post-marker, pre-`//` terminator) into
+ *  `glossCell` nodes. Whitespace separates tokens; `{...}` groups a
+ *  multi-word cell. */
+function tokenizeGlossCells(text: string): JSONContent[] {
+  const cells: JSONContent[] = [];
+  const src = text.trim();
+  let i = 0;
+  while (i < src.length) {
+    // Skip whitespace between tokens
+    while (i < src.length && /\s/.test(src[i])) i++;
+    if (i >= src.length) break;
+    let token = "";
+    if (src[i] === "{") {
+      // Balanced group — take the whole contents
+      const inner = extractBraced(src, i);
+      if (inner) {
+        token = inner.content;
+        i = inner.end;
+      } else {
+        token = src.slice(i);
+        i = src.length;
+      }
+    } else {
+      // Non-whitespace run up to next space
+      const start = i;
+      while (i < src.length && !/\s/.test(src[i])) i++;
+      token = src.slice(start, i);
+    }
+    cells.push({
+      type: "glossCell",
+      content: parseInlineContent(token),
+    });
+  }
+  return cells;
 }

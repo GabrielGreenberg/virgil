@@ -227,6 +227,30 @@ export interface FootnotesState {
   footnotes: FootnoteRef[];
 }
 
+// --- Examples (expex package, persistent metadata sidecar) ---
+
+/** Sidecar shadow of an `exampleBlock` node. The canonical representation
+ *  lives in the `.tex` (as `\ex … \xe` / `\pex … \xe`) — this ref carries
+ *  per-example panel metadata the editor can't easily re-derive (custom
+ *  title override, timestamps). Matched back to the editor by `id`, which
+ *  is the `\vexid{…}` uuid. */
+export interface ExampleRef {
+  id: string;
+  /** `\ex<tag>` angle-bracket tag, if any. Mirrors the node attr for quick
+   *  panel filtering without re-walking the doc. */
+  tag: string;
+  /** Inner `\label{…}` on the example, if any. Mirror of node attr. */
+  label: string;
+  /** Optional panel-only display title. Doesn't serialize back to the
+   *  `.tex` — this is a panel UX affordance. */
+  title: string;
+  createdAt: string;
+}
+
+export interface ExamplesState {
+  examples: ExampleRef[];
+}
+
 // --- Notes ---
 
 export interface UserNote {

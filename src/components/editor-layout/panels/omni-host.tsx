@@ -9,6 +9,7 @@ import { buildQuotationOmniItems } from "@/panels/Quotations";
 import { buildNoteOmniItems } from "@/panels/Notes";
 import { buildArchiveOmniItems } from "@/panels/Archive";
 import { buildTodoOmniItems } from "@/panels/Todo";
+import { buildExampleOmniItems } from "@/panels/Examples";
 import type { useNotes } from "@/hooks/useNotes";
 import type { useTodos } from "@/hooks/useTodos";
 import type { useQuotations } from "@/hooks/useQuotations";
@@ -17,7 +18,7 @@ import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet, OrphanedFootnote } from "@/lib/types";
-import type { FootnoteInfo } from "../../Editor";
+import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
@@ -84,6 +85,8 @@ export interface OmniHostProps {
   updateTodoNotes: TodosHook["updateNotes"];
   setTodoAiRequest: TodosHook["setAiRequest"];
   deleteTodo: TodosHook["deleteItem"];
+  // Examples
+  examples: ExampleInfo[];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   toggleOmniCategory: (side: Side, cat: OmniCategory) => void;
@@ -99,6 +102,7 @@ export function OmniHost(p: OmniHostProps) {
     selectedNoteId, setSelectedNoteId,
     selectedArchiveId, setSelectedArchiveId,
     selectedTodoId, setSelectedTodoId,
+    selectedExampleId, setSelectedExampleId,
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
@@ -112,6 +116,7 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedNoteId(null);
     setSelectedArchiveId(null);
     setSelectedTodoId(null);
+    setSelectedExampleId(null);
   }, [
     setSelectedFootnoteId,
     setSelectedCitationId,
@@ -119,6 +124,7 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedNoteId,
     setSelectedArchiveId,
     setSelectedTodoId,
+    setSelectedExampleId,
   ]);
   const setFootnoteInOmni = useCallback((id: string | null) => {
     setSelectedFootnoteId(id);
@@ -255,6 +261,32 @@ export function OmniHost(p: OmniHostProps) {
     (id: string) => editorRef.current?.scrollToCitation(id),
     [editorRef],
   );
+  const scrollToExample = useCallback(
+    (id: string) => editorRef.current?.scrollToExample(id),
+    [editorRef],
+  );
+  const setExampleInOmni = useCallback(
+    (id: string | null) => {
+      setSelectedExampleId(id);
+      if (id !== null) {
+        setSelectedFootnoteId(null);
+        setSelectedCitationId(null);
+        setSelectedQuotationGroupId(null);
+        setSelectedNoteId(null);
+        setSelectedArchiveId(null);
+        setSelectedTodoId(null);
+      }
+    },
+    [
+      setSelectedExampleId,
+      setSelectedFootnoteId,
+      setSelectedCitationId,
+      setSelectedQuotationGroupId,
+      setSelectedNoteId,
+      setSelectedArchiveId,
+      setSelectedTodoId,
+    ],
+  );
 
   const items: OmniItem[] = [
     ...buildFootnoteOmniItems({
@@ -348,6 +380,12 @@ export function OmniHost(p: OmniHostProps) {
       updateTodoNotes: p.updateTodoNotes,
       setTodoAiRequest: p.setTodoAiRequest,
       deleteTodo: p.deleteTodo,
+    }),
+    ...buildExampleOmniItems({
+      examples: p.examples,
+      selectedExampleId,
+      setSelectedExampleId: setExampleInOmni,
+      onJump: scrollToExample,
     }),
   ];
 

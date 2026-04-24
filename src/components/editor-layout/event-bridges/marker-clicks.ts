@@ -31,6 +31,7 @@ export function useMarkerClickBridges(deps: {
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
+  setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
 }) {
   const {
     prefsRef,
@@ -44,6 +45,7 @@ export function useMarkerClickBridges(deps: {
     setSelectedCitationId,
     setActiveRefLabel,
     setActiveRefRect,
+    setActiveRefCommand,
   } = deps;
 
   useEffect(() => {
@@ -146,9 +148,15 @@ export function useMarkerClickBridges(deps: {
       if (el) {
         setActiveRefLabel(detail.label);
         setActiveRefRect(el.getBoundingClientRect());
+        const cmd = detail.refCommand;
+        if (cmd === "getref" || cmd === "getfullref" || cmd === "ref") {
+          setActiveRefCommand(cmd);
+        } else {
+          setActiveRefCommand("ref");
+        }
       }
     };
     window.addEventListener("virgil-label-ref-click", handler);
     return () => window.removeEventListener("virgil-label-ref-click", handler);
-  }, [setActiveRefLabel, setActiveRefRect]);
+  }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
 }

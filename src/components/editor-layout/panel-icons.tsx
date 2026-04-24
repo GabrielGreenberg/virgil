@@ -277,6 +277,42 @@ export function IconErrors({ active, size = 18 }: { active?: boolean; size?: num
   );
 }
 
+// Literal "(1)" glyph used for every mention of the expex Examples feature —
+// strip button, Action toolbar, Format-popover control. SVG text mirrors
+// the sizing of IconFootnote (`fn`): 18×18 render in a 20-unit viewBox,
+// baseline at y=15.5, fontSize=15, fontWeight=600. The "1" itself is set
+// in the document's serif to echo how expex numbers render in the text
+// (section numbers + example numbers both read as serif digits).
+export function IconExample({
+  active,
+  size = 18,
+}: {
+  active?: boolean;
+  size?: number;
+}) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 20 20"
+      fill={c}
+      aria-hidden
+    >
+      <text
+        x="10"
+        y="15.5"
+        textAnchor="middle"
+        fontSize="15"
+        fontWeight="600"
+        style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+      >
+        (1)
+      </text>
+    </svg>
+  );
+}
+
 // Per-panel-id icon renderer for the strip + omni button. Labels for
 // these ids come from PANEL_REGISTRY (or the "Blank" fallback below);
 // only the icon factory lives here, since icons reference local
@@ -293,6 +329,7 @@ export const PANEL_ICONS: Record<PanelId, (active: boolean) => React.ReactNode> 
   suggestions: (a) => <IconSuggestions active={a} />,
   cutter: (a) => <IconCutter active={a} />,
   quotations: (a) => <IconQuotations active={a} />,
+  examples: (a) => <IconExample active={a} />,
   search: (a) => <IconSearch active={a} />,
   wordcount: (a) => <IconWordCount active={a} />,
   errors: (a) => <IconErrors active={a} />,

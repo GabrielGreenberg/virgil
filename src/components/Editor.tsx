@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -193,6 +193,25 @@ export interface FootnoteInfo {
   title?: string;
 }
 
+export interface ExampleInfo {
+  /** exampleBlock uuid (same value serialized as `\vexid{…}`). */
+  exampleId: string;
+  /** ProseMirror position of the exampleBlock node. */
+  pos: number;
+  /** Global example number as computed by the live numbering plugin. */
+  number: number;
+  /** "single" (`\ex`) or "multi" (`\pex`). */
+  kind: "single" | "multi";
+  /** Angle-bracket `\ex<tag>` tag, if any. */
+  tag: string;
+  /** Inner `\label{…}`, if any. */
+  label: string;
+  /** First ~80 chars of the example body, flattened to plain text. */
+  preview: string;
+  /** Sub-label range for multi-part examples (e.g. "a–c"), empty for single. */
+  subLabelRange: string;
+}
+
 export interface EditorHandle {
   replaceText: (oldText: string, newText: string) => boolean;
   getEditor: () => Editor | null;
@@ -212,6 +231,9 @@ export interface EditorHandle {
    *  whether text is selected. */
   createEmptyFootnote: () => { footnoteId: string } | null;
   renumberFootnotes: () => void;
+  getExamples: () => ExampleInfo[];
+  scrollToExample: (exampleId: string) => void;
+  insertExample: (kind: "single" | "multi") => { exampleId: string } | null;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string) => void;
   updateCitationDisplay: (citationId: string, displayText: string) => void;
@@ -347,17 +369,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         let currentNode = node;
         let dragHandleEl: HTMLElement | null = null;
 
-        // Detect if this paragraph is inside a list item — skip title controls
+        // Detect if this paragraph is inside a list item or an expex example
+        // block — skip title controls + drag handle so the inner text reads
+        // as plain prose. The example block itself carries its own chrome
+        // (number + drag handle) via the exampleBlock node view.
         const pos = typeof getPos === "function" ? getPos() : null;
-        let insideList = false;
+        let skipChrome = false;
         if (pos != null) {
           const resolved = nodeEditor.state.doc.resolve(pos);
           for (let d = resolved.depth; d >= 0; d--) {
-            if (resolved.node(d).type.name === "listItem") { insideList = true; break; }
+            const name = resolved.node(d).type.name;
+            if (name === "listItem" || name === "exampleBlock" || name === "exampleItem") {
+              skipChrome = true;
+              break;
+            }
           }
         }
 
-        if (insideList) {
+        if (skipChrome) {
           const p = document.createElement("p");
           return { dom: p, contentDOM: p };
         }
@@ -1189,8 +1218,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               }
             }
 
-            // Build label→number map and check labelRef nodes
-            const labelMap = new Map<string, string>();
+            // Build label→section-number map from headings
+            const headingMap = new Map<string, string>();
             for (const h of headings) {
               if (h.numbered && topLevel <= 4) {
                 const nd = newState.doc.nodeAt(h.pos);
@@ -1198,15 +1227,72 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 // Use the computed number (from updates or current)
                 const upd = updates.find((u) => u.pos === h.pos);
                 const num = upd ? upd.num : h.cur;
-                if (label && num) labelMap.set(label, num);
+                if (label && num) headingMap.set(label, num);
               }
             }
+
+            // Build tag/label → example-number map from exampleBlocks.
+            // parentKey → { number: "3", items: Map<subKey, "a"> }
+            const exampleMap = new Map<
+              string,
+              { number: string; items: Map<string, string> }
+            >();
+            newState.doc.descendants((nd) => {
+              if (nd.type.name !== "exampleBlock") return true;
+              const parentNum = nd.attrs.number ? String(nd.attrs.number) : "";
+              if (!parentNum) return false;
+              const entry = { number: parentNum, items: new Map<string, string>() };
+              if (nd.attrs.tag) exampleMap.set(nd.attrs.tag, entry);
+              if (nd.attrs.label) exampleMap.set(nd.attrs.label, entry);
+              nd.descendants((child) => {
+                if (child.type.name === "exampleItem") {
+                  const sub = child.attrs.subLabel || "";
+                  if (!sub) return false;
+                  if (child.attrs.tag) entry.items.set(child.attrs.tag, sub);
+                  if (child.attrs.label) entry.items.set(child.attrs.label, sub);
+                  return false;
+                }
+                return true;
+              });
+              return false;
+            });
+
+            // Resolve a label + refCommand → display text.
+            const resolveRef = (label: string, refCommand: string): string => {
+              if (!label) return "??";
+              const heading = headingMap.get(label);
+              if (heading) {
+                return refCommand === "ref" ? heading : `(${heading})`;
+              }
+              // Example — parent form first
+              const ex = exampleMap.get(label);
+              if (ex) {
+                return refCommand === "ref" ? ex.number : `(${ex.number})`;
+              }
+              // Dotted "parent.sub" form for \getfullref (and \ref if the user
+              // typed the dotted form)
+              const dot = label.lastIndexOf(".");
+              if (dot > 0) {
+                const parentKey = label.slice(0, dot);
+                const subKey = label.slice(dot + 1);
+                const parent = exampleMap.get(parentKey);
+                if (parent) {
+                  const sub = parent.items.get(subKey) || subKey;
+                  const full = `${parent.number}${sub}`;
+                  return refCommand === "ref" ? full : `(${full})`;
+                }
+              }
+              return "??";
+            };
 
             // Check labelRef nodes for stale displayText
             const refUpdates: { pos: number; display: string }[] = [];
             newState.doc.descendants((nd, pos) => {
               if (nd.type.name === "labelRef") {
-                const resolved = labelMap.get(nd.attrs.label) || "??";
+                const resolved = resolveRef(
+                  nd.attrs.label as string,
+                  (nd.attrs.refCommand as string) || "ref",
+                );
                 if (nd.attrs.displayText !== resolved) {
                   refUpdates.push({ pos, display: resolved });
                 }
@@ -1260,6 +1346,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       ArchiveMarker,
       Citation,
       LabelRef,
+      ExampleBlock,
+      ExampleItem,
+      ExampleGloss,
+      AlignedGlossRow,
+      ProseGlossRow,
+      GlossCell,
+      ExpexNumbering,
       AiRequestMarker,
       LatexCommandMark,
       LinkedAnchor,
@@ -2015,6 +2108,154 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         tr = tr.setNodeMarkup(pos, undefined, { ...attrs, number: counter++ });
       }
       editor.view.dispatch(tr);
+    },
+
+    getExamples(): ExampleInfo[] {
+      if (!editor) return [];
+      const out: ExampleInfo[] = [];
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name !== "exampleBlock") return true;
+        const id = (node.attrs.uuid as string) || "";
+        if (!id) return false;
+        let preview = "";
+        node.descendants((child) => {
+          if (child.isText && child.text) {
+            preview += child.text;
+            return preview.length < 120;
+          }
+          return true;
+        });
+        const subs: string[] = [];
+        node.descendants((child) => {
+          if (child.type.name === "exampleItem") {
+            const s = (child.attrs.subLabel as string) || "";
+            if (s) subs.push(s);
+            return false;
+          }
+          return true;
+        });
+        const subLabelRange =
+          subs.length > 1 ? `${subs[0]}–${subs[subs.length - 1]}` : subs[0] || "";
+        out.push({
+          exampleId: id,
+          pos,
+          number: Number(node.attrs.number) || 0,
+          kind: node.attrs.kind === "multi" ? "multi" : "single",
+          tag: (node.attrs.tag as string) || "",
+          label: (node.attrs.label as string) || "",
+          preview: (preview.trim() || "(empty example)").slice(0, 120),
+          subLabelRange,
+        });
+        return false;
+      });
+      return out;
+    },
+
+    scrollToExample(exampleId: string): void {
+      if (!editor) return;
+      let target = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "exampleBlock" && node.attrs.uuid === exampleId) {
+          target = pos + 1;
+          return false;
+        }
+        return true;
+      });
+      if (target >= 0) {
+        editor.chain().focus().setTextSelection(target).scrollIntoView().run();
+      }
+    },
+
+    insertExample(kind: "single" | "multi"): { exampleId: string } | null {
+      if (!editor) return null;
+      const exampleId = generateEntityId();
+      const single: any = {
+        type: "exampleBlock",
+        attrs: {
+          uuid: exampleId,
+          tag: "",
+          label: "",
+          kind: "single",
+          exnoOverride: null,
+          suppressSpace: false,
+          number: 0,
+        },
+        content: [{ type: "paragraph" }],
+      };
+      const multi: any = {
+        type: "exampleBlock",
+        attrs: {
+          uuid: exampleId,
+          tag: "",
+          label: "",
+          kind: "multi",
+          exnoOverride: null,
+          suppressSpace: false,
+          number: 0,
+        },
+        content: [
+          {
+            type: "exampleItem",
+            attrs: { tag: "", label: "", subLabel: "" },
+            content: [{ type: "paragraph" }],
+          },
+          {
+            type: "exampleItem",
+            attrs: { tag: "", label: "", subLabel: "" },
+            content: [{ type: "paragraph" }],
+          },
+          {
+            type: "exampleGloss",
+            attrs: { glossId: null, colCount: 1 },
+            content: [
+              {
+                type: "alignedGlossRow",
+                attrs: { tier: "gla" },
+                content: [{ type: "glossCell", content: [] }],
+              },
+              {
+                type: "proseGlossRow",
+                attrs: { tier: "glft" },
+                content: [],
+              },
+            ],
+          },
+        ],
+      };
+      editor.chain().focus().insertContent(kind === "multi" ? multi : single).run();
+      // Place the cursor inside the first editable paragraph of the
+      // newly-inserted example so the user can start typing immediately.
+      // `insertContent` doesn't do this for us when the root node is
+      // `isolating: true`.
+      let target = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (
+          node.type.name === "exampleBlock" &&
+          node.attrs.uuid === exampleId
+        ) {
+          // Walk into the block, find the first paragraph descendant.
+          node.descendants((child, relPos) => {
+            if (target >= 0) return false;
+            if (child.type.name === "paragraph") {
+              // +1 to step inside the paragraph's content
+              target = pos + 1 + relPos + 1;
+              return false;
+            }
+            return true;
+          });
+          return false;
+        }
+        return true;
+      });
+      if (target >= 0) {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(target)
+          .scrollIntoView()
+          .run();
+      }
+      return { exampleId };
     },
 
     getCitations() {

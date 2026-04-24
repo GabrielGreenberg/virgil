@@ -12,6 +12,13 @@ export const LabelRef = Node.create({
     return {
       label: { default: "" },
       displayText: { default: "" },
+      // "ref" → \ref{…} (bare number, e.g. "3" / "2.1")
+      // "getref" → \getref{…} (parenthesized, e.g. "(3)")
+      // "getfullref" → \getfullref{…} (dotted; rendered as "(3b)")
+      refCommand: { default: "ref" },
+      // Advisory tag used by the label popover to group candidates.
+      // "heading" | "example" | null.
+      targetKind: { default: null },
     };
   },
 
@@ -36,6 +43,8 @@ export const LabelRef = Node.create({
       dom.className = "label-ref-node";
       dom.dataset.type = "label-ref";
       dom.dataset.label = node.attrs.label || "";
+      dom.dataset.refCommand = node.attrs.refCommand || "ref";
+      if (node.attrs.targetKind) dom.dataset.targetKind = node.attrs.targetKind;
       dom.contentEditable = "false";
       dom.textContent = node.attrs.displayText || "??";
 
@@ -44,7 +53,11 @@ export const LabelRef = Node.create({
         e.stopPropagation();
         window.dispatchEvent(
           new CustomEvent("virgil-label-ref-click", {
-            detail: { label: node.attrs.label },
+            detail: {
+              label: node.attrs.label,
+              refCommand: node.attrs.refCommand || "ref",
+              targetKind: node.attrs.targetKind || null,
+            },
           })
         );
       });
@@ -54,6 +67,10 @@ export const LabelRef = Node.create({
         update(updatedNode: any) {
           if (updatedNode.type.name !== "labelRef") return false;
           dom.dataset.label = updatedNode.attrs.label || "";
+          dom.dataset.refCommand = updatedNode.attrs.refCommand || "ref";
+          if (updatedNode.attrs.targetKind)
+            dom.dataset.targetKind = updatedNode.attrs.targetKind;
+          else delete dom.dataset.targetKind;
           dom.textContent = updatedNode.attrs.displayText || "??";
           return true;
         },
