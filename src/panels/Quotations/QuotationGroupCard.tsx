@@ -619,6 +619,7 @@ export function QuotationGroupCard({
   onUpdateNotes,
   onTogglePopout,
   isPoppedOut,
+  extraDataAttrs,
 }: {
   group: QuotationGroup;
   bibEntries: BibEntry[];
@@ -642,6 +643,10 @@ export function QuotationGroupCard({
   onUpdateNotes: (groupId: string, notes: string) => void;
   onTogglePopout?: () => void;
   isPoppedOut?: boolean;
+  /** Extra `data-*` attributes forwarded to the card root. Used by
+   *  Omni to place `data-omni-entry` on the PanelCard itself so
+   *  card-level styles (rounded corners, ambient shadow) apply. */
+  extraDataAttrs?: Record<string, string>;
 }) {
   const [title, setTitle] = useState(group.title);
   useEffect(() => {
@@ -716,6 +721,7 @@ export function QuotationGroupCard({
       }}
       data-quotation-group-id={group.id}
       data-pristine-card-id={group.id}
+      {...(extraDataAttrs || {})}
       tabIndex={selected ? 0 : -1}
       onFocusCapture={() => {
         if (!selected) onSelect();

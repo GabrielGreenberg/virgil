@@ -51,26 +51,26 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
         id: baseId,
         pos: null,
         content: (
-          <div key={baseId} data-omni-entry={baseId}>
-            <QuotationGroupCard
-              group={group}
-              bibEntries={a.bibEntries}
-              bibPackage={a.bibPackage}
-              selected={isSelected}
-              onSelect={() =>
-                a.setSelectedQuotationGroupId(isSelected ? null : group.id)
-              }
-              onDelete={() => a.deleteQuotationGroup(group.id)}
-              onUpdateGroupTitle={a.updateQuotationGroupTitle}
-              onAddReference={a.addQuotationReference}
-              onDeleteReference={a.deleteQuotationReference}
-              onUpdateReferenceCiteKey={a.updateQuotationReferenceCiteKey}
-              onAddQuote={a.addQuotationQuote}
-              onUpdateQuote={a.updateQuotationQuote}
-              onDeleteQuote={a.deleteQuotationQuote}
-              onUpdateNotes={a.updateQuotationNotes}
-            />
-          </div>
+          <QuotationGroupCard
+            key={baseId}
+            group={group}
+            bibEntries={a.bibEntries}
+            bibPackage={a.bibPackage}
+            selected={isSelected}
+            onSelect={() =>
+              a.setSelectedQuotationGroupId(isSelected ? null : group.id)
+            }
+            onDelete={() => a.deleteQuotationGroup(group.id)}
+            onUpdateGroupTitle={a.updateQuotationGroupTitle}
+            onAddReference={a.addQuotationReference}
+            onDeleteReference={a.deleteQuotationReference}
+            onUpdateReferenceCiteKey={a.updateQuotationReferenceCiteKey}
+            onAddQuote={a.addQuotationQuote}
+            onUpdateQuote={a.updateQuotationQuote}
+            onDeleteQuote={a.deleteQuotationQuote}
+            onUpdateNotes={a.updateQuotationNotes}
+            extraDataAttrs={{ "data-omni-entry": baseId }}
+          />
         ),
       });
     } else {
@@ -83,27 +83,27 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
           id: omniId,
           pos,
           content: (
-            <div key={omniId} data-omni-entry={omniId}>
-              <QuotationGroupCard
-                group={group}
-                bibEntries={a.bibEntries}
-                bibPackage={a.bibPackage}
-                selected={isSelected}
-                onSelect={() =>
-                  a.setSelectedQuotationGroupId(isSelected ? null : group.id)
-                }
-                onDelete={() => a.deleteQuotationGroup(group.id)}
-                onJump={() => a.jumpToCard(group)}
-                onUpdateGroupTitle={a.updateQuotationGroupTitle}
-                onAddReference={a.addQuotationReference}
-                onDeleteReference={a.deleteQuotationReference}
-                onUpdateReferenceCiteKey={a.updateQuotationReferenceCiteKey}
-                onAddQuote={a.addQuotationQuote}
-                onUpdateQuote={a.updateQuotationQuote}
-                onDeleteQuote={a.deleteQuotationQuote}
-                onUpdateNotes={a.updateQuotationNotes}
-              />
-            </div>
+            <QuotationGroupCard
+              key={omniId}
+              group={group}
+              bibEntries={a.bibEntries}
+              bibPackage={a.bibPackage}
+              selected={isSelected}
+              onSelect={() =>
+                a.setSelectedQuotationGroupId(isSelected ? null : group.id)
+              }
+              onDelete={() => a.deleteQuotationGroup(group.id)}
+              onJump={() => a.jumpToCard(group)}
+              onUpdateGroupTitle={a.updateQuotationGroupTitle}
+              onAddReference={a.addQuotationReference}
+              onDeleteReference={a.deleteQuotationReference}
+              onUpdateReferenceCiteKey={a.updateQuotationReferenceCiteKey}
+              onAddQuote={a.addQuotationQuote}
+              onUpdateQuote={a.updateQuotationQuote}
+              onDeleteQuote={a.deleteQuotationQuote}
+              onUpdateNotes={a.updateQuotationNotes}
+              extraDataAttrs={{ "data-omni-entry": omniId }}
+            />
           ),
         });
       }

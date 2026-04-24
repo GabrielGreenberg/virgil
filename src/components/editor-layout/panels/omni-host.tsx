@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
@@ -256,7 +256,12 @@ export function OmniHost(p: OmniHostProps) {
     [editorRef],
   );
 
-  const items: OmniItem[] = [
+  // Memoize the `items` array so its identity is stable across re-renders
+  // unless the underlying data (or a selection id) actually changed. This
+  // lets OmniViewPanel's memoized children (visibleItems, anchored,
+  // unanchored, useInTextPositions) stay cached between renders — which
+  // matters now that OmniHost is mounted persistently per side.
+  const items: OmniItem[] = useMemo(() => [
     ...buildFootnoteOmniItems({
       footnotes: p.footnotes,
       orphanedFootnotes: p.orphanedFootnotes,
@@ -349,7 +354,42 @@ export function OmniHost(p: OmniHostProps) {
       setTodoAiRequest: p.setTodoAiRequest,
       deleteTodo: p.deleteTodo,
     }),
-  ];
+  ], [
+    // Data arrays
+    p.footnotes, p.orphanedFootnotes,
+    p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,
+    p.quotationGroups,
+    p.notes,
+    p.sortedArchiveSnippets, p.anchoredIds,
+    p.todoItems,
+    // Selection ids
+    selectedFootnoteId, selectedCitationId, selectedQuotationGroupId,
+    selectedNoteId, selectedArchiveId, selectedTodoId,
+    // Stable callbacks from this component
+    setFootnoteInOmni, setCitationInOmni, setQuotationGroupInOmni,
+    setNoteInOmni, setArchiveInOmni, setTodoInOmni,
+    scrollToFootnote, scrollToCitation, jumpToCard, findParagraphPos,
+    // Contexts
+    setOverrideEditor, getCitationDisplayText, onCitationCreated,
+    // Footnote handlers
+    p.handleEditFootnote, p.handleDeleteFootnote, p.handleEditFootnoteTitle,
+    p.handleEditOrphan, p.handleDeleteOrphan, p.handleEditOrphanTitle,
+    // Citation/bib handlers
+    p.updateCitation, p.getFormattedBib, p.updateBibEntry, p.updateBibKeyAndType,
+    p.getAnnotation, p.setAnnotation,
+    p.requestBibReview, p.cancelBibReview, p.getBibReviewStatus,
+    // Quotation handlers
+    p.deleteQuotationGroup, p.updateQuotationGroupTitle,
+    p.addQuotationReference, p.deleteQuotationReference, p.updateQuotationReferenceCiteKey,
+    p.addQuotationQuote, p.updateQuotationQuote, p.deleteQuotationQuote,
+    p.updateQuotationNotes,
+    // Note handlers
+    p.updateNote, p.updateNoteTitle, p.deleteNote,
+    // Archive handlers
+    p.updateArchiveSnippet, p.updateArchiveSnippetTitle, p.handleDeleteArchive,
+    // Todo handlers
+    p.toggleTodo, p.updateTodo, p.updateTodoNotes, p.setTodoAiRequest, p.deleteTodo,
+  ]);
 
   return (
     <OmniViewPanel

@@ -21,9 +21,17 @@ export function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasV
   );
 }
 
+/** A panel half/slot: the always-mounted omni layer plus an optional
+ *  opaque overlay. When `overlay` is `null`, omni is visible; otherwise
+ *  the overlay occludes omni while omni stays mounted underneath. */
+export type PanelSlot = { omni: React.ReactNode; overlay: React.ReactNode | null };
+
 /**
- * Width-resizable column wrapper for sidebar panels. Supports a single
- * panel as a child OR a split: { top, bottom, ratio, onRatioChange }.
+ * Width-resizable column wrapper for sidebar panels. Accepts either a
+ * single slot (`{omni, overlay}`) or a split of two slots plus ratio.
+ *
+ * Omni is always mounted inside every slot; closing a specific panel
+ * just drops the overlay and reveals omni instantly.
  */
 export function PanelColumn({
   side,
@@ -34,7 +42,6 @@ export function PanelColumn({
   children,
   split,
   collapsed,
-  blank,
   focusedHalf,
   onFocusHalf,
   topPanelId,
@@ -53,16 +60,15 @@ export function PanelColumn({
   panelPref: number;
   onPanelPrefChange: (w: number) => void;
   children?:
-    | React.ReactNode
+    | PanelSlot
     | {
-        top: React.ReactNode;
-        bottom: React.ReactNode;
+        top: PanelSlot;
+        bottom: PanelSlot;
         ratio: number;
         onRatioChange: (r: number) => void;
       };
   split?: boolean;
   collapsed?: boolean;
-  blank?: boolean;
   focusedHalf?: "top" | "bottom";
   onFocusHalf?: (half: "top" | "bottom") => void;
   topPanelId?: PanelId;
@@ -107,18 +113,36 @@ export function PanelColumn({
     [pageWidth, panelPref, gapMouseDown],
   );
 
-  // Determine if children is a split spec or single ReactNode
+  // Determine if children is a split spec or single slot
   const isSplitChildren = (
     c: typeof children,
   ): c is {
-    top: React.ReactNode;
-    bottom: React.ReactNode;
+    top: PanelSlot;
+    bottom: PanelSlot;
     ratio: number;
     onRatioChange: (r: number) => void;
   } =>
     !!c && typeof c === "object" && !Array.isArray(c) && "top" in (c as object) && "bottom" in (c as object);
 
   const podRadius = 'var(--pod-radius)';
+
+  // Chromeless slots render on the bare canvas (no pod background/border).
+  // Omni and blank are both chromeless; specific panels get a pod.
+  const isChromeless = (id?: PanelId) => id === "omni" || id === "blank";
+
+  const renderSlot = (slot: PanelSlot) => (
+    <>
+      {slot.omni}
+      {slot.overlay && (
+        // Opaque background on the overlay wrapper so the always-mounted
+        // omni layer underneath never bleeds through panel content that
+        // has gaps or semi-transparent regions.
+        <div className="absolute inset-0" style={{ background: 'var(--pod-panel)' }}>
+          {slot.overlay}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="relative flex" style={{ flex: `1 100 ${panelPref}px`, minWidth: 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
@@ -133,8 +157,8 @@ export function PanelColumn({
           className={`flex-1 min-w-0 flex flex-col min-h-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
         >
           <div
-            className="min-h-0 overflow-hidden"
-            style={topPanelId === "omni"
+            className="relative min-h-0 overflow-hidden"
+            style={isChromeless(topPanelId)
               ? { flex: `${children!.ratio} 1 0`, minHeight: 0 }
               : { flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("top")}
@@ -142,7 +166,7 @@ export function PanelColumn({
             data-panel-id={topPanelId}
             data-panel-half="top"
           >
-            {children!.top}
+            {renderSlot(children!.top)}
           </div>
           <HSplit
             ratio={children!.ratio}
@@ -150,8 +174,8 @@ export function PanelColumn({
             containerRef={stackRef}
           />
           <div
-            className="min-h-0 overflow-hidden"
-            style={bottomPanelId === "omni"
+            className="relative min-h-0 overflow-hidden"
+            style={isChromeless(bottomPanelId)
               ? { flex: `${1 - children!.ratio} 1 0`, minHeight: 0 }
               : { flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
             onMouseDown={() => onFocusHalf?.("bottom")}
@@ -159,17 +183,17 @@ export function PanelColumn({
             data-panel-id={bottomPanelId}
             data-panel-half="bottom"
           >
-            {children!.bottom}
+            {renderSlot(children!.bottom)}
           </div>
         </div>
       ) : (
         <div
-          className={`flex-1 min-w-0 panel-container ${blank ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-2"}`}
-          style={blank ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
+          className={`relative flex-1 min-w-0 panel-container ${isChromeless(topPanelId) ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-2"}`}
+          style={isChromeless(topPanelId) ? undefined : { background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
           data-panel-side={side}
           data-panel-id={topPanelId}
         >
-          {(children as React.ReactNode)}
+          {renderSlot(children as PanelSlot)}
         </div>
       )}
       {/* Drag gap — spans full gutter between panel pod and editor pod.
