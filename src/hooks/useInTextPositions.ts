@@ -203,7 +203,11 @@ export function useInTextPositions(
     setPositions(map);
   }, [editor, items, enabled, ready, entry]);
 
-  // Recompute on editor changes and scroll
+  // Recompute on editor changes and viewport resize. Scroll alone does not
+  // change positions (the formula `coords.top - viewTop + scrollTop` is
+  // scroll-invariant), so we intentionally don't listen for scroll here —
+  // recomputing on every scroll tick would block the main thread and
+  // delay the synchronous scrollTop sync below.
   useEffect(() => {
     if (!enabled) {
       setPositions(new Map());
@@ -220,50 +224,32 @@ export function useInTextPositions(
     };
 
     editor.on("update", onUpdate);
-    editor.on("selectionUpdate", onUpdate);
-
-    const scrollEl = editor.view?.dom?.closest(".overflow-y-auto");
-    scrollEl?.addEventListener("scroll", onUpdate, { passive: true });
     window.addEventListener("resize", onUpdate);
-
-    // Watch for panel-side size changes — e.g. when a card expands its
-    // bibliography pod, the entry height grows and we need to reflow
-    // the absolute positions so the cards below don't get overlapped.
-    // We observe each entry element individually so adding/removing
-    // entries doesn't require re-running the observer setup.
-    let resizeObs: ResizeObserver | null = null;
-    let mutObs: MutationObserver | null = null;
-    const panelEl = panelScrollRef.current;
-    if (panelEl && typeof ResizeObserver !== "undefined") {
-      resizeObs = new ResizeObserver(onUpdate);
-      const observeEntries = () => {
-        resizeObs?.disconnect();
-        // Observe every rendered card entry. For a function selector we
-        // don't have a bare-attribute form, so fall back to
-        // `data-link-card` which the Link Architecture guarantees on
-        // every panel card.
-        const bareAttr = typeof entry === "string" ? entry : "data-link-card";
-        panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => {
-          resizeObs!.observe(el);
-        });
-      };
-      observeEntries();
-      // Re-observe whenever entries are added/removed from the DOM
-      // (happens when the items prop changes).
-      mutObs = new MutationObserver(observeEntries);
-      mutObs.observe(panelEl, { childList: true, subtree: true });
-    }
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       editor.off("update", onUpdate);
-      editor.off("selectionUpdate", onUpdate);
-      scrollEl?.removeEventListener("scroll", onUpdate);
       window.removeEventListener("resize", onUpdate);
-      resizeObs?.disconnect();
-      mutObs?.disconnect();
     };
-  }, [editor, compute, enabled, entry]);
+  }, [editor, compute, enabled]);
+
+  // Observe card size changes (e.g. bibliography pod expanding) so we can
+  // re-resolve overlaps. Depends on `positions` because cards only render
+  // once positions has entries for them — running after that state commits
+  // guarantees the cards are in the DOM when we querySelectorAll.
+  useEffect(() => {
+    if (!enabled) return;
+    const panelEl = panelScrollRef.current;
+    if (!panelEl || typeof ResizeObserver === "undefined") return;
+    const onResize = () => {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(compute);
+    };
+    const obs = new ResizeObserver(onResize);
+    const bareAttr = typeof entry === "string" ? entry : "data-link-card";
+    panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, [positions, enabled, entry, compute]);
 
   // Bidirectional scroll sync
   useEffect(() => {
