@@ -4364,8 +4364,18 @@ export default function EditorLayout() {
         </div>
       ) : codeView && currentDocId ? (
         <div className="flex flex-1 overflow-hidden">
+          <CodeEditor
+            docId={currentDocId!}
+            initialLine={codeViewLine}
+            initialParagraphId={codeViewParagraphId}
+            onReady={(handle) => { codeEditorHandleRef.current = handle; }}
+            onTextChange={setCodeEditorText}
+            compileLog={compileLog}
+            compileStatus={compileStatus}
+            isCompiling={isCompiling}
+          />
           {errorsSidebarOpen ? (
-            <div className="w-[260px] shrink-0 border-r border-edge-subtle bg-surface flex flex-col h-full relative">
+            <div className="w-[260px] shrink-0 border-l border-edge-subtle bg-surface flex flex-col h-full relative">
               <button
                 type="button"
                 onClick={() => setErrorsSidebarOpen(false)}
@@ -4390,7 +4400,7 @@ export default function EditorLayout() {
             <button
               type="button"
               onClick={() => setErrorsSidebarOpen(true)}
-              className="w-7 shrink-0 border-r border-edge-subtle bg-surface flex items-start justify-center pt-3 hover:bg-surface-muted-strong transition-colors relative text-ink-muted hover:text-ink-body"
+              className="w-7 shrink-0 border-l border-edge-subtle bg-surface flex items-start justify-center pt-3 hover:bg-surface-muted-strong transition-colors relative text-ink-muted hover:text-ink-body"
               title={`Show errors (${allLatexErrors.length})`}
               aria-label="Show errors panel"
             >
@@ -4405,16 +4415,6 @@ export default function EditorLayout() {
               )}
             </button>
           )}
-          <CodeEditor
-            docId={currentDocId!}
-            initialLine={codeViewLine}
-            initialParagraphId={codeViewParagraphId}
-            onReady={(handle) => { codeEditorHandleRef.current = handle; }}
-            onTextChange={setCodeEditorText}
-            compileLog={compileLog}
-            compileStatus={compileStatus}
-            isCompiling={isCompiling}
-          />
         </div>
       ) : (
       <div ref={mainAreaRef} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>
