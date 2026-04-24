@@ -3529,7 +3529,7 @@ export default function EditorLayout() {
       if (isPoppedOut) {
         closePopout(panelId);
       } else {
-        setActiveHalf(side, half ?? "top", "blank");
+        setActiveHalf(side, half ?? "top", "omni");
       }
     };
     return (
@@ -3897,6 +3897,10 @@ export default function EditorLayout() {
 
   // Render a side's panel column. Always returns a PanelColumn so the
   // editor's flex context never changes — collapsed slots reserve space.
+  //
+  // Omni-view is mounted persistently inside every slot (`slot.omni`) so
+  // closing a specific panel just drops its overlay and reveals the
+  // already-live omni — no re-render flash.
   function renderPanelColumn(side: Side): React.ReactNode {
     const top = side === "left" ? activeLeft : activeRight;
     const bottom = side === "left" ? prefs.activeLeftBottom : prefs.activeRightBottom;
@@ -3911,13 +3915,27 @@ export default function EditorLayout() {
     }
 
     const omniActive = top === "omni" || bottom === "omni";
-    const overlay = omniActive ? (
+    const toolbarOverlay = omniActive ? (
       <MarginActionToolbar
         side={side}
         actions={marginToolbarActions}
         placements={prefs.placements}
       />
     ) : undefined;
+
+    // The omni layer is always mounted per slot. `renderPanelInner("omni",
+    // side)` returns an <OmniHost /> element — two separate instances for
+    // the top and bottom slots so they remain independent React subtrees.
+    const slotOmni = () => renderPanelInner("omni", side);
+    const slotOverlay = (active: PanelId | null | undefined, half?: "top" | "bottom"): React.ReactNode | null => {
+      // When a half's active id is null (e.g. the top half is collapsed
+      // in split mode), treat it as "blank" so the half still occludes
+      // the always-mounted omni layer below, matching the pre-refactor
+      // blank-placeholder behavior.
+      const effective: PanelId = active ?? "blank";
+      if (effective === "omni") return null;
+      return renderPanelWithChrome(effective, side, half);
+    };
 
     if (bottom != null) {
       // Split mode
@@ -3933,11 +3951,11 @@ export default function EditorLayout() {
           onFocusHalf={setFocused}
           topPanelId={top ?? "blank"}
           bottomPanelId={bottom}
-          topOverlay={overlay}
+          topOverlay={toolbarOverlay}
         >
           {{
-            top: top ? renderPanelWithChrome(top, side, "top") : <div className="w-full h-full bg-[var(--background)]" />,
-            bottom: renderPanelWithChrome(bottom, side, "bottom"),
+            top: { omni: slotOmni(), overlay: slotOverlay(top, "top") },
+            bottom: { omni: slotOmni(), overlay: slotOverlay(bottom, "bottom") },
             ratio,
             onRatioChange: (r: number) => setSplitRatio(side, r),
           }}
@@ -3948,9 +3966,16 @@ export default function EditorLayout() {
     // Single mode. Omni-view renders chromeless — no pod background/border —
     // so its cards float directly on the blank canvas behind the panels.
     return (
-      <PanelColumn side={side} pageWidth={prefs.pageWidth} onPageWidthChange={setPageWidth} panelPref={getPanelWidth(side, top ?? "blank")} onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)} blank={top === "blank" || top === "omni"} topPanelId={top ?? undefined} topOverlay={overlay}>
-
-        {renderPanelWithChrome(top!, side)}
+      <PanelColumn
+        side={side}
+        pageWidth={prefs.pageWidth}
+        onPageWidthChange={setPageWidth}
+        panelPref={getPanelWidth(side, top ?? "blank")}
+        onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)}
+        topPanelId={top ?? undefined}
+        topOverlay={toolbarOverlay}
+      >
+        {{ omni: slotOmni(), overlay: slotOverlay(top) }}
       </PanelColumn>
     );
   }
