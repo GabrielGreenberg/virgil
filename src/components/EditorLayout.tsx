@@ -6,7 +6,7 @@ import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
-import MenuBar, { DetachedActionsToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
+import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMenuToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import ProgressBar from "./ProgressBar";
@@ -121,8 +121,7 @@ import {
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
 import {
   computeSnapGrid,
-  snapWrapper,
-  applySnapStyle,
+  resolveDragPosition,
   type SnapGrid,
   type RectLike,
 } from "./editor-layout/snap-grid";
@@ -477,7 +476,6 @@ export default function EditorLayout() {
     setEditorSplitRatio,
     setPageWidth,
     setAlwaysShowLinkedText,
-    setMenuLocation,
     togglePopout,
     closePopout,
     setFloatPosition,
@@ -500,13 +498,9 @@ export default function EditorLayout() {
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
   const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
-  // Floating menu bar location — two-mode model. "home" = docked in the
-  // Virgil top bar, centered over the document (the default). "free" =
-  // free-floating at a specific viewport coordinate (set when the user
-  // drags the toolbar out of the top bar). Persisted via prefs.
-  const menuLocation = prefs.menuLocation;
-  const [menuDragging, setMenuDragging] = useState(false);
-  const [menuOrientation, setMenuOrientation] = useState<ToolbarOrientation>("horizontal");
+  // MenuBar lives at home (docked in the Virgil top bar, centered over
+  // the document). Tearing off via the grab bar spawns a
+  // `DetachedMenuToolbar` copy; the home bar itself never moves.
   const editorColRef = useRef<HTMLDivElement>(null);
   const menuWrapRef = useRef<HTMLDivElement>(null);
   const menuWrapRoRef = useRef<ResizeObserver | null>(null);
@@ -557,45 +551,29 @@ export default function EditorLayout() {
     }
   }, []);
 
-  // Live rects for every region that contributes grid lines. The
-  // editor-col ref comes from a callback ref (so we can re-attach an
-  // observer when the column remounts); panel pods use
-  // `[data-panel-side]` attributes since they mount/unmount dynamically
-  // and we don't own their refs.
+  // Live rects for every region that contributes grid lines. Snap lines
+  // are congruent with the edges of the main-text region (the editor
+  // column), plus — when the editor is split — the edges of each split
+  // pane. The editor-col ref comes from a callback ref so we can
+  // re-attach the observer when the column remounts; split panes mount
+  // conditionally and are found via `[data-editor-pane]` attributes.
   const [colRect, setColRect] = useState<RectLike | null>(null);
-  const [leftPanelRect, setLeftPanelRect] = useState<RectLike | null>(null);
-  const [rightPanelRect, setRightPanelRect] = useState<RectLike | null>(null);
-  const [rightSplit, setRightSplit] = useState<{ upperY: number; lowerY: number } | null>(null);
-  const [leftSplit, setLeftSplit] = useState<{ upperY: number; lowerY: number } | null>(null);
+  const [splitPaneRects, setSplitPaneRects] = useState<RectLike[] | null>(null);
   const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
-
-  // Merge the bounding rects of a list of elements into one. Returns
-  // null when the list is empty.
-  const mergeRects = useCallback((els: Element[]): RectLike | null => {
-    if (els.length === 0) return null;
-    let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
-    for (const el of els) {
-      const r = el.getBoundingClientRect();
-      if (r.left < left) left = r.left;
-      if (r.top < top) top = r.top;
-      if (r.right > right) right = r.right;
-      if (r.bottom > bottom) bottom = r.bottom;
-    }
-    return { left, top, right, bottom };
-  }, []);
 
   const rectsEqual = (a: RectLike | null, b: RectLike | null): boolean => {
     if (!a && !b) return true;
     if (!a || !b) return false;
     return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
   };
-  const splitsEqual = (
-    a: { upperY: number; lowerY: number } | null,
-    b: { upperY: number; lowerY: number } | null,
-  ): boolean => {
+  const paneListsEqual = (a: RectLike[] | null, b: RectLike[] | null): boolean => {
     if (!a && !b) return true;
     if (!a || !b) return false;
-    return a.upperY === b.upperY && a.lowerY === b.lowerY;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!rectsEqual(a[i], b[i])) return false;
+    }
+    return true;
   };
 
   const readAllRects = useCallback(() => {
@@ -613,26 +591,15 @@ export default function EditorLayout() {
       : null;
     setColRect((prev) => (rectsEqual(prev, nextCol) ? prev : nextCol));
 
-    const pickSplit = (side: "left" | "right"): { upperY: number; lowerY: number } | null => {
-      const top = document.querySelector(`[data-panel-side="${side}"][data-panel-half="top"]`);
-      const bot = document.querySelector(`[data-panel-side="${side}"][data-panel-half="bottom"]`);
-      if (!top || !bot) return null;
-      const tr = top.getBoundingClientRect();
-      const br = bot.getBoundingClientRect();
-      return { upperY: tr.bottom, lowerY: br.top };
-    };
-
-    const lefts = Array.from(document.querySelectorAll('[data-panel-side="left"]'));
-    const rights = Array.from(document.querySelectorAll('[data-panel-side="right"]'));
-    const nextLeft = mergeRects(lefts);
-    const nextRight = mergeRects(rights);
-    const nextLeftSplit = pickSplit("left");
-    const nextRightSplit = pickSplit("right");
-    setLeftPanelRect((prev) => (rectsEqual(prev, nextLeft) ? prev : nextLeft));
-    setRightPanelRect((prev) => (rectsEqual(prev, nextRight) ? prev : nextRight));
-    setLeftSplit((prev) => (splitsEqual(prev, nextLeftSplit) ? prev : nextLeftSplit));
-    setRightSplit((prev) => (splitsEqual(prev, nextRightSplit) ? prev : nextRightSplit));
-  }, [mergeRects]);
+    const panes = Array.from(document.querySelectorAll<HTMLElement>('[data-editor-pane]'));
+    const nextPanes: RectLike[] | null = panes.length > 0
+      ? panes.map((p) => {
+          const r = p.getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        })
+      : null;
+    setSplitPaneRects((prev) => (paneListsEqual(prev, nextPanes) ? prev : nextPanes));
+  }, []);
 
   const roRef = useRef<ResizeObserver | null>(null);
   const moRef = useRef<MutationObserver | null>(null);
@@ -667,7 +634,7 @@ export default function EditorLayout() {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["data-panel-side", "data-panel-half", "data-panel-id", "style", "class"],
+      attributeFilter: ["data-editor-pane", "style", "class"],
     });
     moRef.current = mo;
     return () => {
@@ -686,16 +653,13 @@ export default function EditorLayout() {
     };
   }, [readAllRects]);
 
-  // The live grid fed to both toolbar drag handlers.
+  // The live grid fed to every floating toolbar drag handler.
   const snapGrid = useMemo<SnapGrid>(
     () => computeSnapGrid({
       editorCol: colRect,
-      leftPanel: leftPanelRect,
-      rightPanel: rightPanelRect,
-      leftSplit,
-      rightSplit,
+      splitPanes: splitPaneRects,
     }),
-    [colRect, leftPanelRect, rightPanelRect, leftSplit, rightSplit],
+    [colRect, splitPaneRects],
   );
   const snapGridRef = useRef(snapGrid);
   snapGridRef.current = snapGrid;
@@ -756,157 +720,93 @@ export default function EditorLayout() {
     };
   }, [readTopbarGaps]);
 
-  useEffect(() => {
-    if (!menuDragging) return;
-    const prevCursor = document.body.style.cursor;
-    const prevSelect = document.body.style.userSelect;
-    document.body.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
-    return () => {
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevSelect;
-    };
-  }, [menuDragging]);
 
-  // Active drag position — overrides the persisted menuLocation while the
-  // user is dragging, so mousemove updates don't thrash localStorage. On
-  // mouseup we commit to prefs (either { kind: "home" } if dropped in the
-  // top-bar snap zone, or { kind: "free", ...dragPos }).
-  const [dragFreePos, setDragFreePos] = useState<{ left: number; top: number } | null>(null);
+  // MenuBar is always home-docked now. The grab bar spawns a detached
+  // floating copy instead of moving the bar itself — state below.
 
-  const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const menuEl = menuWrapRef.current;
-    if (!menuEl) return;
-    const menuRect = menuEl.getBoundingClientRect();
-    const offX = e.clientX - menuRect.left;
-    const offY = e.clientY - menuRect.top;
-    const menuW = menuRect.width;
-    const menuH = menuRect.height;
-    // Seed drag position from the wrap's current viewport rect so the pod
-    // doesn't jump on the first mousemove. This works for both home and
-    // free starting states — if we were at home, the pod "pops down" in
-    // place and follows the cursor from there.
-    setDragFreePos({ left: menuRect.left, top: menuRect.top });
-    setMenuDragging(true);
+  // Detached floating toolbars — the Actions and Formatting popovers in
+  // MenuBar can each be torn off by grabbing their trailing grab bar.
+  // State lives here so each floating copy can outlive the popover
+  // (which closes on tear), and so multiple copies can coexist: every
+  // tear-off spawns a new entry. Actions + Formatting share the same
+  // shape and the same drag helper below.
+  type DetachedToolbarEntry = { id: string; pos: { left: number; top: number } };
+  const [detachedActions, setDetachedActions] = useState<DetachedToolbarEntry[]>([]);
+  const [detachedFormatting, setDetachedFormatting] = useState<DetachedToolbarEntry[]>([]);
+  const [detachedMenus, setDetachedMenus] = useState<DetachedToolbarEntry[]>([]);
+  const [toolbarDragging, setToolbarDragging] = useState(false);
+  const nextActionsIdRef = useRef(0);
+  const nextFormattingIdRef = useRef(0);
+  const nextMenuIdRef = useRef(0);
+
+  // Shared drag routine for every floating toolbar — single-instance
+  // (MenuBar) and multi-instance (Actions, Formatting). Runs the snap
+  // grid math per frame against the wrapper resolved by `getWrapper()`.
+  // `onUpdatePos` receives the final snapped {left, top} that should
+  // drive the wrapper's style; the caller decides what state it writes.
+  const beginToolbarDrag = useCallback((opts: {
+    clientX: number;
+    clientY: number;
+    podLeft: number;
+    podTop: number;
+    getWrapper: () => HTMLElement | null;
+    onUpdatePos: (pos: { left: number; top: number }) => void;
+    onEnd?: (ev: MouseEvent, pos: { left: number; top: number }) => void;
+  }) => {
+    const { clientX, clientY, podLeft, podTop, getWrapper, onUpdatePos, onEnd } = opts;
+    const offX = clientX - podLeft;
+    const offY = clientY - podTop;
+    setToolbarDragging(true);
+    let lastPos = { left: podLeft, top: podTop };
     const onMove = (ev: MouseEvent) => {
-      setDragFreePos({ left: ev.clientX - offX, top: ev.clientY - offY });
+      const rawLeft = ev.clientX - offX;
+      const rawTop = ev.clientY - offY;
+      const snapped = resolveDragPosition({
+        rawLeft, rawTop,
+        wrapper: getWrapper(),
+        grid: snapGridRef.current,
+        winW: window.innerWidth,
+        winH: window.innerHeight,
+      });
+      lastPos = snapped;
+      onUpdatePos(snapped);
     };
     const onUp = (ev: MouseEvent) => {
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
-      setMenuDragging(false);
-      const finalLeft = ev.clientX - offX;
-      const finalTop = ev.clientY - offY;
-      const centerX = finalLeft + menuW / 2;
-      const centerY = finalTop + menuH / 2;
-      // Snap-home zone: a horizontal band across the editor column at the
-      // Virgil top-bar height. If the pod's center lands inside, dock home.
-      const inHomeZone =
-        topbarGaps != null &&
-        colRect != null &&
-        centerX >= colRect.left &&
-        centerX <= colRect.right &&
-        centerY >= topbarGaps.top &&
-        centerY <= topbarGaps.bottom;
-      if (inHomeZone) {
-        setMenuLocation({ kind: "home" });
-      } else {
-        setMenuLocation({ kind: "free", left: finalLeft, top: finalTop });
-      }
-      setDragFreePos(null);
+      setToolbarDragging(false);
+      onEnd?.(ev, lastPos);
     };
     document.addEventListener("mousemove", onMove);
     document.addEventListener("mouseup", onUp);
-  }, [topbarGaps, colRect, setMenuLocation]);
-
-  const handleMenuDockUp = useCallback(() => {
-    setMenuLocation({ kind: "home" });
-  }, [setMenuLocation]);
-
-  // Detached Actions toolbars — the Actions popover in MenuBar can be
-  // torn off by grabbing its trailing grab bar. State lives here so each
-  // floating copy can outlive the popover (which closes on tear), and
-  // so multiple copies can coexist: every tear-off spawns a new entry.
-  type DetachedActions = { id: string; pos: { left: number; top: number } };
-  const [detachedActions, setDetachedActions] = useState<DetachedActions[]>([]);
-  const [actionsDragging, setActionsDragging] = useState(false);
-  const nextActionsIdRef = useRef(0);
-
-  // Measure a detached pod's current knob overflow (the rotation-knob
-  // bulb that sticks past the pod body). Called per drag-move since
-  // orientation/collapse can change the shape; zeroes are returned when
-  // the knob can't be found (the body still snaps).
-  const readActionsOverflow = useCallback((wrap: HTMLElement): { left: number; right: number; top: number; bottom: number } => {
-    const knob = wrap.querySelector("[data-toolbar-knob]") as HTMLElement | null;
-    const wRect = wrap.getBoundingClientRect();
-    const kRect = knob?.getBoundingClientRect();
-    if (!kRect) return { left: 0, right: 0, top: 0, bottom: 0 };
-    return {
-      left: Math.max(0, wRect.left - kRect.left),
-      right: Math.max(0, kRect.right - wRect.right),
-      top: Math.max(0, wRect.top - kRect.top),
-      bottom: Math.max(0, kRect.bottom - wRect.bottom),
-    };
   }, []);
-
-  // Shared drag routine used both when the popover tears off (seamless
-  // pick-up from the mousedown that triggered the detach) and when the
-  // user grabs a detached toolbar afterwards. Updates only the entry
-  // whose id is passed in; the wrapper is found via `data-actions-id`
-  // so each detached copy snaps using its own rect + knob overflow.
-  const beginActionsDrag = useCallback((id: string, clientX: number, clientY: number, podLeft: number, podTop: number) => {
-    const offX = clientX - podLeft;
-    const offY = clientY - podTop;
-    setActionsDragging(true);
-    const onMove = (ev: MouseEvent) => {
-      const rawLeft = ev.clientX - offX;
-      const rawTop = ev.clientY - offY;
-      const wrap = document.querySelector<HTMLElement>(`[data-actions-id="${id}"]`);
-      const wRect = wrap?.getBoundingClientRect();
-      const width = wRect?.width ?? 0;
-      const height = wRect?.height ?? 0;
-      let nextLeft = rawLeft;
-      let nextTop = rawTop;
-      if (wrap && width > 0 && height > 0) {
-        const overflow = readActionsOverflow(wrap);
-        const { xSnap, ySnap } = snapWrapper({
-          wrapper: { left: rawLeft, top: rawTop, width, height },
-          overflow,
-          grid: snapGridRef.current,
-        });
-        const style = applySnapStyle({
-          overflow,
-          xSnap,
-          ySnap,
-          free: { left: rawLeft, top: rawTop },
-          winSize: { w: window.innerWidth, h: window.innerHeight },
-        });
-        nextLeft = style.left !== undefined ? style.left : window.innerWidth - (style.right ?? 0) - width;
-        nextTop = style.top !== undefined ? style.top : window.innerHeight - (style.bottom ?? 0) - height;
-      }
-      setDetachedActions(prev =>
-        prev.map(tb => tb.id === id ? { ...tb, pos: { left: nextLeft, top: nextTop } } : tb)
-      );
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setActionsDragging(false);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, [readActionsOverflow]);
 
   const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
     e.preventDefault();
     const id = `actions-${++nextActionsIdRef.current}`;
     setDetachedActions(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
-    beginActionsDrag(id, e.clientX, e.clientY, rect.left, rect.top);
-  }, [beginActionsDrag]);
+    beginToolbarDrag({
+      clientX: e.clientX, clientY: e.clientY,
+      podLeft: rect.left, podTop: rect.top,
+      getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${id}"]`),
+      onUpdatePos: (pos) => setDetachedActions(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
+    });
+  }, [beginToolbarDrag]);
+
+  const handleFormatDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
+    e.preventDefault();
+    const id = `formatting-${++nextFormattingIdRef.current}`;
+    setDetachedFormatting(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
+    beginToolbarDrag({
+      clientX: e.clientX, clientY: e.clientY,
+      podLeft: rect.left, podTop: rect.top,
+      getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${id}"]`),
+      onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
+    });
+  }, [beginToolbarDrag]);
 
   useEffect(() => {
-    if (!actionsDragging) return;
+    if (!toolbarDragging) return;
     const prevCursor = document.body.style.cursor;
     const prevSelect = document.body.style.userSelect;
     document.body.style.cursor = "grabbing";
@@ -915,9 +815,30 @@ export default function EditorLayout() {
       document.body.style.cursor = prevCursor;
       document.body.style.userSelect = prevSelect;
     };
-  }, [actionsDragging]);
+  }, [toolbarDragging]);
 
-  // (menuWrapStyle / atHomeForRender are declared below, after the zen
+  // MenuBar grab — spawns a detached floating copy at the home bar's
+  // current viewport position. The home bar stays in place; each grab
+  // adds another copy (multi-instance, matching Actions/Formatting).
+  // Seamless drag pick-up via the shared snap routine so the new copy
+  // follows the cursor and snaps to the same grid as every other
+  // floating toolbar.
+  const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const menuEl = menuWrapRef.current;
+    if (!menuEl) return;
+    const menuRect = menuEl.getBoundingClientRect();
+    const id = `menu-${++nextMenuIdRef.current}`;
+    setDetachedMenus(prev => [...prev, { id, pos: { left: menuRect.left, top: menuRect.top } }]);
+    beginToolbarDrag({
+      clientX: e.clientX, clientY: e.clientY,
+      podLeft: menuRect.left, podTop: menuRect.top,
+      getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${id}"]`),
+      onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
+    });
+  }, [beginToolbarDrag]);
+
+  // (menuWrapStyle is declared below, after the zen
   // mode hook is available — zen force-pins the toolbar at home regardless
   // of the persisted location.)
 
@@ -1077,49 +998,33 @@ export default function EditorLayout() {
     setRightMargin: setZenRightMargin,
   } = useZenMode();
 
-  // MenuBar placement — computed here (after zen is declared) because
-  // zen-mode force-pins the bar at its Virgil-bar home regardless of the
-  // persisted menuLocation.
-  const atHomeForRender =
-    zenModeOn
-      ? true
-      : dragFreePos != null
-        ? false
-        : menuLocation.kind === "home";
-
+  // MenuBar is always home-docked in the Virgil top bar, centered
+  // between the tabs (left) and Zen/Prefs cluster (right). No free
+  // position — tearing off spawns a `DetachedMenuToolbar` instead.
   const menuWrapStyle = useMemo<React.CSSProperties>(() => {
-    if (dragFreePos != null) {
-      return { left: dragFreePos.left, top: dragFreePos.top };
+    if (!colRect || !topbarGaps || !menuWrapSize) {
+      return { left: -10000, top: -10000, visibility: "hidden" as const };
     }
-    if (atHomeForRender) {
-      if (!colRect || !topbarGaps || !menuWrapSize) {
-        return { left: -10000, top: -10000, visibility: "hidden" as const };
-      }
-      const PAD = 8;
-      const homeCenterX = (colRect.left + colRect.right) / 2;
-      const availMin = topbarGaps.leftEnd + PAD;
-      const availMax = topbarGaps.rightStart - PAD;
-      const availWidth = availMax - availMin;
-      let left: number;
-      if (availWidth < menuWrapSize.w) {
-        // Not enough room — anchor to the left of the available band and
-        // accept overflow into the right cluster (worst case when tabs
-        // fully crowd the middle).
-        left = availMin;
-      } else {
-        const desired = homeCenterX - menuWrapSize.w / 2;
-        left = Math.max(availMin, Math.min(desired, availMax - menuWrapSize.w));
-      }
-      const top =
-        topbarGaps.top +
-        Math.max(0, (topbarGaps.bottom - topbarGaps.top - menuWrapSize.h) / 2);
-      return { left, top };
+    const PAD = 8;
+    const homeCenterX = (colRect.left + colRect.right) / 2;
+    const availMin = topbarGaps.leftEnd + PAD;
+    const availMax = topbarGaps.rightStart - PAD;
+    const availWidth = availMax - availMin;
+    let left: number;
+    if (availWidth < menuWrapSize.w) {
+      // Not enough room — anchor to the left of the available band and
+      // accept overflow into the right cluster (worst case when tabs
+      // fully crowd the middle).
+      left = availMin;
+    } else {
+      const desired = homeCenterX - menuWrapSize.w / 2;
+      left = Math.max(availMin, Math.min(desired, availMax - menuWrapSize.w));
     }
-    if (menuLocation.kind === "free") {
-      return { left: menuLocation.left, top: menuLocation.top };
-    }
-    return { left: 0, top: 0 };
-  }, [atHomeForRender, dragFreePos, menuLocation, colRect, topbarGaps, menuWrapSize]);
+    const top =
+      topbarGaps.top +
+      Math.max(0, (topbarGaps.bottom - topbarGaps.top - menuWrapSize.h) / 2);
+    return { left, top };
+  }, [colRect, topbarGaps, menuWrapSize]);
 
   // Preserve the editor column's current L/R position when turning Zen
   // on: measure the chrome widths flanking the editor and use those as
@@ -4736,11 +4641,11 @@ export default function EditorLayout() {
                 paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
                 onCloseAllPanels={closeAllPanels}
                 onGrabStart={handleMenuGrabStart}
-                orientation={atHomeForRender ? "horizontal" : menuOrientation}
-                onSetOrientation={setMenuOrientation}
+                orientation="horizontal"
+                onSetOrientation={() => {}}
                 onActionsDetach={handleActionsDetach}
-                atHome={atHomeForRender}
-                onDockUp={handleMenuDockUp}
+                onFormatDetach={handleFormatDetach}
+                atHome
               />
             </div>,
             document.body,
@@ -4766,11 +4671,104 @@ export default function EditorLayout() {
                 }}
                 onGrabStart={(e) => {
                   e.preventDefault();
-                  beginActionsDrag(tb.id, e.clientX, e.clientY, tb.pos.left, tb.pos.top);
+                  beginToolbarDrag({
+                    clientX: e.clientX, clientY: e.clientY,
+                    podLeft: tb.pos.left, podTop: tb.pos.top,
+                    getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${tb.id}"]`),
+                    onUpdatePos: (pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
+                  });
                 }}
                 onReattach={() => setDetachedActions(prev => prev.filter(x => x.id !== tb.id))}
                 pos={tb.pos}
                 onSetPos={(pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
+              />
+            </div>,
+            document.body,
+          ))}
+          {menuPortalReady && (overrideEditor ?? editorInstance) && detachedFormatting.map(tb => createPortal(
+            <div
+              key={tb.id}
+              data-formatting-id={tb.id}
+              className="fixed z-[9999] pointer-events-auto"
+              style={{ left: tb.pos.left, top: tb.pos.top }}
+            >
+              <DetachedFormattingToolbar
+                editor={(overrideEditor ?? editorInstance)!}
+                onGrabStart={(e) => {
+                  e.preventDefault();
+                  beginToolbarDrag({
+                    clientX: e.clientX, clientY: e.clientY,
+                    podLeft: tb.pos.left, podTop: tb.pos.top,
+                    getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${tb.id}"]`),
+                    onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
+                  });
+                }}
+                onReattach={() => setDetachedFormatting(prev => prev.filter(x => x.id !== tb.id))}
+                pos={tb.pos}
+                onSetPos={(pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
+              />
+            </div>,
+            document.body,
+          ))}
+          {menuPortalReady && (overrideEditor ?? editorInstance) && detachedMenus.map(tb => createPortal(
+            <div
+              key={tb.id}
+              data-menu-id={tb.id}
+              className="fixed z-[9999] pointer-events-auto"
+              style={{ left: tb.pos.left, top: tb.pos.top }}
+            >
+              <DetachedMenuToolbar
+                menuProps={{
+                  editor: (overrideEditor ?? editorInstance)!,
+                  onAddComment: handleToolbarAddComment,
+                  onArchive: handleToolbarArchive,
+                  onCreateFootnote: handleToolbarCreateFootnote,
+                  onQuoteSelection: handleToolbarQuoteSelection,
+                  onAddNote: handleToolbarAddNote,
+                  onAddTodo: handleToolbarAddTodo,
+                  onCutSelection: handleToolbarAddCut,
+                  onInsertCitation: handleToolbarInsertCitation,
+                  showParTitles,
+                  onToggleParTitles: () => setShowParTitles((p) => !p),
+                  showLatexComments,
+                  onToggleLatexComments: () => setShowLatexComments((p) => !p),
+                  showSectionIndicator,
+                  onToggleSectionIndicator: toggleSectionIndicator,
+                  onOpenPreferences: () => setPreferencesOpen(true),
+                  editorSplit,
+                  onToggleEditorSplit: () => setEditorSplit((s) => !s),
+                  activeSplitPane: editorSplit ? activeSplitPane : undefined,
+                  showMarginalia,
+                  onToggleMarginalia: toggleMarginalia,
+                  hiddenMarginaliaTypes,
+                  onToggleMarginaliaType: toggleMarginaliaType,
+                  alwaysShowLinkedText: prefs.alwaysShowLinkedText,
+                  onToggleAlwaysShowLinkedText: () => setAlwaysShowLinkedText((v) => !v),
+                  availableDividerLevels,
+                  dividerLevels: activeDividerLevels,
+                  onToggleDividerLevel: toggleDividerLevel,
+                  dividerWidth,
+                  onSetDividerWidth: setDividerWidth,
+                  onParaNavBack: paraNavBack,
+                  onParaNavForward: paraNavForward,
+                  paraNavBackDisabled: paraHistoryRef.current.idx <= 0,
+                  paraNavForwardDisabled: paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1,
+                  onCloseAllPanels: closeAllPanels,
+                  onActionsDetach: handleActionsDetach,
+                  onFormatDetach: handleFormatDetach,
+                }}
+                onGrabStart={(e) => {
+                  e.preventDefault();
+                  beginToolbarDrag({
+                    clientX: e.clientX, clientY: e.clientY,
+                    podLeft: tb.pos.left, podTop: tb.pos.top,
+                    getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${tb.id}"]`),
+                    onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
+                  });
+                }}
+                onReattach={() => setDetachedMenus(prev => prev.filter(x => x.id !== tb.id))}
+                pos={tb.pos}
+                onSetPos={(pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
               />
             </div>,
             document.body,
