@@ -1,4 +1,4 @@
-<!-- last-verified: 3de2062 2026-04-23 -->
+<!-- last-verified: 55c9e44 2026-04-24 -->
 
 # Glossary
 
@@ -18,6 +18,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:4797` |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
+| **Current section pod** / **section lozenge** (floating section-path pill at top of editor, shows on scroll, fades after idle) | `SectionLozenge` | [src/components/editor-layout/section-lozenge.tsx](../../src/components/editor-layout/section-lozenge.tsx); `SectionPathEntry` type + main/mirror path builders in `EditorLayout.tsx` ~1943 / ~2065 |
 | **Navigation strip** | No dedicated component — paragraph-nav chevrons live inside `MenuBar` | `MenuBar.tsx` around line 1205 |
 
 ## Toolbars inside the Virgil bar

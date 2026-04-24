@@ -1,4 +1,4 @@
-<!-- last-verified: 3de2062 2026-04-23 -->
+<!-- last-verified: 55c9e44 2026-04-24 -->
 
 # UI Chrome
 
@@ -64,12 +64,12 @@ Panel-side assignment is stored in `prefs.placements` and defaults come from `de
 
 [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) — `PanelColumn`
 
-Props: `side` ("left"|"right"), `pageWidth`, `onPageWidthChange`, `panelPref`, `onPanelPrefChange`, `split` (bool), `collapsed`, `blank`, optional `topOverlay` (per-column action toolbar).
+Props: `side` ("left"|"right"), `panelPref`, `onPanelPrefChange`, `isResizing`, `onResizingChange`, `onSyncBeforeDrag`, `split` (bool), `collapsed`, `blank`, optional `topOverlay` (per-column action toolbar).
 
 Behavior:
 - Wraps a single panel, or a split: `{ top, bottom, ratio, onRatioChange }`
-- Inner-edge drag adjusts the **page** and this column's **panel preferred size** in lockstep, keeping the dragged edge glued to the cursor (the opposite column is unaffected). Min via `--panel-min`.
-- Flex `1 100 ${panelPref}px` — the column absorbs leftover window space when resized.
+- Inner-edge drag only adjusts this column's **panel preferred size**; the editor column (flex-grow 1000) absorbs the change so the opposite panel stays put. Clamped by `--panel-min` and by the editor's min-width. `onSyncBeforeDrag` snaps all panel prefs to their rendered widths before the drag starts so shrunk columns don't jump when flex switches to fixed-basis.
+- Flex `1 100 ${panelPref}px` normally; switches to `0 0 ${panelPref}px` while `isResizing` so the dragged edge stays glued to the cursor.
 - Collapses to zero width when `collapsed`.
 
 Panels render via `renderPanelWithChrome(panelId, side)` inside EditorLayout. Same renderer is used for sidebar-mounted and floating variants (floating wraps in `FloatingPanel`).
