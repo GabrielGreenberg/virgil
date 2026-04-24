@@ -35,10 +35,11 @@ export type PanelSlot = { omni: React.ReactNode; overlay: React.ReactNode | null
  */
 export function PanelColumn({
   side,
-  pageWidth,
-  onPageWidthChange,
   panelPref,
   onPanelPrefChange,
+  isResizing,
+  onResizingChange,
+  onSyncBeforeDrag,
   children,
   split,
   collapsed,
@@ -49,16 +50,20 @@ export function PanelColumn({
   topOverlay,
 }: {
   side: "left" | "right";
-  /** Current preferred page width. Dragging the panel's inner edge
-   *  adjusts this — toward center shrinks the page, away widens it —
-   *  and the panel flexes to fill the remainder. */
-  pageWidth: number;
-  onPageWidthChange: (w: number) => void;
-  /** This side's panel flex-basis. Dragging updates it in lockstep with
-   *  pageWidth so the panel edge tracks the cursor exactly instead of
-   *  splitting the delta with the opposite side. */
+  /** This side's panel width in pixels. Dragging the inner edge updates
+   *  this directly; the editor column absorbs the change so the opposite
+   *  panel stays fixed. */
   panelPref: number;
   onPanelPrefChange: (w: number) => void;
+  /** True while any panel inner-edge is being dragged. Freezes both
+   *  panels at their pref (flex-grow/shrink 0) so the dragged edge stays
+   *  glued to the cursor; the editor absorbs the delta. */
+  isResizing?: boolean;
+  onResizingChange?: (r: boolean) => void;
+  /** Called once at drag start, before isResizing flips. Lets the
+   *  parent snap all panel prefs to their current rendered widths so
+   *  shrunk panels don't jump when flex switches to fixed-basis. */
+  onSyncBeforeDrag?: () => void;
   children?:
     | PanelSlot
     | {
@@ -79,22 +84,45 @@ export function PanelColumn({
   topOverlay?: React.ReactNode;
 }) {
   const startX = useRef(0);
-  const startPage = useRef(0);
   const startPanel = useRef(0);
   const stackRef = useRef<HTMLDivElement>(null);
 
   const onMove = useCallback(
     (e: MouseEvent) => {
-      // Inner-edge drag toward editor-center → panel grows, page shrinks.
-      // Away from center → panel shrinks, page grows. Updating both in
-      // lockstep keeps the dragged edge glued to the cursor.
+      // Inner-edge drag only adjusts this side's panel pref. The editor
+      // column (flex-grow 1000) absorbs the change, so the opposite
+      // panel stays put — no cross-coupling between L and R edges.
+      // Clamp so the editor column never drops below its CSS min-width.
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
-      onPageWidthChange(startPage.current - delta);
-      onPanelPrefChange(Math.max(0, startPanel.current + delta));
+      const panelMin = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--panel-min'),
+      ) || 0;
+      let requested = Math.max(panelMin, startPanel.current + delta);
+      const col = gapRef.current?.parentElement;
+      const main = col?.parentElement;
+      if (main) {
+        const editor = main.querySelector('[data-editor-col]') as HTMLElement | null;
+        const editorMin = editor ? (parseFloat(getComputedStyle(editor).minWidth) || 0) : 0;
+        let reserved = editorMin;
+        for (const child of Array.from(main.children)) {
+          if (child !== col && child !== editor) {
+            // For other flex items with a pixel flex-basis (the opposite
+            // panel column), reserve its basis — during drag it returns
+            // to its pref regardless of what's currently rendered. For
+            // strips (basis "auto"), fall back to the rendered width.
+            const el = child as HTMLElement;
+            const basis = parseFloat(getComputedStyle(el).flexBasis);
+            reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
+          }
+        }
+        const maxPanel = Math.max(0, main.clientWidth - reserved);
+        requested = Math.min(requested, maxPanel);
+      }
+      onPanelPrefChange(requested);
     },
-    [side, onPageWidthChange, onPanelPrefChange],
+    [side, onPanelPrefChange],
   );
 
   const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
@@ -106,11 +134,22 @@ export function PanelColumn({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       startX.current = e.clientX;
-      startPage.current = pageWidth;
-      startPanel.current = panelPref;
+      // Snap all panels' prefs to their current rendered widths (both
+      // sides + zen margins). Prevents shrunk panels from jumping when
+      // the flex switches to fixed-basis mode below.
+      onSyncBeforeDrag?.();
+      const col = gapRef.current?.parentElement;
+      const rendered = col ? col.getBoundingClientRect().width : panelPref;
+      startPanel.current = rendered;
+      onResizingChange?.(true);
+      const onUp = () => {
+        onResizingChange?.(false);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mouseup", onUp);
       gapMouseDown(e);
     },
-    [pageWidth, panelPref, gapMouseDown],
+    [panelPref, gapMouseDown, onResizingChange, onSyncBeforeDrag],
   );
 
   // Determine if children is a split spec or single slot
@@ -145,7 +184,7 @@ export function PanelColumn({
   );
 
   return (
-    <div className="relative flex" style={{ flex: `1 100 ${panelPref}px`, minWidth: 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${panelPref}px` : `1 100 ${panelPref}px`, minWidth: isResizing ? 0 : 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
       {collapsed ? (
         /* Collapsed: empty placeholder preserving layout space */

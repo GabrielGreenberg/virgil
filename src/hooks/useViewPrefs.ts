@@ -63,6 +63,11 @@ export interface ViewPrefs {
    *  absorb window resizes. Drag on panel or zen-margin inner edges
    *  updates this pref. */
   pageWidth: number;
+  /** Preferred heights of the top and bottom gutters above/below the
+   *  text page, in pixels. Window-shrink eats these first before
+   *  touching the page's 400 min-height. */
+  topGutter: number;
+  bottomGutter: number;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -103,6 +108,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   alwaysShowLinkedText: false,
   menuLocation: { kind: "home" },
   pageWidth: 880,
+  topGutter: 0,
+  bottomGutter: 0,
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -501,6 +508,14 @@ export function useViewPrefs() {
     update((p) => ({ ...p, pageWidth: Math.max(400, Math.min(1600, w)) }));
   }, [update]);
 
+  const setTopGutter = useCallback((h: number) => {
+    update((p) => ({ ...p, topGutter: Math.max(0, h) }));
+  }, [update]);
+
+  const setBottomGutter = useCallback((h: number) => {
+    update((p) => ({ ...p, bottomGutter: Math.max(0, h) }));
+  }, [update]);
+
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
@@ -527,6 +542,8 @@ export function useViewPrefs() {
     setEditorSplit,
     setEditorSplitRatio,
     setPageWidth,
+    setTopGutter,
+    setBottomGutter,
     setAlwaysShowLinkedText,
     setMenuLocation,
     togglePopout,

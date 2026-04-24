@@ -149,7 +149,8 @@ export function useInTextPositions(
     }
 
     const scrollRect = scrollEl.getBoundingClientRect();
-    setEditorScrollHeight(scrollEl.scrollHeight);
+    const nextScrollHeight = scrollEl.scrollHeight;
+    setEditorScrollHeight(prev => prev === nextScrollHeight ? prev : nextScrollHeight);
 
     // Compute positions using coordsAtPos for all items.
     // ProseMirror renders all nodes to the DOM (no virtualization),

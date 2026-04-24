@@ -275,6 +275,13 @@ export function DetachedToolbar({
   const posRef = useRef(pos);
   posRef.current = pos;
 
+  // Route onSetPos through a ref so the rotation-knob useLayoutEffect
+  // doesn't depend on its identity. Parents often pass a fresh inline
+  // closure each render, which would re-run the effect every render
+  // and occasionally cascade into a setState loop.
+  const onSetPosRef = useRef(onSetPos);
+  onSetPosRef.current = onSetPos;
+
   const wrapRef = useRef<HTMLDivElement>(null);
   const targetKnobCenterRef = useRef<{ x: number; y: number } | null>(null);
   const readKnobCenter = (): { x: number; y: number } | null => {
@@ -295,10 +302,10 @@ export function DetachedToolbar({
     const dx = target.x - current.x;
     const dy = target.y - current.y;
     if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
-      onSetPos({ left: posRef.current.left + dx, top: posRef.current.top + dy });
+      onSetPosRef.current({ left: posRef.current.left + dx, top: posRef.current.top + dy });
     }
     targetKnobCenterRef.current = null;
-  }, [collapsed, orientation, onSetPos]);
+  }, [collapsed, orientation]);
 
   const toggleOrientation = () => {
     captureKnobCenter();

@@ -15,19 +15,20 @@ import type { Side } from "@/hooks/useViewPrefs";
  */
 export function ZenMargin({
   side,
-  pageWidth,
-  onPageWidthChange,
   marginPref,
   onMarginPrefChange,
+  isResizing,
+  onResizingChange,
+  onSyncBeforeDrag,
 }: {
   side: Side;
-  pageWidth: number;
-  onPageWidthChange: (w: number) => void;
   marginPref: number;
   onMarginPrefChange: (w: number) => void;
+  isResizing?: boolean;
+  onResizingChange?: (r: boolean) => void;
+  onSyncBeforeDrag?: () => void;
 }) {
   const startX = useRef(0);
-  const startPage = useRef(0);
   const startMargin = useRef(0);
 
   const onMove = useCallback(
@@ -35,10 +36,29 @@ export function ZenMargin({
       const delta = side === "right"
         ? startX.current - e.clientX
         : e.clientX - startX.current;
-      onPageWidthChange(startPage.current - delta);
-      onMarginPrefChange(Math.max(0, startMargin.current + delta));
+      const marginMin = parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--zen-margin-min'),
+      ) || 0;
+      let requested = Math.max(marginMin, startMargin.current + delta);
+      const col = gapRef.current?.parentElement;
+      const main = col?.parentElement;
+      if (main) {
+        const editor = main.querySelector('[data-editor-col]') as HTMLElement | null;
+        const editorMin = editor ? (parseFloat(getComputedStyle(editor).minWidth) || 0) : 0;
+        let reserved = editorMin;
+        for (const child of Array.from(main.children)) {
+          if (child !== col && child !== editor) {
+            const el = child as HTMLElement;
+            const basis = parseFloat(getComputedStyle(el).flexBasis);
+            reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
+          }
+        }
+        const maxMargin = Math.max(0, main.clientWidth - reserved);
+        requested = Math.min(requested, maxMargin);
+      }
+      onMarginPrefChange(requested);
     },
-    [side, onPageWidthChange, onMarginPrefChange],
+    [side, onMarginPrefChange],
   );
 
   const { gapRef, onMouseDown: gapMouseDown } = useDragGap({
@@ -50,15 +70,23 @@ export function ZenMargin({
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
       startX.current = e.clientX;
-      startPage.current = pageWidth;
-      startMargin.current = marginPref;
+      onSyncBeforeDrag?.();
+      const col = gapRef.current?.parentElement;
+      const rendered = col ? col.getBoundingClientRect().width : marginPref;
+      startMargin.current = rendered;
+      onResizingChange?.(true);
+      const onUp = () => {
+        onResizingChange?.(false);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mouseup", onUp);
       gapMouseDown(e);
     },
-    [pageWidth, marginPref, gapMouseDown],
+    [marginPref, gapMouseDown, onResizingChange, onSyncBeforeDrag],
   );
 
   return (
-    <div className="relative flex" style={{ flex: `1 100 ${marginPref}px`, minWidth: 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${marginPref}px` : `1 100 ${marginPref}px`, minWidth: isResizing ? 0 : 'var(--zen-margin-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       <div
         ref={gapRef}
