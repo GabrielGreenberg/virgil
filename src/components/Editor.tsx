@@ -160,6 +160,26 @@ interface EditorProps {
    * back to the native dialog.
    */
   onConfirmFootnoteMove?: () => Promise<boolean>;
+  /**
+   * Called when the user renames the label on a heading that has
+   * existing `\ref` pods pointing to it. Resolving `true` causes the
+   * refs to be rewritten to the new label in the same transaction;
+   * `false` leaves them pointing at the old (now orphaned) key. When
+   * omitted, Editor applies the heading rename without prompting.
+   */
+  onConfirmLabelRename?: (
+    oldLabel: string,
+    newLabel: string,
+    refCount: number,
+  ) => Promise<boolean>;
+  /**
+   * Predicate consulted by the heading label editor while the user
+   * types — returns `true` when the candidate key is already claimed by
+   * another `\label{...}` declaration in the doc. The editor surfaces a
+   * "label already in use" warning beneath the input when so. Wired
+   * centrally via `src/lib/labels.ts`.
+   */
+  isLabelTaken?: (candidate: string, excludeLabel: string | null) => boolean;
   /** Ref to a Set of paragraph UUIDs that have marginalia anchored to them */
   anchoredUuidsRef?: React.RefObject<Set<string>>;
   /**
@@ -297,7 +317,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -324,6 +344,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
   onConfirmFootnoteMoveRef.current = onConfirmFootnoteMove;
+  // Same pattern for the label-rename confirmation — the heading node
+  // view commits labels out of a DOM-level input callback that lives
+  // inside the extension closure; a ref keeps it in sync across renders.
+  const onConfirmLabelRenameRef = useRef(onConfirmLabelRename);
+  onConfirmLabelRenameRef.current = onConfirmLabelRename;
+  // Same ref dance for the label-conflict predicate — it's called
+  // synchronously on every keystroke inside the heading label input.
+  const isLabelTakenRef = useRef(isLabelTaken);
+  isLabelTakenRef.current = isLabelTaken;
 
   // Stashes pending capture-drag payloads. ProseMirror's internal
   // dragstart handler rewrites DataTransfer (setting text/html +
@@ -1001,18 +1030,104 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
           input.addEventListener("mousedown", (ev) => ev.stopPropagation());
 
+          // Live "label already in use" warning — consults the central
+          // predicate from @/lib/labels via the isLabelTakenRef mirror.
+          const warning = document.createElement("div");
+          warning.className = "heading-label-warning";
+          warning.textContent = "⚠ label already in use";
+          warning.style.display = "none";
+          annot.appendChild(warning);
+
+          const refreshWarning = () => {
+            const candidate = input.value.trim();
+            const own = (currentNode.attrs.label as string | null) || null;
+            const taken =
+              candidate && isLabelTakenRef.current
+                ? isLabelTakenRef.current(candidate, own)
+                : false;
+            warning.style.display = taken ? "" : "none";
+            input.classList.toggle("has-conflict", !!taken);
+          };
+          input.addEventListener("input", refreshWarning);
+          refreshWarning();
+
           let committed = false;
-          const commit = () => {
+          const commit = async () => {
             if (committed) return;
             committed = true;
             cleanupSizer();
             const newLabel = input.value.trim() || null;
-            const p = typeof getPos === "function" ? getPos() : null;
-            if (p != null) {
-              nodeEditor.chain().setNodeSelection(p).updateAttributes("heading", { label: newLabel }).run();
-              nodeEditor.commands.focus();
+            const oldLabel = (currentNode.attrs.label as string | null) || null;
+
+            if (oldLabel === newLabel) {
+              renderAnnot();
+              return;
             }
+
+            const p = typeof getPos === "function" ? getPos() : null;
+            if (p == null) {
+              renderAnnot();
+              return;
+            }
+
+            // Restore the annotation display before awaiting a modal so
+            // the user isn't staring at a stale editable input behind it.
             renderAnnot();
+
+            // Only prompt when renaming between two non-empty keys.
+            // Add/remove cases either have no refs (add) or can't point
+            // the refs anywhere meaningful (remove).
+            const refPositions: number[] = [];
+            if (oldLabel && newLabel) {
+              nodeEditor.state.doc.descendants((nd, pos) => {
+                if (nd.type.name === "labelRef" && nd.attrs.label === oldLabel) {
+                  refPositions.push(pos);
+                }
+              });
+            }
+
+            let updateRefs = false;
+            const handler = onConfirmLabelRenameRef.current;
+            if (refPositions.length > 0 && handler && oldLabel && newLabel) {
+              updateRefs = await handler(oldLabel, newLabel, refPositions.length);
+            }
+
+            // Re-resolve the heading position after the modal in case
+            // the doc shifted (shouldn't happen while modal is open, but
+            // cheap insurance).
+            const headingPos = typeof getPos === "function" ? getPos() : p;
+            const headingNode = nodeEditor.state.doc.nodeAt(headingPos);
+            if (!headingNode || headingNode.type.name !== "heading") return;
+
+            const tr = nodeEditor.state.tr;
+            tr.setNodeMarkup(headingPos, undefined, {
+              ...headingNode.attrs,
+              label: newLabel,
+            });
+
+            if (updateRefs) {
+              const display =
+                (headingNode.attrs.sectionNumber as string | null) || "??";
+              // labelRef is an inline atom of fixed size — updating attrs
+              // keeps existing positions valid within the same transaction.
+              for (const rPos of refPositions) {
+                const rNode = nodeEditor.state.doc.nodeAt(rPos);
+                if (
+                  rNode &&
+                  rNode.type.name === "labelRef" &&
+                  rNode.attrs.label === oldLabel
+                ) {
+                  tr.setNodeMarkup(rPos, undefined, {
+                    ...rNode.attrs,
+                    label: newLabel,
+                    displayText: display,
+                  });
+                }
+              }
+            }
+
+            nodeEditor.view.dispatch(tr);
+            nodeEditor.commands.focus();
           };
 
           input.addEventListener("keydown", (ev) => {

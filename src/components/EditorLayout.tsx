@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
+import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import MenuBar, { DetachedActionsToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -219,6 +220,34 @@ export default function EditorLayout() {
         confirmLabel: "Move",
         cancelLabel: "Cancel",
         tone: "danger",
+      }),
+    [runConfirm],
+  );
+  const confirmLabelRename = useCallback(
+    (oldLabel: string, newLabel: string, refCount: number) =>
+      runConfirm({
+        title: "Update references?",
+        message: (
+          <>
+            <p>
+              This label is referenced by {refCount}{" "}
+              {refCount === 1 ? "\\ref" : "\\refs"} elsewhere in the document.
+            </p>
+            <p className="mt-2">
+              Rewrite {refCount === 1 ? "it" : "them"} from{" "}
+              <code className="px-1 rounded bg-surface-muted text-ink-body">
+                {oldLabel}
+              </code>{" "}
+              to{" "}
+              <code className="px-1 rounded bg-surface-muted text-ink-body">
+                {newLabel}
+              </code>
+              ?
+            </p>
+          </>
+        ),
+        confirmLabel: refCount === 1 ? "Update ref" : `Update ${refCount} refs`,
+        cancelLabel: "Leave refs",
       }),
     [runConfirm],
   );
@@ -893,6 +922,18 @@ export default function EditorLayout() {
 
   const editorRef = useRef<EditorHandle>(null);
   const mainAreaRef = useRef<HTMLDivElement>(null);
+
+  // Central "is this label key already claimed" predicate — consulted
+  // by every label-editing surface (heading input in the main editor,
+  // InlineLabel in the outline) so they all see the same registry.
+  const checkLabelTaken = useCallback(
+    (candidate: string, excludeLabel: string | null) => {
+      const editor = editorRef.current?.getEditor();
+      if (!editor) return false;
+      return isLabelTakenIn(editor, candidate, excludeLabel);
+    },
+    [],
+  );
   // Read by the paragraph node view each render to flip the popout
   // button's glyph between docked (arrow up) and popped (arrow down).
   const paragraphIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
@@ -3601,6 +3642,7 @@ export default function EditorLayout() {
           onRenameHeading={handleRenameHeading}
           onRenameParTitle={handleRenameParTitle}
           onUpdateLabel={handleUpdateLabel}
+          isLabelTaken={checkLabelTaken}
           activeSectionPath={currentSectionPath}
           activeParTitleIndex={currentParTitleIndex}
           editorSplit={editorSplit}
@@ -4665,6 +4707,8 @@ export default function EditorLayout() {
                       onEditorReady={setEditorInstance}
                       onCitationDrop={handleCitationDrop}
                       onConfirmFootnoteMove={confirmFootnoteMove}
+                      onConfirmLabelRename={confirmLabelRename}
+                      isLabelTaken={checkLabelTaken}
                       anchoredUuidsRef={anchoredUuidsRef}
                       activeAnchorId={effectiveAnchorId}
                       activeAnchorColor={effectiveAnchorColor}
@@ -4702,6 +4746,8 @@ export default function EditorLayout() {
                   onEditorReady={setEditorInstance}
                   onCitationDrop={handleCitationDrop}
                   onConfirmFootnoteMove={confirmFootnoteMove}
+                  onConfirmLabelRename={confirmLabelRename}
+                  isLabelTaken={checkLabelTaken}
                   activeAnchorId={effectiveAnchorId}
                   activeAnchorColor={effectiveAnchorColor}
                   onToggleParagraphPopout={handleToggleParagraphPopout}

@@ -374,6 +374,20 @@ body {
   padding: 0;
 }
 
+.heading-label-input.has-conflict {
+  border-bottom-color: #b45757;
+  color: #b45757;
+}
+
+.heading-label-warning {
+  display: block;
+  margin-top: 0.2em;
+  color: #b45757;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
 /* Paragraph title annotations — shown in gap above paragraph */
 .par-title-wrapper,
 .list-title-wrapper {
