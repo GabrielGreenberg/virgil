@@ -128,12 +128,20 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
   );
 
+  // When `anchorRect` is provided (every Actions-toolbar path), the new
+  // card is popped as a floating popup and the underlying panel is left
+  // untouched — opening both the float and the panel is redundant and
+  // disruptive. In-panel "+" paths don't pass `anchorRect`, so they still
+  // activate the panel (a no-op in practice since the panel is already
+  // visible).
+  const fromToolbar = (opts: { anchorRect?: DOMRect | null }) => opts.anchorRect !== undefined;
+
   const createNote = useCallback<CardCreationApi["createNote"]>(
     (opts) => {
       const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor);
       setSelectedNoteId(note.id);
-      ensurePanelActive("notes");
-      if (opts.anchorRect !== undefined) popCardAtAnchor("note", note.id, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("note", note.id, opts.anchorRect!);
+      else ensurePanelActive("notes");
       return note;
     },
     [addNote, setSelectedNoteId, ensurePanelActive, popCardAtAnchor],
@@ -143,8 +151,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const cut = addCut(opts.paragraphId ?? null, opts.content, opts.anchor);
       setSelectedCutId(cut.id);
-      ensurePanelActive("cutter");
-      if (opts.anchorRect !== undefined) popCardAtAnchor("cut", cut.id, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("cut", cut.id, opts.anchorRect!);
+      else ensurePanelActive("cutter");
       return cut;
     },
     [addCut, setSelectedCutId, ensurePanelActive, popCardAtAnchor],
@@ -156,8 +164,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (opts.text) updateTodo(todo.id, opts.text);
       if (opts.paragraphId) addTodoParagraphId(todo.id, opts.paragraphId);
       setSelectedTodoId(todo.id);
-      ensurePanelActive("todo");
-      if (opts.anchorRect !== undefined) popCardAtAnchor("todo", todo.id, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("todo", todo.id, opts.anchorRect!);
+      else ensurePanelActive("todo");
       return todo;
     },
     [addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, ensurePanelActive, popCardAtAnchor],
@@ -174,9 +182,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       handle.renumberFootnotes();
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
       setSelectedFootnoteId(result.footnoteId);
-      ensurePanelActive("footnotes");
-      if (opts.anchorRect !== undefined)
-        popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect!);
+      else ensurePanelActive("footnotes");
       return result;
     },
     [editorRef, markFootnotePristine, setSelectedFootnoteId, ensurePanelActive, popCardAtAnchor],
@@ -189,8 +196,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
           ? addQuotationGroup({ text: opts.text, paragraphId: opts.paragraphId })
           : addQuotationGroup();
       setSelectedQuotationGroupId(group.id);
-      ensurePanelActive("quotations");
-      if (opts.anchorRect !== undefined) popCardAtAnchor("quotation", group.id, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("quotation", group.id, opts.anchorRect!);
+      else ensurePanelActive("quotations");
       return group;
     },
     [addQuotationGroup, setSelectedQuotationGroupId, ensurePanelActive, popCardAtAnchor],
@@ -200,8 +207,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const ref = addCitation(opts.command ?? "\\cite{}", undefined, opts.unanchored ?? true);
       setSelectedCitationId(ref.id);
-      ensurePanelActive("citations");
-      if (opts.anchorRect !== undefined) popCardAtAnchor("citation", ref.id, opts.anchorRect);
+      if (fromToolbar(opts)) popCardAtAnchor("citation", ref.id, opts.anchorRect!);
+      else ensurePanelActive("citations");
       return ref;
     },
     [addCitation, setSelectedCitationId, ensurePanelActive, popCardAtAnchor],
