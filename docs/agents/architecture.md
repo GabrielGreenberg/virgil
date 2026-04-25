@@ -1,4 +1,4 @@
-<!-- last-verified: 55c9e44 2026-04-24 -->
+<!-- last-verified: ddaa8fc 2026-04-24 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 

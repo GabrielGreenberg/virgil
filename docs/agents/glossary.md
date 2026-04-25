@@ -1,4 +1,4 @@
-<!-- last-verified: 0e3139c 2026-04-24 -->
+<!-- last-verified: ddaa8fc 2026-04-24 -->
 
 # Glossary
 
