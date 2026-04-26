@@ -9,10 +9,10 @@
  *  - Headers are compact: title + count + optional action
  *
  * Usage:
- *  import { panelCard, PANEL, Chevron, PanelHeader } from "./panel-primitives";
+ *  import { themedCard, CARD_THEMES, PANEL, Chevron, PanelHeader } from "./panel-primitives";
  *
  *  <div className={PANEL.list}>
- *    <div className={panelCard(isSelected)}>
+ *    <div className={themedCard(CARD_THEMES.note, isSelected)}>
  *      <div className={PANEL.cardInner}>
  *        ...content...
  *        <div className={PANEL.subpod}>...expandable...</div>
@@ -39,25 +39,6 @@ const CARD_BASE =
   "rounded-lg border transition-colors overflow-hidden";
 const CARD_DEFAULT =
   "bg-surface border-edge-hover hover:border-edge-strong hover:bg-surface-muted/50";
-const CARD_SELECTED =
-  "bg-surface border-amber-300 shadow-sm";
-
-const CARD_SELECTED_FOOTNOTE =
-  "bg-surface border-red-300 shadow-sm";
-
-const CARD_SELECTED_NOTE =
-  "bg-surface border-emerald-300 shadow-sm";
-
-const CARD_SELECTED_TODO =
-  "bg-surface border-stone-400 shadow-sm";
-
-const CARD_SELECTED_CUT =
-  "bg-surface border-red-300 shadow-sm";
-
-/** Returns the full card className given selection state. */
-export function panelCard(selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? CARD_SELECTED : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
-}
 
 /**
  * Call from arrow-key handlers to clear the stale CSS :hover on the
@@ -73,26 +54,6 @@ export function clearStaleHover(container: HTMLElement | null) {
     document.removeEventListener("pointermove", restore);
   };
   document.addEventListener("pointermove", restore);
-}
-
-/** Footnote-themed card: reddish selection instead of amber. */
-export function footnoteCard(selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? CARD_SELECTED_FOOTNOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
-}
-
-/** Note-themed card: emerald selection instead of amber. */
-export function noteCard(selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? CARD_SELECTED_NOTE : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
-}
-
-/** Todo-themed card: stone/grey selection. */
-export function todoCard(selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? CARD_SELECTED_TODO : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
-}
-
-/** Cutter-themed card: red selection (matches MARKER_META.cut). */
-export function cutCard(selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? CARD_SELECTED_CUT : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
 /* ── Text-only drag helper ──────────────────────────────────────── */
@@ -117,7 +78,10 @@ export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlai
 
 /** Theme configuration for an EditableCard. */
 export interface CardTheme {
-  cardClass: (selected: boolean, extra?: string) => string;
+  /** Tailwind border class applied when the card is selected.
+   *  E.g. `"border-red-300"` for footnote, `"border-emerald-300"` for note.
+   *  Combined with `bg-surface shadow-sm` by `themedCard()`. */
+  borderSelected: string;
   /** Always-on header tint (shown even when unselected). */
   headerDefault: string;
   /** Intensified header tint on selection. */
@@ -137,6 +101,16 @@ export interface CardTheme {
     separatorColor: string;
     selectedBorder: string;
   };
+}
+
+/** Returns the card wrapper class for a theme + selection state.
+ *  Selected cards use the theme's `borderSelected`; unselected cards share
+ *  the neutral `CARD_DEFAULT` styling. Only call site of selection-border
+ *  styling — every card surface in the app routes through here via
+ *  `<PanelCard theme={…}>`. */
+export function themedCard(theme: CardTheme, selected: boolean, extra?: string): string {
+  const selectedClasses = `bg-surface ${theme.borderSelected} shadow-sm`;
+  return `${CARD_BASE} ${selected ? selectedClasses : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
 /** Apply inline-style overrides atop the card wrapper. Returns an empty object
@@ -167,19 +141,20 @@ export function separatorOverrideStyle(
   return { borderTopColor: theme.override.separatorColor };
 }
 
-/** Pre-built themes for existing card types. */
+/** Pre-built themes for existing card types. Every selection border now matches
+ *  the kind's theme color — no more amber-by-default fallback. */
 export const CARD_THEMES = {
-  footnote:  { cardClass: footnoteCard, headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
-  note:      { cardClass: noteCard,     headerDefault: "bg-emerald-100/50", headerSelected: "bg-emerald-100",  separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
-  archive:   { cardClass: panelCard,    headerDefault: "bg-amber-100/50",  headerSelected: "bg-amber-100",     separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
-  todo:      { cardClass: todoCard,     headerDefault: "bg-stone-100/70",  headerSelected: "bg-stone-200/80",  separatorSelected: "border-edge-hover",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  bib:       { cardClass: panelCard,    headerDefault: "bg-[#fdf8e1]/80",  headerSelected: "bg-[#fdf8e1]",     separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
-  citation:  { cardClass: panelCard,    headerDefault: "bg-[#fef3c3]/40",  headerSelected: "bg-[#fef3c3]",     separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
-  comment:   { cardClass: panelCard,    headerDefault: "bg-stone-100/60",  headerSelected: "bg-stone-200/70",  separatorSelected: "border-edge-hover",   badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  aiRequest: { cardClass: panelCard,    headerDefault: "bg-sky-100/50",    headerSelected: "bg-sky-100",       separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
-  cut:       { cardClass: cutCard,      headerDefault: "bg-red-100/60",    headerSelected: "bg-red-100",       separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
-  error:     { cardClass: panelCard,    headerDefault: "bg-[#fef2f2]/70",  headerSelected: "bg-[#fee2e2]",     separatorSelected: "border-red-300",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#f5a5a5", titleColor: "#b45757" },
-  example:   { cardClass: panelCard,    headerDefault: "bg-teal-100/50",   headerSelected: "bg-teal-100",      separatorSelected: "border-teal-200",    badgeBg: "#f0fdfa", badgeColor: "#0f766e", badgeBorder: "#14b8a6", titleColor: "#115e59" },
+  footnote:  { borderSelected: "border-red-300",     headerDefault: "bg-red-100/60",     headerSelected: "bg-red-100",      separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
+  note:      { borderSelected: "border-emerald-300", headerDefault: "bg-emerald-100/50", headerSelected: "bg-emerald-100",  separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
+  archive:   { borderSelected: "border-amber-300",   headerDefault: "bg-amber-100/50",   headerSelected: "bg-amber-100",    separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
+  todo:      { borderSelected: "border-stone-400",   headerDefault: "bg-stone-100/70",   headerSelected: "bg-stone-200/80", separatorSelected: "border-edge-hover",  badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  bib:       { borderSelected: "border-amber-300",   headerDefault: "bg-[#fdf8e1]/80",   headerSelected: "bg-[#fdf8e1]",    separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
+  citation:  { borderSelected: "border-amber-300",   headerDefault: "bg-[#fef3c3]/40",   headerSelected: "bg-[#fef3c3]",    separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
+  comment:   { borderSelected: "border-stone-400",   headerDefault: "bg-stone-100/60",   headerSelected: "bg-stone-200/70", separatorSelected: "border-edge-hover",  badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
+  aiRequest: { borderSelected: "border-sky-300",     headerDefault: "bg-sky-100/50",     headerSelected: "bg-sky-100",      separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
+  cut:       { borderSelected: "border-red-300",     headerDefault: "bg-red-100/60",     headerSelected: "bg-red-100",      separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
+  error:     { borderSelected: "border-red-300",     headerDefault: "bg-[#fef2f2]/70",   headerSelected: "bg-[#fee2e2]",    separatorSelected: "border-red-300",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#f5a5a5", titleColor: "#b45757" },
+  example:   { borderSelected: "border-teal-300",    headerDefault: "bg-teal-100/50",    headerSelected: "bg-teal-100",     separatorSelected: "border-teal-200",    badgeBg: "#f0fdfa", badgeColor: "#0f766e", badgeBorder: "#14b8a6", titleColor: "#115e59" },
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -887,7 +862,7 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   onTogglePopout?: () => void;
   /** When provided, renders a bottom-right trash button that calls this. */
   onTrashClick?: () => void;
-  /** Extra classes forwarded into `theme.cardClass(selected, extra)` — typically
+  /** Extra classes forwarded into `themedCard(theme, selected, extra)` — typically
    *  cursor / opacity modifiers like `"cursor-grab active:cursor-grabbing"` or
    *  `"opacity-60"`. */
   extraCardClass?: string;
@@ -941,7 +916,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   return (
     <div
       ref={setRefs}
-      className={`group relative ${theme.cardClass(selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
+      className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...cardOverrideStyle(theme, selected),
         ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),

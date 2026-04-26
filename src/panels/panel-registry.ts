@@ -21,8 +21,9 @@ export interface CardLink {
   kind: CardKind;
   /** Popout-key prefix. `${prefix}:${id}` is the persisted card key. */
   keyPrefix: string;
-  /** `CARD_THEMES` key, or null when the card has no themed variant
-   *  (e.g. quotation cards use the default `panelCard` styling). */
+  /** `CARD_THEMES` key, or null when the card doesn't render through the
+   *  shared `themedCard` machinery (e.g. quotation cards style themselves
+   *  inline). */
   themeKey: ThemeKey | null;
 }
 

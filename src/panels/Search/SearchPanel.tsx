@@ -3,7 +3,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import {
-  panelCard,
+  themedCard,
+  CARD_THEMES,
   PANEL,
   PrevNextCounter,
   clearStaleHover,
@@ -722,7 +723,7 @@ function ResultCard({
   return (
     <button
       data-result-idx={idx}
-      className={`${panelCard(selected)} w-full text-left`}
+      className={`${themedCard(CARD_THEMES.comment, selected)} w-full text-left`}
       onClick={onClick}
       style={borderStyle}
     >
