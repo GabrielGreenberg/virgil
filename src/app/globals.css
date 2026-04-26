@@ -79,17 +79,35 @@
   --math-color: #6b4fa0;
   --math-prefix-color: #a090c0;
 
-  /* Inline element colors */
+  /* ── Warm amber scale ─────────────────────────────────────────────
+     Citation, bibliography, and quote backgrounds consolidate here.
+     Inline-element tokens below alias into this scale. */
+  --amber-50:  #fef9e7;
+  --amber-100: #fdf3c8;
+  --amber-200: #f5e29e;
+  --amber-500: #d4a843;
+
+  /* ── Footnote rust scale ──────────────────────────────────────────
+     Footnote, cut, and error markers consolidate here.
+     Inline-element tokens below alias into this scale. */
+  --footnote-50:  #fef2f2;
+  --footnote-100: #fde8e8;
+  --footnote-200: #fecaca;
+  --footnote-300: #fca5a5;
+  --footnote-500: #b45757;
+
+  /* Inline element colors — alias into the amber/footnote scales above
+     so callers don't break and there's one source of truth per family. */
   --comment-color: #93c5fd;
   --comment-bg: rgba(147, 197, 253, 0.25);
   --comment-border: rgba(96, 165, 250, 0.5);
   --latex-comment-color: #7191b0;
   --latex-comment-bg: #f0f5fa;
   --citation-color: #6b6245;
-  --citation-bg: #fdf8e1;
+  --citation-bg: var(--amber-50);
   --citation-border-color: #e0d5a8;
-  --footnote-color: #b45757;
-  --footnote-bg: #fef2f2;
+  --footnote-color: var(--footnote-500);
+  --footnote-bg: var(--footnote-50);
   --note-color: #15803d;
   --note-bg: #f0fdf4;
   --note-marker-border: #86efac;
@@ -181,6 +199,94 @@
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --color-ring-drag-target: var(--ring-drag-target);
+}
+
+/* ── Hover utilities ──────────────────────────────────────────────
+   Two variants. Choose by resting bg.
+   - .hover-on-light: resting bg is white / surface / surface-muted.
+   - .hover-on-dark:  resting bg is pod-panel / header-bg / topbar-bg.
+   Both transition 120ms ease-out and only affect background-color. */
+.hover-on-light {
+  transition: background-color 120ms ease-out;
+}
+.hover-on-light:hover {
+  background-color: var(--surface-muted-strong);
+}
+
+.hover-on-dark {
+  transition: background-color 120ms ease-out;
+}
+.hover-on-dark:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Icon-button utilities ────────────────────────────────────────
+   Three locked sizes. Use for any icon-only button.
+   The visual SVG inside is smaller than the button: pass width/height
+   14 (sm), 16 (md), 20 (lg) on the SVG. */
+.iconbtn-sm,
+.iconbtn-md,
+.iconbtn-lg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--ink-muted);
+  background: transparent;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+.iconbtn-sm:hover,
+.iconbtn-md:hover,
+.iconbtn-lg:hover {
+  background-color: var(--surface-muted-strong);
+  color: var(--ink-body);
+}
+.iconbtn-sm:active,
+.iconbtn-md:active,
+.iconbtn-lg:active {
+  transform: translateY(0.5px);
+}
+.iconbtn-sm:focus-visible,
+.iconbtn-md:focus-visible,
+.iconbtn-lg:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--edge-strong);
+}
+.iconbtn-sm[disabled],
+.iconbtn-md[disabled],
+.iconbtn-lg[disabled],
+.iconbtn-sm[aria-disabled="true"],
+.iconbtn-md[aria-disabled="true"],
+.iconbtn-lg[aria-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+
+.iconbtn-sm { width: 20px; height: 20px; padding: 3px; }
+.iconbtn-md { width: 24px; height: 24px; padding: 4px; }
+.iconbtn-lg { width: 32px; height: 32px; padding: 6px; }
+
+/* Toggle/active state — when an icon button represents an "on" state. */
+.iconbtn-sm[aria-pressed="true"],
+.iconbtn-md[aria-pressed="true"],
+.iconbtn-lg[aria-pressed="true"] {
+  background-color: var(--pod-dark);
+  color: var(--ink-strong);
+}
+
+/* Danger variant — used for the card-trash button. */
+.iconbtn-sm.iconbtn-danger,
+.iconbtn-md.iconbtn-danger {
+  color: var(--danger);
+}
+.iconbtn-sm.iconbtn-danger:hover,
+.iconbtn-md.iconbtn-danger:hover {
+  background-color: var(--danger-soft);
+  color: var(--danger);
 }
 
 html, body {
@@ -822,7 +928,7 @@ body {
 /* Inline atoms (footnote, citation) — ring. */
 .footnote-marker[data-card-selected="true"],
 [data-type="citation"][data-card-selected="true"] {
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.9);
+  box-shadow: 0 0 0 2px var(--ring-drag-target);
   border-radius: 3px;
 }
 
@@ -838,8 +944,8 @@ body {
 /* Mode A paragraph anchors — subtle left-border stripe so the body
  * text stays readable. Applied to the paragraph wrapper element. */
 [data-card-selected="paragraph"] {
-  background: rgba(251, 191, 36, 0.07);
-  box-shadow: inset 3px 0 0 0 rgba(251, 191, 36, 0.85);
+  background: color-mix(in oklab, var(--ring-drag-target) 10%, transparent);
+  box-shadow: inset 3px 0 0 0 color-mix(in oklab, var(--ring-drag-target) 85%, transparent);
   border-radius: 2px;
 }
 

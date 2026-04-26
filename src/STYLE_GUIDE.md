@@ -1,835 +1,273 @@
 # Virgil Style Guide
 
-App-wide UI conventions and component patterns. Check this before building
-new UI and update it whenever a decision feels generalizable.
+> Drop-in replacement for `src/STYLE_GUIDE.md`. This file is the
+> in-repo summary of the design system. The full reference lives in
+> `docs/virgil-design-system/`.
 
----
+## Visual identity
 
-## Semantic Color Tokens
+Virgil is a writing tool that reads like paper. The canvas is a warm
+cream (`--background: #f8f3ed`); the text is set in a serif
+(`--font-serif`); the chrome around it is sans (`--font-sans`); the
+brand accent is a warm brown (`--accent: #7c5e3c`). Pods sit on the
+canvas as raised paper surfaces with a subtle shadow.
 
-Use the semantic tokens defined in `src/app/globals.css` instead of raw
-Tailwind color utilities (`text-stone-*`, `border-stone-*`, `bg-stone-*`,
-`text-red-*`, `bg-red-*`). The tokens let every instance of a role move
-together when colors change, and they're the surface the user-preferences
-picker edits.
+When in doubt, ask: *would this look right printed?* If the answer is
+no, it's not Virgil.
 
-| Use for | Token utility | CSS var |
-|---|---|---|
-| Card / popover / input bg (the "paper") | `bg-surface` | `--surface` |
-| Subtle resting bg, list-item hover | `bg-surface-muted` | `--surface-muted` |
-| Stronger hover (icon buttons, chips) | `bg-surface-muted-strong` | `--surface-muted-strong` |
-| Modal scrim | `bg-[var(--overlay-scrim)]` | `--overlay-scrim` |
-| Subtle borders (cards, dividers) | `border-edge-subtle` | `--edge-subtle` |
-| Border on hover | `border-edge-hover` | `--edge-hover` |
-| Input focus border | `focus:border-edge-strong` | `--edge-strong` |
-| Disabled / idle drag handle | `text-ink-faint` | `--ink-faint` |
-| Placeholder, icon default | `text-ink-muted` | `--ink-muted` |
-| Subtitle / caption | `text-ink-subtle` | `--ink-subtle` |
-| Section titles, body text | `text-ink-body` | `--ink-body` |
-| Modal titles, strong text | `text-ink-strong` | `--ink-strong` |
-| Destructive action text | `text-danger` | `--danger` |
-| Destructive hover bg | `hover:bg-danger-soft` | `--danger-soft` |
-| Drop-target ring | `ring-drag-target` | `--ring-drag-target` |
+## Three layers
 
-### Tokens that are locked together
+Every visual decision lives in exactly one place.
 
-Several tokens intentionally alias to a canonical counterpart so they can't
-drift apart. Do not override them independently — change the canonical:
+```
+Consumers (panels, modals, editor)
+   │ never hard-code colors
+Primitives (PanelCard, Button, IconBtn, …)
+   │ read theme + token
+Tokens (globals.css :root)
+   │ single source of truth
+```
 
-| Alias | Canonical |
+A consumer that reaches around a primitive to set a color is a bug.
+The fix is to extend the primitive.
+
+## Tokens
+
+All colors, sizes, and shadows live in `src/app/globals.css` under
+`:root`. Use Tailwind utilities (`bg-surface`, `text-ink-muted`,
+`border-edge-subtle`) or `var(--token)` in inline `style`. Never use a
+hex literal in `*.tsx`.
+
+The token scales:
+
+- **Ink** (text, light → dark): `ink-faint`, `ink-muted`, `ink-subtle`,
+  `ink-body`, `ink-strong`. Plus `--foreground` for editor body.
+- **Edge** (borders): `edge-subtle`, `edge-hover`, `edge-strong`.
+- **Surface** (backgrounds): `surface`, `surface-muted`,
+  `surface-muted-strong`, plus the warmer `--pod-*` family.
+- **Footnote rust** (footnote, cut, error): `--footnote-50/100/200/300/500`.
+- **Warm amber** (citation, bib, quote): `--amber-50/100/200/500`.
+
+Locked aliases (must track each other): `--theme-color`/`--topbar-bg`,
+`--main-tab-bg`/`--background`, `--pod-editor`/`--surface`,
+`--h1-color`/`--foreground`, `--h2h3-color`/`--editor-text-color`,
+`--scrollbar-hover`/`--muted-light`.
+
+Forbidden in new code: `text-stone-*`, `border-stone-*`,
+`bg-stone-*-with-opacity`, hex literals in components, `bg-blue-*` /
+`bg-emerald-*` / `bg-red-*` in panel chrome.
+
+## Typography
+
+| Family | Use |
 |---|---|
-| `--pod-editor` | `var(--surface)` |
-| `--h1-color` | `var(--foreground)` |
-| `--h2h3-color` | `var(--editor-text-color)` |
-| `--scrollbar-hover` | `var(--muted-light)` |
-| `--theme-color` | `var(--topbar-bg)` |
+| `--font-serif` | Editor body, headings, blockquote |
+| `--font-sans` | App chrome, panels, marginalia |
+| `--font-mono` | Code, math, LaTeX commands |
 
-The aliased keys have been removed from the preferences tree — they surface
-only via the canonical token in the picker.
+Each has an `*-override` companion the user can set. Always read the
+override first: `var(--font-serif-override, var(--font-serif))`.
 
-### When raw Tailwind colors are still OK
+Editor scale: H1 1.75rem/700, H2 1.35rem/600, H3 1.15rem/600, body
+1.05rem/400 with line-height 1.6. Panel scale: header 14px/600, body
+13px/400, card title 12.5px/500, badge 10px/600.
 
-- Per-panel chrome (footnote-red, note-emerald, bib-amber, AI-sky): these
-  colors live in `CARD_THEMES` in `panel-primitives.tsx` and in
-  `panel-theme.ts`'s `deriveCardPalette`. They're customized per panel via
-  the header color picker — don't collapse them into global tokens.
-- Primary-action button fills (`bg-stone-700`, `bg-stone-800`) where the
-  darker stone is the intended visual. These are rare; consider adding a
-  `--button-primary` token if you find yourself reaching for them often.
-- Decorative one-offs (bibliography amber highlight, archive blue tint,
-  comment-draft amber badge). If the same color starts recurring in ≥3
-  places, promote it to a token.
+Numerals tabular for any list of numbers. Italic only in blockquote and
+the AI-marker label. No letter-spacing on body text.
 
----
+## Spacing & icons
 
-## Icons
+4-pixel grid. `--pod-gap: 10px` is the canonical pod-to-pod gap; don't
+override.
 
-### AI Star
-The AI/request icon is an **8-ray sun-star** (four cardinal lines + four
-diagonal lines, rotated 15 degrees). Never use a traditional 5-point star
-for AI-related actions.
+Three icon-button sizes: `iconbtn-sm` (20×20), `iconbtn-md` (24×24,
+default), `iconbtn-lg` (32×32). The visual SVG inside is smaller than
+the button (14, 16, 20 respectively); the whitespace is the click
+target.
 
-```tsx
-<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
-  strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-  <g transform="rotate(15 12 12)">
-    <line x1="12" y1="2" x2="12" y2="22"/>
-    <line x1="2" y1="12" x2="22" y2="12"/>
-    <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-    <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/>
-  </g>
-</svg>
-```
+Icons are stroke-only, stroke-width 2, round caps and joins, single
+color (`currentColor`). Three exceptions are filled by design: the AI
+star (sky `#0ea5e9`), the trash icon (`text-danger`), and the
+heading-fold chevron (`--footnote-color` when folded).
 
----
+Marginalia gutter icons are 16px, rendered via the components in
+`src/components/editor-layout/panel-icons.tsx`.
 
-## Panel Architecture
+## Interaction
 
-Panels live under `src/panels/<Kind>/` — one folder per panel. Each folder
-contains the panel component, its card component(s) (if any), an optional
-omni builder, and an `index.ts` barrel. The taxonomy (panel kind, card
-kind, popout key prefix, omni eligibility, default strip side) lives in
-[`src/panels/panel-registry.ts`](src/panels/panel-registry.ts) — a single
-source of truth that other systems (chrome, OmniView, popKey helper)
-read from.
+Five states. One implementation each.
 
-### Panel + CardListPanel (the wrappers)
+- **Hover.** Two utility classes: `hover-on-light` (resting bg is
+  white-ish) and `hover-on-dark` (resting bg is a darker pod). Both
+  transition background-color 120ms.
+- **Selection.** Always themed. There is no default selection color.
+  Each card kind reads its theme's `borderSelected` and
+  `headerSelected`.
+- **Focus.** `focus-visible:ring-2 ring-edge-strong` (offset 1).
+  Inputs use a thicker border instead of a ring.
+- **Active.** `translate-y-[0.5px]` on press.
+- **Disabled.** `opacity-40 pointer-events-none`.
 
-Every panel uses one of two wrappers from `src/panels/_shared/`:
+## Cards & themes
 
-- **`Panel`** — the universal chrome (outer flex column, header, scroll
-  body). Variants: `"list"` (default — applies `PANEL.list`) and `"raw"`
-  (caller owns the body). Use `Panel` directly when there are no
-  card-list semantics (Outline, Search, WordCount).
-- **`CardListPanel<T>`** — wraps `Panel` and adds iteration over an
-  `items` array, AI-requests section, and list/in-text view modes. Use
-  for any panel whose body is "a list of cards." Pass `kind`, `items`,
-  `getId`, `selectedId`, `onSelect`, `renderCard` (and optional
-  `inTextRenderItem` + `inTextPositions` for the in-text mode).
+A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
+`headerSelected`, `separatorSelected`. All other values
+(`badgeBg`, `titleColor`, etc.) derive from `accent` via
+`themeFromAccent()` in `src/lib/panel-theme.ts`.
 
-```tsx
-// Cardful panel — most common case
-<CardListPanel
-  kind="notes"
-  items={sortedNotes}
-  getId={(n) => n.id}
-  selectedId={selectedNoteId}
-  onSelect={onSelectNote}
-  renderCard={(note, { selected }) => <NoteCard note={note} selected={selected} ... />}
-  emptyState={<div className={PANEL.empty}>No notes yet.</div>}
-  // Plus header/footer/scroll/in-text slots as needed.
-/>
+Eleven themes, four families:
 
-// Non-cardful panel — bespoke body
-<Panel kind="outline" variant="raw" headerLeading={<OptionsMenu/>}>
-  <div className="flex-1 overflow-y-auto p-1 relative">…tree…</div>
-</Panel>
-```
+- **Anchored-to-text (warm):** `footnote` (rust), `citation` (amber),
+  `bib` (khaki), `quote` (warm-yellow).
+- **Editorial (cool):** `comment`/`revision` (purple), `aiRequest`
+  (sky).
+- **Workflow (neutral):** `note` (green), `archive` (steel-blue),
+  `todo` (stone), `cut` (rust).
+- **Errors:** `error` (rust), `example` (teal — rare).
 
-`Panel` requires only `kind` — title, popout, and close are wired
-automatically from the registry + `PanelChromeProvider`. Available slots:
+`cut`, `footnote`, and `error` share the rust accent — they're never
+adjacent in the same surface, and the gutter icon distinguishes them.
 
-| Slot | Purpose |
-|------|---------|
-| `headerLeading` | Far-left of header (typically the options menu) |
-| `headerTitleAfter` | Inline buttons cluster with the title (Outline's Edit/Focus/Lock) |
-| `headerExtras` | Right-aligned header content (counter, view toggle) |
-| `panelExtras` | Above the scroll body (search inputs, citation builder) |
-| `footer` | Below the scroll body (Todo's archive bar) |
-| `wrapperClassName` / `wrapperProps` | Spread onto the outer wrapper (Archive's capture-drop styling) |
-| `onKeyDown` / `scrollTabIndex` | Keyboard nav on the scroll container |
+A card renders via `<PanelCard theme={…} selected={…}>`. The frame
+(border, header strip, separator, body, popout, trash) is identical
+across themes; only the colors differ. **Every card has a theme.** A
+card without a theme is a bug.
 
-`CardListPanel` adds: `aiRequests`, `viewMode`, `inTextPositions`,
-`inTextRenderItem`, `inTextTrailing` (footnotes' orphan stack),
-`listTrailing` (bibliography's pending requests).
+Selection: border flips to `theme.borderSelected`, header tint flips
+from `headerDefault` to `headerSelected`, separator flips to
+`theme.separatorSelected`, plus a soft `shadow-sm`. The body never
+tints.
 
-### Container Pattern (legacy bare-bones)
-Only the lower-level kit — `Panel` itself, the popout dispatcher in
-`EditorLayout`, and the `Suggestions` panel — instantiates this raw
-container directly. Real panels use `Panel`/`CardListPanel`.
+Hover (not selected): only the border changes (`edge-hover` →
+`edge-strong`). The header and body don't react.
 
-```tsx
-<div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
-  <PanelHeader ... />
-  <div className={PANEL.list}> ... </div>
-</div>
-```
-Always use `bg-transparent` on the outer wrapper — the pod/canvas system
-controls panel background. Never set `bg-[var(--background)]` on a panel
-container (it bleeds through on split views).
+## Panels
 
-### Shared Primitives (`panel-primitives.tsx`)
-The lower-level kit on which `Panel`/`CardListPanel` are built. It exports:
-- `panelCard(selected, extra?)` — card className builder
-- `PANEL` — class-string tokens (`.list`, `.cardInner`, `.subpod`, etc.)
-- `PanelHeader` — standard header bar (used internally by `Panel`)
-- `PanelChromeProvider` / `PanelClose` / `PanelPopout` — chrome plumbing
-- `ItemMenu` + `MenuDelete` — three-dot context menu
-- `TargetIcon` — jump-to-text bullseye
-- `Chevron` — expand/collapse arrow
-- `PrevNextCounter` + `useCycle` — prev/next navigation
-- `AiRequestCard` + `AiRequestsSectionHeader` — AI request integration
-- `HSplit` — horizontal draggable split divider
+Sidebar pod with a locked-height header (`--header-h: 34px`). Header
+slots, in order: leading menu/swatch, title + count, after-title tool,
+add button, AI button, extras, popout chevron. Order is fixed even
+when slots are absent.
 
----
+Panel pods use `bg-pod-panel`, `pod-border`, `pod-radius`,
+`pod-shadow-light`. Don't add backdrops, glows, or gradients.
 
-## PanelCard (universal card wrapper)
+Body is a scrollable list with `space-y-2` between cards. No `border-b`
+between cards.
 
-`PanelCard` (in `panel-primitives.tsx`) is the single source of truth for
-card chrome. **Every card in the app** — `EditableCard` (footnotes, notes,
-archive, cutter), `BibEntryCard`, `CitationCard`, `TodoRow`,
-`RevisionCard`, `QuotationGroupCard`, `AiRequestCard` — wraps its
-header/separator/body in a `<PanelCard>`. System-level look-and-feel
-changes (popout position, trash placement, popped-out styling) land here,
-not in individual panels.
+Every panel has a designed empty state — icon, title sentence,
+description, optional example card. "No items yet" is not enough.
 
-`PanelCard` renders:
-- the outer card `<div>` with `group relative`, themed border, selection
-  state, and popped-out sizing
-- an absolute top-right **popout button** (`CardPopoutButton`) — always
-  visible, chevron when docked / X when floating
-- an absolute bottom-right **trash button** (`CardTrashButton`) — small,
-  red, hover-reveal — opt-in via `onTrashClick`
-
-Because both buttons are absolute-positioned overlays, each card's header
-reserves right-padding (`pr-7`) for the popout so trailing header content
-doesn't sit under the button.
-
-## EditableCard
-
-`EditableCard` is the canonical card component for panels with editable
-rich-text content (footnotes, notes, archive, cutter). It wraps
-`PanelCard` and adds the rich-text body + header chrome (grab handle,
-badge, title, inline toolbar, three-dot menu). Panels pass content-specific
-data, not styling.
-
-### Layout
-```
-[grab handle] [badge] [title input] ... [target icon] [menu]    [popout]
-──────────────── separator ────────────────────────────────────
-[RichTextField body]                                    
-[optional footer]                                        [🗑 trash]
-```
-
-(The `[popout]` and `[🗑 trash]` markers sit in the absolute overlay layer
-provided by `PanelCard`, not inside the flex header/footer rows.)
-
-The **popout chevron** sits at the top-right corner of the card. It is
-always visible (not hover-reveal) so the pop-out affordance is
-discoverable at rest. The icon is a chevron while the card is docked and
-an X while the card is floating (click the X to re-dock). Clicking
-toggles the card between its panel-list slot and a `FloatingPanel` portal
-— see *Card popout* below.
-
-The **trash-icon delete** (opt-in via `inlineDelete` on EditableCard, or
-`onTrashClick` on PanelCard directly) sits at the bottom-right corner of
-the card. It is small, red (`text-danger`), and hover-reveal
-(`opacity-0 group-hover:opacity-70`) so it does not clutter the resting
-card surface.
-
-### Opt-in features (props)
-| Prop | Effect |
-|------|--------|
-| `grabHandle` | 6-dot grip as first header element; only the grip is draggable |
-| `hideToolbar` | Suppresses the inline B/I/U toolbar (keyboard shortcuts still work) |
-| `inlineDelete` | Small red trash icon in bottom-right corner instead of three-dot menu |
-| `onEditorFocus` | Routes the focused Tiptap editor to MenuBar for toolbar integration |
-| `onTogglePopout` / `isPoppedOut` | Opt in to the per-card popout button; usually left unset — wrapper cards supply these from context |
-
-### Card popout
-Any wrapper card (`NoteCard`, `FootnoteCard`, `ArchiveCard`, `CutCard`,
-`TodoRow`, `BibEntryCard`, `CitationCard`, `RevisionCard`,
-`QuotationGroupCard`, `AiRequestCard`) reads the shared `PoppedCardsContext`
-(`src/hooks/usePoppedCards.ts`) to decide whether it is popped.
-
-- **In a panel list**: if the context says popped, the wrapper returns
-  `null` so the panel's list doesn't render it.
-- **As a float**: `EditorLayout` iterates `prefs.poppedOutCards` and calls
-  a top-level `renderPoppedCard(key)` dispatcher that rebuilds the card
-  with `isPoppedOut={true}`. That prop makes the wrapper bypass the
-  null-return and wrap itself in `<FloatCard>`
-  (`src/components/FloatingCards.tsx`), which mounts a `FloatingPanel`
-  portal with the rect from `useViewPrefs.cardFloatPositions`.
-
-Keys are shaped `${kind}:${id}` and produced by `popKey(panelKind, id)`
-or `cardPopKey(cardKind, id)` from
-[`src/panels/panel-registry.ts`](src/panels/panel-registry.ts) — never
-hand-rolled in card components. The canonical prefix per `CardKind`
-lives in `CARD_KEY_PREFIXES`: `note, footnote, archive, cut, todo, bib,
-citation, revision, quotation, ai`. (Note: the `comment` CardKind uses
-prefix `revision` for backward compatibility with the original
-panel name.) A card is rendered exactly once: either in the panel list
-or in the float.
-
-Because the dispatcher lives at the `EditorLayout` root, popped cards stay
-visible even when the host panel's sidebar is closed — the dispatcher has
-access to the same EditorLayout-scope state the panels consume, so data
-flows to the float independently of panel mount state.
-
-### Inline-entity ID stability
-
-Footnotes and citations have no inherent identifier in a `.tex` file, so
-the parser would otherwise mint a fresh UUID for each one on every load,
-breaking any state keyed by those ids (popped-out cards, selection sync).
-The serializer emits two no-op markers alongside each inline entity:
-
-```latex
-\vfid{<uuid>}\footnote{...}
-\vcid{<uuid>}\cite{...}
-```
-
-Both are declared in the preamble as `\providecommand` no-ops so real
-LaTeX compilation ignores them. The parser consumes a preceding
-`\vfid`/`\vcid` into a pending-id slot and applies it to the next
-`\footnote` or citation command; absent a marker, it falls back to a
-fresh UUID (so legacy `.tex` files still open — the next save writes
-the markers in). This lives in `src/lib/latex-serializer.ts`,
-`src/lib/latex-parser.ts`, and the footnote-body parser/serializer in
-`src/lib/footnote-content.ts`.
-
-### Selection states
-- **Every card has a persistent header strip** with its theme's default tint (`theme.headerDefault`) — it is always visible, whether or not the card is selected. This is a stylistic rule: selection intensifies the header, it does not introduce it.
-- **Selected**: colored border around whole card, intensified header (`theme.headerSelected`), white body.
-- **Default**: `bg-white border-stone-300 hover:border-stone-400 hover:bg-stone-50/50`, plus the always-on `theme.headerDefault` tint on the header row. The card outline (`stone-300`) is chosen to visually match the perceived edge weight of the pod/panel (which is a lighter `var(--border-light)` stroke plus an ambient shadow).
-- Separator: `border-stone-200`, darkens to `border-stone-300` on hover; selected cards use `theme.separatorSelected`.
-- Clicking anywhere in the card (header, title, body) auto-selects via `onFocusCapture`.
-- Clicking empty panel space deselects (panels add `onClick={() => onSelect(null)}` to list container).
-
-### Shared sub-components (`panel-primitives.tsx`)
-| Component | Usage |
-|-----------|-------|
-| `BadgeLabel` | Anchored badge with label (number/letter), themed colors |
-| `BadgeOrphaned` | Unanchored badge: local-color square with corner-to-corner cross, 60% opacity |
-| `CardTitleInput` | Par-title styled input (`--par-title-color`, `0.78rem`, weight 500, sans-serif) |
-| `CardTargetIcon` | Page-with-arrow icon: full opacity when selected, 60% when unselected, 30% when disabled |
-
-### Unanchored (orphaned) cards
-Unanchored cards share the same wrapper styling as anchored cards — no
-dashed border. The unanchored state is communicated through two opt-in
-signals at the panel level:
-1. **`BadgeOrphaned` as the badge** — local-color square with diagonal cross, shown instead of `BadgeLabel`.
-2. **`CardTargetIcon` with `disabled`** — greyed-out, non-clickable jump icon (30% opacity).
-
-Panels detect orphaned state from their data (`paragraphIds.length === 0`)
-and pass the appropriate badge/target-icon props.
-
-### Card themes (`CARD_THEMES`)
-Each theme provides: `cardClass`, `headerDefault`, `headerSelected`,
-`separatorSelected`, `badgeBg`, `badgeColor`, `badgeBorder`, `titleColor`,
-and an optional `override` palette populated when the user picks a
-custom color for the panel. Panels reference themes, never hardcode
-colors.
-
-Available themes:
-- `footnote` — reddish
-- `note` — emerald
-- `archive` — amber/blue-grey
-- `todo` — stone/grey
-- `bib` — warm tan (bibliography entries)
-- `citation` — warmer yellow (in-text citations)
-- `comment` — neutral stone (revisions/comments)
-- `aiRequest` — sky (AI request drafts)
-- `cut` — red (cutter pieces)
-
-`headerDefault` is roughly half the opacity of `headerSelected` so that
-selection intensifies the header rather than introducing it.
-
-### Per-panel color theming
-
-Every panel whose header menu contains the list/page view toggle
-(Citations, Bibliography, Footnotes, Notes, Archive, Quotations) also
-exposes a **color-picker swatch** to the left of that toggle. Picking a
-color overrides the panel's default theme and re-colors every element
-tied to that panel: card header tint, selection border, separator,
-badge, title, marginalia gutter icon, and — for panels that render
-linked-anchor highlights (notes, revisions, cutter) — the in-text
-highlight color.
-
-Implementation:
-- Base colors live in `src/lib/panel-theme.ts` (`DEFAULT_PANEL_COLORS`,
-  `PRESET_COLORS`). User overrides persist to `localStorage` under
-  `virgil-panel-colors`.
-- `useCardTheme(panelKey)` in `src/hooks/usePanelTheme.ts` returns the
-  active `CardTheme` — either the static default or a derived palette
-  when an override is set. Consumers apply the palette through
-  `cardOverrideStyle`, `headerOverrideStyle`, and `separatorOverrideStyle`
-  helpers (in `panel-primitives.tsx`) so inline styles override the
-  Tailwind classname defaults without touching the hover behavior.
-- `Marginalia.tsx` derives its per-type marker palette from the matching
-  panel override; `EditorLayout.tsx` does the same for linked-anchor
-  highlights.
-- `<PanelThemePicker panelKey="…" />` (in `PanelThemePicker.tsx`)
-  renders the swatch + preset popover. Insert it inside each panel's
-  three-dot menu, next to the ViewToggle.
-
-### Delete behavior
-- Trash-icon button and Delete/Backspace key both go through `tryDelete()`
-- If the card body has text content → shows `ConfirmDialog`
-- If empty → deletes immediately
-- The `ConfirmDialog` positions near the card (via `anchorRef`), not dead-center screen
-
-### Drag behavior
-- **Card handle** (6-dot grip in header): Drags the card entity (footnote atom, margin note anchor, etc.). Uses the whole card as the drag ghost (`setDragImage`), offset below cursor.
-- **Text handle** (3-line icon in body gutter): Drags only the text content for inline insertion — no anchoring, no entity identity. Uses a neutral ghost (white bg, gray border). Appears on hover (`opacity-0 group-hover:opacity-60`).
-- Both handles are disabled while RichTextField is focused
-- Handle darkens on card hover (`group-hover:text-stone-500`)
-
-### Sub-pods
-Expandable sections within cards use sub-pod containers:
-- **Muted bg** (notes, textareas): `PANEL.subpod` — `rounded-md border border-stone-200 bg-stone-50/70 p-3`
-- **White bg** (rich text editors): `PANEL.subpodWhite` — `rounded-md border border-stone-200 bg-white`
-
----
-
-## Panel Headers
-
-`PanelHeader` is the underlying header primitive. In normal use, you
-don't render it directly — it's wired by `Panel`, which exposes the
-header slots (`headerLeading`, `headerTitleAfter`, `headerExtras`) plus
-`title`/`count`/`onAdd`/`onAiRequest`. The header has a fixed height
-(`--header-h: 34px`) and background (`--header-bg: #e8e5de`).
-
-```tsx
-// Typical use — through Panel/CardListPanel
-<CardListPanel
-  kind="footnotes"
-  count={3}
-  onAdd={handleAdd}
-  onAiRequest={handleAi}
-  headerLeading={<ItemMenu align="left">…</ItemMenu>}
-  headerExtras={<PrevNextCounter current={idx} total={total} label="" />}
-  …
-/>
-
-// Direct use is fine for one-off custom headers (the children slot
-// holds right-aligned content).
-<PanelHeader title="Outline" leading={<OptionsMenu/>}>
-  <ExpandCollapseButtons />
-</PanelHeader>
-```
-
-Children (counters, toggles, extra buttons) are right-aligned via flex spacer.
-
-### Panel close + pop-out buttons
-Every panel header ends with two buttons at the top right:
-- `PanelPopout` — small square pod with an up-facing chevron underneath,
-  pops the panel into a floating window. Greys out (disabled) when the
-  panel is already popped out.
-- `PanelClose` (rightmost) — an X that always closes the panel:
-  collapses the column in single mode, removes the half in split mode,
-  or closes the floater when popped out.
-
-`Panel` (and the `PanelHeader` primitive it uses) wires both
-automatically via `PanelChromeContext`. Bespoke headers that don't go
-through `Panel`/`PanelHeader` should render `<PanelPopout />` followed
-by `<PanelClose />` as the last two elements.
-
----
-
-## Top Bar
-
-The top bar uses `--topbar-bg` (`#e5e4e1`), a warm-neutral shade close to
-panel headers (`#e8e5de`) but slightly cooler (red-blue spread 4 vs 10).
-
-### Background & Border
-- Container: `bg-[var(--topbar-bg)]`
-- Bottom border: hardcoded `#d5d3ce` in `.top-bar-border::after`
-
-### Default Icon/Text
-All non-logo elements use `text-stone-500` (not `var(--muted)`) for
-sufficient contrast on the darker background.
-
-### Hover Convention
-Buttons **lighten** on hover (opposite of white-background panels):
-- Generic buttons: `hover:bg-white/30 hover:text-[var(--accent)]`
-- AI button: `hover:bg-sky-50/50 hover:text-sky-600`
-- Never use `hover:bg-stone-100` (darkening) on the top bar
-
-### Active Tab
-Active tabs retain `bg-[var(--background)]` — the lighter surface pops
-against the darker bar.
-
----
-
-## Navigation Controls
-
-### Prev/Next Chevrons
-When a counter (e.g. "3 of 12") has up/down navigation arrows, the two
-chevrons are **stacked vertically** beside the number — not laid out
-horizontally. Use a `flex flex-col` wrapper with `-space-y-0.5` to keep
-them compact.
-
-### PrevNextCounter + useCycle
-Most panels with ordered items use `useCycle` for keyboard ↑/↓ navigation
-and `PrevNextCounter` in the header to show position. The counter shows:
-- `"0 items"` when empty
-- `"N items"` when nothing is focused
-- `"i+1 of N"` when navigating
-
----
-
-## System Dialogs
-
-Every app-level modal (confirm, alert, prompt, new-document, tex-file
-picker, document-class mismatch, AI window, preferences) composes from
-the centralized primitives in
-[`src/components/system-dialog.tsx`](components/system-dialog.tsx). The
-tokens object in that file is the **one place to edit** to re-skin every
-dialog in the app.
-
-```tsx
-import SystemDialog, {
-  SystemDialogHeader,
-  SystemDialogBody,
-  SystemDialogFooter,
-  SystemDialogButton,
-} from "@/components/system-dialog";
-
-<SystemDialog open onClose={cancel} size="sm" anchorRef={cardRef}>
-  <SystemDialogHeader title="Delete this?" subtitle="Optional subtitle" />
-  <SystemDialogBody>
-    <p>This item has text. Delete it?</p>
-  </SystemDialogBody>
-  <SystemDialogFooter>
-    <SystemDialogButton onClick={cancel}>Cancel</SystemDialogButton>
-    <SystemDialogButton variant="danger" autoFocus onClick={confirm}>
-      Delete
-    </SystemDialogButton>
-  </SystemDialogFooter>
-</SystemDialog>
-```
-
-### Size presets
-
-| size   | max-width              | Use for                          |
-|--------|------------------------|----------------------------------|
-| `sm`   | `340px`                | confirm, alert                   |
-| `md`   | `380px`                | prompt, document-class mismatch  |
-| `lg`   | `520px`                | new-document                     |
-| `xl`   | `720px`                | larger forms                     |
-| `full` | `min(96vw, 1100px)`    | AI window, preferences, dashboards |
-
-### Button variants
-
-| variant     | Use for                          |
-|-------------|----------------------------------|
-| `primary`   | Default destructive-confirm (stone-800) |
-| `danger`    | Delete / irreversible (red-tinted)      |
-| `secondary` | Cancel / dismiss                        |
-| `accent`    | "Create" / positive commit (var(--accent)) |
-
-The `autoFocus` prop on a button captures focus when the dialog opens and
-enables Enter-to-confirm. Exactly one button per dialog should have it.
-
-### Anchored vs. centered
-
-`SystemDialog` accepts an optional `anchorRef` — a ref to the element that
-triggered the dialog. When provided, the dialog positions just below the
-anchor (clamped to viewport) instead of dead-center screen. Use this for
-inline confirmations (e.g. "delete card" prompts near the card itself).
-
-### Imperative API: `useSystemDialog`
-
-For hook-level code that can't conveniently render a dialog component
-(e.g. [useLatexCompile](hooks/useLatexCompile.ts)), use the imperative
-API provided by `<SystemDialogProvider>` (mounted in
-[`src/app/page.tsx`](app/page.tsx)):
-
-```tsx
-import { useSystemDialog } from "@/components/system-dialog-host";
-
-const dialog = useSystemDialog();
-await dialog.alert({ title: "Compile failed", message: "...", tone: "danger" });
-const ok = await dialog.confirm({ title: "Move?", message: "..." });
-const name = await dialog.prompt({ title: "Rename", initial: "foo" });
-```
-
-### ConfirmDialog convenience
-
-For the common "confirm an action" pattern, use
-[`ConfirmDialog`](components/ConfirmDialog.tsx) — a thin wrapper that
-composes `SystemDialog` for you, plus `useConfirmDialog()` which returns
-`{ confirm, dialog }` for in-tree imperative use. The dialog node mounts
-once near the layout root; `confirm(...)` pops a confirmation from any
-descendant.
-
-```tsx
-<ConfirmDialog
-  open={confirmOpen}
-  message="This item has text. Delete it?"
-  confirmLabel="Delete"
-  tone="danger"
-  anchorRef={cardRef}
-  onConfirm={...}
-  onCancel={...}
-/>
-```
-
-### Do / don't
-
-- **Don't** call `window.alert` / `window.confirm` / `window.prompt` in
-  app code — these drop the user into OS chrome and can't be themed. Use
-  `useSystemDialog()` instead.
-- **Don't** hand-roll a modal shell (`fixed inset-0 … bg-black/20` + a
-  `rounded-xl` frame). Compose from `SystemDialog` so one edit re-skins
-  everything.
-- **Do** add a new button variant to `SYSTEM_DIALOG_TOKENS.button` rather
-  than reaching for arbitrary Tailwind classnames inline.
-
----
-
-## Target Icon (Jump to Text)
-
-The target icon is a small page with an arrow pointing into it (18x18).
-Always visible on cards at varying opacity:
-- **Selected**: full opacity
-- **Unselected**: 60% opacity
-- **Disabled** (unanchored): 30% opacity
-
-Use `CardTargetIcon` from panel-primitives for consistent behavior.
-Placement: rightmost element in the card header row.
-
----
-
-## View Modes (List / In-Text)
-
-Panels with anchored items support two view modes via `ViewToggle`:
-- **List**: Standard `PANEL.list` scrollable stack with `space-y-2` gaps.
-- **In-text**: Cards absolutely positioned to align with editor scroll height.
-  Uses `useInTextPositions` hook and `in-text-connector` CSS classes.
-
-Toggle button: pill with two icons, active button gets `bg-white shadow-sm`.
-
----
+The panel strip (vertical column of toggles) uses 32×32 icon buttons.
+Active toggle: `bg-pod-dark/80 text-ink-strong`. The panel currently
+focused gets a 2px accent stripe on its leading edge.
 
 ## Buttons
 
-### Primary Action
-Accent-colored background for main submit/add actions:
-```
-bg-[var(--accent)] text-white hover:opacity-90
-```
+Five variants × three sizes via `<Button variant size>`:
 
-### Secondary Action
-Neutral stone for less prominent actions (Insert, Copy, Archive):
-```
-text-stone-500 bg-stone-100 hover:bg-stone-200 hover:text-stone-700 border border-stone-200
-```
+- **primary** — `bg-accent` text white. At most one per surface.
+- **secondary** — `bg-surface border-edge-hover`. The default.
+- **warm** — `bg-accent-light text-accent`. The "Apply / Yes" affordance
+  in suggestion flows.
+- **danger** — `bg-danger-soft text-danger`.
+- **ghost** — transparent. Cancel, skip, de-emphasized.
 
-### Warm Accent Action
-For actions that are prominent but not primary (Restore, etc.):
-```
-text-[var(--accent)] bg-[var(--accent-light)] hover:brightness-95 border border-stone-200
-```
-Never use `bg-blue-50` or other cool tones for action buttons — the app's
-palette is warm (browns, ambers, stones).
+Sizes: `sm` 24px / 12px font, `md` 32px / 13px (default), `lg` 40px /
+14px. All share `rounded-md` (6px).
 
-### Danger Action
-Delete/destructive actions in menus:
-```
-text-red-500 hover:bg-red-50
-```
+Modal footers: rightmost is primary, then ghost cancel to its left,
+destructive (if any) far left. Tab right + enter must not delete.
 
-### Resolve/Confirm
-Positive confirmation actions:
-```
-text-emerald-600 hover:text-emerald-700 font-medium
-```
+## Inputs
 
----
+`bg-surface border-edge-subtle rounded-md` (6px). Focus thickens the
+border to `edge-strong`; no ring on inputs. Placeholder is
+`text-ink-muted`.
 
-## Section Labels
+Card title input is borderless except a `border-bottom: 1px solid
+theme.titleColor` on focus, transparent bg, sans 0.78rem weight 500.
+Don't reuse this style.
 
-Thin uppercase labels that divide card groups within a panel list:
-```
-text-[10px] font-medium text-stone-500 uppercase tracking-wide px-2 mb-1.5
-```
-With a top border when separating sections:
-```
-mt-2 pt-2 border-t border-stone-200
-```
+Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
+Checkbox: 16×16 box, off `border-edge-strong`, on `bg-accent`.
 
----
+## Modals
 
-## Empty States
+`<SystemDialog size>` — three sizes: `sm` 360, `md` 480, `lg` 640. No
+`xl`, no fullscreen.
 
-Use `PANEL.empty` for consistent empty-state messaging:
-```
-p-6 text-center text-sm text-[var(--muted)]
-```
+Anatomy: title row (40px) + body + footer button row. Backdrop is
+`bg-overlay-scrim`, click-to-dismiss.
 
----
+`<ConfirmDialog>` is a `sm` modal pre-wired for delete-with-content
+and discard-unsaved. Anchors near the source element, not screen
+center.
 
-## AI Request Integration
+Don't nest modals. Use a popover for transients over a modal.
 
-Panels that support AI-assisted content creation include:
-- `AiRequestsSectionHeader` — thin uppercase label with count
-- `AiRequestCard` — sky-blue-tinted draggable card with star icon
+## Drag
 
-AI request cards appear at the top of the list, before the panel's own items.
+Three categories.
 
----
+1. **Anchor drag** (paragraph-level reanchor). MIMEs:
+   `MIME_QUOTATION`, `MIME_NOTE`, `MIME_TODO`, `MIME_ARCHIVE_ANCHOR`,
+   `MIME_CUT`, `MIME_MARGINALIA_MOVE`. Ghost: full card snapshot.
+   Drop indicator: 2px solid blue line.
+2. **Inline insert drag** (text-only). MIMEs: `MIME_QUOTE`,
+   `MIME_CITATION`, `MIME_ARCHIVE`, `MIME_FOOTNOTE`,
+   `MIME_AI_REQUEST`, `MIME_TEXT_INSERT`. Ghost: white pill with
+   ellipsis text. Drop indicator: ProseMirror native cursor.
+3. **Selection drag** (selection chip → panel). MIME:
+   `MIME_SELECTION_ANCHOR`. Ghost: small chip with selection excerpt.
 
-## Drag & Drop
+Drop targets get a 2px dashed amber outline (`--ring-drag-target`)
+plus a 12% fill — universal across paragraph drops, panel drops, card
+drops.
 
-Draggable items use custom ghost images matching their category color:
-- **Footnotes**: `#fef2f2` bg, `#b45757` border (red)
-- **Notes**: emerald tones
-- **Citations**: amber/yellow tones
-- **Archive**: `#f5f5f4` bg, `#d6d3d1` border (stone)
-- **AI requests**: `#e0f2fe` bg, `#7dd3fc` border (sky blue)
+## Editor inlines
 
-Ghost elements are appended to body, positioned offscreen, and removed
-after `requestAnimationFrame`.
+Eight kinds, each with its own token group:
 
----
+- Footnote marker (superscript red), citation (warm-yellow brackets),
+  LaTeX comment (steel-blue %), comment Mode B (sky underline), inline
+  math (mono purple), AI request marker (sky star), suggestion mark
+  (amber highlight), linked anchor (invisible until hover).
 
-## Colors & Tokens
+Selection-from-card on inline atoms: 2px ring in
+`--ring-drag-target`. On Mode-B linked spans: kind-specific tint via
+`--link-anchor-color`. On Mode-A paragraph anchors: subtle left-border
+stripe.
 
-| Token | Value | Usage |
-|-------|-------|-------|
-| `var(--accent)` | `#7c5e3c` | Primary accent (warm brown) |
-| `var(--accent-light)` | `#f5f0ea` | Light accent background |
-| `var(--muted)` | `#8a8580` | De-emphasized text |
-| `var(--muted-light)` | `#b5b0aa` | Very subtle text (timestamps, hints) |
-| `var(--border)` | `#e5e2dd` | Standard borders |
-| `var(--border-light)` | `#efecea` | Subtle/inner borders |
-| `var(--background)` | `#faf9f7` | Canvas background |
-| `var(--header-bg)` | `#e8e5de` | Panel header background |
-| `var(--topbar-bg)` | `#e5e4e1` | Top bar background (cooler than header) |
-| `var(--header-h)` | `34px` | Panel header height |
+## Marginalia
 
-### Category Colors (badges, markers)
-| Category | Primary | Background | Border |
-|----------|---------|------------|--------|
-| Footnotes | `#b45757` | `#fef2f2` | `#b45757` |
-| Notes | `#15803d` | `#f0fdf4` | `#86efac` |
-| Citations | `#6b6245` | `#fdf8e1` | `#e0d5a8` |
-| LaTeX comments | `#7191b0` | `#f0f5fa` | `#a8c4de` |
-| Archive | `#7191b0` | `#f0f5fa` | `#a8c1d8` |
+Two gutters (left wider for the heading-fold chevron, right narrower).
+Two-column grid per side (`MARGINALIA_COLS = 2`). Markers anchor to
+paragraph UUIDs.
 
-### Selection
-Selected cards have a colored border + shadow with tinted header, white body:
-- **Footnotes**: `border-red-300`, header `bg-red-50/60`
-- **Notes**: `border-emerald-300`, header `bg-emerald-50/60`
-- **Archive**: `border-amber-300`, header `bg-amber-50/60`
-Body text always stays full dark (`#44403c`), never white-on-colored.
+Seven types in `MARKER_META`: `quote`, `note`, `archive`, `revision`,
+`cut`, `todo`, `error`. Each derives its color quartet from the
+matching panel theme accent via `markerPaletteFromAccent()`.
 
-### Highlight / Attention Color
-When a UI element needs to signal "active attention point" or "hidden
-content below" — e.g. the outline's current-position lozenge or a folded
-heading's chevron — use the footnote red: `var(--footnote-color, #b45757)`.
-This is the app's canonical "reddish highlight" and keeps attention cues
-consistent across the editor, outline, and margin gutter.
+Click → opens panel + selects card + scrolls. Cmd-click → opens
+without scrolling. Hover → highlights linked text range.
 
----
+## Top bar
 
-## Margin Elements (Marginalia)
+40px, `--topbar-bg`. One row. Slots: logo, project tabs, title bar, AI
+status, user menu. Hovers use `hover-on-dark`. The active-project tab
+joins the canvas via the locked `--main-tab-bg` = `--background`
+alias.
 
-- **Grid**: 2 columns per gutter side (`MARGINALIA_COLS = 2`).
-- **Icon size**: 22px squares with 2px row gap.
-- Markers are **draggable** (cursor: grab) and support keyboard delete.
-- Quotes and notes support **multi-anchor** (same item linked to
-  multiple paragraphs).
-- Drag indicator: **vertical line** on the gutter side spanning the
-  full paragraph height. Horizontal ProseMirror drop cursor is hidden
-  during paragraph-linking drags.
+## Suggestion vocabulary
 
----
+Three keys for binary acceptance: **Y** accept, **N** reject, **S**
+skip. Used wherever a user reviews items — extend to any new
+accept/reject flow.
 
-## Link Architecture
+## What this guide does not cover
 
-Every connection between an in-editor element and a side-panel card is a
-`Link`. Links are declared in [src/links/link-registry.ts](links/link-registry.ts),
-modeled by a discriminated union in [src/links/_shared/types.ts](links/_shared/types.ts),
-and manipulated through the unified API in [src/links/links.ts](links/links.ts).
-
-### Three kinds
-
-| Kind | Anchor | Marker | Connector | Multiplicity | Modes |
-|---|---|---|---|---|---|
-| `footnote` | inline atom | superscript number | on-select SVG curve | one | — |
-| `citation` | inline atom | styled pill | on-select SVG curve | one | — |
-| `anchor` | paragraph + optional text range | gutter icon (+ text-range highlight for Mode B) | none | many | A: paragraph only · B: paragraph + text range |
-
-Mode is derived, not declared: an `anchor` link is Mode B iff
-`anchor.textRange` is populated. `isModeB(link)` in
-`src/links/_shared/types.ts` codifies this.
-
-### Agent Legibility Contract
-
-Every cross-document reference in Virgil follows one DOM contract, no
-exceptions. Parsers (including Claude Cowork) may assume exactly these
-three attributes:
-
-- `data-link-id="<uuid>"` — the link's stable id.
-- `data-link-kind="footnote | citation | anchor"` — which kind.
-- `data-link-card="<cardKind>:<cardId>"` — the target card, in the same
-  format used by `popKey()` in `panel-registry.ts`.
-
-On the in-editor marker (footnote atom, citation atom, linkedAnchor
-mark span): all three are present.
-
-On the panel card element: `data-link-card` is present; multi-anchor
-cards may also carry `data-link-ids="<id1> <id2> …"`.
-
-### Tiptap JSON
-
-The same three attrs appear on the serialized doc, so a fresh parse
-can reconstruct the link graph without runtime state:
-
-```jsonc
-// footnote (inline atom)
-{ "type": "footnote",
-  "attrs": { "linkId": "...", "linkKind": "footnote", "linkCard": "footnote:...",
-             "number": 4, "content": {...}, "title": "" } }
-
-// citation (inline atom)
-{ "type": "citation",
-  "attrs": { "linkId": "...", "linkKind": "citation", "linkCard": "citation:...",
-             "command": "\\citep{...}", "displayText": "..." } }
-
-// anchor, Mode B — mark on a text range
-{ "type": "text", "text": "contentious phrase",
-  "marks": [{ "type": "linkedAnchor",
-              "attrs": { "linkId": "...", "linkKind": "anchor",
-                         "linkCard": "note:..." } }] }
-```
-
-Mode A anchor links have no inline node — their only in-doc trace is
-the paragraph UUID on the anchorable node. They live in the target
-card's sidecar. `derivedLinksForCard(cardKind, card)` in
-[src/links/links.ts](links/links.ts) produces a canonical `Link[]`
-from any card record (legacy-field-aware); this is the Cowork entry
-point for reading card sidecars.
-
-### Coupled highlight
-
-Margin icon and Mode B text range share one highlight state, keyed by
-`linkId`. Hovering or selecting either end lights up both — CSS-only,
-driven by `data-link-highlight` written by
-[useLinkHighlight](links/_shared/useLinkHighlight.ts).
-
-The pref `alwaysShowLinkedText` (toggle in View → Marginalia) adds
-`data-always-show-links="true"` on the editor root; CSS then gives every
-Mode B text range a subtle persistent background, intensified on
-hover/select.
-
-### Multiplicity
-
-`LINK_REGISTRY[kind].multiplicity` is `"one"` for `footnote` / `citation`
-and `"many"` for `anchor`. Enforced at runtime in `createLink` via
-`enforceMultiplicity`.
-
-### Do / don't
-
-- **Do** call `jumpToLink` / `resolveLink` / `deleteLink` — never reach
-  into `editor.view.dom.querySelector('[data-<kind>-id=…]')` from a
-  panel. The only canonical id attribute is `data-link-id`.
-- **Do** add a new link kind by adding a `LinkRegistryEntry` and, if
-  needed, a per-kind subfolder in `src/links/<Kind>/`.
-- **Don't** add new `data-<kind>-id` or `data-<kind>-entry` attributes.
-  Extend the unified contract, don't sidestep it.
-- **Don't** add per-kind connector components; extend `LinkConnector`.
-- **Don't** store anchor state in two places. For card sidecars, prefer
-  `derivedLinksForCard` over reading legacy fields directly.
+Empty-state designs, first-run onboarding, AI-pass review modes, the
+6-dot vs 3-line drag-handle decision, the marginalia overflow design.
+These are real design questions but they are **product decisions**, not
+systematization. Track them separately. See
+`docs/virgil-design-system/10-audit.md` for the deferred list.
