@@ -62,6 +62,28 @@ This one site in `panel-primitives.tsx:41` is the unselected card's resting hove
 
 ---
 
+## Pass 4 — Icon buttons
+
+### `[OPEN] iconbtn-* has no dark-context variant`
+The `.iconbtn-sm/md/lg` utility hovers to `--surface-muted-strong` (light grey). On colored card headers (`bg-red-100`, `bg-emerald-100`, `bg-amber-100` …) — where `TargetIcon` and `TargetFileIcon` live — this creates a light-grey patch on hover where the original used `rgba(0, 0, 0, 0.04)` overlay (subtle darken). I converted those two icons in Pass 4 anyway because they fit the rest of `iconbtn-*`'s contract. The visual shift is small but real.
+**Action:** add an `iconbtn-on-dark` variant (or similar) that swaps the hover bg to the dark-overlay model, OR scope a per-context override (e.g. `[data-card-selected="true"] .iconbtn-md:hover { background-color: rgba(0,0,0,0.04); }`). Worth revisiting in Pass 6 when card headers are reworked.
+
+### `[OPEN] iconbtn-* doesn't model accent or active states`
+Many topbar/strip/tab buttons in `EditorLayout.tsx` couldn't convert because they have:
+- `hover:text-[var(--accent)]` (accent text on hover, not muted-grey)
+- `bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(...)]` on active state
+- `aria-pressed="true"` styled with theme accent, not the default `--pod-dark`
+
+The spec's `aria-pressed="true"` styling for `iconbtn-*` uses `--pod-dark` (grey) which is the wrong color for these toggles. Pass 5's button-variant system might subsume some of these, but accent-text icon buttons specifically don't have a clean home. **Action:** either codify an `iconbtn-accent` variant, or accept that some icon buttons stay hand-rolled and document the convention.
+
+### `[INFO] Pass 4's stated surface is narrower than the codebase's icon-button surface`
+MIGRATION.md Pass 4 names: "panel headers, top bar, card chrome (popout, trash), modal headers, menu items." But the codebase also has formatting toolbars (BibEntryCard, RichTextField, MenuBar) and sub-spec chevrons (OutlinePanel) that look like icon buttons but have legitimate reasons not to use `iconbtn-*` (different colors, different sizes, accent semantics, dark-variant context). Leaving them out is right — but the migration doc could be more explicit about which call sites are in scope vs out. **Action:** edit MIGRATION.md Pass 4 to say "out of scope: formatting toolbars and dense-context chevrons."
+
+### `[OPEN] transition-colors cleanup is partial`
+The five centralized conversions in `panel-primitives.tsx` had their `transition-colors` removed (since `iconbtn-*` provides `transition: bg + color`). The Pass 3 hover sweep (~110 sites) still carries redundant `transition-colors`, which the [Pass 3 feedback already flagged](#open-transition-colors-is-now-redundant-on-swept-elements). Pass 4 was the natural moment for that broader cleanup; per spec ("Remove now-redundant `transition-colors` and `focus:ring-*`") the icon-button class strips it for icon buttons but not for the menu rows / list items from Pass 3. **Action:** sweep `transition-colors` from sites that now have `hover-on-light` or `hover-on-dark`. Mechanical.
+
+---
+
 ## Cross-cutting themes
 
 ### `[OPEN] Migration doc's "wide sweep" framing has been over-conservative twice`
