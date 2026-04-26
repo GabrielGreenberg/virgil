@@ -119,6 +119,40 @@ The new Button uses `disabled:opacity-40 disabled:pointer-events-none`. The lega
 
 ---
 
+## Pass 6 — Theme shape
+
+### `[INFO] One source of truth: themeFromAccent(accent)`
+The whole `CardTheme` shape is now derived from a single accent hex via `themeFromAccent` in `src/lib/panel-theme.ts`. `CARD_THEMES` in panel-primitives.tsx is now eleven `themeFromAccent(...)` calls. The legacy nine-field rows (mixed Tailwind classes for headers + hex for badges) are gone. Every header / separator / selected-border is now a solid hex applied via inline `style`.
+
+### `[INFO] Override system removed`
+`theme.override`, `cardOverrideStyle`, `headerOverrideStyle`, `separatorOverrideStyle` are deleted. User color overrides flow through `useCardTheme(panelKey)` which now just calls `themeFromAccent(getPanelColor(key))` — picking the user's color when present, default otherwise. The render path doesn't know overrides exist; it just reads `theme.headerSelected` etc.
+
+### `[INFO] Header tints recomputed via blendOverWhite`
+The previous `rgba(tint(base, 0.85), 0.35)` formula is now pre-mixed over white into solid hexes. The math is equivalent for opaque parents (which is the case everywhere card headers live), so the visible color is identical to before. The benefit is no compositing surprise on tinted backdrops and no "headerBg + override.headerBg" double-write bug surface.
+
+### `[OPEN] Patch typo: comment → revision`
+The patch file specified `comment: themeFromAccent(DEFAULT_PANEL_COLORS.revision)` (purple). The legacy `comment` row was stone-themed (`bg-stone-100/60`, `border-stone-400`), and the only consumer in this codebase is the SearchPanel result card I converted in Pass 2 (which deliberately wanted neutral stone, not panel-themed). Switching to revision/purple would re-tint search-result selection borders purple. **I deviated from the patch and used `DEFAULT_PANEL_COLORS.todo` (stone)** to preserve the original visual intent. Worth confirming this with the design author — if they really did mean purple, swap one line in panel-primitives.tsx CARD_THEMES.
+
+### `[INFO] aiRequest is system-themed (not user-customizable)`
+Per patch: `aiRequest: themeFromAccent("#0ea5e9")` (sky). Hardcoded because AI requests aren't a user-customizable panel — they're a system-level kind. The accent is fixed in panel-primitives.tsx; if the design changes the AI accent later, edit that one line.
+
+### `[INFO] error shares the footnote rust accent`
+Per patch. Error cards now derive from `DEFAULT_PANEL_COLORS.footnote` (#b45757). Visually unchanged — they were already red — but now share the math, so a user override of the footnote color would also re-tint errors. That coupling might or might not be desired (errors are a system-level kind). Not a bug; flagging because the coupling is implicit in the patch.
+
+### `[INFO] Quotation card now reads theme.headerSelected/Default instead of hardcoded amber`
+QuotationGroupCard's header was previously a hand-rolled `bg-amber-50/60` / `bg-amber-50/30` Tailwind pair, with `headerOverrideStyle` only kicking in for user color overrides. With Pass 6 the card now uses `theme.headerDefault` / `theme.headerSelected` from the citation theme directly — meaning user color overrides on the `quote` panel now flow through. The default visual is the same amber tint; the difference shows when a user picks a custom color.
+
+### `[INFO] BibliographyPanel and similar in-text panels`
+Five panels (Bibliography, Cutter, Notes, Revisions, Todo) have inline-rendered `inTextRenderItem` selected-row styling that read `theme.override?.selectedBorder ?? theme.badgeBorder` and `theme.override?.headerBgSelected`. After Pass 6 these become `theme.borderSelected` and `theme.headerSelected` directly (no fallback chain). Default visuals match — the fallback was `badgeBorder` which is roughly the same color family as `borderSelected`. User overrides now apply universally where they did before only via `override.*`.
+
+### `[INFO] Marginalia gutter icons unchanged`
+Marginalia.tsx already used `deriveMarkerPalette(getPanelColor(themeKey))` for user overrides, so the user-color flow was already working. The marginalia.ts `MARKER_META` table is now derived via `markerPaletteFromAccent(DEFAULT_PANEL_COLORS[…])` — small visible change for `archive` (corrected `#5a7a99` → `#7191b0` to match the panel theme exactly, per the patch's "audit drift" note).
+
+### `[OPEN] DEFAULT_PANEL_COLORS doesn't include comment / aiRequest / error`
+These three "card kinds" have themes in `CARD_THEMES` but no panel registry entry (no user can re-color them). When their accent comes from `DEFAULT_PANEL_COLORS` (e.g., error → footnote, comment → todo per my deviation), they re-color when their proxy panel is re-colored. When they hardcode (aiRequest → "#0ea5e9"), they don't. This is the patch's intent but worth knowing because user expectation might be "I changed the footnote color and now my error cards look different too."
+
+---
+
 ## Cross-cutting themes
 
 ### `[OPEN] Migration doc's "wide sweep" framing has been over-conservative twice`
