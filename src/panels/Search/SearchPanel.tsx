@@ -637,7 +637,7 @@ function MoreScopesDropdown({
                   e.stopPropagation();
                   onToggle(s);
                 }}
-                className="w-full flex items-center gap-2 px-2.5 py-1 text-[11px] text-left hover-on-light transition-colors"
+                className="w-full flex items-center gap-2 px-2.5 py-1 text-[11px] text-left hover-on-light"
               >
                 <span
                   aria-hidden

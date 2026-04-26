@@ -171,7 +171,7 @@ function SectionNode({
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 w-full text-left py-1 hover-on-light rounded transition-colors"
+        className="flex items-center gap-1.5 w-full text-left py-1 hover-on-light rounded"
         style={{ paddingLeft: depth * 12 }}
       >
         <svg

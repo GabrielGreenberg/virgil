@@ -326,7 +326,7 @@ function Section({
     <div className="rounded-lg border border-edge-subtle bg-surface-muted/40 overflow-hidden">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 w-full text-left px-3 py-2 hover-on-light transition-colors"
+        className="flex items-center gap-2 w-full text-left px-3 py-2 hover-on-light"
       >
         <svg
           width="10"

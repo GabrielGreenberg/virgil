@@ -153,7 +153,7 @@ export function OmniFilterMenu({
     <button
       key={cat}
       onMouseDown={(e) => { e.preventDefault(); onToggle(cat); }}
-      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light transition-colors flex items-center justify-between gap-3"
+      className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
     >
       <span>{CATEGORY_LABELS[cat] ?? cat}</span>
       <span className="text-[var(--accent)]">{enabled.has(cat) ? "✓" : ""}</span>
@@ -165,7 +165,7 @@ export function OmniFilterMenu({
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light transition-colors flex items-center justify-center"
+        className="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover-on-light flex items-center justify-center"
         title="Filter items"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
@@ -182,7 +182,7 @@ export function OmniFilterMenu({
         >
           <button
             onMouseDown={(e) => { e.preventDefault(); onSelectDefault(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light transition-colors flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
           >
             <span>Default view</span>
             <span className="text-[var(--accent)]">{isDefault ? "✓" : ""}</span>

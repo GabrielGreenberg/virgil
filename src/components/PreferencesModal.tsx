@@ -141,7 +141,7 @@ function PresetBar({
 
       <button
         onClick={handleSave}
-        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light transition-colors whitespace-nowrap"
+        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light whitespace-nowrap"
       >
         {saving ? "OK" : "Save"}
       </button>

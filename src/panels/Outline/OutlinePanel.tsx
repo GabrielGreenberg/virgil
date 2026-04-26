@@ -598,7 +598,7 @@ function OutlineNode({
     <div>
       <div
         data-outline-pos={`h-${node.heading.index}`}
-        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover-on-light"}`}
+        className={`flex items-start gap-1 group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
         style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: isOutsideFocus ? undefined : "relative", zIndex: isOutsideFocus ? undefined : 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
@@ -667,7 +667,7 @@ function OutlineNode({
               <div
                 key={`pt-${i}`}
                 data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
+                className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: `${(depth + 1) * 16 + 24}px`,
                   paddingRight: 8,
@@ -1687,7 +1687,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             {/* Fixed top row — document start / title */}
             <div
               data-outline-pos="docstart"
-              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+              className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
               style={{
                 paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
                 opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
@@ -1732,7 +1732,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                     <div
                       key={`preamble-pt-${i}`}
                       data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                      className={`cursor-pointer rounded text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptOutside ? 0.3 : 1,

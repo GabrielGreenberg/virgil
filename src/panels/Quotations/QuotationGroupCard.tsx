@@ -514,7 +514,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
               e.stopPropagation();
               setEditingCiteKey(true);
             }}
-            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover transition-colors flex-shrink-0"
+            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
             title="Edit cite key"
           >
             Edit

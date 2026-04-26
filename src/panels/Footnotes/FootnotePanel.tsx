@@ -159,7 +159,7 @@ function FootnotePanel({
               onDragStart={(e) =>
                 startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
               }
-              className="px-1 py-2 border-b border-b-edge-subtle cursor-grab active:cursor-grabbing hover-on-light transition-colors"
+              className="px-1 py-2 border-b border-b-edge-subtle cursor-grab active:cursor-grabbing hover-on-light"
             >
               <div className="flex items-start gap-2">
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 mt-0.5">

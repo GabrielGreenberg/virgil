@@ -86,8 +86,8 @@ function FormatToolbar({
   if (!editor) return null;
 
   const btnClass = selected
-    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark transition-colors"
-    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light transition-colors";
+    ? "w-6 h-6 flex items-center justify-center rounded text-xs text-white/80 hover-on-dark"
+    : "w-6 h-6 flex items-center justify-center rounded text-xs text-ink-body hover-on-light";
   const dividerClass = selected
     ? "w-px h-4 bg-surface/20 mx-0.5"
     : "w-px h-4 bg-[var(--border-light)] mx-0.5";
