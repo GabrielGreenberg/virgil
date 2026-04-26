@@ -218,6 +218,7 @@ import {
   IconTodo,
   IconErrors,
 } from "@/components/editor-layout/panel-icons";
+import { DEFAULT_PANEL_COLORS, markerPaletteFromAccent } from "@/lib/panel-theme";
 
 const MARGIN_ICON_SIZE = 16;
 
@@ -229,77 +230,27 @@ const CutIcon = React.createElement(IconCutter, { size: MARGIN_ICON_SIZE });
 const TodoIcon = React.createElement(IconTodo, { size: MARGIN_ICON_SIZE });
 const ErrorIcon = React.createElement(IconErrors, { size: MARGIN_ICON_SIZE });
 
+/** Build a MARKER_META row by deriving the color quartet from a panel-theme accent.
+ *  All marginalia markers share the same `markerPaletteFromAccent` math so a
+ *  user color override on a panel re-tints its gutter icon automatically. */
+function meta(
+  accentKey: keyof typeof DEFAULT_PANEL_COLORS,
+  base: { label: string; panelId: PanelId; defaultSide: "left" | "right"; icon: React.ReactNode },
+): MarkerMeta {
+  const palette = markerPaletteFromAccent(DEFAULT_PANEL_COLORS[accentKey]);
+  return { ...base, ...palette };
+}
+
 export const MARKER_META: Record<MarkerType, MarkerMeta> = {
-  quote: {
-    label: "Quotation",
-    panelId: "quotations",
-    defaultSide: "left",
-    color: "#a16207",
-    bg: "#fffbeb",
-    selectedBg: "#fde68a",
-    border: "#fcd34d",
-    icon: QuoteIcon,
-  },
-  note: {
-    label: "Note",
-    panelId: "notes",
-    defaultSide: "right",
-    color: "#15803d",
-    bg: "#f0fdf4",
-    selectedBg: "#bbf7d0",
-    border: "#86efac",
-    icon: NoteIcon,
-  },
-  archive: {
-    label: "Archived",
-    panelId: "archive",
-    defaultSide: "right",
-    color: "#5a7a99",
-    bg: "#f0f5fa",
-    selectedBg: "#dbeafe",
-    border: "#a8c1d8",
-    icon: ArchiveIcon,
-  },
-  revision: {
-    label: "Revision",
-    panelId: "revisions",
-    defaultSide: "right",
-    color: "#9333ea",
-    bg: "#faf5ff",
-    selectedBg: "#e9d5ff",
-    border: "#d8b4fe",
-    icon: RevisionIcon,
-  },
-  cut: {
-    label: "Cut",
-    panelId: "cutter",
-    defaultSide: "right",
-    color: "#b45757",
-    bg: "#fef2f2",
-    selectedBg: "#fecaca",
-    border: "#fca5a5",
-    icon: CutIcon,
-  },
-  todo: {
-    label: "Todo",
-    panelId: "todo",
-    defaultSide: "right",
-    color: "#44403c",
-    bg: "#f5f5f4",
-    selectedBg: "#d6d3d1",
-    border: "#a8a29e",
-    icon: TodoIcon,
-  },
-  error: {
-    label: "Error",
-    panelId: "errors",
-    defaultSide: "right",
-    color: "#b45757",
-    bg: "#fef2f2",
-    selectedBg: "#fecaca",
-    border: "#f5a5a5",
-    icon: ErrorIcon,
-  },
+  quote:    meta("quote",    { label: "Quotation", panelId: "quotations", defaultSide: "left",  icon: QuoteIcon }),
+  note:     meta("note",     { label: "Note",      panelId: "notes",      defaultSide: "right", icon: NoteIcon }),
+  archive:  meta("archive",  { label: "Archived",  panelId: "archive",    defaultSide: "right", icon: ArchiveIcon }),
+  revision: meta("revision", { label: "Revision",  panelId: "revisions",  defaultSide: "right", icon: RevisionIcon }),
+  cut:      meta("cut",      { label: "Cut",       panelId: "cutter",     defaultSide: "right", icon: CutIcon }),
+  todo:     meta("todo",     { label: "Todo",      panelId: "todo",       defaultSide: "right", icon: TodoIcon }),
+  // error reuses the footnote rust accent intentionally — same color family,
+  // distinguished by the icon glyph.
+  error:    meta("footnote", { label: "Error",     panelId: "errors",     defaultSide: "right", icon: ErrorIcon }),
 };
 
 /** Number of icon columns per row in the gutter grid */

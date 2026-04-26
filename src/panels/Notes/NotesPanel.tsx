@@ -243,8 +243,8 @@ export default function NotesPanel({
       inTextRenderItem={(note, { selected, top: _top }) => {
         const preview = richJsonToPlainText(note.content) || "";
         const borderColor =
-          noteTheme.override?.selectedBorder ?? noteTheme.badgeBorder;
-        const selectedBg = noteTheme.override?.headerBgSelected;
+          noteTheme.borderSelected;
+        const selectedBg = noteTheme.headerSelected;
         return (
           <div
             data-note-entry={note.id}

@@ -5,51 +5,24 @@ import {
   type PanelThemeKey,
   type DerivedCardPalette,
   type DerivedMarkerPalette,
+  type CardTheme,
   DEFAULT_PANEL_COLORS,
   deriveCardPalette,
   deriveMarkerPalette,
+  themeFromAccent,
   getPanelColor,
   getPanelColorVersion,
   isPanelColorOverridden,
   loadPanelColors,
   subscribePanelColors,
 } from "@/lib/panel-theme";
-import { CARD_THEMES, type CardTheme } from "@/components/panel-primitives";
 
-/** Map a PanelThemeKey to the corresponding CARD_THEMES entry. */
-const CARD_THEME_BY_KEY: Record<PanelThemeKey, keyof typeof CARD_THEMES> = {
-  citation: "citation",
-  bib:      "bib",
-  footnote: "footnote",
-  note:     "note",
-  archive:  "archive",
-  quote:    "citation", // QuotationsPanel cards are themed inline; uses citation base
-  todo:     "todo",
-  cut:      "cut",
-  revision: "note",     // placeholder — revision cards aren't themed yet
-  example:  "example",
-};
-
-/** Return the CardTheme for `key`, augmented with `override` derived from the
- *  current user color when one is set. Triggers re-render on color change. */
+/** Return the fully-derived CardTheme for `key`. The accent comes from
+ *  the user's color override when one is set; otherwise from
+ *  `DEFAULT_PANEL_COLORS`. Re-derives on color change. */
 export function useCardTheme(key: PanelThemeKey): CardTheme {
   useThemeVersion();
-  const base = CARD_THEMES[CARD_THEME_BY_KEY[key]];
-  if (!isPanelColorOverridden(key)) return base;
-  const p = deriveCardPalette(getPanelColor(key));
-  return {
-    ...base,
-    badgeBg: p.badgeBg,
-    badgeColor: p.badgeColor,
-    badgeBorder: p.badgeBorder,
-    titleColor: p.titleColor,
-    override: {
-      headerBg: p.headerBg,
-      headerBgSelected: p.headerBgSelected,
-      separatorColor: p.separatorColor,
-      selectedBorder: p.selectedBorder,
-    },
-  };
+  return themeFromAccent(getPanelColor(key));
 }
 
 /** Subscribe to the global theme-override version counter. */

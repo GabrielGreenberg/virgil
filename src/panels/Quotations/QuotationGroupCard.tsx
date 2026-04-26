@@ -19,7 +19,6 @@ import {
   PANEL,
   Chevron,
   TargetIcon,
-  headerOverrideStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -730,8 +729,8 @@ export function QuotationGroupCard({
     >
       <div
         ref={headerRef}
-        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? "bg-amber-50/60" : "bg-amber-50/30"}`}
-        style={headerOverrideStyle(theme, selected)}
+        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
+        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
       >
         <div
           draggable
@@ -769,7 +768,7 @@ export function QuotationGroupCard({
           className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
           style={{
             fontSize: "var(--par-title-size, 0.78rem)",
-            color: theme.override ? theme.titleColor : "#92700a",
+            color: theme.titleColor,
             fontWeight: 500,
             fontFamily: "var(--font-sans), Inter, sans-serif",
             letterSpacing: "0.02em",

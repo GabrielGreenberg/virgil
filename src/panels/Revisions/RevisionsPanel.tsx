@@ -254,10 +254,8 @@ export default function RevisionsPanel({
         if (it.kind !== "text") return null;
         const r = it.data;
         const borderColor =
-          revisionTheme.override?.selectedBorder ?? "#9333ea";
-        const selectedBg =
-          revisionTheme.override?.headerBgSelected ??
-          "rgba(147, 51, 234, 0.08)";
+          revisionTheme.borderSelected;
+        const selectedBg = revisionTheme.headerSelected;
         return (
           <div
             data-revision-entry={r.id}

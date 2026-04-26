@@ -196,8 +196,8 @@ export default function TodoPanel({
       )}
       inTextRenderItem={(item, { selected, top }) => {
         const borderColor =
-          todoTheme.override?.selectedBorder ?? todoTheme.badgeBorder;
-        const selectedBg = todoTheme.override?.headerBgSelected;
+          todoTheme.borderSelected;
+        const selectedBg = todoTheme.headerSelected;
         return (
           <div
             data-todo-entry={item.id}

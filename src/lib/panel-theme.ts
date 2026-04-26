@@ -145,14 +145,14 @@ function readableOnWhite(hex: string): string {
 /* ── Derived palettes ────────────────────────────────────────────── */
 
 export interface DerivedCardPalette {
-  /** Always-on header tint (inline style). */
-  headerBg: string;
-  /** Intensified header tint when card selected. */
-  headerBgSelected: string;
-  /** Separator color (border) when card selected. */
-  separatorColor: string;
-  /** Card wrapper border color when selected. */
-  selectedBorder: string;
+  /** Always-on header tint. Solid hex, pre-mixed with white. */
+  headerDefault: string;
+  /** Intensified header tint when card selected. Solid hex. */
+  headerSelected: string;
+  /** Separator color (border) when card selected. Solid hex. */
+  separatorSelected: string;
+  /** Card wrapper border color when selected. Solid hex. */
+  borderSelected: string;
   /** Badge fill / text / border. */
   badgeBg: string;
   badgeColor: string;
@@ -172,16 +172,27 @@ export interface DerivedMarkerPalette {
   border: string;
 }
 
-/** Derive the full card palette from a base hex. */
+/** Compose a tinted hex over white at a given alpha — produces a solid hex. */
+function blendOverWhite(tintHex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(tintHex);
+  const W = 255;
+  const mix = (c: number) => Math.round(c * alpha + W * (1 - alpha));
+  return rgbToHex(mix(r), mix(g), mix(b));
+}
+
+/** Derive the full card palette from a base hex.
+ *  Header tints are pre-mixed with white into solid hexes (no rgba),
+ *  so they apply cleanly via inline style without compositing surprises
+ *  on tinted parents. */
 export function deriveCardPalette(baseHex: string): DerivedCardPalette {
   const badgeBg = tint(baseHex, 0.88);
   const badgeBorder = tint(baseHex, 0.35);
   const badgeColor = readableOnWhite(baseHex);
   return {
-    headerBg: rgba(tint(baseHex, 0.85), 0.35),
-    headerBgSelected: rgba(tint(baseHex, 0.82), 0.7),
-    separatorColor: tint(baseHex, 0.55),
-    selectedBorder: atLightness(baseHex, 0.62),
+    headerDefault:    blendOverWhite(tint(baseHex, 0.85), 0.35),
+    headerSelected:   blendOverWhite(tint(baseHex, 0.82), 0.7),
+    separatorSelected: tint(baseHex, 0.55),
+    borderSelected:   atLightness(baseHex, 0.62),
     badgeBg,
     badgeColor,
     badgeBorder,
@@ -197,6 +208,20 @@ export function deriveMarkerPalette(baseHex: string): DerivedMarkerPalette {
     selectedBg: tint(baseHex, 0.6),
     border: tint(baseHex, 0.45),
   };
+}
+
+/** Alias for `deriveMarkerPalette` to read fluently at MARKER_META call sites. */
+export const markerPaletteFromAccent = deriveMarkerPalette;
+
+/** A complete CardTheme — derived from one accent color. */
+export interface CardTheme extends DerivedCardPalette {
+  /** Original accent (the only token a theme needs to author). */
+  accent: string;
+}
+
+/** Build a complete CardTheme from one accent hex. */
+export function themeFromAccent(accent: string): CardTheme {
+  return { accent, ...deriveCardPalette(accent) };
 }
 
 /* ── Mutable override registry + subscriptions ───────────────────── */

@@ -17,8 +17,6 @@ import {
   PanelCard,
   PANEL,
   TargetIcon,
-  headerOverrideStyle,
-  separatorOverrideStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -250,8 +248,8 @@ export function CitationCard({
       ) : (
         <>
           <div
-            className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
-            style={headerOverrideStyle(theme, isSelected)}
+            className="flex items-center gap-2 pl-3 pr-7 py-1.5"
+            style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
           >
             <div
               data-panel-kind="citation"
@@ -282,8 +280,8 @@ export function CitationCard({
           </div>
 
           <div
-            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={separatorOverrideStyle(theme, isSelected)}
+            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
 
           <div
@@ -361,8 +359,8 @@ export function CitationCard({
           </div>
 
           <div
-            className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={separatorOverrideStyle(theme, isSelected)}
+            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
           />
 
           <div className="flex items-center gap-1.5 min-w-0 px-3 py-1 bg-surface-muted/30">

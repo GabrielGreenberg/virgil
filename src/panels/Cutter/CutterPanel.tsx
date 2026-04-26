@@ -186,8 +186,8 @@ export default function CutterPanel({
       inTextRenderItem={(cut, { selected }) => {
         const preview = richJsonToPlainText(cut.content) || "";
         const borderColor =
-          cutTheme.override?.selectedBorder ?? cutTheme.badgeBorder;
-        const selectedBg = cutTheme.override?.headerBgSelected;
+          cutTheme.borderSelected;
+        const selectedBg = cutTheme.headerSelected;
         return (
           <div
             data-cut-entry={cut.id}

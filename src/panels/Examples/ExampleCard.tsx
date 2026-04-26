@@ -5,8 +5,6 @@ import {
   PanelCard,
   BadgeLabel,
   CardTargetIcon,
-  cardOverrideStyle,
-  headerOverrideStyle,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 
@@ -32,8 +30,6 @@ export function ExampleCard({
 }: ExampleCardProps) {
   const theme = useCardTheme("example");
   const kindLabel = example.kind === "multi" ? "\\pex" : "\\ex";
-  void cardOverrideStyle;
-  void headerOverrideStyle;
 
   return (
     <PanelCard
@@ -45,9 +41,8 @@ export function ExampleCard({
       data-link-card={`example:${example.exampleId}`}
     >
       <div
-        className={`flex items-center gap-2 px-3 py-1.5 border-b border-[var(--border-light)] ${
-          isSelected ? theme.headerSelected : theme.headerDefault
-        }`}
+        className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--border-light)]"
+        style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
         <BadgeLabel
           label={example.number || "?"}

@@ -829,8 +829,8 @@ function BibliographyPanel({
         const year = entry.fields.year || "";
         const title = entry.fields.title || "";
         const borderColor =
-          bibTheme.override?.selectedBorder ?? bibTheme.badgeBorder;
-        const selectedBg = bibTheme.override?.headerBgSelected;
+          bibTheme.borderSelected;
+        const selectedBg = bibTheme.headerSelected;
         return (
           <div
             data-bib-entry={entry.key}

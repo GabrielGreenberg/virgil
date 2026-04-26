@@ -161,8 +161,11 @@ export function ErrorCard({
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >
       <div
-        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
-        style={{ borderLeft: `3px solid ${SEVERITY_COLOR[err.severity]}` }}
+        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
+        style={{
+          backgroundColor: selected ? theme.headerSelected : theme.headerDefault,
+          borderLeft: `3px solid ${SEVERITY_COLOR[err.severity]}`,
+        }}
       >
         <div
           draggable
@@ -209,7 +212,8 @@ export function ErrorCard({
       </div>
 
       <div
-        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
+        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
       <div

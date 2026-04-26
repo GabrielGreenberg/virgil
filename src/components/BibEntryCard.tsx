@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, headerOverrideStyle, separatorOverrideStyle, Button } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, Button } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -436,8 +436,8 @@ export default function BibEntryCard({
     >
       {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
-        className={`flex items-start gap-2 pl-3 pr-7 py-1.5 ${isSelected ? theme.headerSelected : theme.headerDefault}`}
-        style={headerOverrideStyle(theme, isSelected)}
+        className="flex items-start gap-2 pl-3 pr-7 py-1.5"
+        style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
         <div
           data-panel-kind="bib"
@@ -495,8 +495,8 @@ export default function BibEntryCard({
 
       {/* Separator */}
       <div
-        className={`border-t transition-colors ${isSelected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={separatorOverrideStyle(theme, isSelected)}
+        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
       {/* Body */}

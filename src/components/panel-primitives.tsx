@@ -32,6 +32,7 @@ import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-conten
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
+import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -76,85 +77,42 @@ export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlai
 
 /* ── EditableCard — shared card for RichTextField-bearing panels ──── */
 
-/** Theme configuration for an EditableCard. */
-export interface CardTheme {
-  /** Tailwind border class applied when the card is selected.
-   *  E.g. `"border-red-300"` for footnote, `"border-emerald-300"` for note.
-   *  Combined with `bg-surface shadow-sm` by `themedCard()`. */
-  borderSelected: string;
-  /** Always-on header tint (shown even when unselected). */
-  headerDefault: string;
-  /** Intensified header tint on selection. */
-  headerSelected: string;
-  separatorSelected: string;
-  /** Badge colors: bg, text/stroke, border — used by badgeLabel & badgeOrphaned. */
-  badgeBg: string;
-  badgeColor: string;
-  badgeBorder: string;
-  /** Title input color for CardTitleInput. */
-  titleColor: string;
-  /** Inline-style overrides used when the user picks a custom panel color.
-   *  When set, they override the Tailwind classnames above via inline `style`. */
-  override?: {
-    headerBg: string;
-    headerBgSelected: string;
-    separatorColor: string;
-    selectedBorder: string;
-  };
-}
+/** Re-export the canonical CardTheme shape from panel-theme. The interface
+ *  lives there because it is fully derived from a single accent hex via
+ *  `themeFromAccent`; this file just consumes it. */
+export type { CardTheme } from "@/lib/panel-theme";
 
 /** Returns the card wrapper class for a theme + selection state.
- *  Selected cards use the theme's `borderSelected`; unselected cards share
- *  the neutral `CARD_DEFAULT` styling. Only call site of selection-border
- *  styling — every card surface in the app routes through here via
- *  `<PanelCard theme={…}>`. */
-export function themedCard(theme: CardTheme, selected: boolean, extra?: string): string {
-  const selectedClasses = `bg-surface ${theme.borderSelected} shadow-sm`;
-  return `${CARD_BASE} ${selected ? selectedClasses : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+ *  Selected cards add `bg-surface shadow-sm`; the selection border colour
+ *  comes from `theme.borderSelected` and is applied via inline style at
+ *  the render site (see `PanelCard`). Unselected cards share the neutral
+ *  `CARD_DEFAULT` styling. */
+export function themedCard(_theme: CardTheme, selected: boolean, extra?: string): string {
+  return `${CARD_BASE} ${selected ? "bg-surface shadow-sm" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
 }
 
-/** Apply inline-style overrides atop the card wrapper. Returns an empty object
- *  when the theme has no override, so default Tailwind classes win. */
-export function cardOverrideStyle(
-  theme: CardTheme,
-  selected: boolean,
-): React.CSSProperties {
-  if (!theme.override) return {};
-  return selected ? { borderColor: theme.override.selectedBorder } : {};
-}
-
-/** Inline-style overrides for the header background. */
-export function headerOverrideStyle(
-  theme: CardTheme,
-  selected: boolean,
-): React.CSSProperties {
-  if (!theme.override) return {};
-  return { backgroundColor: selected ? theme.override.headerBgSelected : theme.override.headerBg };
-}
-
-/** Inline-style overrides for the card separator. */
-export function separatorOverrideStyle(
-  theme: CardTheme,
-  selected: boolean,
-): React.CSSProperties {
-  if (!theme.override || !selected) return {};
-  return { borderTopColor: theme.override.separatorColor };
-}
-
-/** Pre-built themes for existing card types. Every selection border now matches
- *  the kind's theme color — no more amber-by-default fallback. */
+/** Pre-built themes for existing card types. Each theme is fully derived
+ *  from one accent hex via `themeFromAccent`. User color overrides simply
+ *  replace the accent and re-derive the rest — no more shadow `override`
+ *  field. */
 export const CARD_THEMES = {
-  footnote:  { borderSelected: "border-red-300",     headerDefault: "bg-red-100/60",     headerSelected: "bg-red-100",      separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#b45757", titleColor: "#c45a5a" },
-  note:      { borderSelected: "border-emerald-300", headerDefault: "bg-emerald-100/50", headerSelected: "bg-emerald-100",  separatorSelected: "border-emerald-200", badgeBg: "#f0fdf4", badgeColor: "#15803d", badgeBorder: "#34d399", titleColor: "#15803d" },
-  archive:   { borderSelected: "border-amber-300",   headerDefault: "bg-amber-100/50",   headerSelected: "bg-amber-100",    separatorSelected: "border-amber-200",   badgeBg: "#f0f5fa", badgeColor: "#7191b0", badgeBorder: "#7191b0", titleColor: "#2c5282" },
-  todo:      { borderSelected: "border-stone-400",   headerDefault: "bg-stone-100/70",   headerSelected: "bg-stone-200/80", separatorSelected: "border-edge-hover",  badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  bib:       { borderSelected: "border-amber-300",   headerDefault: "bg-[#fdf8e1]/80",   headerSelected: "bg-[#fdf8e1]",    separatorSelected: "border-[#e0d5a8]",   badgeBg: "#fdf8e1", badgeColor: "#6b6245", badgeBorder: "#e0d5a8", titleColor: "#6b6245" },
-  citation:  { borderSelected: "border-amber-300",   headerDefault: "bg-[#fef3c3]/40",   headerSelected: "bg-[#fef3c3]",    separatorSelected: "border-[#d4a843]",   badgeBg: "#fef3c3", badgeColor: "#4a3f20", badgeBorder: "#d4a843", titleColor: "#4a3f20" },
-  comment:   { borderSelected: "border-stone-400",   headerDefault: "bg-stone-100/60",   headerSelected: "bg-stone-200/70", separatorSelected: "border-edge-hover",  badgeBg: "#f5f5f4", badgeColor: "#44403c", badgeBorder: "#a8a29e", titleColor: "#44403c" },
-  aiRequest: { borderSelected: "border-sky-300",     headerDefault: "bg-sky-100/50",     headerSelected: "bg-sky-100",      separatorSelected: "border-sky-200",     badgeBg: "#e0f2fe", badgeColor: "#0c4a6e", badgeBorder: "#7dd3fc", titleColor: "#0c4a6e" },
-  cut:       { borderSelected: "border-red-300",     headerDefault: "bg-red-100/60",     headerSelected: "bg-red-100",      separatorSelected: "border-red-200",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#fca5a5", titleColor: "#b45757" },
-  error:     { borderSelected: "border-red-300",     headerDefault: "bg-[#fef2f2]/70",   headerSelected: "bg-[#fee2e2]",    separatorSelected: "border-red-300",     badgeBg: "#fef2f2", badgeColor: "#b45757", badgeBorder: "#f5a5a5", titleColor: "#b45757" },
-  example:   { borderSelected: "border-teal-300",    headerDefault: "bg-teal-100/50",    headerSelected: "bg-teal-100",     separatorSelected: "border-teal-200",    badgeBg: "#f0fdfa", badgeColor: "#0f766e", badgeBorder: "#14b8a6", titleColor: "#115e59" },
+  footnote:  themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
+  note:      themeFromAccent(DEFAULT_PANEL_COLORS.note),
+  archive:   themeFromAccent(DEFAULT_PANEL_COLORS.archive),
+  todo:      themeFromAccent(DEFAULT_PANEL_COLORS.todo),
+  bib:       themeFromAccent(DEFAULT_PANEL_COLORS.bib),
+  citation:  themeFromAccent(DEFAULT_PANEL_COLORS.citation),
+  // Deviates from the patch: comment cards are stone-themed, not purple.
+  // The patch used DEFAULT_PANEL_COLORS.revision (#9333ea purple), which
+  // looked like a typo since the legacy comment row was stone. Using
+  // todo's accent keeps the visual continuity. See migration-feedback.md.
+  comment:   themeFromAccent(DEFAULT_PANEL_COLORS.todo),
+  // System-level (not user-customizable): sky blue for AI requests.
+  aiRequest: themeFromAccent("#0ea5e9"),
+  cut:       themeFromAccent(DEFAULT_PANEL_COLORS.cut),
+  // Errors share the footnote rust accent; the icon glyph distinguishes.
+  error:     themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
+  example:   themeFromAccent(DEFAULT_PANEL_COLORS.example),
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -430,8 +388,8 @@ export function EditableCard({
     >
       {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
       <div
-        className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${selected ? theme.headerSelected : theme.headerDefault}`}
-        style={headerOverrideStyle(theme, selected)}
+        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
+        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
       >
         {/* Optional grab handle — sole drag source when present */}
         {grabHandle && onDragStart && (
@@ -480,8 +438,8 @@ export function EditableCard({
 
       {/* Separator */}
       <div
-        className={`border-t transition-colors ${selected ? theme.separatorSelected : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={separatorOverrideStyle(theme, selected)}
+        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
       {/* Body */}
@@ -970,7 +928,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       ref={setRefs}
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
-        ...cardOverrideStyle(theme, selected),
+        ...(selected ? { borderColor: theme.borderSelected } : {}),
         ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
         ...style,
       }}
@@ -1164,7 +1122,10 @@ export function AiRequestCard({
       onDragStart={handleDragStart}
     >
       {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
-      <div className={`flex items-center gap-2 pl-3 pr-7 py-1.5 ${theme.headerDefault}`}>
+      <div
+        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
+        style={{ backgroundColor: theme.headerDefault }}
+      >
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
           title={`AI ${kindLabel} request`}
