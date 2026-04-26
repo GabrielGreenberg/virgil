@@ -10,7 +10,8 @@
     "preview:pages": "NEXT_PUBLIC_BASE_PATH=/virgil next build && npx serve out -p 4173",
     "lint": "eslint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
