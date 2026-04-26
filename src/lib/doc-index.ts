@@ -21,6 +21,8 @@
 
 import { get, set, del, keys, createStore } from "idb-keyval";
 
+import { isDevStorage } from "@/lib/storage-mode";
+
 const store = createStore("virgil", "kv");
 
 const INDEX_KEY = "index";
@@ -90,7 +92,7 @@ export async function writeIndex(idx: FsaDocIndex): Promise<void> {
 export async function readTabs(): Promise<TabsState> {
   // In dev-storage mode, auto-open the most recent local doc so the
   // editor renders without any user interaction.
-  if (process.env.NEXT_PUBLIC_DEV_STORAGE) {
+  if (isDevStorage) {
     try {
       const res = await fetch("/api/dev/index.json");
       const data = (await res.json()) as {

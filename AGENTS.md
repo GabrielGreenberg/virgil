@@ -27,3 +27,15 @@ Each sub-doc begins with `<!-- last-verified: <sha> <date> -->`. If the hash is 
 ## Style
 
 [src/STYLE_GUIDE.md](src/STYLE_GUIDE.md) is the design-system reference. Check it before building new UI. Update it when a UI decision feels generalizable.
+
+## Sample paper for the dev doc
+
+[samples/annotation-history/](samples/annotation-history/) is a frozen reference paper that exercises every card panel and most of the formatting vocabulary (footnotes, citations, bibliography, quotations, examples with expex glosses, notes, todos, archive, cuts, revisions with multi-turn dialogue, suggestions, AI requests, bib reviews). The essay is on the history of annotation — self-referential, so the apparatus around the text mirrors what the text describes.
+
+Use it to refresh `virgil-data/doc_devtest/` whenever it gets choppy from testing:
+
+```
+rm -rf virgil-data/doc_devtest && cp -R samples/annotation-history virgil-data/doc_devtest
+```
+
+If the sample itself needs updating (new card kind, schema change), edit `virgil-data/doc_devtest/` live in the dev preview and copy back: `cp -R virgil-data/doc_devtest/. samples/annotation-history/`.

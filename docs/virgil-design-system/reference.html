@@ -1,0 +1,2130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Virgil — Design System</title>
+<meta name="viewport" content="width=1280, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  /* ──────────────────────────────────────────────────────────────────
+     Virgil tokens — pulled from src/app/globals.css and STYLE_GUIDE.md.
+     This is the SINGLE COPY in this document; every section reads from
+     these vars so a token change propagates everywhere.
+     ────────────────────────────────────────────────────────────────── */
+  :root {
+    /* Canvas & layout */
+    --background: #f8f3ed;
+    --foreground: #1a1a1a;
+    --surface: #ffffff;
+    --border: #e5e2dd;
+    --border-light: #c9c5c5;
+    --muted: #8a8580;
+    --muted-light: #b5b0aa;
+    --accent: #7c5e3c;
+    --accent-light: #f5f0ea;
+
+    /* Chrome */
+    --topbar-bg: #dcdbd7;
+    --topbar-border: #cbc3b8;
+    --tab-bg: #dcdbd7;
+    --library-bg: #eae7e2;
+    --header-bg: #e8e5de;
+
+    /* Pods */
+    --pod-radius: 8px;
+    --pod-gap: 10px;
+    --pod-border: 1px solid var(--border-light);
+    --pod-shadow: 0 1px 6px rgba(0,0,0,.12), 0 0 2px rgba(0,0,0,.06);
+    --card-shadow-ambient: 0 2px 6px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+
+    /* Semantic ink + edges */
+    --surface-muted: #fafaf9;
+    --surface-muted-strong: #f5f5f4;
+    --edge-subtle: #e7e5e4;
+    --edge-hover: #d6d3d1;
+    --edge-strong: #a8a29e;
+    --ink-faint: #d6d3d1;
+    --ink-muted: #a8a29e;
+    --ink-subtle: #78716c;
+    --ink-body: #44403c;
+    --ink-strong: #292524;
+    --danger: #ef4444;
+    --danger-soft: #fef2f2;
+    --ring-drag-target: #fcd34d;
+
+    /* Editor inline element colors */
+    --footnote-color: #b45757;
+    --footnote-bg: #fef2f2;
+    --note-color: #15803d;
+    --note-bg: #f0fdf4;
+    --note-marker-border: #86efac;
+    --citation-color: #6b6245;
+    --citation-bg: #fdf8e1;
+    --citation-border-color: #e0d5a8;
+    --latex-comment-color: #7191b0;
+    --latex-comment-bg: #f0f5fa;
+    --latex-cmd-color: #9ca3af;
+    --math-color: #6b4fa0;
+    --math-prefix-color: #a090c0;
+    --code-bg: #f0eeeb;
+    --par-title-color: #c45a5a;
+
+    /* Typography */
+    --font-ui: "Inter", system-ui, sans-serif;
+    --font-prose: "Source Serif 4", Georgia, serif;
+    --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+    --font-display: "Source Serif 4", Georgia, serif;
+
+    /* Sizes */
+    --header-h: 34px;
+    --panel-font-size: 13px;
+    --panel-header-size: 14px;
+
+    /* Doc chrome */
+    --doc-bg: #f3efe9;
+    --doc-ink: #2a2620;
+    --doc-rule: #ddd6cc;
+  }
+
+  /* Reset / base */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--doc-ink);
+    background: var(--doc-bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; }
+  button { font: inherit; }
+
+  /* ─── Top chrome ─── */
+  .doc-header {
+    position: sticky; top: 0; z-index: 50;
+    background: var(--topbar-bg);
+    border-bottom: 1px solid var(--topbar-border);
+    padding: 14px 28px 0;
+  }
+  .doc-titleline {
+    display: flex; align-items: baseline; gap: 14px;
+    margin-bottom: 12px;
+  }
+  .doc-wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: -.01em;
+    color: var(--ink-strong);
+  }
+  .doc-wordmark .v-accent { color: var(--accent); }
+  .doc-subtitle {
+    font-size: 12px;
+    color: var(--ink-subtle);
+    letter-spacing: .02em;
+  }
+  .doc-meta {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-subtle);
+  }
+
+  /* Tabs */
+  .doc-tabs { display: flex; gap: 2px; flex-wrap: wrap; }
+  .doc-tab {
+    appearance: none; border: 0; background: transparent;
+    padding: 8px 14px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink-subtle);
+    cursor: pointer;
+    border-radius: 6px 6px 0 0;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    margin-bottom: -1px;
+    transition: background 120ms, color 120ms;
+  }
+  .doc-tab:hover { color: var(--ink-body); background: rgba(255,255,255,.35); }
+  .doc-tab.active {
+    background: var(--doc-bg);
+    color: var(--ink-strong);
+    border-color: var(--topbar-border);
+    border-bottom-color: var(--doc-bg);
+  }
+  .doc-tab .num {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    margin-right: 6px;
+  }
+
+  /* ─── Layout ─── */
+  main { padding: 28px 40px 120px; max-width: 1240px; margin: 0 auto; }
+  section.tabpanel { display: none; }
+  section.tabpanel.active { display: block; }
+  .tab-intro {
+    margin: 4px 0 28px;
+    max-width: 720px;
+  }
+  .tab-intro h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 28px;
+    line-height: 1.15;
+    margin: 0 0 8px;
+    color: var(--ink-strong);
+    letter-spacing: -.01em;
+  }
+  .tab-intro p {
+    font-size: 14px;
+    color: var(--ink-body);
+    margin: 0;
+    text-wrap: pretty;
+  }
+
+  /* Section block */
+  .block {
+    margin-bottom: 36px;
+  }
+  .block h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 20px;
+    margin: 0 0 4px;
+    color: var(--ink-strong);
+    letter-spacing: -.005em;
+  }
+  .block .lede {
+    color: var(--ink-subtle);
+    font-size: 13px;
+    margin: 0 0 14px;
+    max-width: 700px;
+    text-wrap: pretty;
+  }
+  .block h3 {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: var(--ink-subtle);
+    margin: 18px 0 8px;
+  }
+
+  /* Card grid for swatches & specimens */
+  .grid { display: grid; gap: 12px; }
+  .grid.cols-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+  .grid.cols-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+  .grid.cols-5 { grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .grid.cols-6 { grid-template-columns: repeat(6, minmax(0,1fr)); }
+
+  /* Spec card — surface, label, monospace meta */
+  .spec {
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .spec .body { padding: 14px; }
+  .spec .label {
+    font-size: 12px; font-weight: 600;
+    color: var(--ink-body);
+    margin: 0 0 2px;
+  }
+  .spec .meta {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-muted);
+    line-height: 1.4;
+  }
+  .spec .meta .k { color: var(--ink-subtle); }
+  .spec .meta .v { color: var(--ink-body); }
+
+  /* Color swatch */
+  .swatch-strip {
+    height: 64px;
+    border-bottom: 1px solid var(--edge-subtle);
+  }
+  .swatch-strip.checker {
+    background-image:
+      linear-gradient(45deg, #eee 25%, transparent 25%),
+      linear-gradient(-45deg, #eee 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #eee 75%),
+      linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+  }
+  .swatch-strip.checker > div { width: 100%; height: 100%; }
+
+  /* Pod = the editor's main paper surface */
+  .pod {
+    background: var(--surface);
+    border: var(--pod-border);
+    border-radius: var(--pod-radius);
+    box-shadow: var(--pod-shadow);
+  }
+
+  /* Hero/showcase frame mimicking the app canvas */
+  .canvas {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+  }
+
+  /* Kbd */
+  kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    background: var(--surface-muted-strong);
+    border: 1px solid var(--edge-subtle);
+    border-bottom-width: 2px;
+    border-radius: 3px;
+    padding: 1px 5px;
+    color: var(--ink-body);
+  }
+
+  /* Rules table */
+  table.rules {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table.rules th, table.rules td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--edge-subtle);
+    vertical-align: top;
+  }
+  table.rules th {
+    font-weight: 600; color: var(--ink-subtle);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+    background: var(--surface-muted);
+  }
+  table.rules td code, table.rules td .mono {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--ink-body);
+    background: var(--surface-muted-strong);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  table.rules tbody tr:hover { background: rgba(255,255,255,.5); }
+
+  /* Audit before/after */
+  .audit {
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .audit h4 {
+    margin: 0 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-strong);
+  }
+  .audit .where {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--ink-muted);
+    margin-bottom: 8px;
+  }
+  .audit .ba {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .audit .ba .col {
+    border: 1px solid var(--edge-subtle);
+    border-radius: 4px;
+    padding: 10px;
+    background: var(--surface-muted);
+  }
+  .audit .ba .col h5 {
+    margin: 0 0 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+  .audit .ba .col.bad h5 { color: #b45757; }
+  .audit .ba .col.good h5 { color: #15803d; }
+  .audit .ba .col p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--ink-body);
+  }
+  .audit .fix {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--ink-body);
+    border-top: 1px dashed var(--edge-subtle);
+    padding-top: 8px;
+  }
+  .audit .fix .arrow { color: var(--accent); font-weight: 700; margin-right: 4px; }
+
+  /* Severity tag */
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-right: 6px;
+  }
+  .tag.high { background: #fee2e2; color: #991b1b; }
+  .tag.med  { background: #fef3c7; color: #92400e; }
+  .tag.low  { background: #e0f2fe; color: #075985; }
+  .tag.spacing { background: #f3e8ff; color: #6b21a8; }
+  .tag.color   { background: #fef3c7; color: #92400e; }
+  .tag.icon    { background: #e0f2fe; color: #075985; }
+  .tag.button  { background: #fce7f3; color: #9d174d; }
+  .tag.hover   { background: #ecfccb; color: #3f6212; }
+  .tag.select  { background: #ffedd5; color: #9a3412; }
+
+  /* Anchor jump within the doc */
+  .anchor-list a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dashed var(--edge-hover);
+  }
+  .anchor-list a:hover { border-bottom-style: solid; }
+
+  /* Specimen — visual demo cards mimicking actual app components */
+
+  /* Mini panel-card (for cards section) */
+  .vc-card {
+    border-radius: 8px;
+    border: 1px solid var(--edge-hover);
+    background: var(--surface);
+    overflow: hidden;
+    position: relative;
+    font-size: 12.5px;
+  }
+  .vc-card .vc-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 28px 6px 12px;
+    font-family: var(--font-ui);
+  }
+  .vc-card .vc-head .badge {
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    border: 1.5px solid;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 600;
+    flex-shrink: 0;
+  }
+  .vc-card .vc-head .title {
+    flex: 1; min-width: 0;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: .02em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .vc-card .vc-sep { border-top: 1px solid var(--edge-subtle); }
+  .vc-card .vc-body {
+    padding: 8px 12px 10px;
+    font-family: var(--font-prose);
+    color: var(--ink-body);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .vc-card .vc-popout {
+    position: absolute; top: 6px; right: 6px;
+    width: 18px; height: 18px;
+    color: var(--ink-muted);
+  }
+  .vc-card.is-selected { box-shadow: 0 1px 6px rgba(0,0,0,.10); }
+
+  /* Themed tints (one source-of-truth in this doc) */
+  .theme-footnote { --t-bg:#fef2f2; --t-bg-strong:#fee2e2; --t-fg:#b45757; --t-border:#b45757; --t-sel-border:#fca5a5; --t-sep:#fecaca; --t-title:#c45a5a; }
+  .theme-note     { --t-bg:#f0fdf4; --t-bg-strong:#dcfce7; --t-fg:#15803d; --t-border:#34d399; --t-sel-border:#86efac; --t-sep:#bbf7d0; --t-title:#15803d; }
+  .theme-archive  { --t-bg:#f0f5fa; --t-bg-strong:#fef3c7; --t-fg:#7191b0; --t-border:#7191b0; --t-sel-border:#fcd34d; --t-sep:#fde68a; --t-title:#2c5282; }
+  .theme-todo     { --t-bg:#f5f5f4; --t-bg-strong:#e7e5e4; --t-fg:#44403c; --t-border:#a8a29e; --t-sel-border:#a8a29e; --t-sep:#d6d3d1; --t-title:#44403c; }
+  .theme-bib      { --t-bg:#fdf8e1; --t-bg-strong:#fef3c3; --t-fg:#6b6245; --t-border:#e0d5a8; --t-sel-border:#d4a843; --t-sep:#e0d5a8; --t-title:#6b6245; }
+  .theme-citation { --t-bg:#fef9d6; --t-bg-strong:#fef3c3; --t-fg:#4a3f20; --t-border:#d4a843; --t-sel-border:#d4a843; --t-sep:#d4a843; --t-title:#4a3f20; }
+  .theme-comment  { --t-bg:#f5f5f4; --t-bg-strong:#e7e5e4; --t-fg:#44403c; --t-border:#a8a29e; --t-sel-border:#a8a29e; --t-sep:#d6d3d1; --t-title:#44403c; }
+  .theme-airequest{ --t-bg:#e0f2fe; --t-bg-strong:#bae6fd; --t-fg:#0c4a6e; --t-border:#7dd3fc; --t-sel-border:#38bdf8; --t-sep:#7dd3fc; --t-title:#0c4a6e; }
+  .theme-cut      { --t-bg:#fef2f2; --t-bg-strong:#fee2e2; --t-fg:#b45757; --t-border:#fca5a5; --t-sel-border:#fca5a5; --t-sep:#fecaca; --t-title:#b45757; }
+  .theme-error    { --t-bg:#fef2f2; --t-bg-strong:#fee2e2; --t-fg:#b45757; --t-border:#f5a5a5; --t-sel-border:#fca5a5; --t-sep:#fca5a5; --t-title:#b45757; }
+  .theme-example  { --t-bg:#f0fdfa; --t-bg-strong:#ccfbf1; --t-fg:#0f766e; --t-border:#14b8a6; --t-sel-border:#5eead4; --t-sep:#5eead4; --t-title:#115e59; }
+
+  .vc-card.is-themed .vc-head { background: var(--t-bg); }
+  .vc-card.is-themed.is-selected .vc-head { background: var(--t-bg-strong); }
+  .vc-card.is-themed.is-selected { border-color: var(--t-sel-border); }
+  .vc-card.is-themed.is-selected .vc-sep { border-top-color: var(--t-sep); }
+  .vc-card.is-themed .badge {
+    background: var(--t-bg);
+    color: var(--t-fg);
+    border-color: var(--t-border);
+  }
+  .vc-card.is-themed .title { color: var(--t-title); }
+
+  /* Buttons (canonical specimens) */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    font-family: var(--font-ui);
+    cursor: pointer;
+    transition: background 120ms, color 120ms, border-color 120ms, opacity 120ms;
+    white-space: nowrap;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary    { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #6a4f33; }
+  .btn-secondary  { background: var(--surface-muted-strong); color: var(--ink-subtle); border-color: var(--edge-subtle); }
+  .btn-secondary:hover { background: var(--edge-subtle); color: var(--ink-body); }
+  .btn-warm       { background: var(--accent-light); color: var(--accent); border-color: var(--edge-subtle); }
+  .btn-warm:hover { background: #ece4d6; }
+  .btn-danger     { background: transparent; color: var(--danger); }
+  .btn-danger:hover { background: var(--danger-soft); }
+  .btn-resolve    { background: transparent; color: #059669; font-weight: 600; }
+  .btn-resolve:hover { color: #047857; }
+  .btn-ghost      { background: transparent; color: var(--ink-subtle); }
+  .btn-ghost:hover { background: var(--surface-muted-strong); color: var(--ink-body); }
+
+  .btn.size-sm { padding: 4px 8px; font-size: 11.5px; gap: 4px; border-radius: 4px; }
+  .btn.size-lg { padding: 9px 16px; font-size: 14px; }
+
+  /* Icon button */
+  .iconbtn {
+    width: 28px; height: 28px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    color: var(--ink-muted);
+    background: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+  }
+  .iconbtn:hover { background: var(--surface-muted-strong); color: var(--ink-body); }
+  .iconbtn.size-sm { width: 22px; height: 22px; }
+  .iconbtn.size-lg { width: 32px; height: 32px; }
+
+  /* Inputs */
+  .input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    font-family: var(--font-ui);
+    color: var(--ink-body);
+    outline: none;
+    transition: border-color 120ms, box-shadow 120ms;
+  }
+  .input::placeholder { color: var(--ink-muted); }
+  .input:hover { border-color: var(--edge-hover); }
+  .input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 94, 60, .15);
+  }
+
+  /* Panel header specimen */
+  .panel-frame {
+    background: transparent;
+    border: 1px solid var(--edge-subtle);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .panel-frame .ph {
+    display: flex; align-items: center; gap: 8px;
+    height: var(--header-h);
+    padding: 0 8px 0 10px;
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border-light);
+    font-size: 13px;
+  }
+  .panel-frame .ph .ph-title {
+    font-weight: 600;
+    color: var(--ink-body);
+    font-size: 13px;
+  }
+  .panel-frame .ph .ph-count {
+    color: var(--ink-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .panel-frame .ph .spacer { flex: 1; }
+  .panel-frame .ph .ph-icon {
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    color: var(--ink-muted);
+  }
+  .panel-frame .ph .ph-icon:hover { background: var(--surface-muted-strong); color: var(--ink-body); }
+  .panel-frame .pl {
+    padding: 8px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+
+  /* Top bar mini */
+  .topbar-frame {
+    height: 38px;
+    background: var(--topbar-bg);
+    border: 1px solid var(--topbar-border);
+    border-radius: 8px;
+    padding: 0 10px;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px;
+  }
+  .topbar-frame .wm {
+    font-family: var(--font-display);
+    font-weight: 700; color: var(--ink-body);
+    font-size: 14px;
+  }
+  .topbar-frame .wm .v-accent { color: var(--accent); }
+  .topbar-frame .tb-tab {
+    background: var(--tab-bg);
+    border-radius: 6px 6px 0 0;
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--ink-subtle);
+    position: relative;
+  }
+  .topbar-frame .tb-tab.active {
+    background: var(--background);
+    color: var(--ink-strong);
+    margin-bottom: -1px;
+  }
+  .topbar-frame .tb-icon {
+    width: 24px; height: 24px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    color: var(--ink-subtle);
+  }
+  .topbar-frame .tb-icon:hover { background: rgba(255,255,255,.45); color: var(--accent); }
+
+  /* Marginalia markers */
+  .mg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+  }
+  .mg-cell {
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+  }
+  .mg-marker {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    border: 1.5px solid;
+    margin: 0 auto 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    font-family: var(--font-ui);
+  }
+  .mg-cell .lbl {
+    font-size: 11px;
+    color: var(--ink-subtle);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .mg-cell .hex {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+    margin-top: 2px;
+  }
+
+  /* Editor inline samples */
+  .editor-sample {
+    font-family: var(--font-prose);
+    font-size: 16px;
+    line-height: 1.7;
+    color: var(--ink-strong);
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 8px;
+    padding: 22px 26px;
+  }
+  .editor-sample h2 {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    margin: 0 0 .15em;
+  }
+  .editor-sample .num {
+    color: var(--muted);
+    font-weight: inherit;
+    margin-right: .4em;
+  }
+  .ed-footnote {
+    font-size: .7em; vertical-align: super; line-height: 0;
+    color: var(--footnote-color);
+    background: var(--footnote-bg);
+    border-radius: 2px;
+    padding: 0 3px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .ed-citation {
+    background: var(--citation-bg);
+    color: var(--citation-color);
+    border: 1px solid var(--citation-border-color);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .ed-comment {
+    color: var(--latex-comment-color);
+    background: var(--latex-comment-bg);
+    font-family: var(--font-mono);
+    font-size: .85em;
+    font-style: italic;
+    border-radius: 2px;
+    padding: 0 4px;
+    border-left: 3px solid #a8c4de;
+    display: inline-block;
+  }
+  .ed-math {
+    background: var(--code-bg);
+    color: var(--math-color);
+    font-family: var(--font-mono);
+    font-size: .9em;
+    border-radius: 3px;
+    padding: .1em .35em;
+  }
+  .ed-math .pre, .ed-math .post { color: var(--math-prefix-color); font-size: .9em; }
+  .ed-cmd {
+    color: var(--latex-cmd-color);
+    font-family: var(--font-mono);
+    font-size: .9em;
+  }
+
+  /* Drag ghost specimen */
+  .ghost {
+    display: inline-block;
+    padding: 4px 10px;
+    border: 1px solid;
+    border-radius: 3px;
+    font-family: var(--font-prose);
+    font-size: 12px;
+    background: white;
+    color: var(--ink-body);
+  }
+
+  /* Pull-quote callout */
+  .callout {
+    margin: 14px 0;
+    padding: 12px 16px;
+    border-left: 3px solid var(--accent);
+    background: var(--accent-light);
+    color: var(--ink-body);
+    font-size: 13px;
+    border-radius: 0 6px 6px 0;
+  }
+  .callout strong { color: var(--ink-strong); }
+
+  /* Scale ruler for spacing */
+  .ruler {
+    display: flex; align-items: flex-end; gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    padding: 18px;
+  }
+  .ruler .step {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-muted);
+  }
+  .ruler .bar {
+    background: var(--accent);
+    width: 24px;
+    border-radius: 2px;
+    margin: 0 auto 4px;
+    opacity: .85;
+  }
+
+  /* Style guide prose */
+  .prose {
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 8px;
+    padding: 24px 32px;
+    max-width: 820px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .prose h2 {
+    font-family: var(--font-display);
+    font-size: 22px;
+    margin: 0 0 12px;
+    color: var(--ink-strong);
+  }
+  .prose h3 {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ink-subtle);
+    margin: 22px 0 6px;
+  }
+  .prose h4 {
+    font-family: var(--font-ui);
+    font-size: 14px;
+    margin: 16px 0 4px;
+    color: var(--ink-strong);
+  }
+  .prose ul { padding-left: 20px; margin: 6px 0 12px; }
+  .prose li { margin: 3px 0; color: var(--ink-body); }
+  .prose code, .prose .mono {
+    font-family: var(--font-mono); font-size: 12px;
+    background: var(--surface-muted-strong);
+    padding: 1px 5px; border-radius: 3px;
+  }
+  .prose .rule {
+    border: 0; border-top: 1px dashed var(--edge-subtle);
+    margin: 22px 0;
+  }
+  .prose blockquote {
+    border-left: 3px solid var(--accent);
+    background: var(--accent-light);
+    padding: 8px 14px;
+    margin: 12px 0;
+    border-radius: 0 6px 6px 0;
+    font-size: 13px;
+    color: var(--ink-body);
+  }
+
+  /* Tweaks state-toggle bar */
+  .state-toggles {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--edge-subtle);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 14px;
+    font-size: 12px;
+  }
+  .state-toggles .pill {
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--surface-muted-strong);
+    color: var(--ink-subtle);
+    cursor: pointer;
+    border: 1px solid transparent;
+    user-select: none;
+    font-weight: 500;
+  }
+  .state-toggles .pill.active {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* Footer */
+  footer.docfoot {
+    margin-top: 60px;
+    padding: 16px 0 8px;
+    border-top: 1px solid var(--edge-subtle);
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-family: var(--font-mono);
+    text-align: center;
+  }
+
+  /* Print */
+  @media print {
+    .doc-header { position: static; }
+    .doc-tabs { display: none; }
+    section.tabpanel { display: block !important; page-break-after: always; }
+  }
+
+</style>
+</head>
+<body>
+
+<header class="doc-header">
+  <div class="doc-titleline">
+    <span class="doc-wordmark"><span class="v-accent">V</span>irgil — Design System</span>
+    <span class="doc-subtitle">Visual LaTeX editor for academic writing · v1 reference</span>
+    <span class="doc-meta">Apr 24, 2026 · 11 sections</span>
+  </div>
+  <nav class="doc-tabs" id="tabs">
+    <button class="doc-tab active" data-tab="overview"><span class="num">00</span>Overview</button>
+    <button class="doc-tab" data-tab="tokens"><span class="num">01</span>Tokens</button>
+    <button class="doc-tab" data-tab="type"><span class="num">02</span>Typography</button>
+    <button class="doc-tab" data-tab="spacing"><span class="num">03</span>Spacing &amp; Icons</button>
+    <button class="doc-tab" data-tab="interaction"><span class="num">04</span>Interaction</button>
+    <button class="doc-tab" data-tab="cards"><span class="num">05</span>Cards &amp; Themes</button>
+    <button class="doc-tab" data-tab="panels"><span class="num">06</span>Panels &amp; Headers</button>
+    <button class="doc-tab" data-tab="buttons"><span class="num">07</span>Buttons &amp; Inputs</button>
+    <button class="doc-tab" data-tab="modals"><span class="num">08</span>Modals &amp; Drag</button>
+    <button class="doc-tab" data-tab="editor"><span class="num">09</span>Editor &amp; Marginalia</button>
+    <button class="doc-tab" data-tab="audit"><span class="num">10</span>Audit</button>
+    <button class="doc-tab" data-tab="guide"><span class="num">11</span>Style Guide</button>
+  </nav>
+</header>
+
+<main>
+
+<!-- ─────────────────────────────── OVERVIEW ─────────────────────────────── -->
+<section class="tabpanel active" data-tab="overview">
+  <div class="tab-intro">
+    <h1>One system, every panel obeys.</h1>
+    <p>This document is the canonical visual + interaction system for Virgil. It tightens the existing tokens in <span class="mono">globals.css</span> and the conventions in <span class="mono">STYLE_GUIDE.md</span>, removes overlaps, and gives every component a single specified resting / hover / selected / disabled state. Use it as the reference; ship the redrawn rules in section&nbsp;11 back to the repo.</p>
+  </div>
+
+  <div class="block">
+    <h2>What changed, at a glance</h2>
+    <p class="lede">Five tightenings drive the rest of this document.</p>
+
+    <div class="grid cols-3" style="gap:14px;">
+      <div class="spec">
+        <div class="body">
+          <p class="label">1. Selection has one visual</h3>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            <span style="color:var(--ink-subtle)">Today:</span> three selection rings live in code (<span class="mono">amber-300</span>, footnote-red, emerald, stone, cut-red).<br/>
+            <span style="color:var(--accent)">Now:</span> selected = <em>themed border</em> + <em>themed header at full opacity</em> + <em>white body</em>. No shadow change. <span class="mono">amber-300</span> retired as a generic.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">2. Hover has one rule</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            <span style="color:var(--ink-subtle)">Light surfaces darken</span> on hover (cards, panels, modals).<br/>
+            <span style="color:var(--ink-subtle)">Dark chrome lightens</span> on hover (top bar, header bg).<br/>
+            Borders step from <span class="mono">edge-subtle</span> → <span class="mono">edge-hover</span>.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">3. Icons live on a 4&nbsp;px grid</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            Three sizes: <span class="mono">14&nbsp;inline</span>, <span class="mono">16&nbsp;panel</span>, <span class="mono">20&nbsp;toolbar</span>. <em>One stroke weight</em> (1.75&nbsp;px) for outline icons. Hit area always ≥ <span class="mono">22×22</span>.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">4. Card themes = 5 tokens</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            Each theme: <span class="mono">badge-bg</span>, <span class="mono">badge-fg</span>, <span class="mono">badge-border</span>, <span class="mono">header-tint</span>, <span class="mono">selected-border</span>. Header tint = badge-bg; selected-border doubles as separator-on-select.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">5. Buttons are 5, not 9</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            <span class="mono">primary</span> · <span class="mono">secondary</span> · <span class="mono">warm</span> · <span class="mono">danger</span> · <span class="mono">ghost</span>. Three sizes (<span class="mono">sm</span> / <span class="mono">md</span> / <span class="mono">lg</span>). Icon-only is its own variant: <span class="mono">iconbtn</span>.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">6. Hit targets ≥ 22 px</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; line-height:1.5; color:var(--ink-body);">
+            Header icons today range <span class="mono">16</span>–<span class="mono">28&nbsp;px</span>. Locking icon-button hit area to <span class="mono">22×22</span> (or <span class="mono">28×28</span> in toolbars) eliminates the mismatched click affordances on every panel header.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>How to use this doc</h2>
+    <p class="lede">Each tab is independent. Use the keyboard arrows to move between them, or jump straight to what you need.</p>
+    <div class="grid cols-2">
+      <div class="spec">
+        <div class="body">
+          <p class="label">If you're editing a panel</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; color:var(--ink-body);">
+            Tabs <strong>05 Cards</strong>, <strong>06 Panels</strong>, <strong>09 Editor</strong>. Bring values from <strong>01 Tokens</strong>.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">If you're hand-rolling a control</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; color:var(--ink-body);">
+            <strong>07 Buttons &amp; Inputs</strong>, <strong>04 Interaction</strong>. Don't reach for new Tailwind colors — extend <strong>01 Tokens</strong> first.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">If something feels off</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; color:var(--ink-body);">
+            Check <strong>10 Audit</strong>. Every known inconsistency is logged with a fix.
+          </p>
+        </div>
+      </div>
+      <div class="spec">
+        <div class="body">
+          <p class="label">If you're shipping a rule</p>
+          <p class="meta" style="font-family:var(--font-ui); font-size:12px; color:var(--ink-body);">
+            <strong>11 Style Guide</strong> is the redrawn STYLE_GUIDE.md you'd commit. Drop it back into <span class="mono">src/STYLE_GUIDE.md</span>.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>Live tweaks panel</strong> &nbsp;·&nbsp; Toggle <em>Tweaks</em> from the toolbar to retune the accent, surface tint, header height, and density. Every section reads from CSS variables, so changes propagate everywhere live.
+  </div>
+</section>
+
+<!-- ─────────────────────────────── TOKENS ─────────────────────────────── -->
+<section class="tabpanel" data-tab="tokens">
+  <div class="tab-intro">
+    <h1>Tokens</h1>
+    <p>Every color, radius, and shadow lives as a CSS variable. Tightening rule: use the semantic name (<span class="mono">--ink-body</span>), not the raw hex (<span class="mono">#44403c</span>). Five aliases are <em>locked</em> to a canonical and cannot drift.</p>
+  </div>
+
+  <div class="block">
+    <h2>Canvas &amp; chrome</h2>
+    <div class="grid cols-4">
+      <div class="spec"><div class="swatch-strip" style="background:var(--background)"></div><div class="body"><p class="label">background</p><p class="meta"><span class="k">--background</span> · <span class="v">#f8f3ed</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--surface)"></div><div class="body"><p class="label">surface (paper)</p><p class="meta"><span class="k">--surface</span> · <span class="v">#ffffff</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--topbar-bg)"></div><div class="body"><p class="label">topbar-bg</p><p class="meta"><span class="k">--topbar-bg</span> · <span class="v">#dcdbd7</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--header-bg)"></div><div class="body"><p class="label">header-bg</p><p class="meta"><span class="k">--header-bg</span> · <span class="v">#e8e5de</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--accent)"></div><div class="body"><p class="label">accent</p><p class="meta"><span class="k">--accent</span> · <span class="v">#7c5e3c</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--accent-light)"></div><div class="body"><p class="label">accent-light</p><p class="meta"><span class="k">--accent-light</span> · <span class="v">#f5f0ea</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--library-bg)"></div><div class="body"><p class="label">library-bg</p><p class="meta"><span class="k">--library-bg</span> · <span class="v">#eae7e2</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--tab-bg)"></div><div class="body"><p class="label">tab-bg</p><p class="meta"><span class="k">--tab-bg</span> · <span class="v">#dcdbd7</span></p></div></div>
+    </div>
+
+    <h3>Ink scale</h3>
+    <div class="grid cols-5">
+      <div class="spec"><div class="swatch-strip" style="background:var(--ink-faint)"></div><div class="body"><p class="label">ink-faint</p><p class="meta"><span class="v">#d6d3d1</span> · disabled, idle handles</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--ink-muted)"></div><div class="body"><p class="label">ink-muted</p><p class="meta"><span class="v">#a8a29e</span> · placeholder, default icon</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--ink-subtle)"></div><div class="body"><p class="label">ink-subtle</p><p class="meta"><span class="v">#78716c</span> · subtitle, caption</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--ink-body)"></div><div class="body"><p class="label">ink-body</p><p class="meta"><span class="v">#44403c</span> · body, section title</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--ink-strong)"></div><div class="body"><p class="label">ink-strong</p><p class="meta"><span class="v">#292524</span> · modal title, primary text</p></div></div>
+    </div>
+
+    <h3>Edges &amp; surfaces</h3>
+    <div class="grid cols-5">
+      <div class="spec"><div class="swatch-strip" style="background:var(--edge-subtle)"></div><div class="body"><p class="label">edge-subtle</p><p class="meta"><span class="v">#e7e5e4</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--edge-hover)"></div><div class="body"><p class="label">edge-hover</p><p class="meta"><span class="v">#d6d3d1</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--edge-strong)"></div><div class="body"><p class="label">edge-strong</p><p class="meta"><span class="v">#a8a29e</span> · focus border</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--surface-muted)"></div><div class="body"><p class="label">surface-muted</p><p class="meta"><span class="v">#fafaf9</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--surface-muted-strong)"></div><div class="body"><p class="label">surface-muted-strong</p><p class="meta"><span class="v">#f5f5f4</span></p></div></div>
+    </div>
+
+    <h3>Signals</h3>
+    <div class="grid cols-4">
+      <div class="spec"><div class="swatch-strip" style="background:var(--danger)"></div><div class="body"><p class="label">danger</p><p class="meta"><span class="v">#ef4444</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--danger-soft)"></div><div class="body"><p class="label">danger-soft</p><p class="meta"><span class="v">#fef2f2</span> · destructive hover</p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:var(--ring-drag-target)"></div><div class="body"><p class="label">ring-drag-target</p><p class="meta"><span class="v">#fcd34d</span></p></div></div>
+      <div class="spec"><div class="swatch-strip" style="background:#fef9c3"></div><div class="body"><p class="label">label-ref-active</p><p class="meta"><span class="v">#fef08a</span> + ring</p></div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Locked aliases</h2>
+    <p class="lede">These tokens intentionally alias a canonical so they can't drift. Don't override them independently.</p>
+    <table class="rules">
+      <thead><tr><th>Alias</th><th>Canonical</th><th>Why locked</th></tr></thead>
+      <tbody>
+        <tr><td><code>--pod-editor</code></td><td><code>--surface</code></td><td>Editor pod and "paper" surfaces share one color</td></tr>
+        <tr><td><code>--h1-color</code></td><td><code>--foreground</code></td><td>H1 = primary text</td></tr>
+        <tr><td><code>--h2h3-color</code></td><td><code>--editor-text-color</code></td><td>Sub-headings = body text</td></tr>
+        <tr><td><code>--scrollbar-hover</code></td><td><code>--muted-light</code></td><td>Scrollbar hover = same grey as muted text</td></tr>
+        <tr><td><code>--theme-color</code></td><td><code>--topbar-bg</code></td><td>PWA chrome ≡ in-app top bar</td></tr>
+        <tr><td><code>--main-tab-bg</code></td><td><code>--background</code></td><td>Active tab joins page canvas</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Geometry &amp; shadow</h2>
+    <div class="grid cols-3">
+      <div class="spec"><div class="body"><p class="label">Pod radius</p><p class="meta"><span class="k">--pod-radius</span> · <span class="v">8px</span></p><div style="margin-top:10px; height:60px; border:var(--pod-border); border-radius:var(--pod-radius); box-shadow:var(--pod-shadow); background:var(--surface);"></div></div></div>
+      <div class="spec"><div class="body"><p class="label">Card ambient lift</p><p class="meta"><span class="k">--card-shadow-ambient</span></p><div style="margin-top:10px; height:60px; border-radius:8px; background:var(--surface); box-shadow:var(--card-shadow-ambient);"></div></div></div>
+      <div class="spec"><div class="body"><p class="label">Header height</p><p class="meta"><span class="k">--header-h</span> · <span class="v">34px</span></p><div style="margin-top:10px; height:34px; background:var(--header-bg); border:1px solid var(--border-light); border-radius:6px;"></div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── TYPOGRAPHY ─────────────────────────────── -->
+<section class="tabpanel" data-tab="type">
+  <div class="tab-intro">
+    <h1>Typography</h1>
+    <p>Three families, three roles. UI never uses the prose font; prose never uses the UI font; mono is reserved for code, math, LaTeX commands, and metadata.</p>
+  </div>
+
+  <div class="block">
+    <h2>Families</h2>
+    <div class="grid cols-3">
+      <div class="spec"><div class="body" style="padding:18px;">
+        <p class="label" style="font-family:var(--font-ui); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-subtle);">UI · sans</p>
+        <div style="font-family:var(--font-ui); font-size:24px; color:var(--ink-strong); margin:6px 0 8px;">Inter</div>
+        <p class="meta">All chrome: panels, buttons, menus, headers, the wordmark fallback. Weights 400 / 500 / 600 / 700.</p>
+      </div></div>
+      <div class="spec"><div class="body" style="padding:18px;">
+        <p class="label" style="font-family:var(--font-ui); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-subtle);">Prose · serif</p>
+        <div style="font-family:var(--font-prose); font-size:24px; color:var(--ink-strong); margin:6px 0 8px;">Source Serif 4</div>
+        <p class="meta">Editor body, footnote bodies, document headings (H1/H2/H3). Optical sizing; weights 400 / 600 / 700.</p>
+      </div></div>
+      <div class="spec"><div class="body" style="padding:18px;">
+        <p class="label" style="font-family:var(--font-ui); font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-subtle);">Mono</p>
+        <div style="font-family:var(--font-mono); font-size:22px; color:var(--ink-strong); margin:6px 0 8px;">Geist Mono</div>
+        <p class="meta">LaTeX commands, math, code, metadata, monospace inputs (label keys). Weights 400 / 500.</p>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Editor type scale</h2>
+    <div class="editor-sample">
+      <h2 style="font-size:1.75rem; margin-bottom:.15em;"><span class="num">1</span>Methods</h2>
+      <h2><span class="num">1.1</span>Sample preparation</h2>
+      <h2 style="font-size:1.15rem;"><span class="num">1.1.1</span>Stratification protocol</h2>
+      <p style="font-size:1.05rem; line-height:1.7; margin:.6em 0 0;">In our pilot study<span class="ed-footnote">3</span> we observed that the variance of <span class="ed-math"><span class="pre">$</span>\sigma^2<span class="post">$</span></span> across <span class="ed-citation">Smith&nbsp;et&nbsp;al.&nbsp;2024</span> was lower than predicted. <span class="ed-comment">% TODO: rerun with n=200</span></p>
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <thead><tr><th>Role</th><th>Family</th><th>Size</th><th>Weight</th><th>Color</th></tr></thead>
+      <tbody>
+        <tr><td>H1 (section)</td><td>Source Serif 4</td><td>1.75rem (28px)</td><td>700</td><td><code>--foreground</code></td></tr>
+        <tr><td>H2 (subsection)</td><td>Source Serif 4</td><td>1.35rem (21.6px)</td><td>600</td><td><code>--editor-text-color</code></td></tr>
+        <tr><td>H3 (subsubsection)</td><td>Source Serif 4</td><td>1.15rem (18.4px)</td><td>600</td><td><code>--editor-text-color</code></td></tr>
+        <tr><td>Body</td><td>Source Serif 4</td><td>1.05rem (16.8px)</td><td>400</td><td><code>#2a2a2a</code></td></tr>
+        <tr><td>Section number prefix</td><td>inherit</td><td>inherit</td><td>inherit</td><td><code>--muted</code></td></tr>
+        <tr><td>Paragraph title</td><td>Inter</td><td>0.78rem (12.5px)</td><td>500</td><td><code>--par-title-color</code> · <span class="mono">#c45a5a</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>UI type scale</h2>
+    <table class="rules">
+      <thead><tr><th>Role</th><th>Size</th><th>Weight</th><th>Color</th><th>Token</th></tr></thead>
+      <tbody>
+        <tr><td>Modal title</td><td>15px</td><td>600</td><td><code>--ink-strong</code></td><td><code>--panel-header-size</code> +1</td></tr>
+        <tr><td>Panel header title</td><td>14px</td><td>600</td><td><code>--ink-body</code></td><td><code>--panel-header-size</code></td></tr>
+        <tr><td>Panel body / card</td><td>13px</td><td>400</td><td><code>--ink-body</code></td><td><code>--panel-font-size</code></td></tr>
+        <tr><td>Card title input</td><td>0.78rem (12.5px)</td><td>500</td><td>theme.titleColor</td><td>—</td></tr>
+        <tr><td>Button (md)</td><td>12.5px</td><td>500</td><td>variant</td><td>—</td></tr>
+        <tr><td>Subtitle / caption</td><td>12px</td><td>400</td><td><code>--ink-subtle</code></td><td>—</td></tr>
+        <tr><td>Section label (uppercase)</td><td>10px</td><td>600</td><td><code>--ink-subtle</code></td><td>letter-spacing .08em</td></tr>
+        <tr><td>Counter / metadata</td><td>11px mono</td><td>400</td><td><code>--ink-muted</code></td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Rule:</strong> never use the prose font in chrome, never use the UI font in body prose. Mono is reserved — never use it for general UI text just because it "looks technical".</div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── SPACING & ICONS ─────────────────────────────── -->
+<section class="tabpanel" data-tab="spacing">
+  <div class="tab-intro">
+    <h1>Spacing &amp; Icons</h1>
+    <p>One 4-px grid. Three icon sizes. One stroke weight.</p>
+  </div>
+
+  <div class="block">
+    <h2>Spacing scale</h2>
+    <p class="lede">All gaps, paddings, and gutters snap to multiples of 4&nbsp;px. The most-used values have aliases.</p>
+    <div class="ruler">
+      <div class="step"><div class="bar" style="height:2px;"></div>2 · hairline</div>
+      <div class="step"><div class="bar" style="height:4px;"></div>4 · xs</div>
+      <div class="step"><div class="bar" style="height:8px;"></div>8 · sm</div>
+      <div class="step"><div class="bar" style="height:12px;"></div>12 · md</div>
+      <div class="step"><div class="bar" style="height:16px;"></div>16 · lg</div>
+      <div class="step"><div class="bar" style="height:20px;"></div>20 · xl</div>
+      <div class="step"><div class="bar" style="height:24px;"></div>24 · 2xl</div>
+      <div class="step"><div class="bar" style="height:32px;"></div>32 · 3xl</div>
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <thead><tr><th>Where</th><th>Value</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Card → card gap (panel list)</td><td><code>8px</code> (space-y-2)</td><td>Single rhythm across all panels.</td></tr>
+        <tr><td>Card outer padding (PANEL.list)</td><td><code>8px</code></td><td>px-2 py-2.</td></tr>
+        <tr><td>Card header padding</td><td><code>6px 28px 6px 12px</code></td><td>Right padding reserves space for absolute popout.</td></tr>
+        <tr><td>Card body padding</td><td><code>6px 12px 8px</code></td><td>px-3 pt-1.5 pb-2.</td></tr>
+        <tr><td>Sub-pod padding</td><td><code>12px</code></td><td>p-3.</td></tr>
+        <tr><td>Pod gap</td><td><code>--pod-gap</code> · <code>10px</code></td><td>Between pods on the canvas.</td></tr>
+        <tr><td>Header height</td><td><code>--header-h</code> · <code>34px</code></td><td>Locked. Every panel header obeys.</td></tr>
+        <tr><td>Marginalia grid</td><td><code>22px</code> cell, <code>2px</code> gap</td><td>2 columns per gutter side.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Icon sizes</h2>
+    <p class="lede">Three sizes only. Choose by location, not by feel.</p>
+    <div class="grid cols-3">
+      <div class="spec"><div class="body" style="text-align:center; padding:24px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-body)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><polyline points="9 18 15 12 9 6"/></svg>
+        <p class="label" style="margin-top:14px;">14&nbsp;px · inline</p>
+        <p class="meta">Inside text rows: chevron, target arrow, badge cross. Hit area still ≥ 22 px.</p>
+      </div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:24px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-body)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+        <p class="label" style="margin-top:14px;">16&nbsp;px · panel</p>
+        <p class="meta">Panel header icons (popout, close, color picker, menu). Hit area 22 × 22.</p>
+      </div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:24px;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--ink-body)" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="margin:0 auto;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        <p class="label" style="margin-top:14px;">20&nbsp;px · toolbar</p>
+        <p class="meta">Top bar, MenuBar, primary toolbars. Hit area 28 × 28.</p>
+      </div></div>
+    </div>
+
+    <h3>Stroke &amp; alignment rules</h3>
+    <ul style="font-size:13px; color:var(--ink-body); line-height:1.7;">
+      <li><strong>Stroke weight:</strong> <code>1.75</code> for outline icons. <code>2</code> only for the X-close glyph (it's a flat shape, not an outline). Never <code>1.5</code> or <code>2.5</code> mixed in.</li>
+      <li><strong>Stroke caps:</strong> <code>round</code> for both line caps and joins. No square caps anywhere.</li>
+      <li><strong>Color:</strong> <code>currentColor</code> always; never hard-coded inside the SVG.</li>
+      <li><strong>ViewBox:</strong> <code>0 0 24 24</code> for outlined icons (Lucide-compatible).</li>
+      <li><strong>AI sun-star:</strong> 8-ray, rotated 15°. Never a 5-point star. (See §11.)</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── INTERACTION ─────────────────────────────── -->
+<section class="tabpanel" data-tab="interaction">
+  <div class="tab-intro">
+    <h1>Interaction</h1>
+    <p>Hover, focus, selection, drag — one rule each, codified.</p>
+  </div>
+
+  <div class="block">
+    <h2>Hover</h2>
+    <p class="lede">Light surfaces darken. Dark chrome lightens. Borders step one stop. Always 120&nbsp;ms.</p>
+    <table class="rules">
+      <thead><tr><th>Surface</th><th>Resting bg</th><th>Hover bg</th><th>Resting border</th><th>Hover border</th></tr></thead>
+      <tbody>
+        <tr><td>Panel card (light)</td><td><code>--surface</code></td><td><code>--surface-muted/50</code></td><td><code>--edge-hover</code></td><td><code>--edge-strong</code></td></tr>
+        <tr><td>Icon button (light)</td><td>transparent</td><td><code>--surface-muted-strong</code></td><td>—</td><td>—</td></tr>
+        <tr><td>Top-bar button (dark)</td><td>transparent</td><td><code>rgba(255,255,255,.30)</code></td><td>—</td><td>—</td></tr>
+        <tr><td>Panel-header icon (dark)</td><td>transparent</td><td><code>rgba(255,255,255,.45)</code></td><td>—</td><td>—</td></tr>
+        <tr><td>Menu item</td><td>transparent</td><td><code>--accent-light</code></td><td>—</td><td>—</td></tr>
+        <tr><td>Destructive item</td><td>transparent</td><td><code>--danger-soft</code></td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Forbidden:</strong> <code>hover:bg-stone-100</code> on dark backgrounds (it darkens further). <code>hover:bg-blue-50</code> on warm-palette UI (introduces cool tone).</div>
+  </div>
+
+  <div class="block">
+    <h2>Selection</h2>
+    <p class="lede">One canonical visual: <em>themed border + themed header at full opacity + white body</em>. No shadow change, no scale change.</p>
+    <div class="grid cols-3">
+      <div class="vc-card theme-footnote"><div class="vc-head"><div class="badge">3</div><div class="title">Footnote (resting)</div></div><div class="vc-sep"></div><div class="vc-body">The header tint is always on at half opacity.</div></div>
+      <div class="vc-card theme-footnote is-themed"><div class="vc-head"><div class="badge">3</div><div class="title">Footnote (themed)</div></div><div class="vc-sep"></div><div class="vc-body">Half-opacity header tint.</div></div>
+      <div class="vc-card theme-footnote is-themed is-selected"><div class="vc-head"><div class="badge">3</div><div class="title">Footnote (selected)</div></div><div class="vc-sep"></div><div class="vc-body">Full-opacity header tint, themed border, white body.</div></div>
+    </div>
+    <h3>What selection does <em>not</em> do</h3>
+    <ul style="font-size:13px; color:var(--ink-body); line-height:1.7;">
+      <li>Does <strong>not</strong> change shadow, scale, or padding.</li>
+      <li>Does <strong>not</strong> color the body — body text is <code>#44403c</code> on white, always.</li>
+      <li>Does <strong>not</strong> use a generic amber ring. Each theme has its own selected-border. Amber is reserved for drop-targets and label-ref active state.</li>
+    </ul>
+    <h3>Deselection</h3>
+    <ul style="font-size:13px; color:var(--ink-body); line-height:1.7;">
+      <li>Click empty list space → deselect (panels add <code>onClick={() =&gt; onSelect(null)}</code> to list container).</li>
+      <li><kbd>Esc</kbd> on a focused card → deselect.</li>
+      <li>Selecting another card replaces selection. No multi-select on cards.</li>
+    </ul>
+  </div>
+
+  <div class="block">
+    <h2>Focus rings</h2>
+    <p class="lede">Inputs only. Buttons rely on hover. Cards rely on selection.</p>
+    <div style="background:var(--surface); border:1px solid var(--edge-subtle); border-radius:8px; padding:18px; max-width:480px;">
+      <input class="input" placeholder="Resting input" />
+      <input class="input" placeholder="Hover input" style="margin-top:10px; border-color:var(--edge-hover);" />
+      <input class="input" placeholder="Focused input" style="margin-top:10px; border-color:var(--accent); box-shadow:0 0 0 3px rgba(124,94,60,.15);" />
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <tbody>
+        <tr><td>Input border (rest)</td><td><code>--edge-subtle</code></td></tr>
+        <tr><td>Input border (hover)</td><td><code>--edge-hover</code></td></tr>
+        <tr><td>Input border (focus)</td><td><code>--accent</code></td></tr>
+        <tr><td>Focus ring</td><td><code>0 0 0 3px rgba(124, 94, 60, .15)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Drag handles</h2>
+    <p class="lede">Two distinct affordances. Don't conflate them.</p>
+    <table class="rules">
+      <thead><tr><th>Handle</th><th>Where</th><th>Drags</th><th>Visibility</th><th>Cursor</th></tr></thead>
+      <tbody>
+        <tr><td>6-dot grip (header)</td><td>Card header, par body</td><td>The entity (with anchoring)</td><td>group-hover · resting <code>ink-faint</code></td><td><code>grab</code> / <code>grabbing</code></td></tr>
+        <tr><td>3-line text handle</td><td>Card body gutter</td><td>Text only (no entity ID)</td><td>group-hover · 60% opacity</td><td><code>grab</code></td></tr>
+        <tr><td>Marginalia marker</td><td>Editor gutter</td><td>Anchor (paragraph or range)</td><td>always</td><td><code>grab</code></td></tr>
+        <tr><td>Pod resize gutter</td><td>Between pods</td><td>Resizes split</td><td>always (faint)</td><td><code>col-resize</code> / <code>row-resize</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Tooltip &amp; keyboard</h2>
+    <table class="rules">
+      <tbody>
+        <tr><td>Tooltip delay</td><td><code>500ms</code> open · <code>0ms</code> close</td></tr>
+        <tr><td>Tooltip style</td><td><code>--ink-strong</code> bg, white text, 11px Inter, 4px radius, 6px gap from anchor</td></tr>
+        <tr><td>Keyboard shortcut indicator</td><td><kbd>Y</kbd> · 10.5px mono in <code>--surface-muted-strong</code> with 2-px-bottom border. Always rendered as <code>&lt;kbd&gt;</code>.</td></tr>
+        <tr><td>Suggestions shortcuts</td><td><kbd>Y</kbd> accept · <kbd>N</kbd> reject · <kbd>S</kbd> skip</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── CARDS ─────────────────────────────── -->
+<section class="tabpanel" data-tab="cards">
+  <div class="tab-intro">
+    <h1>Cards &amp; Themes</h1>
+    <p>Every card in the app — footnote, note, archive, todo, bib, citation, comment, AI request, cut, error, example — passes through one wrapper (<code>PanelCard</code> → <code>EditableCard</code>) and reads its colors from a 5-token theme.</p>
+  </div>
+
+  <div class="state-toggles" id="cardStates">
+    <span style="color:var(--ink-subtle); margin-right:6px;">State preview:</span>
+    <span class="pill active" data-state="resting">Resting</span>
+    <span class="pill" data-state="selected">Selected</span>
+    <span class="pill" data-state="popped">Popped&nbsp;out</span>
+  </div>
+
+  <div class="block">
+    <h2>The 5-token theme</h2>
+    <p class="lede">Every theme is fully described by these five values. Header tint = badge bg. Selected-border doubles as the separator color when selected.</p>
+    <table class="rules">
+      <thead><tr><th>Token</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td><code>badge.bg</code></td><td>Badge background, header tint (resting)</td></tr>
+        <tr><td><code>badge.fg</code></td><td>Badge label, badge cross, title color</td></tr>
+        <tr><td><code>badge.border</code></td><td>Badge border (1.5 px)</td></tr>
+        <tr><td><code>header.selected</code></td><td>Header tint at selected state (full opacity)</td></tr>
+        <tr><td><code>border.selected</code></td><td>Card outline when selected; separator when selected</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Every theme</h2>
+    <div class="grid cols-3" id="cardGrid">
+      <div class="vc-card theme-footnote is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">3</div><div class="title">footnote · #b45757</div></div><div class="vc-sep"></div><div class="vc-body">Pilot variance lower than predicted.</div></div>
+      <div class="vc-card theme-note is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">N</div><div class="title">note · #15803d</div></div><div class="vc-sep"></div><div class="vc-body">Reviewer flagged §3.1 ambiguity.</div></div>
+      <div class="vc-card theme-archive is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">A</div><div class="title">archive · #7191b0</div></div><div class="vc-sep"></div><div class="vc-body">Cut paragraph from intro.</div></div>
+      <div class="vc-card theme-todo is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">☐</div><div class="title">todo · #44403c</div></div><div class="vc-sep"></div><div class="vc-body">Sweep hyphenation in §2.</div></div>
+      <div class="vc-card theme-bib is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">B</div><div class="title">bib · #6b6245</div></div><div class="vc-sep"></div><div class="vc-body">Smith et al. 2024 · ML &amp; Soc.</div></div>
+      <div class="vc-card theme-citation is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">C</div><div class="title">citation · #4a3f20</div></div><div class="vc-sep"></div><div class="vc-body">\citep{smith2024} (2 uses)</div></div>
+      <div class="vc-card theme-comment is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">R</div><div class="title">comment · #44403c</div></div><div class="vc-sep"></div><div class="vc-body">Reword "demonstrably" — feels strong.</div></div>
+      <div class="vc-card theme-airequest is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">★</div><div class="title">aiRequest · #0c4a6e</div></div><div class="vc-sep"></div><div class="vc-body">Rewrite for active voice.</div></div>
+      <div class="vc-card theme-cut is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">✂</div><div class="title">cut · #b45757</div></div><div class="vc-sep"></div><div class="vc-body">"…and yet this is the very point…"</div></div>
+      <div class="vc-card theme-error is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">!</div><div class="title">error · #b45757</div></div><div class="vc-sep"></div><div class="vc-body">Undefined reference \ref{fig:1}.</div></div>
+      <div class="vc-card theme-example is-themed"><div class="vc-popout">›</div><div class="vc-head"><div class="badge">x</div><div class="title">example · #0f766e</div></div><div class="vc-sep"></div><div class="vc-body">(1)&nbsp;&nbsp;Maria likes coffee.</div></div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Anatomy</h2>
+    <p class="lede">Header (badge · title · trailing · menu) → separator → body → optional footer. Popout chevron and trash icon live in the absolute-positioned overlay layer.</p>
+    <div style="display:grid; grid-template-columns:340px 1fr; gap:24px; align-items:start;">
+      <div class="vc-card theme-note is-themed is-selected" style="position:relative;">
+        <div style="position:absolute; top:6px; right:6px; width:18px; height:18px; color:var(--ink-muted); display:flex; align-items:center; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="12" y1="17" x2="12" y2="7"/><polyline points="7 12 12 7 17 12"/></svg>
+        </div>
+        <div class="vc-head">
+          <svg width="10" height="14" viewBox="0 0 10 14" fill="var(--ink-faint)" style="cursor:grab;"><circle cx="3" cy="2" r="1.2"/><circle cx="7" cy="2" r="1.2"/><circle cx="3" cy="7" r="1.2"/><circle cx="7" cy="7" r="1.2"/><circle cx="3" cy="12" r="1.2"/><circle cx="7" cy="12" r="1.2"/></svg>
+          <div class="badge">N</div>
+          <input class="input" style="border:0; background:transparent; padding:0; font-size:12px; font-weight:500; color:var(--t-title);" value="Reviewer comment" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--ink-muted)"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
+        </div>
+        <div class="vc-sep"></div>
+        <div class="vc-body">Reviewer flagged §3.1 ambiguity. Need to tighten the framing here before resubmission.</div>
+      </div>
+      <div>
+        <table class="rules">
+          <tbody>
+            <tr><td>Grab handle (6-dot)</td><td>First header element when <code>grabHandle</code> is on. Drags entity.</td></tr>
+            <tr><td>Badge</td><td>20×20, 4-px radius, 1.5-px theme border. Anchored: label. Orphaned: diagonal cross at 60% opacity.</td></tr>
+            <tr><td>Title input</td><td>Inter 500 · <code>0.78rem</code> · theme.titleColor · transparent border, no fill.</td></tr>
+            <tr><td>Trailing target icon</td><td>Page-with-arrow, 14 px. Selected: 100%; unselected: 60%; orphaned: 30% disabled.</td></tr>
+            <tr><td>Three-dot menu</td><td>Always present unless <code>inlineDelete</code>. Right-aligned in header.</td></tr>
+            <tr><td>Popout chevron</td><td>Absolute top-right (6 px). Always visible. Chevron docked → X floating.</td></tr>
+            <tr><td>Trash (opt-in)</td><td>Absolute bottom-right. Hover-reveal at 70% opacity. <code>--danger</code>.</td></tr>
+            <tr><td>Separator</td><td><code>--edge-subtle</code> resting → <code>--edge-hover</code> hover → <code>border.selected</code> selected.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── PANELS ─────────────────────────────── -->
+<section class="tabpanel" data-tab="panels">
+  <div class="tab-intro">
+    <h1>Panels &amp; Headers</h1>
+    <p>Every panel uses <code>Panel</code> or <code>CardListPanel</code>. The header is built from four slots — <span class="mono">leading</span>, <span class="mono">title</span>, <span class="mono">extras</span>, <span class="mono">chrome</span>. Bespoke headers are forbidden.</p>
+  </div>
+
+  <div class="block">
+    <h2>Header anatomy</h2>
+    <div style="background:var(--surface); border:1px solid var(--edge-subtle); border-radius:8px; overflow:hidden;">
+      <div style="display:grid; grid-template-columns:32px 32px 1fr 64px 22px 22px 22px; height:34px; background:var(--header-bg); border-bottom:1px solid var(--border-light); align-items:center; padding:0 8px 0 10px; gap:8px; position:relative; font-size:13px;">
+        <div style="grid-column:1; color:var(--ink-muted); display:flex; align-items:center; justify-content:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </div>
+        <div style="grid-column:2; width:14px; height:14px; border-radius:3px; background:var(--note-color); border:1.5px solid var(--note-marker-border); justify-self:center;"></div>
+        <div style="grid-column:3; font-weight:600; color:var(--ink-body);">Notes <span style="color:var(--ink-muted); font-family:var(--font-mono); font-size:11px; margin-left:6px;">7</span></div>
+        <div style="grid-column:4; color:var(--ink-muted); font-family:var(--font-mono); font-size:11px; text-align:right;">3 of 7</div>
+        <div style="grid-column:5; color:var(--ink-muted); display:flex; align-items:center; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        </div>
+        <div style="grid-column:6; color:var(--ink-muted); display:flex; align-items:center; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="2" width="20" height="20" rx="3"/><line x1="12" y1="17" x2="12" y2="7"/><polyline points="7 12 12 7 17 12"/></svg>
+        </div>
+        <div style="grid-column:7; color:var(--ink-muted); display:flex; align-items:center; justify-content:center;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+        </div>
+      </div>
+      <div style="padding:10px 14px; font-size:11px; color:var(--ink-muted); font-family:var(--font-mono); background:var(--surface-muted); display:grid; grid-template-columns:32px 32px 1fr 64px 22px 22px 22px; gap:8px; padding-left:18px; padding-right:18px;">
+        <div>menu</div><div>theme</div><div>title · count</div><div>extras</div><div>add</div><div>popout</div><div>close</div>
+      </div>
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <thead><tr><th>Slot</th><th>Used for</th><th>Position</th></tr></thead>
+      <tbody>
+        <tr><td><code>headerLeading</code></td><td>Options menu (≡)</td><td>Far left · 16-px icon</td></tr>
+        <tr><td><code>headerTitleAfter</code></td><td>Per-panel theme picker, edit/focus/lock</td><td>Inline with title</td></tr>
+        <tr><td>title + count</td><td>Always centered-left</td><td>Inter 600 · 14 px</td></tr>
+        <tr><td><code>headerExtras</code></td><td>Counter, view toggle</td><td>Right of title, before chrome</td></tr>
+        <tr><td><code>onAdd</code> / <code>onAiRequest</code></td><td>+ button · ★ AI button</td><td>Right edge · 22-px hit area</td></tr>
+        <tr><td><code>PanelPopout</code></td><td>Pop into floater</td><td>Penultimate · auto-wired</td></tr>
+        <tr><td><code>PanelClose</code></td><td>Close / collapse</td><td>Last · auto-wired</td></tr>
+      </tbody>
+    </table>
+    <div class="callout"><strong>Rule:</strong> never render <code>PanelHeader</code> directly except for one-off custom panels; use <code>Panel</code> with slots. The chrome buttons (popout, close) are wired automatically — manually adding them double-renders.</div>
+  </div>
+
+  <div class="block">
+    <h2>Live panels</h2>
+    <div class="grid cols-3">
+      <div class="panel-frame">
+        <div class="ph"><span class="ph-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></span><span style="width:10px; height:10px; background:var(--footnote-color); border:1px solid var(--footnote-color); border-radius:2px;"></span><span class="ph-title">Footnotes</span><span class="ph-count">3</span><span class="spacer"></span><span class="ph-icon">+</span><span class="ph-icon">›</span><span class="ph-icon">×</span></div>
+        <div class="pl">
+          <div class="vc-card theme-footnote is-themed is-selected"><div class="vc-head"><div class="badge">1</div><div class="title">Pilot variance</div></div><div class="vc-sep"></div><div class="vc-body">Lower than predicted.</div></div>
+          <div class="vc-card theme-footnote is-themed"><div class="vc-head"><div class="badge">2</div><div class="title">Sample size</div></div><div class="vc-sep"></div><div class="vc-body">n = 47, post-hoc.</div></div>
+          <div class="vc-card theme-footnote is-themed"><div class="vc-head"><div class="badge">3</div><div class="title">Methodology</div></div><div class="vc-sep"></div><div class="vc-body">See Appendix B.</div></div>
+        </div>
+      </div>
+      <div class="panel-frame">
+        <div class="ph"><span class="ph-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></span><span style="width:10px; height:10px; background:var(--note-color); border:1px solid var(--note-marker-border); border-radius:2px;"></span><span class="ph-title">Notes</span><span class="ph-count">2</span><span class="spacer"></span><span class="ph-icon">+</span><span class="ph-icon">›</span><span class="ph-icon">×</span></div>
+        <div class="pl">
+          <div class="vc-card theme-note is-themed"><div class="vc-head"><div class="badge">N</div><div class="title">Reviewer A</div></div><div class="vc-sep"></div><div class="vc-body">Tighten §3.1 framing.</div></div>
+          <div class="vc-card theme-note is-themed"><div class="vc-head"><div class="badge">N</div><div class="title">Self note</div></div><div class="vc-sep"></div><div class="vc-body">Cite Müller 2022 here.</div></div>
+        </div>
+      </div>
+      <div class="panel-frame">
+        <div class="ph"><span class="ph-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></span><span style="width:10px; height:10px; background:var(--citation-bg); border:1px solid var(--citation-border-color); border-radius:2px;"></span><span class="ph-title">Citations</span><span class="ph-count">12</span><span class="spacer"></span><span class="ph-icon">+</span><span class="ph-icon">›</span><span class="ph-icon">×</span></div>
+        <div class="pl">
+          <div class="vc-card theme-citation is-themed"><div class="vc-head"><div class="badge">C</div><div class="title">smith2024</div></div><div class="vc-sep"></div><div class="vc-body">\citep{smith2024}</div></div>
+          <div class="vc-card theme-citation is-themed"><div class="vc-head"><div class="badge">C</div><div class="title">jones2023</div></div><div class="vc-sep"></div><div class="vc-body">\citet{jones2023}</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── BUTTONS & INPUTS ─────────────────────────────── -->
+<section class="tabpanel" data-tab="buttons">
+  <div class="tab-intro">
+    <h1>Buttons &amp; Inputs</h1>
+    <p>Five button variants. Three sizes. One input. Anything else is a violation.</p>
+  </div>
+
+  <div class="block">
+    <h2>Variants</h2>
+    <div class="grid cols-2">
+      <div class="spec"><div class="body">
+        <p class="label">primary</p>
+        <p class="meta">Main commit action: Create, Save, Confirm. One per dialog/screen.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-primary size-sm">Create</button>
+          <button class="btn btn-primary">Save</button>
+          <button class="btn btn-primary size-lg">Open paper</button>
+        </div>
+      </div></div>
+      <div class="spec"><div class="body">
+        <p class="label">secondary</p>
+        <p class="meta">Adjacent neutral actions: Insert, Copy, Archive. Mutes against primary.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-secondary size-sm">Insert</button>
+          <button class="btn btn-secondary">Copy</button>
+          <button class="btn btn-secondary size-lg">Archive</button>
+        </div>
+      </div></div>
+      <div class="spec"><div class="body">
+        <p class="label">warm</p>
+        <p class="meta">Prominent but non-primary: Restore, Undo, Pin. Uses the brand brown.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-warm size-sm">Restore</button>
+          <button class="btn btn-warm">Undo cut</button>
+        </div>
+      </div></div>
+      <div class="spec"><div class="body">
+        <p class="label">danger</p>
+        <p class="meta">Destructive irreversible: Delete, Discard. Always confirms unless body is empty.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-danger size-sm">Delete</button>
+          <button class="btn btn-danger">Discard changes</button>
+        </div>
+      </div></div>
+      <div class="spec"><div class="body">
+        <p class="label">ghost</p>
+        <p class="meta">Tertiary: Cancel, Skip. In-menu items.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-ghost size-sm">Cancel</button>
+          <button class="btn btn-ghost">Skip</button>
+        </div>
+      </div></div>
+      <div class="spec"><div class="body">
+        <p class="label">resolve (special)</p>
+        <p class="meta">Positive confirmation only — comment Resolve, suggestion Accept. Never used outside review flows.</p>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="btn btn-resolve">Resolve</button>
+          <button class="btn btn-resolve">Accept · <kbd>Y</kbd></button>
+        </div>
+      </div></div>
+    </div>
+
+    <h3>Icon button</h3>
+    <div class="spec" style="max-width:480px;"><div class="body">
+      <p class="meta">Header chrome and inline controls. Hit area always 22 (panel) or 28 (toolbar). Resting transparent → hover <code>--surface-muted-strong</code>.</p>
+      <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+        <button class="iconbtn size-sm"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <button class="iconbtn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></button>
+        <button class="iconbtn size-lg"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 7h18M3 12h18M3 17h18"/></svg></button>
+        <span class="meta" style="margin-left:auto;">22 · 22 · 28</span>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="block">
+    <h2>Sizes</h2>
+    <table class="rules">
+      <thead><tr><th>Size</th><th>Padding</th><th>Font</th><th>Radius</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td>sm</td><td>4 / 8 px</td><td>11.5 px</td><td>4 px</td><td>Inline in card body, dense menus</td></tr>
+        <tr><td>md (default)</td><td>6 / 12 px</td><td>12.5 px</td><td>6 px</td><td>Most actions</td></tr>
+        <tr><td>lg</td><td>9 / 16 px</td><td>14 px</td><td>6 px</td><td>Modal primary action</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Inputs</h2>
+    <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:14px;">
+      <div class="spec"><div class="body"><p class="label">Text input</p><input class="input" placeholder="Paper title" style="margin-top:8px;" /></div></div>
+      <div class="spec"><div class="body"><p class="label">Search</p><div style="position:relative; margin-top:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ink-muted)" stroke-width="1.75" style="position:absolute; left:8px; top:50%; transform:translateY(-50%);"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input class="input" placeholder="Search…" style="padding-left:28px;" /></div></div></div>
+      <div class="spec"><div class="body"><p class="label">Prompt (modal)</p><input class="input" placeholder="Rename paper" style="margin-top:8px;" autofocus /></div></div>
+      <div class="spec"><div class="body"><p class="label">Color picker swatch</p>
+        <div style="margin-top:8px; display:flex; gap:6px; align-items:center;">
+          <button style="width:22px; height:22px; border-radius:4px; border:1.5px solid var(--edge-hover); background:#b45757; cursor:pointer;"></button>
+          <button style="width:22px; height:22px; border-radius:4px; border:1.5px solid var(--edge-hover); background:#15803d; cursor:pointer;"></button>
+          <button style="width:22px; height:22px; border-radius:4px; border:1.5px solid var(--edge-hover); background:#7191b0; cursor:pointer;"></button>
+          <button style="width:22px; height:22px; border-radius:4px; border:1.5px solid var(--edge-hover); background:#d4a843; cursor:pointer;"></button>
+          <button style="width:22px; height:22px; border-radius:4px; border:1.5px solid var(--edge-hover); background:linear-gradient(135deg,#fff 50%, #ddd 50%); cursor:pointer;" title="Reset"></button>
+        </div>
+      </div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── MODALS & DRAG ─────────────────────────────── -->
+<section class="tabpanel" data-tab="modals">
+  <div class="tab-intro">
+    <h1>Modals &amp; Drag</h1>
+    <p>Every modal flows through <code>SystemDialog</code>. Five sizes. Four button variants in the footer. Anchored or centered.</p>
+  </div>
+
+  <div class="block">
+    <h2>Sizes</h2>
+    <table class="rules">
+      <thead><tr><th>Size</th><th>Max width</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td>sm</td><td>340 px</td><td>Confirm, alert</td></tr>
+        <tr><td>md</td><td>380 px</td><td>Prompt, document-class mismatch</td></tr>
+        <tr><td>lg</td><td>520 px</td><td>New document</td></tr>
+        <tr><td>xl</td><td>720 px</td><td>Larger forms</td></tr>
+        <tr><td>full</td><td>min(96vw, 1100px)</td><td>AI window, preferences, dashboards</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Confirm dialog (sm, anchored)</h2>
+    <div style="background:rgba(0,0,0,.06); border-radius:8px; padding:30px; display:flex; justify-content:center;">
+      <div style="background:var(--surface); border-radius:8px; box-shadow:0 12px 36px rgba(0,0,0,.18); width:340px; overflow:hidden;">
+        <div style="padding:14px 16px 6px;">
+          <div style="font-family:var(--font-display); font-size:15px; font-weight:600; color:var(--ink-strong);">Delete this footnote?</div>
+          <div style="font-size:12px; color:var(--ink-subtle); margin-top:2px;">This footnote has text content.</div>
+        </div>
+        <div style="padding:8px 16px 12px; font-size:13px; color:var(--ink-body);">Once deleted, the underlying <code style="font-family:var(--font-mono); font-size:12px; background:var(--surface-muted-strong); padding:1px 4px; border-radius:3px;">\footnote{…}</code> is removed from the source. This cannot be undone.</div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; padding:10px 14px 14px; border-top:1px solid var(--edge-subtle); background:var(--surface-muted);">
+          <button class="btn btn-ghost size-sm">Cancel</button>
+          <button class="btn btn-danger size-sm" style="background:#fee2e2;">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Drag &amp; drop visuals</h2>
+
+    <h3>Drag ghosts</h3>
+    <p class="lede">Each draggable category has a fixed ghost color matched to its theme. Ghosts are appended off-screen, set as <code>setDragImage</code>, and removed on the next frame.</p>
+    <div class="grid cols-3">
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#fef2f2; border-color:#b45757;">Footnote 3</span><p class="meta" style="margin-top:10px;">footnote · #fef2f2 / #b45757</p></div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#f0fdf4; border-color:#86efac;">Note · Reviewer A</span><p class="meta" style="margin-top:10px;">note · #f0fdf4 / #86efac</p></div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#fdf8e1; border-color:#e0d5a8;">smith2024</span><p class="meta" style="margin-top:10px;">citation · #fdf8e1 / #e0d5a8</p></div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#f5f5f4; border-color:#d6d3d1;">Cut paragraph</span><p class="meta" style="margin-top:10px;">archive · #f5f5f4 / #d6d3d1</p></div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#e0f2fe; border-color:#7dd3fc;">★ AI request</span><p class="meta" style="margin-top:10px;">aiRequest · #e0f2fe / #7dd3fc</p></div></div>
+      <div class="spec"><div class="body" style="text-align:center; padding:18px;"><span class="ghost" style="background:#fff; border-color:#d6d3d1; font-style:italic;">"…contentious phrase…"</span><p class="meta" style="margin-top:10px;">text-only · neutral</p></div></div>
+    </div>
+
+    <h3>Drop targets</h3>
+    <table class="rules">
+      <tbody>
+        <tr><td>Card list (incoming)</td><td>Dashed-amber placeholder card at top of list (44 × full-width, <code>--ring-drag-target</code>)</td></tr>
+        <tr><td>Editor (archive snippet)</td><td>Inset 2 px box-shadow at <code>rgba(113,145,176,.35)</code>, subtle blue tint</td></tr>
+        <tr><td>Sidebar panel icon</td><td>Background <code>rgba(219,234,254,.75)</code> + 2 px ring + accent shadow</td></tr>
+        <tr><td>Capture-drop (paragraph onto panel)</td><td>Inset 2 px box-shadow at <code>rgba(113,145,176,.55)</code></td></tr>
+        <tr><td>Marginalia anchor (paragraph link)</td><td>Vertical line on gutter side, full paragraph height, <code>--drag-highlight</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── EDITOR ─────────────────────────────── -->
+<section class="tabpanel" data-tab="editor">
+  <div class="tab-intro">
+    <h1>Editor &amp; Marginalia</h1>
+    <p>Inline elements have rendering rules in <code>globals.css</code>. Marginalia markers carry the same color identity as their source panel.</p>
+  </div>
+
+  <div class="block">
+    <h2>Inline element specimens</h2>
+    <div class="editor-sample">
+      <h2><span class="num">2</span>Methods</h2>
+      <p style="font-size:1.05rem; line-height:1.7; margin-top:0;">In our pilot study<span class="ed-footnote">3</span> we observed that the variance of <span class="ed-math"><span class="pre">$</span>\sigma^2<span class="post">$</span></span> across <span class="ed-citation">Smith&nbsp;et&nbsp;al.&nbsp;2024</span> was lower than predicted. <em>This contention</em> deserves close scrutiny.</p>
+      <p style="font-size:1.05rem; line-height:1.7;"><span class="ed-comment">% TODO: rerun with n=200 and re-derive Eq. 3</span></p>
+      <p style="font-size:1.05rem; line-height:1.7;"><span class="ed-cmd">\citep</span><span class="ed-cmd">{</span><span class="ed-cmd">jones2023</span><span class="ed-cmd">}</span> — unhandled commands render as grey monospace.</p>
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <thead><tr><th>Element</th><th>Color</th><th>Background</th><th>Font</th><th>Click</th></tr></thead>
+      <tbody>
+        <tr><td>Footnote marker</td><td><code>#b45757</code></td><td><code>#fef2f2</code></td><td>UI sans</td><td>Opens inline editor</td></tr>
+        <tr><td>Citation pill</td><td><code>#6b6245</code></td><td><code>#fdf8e1</code></td><td>inherit</td><td>Opens inline editor</td></tr>
+        <tr><td>LaTeX % comment</td><td><code>#7191b0</code></td><td><code>#f0f5fa</code></td><td>Mono italic .85em</td><td>Opens inline editor (handle bar)</td></tr>
+        <tr><td>Inline math</td><td><code>#6b4fa0</code></td><td><code>#f0eeeb</code></td><td>Mono .9em</td><td>Opens inline editor</td></tr>
+        <tr><td>Display math</td><td><code>#6b4fa0</code></td><td><code>#f5f3f0</code></td><td>Mono</td><td>Opens inline editor</td></tr>
+        <tr><td>Unhandled \cmd</td><td><code>#9ca3af</code></td><td>—</td><td>Mono .9em</td><td>—</td></tr>
+        <tr><td>\ref{} target</td><td><code>#555</code> → <code>#4a3f20</code> when active</td><td><code>#f0f0ee</code> → <code>#fef08a</code></td><td>inherit</td><td>Opens label popover</td></tr>
+        <tr><td>AI marker chip</td><td><code>#0c4a6e</code></td><td><code>rgba(224,242,254,.6)</code></td><td>UI .78em</td><td>Opens AI request</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="block">
+    <h2>Marginalia markers</h2>
+    <p class="lede">22 × 22 px button, 4-px radius, 1.5-px theme border, 16-px glyph. Two-column grid per gutter side, always draggable. Glyphs lifted from <code>src/components/editor-layout/panel-icons.tsx</code> (the same components that paint the panel strip).</p>
+    <div class="mg-grid">
+
+      <!-- Quotation: IconQuotations (no frame) -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#fffbeb; color:#a16207; border-color:#fcd34d;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill="currentColor" stroke="none"/>
+            <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill="currentColor" stroke="none"/>
+          </svg>
+        </div>
+        <div class="lbl">Quotation</div><div class="hex">#a16207 · left</div>
+      </div>
+
+      <!-- Note: IconNotes -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#f0fdf4; color:#15803d; border-color:#86efac;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="8" y1="13" x2="16" y2="13"/>
+            <line x1="8" y1="17" x2="13" y2="17"/>
+          </svg>
+        </div>
+        <div class="lbl">Note</div><div class="hex">#15803d · right</div>
+      </div>
+
+      <!-- Archive: IconArchive -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#f0f5fa; color:#5a7a99; border-color:#a8c1d8;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 8v13H3V8"/>
+            <path d="M1 3h22v5H1z"/>
+            <path d="M10 12h4"/>
+          </svg>
+        </div>
+        <div class="lbl">Archive</div><div class="hex">#5a7a99 · right</div>
+      </div>
+
+      <!-- Revision: IconRevisions (rotated arc pair) -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#faf5ff; color:#9333ea; border-color:#d8b4fe;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <g transform="rotate(45 12 12)">
+              <path d="M 4 12 A 8 8 0 0 1 20 12" stroke="currentColor" stroke-width="3.25" stroke-linecap="round" fill="none"/>
+              <path d="M 20 12 A 8 8 0 0 1 4 12" stroke="currentColor" stroke-width="3.25" stroke-linecap="round" fill="none" opacity=".55"/>
+            </g>
+          </svg>
+        </div>
+        <div class="lbl">Revision</div><div class="hex">#9333ea · right</div>
+      </div>
+
+      <!-- Cut: IconCutter -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#fef2f2; color:#b45757; border-color:#fca5a5;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="6" cy="6" r="3"/>
+            <circle cx="6" cy="18" r="3"/>
+            <path d="M20 4L8.12 15.88"/>
+            <path d="M14.47 14.48L20 20"/>
+            <path d="M8.12 8.12L12 12"/>
+          </svg>
+        </div>
+        <div class="lbl">Cut</div><div class="hex">#b45757 · right</div>
+      </div>
+
+      <!-- Todo: IconTodo (paired checks) -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#f5f5f4; color:#44403c; border-color:#a8a29e;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7l2.5 2.5L11 5"/>
+            <path d="M14 7h7"/>
+            <path d="M4 17l2.5 2.5L11 15"/>
+            <path d="M14 17h7"/>
+          </svg>
+        </div>
+        <div class="lbl">Todo</div><div class="hex">#44403c · right</div>
+      </div>
+
+      <!-- Error: IconErrors (warning triangle) -->
+      <div class="mg-cell">
+        <div class="mg-marker" style="background:#fef2f2; color:#b45757; border-color:#f5a5a5;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3 L22 20 L2 20 Z"/>
+            <line x1="12" y1="10" x2="12" y2="14"/>
+            <line x1="12" y1="17" x2="12" y2="17.01"/>
+          </svg>
+        </div>
+        <div class="lbl">Error</div><div class="hex">#b45757 · right</div>
+      </div>
+
+    </div>
+    <p class="lede" style="margin-top:10px;">Source of truth: <code>MARKER_META</code> in <code>src/lib/marginalia.ts</code>. The seven types above are the only marginalia gutter icons — footnote / citation / comment have <em>no</em> gutter marker and were placeholders in the earlier draft.</p>
+  </div>
+
+  <div class="block">
+    <h2>Top bar &amp; tabs</h2>
+    <div class="topbar-frame">
+      <span class="wm"><span class="v-accent">V</span>irgil</span>
+      <span class="tb-tab">Intro draft</span>
+      <span class="tb-tab active">Methods.tex</span>
+      <span class="tb-tab">Discussion</span>
+      <span style="flex:1;"></span>
+      <span class="tb-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M4 4h6l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4z"/></svg></span>
+      <span class="tb-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
+      <span class="tb-icon"><g transform="rotate(15 12 12)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/><line x1="19.07" y1="4.93" x2="4.93" y2="19.07"/></svg></g></span>
+    </div>
+    <table class="rules" style="margin-top:14px;">
+      <tbody>
+        <tr><td>Top bar bg</td><td><code>--topbar-bg</code> · <code>#dcdbd7</code></td></tr>
+        <tr><td>Top bar bottom border</td><td><code>--topbar-border</code> · <code>#cbc3b8</code></td></tr>
+        <tr><td>Tab inactive bg</td><td><code>--tab-bg</code> · <code>#dcdbd7</code> · color <code>--ink-subtle</code></td></tr>
+        <tr><td>Tab active bg</td><td><code>--main-tab-bg</code> ≡ <code>--background</code> · color <code>--ink-strong</code></td></tr>
+        <tr><td>Tab swoop</td><td>radial-gradient pseudo-elements; corner radius 12 px (see <code>.browser-tab-swoop</code>)</td></tr>
+        <tr><td>Top-bar icon hover</td><td><code>rgba(255,255,255,.30)</code> bg + <code>--accent</code> color · AI gets sky-50 bg + sky-600 color</td></tr>
+        <tr><td>Top-bar icon color (rest)</td><td><code>--ink-subtle</code> · stone-500 in legacy code</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── AUDIT ─────────────────────────────── -->
+<section class="tabpanel" data-tab="audit">
+  <div class="tab-intro">
+    <h1>Audit</h1>
+    <p>Specific inconsistencies in the codebase, with the canonical fix. Tags mark the dimension and severity. Sweep these in order; each is a small, mechanical change.</p>
+  </div>
+
+  <div class="audit">
+    <span class="tag color">Color</span><span class="tag high">High</span>
+    <h4>Selection ring uses three different conventions</h4>
+    <div class="where">src/components/panel-primitives.tsx · CARD_SELECTED, CARD_SELECTED_FOOTNOTE, CARD_SELECTED_NOTE, CARD_SELECTED_TODO, CARD_SELECTED_CUT</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Generic <code>amber-300</code> selection; per-theme overrides for footnote/note/todo/cut. Some themes have no override and inherit amber.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Every theme defines <code>border.selected</code>. Card wrapper applies it directly. Generic amber is retired (still allowed for drag drop targets only).</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Delete <code>CARD_SELECTED</code> (the amber default). Require <code>theme.borderSelected</code> on every theme. <code>panelCard()</code> takes a theme arg, returns the theme's selected border.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag color">Color</span><span class="tag med">Med</span>
+    <h4>Header tint uses Tailwind opacity hacks</h4>
+    <div class="where">CARD_THEMES — <code>bg-red-100/60</code>, <code>bg-emerald-100/50</code>, <code>bg-stone-100/70</code>, <code>bg-[#fdf8e1]/80</code>, <code>bg-[#fef3c3]/40</code></div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Resting tint is the selected tint at half-ish opacity, but the divisor varies (40, 50, 60, 70, 80). Citation cards (40%) read as basically white; todo (70%) reads almost selected.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Two solid color tokens per theme: <code>header.resting</code> and <code>header.selected</code>. No alpha.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Pre-mix the tints. Resting = <code>color-mix(in oklch, header.selected 50%, white)</code>. Commit the resulting hex.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag spacing">Spacing</span><span class="tag med">Med</span>
+    <h4>Icon sizes and hit areas drift across panel headers</h4>
+    <div class="where">PanelHeader, PanelPopout, PanelClose, MenuBar, top bar buttons</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Header icons are <code>14</code>; chrome buttons (popout, close) are <code>5×5</code> at <code>14</code> stroke; AI add button differs again. Hit areas range 16 → 28 px.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Glyph 14 (inline), 16 (panel), 20 (toolbar). Hit area 22 (panel) or 28 (toolbar). Stroke 1.75 throughout.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Add <code>iconbtn-sm</code> / <code>iconbtn-md</code> / <code>iconbtn-lg</code> utility classes. Replace all hand-rolled icon button divs.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag hover">Hover</span><span class="tag high">High</span>
+    <h4>Top-bar buttons accidentally darken</h4>
+    <div class="where">MenuBar.tsx — components using <code>hover:bg-stone-100</code> on top-bar parents</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Top bar uses <code>--topbar-bg</code> (warm grey). Stone-100 hover is barely lighter, sometimes darker. Inconsistent feel.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Top bar &amp; panel-header buttons hover to <code>rgba(255,255,255,.30)</code> (lighten) and color shifts to <code>--accent</code>.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Class <code>iconbtn-on-dark</code>: replace stone-100 hover with white-30%. Already documented for top bar; extend to panel headers.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag select">Selection</span><span class="tag med">Med</span>
+    <h4>Selected card body sometimes uses theme tint, sometimes white</h4>
+    <div class="where">EditableCard body</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Most cards keep body white when selected. Some examples in test data show body inheriting <code>theme.headerSelected</code>, which makes prose hard to read.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Body is <em>always</em> white. Only the header strip carries theme color. Body text is <code>--ink-body</code>.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Lock body bg to <code>--surface</code> in the wrapper; remove any theme-tinted body code paths.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag button">Buttons</span><span class="tag med">Med</span>
+    <h4>"Restore" / "Insert" / "Copy" use 3 different button styles</h4>
+    <div class="where">Archive panel, Cutter, Citation builder, footnote actions</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Some panels use <code>bg-blue-50</code> (cool tone in a warm app), some use <code>bg-stone-100</code>, some use the warm-accent style. Not consistent across panels.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>"Restore" → <code>btn-warm</code>. "Insert / Copy / Archive" → <code>btn-secondary</code>. "Delete" → <code>btn-danger</code>.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Three classes only. Grep for <code>bg-blue-</code> in <code>src/panels</code> and <code>src/components</code> — replace.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag spacing">Spacing</span><span class="tag low">Low</span>
+    <h4>Panel header height drifts when an icon row is added</h4>
+    <div class="where"><code>--header-h: 34px</code> · ad-hoc <code>py-2</code> in custom headers</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Custom panels (Outline, Errors) use <code>py-2</code> instead of fixing to <code>--header-h</code>; height visually drifts when icons stack.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Header always exactly 34 px. Anything taller goes into <code>panelExtras</code> below the header, not inside it.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Pull every bespoke header through <code>PanelHeader</code>. Remove <code>py-*</code> on header divs.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag color">Color</span><span class="tag low">Low</span>
+    <h4>Multiple "warm-amber" hexes in flight</h4>
+    <div class="where"><code>#fcd34d</code> · <code>#d4a843</code> · <code>#fbbf24</code> · <code>#fef08a</code> · <code>#fef9c3</code></div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Five different warm-yellow / amber tones are in the codebase: drag target, citation active, label-ref active, label-ref highlight, citation hover.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Two only: <code>--ring-drag-target</code> (#fcd34d) and <code>--citation-border-color</code> (#e0d5a8) for chips. Active state lifts to <code>#d4a843</code>.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Promote to tokens; grep for the four removable hexes; replace.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag icon">Icons</span><span class="tag low">Low</span>
+    <h4>Two close-button strokes in the same header</h4>
+    <div class="where"><code>PanelClose</code> uses stroke 2.5, <code>CardPopoutButton</code> uses 2 (X variant), inline icons use 1.75</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>X glyphs sit next to chevrons of different stroke weight. Eye reads them as different "weights" of close.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Outline icons 1.75. X glyph 2 (it's a flat shape, not an outline). Apply universally.</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Audit every <code>stroke-width</code> in <code>panel-primitives.tsx</code>. Snap to 1.75 or 2.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag color">Color</span><span class="tag low">Low</span>
+    <h4>Footnote red has 4 shades depending on context</h4>
+    <div class="where"><code>--footnote-color #b45757</code> · <code>--par-title-color #c45a5a</code> · <code>border-red-300</code> · <code>#fca5a5</code> · <code>#b45757</code></div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Footnote marker is <code>#b45757</code>; par-title is <code>#c45a5a</code>; selected card border is <code>red-300</code> (≈<code>#fca5a5</code>); cut card border is <code>fca5a5</code>; the same role gets different reds.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Footnote scale: <code>red.50</code> (#fef2f2) · <code>red.100</code> (#fee2e2) · <code>red.200</code> (#fecaca) · <code>red.300</code> (#fca5a5 — selected border) · <code>red.500</code> (#b45757 — base color).</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Define <code>--footnote-50/-100/-200/-300/-500</code>. Par-title becomes <code>--footnote-500</code>. Remove <code>#c45a5a</code>.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag select">Click</span><span class="tag med">Med</span>
+    <h4>Click-to-edit affordance varies across inline elements</h4>
+    <div class="where">Footnote marker, citation pill, math node, latex-comment</div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Footnote opens a popup. Citation opens an inline editor. Math opens a contentEditable. LaTeX comments open via the handle bar. No consistent visual cue that they're clickable.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Every click-to-edit element gets a 1-px hover ring in its theme color. Cursor is always <code>pointer</code>. On click → opens a popover (math, footnote) or expands inline (citation, latex-comment).</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> Add <code>data-click-edit="true"</code> to every node; one CSS rule applies the hover ring globally.</div>
+  </div>
+
+  <div class="audit">
+    <span class="tag color">Tokens</span><span class="tag low">Low</span>
+    <h4>Raw <code>text-stone-*</code> and <code>border-stone-*</code> still in use</h4>
+    <div class="where">~30 grep hits across <code>src/</code></div>
+    <div class="ba">
+      <div class="col bad"><h5>Today</h5><p>Style guide says use semantic tokens (<code>text-ink-subtle</code>, <code>border-edge-subtle</code>). Raw stone classes still in many panels — color theming can't move them.</p></div>
+      <div class="col good"><h5>Canonical</h5><p>Zero raw <code>stone-</code> outside <code>panel-primitives.tsx</code> theme definitions and the explicitly-listed exceptions (button fills, decorative one-offs).</p></div>
+    </div>
+    <div class="fix"><span class="arrow">→</span> One sweep with codemod: <code>text-stone-500</code> → <code>text-ink-subtle</code>; <code>border-stone-200</code> → <code>border-edge-subtle</code>; etc.</div>
+  </div>
+</section>
+
+<!-- ─────────────────────────────── STYLE GUIDE ─────────────────────────────── -->
+<section class="tabpanel" data-tab="guide">
+  <div class="tab-intro">
+    <h1>Redrawn Style Guide</h1>
+    <p>This is the consolidated, stricter version of <span class="mono">src/STYLE_GUIDE.md</span>. Drop it back into the repo to replace the existing file.</p>
+  </div>
+
+  <div class="prose">
+    <h2>Virgil — Style Guide (v2)</h2>
+    <p>App-wide UI conventions. The system in this guide is the only one we ship. New components must compose from existing primitives; new tokens must replace several hex values, not add to a long list.</p>
+
+    <hr class="rule" />
+
+    <h3>1 · Tokens — semantic only</h3>
+    <p>Every panel, card, and button reads from the variables in <code>globals.css</code>. Six rules govern token use:</p>
+    <ol>
+      <li>Use the semantic name (<code>--ink-body</code>) — never the raw hex.</li>
+      <li>If you find yourself reaching for a Tailwind <code>stone-</code>, <code>red-</code>, or <code>amber-</code> utility, stop. Either there is a token, or you need to add one.</li>
+      <li>Locked aliases never drift apart. The list (<code>--pod-editor</code>, <code>--h1-color</code>, <code>--h2h3-color</code>, <code>--scrollbar-hover</code>, <code>--theme-color</code>, <code>--main-tab-bg</code>) is closed; do not add to it without strong justification.</li>
+      <li>New scale tokens go in groups of 5 (50/100/200/300/500). One scale per category color.</li>
+      <li>The cool tones (sky for AI, blue for archive, blue-grey for LaTeX comments) live exclusively in the components that own them. Never in chrome.</li>
+      <li>Amber is reserved. Drop targets and label-ref active state only.</li>
+    </ol>
+
+    <h3>2 · Hover</h3>
+    <p>One rule, two directions:</p>
+    <ul>
+      <li><strong>Light surfaces darken:</strong> resting bg → <code>surface-muted</code> or <code>surface-muted-strong</code>; resting border → <code>edge-hover</code>.</li>
+      <li><strong>Dark chrome lightens:</strong> top bar, panel header — bg → <code>rgba(255,255,255,.30–.45)</code>, color → <code>--accent</code>.</li>
+    </ul>
+    <blockquote>Forbidden: <code>hover:bg-stone-100</code> on a chrome (dark) surface; <code>hover:bg-blue-50</code> anywhere; any cool-toned hover in warm UI.</blockquote>
+
+    <h3>3 · Selection</h3>
+    <p>One canonical visual:</p>
+    <ul>
+      <li>Themed border (<code>theme.borderSelected</code>).</li>
+      <li>Themed header strip at full opacity (<code>theme.headerSelected</code>).</li>
+      <li>White body (<code>--surface</code>).</li>
+      <li>Body text always <code>--ink-body</code>. Never inverted, never tinted.</li>
+    </ul>
+    <p>Click empty list space to deselect. <kbd>Esc</kbd> deselects on focus. There is no multi-select for cards.</p>
+
+    <h3>4 · Focus</h3>
+    <p>Inputs only. Buttons rely on hover; cards rely on selection.</p>
+    <ul>
+      <li>Border <code>--edge-subtle</code> → <code>--edge-hover</code> (hover) → <code>--accent</code> (focus).</li>
+      <li>Focus ring: <code>0 0 0 3px rgba(124,94,60,.15)</code>.</li>
+    </ul>
+
+    <h3>5 · Icons</h3>
+    <p>Three sizes, one stroke:</p>
+    <ul>
+      <li><strong>14</strong> px inline · <strong>16</strong> px panel · <strong>20</strong> px toolbar.</li>
+      <li>Stroke 1.75 for outline icons; 2 only for the X close glyph.</li>
+      <li>Round caps and joins; <code>currentColor</code> always; viewBox <code>0 0 24 24</code>.</li>
+      <li>Hit area always ≥ 22 × 22 (panel) or 28 × 28 (toolbar). Pad the button, not the glyph.</li>
+      <li>The AI sun-star is 8-ray, rotated 15°. Never a 5-point star.</li>
+    </ul>
+
+    <h3>6 · Spacing</h3>
+    <p>4-px grid throughout. Aliases: 2 (hairline), 4 (xs), 8 (sm), 12 (md), 16 (lg), 20 (xl), 24 (2xl), 32 (3xl). Header height locked to <code>--header-h</code>; never override per-panel.</p>
+
+    <h3>7 · Cards</h3>
+    <p>One wrapper (<code>PanelCard</code>) and one editable variant (<code>EditableCard</code>). Theme is a 5-token record:</p>
+    <ul>
+      <li><code>badge.bg</code>, <code>badge.fg</code>, <code>badge.border</code></li>
+      <li><code>header.selected</code> (resting = mix(selected, white, .5))</li>
+      <li><code>border.selected</code> (also separator-when-selected)</li>
+    </ul>
+    <p>Anchored cards use <code>BadgeLabel</code>; orphans use <code>BadgeOrphaned</code>. Trash is opt-in (<code>onTrashClick</code>) and lives in the absolute overlay; it is never inside the header flex row.</p>
+
+    <h3>8 · Buttons</h3>
+    <p>Five variants, three sizes:</p>
+    <ul>
+      <li><code>btn-primary</code> · accent fill · one per dialog/screen</li>
+      <li><code>btn-secondary</code> · neutral · adjacent actions</li>
+      <li><code>btn-warm</code> · accent-light · prominent non-primary (Restore)</li>
+      <li><code>btn-danger</code> · transparent → danger-soft on hover</li>
+      <li><code>btn-ghost</code> · transparent · Cancel, Skip</li>
+    </ul>
+    <p><code>btn-resolve</code> (emerald) is reserved for the Resolve / Accept actions in review flows; do not use it as a generic positive button.</p>
+
+    <h3>9 · Inputs</h3>
+    <p>One <code>.input</code> class. Border ladder (subtle → hover → strong → focus). 3-px focus ring at <code>rgba(124,94,60,.15)</code>. Search inputs prepend a 14-px icon at 8 px from the left edge.</p>
+
+    <h3>10 · Modals</h3>
+    <p>All dialogs flow through <code>SystemDialog</code> with five sizes (<code>sm 340</code>, <code>md 380</code>, <code>lg 520</code>, <code>xl 720</code>, <code>full 96vw/1100</code>) and four button variants (<code>primary</code>, <code>danger</code>, <code>secondary</code>, <code>accent</code>). Anchored dialogs accept an <code>anchorRef</code> and position below the trigger. Never call <code>window.alert/confirm/prompt</code>.</p>
+
+    <h3>11 · Drag &amp; drop</h3>
+    <p>Each draggable category has a fixed ghost: footnote (red), note (emerald), citation (amber), archive (stone), AI (sky), text-only (neutral). Drop targets use the ring/inset-shadow vocabulary in §08.</p>
+
+    <h3>12 · Editor inlines</h3>
+    <p>Click-to-edit elements (footnote, citation, math, latex-comment) all carry <code>data-click-edit="true"</code>. CSS applies a 1-px hover ring in their theme color and <code>cursor: pointer</code> globally. The inline open behavior (popup vs inline expand) is per-element but the affordance is uniform.</p>
+
+    <h3>13 · Marginalia</h3>
+    <p>22-px markers, 4-px radius, 1.5-px theme border. Two columns per gutter side, 2-px gap. Color identity matches the source panel. Always draggable; keyboard-deletable when focused.</p>
+
+    <h3>14 · Top bar</h3>
+    <p>Top bar uses the dark-chrome hover rule (lighten). Default icon color is <code>--ink-subtle</code>. Active tabs sit on <code>--main-tab-bg</code> ≡ <code>--background</code>. The AI button is the only top-bar element that uses sky tones (<code>hover:bg-sky-50/50</code>, <code>hover:text-sky-600</code>).</p>
+
+    <h3>15 · System dialogs &amp; tooltips</h3>
+    <p>Tooltip: 500 ms open, 0 ms close. Style: <code>--ink-strong</code> bg, white text, 11 px Inter, 4 px radius, 6 px gap. Keyboard shortcut indicators always <code>&lt;kbd&gt;</code>.</p>
+
+    <hr class="rule" />
+
+    <p style="font-size:12px; color:var(--ink-subtle);">When in doubt, follow the existing pattern. When the existing pattern doesn't fit, propose a token first; one new token is preferable to one new hex value in code.</p>
+  </div>
+</section>
+
+</main>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+
+<script type="text/babel" data-presets="env,react">
+const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+  "accent": "#7c5e3c",
+  "background": "#f8f3ed",
+  "headerH": 34,
+  "panelFontSize": 13,
+  "selectionTreatment": "themed-border-and-header"
+}/*EDITMODE-END*/;
+
+function App() {
+  const { TweaksPanel, TweakSection, TweakColor, TweakSlider, TweakRadio, useTweaks } = window;
+  if (!TweaksPanel) return null;
+  const [tw, setTw] = useTweaks(TWEAK_DEFAULTS);
+
+  React.useEffect(() => {
+    document.documentElement.style.setProperty('--accent', tw.accent);
+    document.documentElement.style.setProperty('--background', tw.background);
+    document.documentElement.style.setProperty('--header-h', tw.headerH + 'px');
+    document.documentElement.style.setProperty('--panel-font-size', tw.panelFontSize + 'px');
+  }, [tw]);
+
+  return (
+    <TweaksPanel title="Tweaks">
+      <TweakSection title="Tokens">
+        <TweakColor label="Accent" value={tw.accent} onChange={(v) => setTw({ accent: v })} />
+        <TweakColor label="Background" value={tw.background} onChange={(v) => setTw({ background: v })} />
+      </TweakSection>
+      <TweakSection title="Density">
+        <TweakSlider label="Header height (px)" min={26} max={44} step={1} value={tw.headerH} onChange={(v) => setTw({ headerH: v })} />
+        <TweakSlider label="Panel font (px)" min={11} max={16} step={1} value={tw.panelFontSize} onChange={(v) => setTw({ panelFontSize: v })} />
+      </TweakSection>
+      <TweakSection title="Cards (preview)">
+        <TweakRadio label="Selection treatment" value={tw.selectionTreatment} options={[
+          { value: 'themed-border-and-header', label: 'Border + header (canonical)' },
+          { value: 'border-only', label: 'Border only' },
+          { value: 'header-only', label: 'Header only' },
+        ]} onChange={(v) => setTw({ selectionTreatment: v })} />
+      </TweakSection>
+    </TweaksPanel>
+  );
+}
+
+const mount = document.createElement('div');
+mount.id = 'tweaks-mount';
+document.body.appendChild(mount);
+ReactDOM.createRoot(mount).render(<App />);
+</script>
+
+<script>
+  // ── Card state preview toggles ──
+  const stateBar = document.getElementById('cardStates');
+  if (stateBar) {
+    const pills = stateBar.querySelectorAll('.pill');
+    pills.forEach(p => p.addEventListener('click', () => {
+      pills.forEach(x => x.classList.remove('active'));
+      p.classList.add('active');
+      const state = p.dataset.state;
+      const grid = document.getElementById('cardGrid');
+      if (!grid) return;
+      grid.querySelectorAll('.vc-card').forEach(c => {
+        c.classList.remove('is-selected');
+        c.style.transform = '';
+        c.style.boxShadow = '';
+        if (state === 'selected') c.classList.add('is-selected');
+        if (state === 'popped') {
+          c.style.boxShadow = '0 12px 30px rgba(0,0,0,.18), 0 2px 6px rgba(0,0,0,.08)';
+          c.style.transform = 'translateY(-2px)';
+        }
+      });
+    }));
+  }
+</script>
+
+<footer class="docfoot">virgil/design-system · single source of truth · update STYLE_GUIDE.md from §11</footer>
+
+<script>
+  // ── Tabs ──
+  const tabs = document.querySelectorAll('#tabs .doc-tab');
+  const panels = document.querySelectorAll('section.tabpanel');
+  function go(name) {
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+    panels.forEach(p => p.classList.toggle('active', p.dataset.tab === name));
+    history.replaceState(null, '', '#' + name);
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+  tabs.forEach(t => t.addEventListener('click', () => go(t.dataset.tab)));
+  // Hash
+  if (location.hash) {
+    const name = location.hash.slice(1);
+    if (document.querySelector(`section.tabpanel[data-tab="${name}"]`)) go(name);
+  }
+  // Keyboard
+  window.addEventListener('keydown', (e) => {
+    if (e.target.matches('input, textarea')) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      const order = [...tabs].map(t => t.dataset.tab);
+      const cur = order.indexOf(document.querySelector('section.tabpanel.active').dataset.tab);
+      const next = e.key === 'ArrowRight' ? (cur+1) % order.length : (cur-1+order.length) % order.length;
+      go(order[next]);
+    }
+  });
+</script>
+
+</body>
+</html>

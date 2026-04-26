@@ -1,0 +1,25 @@
+{
+  "examples": [
+    {
+      "id": "ee5126e9-d91e-4c94-afd8-1eed7591c22e",
+      "tag": "",
+      "label": "ex:gloss-page",
+      "title": "A medieval glossed page (description)",
+      "createdAt": "2026-04-24T19:25:00.000Z"
+    },
+    {
+      "id": "be8dc996-b6a1-4a6b-b87a-17e594749126",
+      "tag": "",
+      "label": "ex:reader-types",
+      "title": "Four annotators across history",
+      "createdAt": "2026-04-24T19:26:00.000Z"
+    },
+    {
+      "id": "61f32029-969d-45d8-9db6-096e6f5c9947",
+      "tag": "",
+      "label": "ex:old-english-gloss",
+      "title": "Lindisfarne Old English gloss",
+      "createdAt": "2026-04-24T19:27:00.000Z"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "requests": [
+    {
+      "bibKey": "grafton1997",
+      "type": "fields",
+      "requestedAt": "2026-04-24T19:30:00.000Z",
+      "status": "pending",
+      "requestNotes": "Add DOI; double-check the page range (215–232 vs full article)."
+    },
+    {
+      "bibKey": "vannevar1945",
+      "type": "notes",
+      "requestedAt": "2026-04-24T19:31:00.000Z",
+      "status": "pending",
+      "requestNotes": "Add a brief annotation summarizing the Memex argument and why it matters for §6."
+    }
+  ]
+}

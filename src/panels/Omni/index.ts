@@ -6,4 +6,5 @@ export {
   DEFAULT_OMNI_CATEGORIES,
   migrateOmniCategories,
   deriveCategorySides,
+  OmniFilterMenu,
 } from "./OmniViewPanel";

@@ -1,0 +1,25 @@
+{
+  "requests": [
+    {
+      "id": "98989f16-8a51-43aa-a3ff-595e169d6008",
+      "kind": "footnote",
+      "text": "Add a footnote on Pierre Bayle's biographical context — exiled Huguenot, polemicist, professor at Rotterdam — explaining why his apparatus is so combative.",
+      "createdAt": "2026-04-24T18:30:00.000Z",
+      "status": "submitted"
+    },
+    {
+      "id": "cc3e1026-7969-4ddd-8127-53f805ca5f03",
+      "kind": "note",
+      "text": "Margin note expanding on McKenzie's \"sociology of texts\" framework and how it differs from Genette's paratext.",
+      "createdAt": "2026-04-24T18:45:00.000Z",
+      "status": "draft"
+    },
+    {
+      "id": "76d6fc00-908c-4de4-883b-e5e32e7c7130",
+      "kind": "citation",
+      "text": "Find a recent (post-2020) paper on the Hypothes.is annotation platform that I can cite in §6.",
+      "createdAt": "2026-04-24T19:00:00.000Z",
+      "status": "submitted"
+    }
+  ]
+}

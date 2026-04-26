@@ -1,0 +1,332 @@
+{
+  "users": [
+    {
+      "id": "claude",
+      "name": "Claude",
+      "color": "#a855f7",
+      "isDefault": true
+    },
+    {
+      "id": "me",
+      "name": "Me",
+      "color": "#3b82f6",
+      "isDefault": true
+    }
+  ],
+  "generalRevisions": [
+    {
+      "id": "b930f719-2d2f-42cc-9b68-536972bb76bd",
+      "authorId": "me",
+      "createdAt": "2026-04-23T18:30:00.000Z",
+      "text": "The thesis is buried — can we surface it earlier?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?"
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "c90e6f57-2801-49b8-94d3-8bb52abe3001",
+          "authorId": "me",
+          "createdAt": "2026-04-23T18:30:00.000Z",
+          "text": "The thesis (annotation as the medium through which texts become social) only really lands at the end of §1. Could we promote a clearer one-line version into the very first paragraph?"
+        },
+        {
+          "id": "39c862f0-49e5-47d2-a1f9-b52ff027ad71",
+          "authorId": "claude",
+          "createdAt": "2026-04-23T19:05:00.000Z",
+          "text": "Agreed. I'd suggest moving the line about \"the second voice that every serious text learns to carry on its back\" into the lede position — it already does the work."
+        },
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6093a",
+          "authorId": "me",
+          "createdAt": "2026-04-23T19:30:00.000Z",
+          "text": "Yes — let's try that. Hold off on actually moving it until §6 settles."
+        }
+      ],
+      "resolved": false
+    },
+    {
+      "id": "57defb31-45bd-4547-a682-69c3d6e79113",
+      "authorId": "claude",
+      "createdAt": "2026-04-24T09:15:00.000Z",
+      "text": "Should we add a section on Wikipedia's annotation infrastructure?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?"
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6094b",
+          "authorId": "claude",
+          "createdAt": "2026-04-24T09:15:00.000Z",
+          "text": "Talk pages, edit summaries, and references-as-discourse seem like a natural fit for the digital remediation section — Wikipedia has effectively rebuilt the medieval gloss at planetary scale. Worth a paragraph?"
+        }
+      ],
+      "resolved": false
+    },
+    {
+      "id": "239d5410-74f5-425d-b060-2152c40a2eaf",
+      "authorId": "me",
+      "createdAt": "2026-04-24T17:00:00.000Z",
+      "text": "Word count looks right — about 1500. Calling this draft done.",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Word count is around 1500 — feels right for the venue. Calling this draft done; revisions panel can stay open for §6 polish."
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6095c",
+          "authorId": "me",
+          "createdAt": "2026-04-24T17:00:00.000Z",
+          "text": "Word count is around 1500 — feels right for the venue. Calling this draft done; revisions panel can stay open for §6 polish."
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "textRevisions": [
+    {
+      "id": "ca7af400-f2c5-4268-bb51-b35151aa856c",
+      "authorId": "me",
+      "createdAt": "2026-04-23T18:32:00.000Z",
+      "resolved": false,
+      "selectedText": "second voice",
+      "text": "Could be sharper",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3."
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6096d",
+          "authorId": "me",
+          "createdAt": "2026-04-23T18:32:00.000Z",
+          "text": "Could be sharper — \"second voice\" is doing a lot of work and the metaphor doesn't fully cash out until §3."
+        }
+      ],
+      "links": [
+        {
+          "id": "d3a38b1d-2575-46c7-a576-e7b8698f3f5c",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["fb8f"],
+            "margin": { "side": "right" },
+            "textRange": {
+              "anchorId": "d3a38b1d-2575-46c7-a576-e7b8698f3f5c",
+              "textSnapshot": "Annotation is not decoration. It is the second voice that every serious text learns to carry on its back."
+            }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "comment", "id": "ca7af400-f2c5-4268-bb51-b35151aa856c" }
+          },
+          "createdAt": "2026-04-23T18:32:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "39af3c73-f09f-47af-908f-e245272271e4",
+      "authorId": "claude",
+      "createdAt": "2026-04-24T10:15:00.000Z",
+      "resolved": false,
+      "selectedText": "the standard study is",
+      "text": "Add a page reference",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point."
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6097e",
+          "authorId": "claude",
+          "createdAt": "2026-04-24T10:15:00.000Z",
+          "text": "If you're going to call Jackson \"the standard study,\" consider naming a chapter — readers who haven't read her may want a starting point."
+        }
+      ],
+      "links": [
+        {
+          "id": "da226d76-5938-49e2-976d-0d11219ed892",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["f1c5"],
+            "margin": { "side": "right" },
+            "textRange": {
+              "anchorId": "da226d76-5938-49e2-976d-0d11219ed892",
+              "textSnapshot": "The standard study is"
+            }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "comment", "id": "39af3c73-f09f-47af-908f-e245272271e4" }
+          },
+          "createdAt": "2026-04-24T10:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "064a3622-b3fd-40cb-aa49-b2bb17623f4d",
+      "authorId": "me",
+      "createdAt": "2026-04-24T11:00:00.000Z",
+      "resolved": false,
+      "selectedText": "lineage",
+      "text": "Worth defining?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?"
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed6098f",
+          "authorId": "me",
+          "createdAt": "2026-04-24T11:00:00.000Z",
+          "text": "We use \"lineage\" loosely here. Worth defining? Or do we trust the reader to feel the difference between a citation that points and one that situates?"
+        },
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed609a0",
+          "authorId": "claude",
+          "createdAt": "2026-04-24T11:30:00.000Z",
+          "text": "Trust the reader. Defining it would flatten the joke — that the citation form itself is doing the situating."
+        },
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed609b1",
+          "authorId": "me",
+          "createdAt": "2026-04-24T11:35:00.000Z",
+          "text": "Agreed. Leave as is."
+        }
+      ],
+      "links": [
+        {
+          "id": "aac79570-e3e3-4c40-9bc2-945b168e2ec8",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["e1e7"],
+            "margin": { "side": "right" },
+            "textRange": {
+              "anchorId": "aac79570-e3e3-4c40-9bc2-945b168e2ec8",
+              "textSnapshot": "additionally signal a lineage --- not just a source but a tradition"
+            }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "comment", "id": "064a3622-b3fd-40cb-aa49-b2bb17623f4d" }
+          },
+          "createdAt": "2026-04-24T11:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "484ec074-d9bd-43d3-ae96-74c526490faf",
+      "authorId": "me",
+      "createdAt": "2026-04-24T16:30:00.000Z",
+      "resolved": false,
+      "selectedText": "The fact that this notation has survived",
+      "text": "Move to coda?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving."
+              }
+            ]
+          }
+        ]
+      },
+      "turns": [
+        {
+          "id": "31984b00-b19e-4a5a-ba14-05928ed609c2",
+          "authorId": "me",
+          "createdAt": "2026-04-24T16:30:00.000Z",
+          "text": "This sentence might land harder if it's the first line of the coda rather than the last paragraph of §6 proper. Try moving."
+        }
+      ],
+      "links": [
+        {
+          "id": "095da77a-28f7-458f-9fee-3e0253126fd2",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["66d4"],
+            "margin": { "side": "right" },
+            "textRange": {
+              "anchorId": "095da77a-28f7-458f-9fee-3e0253126fd2",
+              "textSnapshot": "The fact that this notation has survived from the late nineteenth century"
+            }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "comment", "id": "484ec074-d9bd-43d3-ae96-74c526490faf" }
+          },
+          "createdAt": "2026-04-24T16:30:00.000Z"
+        }
+      ]
+    }
+  ],
+  "activeUserId": "me"
+}

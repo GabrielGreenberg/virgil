@@ -1,0 +1,138 @@
+{
+  "citations": [
+    {
+      "id": "b80a725f-48c9-4ec0-a004-838c74dc28ea",
+      "command": "\\citet{slights2001}",
+      "keys": [
+        "slights2001"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "d99903c8-0bee-44a2-8a92-dc5793fe6302",
+      "command": "\\citet{genette1997}",
+      "keys": [
+        "genette1997"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "1c4f552d-3bd8-415c-9559-63d37ab8e6ce",
+      "command": "\\citet{mckenzie1999}",
+      "keys": [
+        "mckenzie1999"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "a3997ffc-6750-4e60-8a5e-7258b6e36c67",
+      "command": "\\citep{bringhurst2004}",
+      "keys": [
+        "bringhurst2004"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "376ce895-d864-4904-83fc-e73d30738235",
+      "command": "\\citep[ch.~3]{bringhurst2004}",
+      "keys": [
+        "bringhurst2004"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "fcb2fbc8-a5d5-4fe0-968b-ee1056bafec7",
+      "command": "\\citeauthor{drucker2014}",
+      "keys": [
+        "drucker2014"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "05d96ece-7465-4b6a-b1af-f0aff5716ec9",
+      "command": "\\citeyear{drucker2014}",
+      "keys": [
+        "drucker2014"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "a2707cad-2178-4228-b6e7-a9bff2d88a9e",
+      "command": "\\cite{nonexistent2026}",
+      "keys": [
+        "nonexistent2026"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "915ce93d-54c4-4126-9e77-d519ed68f425",
+      "command": "\\citet{jackson2001}",
+      "keys": [
+        "jackson2001"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "4cd167d6-6585-49df-8ccb-11b315787665",
+      "command": "\\citet{marshall1997,marshall1998}",
+      "keys": [
+        "marshall1997",
+        "marshall1998"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "9adbc784-e8bc-4d23-bd5a-58bebf36cf5b",
+      "command": "\\citet{vannevar1945}",
+      "keys": [
+        "vannevar1945"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "d727b4e7-e968-451b-b800-1c3fab1a7cc3",
+      "command": "\\citet{bolter2001}",
+      "keys": [
+        "bolter2001"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "a7e3e19b-9a7c-484b-9c52-863132bfab11",
+      "command": "\\citet{drucker2014}",
+      "keys": [
+        "drucker2014"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "383672a3-ca8c-47c7-a6b4-85302c502e79",
+      "command": "\\citet{mcgann1991}",
+      "keys": [
+        "mcgann1991"
+      ],
+      "createdAt": "2026-04-25T05:53:12.085Z"
+    },
+    {
+      "id": "e9af1cbb-63ca-4575-ad9b-a4e3391caf3a",
+      "command": "\\cite{drucker2014}",
+      "keys": [
+        "drucker2014"
+      ],
+      "createdAt": "2026-04-24T19:20:00.000Z",
+      "unanchored": true
+    },
+    {
+      "id": "158b059a-475c-42d9-806d-f284e907e1ab",
+      "command": "\\citep{mcgann1991}",
+      "keys": [
+        "mcgann1991"
+      ],
+      "createdAt": "2026-04-24T19:21:00.000Z",
+      "unanchored": true
+    }
+  ],
+  "bibPath": "references.bib",
+  "citationStyle": "chicago-author-date",
+  "bibPackage": "natbib"
+}

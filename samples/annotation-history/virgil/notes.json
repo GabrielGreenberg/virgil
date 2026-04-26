@@ -1,0 +1,144 @@
+{
+  "notes": [
+    {
+      "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be",
+      "title": "On Carolingian glossae",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Worth distinguishing scholia (compiled, named) from glossae proper (anonymous, accreting). The Carolingian apparatus is closer to the latter — the gloss has no author."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T19:00:00.000Z",
+      "links": [
+        {
+          "id": "d78b52cc-8daf-4ede-920e-28758338c2d6",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["f1c5"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "note", "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be" }
+          },
+          "createdAt": "2026-04-24T19:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2",
+      "title": "Third tradition?",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Add a third tradition: the footnote as procedural disclosure (cf. the methods section in empirical writing). The footnote-as-audit-trail and the footnote-as-voice both miss this."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T19:01:00.000Z",
+      "links": [
+        {
+          "id": "2aff4024-efb0-4959-88e2-d4787932a65d",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["6d1e"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "note", "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2" }
+          },
+          "createdAt": "2026-04-24T19:01:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3",
+      "title": "Marshall vs. Genette",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Marshall's taxonomy is functional (what the annotation does); Genette's is positional (where the paratext sits). Worth contrasting them in a footnote."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T19:02:00.000Z",
+      "links": [
+        {
+          "id": "5faaf8bc-9b93-46c8-8014-da78ffa2f325",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["aa5b"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "note", "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3" }
+          },
+          "createdAt": "2026-04-24T19:02:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671",
+      "title": "Hypothes.is",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "The contemporary case study here is Hypothes.is — a decade of running a marginalia layer over the open web. Worth a paragraph in §6 if there's room."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T19:03:00.000Z",
+      "links": [
+        {
+          "id": "0b217cfa-d8c5-44a5-8aff-b5e7b77d000f",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["aeb6"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "note", "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671" }
+          },
+          "createdAt": "2026-04-24T19:03:00.000Z"
+        }
+      ]
+    }
+  ]
+}

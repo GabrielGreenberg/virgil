@@ -1,0 +1,109 @@
+{
+  "cuts": [
+    {
+      "id": "627ea79b-c398-4d2c-aee5-ce0706439d3f",
+      "title": "Petrarch pull-quote (cut)",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "An earlier version of this section also included a long block quote from Petrarch on the experience of reading Cicero in the margins of his own copy. Beautiful but it broke the section's argument, which is about the gloss as a structural feature, not as a personal reading experience. Cut for now; revisit if §5 ever gets short."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-23T22:15:00.000Z",
+      "links": [
+        {
+          "id": "d1991ed3-daae-417d-9651-cb22a9826dc7",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["c042"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "cut", "id": "627ea79b-c398-4d2c-aee5-ce0706439d3f" }
+          },
+          "createdAt": "2026-04-23T22:15:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "8b086209-b907-4b0a-bc99-d183c6620edc",
+      "title": "Bayesian aside",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "If a reader's attention is modeled as a Bernoulli draw with parameter alpha for each footnote, and if the cost of a missed footnote is the squared error in the reader's posterior, then a cleanly Bayesian author would footnote only when the expected information gain exceeds the cost of the additional eye movement. Most footnotes fail this test. The math is correct and unhelpful."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T01:30:00.000Z",
+      "links": [
+        {
+          "id": "3e6cf38f-8b15-4c58-9346-26d07b003faf",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["a2d8"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "cut", "id": "8b086209-b907-4b0a-bc99-d183c6620edc" }
+          },
+          "createdAt": "2026-04-24T01:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "89bcc810-33ca-49f4-b215-62ffd6b806e5",
+      "title": "Coleridge as 'work'",
+      "content": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "A digression on whether Coleridge's marginalia constitute a 'work' in the editorial sense. The Princeton edition obviously thinks they do — five fat volumes, fully annotated. But marginalia as a genre resist the volume form. They are constitutively partial, occasional, and dependent on the host text. Coleridge's marginalia in a borrowed Kant are not 'about' Kant in the way that an essay would be; they are a kind of co-presence. Probably belongs in a separate piece."
+              }
+            ]
+          }
+        ]
+      },
+      "createdAt": "2026-04-24T03:45:00.000Z",
+      "links": [
+        {
+          "id": "e743a6d4-3c78-4819-9b7f-6aa33d4af02e",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["1bdb"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "cut", "id": "89bcc810-33ca-49f4-b215-62ffd6b806e5" }
+          },
+          "createdAt": "2026-04-24T03:45:00.000Z"
+        }
+      ]
+    }
+  ]
+}

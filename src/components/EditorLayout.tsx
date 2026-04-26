@@ -6,6 +6,7 @@ import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
+import { isDevStorage } from "@/lib/storage-mode";
 import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMenuToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -93,6 +94,7 @@ import {
   DEFAULT_OMNI_CATEGORIES,
   migrateOmniCategories,
   deriveCategorySides,
+  OmniFilterMenu,
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
@@ -289,6 +291,13 @@ export default function EditorLayout() {
   type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
   const [docPermState, setDocPermState] = useState<DocPermState>("loading");
   const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
+
+  // SSR-safe mirror of `isDevStorage`. The runtime check requires `window`
+  // (iframe + FSA detection), so we start false on the server and update
+  // after hydration. Used in render to hide FSA-only chrome inside the
+  // Claude Preview iframe; in a normal tab it stays false.
+  const [devStorage, setDevStorage] = useState(false);
+  useEffect(() => { setDevStorage(isDevStorage); }, []);
 
   // Hooks read from disk, so we gate their docId on the permission
   // state. Until the active folder has been re-granted readwrite
@@ -1353,6 +1362,13 @@ export default function EditorLayout() {
       return updated;
     });
   }, []);
+  const setOmniSideToDefault = useCallback((side: "left" | "right") => {
+    setOmniCategories((prev) => {
+      const updated = { ...prev, [side]: [...DEFAULT_OMNI_CATEGORIES[side]] };
+      try { localStorage.setItem("virgil-omni-categories", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
 
   // Derive which strip side each category's native panel lives on
   const categorySides = useMemo(
@@ -2220,7 +2236,7 @@ export default function EditorLayout() {
       setActiveDocHandle(null);
       return;
     }
-    if (process.env.NEXT_PUBLIC_DEV_STORAGE) {
+    if (isDevStorage) {
       setDocPermState("granted");
       return;
     }
@@ -4069,8 +4085,6 @@ export default function EditorLayout() {
           deleteTodo={deleteTodo}
           examples={examples}
           getOmniEnabled={getOmniEnabled}
-          toggleOmniCategory={toggleOmniCategory}
-          categorySides={categorySides}
         />
       );
     }
@@ -4736,6 +4750,16 @@ export default function EditorLayout() {
               onIconDrop={(dt) => handleIconDrop(p.id, dt)}
             />
           ))}
+          <div className="mt-auto">
+            <OmniFilterMenu
+              side="left"
+              enabled={getOmniEnabled("left")}
+              onToggle={(cat) => toggleOmniCategory("left", cat)}
+              onSelectDefault={() => setOmniSideToDefault("left")}
+              categorySides={categorySides}
+              defaultCategories={DEFAULT_OMNI_CATEGORIES.left}
+            />
+          </div>
         </div>
         )}
 
@@ -5109,7 +5133,7 @@ export default function EditorLayout() {
                         </svg>
                         Create new document
                       </button>
-                      {!process.env.NEXT_PUBLIC_DEV_STORAGE && (
+                      {!devStorage && (
                         <button
                           type="button"
                           onClick={openExistingFile}
@@ -5207,6 +5231,16 @@ export default function EditorLayout() {
               onIconDrop={(dt) => handleIconDrop(p.id, dt)}
             />
           ))}
+          <div className="mt-auto">
+            <OmniFilterMenu
+              side="right"
+              enabled={getOmniEnabled("right")}
+              onToggle={(cat) => toggleOmniCategory("right", cat)}
+              onSelectDefault={() => setOmniSideToDefault("right")}
+              categorySides={categorySides}
+              defaultCategories={DEFAULT_OMNI_CATEGORIES.right}
+            />
+          </div>
         </div>
         )}
       </div>
@@ -5288,7 +5322,7 @@ export default function EditorLayout() {
           subtitle={
             newDocModal.mode === "inFolder"
               ? `Will be created in "${newDocModal.folderName}"`
-              : process.env.NEXT_PUBLIC_DEV_STORAGE
+              : devStorage
                 ? "Will be created in virgil-data/."
                 : "You'll pick where to save the folder after naming it."
           }

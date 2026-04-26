@@ -290,7 +290,7 @@ export function CitationCard({
             className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
           >
             <ul className="flex flex-col gap-1 list-none m-0 p-0">
-              {cit.keys.map((key) => {
+              {cit.keys.map((key, idx) => {
                 const entry = bibEntryMap.get(key);
                 const isActive = expandedBibKey === key;
                 const { author, year, title } = formatMediumCitationParts(
@@ -298,7 +298,7 @@ export function CitationCard({
                   bibEntries,
                 );
                 return (
-                  <li key={key} className="flex flex-col gap-1">
+                  <li key={`${idx}:${key}`} className="flex flex-col gap-1">
                     <div className="flex items-start gap-2">
                       <div
                         className={`flex-1 min-w-0 text-xs leading-snug ${

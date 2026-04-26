@@ -89,8 +89,6 @@ export interface OmniHostProps {
   examples: ExampleInfo[];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
-  toggleOmniCategory: (side: Side, cat: OmniCategory) => void;
-  categorySides: Record<OmniCategory, "left" | "right">;
 }
 
 export function OmniHost(p: OmniHostProps) {
@@ -436,8 +434,6 @@ export function OmniHost(p: OmniHostProps) {
       items={items}
       editor={editorInstance}
       enabledCategories={p.getOmniEnabled(p.side)}
-      onToggleCategory={(cat) => p.toggleOmniCategory(p.side, cat)}
-      categorySides={p.categorySides}
       onBackgroundClick={clearAllOmniSelections}
     />
   );

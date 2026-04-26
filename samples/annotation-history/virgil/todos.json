@@ -1,0 +1,109 @@
+{
+  "items": [
+    {
+      "id": "a23c0408-ac85-4196-a68b-91078102ee14",
+      "text": "Verify the 1697 date for Bayle's Dictionnaire",
+      "notes": "Grafton gives 1697 for the first edition, but the canonical text is the 1702 second edition.",
+      "done": true,
+      "aiRequest": false,
+      "createdAt": "2026-04-23T15:00:00.000Z",
+      "links": [
+        {
+          "id": "28e728e7-906a-45ac-8d58-384be9b6758a",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["10be"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "todo", "id": "a23c0408-ac85-4196-a68b-91078102ee14" }
+          },
+          "createdAt": "2026-04-23T15:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "7a4cbf14-4f0f-45ea-be6b-036c71f386b6",
+      "text": "Add a manuscript image to §2",
+      "notes": "A folio from a glossed Bede or Cassiodorus would be ideal. Check Yale Beinecke's openly licensed scans.",
+      "done": false,
+      "aiRequest": false,
+      "createdAt": "2026-04-24T08:00:00.000Z",
+      "links": [
+        {
+          "id": "4623252d-ac65-476a-8717-08cb1b1b8afd",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["f1c5"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "todo", "id": "7a4cbf14-4f0f-45ea-be6b-036c71f386b6" }
+          },
+          "createdAt": "2026-04-24T08:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "9a82bf93-196f-4ef3-beac-c14557711bfe",
+      "text": "Find a real Coleridge marginal annotation to quote",
+      "notes": "The 5-volume Princeton edition has hundreds. Pick one short and pungent.",
+      "done": false,
+      "aiRequest": false,
+      "createdAt": "2026-04-24T10:30:00.000Z",
+      "links": [
+        {
+          "id": "ebb84aa3-96bd-4025-b47c-ef8a0b6b2104",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["1bdb"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "todo", "id": "9a82bf93-196f-4ef3-beac-c14557711bfe" }
+          },
+          "createdAt": "2026-04-24T10:30:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "ad8f4911-4a2e-4549-b545-d79a92326de9",
+      "text": "Tighten the closing paragraph; it sprawls",
+      "notes": "Cowork pass with Claude — see suggestions.",
+      "done": true,
+      "aiRequest": true,
+      "createdAt": "2026-04-24T18:00:00.000Z",
+      "links": [
+        {
+          "id": "bd35c6d9-c582-4544-a154-15677cb9ed1d",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["ffca"],
+            "margin": { "side": "right" }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "todo", "id": "ad8f4911-4a2e-4549-b545-d79a92326de9" }
+          },
+          "createdAt": "2026-04-24T18:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "id": "4dedc917-7b66-4fb7-8c9c-d3737889c677",
+      "text": "Decide whether to keep the math digression in §3.1",
+      "notes": "It's cute but distracting. A reviewer could plausibly object.",
+      "done": false,
+      "aiRequest": false,
+      "createdAt": "2026-04-24T11:45:00.000Z",
+      "links": []
+    }
+  ]
+}

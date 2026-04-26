@@ -1,21 +1,24 @@
 /**
  * Storage facade — re-exports from either the FSA or dev backend.
  *
- * When `NEXT_PUBLIC_DEV_STORAGE` is set (e.g. via the `dev:preview` npm
- * script or .claude/launch.json), the dev backend is used so the app
- * works in headless previews without needing the File System Access API.
+ * `NEXT_PUBLIC_DEV_STORAGE` enables the dev backend at build time (e.g.
+ * via the `dev:preview` npm script or .claude/launch.json). At runtime
+ * we then only actually pick the dev backend when FSA is unavailable —
+ * i.e. inside the Claude Preview iframe or a browser without
+ * `showDirectoryPicker`. The same dev server, loaded in a normal tab,
+ * uses the real FSA backend so users can pick real folders on disk.
  *
- * In production builds the env var is absent, so the FSA backend is used
- * and the dev module is tree-shaken out.
+ * In production builds the env var is absent, so the FSA backend is
+ * always selected and the dev module is tree-shaken out.
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-export const isDevStorage = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
+export { isDevStorage } from "@/lib/storage-mode";
+import { isDevStorage } from "@/lib/storage-mode";
 
-// Dynamic re-export: pick the right backend at module load time.
-// The ternary is evaluated at build/bundle time by Next.js, so the
-// unused branch gets tree-shaken in production.
+// Pick the right backend at module load. On the client this runs after
+// `window` is defined, so the runtime capability check above is honored.
 const backend: typeof import("@/lib/storage-fsa") = isDevStorage
   ? (require("@/lib/storage-dev") as any)
   : (require("@/lib/storage-fsa") as any);

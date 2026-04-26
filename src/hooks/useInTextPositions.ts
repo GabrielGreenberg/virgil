@@ -254,9 +254,17 @@ export function useInTextPositions(
 
   // Bidirectional scroll sync
   useEffect(() => {
-    if (!enabled || !editor) return;
+    if (!enabled || !editor || editor.isDestroyed) return;
 
-    const editorScrollEl = editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null;
+    // editor.view throws if the ProseMirror view hasn't mounted yet; the
+    // optional chaining doesn't help because the throw happens inside the
+    // getter. Bail out if so — a re-render once the view mounts will retry.
+    let editorScrollEl: HTMLElement | null = null;
+    try {
+      editorScrollEl = (editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null) ?? null;
+    } catch {
+      return;
+    }
     if (!editorScrollEl) return;
 
     let cleanupFns: (() => void)[] = [];

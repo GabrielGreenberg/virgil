@@ -80,8 +80,6 @@ interface OmniViewPanelProps {
   items: OmniItem[];
   editor: Editor | null;
   enabledCategories: Set<OmniCategory>;
-  onToggleCategory: (cat: OmniCategory) => void;
-  categorySides: Record<OmniCategory, "left" | "right">;
   onBackgroundClick?: () => void;
 }
 
@@ -95,25 +93,43 @@ function categoryOf(id: string): OmniCategory | null {
     : null;
 }
 
-function FilterMenu({
+/**
+ * Filter menu for the omni-view. Lives at the bottom of each L/R strip.
+ * The kebab is rotated horizontal so it reads as "menu" rather than the
+ * vertical kebabs used by per-card overflows. Dropdown opens upward and
+ * outward (away from the strip) so it doesn't get clipped.
+ *
+ * "Default view" resets the side's enabled categories to its registry
+ * defaults — i.e. the categories whose native panels live on this side.
+ */
+export function OmniFilterMenu({
+  side,
   enabled,
   onToggle,
+  onSelectDefault,
   categorySides,
+  defaultCategories,
 }: {
+  side: "left" | "right";
   enabled: Set<OmniCategory>;
   onToggle: (cat: OmniCategory) => void;
+  onSelectDefault: () => void;
   categorySides: Record<OmniCategory, "left" | "right">;
+  defaultCategories: OmniCategory[];
 }) {
   const [open, setOpen] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, right: 0 });
+  const [pos, setPos] = useState<{ bottom: number; left?: number; right?: number }>({ bottom: 0 });
 
   useEffect(() => {
     if (!open) return;
     if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect();
-      setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+      const bottom = window.innerHeight - r.top + 4;
+      setPos(side === "left"
+        ? { bottom, left: r.left }
+        : { bottom, right: window.innerWidth - r.right });
     }
     const handler = (e: MouseEvent) => {
       if (
@@ -123,10 +139,15 @@ function FilterMenu({
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
+  }, [open, side]);
 
   const leftCats = OMNI_CATEGORIES.filter((c) => categorySides[c] === "left");
   const rightCats = OMNI_CATEGORIES.filter((c) => categorySides[c] === "right");
+
+  const isDefault = useMemo(() => {
+    if (enabled.size !== defaultCategories.length) return false;
+    return defaultCategories.every((c) => enabled.has(c));
+  }, [enabled, defaultCategories]);
 
   const renderRow = (cat: OmniCategory) => (
     <button
@@ -140,25 +161,33 @@ function FilterMenu({
   );
 
   return (
-    <div className="relative shrink-0 -mr-1">
+    <div className="relative shrink-0">
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+        className="p-1.5 rounded text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong transition-colors flex items-center justify-center"
         title="Filter items"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="8" cy="3" r="1.5" />
+          <circle cx="3" cy="8" r="1.5" />
           <circle cx="8" cy="8" r="1.5" />
-          <circle cx="8" cy="13" r="1.5" />
+          <circle cx="13" cy="8" r="1.5" />
         </svg>
       </button>
       {open && (
         <div
           ref={menuRef}
           className="fixed bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-[9999] min-w-[160px]"
-          style={{ top: pos.top, right: pos.right }}
+          style={pos}
         >
+          <button
+            onMouseDown={(e) => { e.preventDefault(); onSelectDefault(); setOpen(false); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted transition-colors flex items-center justify-between gap-3"
+          >
+            <span>Default view</span>
+            <span className="text-[var(--accent)]">{isDefault ? "✓" : ""}</span>
+          </button>
+          <div className="my-1 border-t border-stone-100" />
           {leftCats.length > 0 && (
             <>
               <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -187,8 +216,6 @@ function OmniViewPanel({
   items,
   editor,
   enabledCategories,
-  onToggleCategory,
-  categorySides,
   onBackgroundClick,
 }: OmniViewPanelProps) {
   const visibleItems = useMemo(() => {
@@ -241,9 +268,6 @@ function OmniViewPanel({
 
   return (
     <div className="relative w-full h-full">
-      <div className="absolute top-1 -right-1 z-10">
-        <FilterMenu enabled={enabledCategories} onToggle={onToggleCategory} categorySides={categorySides} />
-      </div>
       <div
         ref={panelScrollRef}
         className="w-full h-full overflow-y-auto hide-scrollbar"
@@ -264,7 +288,7 @@ function OmniViewPanel({
         {visibleItems.length === 0 && (
           <div className="text-center text-ink-muted text-xs px-3 py-6">
             {enabledCategories.size === 0
-              ? "No item types selected — use the filter menu."
+              ? "No item types selected — use the filter menu at the bottom of the strip."
               : "No items to show yet."}
           </div>
         )}
