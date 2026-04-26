@@ -28,10 +28,10 @@ export default function ProgressBar({
 
         <div className="flex-1 flex gap-0.5 h-2 rounded-full overflow-hidden bg-[var(--border-light)]">
           {suggestions.map((s, i) => {
-            let bg = "bg-stone-200"; // pending
+            let bg = "bg-edge-subtle"; // pending
             if (s.status === "accepted") bg = "bg-emerald-500";
             else if (s.status === "rejected") bg = "bg-red-400";
-            else if (s.status === "skipped") bg = "bg-stone-400";
+            else if (s.status === "skipped") bg = "bg-edge-strong";
             else if (i === currentIndex) bg = "bg-blue-500 animate-pulse";
 
             return (

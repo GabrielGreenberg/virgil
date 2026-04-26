@@ -187,7 +187,7 @@ export function OmniFilterMenu({
             <span>Default view</span>
             <span className="text-[var(--accent)]">{isDefault ? "✓" : ""}</span>
           </button>
-          <div className="my-1 border-t border-stone-100" />
+          <div className="my-1 border-t border-edge-subtle" />
           {leftCats.length > 0 && (
             <>
               <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
@@ -198,7 +198,7 @@ export function OmniFilterMenu({
           )}
           {rightCats.length > 0 && (
             <>
-              {leftCats.length > 0 && <div className="my-1 border-t border-stone-100" />}
+              {leftCats.length > 0 && <div className="my-1 border-t border-edge-subtle" />}
               <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-muted">
                 Right-side tools
               </div>

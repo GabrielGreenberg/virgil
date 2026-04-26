@@ -137,8 +137,8 @@ function ExamplesPanel({
           data-link-card={`example:${ex.exampleId}`}
           className={`group px-1 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
             selectedId === ex.exampleId
-              ? "bg-teal-100/40 border-l-2 border-l-teal-300 border-b-stone-300"
-              : "border-b-stone-300 hover-on-light"
+              ? "bg-teal-100/40 border-l-2 border-l-teal-300 border-b-edge-hover"
+              : "border-b-edge-hover hover-on-light"
           }`}
           onClick={() =>
             onSelect(selectedId === ex.exampleId ? null : ex.exampleId)

@@ -82,7 +82,7 @@ export function BibLibraryChip({ citekey, info }: Props) {
       type="button"
       onClick={() => dispatchOpen({ citekey })}
       title="Not in library — open to add"
-      className={`${common} bg-stone-50 text-ink-muted border-edge-hover hover-on-dark`}
+      className={`${common} bg-surface-muted text-ink-muted border-edge-hover hover-on-dark`}
     >
       — no PDF
     </button>

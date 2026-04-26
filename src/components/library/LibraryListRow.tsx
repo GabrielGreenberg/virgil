@@ -56,9 +56,9 @@ function alignmentClass(a: CitationAlignment): string {
     case "cited-here":
       return "bg-sky-50 text-sky-700 border-sky-200";
     case "not-in-bib":
-      return "bg-stone-50 text-ink-muted border-edge-hover";
+      return "bg-surface-muted text-ink-muted border-edge-hover";
     case "unresolved":
-      return "bg-stone-50 text-ink-muted border-edge-hover";
+      return "bg-surface-muted text-ink-muted border-edge-hover";
   }
 }
 

@@ -70,7 +70,7 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
         className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-ink-body hover-on-light transition-colors" title="Italic">I</button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }}
         className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover-on-light transition-colors" title="Underline">U</button>
-      <div className="w-px h-4 bg-stone-200 mx-0.5" />
+      <div className="w-px h-4 bg-edge-subtle mx-0.5" />
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
         className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light transition-colors" title="Bullet list">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">

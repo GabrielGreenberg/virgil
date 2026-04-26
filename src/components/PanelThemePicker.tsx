@@ -64,7 +64,7 @@ export default function PanelThemePicker({
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
         onMouseDown={(e) => e.stopPropagation()}
         title={label ?? "Panel color"}
-        className="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:ring-2 hover:ring-stone-200 transition-shadow"
+        className="w-5 h-5 rounded border border-edge-hover shadow-inner shrink-0 hover:ring-2 hover:ring-edge-subtle transition-shadow"
         style={{ background: current }}
       />
       {open && (

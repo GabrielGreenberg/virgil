@@ -118,12 +118,6 @@ function tint(hex: string, amount: number): string {
   );
 }
 
-/** Return `hex` as an `rgba(...)` string with the given alpha (0..1). */
-function rgba(hex: string, alpha: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`;
-}
-
 /** Return a version of `hex` adjusted toward a target lightness. */
 function atLightness(hex: string, targetL: number): string {
   const [r, g, b] = hexToRgb(hex);

@@ -201,7 +201,7 @@ export default function TodoPanel({
         return (
           <div
             data-todo-entry={item.id}
-            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover-on-light"} ${item.done ? "opacity-60" : ""}`}
+            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"} ${item.done ? "opacity-60" : ""}`}
             style={
               selected
                 ? {

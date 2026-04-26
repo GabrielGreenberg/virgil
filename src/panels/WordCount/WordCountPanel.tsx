@@ -93,7 +93,7 @@ export default function WordCountPanel({
 
       {catsWithWords.length > 0 && (
         <div className="rounded-lg border border-edge-subtle bg-surface overflow-hidden">
-          <div className="px-4 py-2 border-b border-stone-100">
+          <div className="px-4 py-2 border-b border-edge-subtle">
             <span className="text-[10px] uppercase tracking-wider text-[var(--muted)] font-medium">
               Breakdown
             </span>
@@ -111,7 +111,7 @@ export default function WordCountPanel({
                 onClick={() => toggleCat(cat)}
                 className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors hover-on-light ${
                   i < catsWithWords.length - 1
-                    ? "border-b border-stone-50"
+                    ? "border-b border-edge-subtle"
                     : ""
                 }`}
                 title={

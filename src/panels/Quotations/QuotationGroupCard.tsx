@@ -394,7 +394,7 @@ const QuoteEntry = memo(function QuoteEntry({
           />
         )}
       </div>
-      <div className="flex items-center mt-1.5 pt-1.5 border-t border-stone-100">
+      <div className="flex items-center mt-1.5 pt-1.5 border-t border-edge-subtle">
         <div className="flex items-center gap-1">
           <span className="text-[10px] text-ink-muted">p.</span>
           <input

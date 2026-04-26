@@ -595,14 +595,14 @@ function MoreScopesDropdown({
         }}
         className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
           active
-            ? "border-stone-300 bg-white/70 text-stone-700"
-            : "border-stone-200 bg-transparent text-stone-400 hover:text-stone-600"
+            ? "border-edge-hover bg-white/70 text-ink-body"
+            : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
         }`}
         title="More search scopes"
       >
         <span>More</span>
         {active && (
-          <span className="text-[9px] leading-none tabular-nums text-stone-500">
+          <span className="text-[9px] leading-none tabular-nums text-ink-subtle">
             {enabledCount}
           </span>
         )}
@@ -681,8 +681,8 @@ function ScopeChip({
       onClick={onToggle}
       className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] transition-colors ${
         enabled
-          ? "border-stone-300 bg-white/70 text-stone-700"
-          : "border-stone-200 bg-transparent text-stone-400 hover:text-stone-600"
+          ? "border-edge-hover bg-white/70 text-ink-body"
+          : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
       }`}
       title={`${enabled ? "Hide" : "Show"} ${SCOPE_LABEL[scope]}`}
     >
