@@ -84,6 +84,41 @@ The five centralized conversions in `panel-primitives.tsx` had their `transition
 
 ---
 
+## Pass 5 — Button variants
+
+### `[INFO] Pre-existing SystemDialogButton refactored to wrap Button`
+Modal-footer buttons used to flow through `SystemDialogButton` with its own variant tokens (stone-filled `primary`, filled `danger` `#b45757`, etc.). I rewrote `SystemDialogButton` as a thin wrapper around the new `<Button>` from `panel-primitives.tsx`, mapping the legacy variant names onto the canonical ones (`accent` → `primary`, etc.). This means **every modal footer is now visually rebranded**:
+- Old `primary` (filled grey-800) → new `primary` (filled accent brown).
+- Old `danger` (filled #b45757) → new `danger` (soft red bg + red text + thin red border).
+- `secondary` and `accent` largely unchanged.
+This was the right move per the Pass 5 spec (one canonical Button), but be aware it ripples to every confirm dialog, system prompt, doc-class mismatch dialog, and tex-file picker without their call sites changing.
+
+### `[OPEN] Old "primary" was visually heavier than new "primary"`
+The legacy stone-filled primary buttons (DocPermissionGate, library gates, AIWindow Submit, BibEntryCard Save, CitationBuilder Save) read as "system command" with the dark fill. The new accent-brown primary reads as "Virgil-branded action" — same role, different vibe. Spec is explicit ("there is no 'blue button' in Virgil"; primary is the warm brown). Worth confirming visually that a brown Submit button still feels primary against the cream canvas (it does, but it's a real shift).
+
+### `[INFO] Suggestion flow now uses warm/danger/ghost`
+The Accept/Reject/Skip trio in `SuggestionPanel` was previously `bg-emerald-600 white` / `bg-danger-soft red-700` / `bg-surface-muted-strong ink-body`. Now: `<Button variant="warm">` / `variant="danger"` / `variant="ghost"`. Visual tone:
+- Accept (warm): brand-colored "yes," not a green checkmark vibe.
+- Reject (danger): soft red, less aggressive than the old red-700 mid-tint.
+- Skip (ghost): borderless, recedes more than the old filled-stone style.
+
+This is intentional per the migration's tone shift, but it's worth eyeballing on the Suggestion panel to confirm Accept still reads as the dominant choice.
+
+### `[OPEN] Pass 5 sweep is partial`
+I converted the obvious externally-hand-rolled filled buttons (8 sites) and rebranded modal footers via the SystemDialogButton refactor. Remaining hand-rolled patterns I left alone:
+- Topbar / sidebar-strip / tab buttons in EditorLayout (accent-on-hover, conditional active state — not modeled by the 5 variants).
+- AI request marker badges, sky-themed buttons in AI request panels.
+- BibLibraryChip emerald/red chip buttons (these are status chips, not actions).
+- ProgressBar's emerald/blue dot (status dot, not a button).
+- MenuBar formatting toolbar buttons (have active states beyond what Button models).
+
+**Action:** decide whether toggle-buttons with active state (sidebar strips, top-bar mode toggles) need a 6th Button variant ("toggle"?) or stay hand-rolled. They share the active-state shape with `iconbtn-*[aria-pressed="true"]`, so a parallel `<Button aria-pressed>` styling might fit.
+
+### `[INFO] disabled state semantics`
+The new Button uses `disabled:opacity-40 disabled:pointer-events-none`. The legacy SystemDialog had `disabled:opacity-50 disabled:cursor-not-allowed`. Slight differences: 40% vs 50% opacity (more contrast); `pointer-events: none` vs `cursor: not-allowed` (the new doesn't show the cursor change). Per spec, this is intended — but disabled buttons in modals will look slightly more faded and won't show the no-entry cursor on hover.
+
+---
+
 ## Cross-cutting themes
 
 ### `[OPEN] Migration doc's "wide sweep" framing has been over-conservative twice`
