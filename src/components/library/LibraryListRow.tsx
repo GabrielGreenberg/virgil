@@ -79,7 +79,7 @@ export function LibraryListRow({ item, selected, alignment, onSelect }: Props) {
       className={`w-full text-left px-3 py-2 border-b border-edge-hover/60 transition-colors ${
         selected
           ? "bg-[var(--accent-light)] text-ink-strong"
-          : "hover:bg-surface/60 text-ink-body"
+          : "hover-on-dark text-ink-body"
       }`}
     >
       <div className="text-sm font-medium leading-snug line-clamp-2">

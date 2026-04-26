@@ -453,7 +453,7 @@ function BibliographyPanel({
             Display
           </div>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => {
               setFilter("cited");
               setMenuOpen(false);
@@ -465,7 +465,7 @@ function BibliographyPanel({
             </span>
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => {
               setFilter("all");
               setMenuOpen(false);
@@ -480,7 +480,7 @@ function BibliographyPanel({
           <button
             className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
               citedKeys.size > 0
-                ? "text-ink-body hover:bg-surface-muted"
+                ? "text-ink-body hover-on-light"
                 : "text-ink-faint cursor-not-allowed"
             }`}
             onClick={citedKeys.size > 0 ? handleExportCited : undefined}
@@ -495,7 +495,7 @@ function BibliographyPanel({
           </button>
           <div className="my-1 border-t border-edge-subtle" />
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light"
             onClick={handlePickGeneralBib}
           >
             {generalBibPath
@@ -540,7 +540,7 @@ function BibliographyPanel({
               <button
                 className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
                   generalBibPath
-                    ? "text-ink-body hover:bg-surface-muted"
+                    ? "text-ink-body hover-on-light"
                     : "text-ink-faint cursor-not-allowed"
                 }`}
                 onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
@@ -553,7 +553,7 @@ function BibliographyPanel({
                 From general bibliography
               </button>
               <button
-                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-2"
                 onClick={handleOpenRequestForm}
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -623,7 +623,7 @@ function BibliographyPanel({
               {searchResults.map((entry) => {
                 const alreadyAdded = existingKeys.has(entry.key);
                 return (
-                  <div key={entry.key} className="flex items-start justify-between gap-2 text-xs px-1 py-1 rounded hover:bg-surface">
+                  <div key={entry.key} className="flex items-start justify-between gap-2 text-xs px-1 py-1 rounded hover-on-light">
                     <div className="min-w-0">
                       <span className="font-mono text-[10px] text-ink-subtle">{entry.key}</span>
                       <span className="text-ink-muted mx-1">&middot;</span>
@@ -834,7 +834,7 @@ function BibliographyPanel({
         return (
           <div
             data-bib-entry={entry.key}
-            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"}`}
+            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover-on-light"}`}
             style={
               selected
                 ? {

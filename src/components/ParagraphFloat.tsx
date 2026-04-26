@@ -189,7 +189,7 @@ export function ParagraphFloat({
           <button
             type="button"
             onClick={() => editorRef.current?.scrollToParagraphId(uuid)}
-            className="w-5 h-5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+            className="w-5 h-5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover-on-light transition-colors"
             title="Jump to paragraph"
             aria-label="Jump to paragraph"
           >

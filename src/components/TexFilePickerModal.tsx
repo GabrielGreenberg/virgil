@@ -62,7 +62,7 @@ export default function TexFilePickerModal({
             <button
               key={file}
               onClick={() => onSelect(file)}
-              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
+              className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover-on-light focus:bg-surface-muted-strong focus:outline-none transition-colors"
             >
               <svg
                 width="14"
@@ -88,7 +88,7 @@ export default function TexFilePickerModal({
       >
         <button
           onClick={onCreateNew}
-          className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover:bg-surface-muted-strong focus:bg-surface-muted-strong focus:outline-none transition-colors"
+          className="flex items-center gap-2.5 w-full px-3 py-2 text-left text-sm text-ink-body rounded-lg hover-on-light focus:bg-surface-muted-strong focus:outline-none transition-colors"
         >
           <svg
             width="14"

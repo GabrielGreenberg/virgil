@@ -486,7 +486,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
                 }
                 setOpen(false);
               }}
-              className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-2"
+              className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
             >
               <span className="w-4 text-center text-xs">
                 {current === bt.value ? "\u2713" : ""}
@@ -574,7 +574,7 @@ function ExampleDropdown({ editor }: { editor: Editor }) {
         >
           <button
             onClick={() => pickOption("single")}
-            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-3"
           >
             <span
               style={{
@@ -589,7 +589,7 @@ function ExampleDropdown({ editor }: { editor: Editor }) {
           </button>
           <button
             onClick={() => pickOption("multi")}
-            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover:bg-surface-muted flex items-center gap-3"
+            className="w-full text-left px-3 py-1.5 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-3"
           >
             <span
               style={{
@@ -1086,7 +1086,7 @@ function ViewMenu({
             <button
               key={o}
               onClick={() => { onSetOrientation(o); setOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             >
               <span>{o === "horizontal" ? "Horizontal" : "Vertical"}</span>
               <span className="text-[var(--accent)]">{orientation === o ? "\u2713" : ""}</span>
@@ -1096,21 +1096,21 @@ function ViewMenu({
           <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
           <button
             onClick={() => { onToggleParTitles(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
           >
             <span>Paragraph titles</span>
             <span className="text-[var(--accent)]">{showParTitles ? "\u2713" : ""}</span>
           </button>
           <button
             onClick={() => { onToggleLatexComments(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
           >
             <span>% comments</span>
             <span className="text-[var(--accent)]">{showLatexComments ? "\u2713" : ""}</span>
           </button>
           <button
             onClick={() => { onToggleSectionIndicator(); setOpen(false); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
           >
             <span>Current section</span>
             <span className="text-[var(--accent)]">{showSectionIndicator ? "\u2713" : ""}</span>
@@ -1118,7 +1118,7 @@ function ViewMenu({
           <div className="my-1 border-t border-edge-subtle" />
           <button
             onClick={() => setMarginaliaExpanded((p) => !p)}
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
           >
             <span>Marginalia</span>
             <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: marginaliaExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1129,7 +1129,7 @@ function ViewMenu({
             <>
               <button
                 onClick={() => onToggleMarginalia()}
-                className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
               >
                 <span>Show marginalia</span>
                 <span className="text-[var(--accent)]">{showMarginalia ? "\u2713" : ""}</span>
@@ -1138,7 +1138,7 @@ function ViewMenu({
                 <button
                   key={type}
                   onClick={() => onToggleMarginaliaType(type)}
-                  className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                 >
                   <span>{type === "quote" ? "Quotations" : type === "note" ? "Notes" : type === "archive" ? "Archive" : "Todo"}</span>
                   <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
@@ -1147,7 +1147,7 @@ function ViewMenu({
               <button
                 onClick={onToggleAlwaysShowLinkedText}
                 title="Persistently highlight text ranges that are linked to notes, cuts, or revisions. When off, highlights appear only on hover or selection."
-                className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
               >
                 <span>Always show linked text</span>
                 <span className="text-[var(--accent)]">{alwaysShowLinkedText ? "\u2713" : ""}</span>
@@ -1158,7 +1158,7 @@ function ViewMenu({
             <>
               <button
                 onClick={() => setDividersExpanded((p) => !p)}
-                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
               >
                 <span>Show dividers for&hellip;</span>
                 <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: dividersExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1171,7 +1171,7 @@ function ViewMenu({
                     <button
                       key={lvl}
                       onClick={() => onToggleDividerLevel(lvl)}
-                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                      className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                     >
                       <span>{DIVIDER_LEVEL_LABELS[lvl]}</span>
                       <span className="text-[var(--accent)]">{dividerLevels.has(lvl) ? "\u2713" : ""}</span>
@@ -1179,7 +1179,7 @@ function ViewMenu({
                   ))}
                   <button
                     onClick={() => setDividerPrefsExpanded((p) => !p)}
-                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                    className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                   >
                     <span>Divider preferences</span>
                     <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: dividerPrefsExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1190,7 +1190,7 @@ function ViewMenu({
                     <button
                       key={w}
                       onClick={() => onSetDividerWidth(w)}
-                      className="w-full text-left pl-9 pr-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                      className="w-full text-left pl-9 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                     >
                       <span>{DIVIDER_WIDTH_LABELS[w]}</span>
                       <span className="text-[var(--accent)]">{dividerWidth === w ? "\u2713" : ""}</span>

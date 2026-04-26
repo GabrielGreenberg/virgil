@@ -139,7 +139,7 @@ function KeySearchDropdown({
             <button
               key={e.key}
               onMouseDown={(ev) => { ev.preventDefault(); onChange(e.key); setSearch(e.key); setOpen(false); }}
-              className="w-full text-left px-2.5 py-1.5 text-xs hover:bg-surface-muted leading-snug line-clamp-2 whitespace-normal break-words"
+              className="w-full text-left px-2.5 py-1.5 text-xs hover-on-light leading-snug line-clamp-2 whitespace-normal break-words"
             >
               <span className="font-mono text-ink-body">{e.key}</span>
               <span className="text-ink-muted">

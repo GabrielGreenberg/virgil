@@ -178,7 +178,7 @@ function LibraryReady({ handle }: { handle: FileSystemDirectoryHandle }) {
           <button
             type="button"
             onClick={() => void refresh()}
-            className="text-[11px] text-ink-subtle hover:text-ink-body px-1.5 py-0.5 rounded hover:bg-surface-muted-strong"
+            className="text-[11px] text-ink-subtle hover:text-ink-body px-1.5 py-0.5 rounded hover-on-light"
           >
             Refresh
           </button>
@@ -203,7 +203,7 @@ function LibraryReady({ handle }: { handle: FileSystemDirectoryHandle }) {
             {files.map((f) => (
               <li
                 key={f.name}
-                className="px-4 py-2 text-sm text-ink-body hover:bg-surface-muted flex items-center gap-2"
+                className="px-4 py-2 text-sm text-ink-body hover-on-light flex items-center gap-2"
               >
                 <IconPdf />
                 <span className="truncate" title={f.name}>

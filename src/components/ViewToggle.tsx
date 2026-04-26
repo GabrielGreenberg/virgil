@@ -40,7 +40,7 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onChange("in-text"); }}
         className={`p-1 rounded transition-colors ${
-          mode === "in-text" ? "bg-surface shadow-sm" : "hover:bg-surface-muted"
+          mode === "in-text" ? "bg-surface shadow-sm" : "hover-on-light"
         }`}
         title="In-text view"
       >
@@ -50,7 +50,7 @@ export default function ViewToggle({ mode, onChange }: ViewToggleProps) {
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => { e.stopPropagation(); onChange("list"); }}
         className={`p-1 rounded transition-colors ${
-          mode === "list" ? "bg-surface shadow-sm" : "hover:bg-surface-muted"
+          mode === "list" ? "bg-surface shadow-sm" : "hover-on-light"
         }`}
         title="List view"
       >

@@ -130,7 +130,7 @@ function ArchivePanel({
             className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
               selected
                 ? "bg-amber-50 border-l-2 border-l-amber-400 border-b-stone-300"
-                : "border-b-stone-300 hover:bg-surface-muted"
+                : "border-b-stone-300 hover-on-light"
             }`}
             onClick={() => onSelect(selected ? null : s.id)}
           >

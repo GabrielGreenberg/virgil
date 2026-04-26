@@ -73,7 +73,7 @@ export const SYSTEM_DIALOG_TOKENS = {
     danger:
       "bg-[#b45757] hover:bg-[#9a3c3c] text-white border-[#9a3c3c]",
     secondary:
-      "text-ink-body bg-surface border-edge-hover hover:bg-surface-muted",
+      "text-ink-body bg-surface border-edge-hover hover-on-light",
     accent:
       "text-white bg-[var(--accent)] border-transparent hover:opacity-90",
     disabled: "disabled:opacity-50 disabled:cursor-not-allowed",

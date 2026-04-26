@@ -138,7 +138,7 @@ function ExamplesPanel({
           className={`group px-1 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${
             selectedId === ex.exampleId
               ? "bg-teal-100/40 border-l-2 border-l-teal-300 border-b-stone-300"
-              : "border-b-stone-300 hover:bg-surface-muted"
+              : "border-b-stone-300 hover-on-light"
           }`}
           onClick={() =>
             onSelect(selectedId === ex.exampleId ? null : ex.exampleId)

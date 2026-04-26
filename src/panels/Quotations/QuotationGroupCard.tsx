@@ -242,7 +242,7 @@ function CiteKeyAutocomplete({
                 selectEntry(entry.key);
               }}
               className={`w-full text-left px-3 py-1.5 flex items-baseline gap-2 text-xs ${
-                i === highlightedIndex ? "bg-amber-50" : "hover:bg-surface-muted"
+                i === highlightedIndex ? "bg-amber-50" : "hover-on-light"
               }`}
             >
               <span className="font-mono font-semibold text-ink-strong shrink-0">
@@ -515,7 +515,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
               e.stopPropagation();
               setEditingCiteKey(true);
             }}
-            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong hover:border-edge-hover transition-colors flex-shrink-0"
+            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover transition-colors flex-shrink-0"
             title="Edit cite key"
           >
             Edit

@@ -621,7 +621,7 @@ export function PanelChromeProvider({
  */
 
 export const POPOUT_BUTTON_CLASS =
-  "w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong";
+  "w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover-on-light";
 
 export type PopoutVariant = "arrow" | "x";
 
@@ -765,7 +765,7 @@ export function PanelClose() {
     <button
       type="button"
       onClick={chrome.onClose}
-      className="w-5 h-5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors shrink-0"
+      className="w-5 h-5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover-on-light transition-colors shrink-0"
       title="Close panel"
       aria-label="Close panel"
     >
@@ -1306,7 +1306,7 @@ export function ItemMenu({
         className={
           isPanelHeader
             ? "p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-            : "p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+            : "p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
         }
         title="Options"
       >
@@ -1434,7 +1434,7 @@ export function TargetFileIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover:bg-surface/60 transition-colors ${className ?? ""}`}
+      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover-on-dark transition-colors ${className ?? ""}`}
       title={title}
     >
       <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1465,7 +1465,7 @@ export function TargetIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover:bg-surface/60 transition-colors ${className ?? ""}`}
+      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover-on-dark transition-colors ${className ?? ""}`}
       title={title}
     >
       <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -26,7 +26,7 @@ export default function CodeEditorLogDrawer({ log, status, isCompiling }: Props)
         type="button"
         onClick={() => hasContent && setOpen((v) => !v)}
         disabled={!hasContent && !isCompiling}
-        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-medium text-stone-500 uppercase tracking-wide hover:bg-surface-muted-strong text-left disabled:cursor-default disabled:hover:bg-transparent"
+        className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-medium text-stone-500 uppercase tracking-wide hover-on-light text-left disabled:cursor-default disabled:hover:bg-transparent"
       >
         <Chevron open={open} />
         <span>Compile log</span>

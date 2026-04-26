@@ -201,7 +201,7 @@ export default function TodoPanel({
         return (
           <div
             data-todo-entry={item.id}
-            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"} ${item.done ? "opacity-60" : ""}`}
+            className={`px-2 pr-4 py-2 border-b transition-colors cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover-on-light"} ${item.done ? "opacity-60" : ""}`}
             style={
               selected
                 ? {
@@ -244,7 +244,7 @@ export default function TodoPanel({
             </span>
             <button
               onClick={onArchiveDone}
-              className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong transition-colors flex items-center gap-1.5"
+              className="text-xs px-2.5 py-1 rounded text-[var(--muted)] hover:text-ink-body hover-on-light transition-colors flex items-center gap-1.5"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 8v13H3V8" />

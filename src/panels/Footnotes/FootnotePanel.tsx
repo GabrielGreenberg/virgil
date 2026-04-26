@@ -159,7 +159,7 @@ function FootnotePanel({
               onDragStart={(e) =>
                 startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
               }
-              className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover:bg-surface-muted transition-colors"
+              className="px-1 py-2 border-b border-b-stone-200 cursor-grab active:cursor-grabbing hover-on-light transition-colors"
             >
               <div className="flex items-start gap-2">
                 <span className="inline-flex items-center justify-center w-5 h-5 rounded shrink-0 mt-0.5">
@@ -294,7 +294,7 @@ function FootnotePanel({
             className={`group px-1 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${
               selectedId === fn.footnoteId
                 ? "bg-danger-soft/60 border-l-2 border-l-red-300 border-b-stone-300"
-                : "border-b-stone-300 hover:bg-surface-muted"
+                : "border-b-stone-300 hover-on-light"
             }`}
             onClick={() =>
               onSelect(selectedId === fn.footnoteId ? null : fn.footnoteId)

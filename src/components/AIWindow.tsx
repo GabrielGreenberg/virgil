@@ -560,7 +560,7 @@ export default function AIWindow({
           {section === "requests" && (
             <button
               onClick={() => refreshAll()}
-              className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+              className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
               title="Refresh"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -572,7 +572,7 @@ export default function AIWindow({
           )}
           <button
             onClick={onClose}
-            className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+            className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
             title="Close (Esc)"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -599,7 +599,7 @@ export default function AIWindow({
                         "w-full text-left px-2 py-1.5 rounded-md text-xs font-medium transition-colors " +
                         (active
                           ? "bg-surface border border-[var(--border)] text-ink-strong shadow-sm"
-                          : "text-ink-body hover:bg-surface/70 hover:text-ink-strong border border-transparent")
+                          : "text-ink-body hover-on-dark hover:text-ink-strong border border-transparent")
                       }
                     >
                       {s.label}
@@ -720,7 +720,7 @@ export default function AIWindow({
                           </button>
                           <button
                             onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-subtle hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-subtle hover:text-ink-body hover-on-light transition-colors"
                           >
                             Cancel
                           </button>

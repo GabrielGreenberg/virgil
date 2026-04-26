@@ -109,7 +109,7 @@ export default function WordCountPanel({
               <button
                 key={cat}
                 onClick={() => toggleCat(cat)}
-                className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors hover:bg-surface-muted ${
+                className={`w-full flex items-center gap-2 px-3 py-1.5 transition-colors hover-on-light ${
                   i < catsWithWords.length - 1
                     ? "border-b border-stone-50"
                     : ""

@@ -250,7 +250,7 @@ export default function NotesPanel({
             data-note-entry={note.id}
             draggable
             onDragStart={(e) => startNoteDrag(e, note.id)}
-            className={`px-2 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover:bg-surface-muted"}`}
+            className={`px-2 pr-4 py-2 border-b transition-colors cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-stone-300" : "border-b-stone-300 hover-on-light"}`}
             style={
               selected
                 ? {

@@ -141,7 +141,7 @@ function PresetBar({
 
       <button
         onClick={handleSave}
-        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover:bg-surface-muted transition-colors whitespace-nowrap"
+        className="text-[11px] text-ink-subtle hover:text-ink-body border border-edge-subtle rounded px-2.5 py-1.5 hover-on-light transition-colors whitespace-nowrap"
       >
         {saving ? "OK" : "Save"}
       </button>
@@ -213,7 +213,7 @@ export default function PreferencesModal({
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
-          className="p-1 rounded text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong transition-colors"
+          className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
           title="Close"
         >
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">

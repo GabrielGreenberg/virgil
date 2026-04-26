@@ -598,7 +598,7 @@ function OutlineNode({
     <div>
       <div
         data-outline-pos={`h-${node.heading.index}`}
-        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover:bg-surface-muted"}`}
+        className={`flex items-start gap-1 group cursor-pointer rounded transition-colors ${isFocusEditing ? "" : "hover-on-light"}`}
         style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: isOutsideFocus ? undefined : "relative", zIndex: isOutsideFocus ? undefined : 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
@@ -667,7 +667,7 @@ function OutlineNode({
               <div
                 key={`pt-${i}`}
                 data-outline-pos={`pt-${pt.index}`}
-                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover:bg-surface-muted"}`}
+                className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${isFocusEditing ? "" : "hover-on-light"}`}
                 style={{
                   paddingLeft: `${(depth + 1) * 16 + 24}px`,
                   paddingRight: 8,
@@ -1518,35 +1518,35 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
       {menuOpen && (
         <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[180px]">
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => { setShowNumbers(!showNumbers); }}
           >
             <span>Show section numbers</span>
             <span className="text-[var(--accent)]">{showNumbers ? "✓" : ""}</span>
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => { setShowLabels(!showLabels); }}
           >
             <span>Show labels</span>
             <span className="text-[var(--accent)]">{showLabels ? "✓" : ""}</span>
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => { setShowTitles(!showTitles); }}
           >
             <span>Show par. titles</span>
             <span className="text-[var(--accent)]">{showTitles ? "✓" : ""}</span>
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => { setShowWordCount(!showWordCount); }}
           >
             <span>Show word count</span>
             <span className="text-[var(--accent)]">{showWordCount ? "✓" : ""}</span>
           </button>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
             onClick={() => { setShowPosition(!showPosition); }}
           >
             <span>Show current position</span>
@@ -1567,7 +1567,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               ? "bg-[var(--accent)] text-white"
               : focusState?.active
                 ? "text-ink-faint cursor-not-allowed"
-                : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
+                : "text-[var(--muted)] hover:text-ink-body hover-on-light"
           }`}
           title={focusState?.active ? "Exit Focus to use Edit" : undefined}
         >
@@ -1589,7 +1589,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               ? "bg-[var(--accent)] text-white"
               : editMode
                 ? "text-ink-faint cursor-not-allowed"
-                : "text-[var(--muted)] hover:text-ink-body hover:bg-surface-muted-strong"
+                : "text-[var(--muted)] hover:text-ink-body hover-on-light"
           }`}
           title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
         >
@@ -1687,7 +1687,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             {/* Fixed top row — document start / title */}
             <div
               data-outline-pos="docstart"
-              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover:bg-surface-muted"}`}
+              className={`flex items-start gap-1 cursor-pointer rounded transition-colors ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
               style={{
                 paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
                 opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
@@ -1732,7 +1732,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                     <div
                       key={`preamble-pt-${i}`}
                       data-outline-pos={`pt-${pt.index}`}
-                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover:bg-surface-muted"}`}
+                      className={`cursor-pointer rounded transition-colors text-[11px] text-[#857070] truncate ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
                       style={{
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptOutside ? 0.3 : 1,

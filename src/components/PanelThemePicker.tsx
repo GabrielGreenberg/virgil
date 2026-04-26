@@ -92,7 +92,7 @@ export default function PanelThemePicker({
             <button
               type="button"
               onClick={onReset}
-              className="mt-2 w-full text-[11px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded hover:bg-surface-muted"
+              className="mt-2 w-full text-[11px] text-ink-subtle hover:text-ink-body px-2 py-1 rounded hover-on-light"
             >
               Reset to default
             </button>

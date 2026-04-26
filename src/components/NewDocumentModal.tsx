@@ -103,7 +103,7 @@ export default function NewDocumentModal({
                 className={`text-left px-3 py-2 rounded-md border transition-colors ${
                   selected
                     ? "border-edge-strong bg-[var(--accent-light)]"
-                    : "border-edge-subtle hover:border-edge-hover hover:bg-surface-muted"
+                    : "border-edge-subtle hover:border-edge-hover hover-on-light"
                 }`}
               >
                 <div className="text-sm font-medium text-ink-body">

@@ -269,7 +269,7 @@ function CitationsPanel({
                     onSetBibPackage(p.value);
                     setMenuOpen(false);
                   }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                 >
                   <span>{p.label}</span>
                   <span className="text-[var(--accent)]">
@@ -288,7 +288,7 @@ function CitationsPanel({
                     onSetStyle(s.value);
                     setMenuOpen(false);
                   }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover:bg-surface-muted flex items-center justify-between gap-3"
+                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
                 >
                   <span>{s.label}</span>
                   <span className="text-[var(--accent)]">

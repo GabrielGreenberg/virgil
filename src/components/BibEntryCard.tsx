@@ -65,14 +65,14 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
   return (
     <div className="flex items-center gap-0.5 px-1 py-0.5 border-b border-edge-subtle">
       <button onMouseDown={(e) => { e.preventDefault(); exec("bold"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-ink-body hover:bg-surface-muted-strong transition-colors" title="Bold">B</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs font-bold text-ink-body hover-on-light transition-colors" title="Bold">B</button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("italic"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-ink-body hover:bg-surface-muted-strong transition-colors" title="Italic">I</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs italic text-ink-body hover-on-light transition-colors" title="Italic">I</button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("underline"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover:bg-surface-muted-strong transition-colors" title="Underline">U</button>
+        className="w-6 h-6 flex items-center justify-center rounded text-xs underline text-ink-body hover-on-light transition-colors" title="Underline">U</button>
       <div className="w-px h-4 bg-stone-200 mx-0.5" />
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertUnorderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover:bg-surface-muted-strong transition-colors" title="Bullet list">
+        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light transition-colors" title="Bullet list">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="2" cy="4" r="1.5" /><rect x="5" y="3" width="10" height="2" rx="0.5" />
           <circle cx="2" cy="8" r="1.5" /><rect x="5" y="7" width="10" height="2" rx="0.5" />
@@ -80,7 +80,7 @@ function FormatToolbar({ editorRef }: { editorRef: React.RefObject<HTMLDivElemen
         </svg>
       </button>
       <button onMouseDown={(e) => { e.preventDefault(); exec("insertOrderedList"); }}
-        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover:bg-surface-muted-strong transition-colors" title="Numbered list">
+        className="w-6 h-6 flex items-center justify-center rounded text-ink-body hover-on-light transition-colors" title="Numbered list">
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
           <text x="0" y="5.5" fontSize="5" fontWeight="600">1</text><rect x="5" y="3" width="10" height="2" rx="0.5" />
           <text x="0" y="9.5" fontSize="5" fontWeight="600">2</text><rect x="5" y="7" width="10" height="2" rx="0.5" />
@@ -288,7 +288,7 @@ export default function BibEntryCard({
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               fieldsReviewStatus === "pending"
                 ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
+                : "text-ink-muted hover:text-ink-body hover-on-light"
             }`}
             title={fieldsReviewStatus === "pending" ? "Click to cancel request" : "Request AI review of fields"}
           >
@@ -337,7 +337,7 @@ export default function BibEntryCard({
                   ))}
                   <div className="flex gap-1 mt-1">
                     <button onClick={commitEditBib} className="text-xs px-2 py-0.5 bg-stone-700 text-white rounded hover:bg-stone-800">Save</button>
-                    <button onClick={cancelEditBib} className="text-xs px-2 py-0.5 border border-edge-hover rounded hover:bg-surface-muted-strong">Cancel</button>
+                    <button onClick={cancelEditBib} className="text-xs px-2 py-0.5 border border-edge-hover rounded hover-on-light">Cancel</button>
                   </div>
                 </div>
               ) : (
@@ -376,7 +376,7 @@ export default function BibEntryCard({
             className={`ml-auto flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors ${
               notesReviewStatus === "pending"
                 ? "text-amber-600 bg-amber-50 hover:bg-amber-100"
-                : "text-ink-muted hover:text-ink-body hover:bg-surface-muted-strong"
+                : "text-ink-muted hover:text-ink-body hover-on-light"
             }`}
             title={notesReviewStatus === "pending" ? "Click to cancel request" : "Request AI-generated annotation"}
           >
