@@ -153,6 +153,34 @@ These three "card kinds" have themes in `CARD_THEMES` but no panel registry entr
 
 ---
 
+## Pass 7 — Cleanup codemod
+
+### `[INFO] Surface was much smaller than the audit estimated`
+The audit ([10-audit.md](10-audit.md) item 7) projected ~200 stone-* sites in `*.tsx`. Reality: 31 text-stone hits, 26 border-stone hits, 6 bg-stone hits in scope. The ~200 figure was likely the *historical* count before earlier passes already swept many sites via Tailwind utility utilities and `var(--ink-*)` adoption. Worth correcting in MIGRATION.md.
+
+### `[INFO] Mappings applied`
+Mechanical, per `00-overview.md`:
+- `text-stone-300/400/500/600/700/800` → `text-ink-faint/muted/subtle/subtle/body/strong` (600 mapped to `subtle` — between subtle and body, leaning subtle)
+- `hover:text-stone-N` → `hover:text-ink-X` (same map)
+- `border-stone-50/100/200` → `border-edge-subtle` (no edge token below subtle; collapsed)
+- `border-stone-300/400` → `border-edge-hover/strong`
+- `border-b-stone-200/300` → `border-b-edge-subtle/edge-hover`
+- `bg-stone-50/100` → `bg-surface-muted/muted-strong`
+- `bg-stone-200` → `bg-edge-subtle` (used for 1px dividers in BibEntryCard, ProgressBar pending dot)
+- `bg-stone-400` → `bg-edge-strong` (ProgressBar "skipped" dot)
+- `hover:ring-stone-200` → `hover:ring-edge-subtle` (PanelThemePicker swatch)
+
+### `[INFO] Filled-button stones (700/800/900) intentionally left alone`
+`bg-stone-700/800/900` and their `hover:bg-stone-X` companions are filled-primary-button states. Pass 5 covered most of these via the new `<Button variant="primary">` (which is now accent-filled). Any remaining ones are hand-rolled buttons that didn't fit the variant system (system-dialog AIWindow Submit etc. still in scope of Pass 5 follow-up).
+
+### `[INFO] Cleanup of dead code in panel-theme.ts`
+Removed the now-unused `rgba()` helper that pre-Pass-6 generated `rgba(...)` strings for header tints. Pass 6's `blendOverWhite` produces solid hexes; the `rgba` helper had no consumers.
+
+### `[INFO] No visual diff expected`
+Per the migration spec, Pass 7 is a name-only codemod — every stone-* token has a matching ink-*/edge-* equivalent at the same hex value. Pixel diff should be zero. App boots clean post-codemod.
+
+---
+
 ## Cross-cutting themes
 
 ### `[OPEN] Migration doc's "wide sweep" framing has been over-conservative twice`
