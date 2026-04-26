@@ -1,4 +1,4 @@
-<!-- last-verified: ddaa8fc 2026-04-24 -->
+<!-- last-verified: 0c7dc09 2026-04-25 -->
 
 # UI Chrome
 
@@ -23,23 +23,25 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4478
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4703
 │   ├─ View control pod: collapse, omni-view, split
-│   └─ StripButton × N (per left-sidebar panel, drag-to-reorder)
-├─ PanelColumn side="left"                            — ~line 4470
+│   ├─ StripButton × N (per left-sidebar panel, drag-to-reorder)
+│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)
+├─ PanelColumn side="left"                            — ~line 4760
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar (portal) — home-docked or free-floating — ~line 4561
-│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4613
+│   ├─ MenuBar (portal) — home-docked or free-floating — ~line 4804
+│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4857
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatingPanel portals (popped-out panels)
 │   └─ FloatCard portals (popped-out cards)
-├─ PanelColumn side="right"                           — ~line 4724
+├─ PanelColumn side="right"                           — ~line 5170
 │   └─ Active panel(s)
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:4797
+└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:5184
     ├─ View control pod: collapse, omni-view, split
-    └─ StripButton × N
+    ├─ StripButton × N
+    └─ OmniFilterMenu (kebab pinned to bottom)
 ```
 
 ## Tool strips (left & right)
@@ -55,6 +57,7 @@ No dedicated component — just an inline flex column in `EditorLayout.tsx`. Ide
    - Click toggles open/closed
    - Draggable: drag to reorder, or drag across strips to move panel to the other side
    - Badge support (e.g. Revisions shows count when > 0)
+3. **`OmniFilterMenu`** — horizontal kebab pinned to the bottom via `mt-auto`. Opens a dropdown that toggles which omni categories appear in this side's omni-view. Includes a "Default view" item that resets the side to its registry-default categories (`DEFAULT_OMNI_CATEGORIES[side]`). Lives in [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx).
 
 `StripButton` lives in [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx).
 

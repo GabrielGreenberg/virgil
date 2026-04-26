@@ -1,4 +1,4 @@
-<!-- last-verified: ddaa8fc 2026-04-24 -->
+<!-- last-verified: 0c7dc09 2026-04-25 -->
 
 # Glossary
 
@@ -12,11 +12,12 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | [src/components/EditorLayout.tsx:4285](../../src/components/EditorLayout.tsx:4285); fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
-| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4561. Docks "home" in the Virgil bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
+| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4290; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
+| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4804. Docks "home" in the Virgil bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
 | **Menu toolbar** | Same as Menu pod above | Same |
-| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4478` |
-| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:4797` |
+| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4703` |
+| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:5184` |
+| **Filter menu** / **kebab at the bottom of the strip** (horizontal 3-dot menu pinned to the bottom of each L/R icon strip; toggles which omni categories show, plus a "Default view" reset) | `OmniFilterMenu` | [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); mounted at the bottom of each strip in `EditorLayout.tsx` around lines 4753 and 5234 |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
 | **Current section pod** / **section lozenge** (floating section-path pill at top of editor, shows on scroll, fades after idle) | `SectionLozenge` | [src/components/editor-layout/section-lozenge.tsx](../../src/components/editor-layout/section-lozenge.tsx); `SectionPathEntry` type + main/mirror path builders in `EditorLayout.tsx` ~1943 / ~2065 |

@@ -1,4 +1,4 @@
-<!-- last-verified: ddaa8fc 2026-04-24 -->
+<!-- last-verified: 0c7dc09 2026-04-25 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
