@@ -560,10 +560,10 @@ export default function AIWindow({
           {section === "requests" && (
             <button
               onClick={() => refreshAll()}
-              className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
+              className="iconbtn-md"
               title="Refresh"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 4 23 10 17 10" />
                 <polyline points="1 20 1 14 7 14" />
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
@@ -572,10 +572,10 @@ export default function AIWindow({
           )}
           <button
             onClick={onClose}
-            className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
+            className="iconbtn-md"
             title="Close (Esc)"
           >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 3l8 8M11 3l-8 8" />
             </svg>
           </button>

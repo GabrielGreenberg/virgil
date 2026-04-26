@@ -620,8 +620,7 @@ export function PanelChromeProvider({
  *   - "x":     bare X glyph     (CardPopoutButton)
  */
 
-export const POPOUT_BUTTON_CLASS =
-  "w-5 h-5 flex items-center justify-center rounded-md transition-colors shrink-0 text-ink-muted hover:text-ink-body hover-on-light";
+export const POPOUT_BUTTON_CLASS = "iconbtn-sm";
 
 export type PopoutVariant = "arrow" | "x";
 
@@ -765,7 +764,7 @@ export function PanelClose() {
     <button
       type="button"
       onClick={chrome.onClose}
-      className="w-5 h-5 -mr-1 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover-on-light transition-colors shrink-0"
+      className="iconbtn-sm -mr-1"
       title="Close panel"
       aria-label="Close panel"
     >
@@ -829,7 +828,7 @@ export function CardTrashButton({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-danger shrink-0"
+      className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
       title={title}
       aria-label={title}
     >
@@ -1306,11 +1305,11 @@ export function ItemMenu({
         className={
           isPanelHeader
             ? "p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-            : "p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
+            : "iconbtn-md"
         }
         title="Options"
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
           <circle cx="12" cy="12" r="2" />
           <circle cx="12" cy="19" r="2" />
@@ -1434,10 +1433,10 @@ export function TargetFileIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover-on-dark transition-colors ${className ?? ""}`}
+      className={`iconbtn-md ${className ?? ""}`}
       title={title}
     >
-      <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Page outline (shifted right so arrow stem is visible) */}
         <path d="M16 2H8a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
         <path d="M16 2v6h6" />
@@ -1465,10 +1464,10 @@ export function TargetIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`p-1 rounded text-ink-subtle hover:text-ink-strong hover-on-dark transition-colors ${className ?? ""}`}
+      className={`iconbtn-md ${className ?? ""}`}
       title={title}
     >
-      <svg width="18" height="18" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Rounded pod/card outline (same bounding box as the file icon) */}
         <rect x="6" y="2" width="16" height="20" rx="3" ry="3" />
         {/* Arrow from left into center of pod */}

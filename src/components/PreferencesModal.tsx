@@ -213,10 +213,10 @@ export default function PreferencesModal({
         <button
           onClick={onClose}
           onMouseDown={(e) => e.stopPropagation()}
-          className="p-1 rounded text-ink-muted hover:text-ink-body hover-on-light transition-colors"
+          className="iconbtn-md"
           title="Close"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3l8 8M11 3l-8 8" />
           </svg>
         </button>
