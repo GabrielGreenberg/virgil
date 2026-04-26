@@ -184,6 +184,8 @@
   /* Semantic UI color scale — exposes the :root tokens as Tailwind
      utilities (bg-surface, bg-surface-muted, text-ink-muted,
      border-edge-subtle, ring-drag-target, etc.). */
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
   --color-surface-muted-strong: var(--surface-muted-strong);

@@ -17,6 +17,7 @@
 
 import { useState } from "react";
 import { ensureRW } from "@/lib/fsa-permissions";
+import { Button } from "@/components/panel-primitives";
 
 interface Props {
   /** Display name of the paper, for the UI copy. */
@@ -60,14 +61,14 @@ export function DocPermissionGate({ docName, handle, onGranted }: Props) {
           permission every time you reopen the page, so you&apos;ll see one
           prompt per paper per session.
         </p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="md"
           disabled={busy}
           onClick={handleClick}
-          className="rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-60"
         >
           {busy ? "Waiting…" : "Allow access"}
-        </button>
+        </Button>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
     </div>

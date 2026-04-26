@@ -21,7 +21,7 @@
  *  </div>
  */
 
-import { type ReactNode, type HTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
+import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
@@ -558,6 +558,59 @@ export const PANEL = {
   /** Empty-state message. */
   empty: "p-6 text-center text-sm text-[var(--muted)]",
 } as const;
+
+/* ── Button primitive ──────────────────────────────────────────────
+   Five variants, three sizes, codified per docs/virgil-design-system/
+   07-buttons-and-inputs.md. Don't hand-roll filled buttons; pick a
+   variant. There is no "blue button" in Virgil — `warm` replaces the
+   bg-blue-100 / bg-emerald-600 patterns that used to scatter across
+   modal footers and suggestion flows. */
+
+export type ButtonVariant = "primary" | "secondary" | "warm" | "danger" | "ghost";
+export type ButtonSize = "sm" | "md" | "lg";
+
+const BUTTON_BASE =
+  "inline-flex items-center justify-center rounded-md font-medium transition-all duration-150 disabled:opacity-40 disabled:pointer-events-none active:translate-y-[0.5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-edge-strong";
+
+const BUTTON_VARIANT: Record<ButtonVariant, string> = {
+  primary:
+    "bg-accent text-white hover:brightness-95",
+  secondary:
+    "bg-surface text-ink-body border border-edge-hover hover:bg-surface-muted-strong hover:border-edge-strong",
+  warm:
+    "bg-accent-light text-accent border border-[color-mix(in_oklab,var(--accent)_40%,transparent)] hover:brightness-95",
+  danger:
+    "bg-danger-soft text-danger border border-[color-mix(in_oklab,var(--danger)_30%,transparent)] hover:bg-[color-mix(in_oklab,var(--danger)_10%,var(--danger-soft))]",
+  ghost:
+    "bg-transparent text-ink-subtle hover:bg-surface-muted-strong hover:text-ink-body",
+};
+
+const BUTTON_SIZE: Record<ButtonSize, string> = {
+  sm: "h-6 px-2.5 text-xs",
+  md: "h-8 px-3 text-[13px]",
+  lg: "h-10 px-4 text-sm",
+};
+
+export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}
+
+/** Canonical Virgil button. Pick a variant. Don't mix Tailwind utilities
+ *  to imitate one. */
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
+  { variant = "secondary", size = "md", type = "button", className, ...rest },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type={type}
+      {...rest}
+      className={`${BUTTON_BASE} ${BUTTON_VARIANT[variant]} ${BUTTON_SIZE[size]}${className ? ` ${className}` : ""}`}
+    />
+  );
+});
 
 /* ── Chevron icon ─────────────────────────────────────────────────── */
 

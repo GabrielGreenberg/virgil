@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import type { BibEntry } from "@/lib/types";
 import type { ParsedCiteKey } from "@/lib/bib-parser";
 import { parseCiteCommand, serializeCiteCommand, formatMinimalCitation } from "@/lib/bib-parser";
+import { Button } from "./panel-primitives";
 
 /** Imperative handle exposed to parents — used to commit current state
  *  when dismissed by click-outside rather than a Save/Cancel button. */
@@ -397,19 +398,17 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
 
       {/* Action buttons */}
       <div className="flex items-center justify-between">
-        <button
-          onClick={onCancel}
-          className="text-xs text-ink-muted hover:text-ink-body transition-colors"
-        >
+        <Button variant="ghost" size="sm" onClick={onCancel}>
           Cancel
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
           onClick={handleSave}
           disabled={!command}
-          className="text-xs px-2.5 py-1 bg-stone-700 text-white rounded hover:bg-stone-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saveLabel}
-        </button>
+        </Button>
       </div>
     </div>
   );

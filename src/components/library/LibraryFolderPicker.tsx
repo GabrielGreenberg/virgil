@@ -8,6 +8,7 @@
 
 import { useState } from "react";
 import { pickLibraryFolder } from "@/lib/library/library-folder";
+import { Button } from "@/components/panel-primitives";
 
 interface Props {
   onPicked: (handle: FileSystemDirectoryHandle) => void;
@@ -44,14 +45,14 @@ export function LibraryFolderPicker({ onPicked }: Props) {
           PDFs referenced by your work. This folder is shared across every
           document you open in Virgil.
         </p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="md"
           disabled={busy}
           onClick={handleClick}
-          className="rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-60"
         >
           {busy ? "Waiting…" : "Pick folder"}
-        </button>
+        </Button>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
     </div>

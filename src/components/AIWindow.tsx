@@ -47,6 +47,7 @@ import type {
 } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
+import { Button } from "./panel-primitives";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -707,23 +708,25 @@ export default function AIWindow({
                           className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1.5 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)] resize-none"
                         />
                         <div className="flex flex-col gap-1.5">
-                          <button
+                          <Button
+                            variant="primary"
+                            size="sm"
                             onClick={submitComposer}
                             disabled={
                               (composerNeedsBibKey && !composerBibKey.trim()) ||
                               (!composerNeedsBibKey && !composerText.trim())
                             }
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border bg-stone-800 hover:bg-stone-900 text-white border-stone-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                             title="Submit (⌘↵)"
                           >
                             Submit
-                          </button>
-                          <button
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => { setComposerOpen(false); setComposerText(""); setComposerBibKey(""); }}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-subtle hover:text-ink-body hover-on-light transition-colors"
                           >
                             Cancel
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     </>

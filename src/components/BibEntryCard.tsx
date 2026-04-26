@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, headerOverrideStyle, separatorOverrideStyle } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, headerOverrideStyle, separatorOverrideStyle, Button } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -336,8 +336,8 @@ export default function BibEntryCard({
                     </div>
                   ))}
                   <div className="flex gap-1 mt-1">
-                    <button onClick={commitEditBib} className="text-xs px-2 py-0.5 bg-stone-700 text-white rounded hover:bg-stone-800">Save</button>
-                    <button onClick={cancelEditBib} className="text-xs px-2 py-0.5 border border-edge-hover rounded hover-on-light">Cancel</button>
+                    <Button variant="primary" size="sm" onClick={commitEditBib}>Save</Button>
+                    <Button variant="secondary" size="sm" onClick={cancelEditBib}>Cancel</Button>
                   </div>
                 </div>
               ) : (

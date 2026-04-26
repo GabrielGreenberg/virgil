@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Button } from "@/components/panel-primitives";
 import type { Suggestion } from "@/lib/types";
 
 interface SuggestionPanelProps {
@@ -59,12 +60,9 @@ export default function SuggestionPanel({
         <p className="text-[var(--muted)] text-sm mb-6">
           You&apos;ve worked through all suggestions.
         </p>
-        <button
-          onClick={onClose}
-          className="px-4 py-2 rounded bg-surface-muted-strong text-ink-body hover:bg-edge-subtle text-sm transition-colors"
-        >
+        <Button variant="secondary" size="md" onClick={onClose}>
           Close Panel
-        </button>
+        </Button>
       </div>
     );
   }
@@ -152,24 +150,30 @@ export default function SuggestionPanel({
       {/* Action buttons */}
       <div className="border-t border-[var(--border)] p-4 space-y-2">
         <div className="flex gap-2">
-          <button
+          <Button
+            variant="ghost"
+            size="md"
+            className="flex-1"
             onClick={() => onAct(suggestion.id, "skipped")}
-            className="flex-1 px-3 py-2 rounded bg-surface-muted-strong text-ink-body hover:bg-edge-subtle text-sm font-medium transition-colors"
           >
             Skip
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="danger"
+            size="md"
+            className="flex-1"
             onClick={() => onAct(suggestion.id, "rejected")}
-            className="flex-1 px-3 py-2 rounded bg-danger-soft text-red-700 hover:bg-red-100 text-sm font-medium transition-colors border border-red-200"
           >
             Reject
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="warm"
+            size="md"
+            className="flex-1"
             onClick={() => onAct(suggestion.id, "accepted")}
-            className="flex-1 px-3 py-2 rounded bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-medium transition-colors"
           >
             Accept
-          </button>
+          </Button>
         </div>
         <p className="text-[var(--muted-light)] text-[10px] text-center">
           s = skip &middot; n = reject &middot; y / enter = accept

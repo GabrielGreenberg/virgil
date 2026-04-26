@@ -42,6 +42,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { Button, type ButtonVariant } from "./panel-primitives";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
    The one object you edit to re-skin every system dialog. Tailwind-class
@@ -66,18 +67,9 @@ export const SYSTEM_DIALOG_TOKENS = {
   title: "text-sm font-semibold text-ink-body mb-1.5",
   subtitle: "text-xs text-ink-subtle",
   message: "text-xs text-ink-body leading-relaxed",
-  button: {
-    base: "px-3 py-1.5 text-xs font-medium rounded-md border transition-colors",
-    primary:
-      "bg-stone-800 hover:bg-stone-900 text-white border-stone-900",
-    danger:
-      "bg-[#b45757] hover:bg-[#9a3c3c] text-white border-[#9a3c3c]",
-    secondary:
-      "text-ink-body bg-surface border-edge-hover hover-on-light",
-    accent:
-      "text-white bg-[var(--accent)] border-transparent hover:opacity-90",
-    disabled: "disabled:opacity-50 disabled:cursor-not-allowed",
-  },
+  /* SystemDialog buttons render through `Button` from panel-primitives;
+     no per-token strings needed. The variant prop on SystemDialogButton
+     maps onto the canonical Button variants. */
 } as const;
 
 export type SystemDialogSize = keyof typeof SYSTEM_DIALOG_TOKENS.maxWidth;
@@ -292,16 +284,24 @@ export interface SystemDialogButtonProps
   autoFocus?: boolean;
 }
 
+/** Map legacy SystemDialog variant names onto the canonical Button
+ *  variants. The "accent" name is preserved for compatibility but folds
+ *  into "primary" (which is itself accent-filled in the new spec). */
+const SYSTEM_DIALOG_BUTTON_VARIANT: Record<SystemDialogButtonVariant, ButtonVariant> = {
+  primary: "primary",
+  secondary: "secondary",
+  danger: "danger",
+  accent: "primary",
+};
+
 export function SystemDialogButton({
   variant = "secondary",
   autoFocus,
-  className = "",
+  className,
   type = "button",
   ...rest
 }: SystemDialogButtonProps) {
   const ctx = useContext(DialogCtx);
-  const t = SYSTEM_DIALOG_TOKENS;
-  const variantClass = t.button[variant];
   const ref = useCallback(
     (el: HTMLButtonElement | null) => {
       if (autoFocus) ctx?.registerAutoFocus(el);
@@ -309,10 +309,12 @@ export function SystemDialogButton({
     [autoFocus, ctx],
   );
   return (
-    <button
+    <Button
       ref={ref}
       type={type}
-      className={`${t.button.base} ${variantClass} ${t.button.disabled} ${className}`}
+      variant={SYSTEM_DIALOG_BUTTON_VARIANT[variant]}
+      size="sm"
+      className={className}
       {...rest}
     />
   );

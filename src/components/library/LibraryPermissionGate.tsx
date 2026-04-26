@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 import { ensureRW } from "@/lib/fsa-permissions";
+import { Button } from "@/components/panel-primitives";
 
 interface Props {
   handle: FileSystemDirectoryHandle;
@@ -48,14 +49,14 @@ export function LibraryPermissionGate({ handle, onGranted }: Props) {
           <span className="font-medium">{handle.name}</span>. Browsers reset this
           permission every time you reopen the page.
         </p>
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="md"
           disabled={busy}
           onClick={handleClick}
-          className="rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700 disabled:opacity-60"
         >
           {busy ? "Waiting…" : "Allow access"}
-        </button>
+        </Button>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </div>
     </div>
