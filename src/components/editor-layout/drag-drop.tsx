@@ -361,9 +361,8 @@ export function StripButton({
         }
         handledByPointer.current = false;
       }}
-      className={`p-1.5 rounded transition-colors relative select-none ${
-        active ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"
-      }${iconDropOver ? " panel-icon-drop-active" : ""}`}
+      className={`iconbtn-md iconbtn-toggle relative select-none${iconDropOver ? " panel-icon-drop-active" : ""}`}
+      aria-pressed={active}
       title={label}
     >
       {renderIcon(active)}

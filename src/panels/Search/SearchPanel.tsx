@@ -700,6 +700,25 @@ function ScopeChip({
   );
 }
 
+/** Map a search-result scope to the card theme it should wear on selection.
+ *  This makes the selected border track the source kind: footnote hits
+ *  select red, note hits emerald, citation hits amber, etc. — uniform
+ *  with each kind's own panel. mainText results have no source kind, so
+ *  they fall through to the comment theme (which is the revision/purple
+ *  identity post-merge). */
+const SCOPE_TO_CARD_THEME: Record<SearchScope, keyof typeof CARD_THEMES> = {
+  mainText:     "comment",
+  footnotes:    "footnote",
+  notes:        "note",
+  citations:    "citation",
+  todos:        "todo",
+  archive:      "archive",
+  cuts:         "cut",
+  quotations:   "citation",  // QuotationsPanel uses the citation theme
+  revisions:    "comment",   // revisions = comments (same theme)
+  bibliography: "bib",
+};
+
 function ResultCard({
   idx,
   result,
@@ -719,13 +738,16 @@ function ResultCard({
   const scopeLabel = SCOPE_LABEL[result.scope];
   const fieldLabel = result.field ? FIELD_LABEL[result.field] : undefined;
   const showScopeLabel = result.scope !== "mainText";
+  const theme = CARD_THEMES[SCOPE_TO_CARD_THEME[result.scope]];
 
   return (
     <button
       data-result-idx={idx}
-      className={`${themedCard(CARD_THEMES.comment, selected)} w-full text-left`}
+      className={`${themedCard(theme, selected)} w-full text-left`}
       onClick={onClick}
-      style={borderStyle}
+      style={selected
+        ? { borderColor: theme.borderSelected, ...borderStyle }
+        : borderStyle}
     >
       <div className={PANEL.cardInner}>
         {(showScopeLabel || result.breadcrumb.length > 0) && (

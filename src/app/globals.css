@@ -291,6 +291,32 @@
   color: var(--danger);
 }
 
+/* Dark-context variant — for icon buttons that sit on tinted card
+   headers (red-100, emerald-100, amber-100, …) or darker pod chrome.
+   The default surface-muted-strong hover bg would clash with a tinted
+   parent; this swaps in the same low-alpha black overlay that
+   `.hover-on-dark` uses, so the hover reads as a subtle darken on
+   whatever color the parent is. */
+.iconbtn-sm.iconbtn-on-dark:hover,
+.iconbtn-md.iconbtn-on-dark:hover,
+.iconbtn-lg.iconbtn-on-dark:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: var(--ink-body);
+}
+
+/* Toggle variant — for icon buttons whose active state means "this mode
+   is on" (sidebar strip toggles, code/compile mode buttons). When
+   `aria-pressed="true"`, paint with the brand accent on accent-light bg
+   and a thin inset accent ring — the look the topbar/strip toggles
+   used pre-codification. */
+.iconbtn-sm.iconbtn-toggle[aria-pressed="true"],
+.iconbtn-md.iconbtn-toggle[aria-pressed="true"],
+.iconbtn-lg.iconbtn-toggle[aria-pressed="true"] {
+  background-color: var(--accent-light);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
 html, body {
   overscroll-behavior: none;
 }
@@ -2116,12 +2142,12 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   transform: translateY(-0.5px);
 }
 
-/* Ambient lift for cards in omni-view so they read as raised objects
- * floating on the open canvas. Applied at card root via [data-omni-entry]
- * (set by each panel's omni builder) so the shadow traces the card's
- * own border-radius. */
+/* Ambient lift for omni-view cards. The shadow itself is now applied
+ * inline by `PanelCard` so every card surface (panels, omni, search,
+ * popped-out floats) reads as raised paper uniformly — the data-omni-entry
+ * marker only needs `isolation: isolate` here so the shadow's stacking
+ * context traces the card's own border-radius rather than its parent's. */
 [data-omni-entry] {
-  box-shadow: var(--card-shadow-ambient);
   isolation: isolate;
 }
 

@@ -102,16 +102,16 @@ export const CARD_THEMES = {
   todo:      themeFromAccent(DEFAULT_PANEL_COLORS.todo),
   bib:       themeFromAccent(DEFAULT_PANEL_COLORS.bib),
   citation:  themeFromAccent(DEFAULT_PANEL_COLORS.citation),
-  // Deviates from the patch: comment cards are stone-themed, not purple.
-  // The patch used DEFAULT_PANEL_COLORS.revision (#9333ea purple), which
-  // looked like a typo since the legacy comment row was stone. Using
-  // todo's accent keeps the visual continuity. See migration-feedback.md.
-  comment:   themeFromAccent(DEFAULT_PANEL_COLORS.todo),
-  // System-level (not user-customizable): sky blue for AI requests.
-  aiRequest: themeFromAccent("#0ea5e9"),
+  // Comments are revisions are the same thing — a single accent-purple
+  // identity. CARD_THEMES.comment exists for legacy code paths that
+  // referenced `comment`; the visual is the revision theme.
+  comment:   themeFromAccent(DEFAULT_PANEL_COLORS.revision),
+  // System-level kinds (not user-customizable): hardcoded accents so a
+  // user-color override on (e.g.) the footnote panel does NOT also re-
+  // tint error cards.
+  aiRequest: themeFromAccent("#0ea5e9"),  // sky
+  error:     themeFromAccent("#b45757"),  // rust (same family as footnote, decoupled)
   cut:       themeFromAccent(DEFAULT_PANEL_COLORS.cut),
-  // Errors share the footnote rust accent; the icon glyph distinguishes.
-  error:     themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
   example:   themeFromAccent(DEFAULT_PANEL_COLORS.example),
 } satisfies Record<string, CardTheme>;
 
@@ -929,7 +929,14 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...(selected ? { borderColor: theme.borderSelected } : {}),
-        ...(isPoppedOut ? { borderRadius: 0, borderWidth: 0 } : {}),
+        // Subtle ambient lift on every card surface — the same shadow the
+        // legacy [data-omni-entry] CSS rule applied to omni view, now
+        // unified across panels, omni, and search results so cards read
+        // as raised paper everywhere. Suppressed when popped out (the
+        // FloatingPanel chrome has its own shadow).
+        ...(isPoppedOut
+          ? { borderRadius: 0, borderWidth: 0 }
+          : { boxShadow: "var(--card-shadow-ambient)" }),
         ...style,
       }}
       {...rest}
@@ -1447,7 +1454,7 @@ export function TargetFileIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`iconbtn-md ${className ?? ""}`}
+      className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1478,7 +1485,7 @@ export function TargetIcon({
       onMouseDown={(e) => e.stopPropagation()}
       draggable={false}
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      className={`iconbtn-md ${className ?? ""}`}
+      className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

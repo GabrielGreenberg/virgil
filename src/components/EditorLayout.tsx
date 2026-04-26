@@ -4706,7 +4706,8 @@ export default function EditorLayout() {
             {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
             <button
               onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
-              className={`p-1.5 rounded flex items-center justify-center ${activeLeft ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={!!activeLeft}
               title={activeLeft ? "Collapse panel" : "Expand panel"}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -4719,7 +4720,8 @@ export default function EditorLayout() {
                 when a strip panel is opened or a new card is created. */}
             <button
               onClick={() => { activeLeft === "blank" ? setActiveLeft("omni") : setBlank("left"); }}
-              className={`p-1.5 rounded flex items-center justify-center ${activeLeft === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={activeLeft === "blank"}
               title={activeLeft === "blank" ? "Show omni-view" : "Hide omni-view"}
             >
               <IconBlank active={activeLeft === "blank"} />
@@ -4727,7 +4729,8 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("left")}
-              className={`p-1.5 rounded flex items-center justify-center ${prefs.activeLeftBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={prefs.activeLeftBottom != null}
               title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit
@@ -5187,7 +5190,8 @@ export default function EditorLayout() {
             {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
             <button
               onClick={() => { activeRight ? collapseRight() : expandRight(); }}
-              className={`p-1.5 rounded flex items-center justify-center ${activeRight ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={!!activeRight}
               title={activeRight ? "Collapse panel" : "Expand panel"}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -5200,7 +5204,8 @@ export default function EditorLayout() {
                 when a strip panel is opened or a new card is created. */}
             <button
               onClick={() => { activeRight === "blank" ? setActiveRight("omni") : setBlank("right"); }}
-              className={`p-1.5 rounded flex items-center justify-center ${activeRight === "blank" ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={activeRight === "blank"}
               title={activeRight === "blank" ? "Show omni-view" : "Hide omni-view"}
             >
               <IconBlank active={activeRight === "blank"} />
@@ -5208,7 +5213,8 @@ export default function EditorLayout() {
             {/* Split panel toggle — shaded half reflects which pane is focused */}
             <button
               onClick={() => toggleSplit("right")}
-              className={`p-1.5 rounded flex items-center justify-center ${prefs.activeRightBottom != null ? "text-[var(--accent)] bg-[var(--accent-light)] shadow-[inset_0_0_0_1px_rgba(124,94,60,0.3)]" : "text-[var(--muted)] hover-on-light hover:text-ink-body"}`}
+              className="iconbtn-md iconbtn-toggle"
+              aria-pressed={prefs.activeRightBottom != null}
               title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
             >
               <IconSplit
