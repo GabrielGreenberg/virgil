@@ -15,6 +15,7 @@ import {
   assignUuids,
   extractSidecarData,
 } from "@/lib/latex-serializer";
+import { getStyle, DEFAULT_STYLE_ID, type DocumentStyleId } from "@/lib/document-styles";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult } from "@/lib/storage-fsa";
 
@@ -217,7 +218,17 @@ export async function writeDocBundle(
   const delimiters = extractPreambleAndPostamble(existingLatex);
 
   const newSidecar = extractSidecarData(content);
-  const latex = serializeToLatex(content, delimiters ?? undefined);
+  // Brand-new docs (no \begin{document}) seed their preamble from the
+  // doc's selected style; existing docs keep their verbatim preamble.
+  let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+  if (!delimiters) {
+    const settings = await fetchJson<{ style?: DocumentStyleId }>(
+      `${API}/doc/${docId}/virgil/document-settings.json`,
+      { style: DEFAULT_STYLE_ID },
+    );
+    serializeOpts = { preamble: getStyle(settings.style).preamble };
+  }
+  const latex = serializeToLatex(content, serializeOpts);
 
   await Promise.all([
     putText(`${API}/doc/${docId}/${texFilename}`, latex),
