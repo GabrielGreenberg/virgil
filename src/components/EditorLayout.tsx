@@ -4358,7 +4358,7 @@ export default function EditorLayout() {
           })}
           <button
             onClick={handleNativeOpen}
-            className="p-1 mb-1 ml-1 rounded hover-on-dark hover:text-[var(--accent)] shrink-0"
+            className="iconbtn-md iconbtn-accent ml-1 mb-1 shrink-0"
             title="Open folder"
           >
             <IconPlus />
@@ -4423,7 +4423,7 @@ export default function EditorLayout() {
               else — always drive it through usePreferenceMode(). */}
           <button
             onClick={() => setPreferencesOpen(true)}
-            className="p-1 rounded hover-on-dark hover:text-[var(--accent)]"
+            className="iconbtn-md iconbtn-accent"
             title="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
@@ -4436,7 +4436,7 @@ export default function EditorLayout() {
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-              className="p-1 rounded hover-on-dark hover:text-[var(--accent)]"
+              className="iconbtn-md iconbtn-accent"
               title={`Virgil v${APP_VERSION}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
