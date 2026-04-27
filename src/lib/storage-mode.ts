@@ -15,6 +15,13 @@ const devStorageAllowed = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
 function detectDevStorage(): boolean {
   if (!devStorageAllowed) return false;
   if (typeof window === "undefined") return false;
+  // Manual opt-in: useful when the host can't be detected as an iframe
+  // (e.g. Claude Preview's headless Chromium loads pages with
+  // `window.self === window.top`, which would otherwise force FSA mode
+  // even though no real picker can run).
+  try {
+    if (window.localStorage.getItem("virgil:force-dev-storage") === "1") return true;
+  } catch {}
   const inIframe = window.self !== window.top;
   const fsaAvailable = "showDirectoryPicker" in window;
   return inIframe || !fsaAvailable;

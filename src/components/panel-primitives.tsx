@@ -920,6 +920,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     extraCardClass,
     className,
     style,
+    onClick,
     ...rest
   },
   ref,
@@ -961,6 +962,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         ...style,
       }}
+      onClick={onClick ? (e) => { e.stopPropagation(); onClick(e); } : undefined}
       {...rest}
     >
       {children}
