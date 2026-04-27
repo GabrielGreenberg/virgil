@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { PANEL, PrevNextCounter, clearStaleHover } from "@/components/panel-primitives";
+import { ItemMenu, PANEL, PrevNextCounter, clearStaleHover } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
@@ -90,9 +90,6 @@ function BibliographyPanel({
   const [keyOccurrenceIdx, setKeyOccurrenceIdx] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<"cited" | "all">("cited");
 
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const addMenuRef = useRef<HTMLDivElement>(null);
 
@@ -108,16 +105,6 @@ function BibliographyPanel({
   const requestInputRef = useRef<HTMLTextAreaElement>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
 
   useEffect(() => {
     if (!addMenuOpen) return;
@@ -355,7 +342,6 @@ function BibliographyPanel({
   );
 
   const handlePickGeneralBib = useCallback(async () => {
-    setMenuOpen(false);
     if (!docId) return;
     try {
       const result = await pickGeneralBib(docId);
@@ -367,7 +353,6 @@ function BibliographyPanel({
   }, [docId, onSetGeneralBibPath]);
 
   const handleExportCited = useCallback(() => {
-    setMenuOpen(false);
     const seen = new Set<string>();
     const cited = bibEntries.filter((e) => {
       if (!citedKeys.has(e.key) || seen.has(e.key)) return false;
@@ -428,102 +413,78 @@ function BibliographyPanel({
     : null;
 
   const headerLeading = (
-    <div className="relative -ml-3" ref={menuRef}>
+    <ItemMenu align="left">
+      <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+        <PanelThemePicker panelKey="bib" label="Bibliography color" />
+        {onViewModeChange && (
+          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+        )}
+      </div>
+      <div className="my-1 border-t border-edge-subtle" />
+      <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
+        Display
+      </div>
       <button
-        onClick={() => setMenuOpen(!menuOpen)}
-        className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-        title="View options"
+        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+        onClick={() => setFilter("cited")}
       >
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-          <circle cx="8" cy="3" r="1.5" />
-          <circle cx="8" cy="8" r="1.5" />
-          <circle cx="8" cy="13" r="1.5" />
-        </svg>
+        <span>Cited entries only</span>
+        <span className="text-[var(--accent)]">
+          {filter === "cited" ? "✓" : ""}
+        </span>
       </button>
-      {menuOpen && (
-        <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
-          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-            <PanelThemePicker panelKey="bib" label="Bibliography color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
+      <button
+        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+        onClick={() => setFilter("all")}
+      >
+        <span>Full bibliography</span>
+        <span className="text-[var(--accent)]">
+          {filter === "all" ? "✓" : ""}
+        </span>
+      </button>
+      <div className="my-1 border-t border-edge-subtle" />
+      <button
+        className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
+          citedKeys.size > 0
+            ? "text-ink-body hover-on-light"
+            : "text-ink-faint cursor-not-allowed"
+        }`}
+        onClick={citedKeys.size > 0 ? handleExportCited : undefined}
+        title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </svg>
+        Export cited.bib
+      </button>
+      <div className="my-1 border-t border-edge-subtle" />
+      <button
+        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light"
+        onClick={handlePickGeneralBib}
+      >
+        {generalBibPath
+          ? "Change general bibliography..."
+          : "Set general bibliography..."}
+      </button>
+      {generalBibPath && (
+        <>
+          <div
+            className="px-3 py-1 text-[10px] text-ink-muted truncate"
+            title={generalBibPath}
+          >
+            {generalBibFilename}
           </div>
-          <div className="my-1 border-t border-edge-subtle" />
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-            Display
-          </div>
           <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => {
-              setFilter("cited");
-              setMenuOpen(false);
-            }}
+            className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft"
+            onClick={() => onSetGeneralBibPath(null)}
           >
-            <span>Cited entries only</span>
-            <span className="text-[var(--accent)]">
-              {filter === "cited" ? "✓" : ""}
-            </span>
+            Clear general bibliography
           </button>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            onClick={() => {
-              setFilter("all");
-              setMenuOpen(false);
-            }}
-          >
-            <span>Full bibliography</span>
-            <span className="text-[var(--accent)]">
-              {filter === "all" ? "✓" : ""}
-            </span>
-          </button>
-          <div className="my-1 border-t border-edge-subtle" />
-          <button
-            className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-              citedKeys.size > 0
-                ? "text-ink-body hover-on-light"
-                : "text-ink-faint cursor-not-allowed"
-            }`}
-            onClick={citedKeys.size > 0 ? handleExportCited : undefined}
-            title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            Export cited.bib
-          </button>
-          <div className="my-1 border-t border-edge-subtle" />
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light"
-            onClick={handlePickGeneralBib}
-          >
-            {generalBibPath
-              ? "Change general bibliography..."
-              : "Set general bibliography..."}
-          </button>
-          {generalBibPath && (
-            <>
-              <div
-                className="px-3 py-1 text-[10px] text-ink-muted truncate"
-                title={generalBibPath}
-              >
-                {generalBibFilename}
-              </div>
-              <button
-                className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft"
-                onClick={() => {
-                  onSetGeneralBibPath(null);
-                  setMenuOpen(false);
-                }}
-              >
-                Clear general bibliography
-              </button>
-            </>
-          )}
-        </div>
+        </>
       )}
-    </div>
+    </ItemMenu>
   );
 
   const headerExtras = (

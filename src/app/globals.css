@@ -281,6 +281,46 @@ body[data-zen-mode="on"] {
 .iconbtn-md { width: 24px; height: 24px; padding: 4px; }
 .iconbtn-lg { width: 32px; height: 32px; padding: 6px; }
 
+/* Per-panel body-typography scope.
+ *
+ * `Panel` adds `.panel-body-typo` to its outer wrapper and sets the
+ * `--panel-body-fontsize` CSS variable when the user has overridden the
+ * default size for this panel (managed by panel-typography.ts).
+ *
+ * Each panel's in-text renderer happens to use a `<p>` body element with
+ * `text-xs` (the bibliographic and citation panels use `text-sm`). The
+ * fallback in `var(...)` keeps the original Tailwind value when no
+ * override is set, so this rule is a no-op until the user changes the
+ * size. The selector specificity (class + class) beats Tailwind's
+ * single-class rule. */
+.panel-body-typo p.text-xs {
+  font-size: var(--panel-body-fontsize, 0.75rem);
+}
+.panel-body-typo p.text-sm {
+  font-size: var(--panel-body-fontsize, 0.875rem);
+}
+
+/* Compact number input used for the per-panel text-size stepper inside the
+ * three-dots menu. Forces the native spinner buttons to render permanently
+ * (Chromium hides them by default until focus/hover) and reserves enough
+ * width that two-digit values render without being clipped by the spinner
+ * column on the right. */
+.panel-text-size-input {
+  width: 52px;
+  height: 22px;
+  padding: 1px 0 1px 8px;
+  text-align: left;
+  -moz-appearance: number-input;
+}
+.panel-text-size-input::-webkit-inner-spin-button,
+.panel-text-size-input::-webkit-outer-spin-button {
+  -webkit-appearance: inner-spin-button;
+  opacity: 1;
+  margin: 0;
+  height: 20px;
+  width: 16px;
+}
+
 /* Toggle/active state — when an icon button represents an "on" state. */
 .iconbtn-sm[aria-pressed="true"],
 .iconbtn-md[aria-pressed="true"],

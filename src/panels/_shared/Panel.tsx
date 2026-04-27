@@ -13,6 +13,10 @@
 
 import type { HTMLAttributes, ReactNode } from "react";
 import { PANEL, PanelHeader } from "@/components/panel-primitives";
+import {
+  PanelKindProvider,
+  usePanelBodyVarsForKind,
+} from "@/components/panel-kind-context";
 import { PANEL_REGISTRY } from "../panel-registry";
 import type { PanelKind } from "./types";
 
@@ -84,40 +88,53 @@ export function Panel({
 }: PanelProps) {
   const entry = PANEL_REGISTRY[kind];
   const resolvedTitle = title ?? entry.label;
+  // Per-panel body typography vars (font-size override) scoped to this
+  // panel root. The matching `.panel-body-typo` rules in globals.css use
+  // these vars to size descendant body text in both list and in-text
+  // renderers — RichTextField cards already pick up the override via
+  // their own inline style, so this catches the bespoke widgets.
+  const bodyVars = usePanelBodyVarsForKind(kind);
+  const wrapperStyle = wrapperProps?.style;
+  const mergedStyle = bodyVars
+    ? { ...wrapperStyle, ...bodyVars }
+    : wrapperStyle;
 
   return (
-    <div
-      {...wrapperProps}
-      className={`w-full bg-transparent flex flex-col overflow-hidden h-full${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
-    >
-      <PanelHeader
-        title={resolvedTitle}
-        count={count}
-        onAdd={onAdd}
-        onAiRequest={onAiRequest}
-        leading={headerLeading}
-        titleAfter={headerTitleAfter}
+    <PanelKindProvider kind={kind}>
+      <div
+        {...wrapperProps}
+        style={mergedStyle}
+        className={`w-full bg-transparent flex flex-col overflow-hidden h-full panel-body-typo${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       >
-        {headerExtras}
-      </PanelHeader>
-      {panelExtras}
-      {variant === "list" ? (
-        <div
-          ref={scrollRef}
-          className={`${PANEL.list}${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
-          onDragOver={onDragOver}
-          onDragLeave={onDragLeave}
-          onDrop={onDrop}
-          onClick={onClickEmpty}
-          onKeyDown={onKeyDown}
-          tabIndex={scrollTabIndex}
+        <PanelHeader
+          title={resolvedTitle}
+          count={count}
+          onAdd={onAdd}
+          onAiRequest={onAiRequest}
+          leading={headerLeading}
+          titleAfter={headerTitleAfter}
         >
-          {children}
-        </div>
-      ) : (
-        children
-      )}
-      {footer}
-    </div>
+          {headerExtras}
+        </PanelHeader>
+        {panelExtras}
+        {variant === "list" ? (
+          <div
+            ref={scrollRef}
+            className={`${PANEL.list}${onKeyDown || scrollTabIndex != null ? " focus:outline-none" : ""}`}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            onClick={onClickEmpty}
+            onKeyDown={onKeyDown}
+            tabIndex={scrollTabIndex}
+          >
+            {children}
+          </div>
+        ) : (
+          children
+        )}
+        {footer}
+      </div>
+    </PanelKindProvider>
   );
 }

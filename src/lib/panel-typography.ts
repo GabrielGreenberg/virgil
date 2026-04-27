@@ -2,12 +2,11 @@
  * Panel body-text typography registry.
  *
  * Parallel to `panel-theme.ts` (colors) but for the BODY TEXT rendered
- * inside each panel's EditableCard — font family, size, and color.
- * Only the panels that actually have a rich-text body are represented.
+ * inside each panel's cards — font family, size, and color.
  *
- * Registered panels: footnote, note, archive, cut, revision.
- * (Citation / bib / quote / todo render their bodies with bespoke
- * widgets and don't flow through RichTextField yet.)
+ * Registered panels: footnote, note, archive, cut, revision, citation,
+ * bib, quote, todo, example. Some flow through RichTextField; others
+ * apply the override inline on a bespoke body element.
  */
 
 export type PanelBodyKey =
@@ -19,7 +18,8 @@ export type PanelBodyKey =
   | "citation"
   | "bib"
   | "quote"
-  | "todo";
+  | "todo"
+  | "example";
 
 export interface PanelTypography {
   fontFamily: string;
@@ -27,21 +27,28 @@ export interface PanelTypography {
   color: string;     // hex
 }
 
-/** Defaults here reproduce the existing visual for each card type.
- *  They're shown in the Smart Preferences grid as "current value" when the
- *  user hasn't overridden anything — but the cards only apply fields that
- *  are EXPLICITLY overridden, so current card styling (including theme-
- *  derived colors) isn't clobbered on first load. */
+/** Defaults here reproduce the existing visual for each card type so the
+ *  per-panel text-size stepper's "default" position (where the override is
+ *  cleared) matches what the user actually sees with no override applied.
+ *
+ *  RichTextField-based panels (footnote, note, archive, cut, revision,
+ *  quote) inherit the `.tiptap p { font-size: 1.05rem }` rule from
+ *  globals.css, which renders body paragraphs at 16.8px ≈ 17px. Picking
+ *  any value smaller than 17 used to look BIGGER than nearby values,
+ *  because the slider would clear the override at 14 and the cards would
+ *  jump back to 16.8px. Aligning the default with the actual rendered
+ *  size keeps the stepper monotonic. */
 export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
-  footnote: { fontFamily: "Source Serif 4", fontSize: 14, color: "#44403c" },
-  note:     { fontFamily: "Inter",          fontSize: 14, color: "#44403c" },
-  archive:  { fontFamily: "Source Serif 4", fontSize: 14, color: "#44403c" },
-  cut:      { fontFamily: "Source Serif 4", fontSize: 14, color: "#44403c" },
-  revision: { fontFamily: "Inter",          fontSize: 14, color: "#44403c" },
+  footnote: { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
+  note:     { fontFamily: "Inter",          fontSize: 17, color: "#44403c" },
+  archive:  { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
+  cut:      { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
+  revision: { fontFamily: "Inter",          fontSize: 17, color: "#44403c" },
   citation: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   bib:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  quote:    { fontFamily: "Source Serif 4", fontSize: 14, color: "#44403c" },
+  quote:    { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
   todo:     { fontFamily: "Inter",          fontSize: 14, color: "#44403c" },
+  example:  { fontFamily: "Source Serif 4", fontSize: 12, color: "#44403c" },
 };
 
 /** User-facing labels for the smart-preferences grid. */
@@ -55,6 +62,7 @@ export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {
   bib:      "Bibliography",
   quote:    "Quotations",
   todo:     "To-dos",
+  example:  "Examples",
 };
 
 /** Font choices — mix of serifs and sans, same pool as the main prefs. */
@@ -146,17 +154,23 @@ export function getPanelTypography(key: PanelBodyKey): PanelTypography {
   };
 }
 
-/** Return only the user-overridden fields for `key`. Useful for cards that
- *  want to preserve their default styling (e.g. theme-derived colors) and
- *  apply inline overrides only when the user has explicitly set them. */
+/** Return the user-overridden fields for `key`, verbatim. Returns `{}` when
+ *  the user has not set any override for this panel — that empty object is
+ *  what lets `usePanelBodyStyle` skip applying inline styles and preserve
+ *  the panel's default visual (theme-derived colors etc).
+ *
+ *  Crucially we do NOT filter out fields that happen to equal the registry
+ *  default: the per-panel text-size stepper writes explicit values, and
+ *  the rendered size must match the slider value step-for-step (the
+ *  registry default doesn't always match the underlying CSS default — see
+ *  `.tiptap p { font-size: 1.05rem }` in globals.css). */
 export function getPanelTypographyOverrides(key: PanelBodyKey): Partial<PanelTypography> {
   const o = overrides[key];
   if (!o) return {};
-  const base = DEFAULT_PANEL_TYPOGRAPHY[key];
   const out: Partial<PanelTypography> = {};
-  if (o.fontFamily !== undefined && o.fontFamily !== base.fontFamily) out.fontFamily = o.fontFamily;
-  if (o.fontSize   !== undefined && o.fontSize   !== base.fontSize)   out.fontSize   = o.fontSize;
-  if (o.color      !== undefined && o.color      !== base.color)      out.color      = o.color;
+  if (o.fontFamily !== undefined) out.fontFamily = o.fontFamily;
+  if (o.fontSize   !== undefined) out.fontSize   = o.fontSize;
+  if (o.color      !== undefined) out.color      = o.color;
   return out;
 }
 
