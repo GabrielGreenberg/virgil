@@ -664,14 +664,10 @@ export default function EditorLayout() {
     };
   }, [readAllRects]);
 
-  // The live grid fed to every floating toolbar drag handler.
-  const snapGrid = useMemo<SnapGrid>(
-    () => computeSnapGrid({
-      editorCol: colRect,
-      splitPanes: splitPaneRects,
-    }),
-    [colRect, splitPaneRects],
-  );
+  // Snap lines disabled — floating toolbars follow the cursor freely
+  // (viewport clamp still applies in resolveDragPosition). Re-enable by
+  // restoring the computeSnapGrid call and its colRect/splitPaneRects deps.
+  const snapGrid = useMemo<SnapGrid>(() => ({ h: [], v: [] }), []);
   const snapGridRef = useRef(snapGrid);
   snapGridRef.current = snapGrid;
 
