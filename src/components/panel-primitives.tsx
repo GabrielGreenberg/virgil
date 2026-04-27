@@ -83,12 +83,41 @@ export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlai
 export type { CardTheme } from "@/lib/panel-theme";
 
 /** Returns the card wrapper class for a theme + selection state.
- *  Selected cards add `bg-surface shadow-sm`; the selection border colour
- *  comes from `theme.borderSelected` and is applied via inline style at
- *  the render site (see `PanelCard`). Unselected cards share the neutral
- *  `CARD_DEFAULT` styling. */
+ *  Selected cards add `bg-surface`; the border color, ambient shadow,
+ *  and selection halo all come from `themedCardStyle()` applied via
+ *  inline style at the render site. Unselected cards share the neutral
+ *  `CARD_DEFAULT` Tailwind hover behavior. */
 export function themedCard(_theme: CardTheme, selected: boolean, extra?: string): string {
-  return `${CARD_BASE} ${selected ? "bg-surface shadow-sm" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+  return `${CARD_BASE} ${selected ? "bg-surface" : CARD_DEFAULT}${extra ? ` ${extra}` : ""}`;
+}
+
+/** Single source of truth for card-surface inline style: border color,
+ *  ambient lift shadow, and selection halo. PanelCard, SearchPanel
+ *  result rows, and any other card surface must call this so the
+ *  selection visual stays uniform across kinds and contexts.
+ *
+ *  Selected cards get a 3px themed-color halo + soft glow on top of the
+ *  ambient shadow. The halo is the primary selection cue — color-mix at
+ *  35% / 25% alpha — so amber/stone themes select as visibly as
+ *  red/emerald themes (1px border-color alone is too subtle on
+ *  low-contrast accents).
+ *
+ *  Pop-out cards get borderless treatment because FloatingPanel adds
+ *  its own chrome. */
+export function themedCardStyle(
+  theme: CardTheme,
+  selected: boolean,
+  options?: { isPoppedOut?: boolean },
+): React.CSSProperties {
+  if (options?.isPoppedOut) {
+    return { borderRadius: 0, borderWidth: 0 };
+  }
+  return {
+    ...(selected ? { borderColor: theme.borderSelected } : {}),
+    boxShadow: selected
+      ? `var(--card-shadow-ambient), 0 0 0 3px color-mix(in oklab, ${theme.borderSelected} 35%, transparent), 0 0 8px 0 color-mix(in oklab, ${theme.borderSelected} 25%, transparent)`
+      : "var(--card-shadow-ambient)",
+  };
 }
 
 /** Pre-built themes for existing card types. Each theme is fully derived
@@ -928,15 +957,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       ref={setRefs}
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
-        ...(selected ? { borderColor: theme.borderSelected } : {}),
-        // Subtle ambient lift on every card surface — the same shadow the
-        // legacy [data-omni-entry] CSS rule applied to omni view, now
-        // unified across panels, omni, and search results so cards read
-        // as raised paper everywhere. Suppressed when popped out (the
-        // FloatingPanel chrome has its own shadow).
-        ...(isPoppedOut
-          ? { borderRadius: 0, borderWidth: 0 }
-          : { boxShadow: "var(--card-shadow-ambient)" }),
+        ...themedCardStyle(theme, selected, { isPoppedOut }),
         ...style,
       }}
       {...rest}

@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useRef, useEffect, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   themedCard,
+  themedCardStyle,
   CARD_THEMES,
   PANEL,
   PrevNextCounter,
@@ -745,9 +746,7 @@ function ResultCard({
       data-result-idx={idx}
       className={`${themedCard(theme, selected)} w-full text-left`}
       onClick={onClick}
-      style={selected
-        ? { borderColor: theme.borderSelected, ...borderStyle }
-        : borderStyle}
+      style={{ ...themedCardStyle(theme, selected), ...borderStyle }}
     >
       <div className={PANEL.cardInner}>
         {(showScopeLabel || result.breadcrumb.length > 0) && (
