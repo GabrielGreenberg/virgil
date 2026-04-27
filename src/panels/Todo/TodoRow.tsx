@@ -90,6 +90,7 @@ export function TodoRow({
         e.stopPropagation();
         onSelect(selected ? null : item.id);
       }}
+      onFocusCapture={() => { if (!selected) onSelect(item.id); }}
       onKeyDown={(e) => {
         if (!selected) return;
         if (e.key === "Delete" || e.key === "Backspace") {
