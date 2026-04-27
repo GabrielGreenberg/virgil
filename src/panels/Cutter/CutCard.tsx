@@ -44,7 +44,7 @@ export function CutCard({
   onSelect: (id: string | null) => void;
   onJump?: () => void;
   onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
@@ -55,8 +55,10 @@ export function CutCard({
   const isOrphaned = getLinkedParagraphIds(cut).length === 0 && !hasTextAnchor(cut);
   const popped = usePoppedCards();
   const cardKey = popKey("cutter", cut.id);
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <EditableCard
@@ -101,7 +103,7 @@ export function CutCard({
       placeholder="Cut text…"
       onChange={handleChange}
       dataAttr={{ name: "cut-entry", value: cut.id }}
-      extraDataAttrs={{ "data-pristine-card-id": cut.id }}
+      extraDataAttrs={{ "data-pristine-card-id": cut.id, "data-card-key": cardKey }}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}

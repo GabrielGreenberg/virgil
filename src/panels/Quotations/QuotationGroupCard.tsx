@@ -640,7 +640,7 @@ export function QuotationGroupCard({
   ) => void;
   onDeleteQuote: (groupId: string, referenceId: string, quoteId: string) => void;
   onUpdateNotes: (groupId: string, notes: string) => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   /** Extra `data-*` attributes forwarded to the card root. Used by
    *  Omni to place `data-omni-entry` on the PanelCard itself so
@@ -702,8 +702,10 @@ export function QuotationGroupCard({
     [selected, tryDelete],
   );
 
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <PanelCard
@@ -720,6 +722,7 @@ export function QuotationGroupCard({
       }}
       data-quotation-group-id={group.id}
       data-pristine-card-id={group.id}
+      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       tabIndex={selected ? 0 : -1}
       onFocusCapture={() => {

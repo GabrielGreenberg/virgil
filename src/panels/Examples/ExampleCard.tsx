@@ -14,7 +14,7 @@ export interface ExampleCardProps {
   isSelected: boolean;
   onSelect: () => void;
   onJump: () => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }
 

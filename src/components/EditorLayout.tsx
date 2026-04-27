@@ -109,6 +109,7 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
+import { computeSpawnPosition } from "./editor-layout/spawn-position";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -2861,40 +2862,24 @@ export default function EditorLayout() {
     setPendingCommentText,
   });
 
-  /** Default floating-card popup size (matches FloatingCards.tsx) and
-   *  viewport margin for clamping. */
+  /** Default floating-card popup size (matches FloatingCards.tsx). */
   const POPUP_W = 360;
   const POPUP_H = 280;
-  const POPUP_GAP = 8;
-  const POPUP_MARGIN = 8;
 
   /** Position-and-pop a newly-created card as a floating popover near
-   *  the action toolbar. Spawns below the toolbar by default; flips
-   *  above when the toolbar is close to the viewport bottom so the
-   *  popup stays fully visible. When no anchor rect is available
-   *  (e.g. a handler fired from a keyboard shortcut), the popup
+   *  the action toolbar. Uses the quadrant-aware spawn helper so the
+   *  popup biases inward (above bottom-half triggers, below top-half;
+   *  drifts right of left-side triggers, left of right-side). When no
+   *  anchor rect is available (e.g. a keyboard shortcut), the popup
    *  centers in the viewport. */
   const popCardAtAnchor = useCallback(
     (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
       const key = `${cardKind}:${cardId}`;
-      const vw = window.innerWidth;
-      const vh = window.innerHeight;
-      let x: number;
-      let y: number;
-      if (anchorRect) {
-        const spaceBelow = vh - anchorRect.bottom;
-        const openAbove = spaceBelow < POPUP_H + POPUP_GAP + POPUP_MARGIN;
-        y = openAbove
-          ? anchorRect.top - POPUP_H - POPUP_GAP
-          : anchorRect.bottom + POPUP_GAP;
-        x = anchorRect.left;
-      } else {
-        x = (vw - POPUP_W) / 2;
-        y = (vh - POPUP_H) / 2;
-      }
-      x = Math.max(POPUP_MARGIN, Math.min(x, vw - POPUP_W - POPUP_MARGIN));
-      y = Math.max(POPUP_MARGIN, Math.min(y, vh - POPUP_H - POPUP_MARGIN));
-      setCardFloatPosition(key, { x, y, width: POPUP_W, height: POPUP_H });
+      const pos = computeSpawnPosition(anchorRect, {
+        width: POPUP_W,
+        height: POPUP_H,
+      });
+      setCardFloatPosition(key, pos);
       if (!prefsRef.current.poppedOutCards.includes(key)) {
         toggleCardPopout(key);
       }
@@ -3896,11 +3881,24 @@ export default function EditorLayout() {
         setActiveHalf(side, half ?? "top", "omni");
       }
     };
+    const onTogglePopout = (anchor?: DOMRect | null) => {
+      // Going docked → popped: seed a quadrant-aware spawn position so the
+      // float appears near the docked panel (forget-on-close in
+      // togglePopout/closePopout means this seed is fresh every time).
+      if (!prefsRef.current.poppedOutPanels.includes(panelId)) {
+        const pos = computeSpawnPosition(anchor ?? null, {
+          width: FLOATING_PANEL_WIDTH,
+          height: FLOATING_PANEL_HEIGHT,
+        });
+        setFloatPosition(panelId, pos);
+      }
+      togglePopout(panelId);
+    };
     return (
       <PanelChromeProvider
         value={{
           isPoppedOut,
-          onTogglePopout: () => togglePopout(panelId),
+          onTogglePopout,
           side,
           onClose,
         }}
@@ -4366,6 +4364,19 @@ export default function EditorLayout() {
     poppedKeys: prefs.poppedOutCards,
     isPopped: (key: string) => prefs.poppedOutCards.includes(key),
     toggle: toggleCardPopout,
+    toggleAtAnchor: (key: string, anchor: DOMRect | null) => {
+      // Going docked → popped: seed a quadrant-aware spawn position so the
+      // float appears near the docked card. Re-dock branch ignores anchor;
+      // toggleCardPopout already wipes the saved position on re-dock.
+      if (!prefsRef.current.poppedOutCards.includes(key)) {
+        const pos = computeSpawnPosition(anchor, {
+          width: POPUP_W,
+          height: POPUP_H,
+        });
+        setCardFloatPosition(key, pos);
+      }
+      toggleCardPopout(key);
+    },
     close: closeCardPopout,
     getFloatPosition: (key: string) => prefs.cardFloatPositions[key],
     setFloatPosition: setCardFloatPosition,
@@ -4374,8 +4385,15 @@ export default function EditorLayout() {
 
   // Paragraph popout: click the gutter button in the editor to toggle a
   // floating paragraph card. Keyed as `paragraph:${uuid}` in poppedCards.
-  const handleToggleParagraphPopout = (uuid: string) => {
-    toggleCardPopout(`paragraph:${uuid}`);
+  // Anchor (when supplied) seeds a quadrant-aware spawn position so the
+  // float appears near the gutter button it came from.
+  const handleToggleParagraphPopout = (uuid: string, anchor?: DOMRect | null) => {
+    const key = `paragraph:${uuid}`;
+    if (!prefsRef.current.poppedOutCards.includes(key) && anchor) {
+      const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
+      setCardFloatPosition(key, pos);
+    }
+    toggleCardPopout(key);
   };
   paragraphIsPoppedRef.current = (uuid: string) =>
     prefs.poppedOutCards.includes(`paragraph:${uuid}`);

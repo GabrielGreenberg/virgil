@@ -27,6 +27,10 @@ export interface PoppedCardsValue {
   poppedKeys: string[];
   isPopped: (key: string) => boolean;
   toggle: (key: string) => void;
+  /** Toggle popout state, but on the docked → popped transition spawn the
+   *  float near the supplied anchor rect (typically the docked card's
+   *  bounding rect). Re-dock branch ignores the anchor. */
+  toggleAtAnchor: (key: string, anchor: DOMRect | null) => void;
   close: (key: string) => void;
   /** Saved position/size for a card, if any. */
   getFloatPosition: (key: string) => CardRect | undefined;

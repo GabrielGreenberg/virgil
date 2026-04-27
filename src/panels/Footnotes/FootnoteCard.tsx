@@ -67,7 +67,7 @@ export interface FootnoteCardProps {
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }
 
@@ -95,8 +95,10 @@ export function FootnoteCard({
   const theme = useCardTheme("footnote");
   const popped = usePoppedCards();
   const cardKey = popKey("footnotes", fn.footnoteId);
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <EditableCard
@@ -135,7 +137,7 @@ export function FootnoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "footnote-entry", value: fn.footnoteId }}
-      extraDataAttrs={{ "data-pristine-card-id": fn.footnoteId, ...(extraDataAttrs || {}) }}
+      extraDataAttrs={{ "data-pristine-card-id": fn.footnoteId, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
       onTogglePopout={onToggleFromCtx}

@@ -316,7 +316,7 @@ export interface EditableCardProps {
   /** Mouse-hover hook. Fires on mouseenter (true) and mouseleave (false). */
   onHoverChange?: (hovering: boolean) => void;
   /** When provided, renders a popout chevron at the left edge (after grabHandle). */
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
 }
@@ -644,7 +644,9 @@ export function Chevron({ expanded }: { expanded: boolean }) {
  */
 export interface PanelChromeValue {
   isPoppedOut: boolean;
-  onTogglePopout: () => void;
+  /** Toggle popped-out state. Receives the docked container's bounding rect
+   *  when invoked from the popout button so the float can spawn near it. */
+  onTogglePopout: (anchor?: DOMRect | null) => void;
   /** Side this panel is docked to (or floats from). Drives chevron direction. */
   side: "left" | "right";
   /** Close this panel: collapses the side, removes a split half, or closes the floater. */
@@ -709,9 +711,26 @@ function popoutSvgOuter(innerMarkup: string): string {
 }
 
 /**
+ * Walk up from a click target to find the docked panel/card container so
+ * the popout's spawn position can be biased relative to the docked element
+ * (rather than the small button itself). Falls back to the button's own
+ * bounding rect when no container ancestor is found.
+ */
+function popoutAnchorRect(target: HTMLElement): DOMRect {
+  const container = target.closest<HTMLElement>(
+    "[data-card-key], [data-panel-id]",
+  );
+  return (container ?? target).getBoundingClientRect();
+}
+
+/**
  * React popout button. Prop-driven so it works outside a chrome context.
  * Use `labelNoun` to customize the title/aria ("panel", "card",
  * "paragraph", …).
+ *
+ * `onClick` receives the docked container's bounding rect (or, as fallback,
+ * the button's own rect) so callers can spawn the floating popup near the
+ * docked element it came from.
  */
 export function PopoutButton({
   isPoppedOut,
@@ -721,7 +740,7 @@ export function PopoutButton({
   className,
 }: {
   isPoppedOut: boolean;
-  onClick: () => void;
+  onClick: (anchor: DOMRect) => void;
   variant?: PopoutVariant;
   labelNoun?: string;
   className?: string;
@@ -736,7 +755,7 @@ export function PopoutButton({
       onMouseDown={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        onClick();
+        onClick(popoutAnchorRect(e.currentTarget));
       }}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       draggable={false}
@@ -761,7 +780,7 @@ export function PopoutButton({
  */
 export function createPopoutButtonEl(opts: {
   isPoppedOut: boolean;
-  onClick: () => void;
+  onClick: (anchor: DOMRect) => void;
   variant?: PopoutVariant;
   labelNoun?: string;
   extraClass?: string;
@@ -784,7 +803,7 @@ export function createPopoutButtonEl(opts: {
   btn.addEventListener("mousedown", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    opts.onClick();
+    opts.onClick(popoutAnchorRect(btn));
   });
   btn.addEventListener("dragstart", (e) => {
     e.stopPropagation();
@@ -809,7 +828,7 @@ export function PanelPopout() {
   return (
     <PopoutButton
       isPoppedOut={chrome.isPoppedOut}
-      onClick={chrome.onTogglePopout}
+      onClick={(anchor) => chrome.onTogglePopout(anchor)}
       variant="arrow"
       labelNoun="panel"
     />
@@ -861,7 +880,7 @@ export function CardPopoutButton({
   onClick,
 }: {
   isPoppedOut: boolean;
-  onClick: () => void;
+  onClick: (anchor: DOMRect) => void;
 }) {
   return (
     <PopoutButton
@@ -923,7 +942,7 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   theme: CardTheme;
   selected: boolean;
   isPoppedOut?: boolean;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   /** When provided, renders a bottom-right trash button that calls this. */
   onTrashClick?: () => void;
   /** Extra classes forwarded into `themedCard(theme, selected, extra)` — typically
@@ -1109,7 +1128,7 @@ export function AiRequestCard({
   request: AiRequest;
   onChangeText: (text: string) => void;
   onDelete: () => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const [draft, setDraft] = useState(request.text);
@@ -1163,11 +1182,13 @@ export function AiRequestCard({
   const kindLabel = AI_REQUEST_KIND_LABEL[request.kind] ?? request.kind;
   const theme = CARD_THEMES.aiRequest;
 
-  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor) : undefined);
 
   const card = (
     <PanelCard
       data-ai-request-id={request.id}
+      data-card-key={popKey}
       theme={theme}
       selected={false}
       isPoppedOut={isPoppedOut}

@@ -83,7 +83,7 @@ export interface ErrorCardProps {
   onJump?: () => void;
   onDismiss: (id: string) => void;
   onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }
@@ -105,8 +105,10 @@ export function ErrorCard({
   const cardRef = useRef<HTMLDivElement>(null);
   const popped = usePoppedCards();
   const cardKey = popKey("errors", err.id);
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   // Grab handle drags a text representation of the error so the user can
   // drop it into notes / ai-request cards / etc.
@@ -137,6 +139,7 @@ export function ErrorCard({
   const card = (
     <PanelCard
       ref={cardRef}
+      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={selected}

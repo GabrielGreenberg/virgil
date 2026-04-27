@@ -58,7 +58,7 @@ export function NoteCard({
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
   onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const handleChange = useCallback(
@@ -72,8 +72,10 @@ export function NoteCard({
   const theme = useCardTheme("note");
   const popped = usePoppedCards();
   const cardKey = popKey("notes", note.id);
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <EditableCard
@@ -121,7 +123,7 @@ export function NoteCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
-      extraDataAttrs={{ "data-pristine-card-id": note.id, ...(extraDataAttrs || {}) }}
+      extraDataAttrs={{ "data-pristine-card-id": note.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}

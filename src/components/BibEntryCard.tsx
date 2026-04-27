@@ -35,7 +35,7 @@ export interface BibEntryCardProps {
   /** Called when user clicks the target icon to jump to this entry in the text. Only shown when selected. */
   onJump?: () => void;
   /** When provided, renders a popout chevron at the left edge of the header. */
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
   /** Small badge/chip rendered at the right side of the header — used by
@@ -420,13 +420,17 @@ export default function BibEntryCard({
 
   const theme = useCardTheme("bib");
   const bibBodyStyle = usePanelBodyStyle("bib");
-  const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
+      : undefined);
 
   const showCluster = !!onToggleFromCtx || showTargetIcon;
 
   const card = (
     <PanelCard
       data-bib-entry={entry.key}
+      data-card-key={popKey}
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}

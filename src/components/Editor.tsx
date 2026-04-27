@@ -168,7 +168,7 @@ interface EditorProps {
    * button still renders but is a no-op — wire it up via EditorLayout to
    * actually open/close the floating paragraph card.
    */
-  onToggleParagraphPopout?: (uuid: string) => void;
+  onToggleParagraphPopout?: (uuid: string, anchor?: DOMRect | null) => void;
   /**
    * Ref to a predicate that reports whether a given paragraph UUID is
    * currently popped out. The node view consults this on each render to
@@ -474,7 +474,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             variant: "x",
             labelNoun: "paragraph",
             extraClass: "par-popout-btn",
-            onClick: () => {
+            onClick: (anchor) => {
               const handlePos = typeof getPos === "function" ? getPos() : null;
               if (handlePos == null) return;
               let ensuredUuid = currentNode.attrs?.uuid as string | null;
@@ -482,7 +482,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
               }
               if (ensuredUuid) {
-                onToggleParagraphPopoutRef.current?.(ensuredUuid);
+                onToggleParagraphPopoutRef.current?.(ensuredUuid, anchor);
                 poppedState = !poppedState;
                 renderPopoutBtn();
               }

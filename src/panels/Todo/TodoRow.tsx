@@ -42,7 +42,7 @@ export function TodoRow({
   onJump?: () => void;
   isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const [notes, setNotes] = useState(item.notes);
@@ -69,13 +69,16 @@ export function TodoRow({
     [item.id],
   );
 
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <PanelCard
       ref={cardRef}
       data-todo-entry={item.id}
+      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       data-pristine-card-id={item.id}
       theme={theme}

@@ -412,10 +412,14 @@ export function useViewPrefs() {
   const closePopout = useCallback((id: PanelId) => {
     update((p) => {
       const { [id]: _dropped, ...remainingOrigins } = p.poppedOutOrigins;
+      // Forget the dragged position on close — next pop spawns fresh from
+      // the trigger.
+      const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
       return {
         ...p,
         poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
         poppedOutOrigins: remainingOrigins,
+        floatPositions: remainingPositions,
       };
     });
   }, [update]);
@@ -425,10 +429,14 @@ export function useViewPrefs() {
       const isPopped = p.poppedOutPanels.includes(id);
       if (isPopped) {
         const { [id]: origin, ...remainingOrigins } = p.poppedOutOrigins;
+        // Re-dock branch: forget the dragged float position so the next
+        // popout spawns fresh from its trigger.
+        const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
         const next = {
           ...p,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
           poppedOutOrigins: remainingOrigins,
+          floatPositions: remainingPositions,
         };
         // If the panel's side column is currently open, re-dock the panel
         // to the same half (top/bottom) it was popped from. Fall back to
@@ -485,20 +493,32 @@ export function useViewPrefs() {
   const toggleCardPopout = useCallback((key: string) => {
     update((p) => {
       const isPopped = p.poppedOutCards.includes(key);
+      if (isPopped) {
+        // Re-dock: forget the dragged float position so next pop spawns
+        // fresh from the trigger.
+        const { [key]: _droppedPos, ...remainingPositions } = p.cardFloatPositions;
+        return {
+          ...p,
+          poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
+          cardFloatPositions: remainingPositions,
+        };
+      }
       return {
         ...p,
-        poppedOutCards: isPopped
-          ? p.poppedOutCards.filter((x) => x !== key)
-          : [...p.poppedOutCards, key],
+        poppedOutCards: [...p.poppedOutCards, key],
       };
     });
   }, [update]);
 
   const closeCardPopout = useCallback((key: string) => {
-    update((p) => ({
-      ...p,
-      poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
-    }));
+    update((p) => {
+      const { [key]: _droppedPos, ...remainingPositions } = p.cardFloatPositions;
+      return {
+        ...p,
+        poppedOutCards: p.poppedOutCards.filter((x) => x !== key),
+        cardFloatPositions: remainingPositions,
+      };
+    });
   }, [update]);
 
   const setCardFloatPosition = useCallback(

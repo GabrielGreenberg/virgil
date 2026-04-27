@@ -53,7 +53,7 @@ export interface CommentCardProps {
   onDelete: (id: string) => void;
   registerRef?: (el: HTMLDivElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   extraDataAttrs?: Record<string, string>;
 }
@@ -75,8 +75,10 @@ export function CommentCard({
   const theme = useCardTheme("revision");
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", comment.id);
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const isAiRequest = comment.authorId === CLAUDE_ID;
   const quotedText = comment.selectedText;
@@ -165,7 +167,7 @@ export function CommentCard({
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       dataAttr={isAnchored ? { name: "revision-entry", value: comment.id } : undefined}
-      extraDataAttrs={extraDataAttrs}
+      extraDataAttrs={{ "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       wrapperStyle={{}}
     />
   );
