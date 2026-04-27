@@ -97,10 +97,11 @@ export function themedCard(_theme: CardTheme, selected: boolean, extra?: string)
  *  selection visual stays uniform across kinds and contexts.
  *
  *  Selected cards get a 3px themed-color halo + soft glow on top of the
- *  ambient shadow. The halo is the primary selection cue — color-mix at
- *  35% / 25% alpha — so amber/stone themes select as visibly as
- *  red/emerald themes (1px border-color alone is too subtle on
- *  low-contrast accents).
+ *  ambient shadow. The halo uses the *original* accent hex (not the
+ *  lightened `borderSelected`) so that amber/khaki/stone themes have
+ *  enough chroma to read against the cream canvas — `borderSelected`
+ *  is sized for contrast against the white card body, where it lives
+ *  as the 1px border itself, but it washes out in the surround.
  *
  *  Pop-out cards get borderless treatment because FloatingPanel adds
  *  its own chrome. */
@@ -115,7 +116,7 @@ export function themedCardStyle(
   return {
     ...(selected ? { borderColor: theme.borderSelected } : {}),
     boxShadow: selected
-      ? `var(--card-shadow-ambient), 0 0 0 3px color-mix(in oklab, ${theme.borderSelected} 35%, transparent), 0 0 8px 0 color-mix(in oklab, ${theme.borderSelected} 25%, transparent)`
+      ? `var(--card-shadow-ambient), 0 0 0 3px color-mix(in oklab, ${theme.accent} 55%, transparent), 0 0 10px 0 color-mix(in oklab, ${theme.accent} 35%, transparent)`
       : "var(--card-shadow-ambient)",
   };
 }
