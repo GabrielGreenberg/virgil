@@ -32,6 +32,8 @@ export interface PoppedCardsValue {
   getFloatPosition: (key: string) => CardRect | undefined;
   /** Persist a new position/size for a card. */
   setFloatPosition: (key: string, rect: CardRect) => void;
+  /** Mark a popped card as the most recently focused floating window (for Cmd-W). */
+  recordFocus?: (key: string) => void;
 }
 
 export const PoppedCardsContext = createContext<PoppedCardsValue | null>(null);
