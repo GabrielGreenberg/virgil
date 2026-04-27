@@ -167,6 +167,10 @@ interface CitationBuilderProps {
   onSave: (command: string) => void;
   onCancel: () => void;
   saveLabel?: string; // "Add citation" | "Save"
+  variant?: "boxed" | "inline";
+  /** Fired whenever the structured editor's serialized command changes —
+   *  used by the parent to keep an external LaTeX-text input in sync. */
+  onCommandChange?: (command: string) => void;
 }
 
 interface BuilderEntry {
@@ -187,6 +191,8 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
   onSave,
   onCancel,
   saveLabel = "Add citation",
+  variant = "boxed",
+  onCommandChange,
 }, ref) {
   const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
 
@@ -246,6 +252,30 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
     return getDisplayText(command);
   }, [command, getDisplayText]);
 
+  // Notify parent of structured-editor changes so an external LaTeX input
+  // (e.g. the footer command line) can stay in sync.
+  useEffect(() => {
+    if (onCommandChange) onCommandChange(command);
+  }, [command, onCommandChange]);
+
+  // Debounced auto-save (inline variant only). The first computed command
+  // after mount is treated as the "saved" baseline so we don't fire onSave
+  // for a parse-roundtrip normalization the user didn't initiate.
+  const lastAutoSavedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (variant !== "inline") return;
+    if (lastAutoSavedRef.current === null) {
+      lastAutoSavedRef.current = command;
+      return;
+    }
+    if (!command || command === lastAutoSavedRef.current) return;
+    const t = setTimeout(() => {
+      lastAutoSavedRef.current = command;
+      onSave(command);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [variant, command, onSave]);
+
   const updateEntry = useCallback((id: string, patch: Partial<BuilderEntry>) => {
     setEntries((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)));
   }, []);
@@ -278,9 +308,100 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
   );
 
   const isNatbib = bibPackage === "natbib";
+  const isInline = variant === "inline";
+
+  const outerClass = isInline
+    ? "px-4 py-3"
+    : "rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3";
+
+  const renderEntry = (entry: BuilderEntry, idx: number) => {
+    const showNotes = !isNatbib || idx === 0;
+    const keyRow = (
+      <div className="flex items-center gap-1.5">
+        <KeySearchDropdown
+          value={entry.key}
+          onChange={(k) => updateEntry(entry.id, { key: k })}
+          bibEntries={bibEntries}
+          placeholder="citation key"
+        />
+        {entries.length > 1 && (
+          <button
+            onClick={() => removeEntry(entry.id)}
+            className="text-ink-muted hover:text-danger p-0.5 transition-colors"
+            title="Remove this reference"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        )}
+      </div>
+    );
+    const notesRow = showNotes && (
+      <div className="flex gap-1.5">
+        <input
+          type="text"
+          value={entry.prenote}
+          onChange={(e) => {
+            if (isNatbib) {
+              setEntries((prev) => prev.map((en) => ({ ...en, prenote: e.target.value })));
+            } else {
+              updateEntry(entry.id, { prenote: e.target.value });
+            }
+          }}
+          placeholder="pre-note"
+          className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
+        />
+        <input
+          type="text"
+          value={entry.postnote}
+          onChange={(e) => {
+            if (isNatbib) {
+              setEntries((prev) => prev.map((en) => ({ ...en, postnote: e.target.value })));
+            } else {
+              updateEntry(entry.id, { postnote: e.target.value });
+            }
+          }}
+          placeholder="post-note"
+          className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
+        />
+      </div>
+    );
+
+    if (isInline) {
+      return (
+        <div key={entry.id} className="space-y-1">
+          {keyRow}
+          {notesRow}
+        </div>
+      );
+    }
+    return (
+      <div key={entry.id} className="rounded-md border border-edge-subtle bg-surface p-2">
+        <div className="mb-1">{keyRow}</div>
+        {notesRow && <div className="mt-1">{notesRow}</div>}
+      </div>
+    );
+  };
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50/50 px-4 py-3">
+    <div className={outerClass}>
+      {/* Key entries */}
+      <div className="space-y-2 mb-2.5">
+        {entries.map((entry, idx) => renderEntry(entry, idx))}
+      </div>
+
+      {/* Add reference button */}
+      <button
+        onClick={addEntry}
+        className="text-xs text-ink-subtle hover:text-ink-body mb-2.5 flex items-center gap-1 transition-colors"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+        </svg>
+        Add reference
+      </button>
+
       {/* Command type row */}
       <div className="flex items-center gap-2 mb-2.5">
         <select
@@ -318,76 +439,6 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
         </label>
       </div>
 
-      {/* Key entries */}
-      <div className="space-y-2 mb-2.5">
-        {entries.map((entry, idx) => (
-          <div key={entry.id} className="rounded-md border border-edge-subtle bg-surface p-2">
-            <div className="flex items-center gap-1.5 mb-1">
-              <KeySearchDropdown
-                value={entry.key}
-                onChange={(k) => updateEntry(entry.id, { key: k })}
-                bibEntries={bibEntries}
-                placeholder="citation key"
-              />
-              {entries.length > 1 && (
-                <button
-                  onClick={() => removeEntry(entry.id)}
-                  className="text-ink-muted hover:text-danger p-0.5 transition-colors"
-                  title="Remove this reference"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              )}
-            </div>
-            {/* Pre/post notes — per key for biblatex, shared (only on first) for natbib */}
-            {(!isNatbib || idx === 0) && (
-              <div className="flex gap-1.5 mt-1">
-                <input
-                  type="text"
-                  value={entry.prenote}
-                  onChange={(e) => {
-                    if (isNatbib) {
-                      // Natbib: apply same pre/post to all entries
-                      setEntries((prev) => prev.map((en) => ({ ...en, prenote: e.target.value })));
-                    } else {
-                      updateEntry(entry.id, { prenote: e.target.value });
-                    }
-                  }}
-                  placeholder="pre-note"
-                  className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
-                />
-                <input
-                  type="text"
-                  value={entry.postnote}
-                  onChange={(e) => {
-                    if (isNatbib) {
-                      setEntries((prev) => prev.map((en) => ({ ...en, postnote: e.target.value })));
-                    } else {
-                      updateEntry(entry.id, { postnote: e.target.value });
-                    }
-                  }}
-                  placeholder="post-note"
-                  className="flex-1 text-xs border border-edge-subtle rounded px-1.5 py-0.5 bg-surface-muted/50 placeholder:text-ink-faint"
-                />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {/* Add reference button */}
-      <button
-        onClick={addEntry}
-        className="text-xs text-ink-subtle hover:text-ink-body mb-2.5 flex items-center gap-1 transition-colors"
-      >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-        </svg>
-        Add reference
-      </button>
-
       {/* Preview */}
       {preview && preview !== command && (
         <div className="text-xs text-ink-subtle mb-2.5 truncate">
@@ -396,20 +447,23 @@ const CitationBuilder = forwardRef<CitationBuilderHandle, CitationBuilderProps>(
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={handleSave}
-          disabled={!command}
-        >
-          {saveLabel}
-        </Button>
-      </div>
+      {/* Action buttons — boxed (create) variant only. Inline (edit) variant
+          auto-saves on change and is dismissed by the parent's Done button. */}
+      {!isInline && (
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" size="sm" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            disabled={!command}
+          >
+            {saveLabel}
+          </Button>
+        </div>
+      )}
     </div>
   );
 });
