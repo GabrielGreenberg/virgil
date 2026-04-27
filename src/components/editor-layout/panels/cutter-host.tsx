@@ -14,6 +14,8 @@ export interface CutterHostProps {
   side: Side;
   panelSide: Side | null;
   cuts: CutItem[];
+  goal: number | null;
+  setGoal: (goal: number | null) => void;
   addCut: (paragraphId: string | null) => CutItem;
   updateCut: (id: string, content: JSONContent) => void;
   updateCutTitle: (id: string, title: string) => void;
@@ -36,6 +38,8 @@ export function CutterHost(p: CutterHostProps) {
   return (
     <CutterPanel
       cuts={p.cuts}
+      goal={p.goal}
+      onSetGoal={p.setGoal}
       onAdd={() => createCut({})}
       onUpdate={p.updateCut}
       onUpdateTitle={p.updateCutTitle}

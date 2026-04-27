@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { GeneralRevision, TextRevision } from "@/lib/types";
-import type { RevisionKind } from "@/hooks/useRevisions";
+import type { Comment, Suggestion } from "@/lib/types";
 import { PANEL, ItemMenu } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import PanelThemePicker from "@/components/PanelThemePicker";
@@ -16,20 +15,26 @@ import { resolveAnchorRange, getTextAnchor } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
-import { RevisionCard } from "./RevisionCard";
+import { CommentCard } from "./CommentCard";
+import { SuggestionCard } from "./SuggestionCard";
+import { RevisionsHeaderBar } from "./RevisionsHeaderBar";
 
 interface RevisionsPanelProps {
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
-  onAddEmptyGeneral: () => GeneralRevision | null;
-  onUpdateContent: (kind: RevisionKind, id: string, content: JSONContent) => void;
-  onSetAuthor: (kind: RevisionKind, id: string, authorId: string) => void;
-  onDelete: (kind: RevisionKind, id: string) => void;
+  comments: Comment[];
+  suggestions: Suggestion[];
+  currentSuggestionIndex: number;
+  onAddEmptyComment: () => Comment | null;
+  onUpdateContent: (id: string, content: JSONContent) => void;
+  onSetAuthor: (id: string, authorId: string) => void;
+  onDelete: (id: string) => void;
+  onActOnSuggestion: (id: string, action: "accepted" | "rejected" | "skipped") => void;
+  onUpdateSuggestionField: (id: string, field: "revision" | "note", value: string) => void;
+  onJumpSuggestion: (index: number) => void;
   visible: boolean;
-  selectedRevisionId: string | null;
-  onSelectRevision: (id: string | null) => void;
+  selectedCommentId: string | null;
+  onSelectComment: (id: string | null) => void;
   onHighlight: (text: string | null) => void;
-  onHoverRevision?: (id: string | null) => void;
+  onHoverComment?: (id: string | null) => void;
   onDropSelection?: (payload: {
     from: number;
     to: number;
@@ -42,22 +47,26 @@ interface RevisionsPanelProps {
   onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
-type RevisionItem =
-  | { kind: "general"; id: string; data: GeneralRevision }
-  | { kind: "text"; id: string; data: TextRevision };
+type Item =
+  | { kind: "comment"; id: string; createdAt: string; data: Comment }
+  | { kind: "suggestion"; id: string; createdAt: string; data: Suggestion };
 
 export default function RevisionsPanel({
-  generalRevisions,
-  textRevisions,
-  onAddEmptyGeneral,
+  comments,
+  suggestions,
+  currentSuggestionIndex,
+  onAddEmptyComment,
   onUpdateContent,
   onSetAuthor,
   onDelete,
+  onActOnSuggestion,
+  onUpdateSuggestionField,
+  onJumpSuggestion,
   visible,
-  selectedRevisionId,
-  onSelectRevision,
+  selectedCommentId,
+  onSelectComment,
   onHighlight,
-  onHoverRevision,
+  onHoverComment,
   onDropSelection,
   onDropParagraph,
   editor,
@@ -65,50 +74,47 @@ export default function RevisionsPanel({
   viewMode = "list",
   onViewModeChange,
 }: RevisionsPanelProps) {
-  const revisionTheme = useCardTheme("revision");
+  const commentTheme = useCardTheme("revision");
 
-  const sortedGeneral = useMemo(
-    () =>
-      [...generalRevisions].sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      ),
-    [generalRevisions],
-  );
-  const sortedText = useMemo(
-    () =>
-      [...textRevisions].sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      ),
-    [textRevisions],
-  );
+  // Suggestions don't carry createdAt, so they sort by their array order
+  // (the order Claude emitted them) interleaved at the front of the list.
+  const items = useMemo<Item[]>(() => {
+    const out: Item[] = [];
+    suggestions.forEach((s, i) => {
+      out.push({
+        kind: "suggestion",
+        id: `suggestion:${s.id}`,
+        // Suggestions appear at the top in emit order — synthesize a
+        // pre-epoch timestamp keyed by index so they sort before comments.
+        createdAt: `0000-${String(i).padStart(10, "0")}`,
+        data: s,
+      });
+    });
+    for (const c of comments) {
+      out.push({ kind: "comment", id: c.id, createdAt: c.createdAt, data: c });
+    }
+    out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return out;
+  }, [comments, suggestions]);
 
-  const totalCount = generalRevisions.length + textRevisions.length;
+  const totalCount = comments.length + suggestions.length;
 
   const inTextItems = useMemo<PositionItem[]>(() => {
     if (!editor) return [];
     const out: PositionItem[] = [];
-    for (const r of sortedText) {
-      const ta = getTextAnchor(r);
+    for (const c of comments) {
+      const ta = getTextAnchor(c);
       if (!ta) continue;
       const range = resolveAnchorRange(editor, ta.anchorId);
-      if (range) out.push({ id: r.id, pos: range.from });
+      if (range) out.push({ id: c.id, pos: range.from });
     }
     return out;
-  }, [editor, sortedText]);
+  }, [editor, comments]);
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor ?? null,
     inTextItems,
     viewMode === "in-text",
   );
-
-  const items = useMemo<RevisionItem[]>(() => {
-    const out: RevisionItem[] = [];
-    for (const r of sortedGeneral) out.push({ kind: "general", id: r.id, data: r });
-    for (const r of sortedText) out.push({ kind: "text", id: r.id, data: r });
-    return out;
-  }, [sortedGeneral, sortedText]);
 
   const dropEnabled = onDropSelection || onDropParagraph;
   const [isDragOver, setIsDragOver] = useState(false);
@@ -182,20 +188,51 @@ export default function RevisionsPanel({
   );
 
   const handleAdd = () => {
-    const created = onAddEmptyGeneral();
-    if (created) onSelectRevision(created.id);
+    const created = onAddEmptyComment();
+    if (created) onSelectComment(created.id);
+  };
+
+  // Suggestion-list selection id is the synthesized id (`suggestion:${id}`)
+  // so the panel can distinguish suggestion vs comment selection without
+  // overloading selectedCommentId, which is owned by the comment lookups.
+  const handleSelect = (id: string | null) => {
+    if (id == null) {
+      onSelectComment(null);
+      return;
+    }
+    if (id.startsWith("suggestion:")) {
+      // Selection of suggestion cards stays inside the panel — we mirror
+      // it as the list's selected id but don't surface it to the cross-cutting
+      // comment-selection hook (which deals with anchored cards).
+      onSelectComment(id);
+      return;
+    }
+    onSelectComment(id);
+  };
+
+  const handleJumpSuggestion = (index: number) => {
+    onJumpSuggestion(index);
+    const s = suggestions[index];
+    if (s) onSelectComment(`suggestion:${s.id}`);
   };
 
   return (
-    <CardListPanel<RevisionItem>
+    <CardListPanel<Item>
       kind="revisions"
       count={totalCount}
       onAdd={handleAdd}
       headerLeading={headerLeading}
+      panelExtras={
+        <RevisionsHeaderBar
+          suggestions={suggestions}
+          currentIndex={currentSuggestionIndex}
+          onJump={handleJumpSuggestion}
+        />
+      }
       items={items}
       getId={(it) => it.id}
-      selectedId={selectedRevisionId}
-      onSelect={onSelectRevision}
+      selectedId={selectedCommentId}
+      onSelect={handleSelect}
       viewMode={viewMode}
       inTextPositions={positions}
       inTextScrollHeight={editorScrollHeight}
@@ -206,59 +243,64 @@ export default function RevisionsPanel({
       showDropPlaceholder={isDragOver}
       emptyState={
         <div className={PANEL.empty}>
-          No revisions yet. Click + to add one, or drop a paragraph or
-          selection here.
+          No comments or suggestions yet. Click + to add a comment, or drop
+          a paragraph or selection here.
         </div>
       }
       renderCard={(it, { selected }) => {
-        if (it.kind === "general") {
+        if (it.kind === "suggestion") {
           return (
-            <RevisionCard
-              kind="general"
-              revision={it.data}
+            <SuggestionCard
+              suggestion={it.data}
               selected={selected}
-              onSelect={onSelectRevision}
-              onUpdateContent={onUpdateContent}
-              onSetAuthor={onSetAuthor}
-              onDelete={onDelete}
+              onSelect={(nextId) => handleSelect(nextId == null ? null : it.id)}
+              onAct={onActOnSuggestion}
+              onUpdateField={onUpdateSuggestionField}
             />
           );
         }
-        const r = it.data;
+        const c = it.data;
         return (
-          <RevisionCard
-            kind="text"
-            revision={r}
+          <CommentCard
+            comment={c}
             selected={selected}
-            onSelect={(id) => {
-              onHighlight(null);
-              onSelectRevision(id);
+            onSelect={(nextId) => {
+              if (c.selectedText) onHighlight(null);
+              onSelectComment(nextId);
             }}
-            onJump={() => {
-              onHighlight(null);
-              queueMicrotask(() => onHighlight(r.selectedText));
-            }}
+            onJump={
+              c.selectedText
+                ? () => {
+                    onHighlight(null);
+                    queueMicrotask(() => onHighlight(c.selectedText ?? null));
+                  }
+                : undefined
+            }
             onUpdateContent={onUpdateContent}
             onSetAuthor={onSetAuthor}
             onDelete={onDelete}
             onHoverChange={
-              onHoverRevision
-                ? (hovering) => onHoverRevision(hovering ? r.id : null)
+              onHoverComment
+                ? (hovering) => onHoverComment(hovering ? c.id : null)
                 : undefined
             }
-            extraDataAttrs={{ "data-revision-entry": r.id }}
+            extraDataAttrs={
+              c.selectedText ? { "data-revision-entry": c.id } : undefined
+            }
           />
         );
       }}
       inTextRenderItem={(it, { selected }) => {
-        if (it.kind !== "text") return null;
-        const r = it.data;
-        const borderColor =
-          revisionTheme.borderSelected;
-        const selectedBg = revisionTheme.headerSelected;
+        // In-text mode only shows anchored items — suggestions have no
+        // anchor (yet), so they stay in list view.
+        if (it.kind !== "comment") return null;
+        const c = it.data;
+        if (!c.selectedText) return null;
+        const borderColor = commentTheme.borderSelected;
+        const selectedBg = commentTheme.headerSelected;
         return (
           <div
-            data-revision-entry={r.id}
+            data-revision-entry={c.id}
             className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
             style={
               selected
@@ -270,26 +312,26 @@ export default function RevisionsPanel({
             }
             onClick={(e) => {
               e.stopPropagation();
-              onSelectRevision(selected ? null : r.id);
+              onSelectComment(selected ? null : c.id);
             }}
             onMouseEnter={
-              onHoverRevision ? () => onHoverRevision(r.id) : undefined
+              onHoverComment ? () => onHoverComment(c.id) : undefined
             }
             onMouseLeave={
-              onHoverRevision ? () => onHoverRevision(null) : undefined
+              onHoverComment ? () => onHoverComment(null) : undefined
             }
           >
-            {r.selectedText && (
+            {c.selectedText && (
               <div className="text-[10px] italic text-ink-muted truncate mb-0.5">
-                &ldquo;{r.selectedText}&rdquo;
+                &ldquo;{c.selectedText}&rdquo;
               </div>
             )}
             <p
               className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
               style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
             >
-              {r.text || (
-                <span className="italic text-ink-muted">Empty revision</span>
+              {c.text || (
+                <span className="italic text-ink-muted">Empty comment</span>
               )}
             </p>
           </div>

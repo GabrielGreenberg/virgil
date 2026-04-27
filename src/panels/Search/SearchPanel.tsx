@@ -29,18 +29,17 @@ import {
   searchArchive,
   searchCuts,
   searchQuotations,
-  searchRevisions,
+  searchComments,
   searchBibliography,
 } from "@/lib/search-sources";
 import type {
   ArchivedSnippet,
   BibEntry,
   CitationRef,
+  Comment,
   CutItem,
-  GeneralRevision,
   OrphanedFootnote,
   QuotationGroup,
-  TextRevision,
   TodoItem,
   UserNote,
 } from "@/lib/types";
@@ -84,8 +83,7 @@ interface SearchPanelProps {
   archiveSnippets: ArchivedSnippet[];
   cuts: CutItem[];
   quotationGroups: QuotationGroup[];
-  textRevisions: TextRevision[];
-  generalRevisions: GeneralRevision[];
+  comments: Comment[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
   state: SearchPanelState;
@@ -241,8 +239,7 @@ function SearchPanel({
   archiveSnippets,
   cuts,
   quotationGroups,
-  textRevisions,
-  generalRevisions,
+  comments,
   bibEntries,
   onOpenItem,
   state,
@@ -359,9 +356,7 @@ function SearchPanel({
       hits.push(...searchQuotations(quotationGroups, uuidPos, re));
     }
     if (enabledScopes.has("revisions")) {
-      hits.push(
-        ...searchRevisions(textRevisions, generalRevisions, editor, re),
-      );
+      hits.push(...searchComments(comments, editor, re));
     }
     if (enabledScopes.has("bibliography")) {
       hits.push(...searchBibliography(bibEntries, re));
@@ -389,8 +384,7 @@ function SearchPanel({
     archiveSnippets,
     cuts,
     quotationGroups,
-    textRevisions,
-    generalRevisions,
+    comments,
     bibEntries,
   ]);
 

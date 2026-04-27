@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 
-export type PanelId = "notes" | "revisions" | "suggestions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
+export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -141,6 +141,14 @@ function loadPrefs(): ViewPrefs {
       placements.push({ id: "revisions", side: commentsSide });
       if (parsed.activeLeft === "comments") parsed.activeLeft = "revisions";
       if (parsed.activeRight === "comments") parsed.activeRight = "revisions";
+    }
+    // Migrate: standalone "suggestions" panel was folded into "revisions"
+    // (suggestion cards now live alongside comment cards in one panel).
+    const hasOldSuggestions = placements.some((p: any) => p.id === "suggestions");
+    if (hasOldSuggestions) {
+      placements = placements.filter((p: any) => p.id !== "suggestions");
+      if (parsed.activeLeft === "suggestions") parsed.activeLeft = "revisions";
+      if (parsed.activeRight === "suggestions") parsed.activeRight = "revisions";
     }
     // Merge with defaults to handle new panels added in updates
     const existingIds = new Set(placements.map((p: PanelPlacement) => p.id));

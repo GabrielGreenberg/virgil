@@ -13,13 +13,17 @@ import {
   getParagraphAnchorPositions,
 } from "@/hooks/useInTextPositions";
 import { richJsonToPlainText } from "@/lib/footnote-content";
+import { countWords, useWordCount } from "@/hooks/useWordCount";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { CutCard } from "./CutCard";
+import { CutterHeader } from "./CutterHeader";
 
 export default function CutterPanel({
   cuts,
+  goal,
+  onSetGoal,
   onAdd,
   onUpdate,
   onUpdateTitle,
@@ -36,6 +40,8 @@ export default function CutterPanel({
   onViewModeChange,
 }: {
   cuts: CutItem[];
+  goal: number | null;
+  onSetGoal: (goal: number | null) => void;
   onAdd: () => CutItem;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
@@ -51,6 +57,15 @@ export default function CutterPanel({
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
 }) {
+  const { counts: docCounts } = useWordCount(editor ?? null);
+  const cutWords = useMemo(
+    () =>
+      cuts.reduce(
+        (sum, c) => sum + countWords(richJsonToPlainText(c.content)),
+        0,
+      ),
+    [cuts],
+  );
   const sorted = useMemo(
     () =>
       [...cuts].sort(
@@ -135,6 +150,14 @@ export default function CutterPanel({
       kind="cutter"
       count={cuts.length}
       onAdd={() => onAdd()}
+      panelExtras={
+        <CutterHeader
+          documentWords={docCounts.total}
+          cutWords={cutWords}
+          goal={goal}
+          onSetGoal={onSetGoal}
+        />
+      }
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">

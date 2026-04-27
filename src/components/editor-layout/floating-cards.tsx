@@ -6,7 +6,7 @@ import { ArchiveCard } from "@/panels/Archive";
 import { CutCard } from "@/panels/Cutter";
 import { TodoRow } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
-import { RevisionCard } from "@/panels/Revisions";
+import { CommentCard } from "@/panels/Revisions";
 import { QuotationGroupCard } from "@/panels/Quotations";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
@@ -16,12 +16,11 @@ import { getLinkedParagraphIds } from "@/links/links";
 import type {
   UserNote,
   ArchivedSnippet,
+  Comment,
   CutItem,
   TodoItem,
   BibEntry,
   CitationRef,
-  GeneralRevision,
-  TextRevision,
   QuotationGroup,
   Quote,
   AiRequest,
@@ -45,8 +44,7 @@ export interface PoppedCardDeps {
   citations: CitationRef[];
   citationPositionMap: Map<string, number>;
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
   quotationGroups: QuotationGroup[];
   aiRequests: AiRequest[];
   anchoredIds?: Set<string>;
@@ -122,10 +120,10 @@ export interface PoppedCardDeps {
   // Citations
   updateCitation: (id: string, command: string) => void;
 
-  // Revisions
-  updateRevisionContent: (kind: "general" | "text", id: string, content: JSONContent) => void;
-  setRevisionAuthor: (kind: "general" | "text", id: string, authorId: string) => void;
-  deleteRevision: (kind: "general" | "text", id: string) => void;
+  // Comments (revisions panel)
+  updateCommentContent: (id: string, content: JSONContent) => void;
+  setCommentAuthor: (id: string, authorId: string) => void;
+  deleteComment: (id: string) => void;
 
   // Quotations
   deleteQuotationGroup: (id: string) => void;
@@ -326,21 +324,17 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       );
     }
     case "revision": {
-      const gen = d.generalRevisions.find((r) => r.id === id);
-      const text = d.textRevisions.find((r) => r.id === id);
-      const rev = gen ?? text;
-      if (!rev) return null;
-      const rkind: "general" | "text" = gen ? "general" : "text";
+      const comment = d.comments.find((c) => c.id === id);
+      if (!comment) return null;
       return (
-        <RevisionCard
+        <CommentCard
           key={key}
-          kind={rkind}
-          revision={rev}
-          selected={d.selectedCommentId === rev.id}
+          comment={comment}
+          selected={d.selectedCommentId === comment.id}
           onSelect={(nextId) => d.setSelectedCommentId(nextId)}
-          onUpdateContent={d.updateRevisionContent}
-          onSetAuthor={d.setRevisionAuthor}
-          onDelete={d.deleteRevision}
+          onUpdateContent={d.updateCommentContent}
+          onSetAuthor={d.setCommentAuthor}
+          onDelete={d.deleteComment}
           isPoppedOut
         />
       );

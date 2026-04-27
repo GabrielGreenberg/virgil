@@ -17,7 +17,7 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
 
-const EMPTY_STATE: CutterState = { cuts: [] };
+const EMPTY_STATE: CutterState = { cuts: [], goal: null };
 
 function migrateCut(raw: unknown): CutItem {
   const c = raw as Partial<CutItem>;
@@ -32,7 +32,14 @@ function migrateCut(raw: unknown): CutItem {
 
 function migrateCutter(raw: unknown): CutterState {
   const s = raw as Partial<CutterState>;
-  return { cuts: Array.isArray(s.cuts) ? s.cuts.map(migrateCut) : [] };
+  const goal =
+    typeof s.goal === "number" && Number.isFinite(s.goal) && s.goal > 0
+      ? s.goal
+      : null;
+  return {
+    cuts: Array.isArray(s.cuts) ? s.cuts.map(migrateCut) : [],
+    goal,
+  };
 }
 
 export function useCutter(docId: string | null, externalPristine?: PristineKindApi | null) {
@@ -136,6 +143,17 @@ export function useCutter(docId: string | null, externalPristine?: PristineKindA
     update((prev) => ({ cuts: prev.cuts.filter((c) => !idSet.has(c.id)) }));
   }, [update, externalPristine, localPristine]);
 
+  const setGoal = useCallback(
+    (goal: number | null) => {
+      const normalized =
+        typeof goal === "number" && Number.isFinite(goal) && goal > 0
+          ? goal
+          : null;
+      update((prev) => ({ ...prev, goal: normalized }));
+    },
+    [update],
+  );
+
   const clearCutAnchor = useCallback(
     (anchorId: string) => {
       update((prev) => {
@@ -168,6 +186,8 @@ export function useCutter(docId: string | null, externalPristine?: PristineKindA
 
   return {
     cuts: state.cuts,
+    goal: state.goal ?? null,
+    setGoal,
     addCut,
     updateCut,
     updateCutTitle,

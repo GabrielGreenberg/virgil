@@ -27,10 +27,9 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
   ArchivedSnippet,
+  Comment,
   CutItem,
-  GeneralRevision,
   QuotationGroup,
-  TextRevision,
   TodoItem,
   UserNote,
 } from "@/lib/types";
@@ -75,8 +74,7 @@ export interface UseCardSelectionHighlightArgs {
   archiveSnippets: ArchivedSnippet[];
   quotationGroups: QuotationGroup[];
   todos: TodoItem[];
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
 }
 
 export function useCardSelectionHighlight({
@@ -94,7 +92,7 @@ export function useCardSelectionHighlight({
   archiveSnippets,
   quotationGroups,
   todos,
-  textRevisions,
+  comments,
 }: UseCardSelectionHighlightArgs): void {
   useEffect(() => {
     if (!editor) return;
@@ -136,7 +134,7 @@ export function useCardSelectionHighlight({
     }
     if (selectedCommentId) {
       pushCardLinks(
-        textRevisions.find((r) => r.id === selectedCommentId),
+        comments.find((c) => c.id === selectedCommentId),
       );
     }
 
@@ -179,6 +177,6 @@ export function useCardSelectionHighlight({
     archiveSnippets,
     quotationGroups,
     todos,
-    textRevisions,
+    comments,
   ]);
 }
