@@ -1,4 +1,4 @@
-<!-- last-verified: 7e546d2 2026-04-26 -->
+<!-- last-verified: 562a431 2026-04-27 -->
 
 # UI Chrome
 
@@ -8,7 +8,7 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5450 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5585 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
 - Mounts the home `MenuBar` **inline** at the top of the editor column (no portal — change c40d8d2). Detached `DetachedActionsToolbar` / `DetachedFormattingToolbar` / `DetachedMenuToolbar` copies still mount via portals to `document.body`
@@ -23,24 +23,25 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4703
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:4890
 │   ├─ View control pod: collapse, omni-view, split
 │   ├─ StripButton × N (per left-sidebar panel, drag-to-reorder)
 │   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)
-├─ PanelColumn side="left"                            — ~line 4760
+├─ PanelColumn side="left"                            — ~line 4950
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar — docked inline at top of editor column — ~line 4995
-│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4864
-│   ├─ DetachedFormattingToolbar (portal × N)         — ~line 4900
-│   ├─ DetachedMenuToolbar (portal × N)               — ~line 4926
+│   ├─ MenuBar — docked inline at top of editor column — ~line 5117
+│   ├─ DetachedActionsToolbar (portal × N)
+│   ├─ DetachedFormattingToolbar (portal × N)
+│   ├─ DetachedMenuToolbar (portal × N)
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
-│   ├─ FloatingPanel portals (popped-out panels)
-│   └─ FloatCard portals (popped-out cards)
-├─ PanelColumn side="right"                           — ~line 5170
+│   ├─ FloatingPanel portals (popped-out panels)         — ~line 5560
+│   ├─ FloatCard portals (popped-out cards)
+│   └─ ParagraphFloat / HeadingFloat portals (popped-out blocks)
+├─ PanelColumn side="right"                           — ~line 5350
 │   └─ Active panel(s)
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:5184
+└─ Right icon strip (data-strip-side="right")
     ├─ View control pod: collapse, omni-view, split
     ├─ StripButton × N
     └─ OmniFilterMenu (kebab pinned to bottom)
@@ -120,6 +121,8 @@ Detached copies still spawn from the Format and Actions popovers' grab bars — 
 
 Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
 
+A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 211) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
+
 The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedPopover` instances; each has a grab bar on its right edge — dragging spawns a new `DetachedFormattingToolbar` / `DetachedActionsToolbar` instance (the anchor button continues to function as a plain popover toggle). Paragraph back/forward chevrons sit between the popups and are disabled at history bounds. The View menu's orientation toggle was also dropped in c40d8d2.
 
 ## Action buttons (the "action toolbar")
@@ -177,6 +180,12 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 - [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) — `FloatingPanel` low-level draggable + resizable window via portal. Min 240×200, max 900×window-40. Drag on header, resize via bottom-right grip.
 - [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx) — `FloatCard` wraps a card in a `FloatingPanel` and reads saved position from `cardFloatPositions` pref.
 - Popped-out card state centralized in `usePoppedCards()` hook reading `prefs.poppedOutCards`. EditorLayout iterates and renders each.
+- **Block popouts** (paragraph + heading) ride the same machinery but for editor blocks instead of card kinds. Keys are `paragraph:${uuid}` and `heading:${uuid}`. `ParagraphFloat` (a single paragraph in its own editor with editable title + drag handle) and `HeadingFloat` (a heading + the section body it dominates) live in `src/components/`; the body-range extraction is in [src/lib/section-range.ts](../../src/lib/section-range.ts).
+- **Spawn position**: when a card or block is popped out for the first time the floating window opens near the trigger element rather than at a fixed anchor. Logic in [src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts); position is forgotten on close so the next pop-out re-spawns near the (possibly new) trigger.
+
+## Per-panel text-size stepper
+
+Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1364, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
 
 ## Buttons convention
 

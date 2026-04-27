@@ -1,4 +1,4 @@
-<!-- last-verified: 7e546d2 2026-04-26 -->
+<!-- last-verified: 562a431 2026-04-27 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -39,6 +39,7 @@ All in `src/hooks/`. Full list (42 files) is large; these are the ones most ofte
 | `usePersistentState` | IndexedDB persistence abstraction |
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
+| `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
 
 ## Persistence layers
 
@@ -67,6 +68,7 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo) |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
 | `editor-state.json` | Cursor position, selection, misc editor state | Restored on reopen |
+| `doc-settings.json` | Per-document settings (currently: `style` id for the preamble preset) | `useDocumentStyle` reads/writes; schema in [src/lib/document-settings.ts](../../src/lib/document-settings.ts) |
 
 Agents never touch this app — they read the same `.tex`/`.bib` and write these sidecars. Virgil polls/watches and surfaces changes.
 
@@ -74,16 +76,18 @@ Agents never touch this app — they read the same `.tex`/`.bib` and write these
 
 Entry points for rendering a panel instance:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (around line 3524).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 4962).
+1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 3873).
+2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 5560).
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.
 2. **In-text** — positioned via `inTextRenderItem` (uses `useInTextPositions`).
 3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
 
-Popout key prefixes (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
+Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
 `note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `quotation`, `example`, `cut`, `ai`, `error`.
+
+**Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}` and `heading:${uuid}`. They render `ParagraphFloat` / `HeadingFloat` (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
 
 ## Panel context
 

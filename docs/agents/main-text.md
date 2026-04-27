@@ -1,4 +1,4 @@
-<!-- last-verified: 7e546d2 2026-04-26 -->
+<!-- last-verified: 562a431 2026-04-27 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -45,7 +45,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
-| `exampleBlock` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft` | `expex.ts` |
+| `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. | `expex.ts` |
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
 
 Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also re-exported from [src/lib/tiptap-extensions.ts](../../src/lib/tiptap-extensions.ts).

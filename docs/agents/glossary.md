@@ -1,4 +1,4 @@
-<!-- last-verified: 7e546d2 2026-04-26 -->
+<!-- last-verified: 562a431 2026-04-27 -->
 
 # Glossary
 
@@ -33,6 +33,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | **Margin action toolbar** (per-column, shown when Omni-view is docked in a side) | `MarginActionToolbar` — rendered as `topOverlay` on `PanelColumn` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) |
 | **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:735` |
 | **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:176` |
+| **Style dropdown** / **document style** (preamble preset selector on the Virgil bar) | `DocStyleDropdown` (inline component); presets in `DOCUMENT_STYLES`; per-doc state in `useDocumentStyle` | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 211; [src/lib/document-styles.ts](../../src/lib/document-styles.ts); [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) |
 | **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx` ~line 1205 |
 | **Split screen toggle** | Inline button in MenuBar | `MenuBar.tsx` |
 | **Close all panels** (X button) | Inline button in MenuBar | `MenuBar.tsx` |
@@ -88,7 +89,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **LaTeX comment** | TipTap node `latexComment` (`%…`) | [src/lib/tiptap/latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
 | **Label** | TipTap mark `label` (`\label{ref}`); `LabelRef` node for `\ref{}` / `\getref{}` / `\getfullref{}` with `refCommand` + `targetKind` attrs | [src/lib/tiptap/label.ts](../../src/lib/tiptap/label.ts) |
 | **Title field** | TipTap node `titleField` for hoisted `\title{}`, `\author{}`, `\date{}` from preamble | [src/lib/tiptap/title.ts](../../src/lib/tiptap/title.ts) |
-| **Example block** (expex `\ex`/`\pex`) | TipTap node `exampleBlock`; sub-items wrapped in `exampleItemList` (recursive — nested xlist tiers reuse the same wrapper for 1 → a → i → A → I marker cycle); each item is `exampleItem`; glosses nest as `exampleGloss` → `alignedGlossRow`/`proseGlossRow` → `glossCell` | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) |
+| **Example block** / **treatment** (expex `\ex`/`\pex`) | TipTap node `exampleBlock`; sub-items wrapped in `exampleItemList` (recursive — nested xlist tiers reuse the same wrapper for 1 → a → i → A → I marker cycle); each item is `exampleItem`; glosses nest as `exampleGloss` → `alignedGlossRow`/`proseGlossRow` → `glossCell` | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) |
 
 ## Cards
 
@@ -101,6 +102,9 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **In-text view** / **list view** (panel view modes) | `viewMode: "list" \| "in-text"` prop on `CardListPanel` | [src/panels/_shared/CardListPanel.tsx](../../src/panels/_shared/CardListPanel.tsx) |
 | **Popped-out card** / **floating card** | `FloatCard` wrapping `FloatingPanel` | [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx), [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
 | **Floating panel** | `FloatingPanel` (portal, drag + resize) | [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
+| **Quick card** (compact bib-entry card with chip, target icon, popout button in header) | `BibEntryCard` | [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) |
+| **Paragraph float** (popped-out single paragraph with editable title + drag handle) | `ParagraphFloat`; popout key `paragraph:${uuid}` in `prefs.poppedOutCards` | [src/components/ParagraphFloat.tsx](../../src/components/ParagraphFloat.tsx) |
+| **Heading float** (popped-out heading + its body section) | `HeadingFloat`; popout key `heading:${uuid}` in `prefs.poppedOutCards`; section-body extraction in `section-range.ts` | [src/components/HeadingFloat.tsx](../../src/components/HeadingFloat.tsx); [src/lib/section-range.ts](../../src/lib/section-range.ts) |
 
 ## General buttons
 
@@ -112,7 +116,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Add button** (+ in panel header) | `onAdd` callback rendered inline in `PanelHeader` | `panel-primitives.tsx` |
 | **Delete / trash button** (bottom-right of card, hover-reveal) | `CardTrashButton` | `panel-primitives.tsx` |
 | **Menu delete item** (in three-dot menu) | `MenuDelete` | `panel-primitives.tsx` |
-| **Three-dot menu** | `ItemMenu` | `panel-primitives.tsx` |
+| **Three-dot menu** | `ItemMenu`. The panel-header three-dot menu auto-injects a text-size stepper (`PanelTextSizeRow`) per panel kind; size persists via `useViewPrefs` keyed by panel kind | `panel-primitives.tsx`; [src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx); sizes via [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); per-kind context [src/components/panel-kind-context.tsx](../../src/components/panel-kind-context.tsx) |
 | **Grab handle** (6-dot grip on card header) | Inline SVG, appears when `grabHandle` prop is true | `panel-primitives.tsx` (`EditableCard` header) |
 | **Text drag handle** (3-line icon on card body) | Inline SVG, appears when `onTextDragStart` prop is provided | `panel-primitives.tsx` |
 
@@ -167,7 +171,4 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 
 ## Pending terminology
 
-| User term | Best-guess referent | Date noted |
-|---|---|---|
-| **Quick card** | `BibEntryCard` (compact bib-entry card with chip, target icon, and popout button in the header) — [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) | 2026-04-27 |
-| **Treatment** | Numbered-examples / xpex feature: `\ex` / `\pex` machinery rendered as numbered examples in the editor and the Examples panel. Nodes `exampleBlock`, `exampleItemList`, `exampleItem`, `exampleGloss`, `alignedGlossRow`, `proseGlossRow`, `glossCell`, plus `ExpexNumbering` plugin in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts); panel folder [src/panels/Examples](../../src/panels/Examples) | 2026-04-27 |
+_(Empty. Add entries here when the user uses a term not yet in the glossary.)_
