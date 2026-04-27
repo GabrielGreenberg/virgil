@@ -317,6 +317,51 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 30%, transparent);
 }
 
+/* ── Topbar button utility ─────────────────────────────────────────
+   Single source of truth for buttons in the 40px Virgil bar. Covers
+   icon-only, text-only, and icon+text shapes with one height, one
+   hover, one press, one focus ring, one disabled rule. Toggle/"on"
+   state via aria-pressed="true" (never via conditional className). */
+.topbarbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-subtle);
+  background: transparent;
+  transition: background-color 120ms ease-out, color 120ms ease-out;
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+}
+.topbarbtn:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: var(--accent);
+}
+.topbarbtn:active {
+  transform: translateY(0.5px);
+}
+.topbarbtn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--edge-strong);
+}
+.topbarbtn[disabled],
+.topbarbtn[aria-disabled="true"] {
+  opacity: 0.4;
+  pointer-events: none;
+  cursor: not-allowed;
+}
+.topbarbtn.topbarbtn-icon { padding: 0 6px; }
+
+.topbarbtn[aria-pressed="true"] {
+  color: var(--accent);
+  background-color: var(--accent-light);
+}
+
 html, body {
   overscroll-behavior: none;
 }

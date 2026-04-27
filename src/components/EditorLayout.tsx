@@ -4346,7 +4346,7 @@ export default function EditorLayout() {
                   </div>
                   <button
                     onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                    className="p-0.5 rounded text-ink-subtle hover:text-ink-body hover-on-dark transition-all"
+                    className="topbarbtn topbarbtn-icon"
                     title="Close tab"
                   >
                     <IconX />
@@ -4358,7 +4358,7 @@ export default function EditorLayout() {
           })}
           <button
             onClick={handleNativeOpen}
-            className="p-1 mb-1 ml-1 rounded hover-on-dark hover:text-[var(--accent)] shrink-0"
+            className="topbarbtn topbarbtn-icon self-center"
             title="Open folder"
           >
             <IconPlus />
@@ -4371,11 +4371,12 @@ export default function EditorLayout() {
           <div ref={topbarLeftRefCb} aria-hidden className="shrink-0 self-stretch" style={{ width: 0 }} />
         </div>
 
-        <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2 gap-1">
+        <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2">
           {focusMode.state.active && (
             <button
               onClick={focusMode.deactivate}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] bg-[var(--accent-light)] hover-on-dark"
+              className="topbarbtn"
+              aria-pressed="true"
               title="Exit focus view"
             >
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
@@ -4394,11 +4395,7 @@ export default function EditorLayout() {
               exact prior layout. */}
           <button
             onClick={handleToggleZen}
-            className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
-              zenModeOn
-                ? "text-[var(--accent)] bg-[var(--accent-light)]"
-                : "text-ink-subtle hover-on-dark hover:text-[var(--accent)]"
-            }`}
+            className="topbarbtn"
             title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
             aria-pressed={zenModeOn}
           >
@@ -4423,7 +4420,7 @@ export default function EditorLayout() {
               else — always drive it through usePreferenceMode(). */}
           <button
             onClick={() => setPreferencesOpen(true)}
-            className="p-1 rounded hover-on-dark hover:text-[var(--accent)]"
+            className="topbarbtn topbarbtn-icon"
             title="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
@@ -4436,7 +4433,7 @@ export default function EditorLayout() {
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
-              className="p-1 rounded hover-on-dark hover:text-[var(--accent)]"
+              className="topbarbtn topbarbtn-icon"
               title={`Virgil v${APP_VERSION}`}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -4496,7 +4493,8 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className={`relative p-1 rounded transition-colors ${aiWindowOpen ? "text-[var(--accent)] bg-[var(--accent-light)]" : "hover:bg-sky-50/50 hover:text-sky-600"}`}
+            className="topbarbtn topbarbtn-icon relative"
+            aria-pressed={aiWindowOpen}
             title="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -4523,7 +4521,7 @@ export default function EditorLayout() {
           </button>
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover-on-dark hover:text-[var(--accent)]"
+            className="topbarbtn ml-1"
             title={codeView ? "Visual Editor" : "Code Editor"}
           >
             {codeView ? (
@@ -4539,6 +4537,7 @@ export default function EditorLayout() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="16 18 22 12 16 6" />
                   <polyline points="8 6 2 12 8 18" />
+                  <line x1="14.5" y1="4" x2="9.5" y2="20" />
                 </svg>
                 Code
               </>
@@ -4550,7 +4549,7 @@ export default function EditorLayout() {
           <button
             onClick={compilePdf}
             disabled={!currentDocId || isCompiling}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs hover-on-dark hover:text-[var(--accent)] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            className="topbarbtn ml-1"
             title={isCompiling ? "Compiling…" : "Compile to PDF"}
           >
             {isCompiling ? (
