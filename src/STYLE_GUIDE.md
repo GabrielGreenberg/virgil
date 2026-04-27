@@ -108,6 +108,14 @@ Five states. One implementation each.
 - **Active.** `translate-y-[0.5px]` on press.
 - **Disabled.** `opacity-40 pointer-events-none`.
 
+**Topbar buttons.** Every button in the 40px Virgil bar uses
+`.topbarbtn` (add `.topbarbtn-icon` for icon-only). One height (24px),
+uniform padding, the standard hover/press/focus/disabled states baked
+in. Toggle/"on" state via `aria-pressed="true"` — the utility paints
+the accent tint. Don't author bespoke padding, hover, or active
+classes for topbar buttons; if you need a new visual state, extend
+`.topbarbtn` so every sibling stays in sync.
+
 ## Cards & themes
 
 A theme has five tokens: `accent`, `borderSelected`, `headerDefault`,
