@@ -686,16 +686,18 @@ body {
   display: inline;
 }
 
-/* Invisible hover bridge — extends the wrapper's pointer-event area into the
-   left margin so the mouse can travel from the text column to the drag handle
-   without crossing a dead zone that would drop the hover state. */
-.par-title-wrapper::before {
-  content: "";
+/* Left-margin hover sensor — DOM element (not pseudo) so :has() can react
+   to its hover state. Covers the gutter strip from the text edge out
+   through the popout-button position. Triggers the popout-button
+   reveal and bridges the mouse from text → drag handle without a
+   dead zone. */
+.par-left-margin-zone {
   position: absolute;
-  left: -30px;
+  left: -60px;
   top: 0;
-  width: 30px;
+  width: 60px;
   height: 100%;
+  pointer-events: auto;
 }
 
 /* Container for paragraph body + drag handle. The handle is positioned
@@ -747,26 +749,125 @@ body {
   pointer-events: auto;
 }
 
-/* Paragraph popout button — sits in the gutter above the grab handle.
-   Revealed only when the title row (par-title-annotation) is hovered,
-   matching the +T label. Stays visible while hovering the button itself
-   so the mouse can travel from annotation → button without the button
-   disappearing mid-move. */
+/* Paragraph popout button — sits in the left margin immediately to the
+   left of the grab handle. Revealed when the grab handle, the
+   left-margin hover zone, or the button itself is hovered. */
 .par-popout-btn {
   position: absolute;
-  /* Horizontally centered over the drag handle: the handle sits at
-     left: -14px with width 12px (center -8px); the button is 20px
-     wide, so left: -18px puts its center at the same -8px. */
-  left: -18px;
-  top: -18px;
+  /* Grab handle sits at left: -14px with width 12px. Button is 20px
+     wide; -36px puts its right edge ~2px before the handle. */
+  left: -36px;
+  /* Vertically center the 20px button within the first text line
+     (line-height = font-size * line-height-multiplier). */
+  top: calc((var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8) - 20px) / 2);
   opacity: 0;
   pointer-events: auto;
   transition: opacity 0.15s;
   z-index: 2;
 }
-.par-title-wrapper.has-text:has(.par-title-annotation:hover) .par-popout-btn,
+.par-title-wrapper.has-text:has(.par-drag-handle:hover) .par-popout-btn,
+.par-title-wrapper.has-text:has(.par-left-margin-zone:hover) .par-popout-btn,
 .par-title-wrapper.has-text .par-popout-btn:hover {
   opacity: 1;
+}
+
+/* Inside the float popup, the drag handle is always visible. The popup
+   is dedicated to a single paragraph and the user expects the handle
+   to be reachable from any horizontal position within the window —
+   text, padding to either side, anywhere. Hover-gating it the way the
+   main editor does means the handle disappears the moment the cursor
+   leaves the text rectangle, which makes it nearly impossible to
+   actually grab. */
+.par-title-wrapper.par-float-paragraph .par-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Heading drag handle and popout button — counterpart of the paragraph
+   chrome, sitting in the same inner-left margin slot for chapters/
+   sections/subsections. Geometry mirrors .par-drag-handle / .par-popout-btn
+   on the paragraph wrapper, but level-specific top adjustments line the
+   chrome up with the heading text baseline (larger headings have more
+   leading and need to drop the chrome a bit). */
+.heading-wrapper {
+  /* heading-wrapper already has position: relative implicitly via the
+     fold chevron rules, but make it explicit so the absolutely-
+     positioned drag handle / popout button anchor here. */
+  position: relative;
+}
+.heading-drag-handle {
+  position: absolute;
+  left: -14px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  cursor: grab;
+  user-select: none;
+  color: var(--muted-light, #b5b0aa);
+}
+.heading-drag-handle:hover { color: var(--muted, #8a8580); }
+.heading-drag-handle:active { cursor: grabbing; }
+.heading-drag-handle:active,
+.heading-drag-handle.is-pressed {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+/* Per-level top offsets — match the fold-chevron alignment so all the
+   heading chrome lines up. */
+.heading-wrapper:has(h1) .heading-drag-handle { top: 0.85em; }
+.heading-wrapper:has(h2) .heading-drag-handle { top: 0.75em; }
+.heading-wrapper:has(h3) .heading-drag-handle { top: 0.6em; }
+.heading-wrapper:has(h4) .heading-drag-handle { top: 0.5em; }
+
+.heading-popout-btn {
+  position: absolute;
+  left: -36px;
+  top: 0;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.heading-wrapper:has(h1) .heading-popout-btn { top: calc(0.85em - 2px); }
+.heading-wrapper:has(h2) .heading-popout-btn { top: calc(0.75em - 2px); }
+.heading-wrapper:has(h3) .heading-popout-btn { top: calc(0.6em - 2px); }
+.heading-wrapper:has(h4) .heading-popout-btn { top: calc(0.5em - 2px); }
+
+.heading-wrapper:hover .heading-drag-handle,
+.heading-wrapper:has(.heading-drag-handle:hover) .heading-popout-btn,
+.heading-wrapper:has(.heading-popout-btn:hover) .heading-popout-btn,
+.heading-wrapper:hover .heading-popout-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Heading float — drag handle always visible, mirroring the paragraph
+   float behavior. */
+.heading-wrapper.heading-float-heading .heading-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Section-handle anchored to the float body itself (rather than to a
+   heading wrapper). Same visual as the inline heading drag handle, but
+   pinned to the top-left of the float so the user can grab the whole
+   section out of the popup regardless of where they've scrolled
+   inside it. */
+.heading-float-section-handle {
+  position: absolute;
+  left: 8px;
+  top: 12px;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 5;
 }
 
 /* Input field for editing title */
@@ -887,7 +988,7 @@ body {
   left: -22px;
 }
 .tiptap blockquote .par-popout-btn {
-  left: -26px;
+  left: -44px;
 }
 
 .tiptap ul {

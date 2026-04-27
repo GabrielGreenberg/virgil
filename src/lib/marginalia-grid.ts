@@ -58,9 +58,16 @@ export function computeMarkerPositions(
     const idx = counters.get(key) ?? 0;
     counters.set(key, idx + 1);
 
-    // Grid placement: fill L→R within a row, T→B across rows
-    let row = Math.floor(idx / MARGINALIA_COLS);
-    let col = idx % MARGINALIA_COLS;
+    // Grid placement: fill L→R within a row, T→B across rows.
+    // The inner-left slot (col=1 on the left) is reserved across all
+    // paragraphs and headings — it's the strip immediately next to the
+    // grab handle, kept clear for the paragraph popout button. So on
+    // the left side we use a single effective column (col=0, outer);
+    // markers beyond the first stack to additional rows. The right
+    // side keeps both columns.
+    const effectiveCols = side === "left" ? 1 : MARGINALIA_COLS;
+    let row = Math.floor(idx / effectiveCols);
+    let col = idx % effectiveCols;
     let overflow = false;
 
     // Overflow: clamp to last row if the grid is full

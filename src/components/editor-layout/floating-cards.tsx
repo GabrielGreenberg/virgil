@@ -11,6 +11,7 @@ import { QuotationGroupCard } from "@/panels/Quotations";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
 import { ParagraphFloat } from "../ParagraphFloat";
+import { HeadingFloat } from "../HeadingFloat";
 import type { EditorHandle, FootnoteInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
 import type {
@@ -384,6 +385,9 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     }
     case "paragraph": {
       return <ParagraphFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    }
+    case "heading": {
+      return <HeadingFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
     }
     default:
       return null;

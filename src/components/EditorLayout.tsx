@@ -985,6 +985,19 @@ export default function EditorLayout() {
   useEffect(() => {
     editorRef.current?.refreshParagraphPopouts();
   }, [paragraphPoppedKeys]);
+  // Same setup for headings.
+  const headingIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
+  const headingPoppedKeys = useMemo(
+    () =>
+      prefs.poppedOutCards
+        .filter((k) => k.startsWith("heading:"))
+        .sort()
+        .join("|"),
+    [prefs.poppedOutCards],
+  );
+  useEffect(() => {
+    editorRef.current?.refreshHeadingPopouts();
+  }, [headingPoppedKeys]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.
@@ -4283,6 +4296,13 @@ export default function EditorLayout() {
   };
   paragraphIsPoppedRef.current = (uuid: string) =>
     prefs.poppedOutCards.includes(`paragraph:${uuid}`);
+  // Same for headings (chapters/sections/subsections etc.). Keyed as
+  // `heading:${uuid}` in poppedCards.
+  const handleToggleHeadingPopout = (uuid: string) => {
+    toggleCardPopout(`heading:${uuid}`);
+  };
+  headingIsPoppedRef.current = (uuid: string) =>
+    prefs.poppedOutCards.includes(`heading:${uuid}`);
 
   // Popped-out card rendering lives in ./editor-layout/floating-cards.tsx —
   // the deps bundle below is the contract for what a popped card needs.
@@ -5101,6 +5121,8 @@ export default function EditorLayout() {
                       activeAnchorColor={effectiveAnchorColor}
                       onToggleParagraphPopout={handleToggleParagraphPopout}
                       paragraphIsPoppedRef={paragraphIsPoppedRef}
+                      onToggleHeadingPopout={handleToggleHeadingPopout}
+                      headingIsPoppedRef={headingIsPoppedRef}
                     />
                     {!zenModeOn && (
                       <Marginalia
@@ -5139,6 +5161,8 @@ export default function EditorLayout() {
                   activeAnchorColor={effectiveAnchorColor}
                   onToggleParagraphPopout={handleToggleParagraphPopout}
                   paragraphIsPoppedRef={paragraphIsPoppedRef}
+                  onToggleHeadingPopout={handleToggleHeadingPopout}
+                  headingIsPoppedRef={headingIsPoppedRef}
                 />
                 {!zenModeOn && (
                   <div className="group absolute top-0 left-0 right-0 h-6 z-20">
