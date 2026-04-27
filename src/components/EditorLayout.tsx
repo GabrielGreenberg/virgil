@@ -4793,70 +4793,14 @@ export default function EditorLayout() {
           flex: `1000 1 ${editorBasis}px`,
           minWidth: 400,
           maxWidth: (activeLeft != null || activeRight != null) ? 'var(--page-max)' : undefined,
-          paddingTop: 'var(--pod-gap)',
+          // 8px target icon-top minus 4px MenuBar button padding so the
+          // SVG glyphs (not the hover-button outlines) sit 8px below the
+          // column edge — matches the strip pod's icon top.
+          paddingTop: 4,
           paddingBottom: 'var(--pod-gap)',
           paddingLeft: 4,
           paddingRight: 4,
         }}>
-          {/* Floating toolbar — rendered via portal so it can move freely
-              across the viewport and always sits above every panel. Home
-              position sits centered in the Virgil top bar above the
-              document; dragging the grab bar pops it down into the
-              document area as a free-floating pod. In Zen mode it stays
-              pinned to home so the toolbar remains reachable. */}
-          {menuPortalReady && createPortal(
-            <div
-              ref={menuWrapRefCb}
-              className="fixed z-[9999] pointer-events-auto flex"
-              style={menuWrapStyle}
-            >
-              <MenuBar
-                editor={overrideEditor ?? editorInstance}
-                onAddComment={handleToolbarAddComment}
-                onArchive={handleToolbarArchive}
-                onCreateFootnote={handleToolbarCreateFootnote}
-                onQuoteSelection={handleToolbarQuoteSelection}
-                onAddNote={handleToolbarAddNote}
-                onAddTodo={handleToolbarAddTodo}
-                onCutSelection={handleToolbarAddCut}
-                onInsertCitation={handleToolbarInsertCitation}
-                onCreateExample={handleToolbarCreateExample}
-                showParTitles={showParTitles}
-                onToggleParTitles={() => setShowParTitles((p) => !p)}
-                showLatexComments={showLatexComments}
-                onToggleLatexComments={() => setShowLatexComments((p) => !p)}
-                showSectionIndicator={showSectionIndicator}
-                onToggleSectionIndicator={toggleSectionIndicator}
-                onOpenPreferences={() => setPreferencesOpen(true)}
-                editorSplit={editorSplit}
-                onToggleEditorSplit={() => setEditorSplit((s) => !s)}
-                activeSplitPane={editorSplit ? activeSplitPane : undefined}
-                showMarginalia={showMarginalia}
-                onToggleMarginalia={toggleMarginalia}
-                hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-                onToggleMarginaliaType={toggleMarginaliaType}
-                alwaysShowLinkedText={prefs.alwaysShowLinkedText}
-                onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
-                availableDividerLevels={availableDividerLevels}
-                dividerLevels={activeDividerLevels}
-                onToggleDividerLevel={toggleDividerLevel}
-                dividerWidth={dividerWidth}
-                onSetDividerWidth={setDividerWidth}
-                onParaNavBack={paraNavBack}
-                onParaNavForward={paraNavForward}
-                paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
-                paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-                onCloseAllPanels={closeAllPanels}
-                onGrabStart={handleMenuGrabStart}
-                orientation="horizontal"
-                onSetOrientation={() => {}}
-                onActionsDetach={handleActionsDetach}
-                onFormatDetach={handleFormatDetach}
-                atHome
-              />
-            </div>,
-            document.body,
-          )}
           {menuPortalReady && detachedActions.map(tb => createPortal(
             <div
               key={tb.id}
@@ -4980,6 +4924,56 @@ export default function EditorLayout() {
             </div>,
             document.body,
           ))}
+          {/* Docked MenuBar — sits at the very top of the editor
+              column, centered over the text window so it tracks the
+              column as panels open and close. */}
+          {(overrideEditor ?? editorInstance) && (
+            <div className="flex justify-center shrink-0">
+              <MenuBar
+                editor={overrideEditor ?? editorInstance}
+                onAddComment={handleToolbarAddComment}
+                onArchive={handleToolbarArchive}
+                onCreateFootnote={handleToolbarCreateFootnote}
+                onQuoteSelection={handleToolbarQuoteSelection}
+                onAddNote={handleToolbarAddNote}
+                onAddTodo={handleToolbarAddTodo}
+                onCutSelection={handleToolbarAddCut}
+                onInsertCitation={handleToolbarInsertCitation}
+                onCreateExample={handleToolbarCreateExample}
+                showParTitles={showParTitles}
+                onToggleParTitles={() => setShowParTitles((p) => !p)}
+                showLatexComments={showLatexComments}
+                onToggleLatexComments={() => setShowLatexComments((p) => !p)}
+                showSectionIndicator={showSectionIndicator}
+                onToggleSectionIndicator={toggleSectionIndicator}
+                onOpenPreferences={() => setPreferencesOpen(true)}
+                editorSplit={editorSplit}
+                onToggleEditorSplit={() => setEditorSplit((s) => !s)}
+                activeSplitPane={editorSplit ? activeSplitPane : undefined}
+                showMarginalia={showMarginalia}
+                onToggleMarginalia={toggleMarginalia}
+                hiddenMarginaliaTypes={hiddenMarginaliaTypes}
+                onToggleMarginaliaType={toggleMarginaliaType}
+                alwaysShowLinkedText={prefs.alwaysShowLinkedText}
+                onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
+                availableDividerLevels={availableDividerLevels}
+                dividerLevels={activeDividerLevels}
+                onToggleDividerLevel={toggleDividerLevel}
+                dividerWidth={dividerWidth}
+                onSetDividerWidth={setDividerWidth}
+                onParaNavBack={paraNavBack}
+                onParaNavForward={paraNavForward}
+                paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
+                paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
+                onCloseAllPanels={closeAllPanels}
+                orientation="horizontal"
+                onSetOrientation={() => {}}
+                onActionsDetach={handleActionsDetach}
+                onFormatDetach={handleFormatDetach}
+                atHome
+              />
+            </div>
+          )}
           {/* Top gutter — flex-shrink 100 so window-downsize eats it first
               before touching the page height. */}
           <div
@@ -4989,12 +4983,15 @@ export default function EditorLayout() {
               minHeight: 0,
             }}
           />
-          {/* Top drag gap — grab bar above the page */}
+          {/* Top drag gap — grab bar above the page. Tightened to 4px
+              so the icon row above ends 8px above the pod (4px button
+              bottom-padding + 4px gap), matching the strip pod's
+              vertical rhythm. */}
           <div
             data-gutter-gap="top"
             ref={topGutterDrag.gapRef}
             className="drag-gap drag-gap-h shrink-0"
-            style={{ height: 'var(--pod-gap)' }}
+            style={{ height: 4 }}
             onMouseDown={onTopGutterDown}
           />
           {/* Page wrapper — holds the pref page height; panels/omni are

@@ -245,7 +245,7 @@ export type DividerWidth = "full" | "mid" | "text";
  *  anchor button, collapsed-pod single button, and anywhere else the
  *  actions toolbar's identity needs to show up. Size is controlled by
  *  CSS font/SVG width; width/height default match the toolbar size. */
-function ActionsStarIcon({ size = 18 }: { size?: number }) {
+function ActionsStarIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size * (19.64 / 18)} height={size} viewBox="-26.06 -24.2 175 160.4" fill="currentColor" fillRule="evenodd">
       <path stroke="currentColor" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" d="M109.28,19.61l12.21,9.88a3.77,3.77,0,0,1,.56,5.29l-5.46,6.75L98.53,26.93,104,20.17a3.79,3.79,0,0,1,5.29-.56ZM9.49,0H85.71A9.53,9.53,0,0,1,95.2,9.49v5.63l-4.48,5.53a9.81,9.81,0,0,0-1.18,1.85c-.24.19-.48.4-.71.62V9.49a3.14,3.14,0,0,0-3.12-3.13H9.49A3.14,3.14,0,0,0,6.36,9.49v93.06a3.16,3.16,0,0,0,.92,2.21,3.11,3.11,0,0,0,2.21.92H85.71a3.12,3.12,0,0,0,3.12-3.13V88.2l1.91-.81a10,10,0,0,0,4.34-3.13l.12-.14v18.43A9.54,9.54,0,0,1,85.71,112H9.49A9.51,9.51,0,0,1,0,102.55V9.49A9.53,9.53,0,0,1,9.49,0ZM87.25,78,74.43,83.47c-9.35,3.47-8.93,5.43-8-3.85L69.24,63.4h0l0,0,26.56-33,18,14.6L87.27,78ZM72.31,65.89l11.86,9.59-8.42,3.6c-6.6,2.83-6.42,4.23-5.27-2.53l1.83-10.66Z" />
@@ -255,7 +255,7 @@ function ActionsStarIcon({ size = 18 }: { size?: number }) {
 }
 
 /** The paragraph-symbol (¶) glyph used for the Formatting anchor. */
-function FormatGlyphIcon({ size = 18 }: { size?: number }) {
+function FormatGlyphIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size * (17.53 / 18)} height={size} viewBox="-5.89 -6.385 37.31 38.30" fill="currentColor">
       <path d="M25.198,6.273c-0.014,0.23-0.045,0.389-0.087,0.467c-0.045,0.084-0.176,0.145-0.392,0.183c-0.469,0.104-0.781-0.074-0.935-0.533C23.239,4.7,22.59,3.578,21.84,3.016c-1.041-0.773-2.862-1.161-5.469-1.161c-1.054,0-1.633,0.115-1.734,0.343c-0.036,0.075-0.057,0.184-0.057,0.324v18.999c0,0.812,0.188,1.383,0.571,1.709c0.382,0.32,1.069,0.731,2.201,0.999c0.483,0.103,0.97,0.2,1.034,0.239c0.46,0,0.504,1.057-0.376,1.057c-0.025,0.016-10.375-0.008-10.375-0.008s-0.723-0.439-0.074-1.023c0.271-0.121,0.767-0.343,0.767-0.343s1.83-0.614,2.211-1.009c0.434-0.445,0.648-1.164,0.648-2.154V2.521c0-0.369-0.229-0.585-0.687-0.647c-0.049-0.015-0.425-0.02-1.122-0.02c-2.415,0-4.191,0.418-5.338,1.259C3.176,3.735,2.411,4.877,1.737,6.545C1.52,7.065,1.22,7.234,0.84,7.058C0.408,6.957,0.251,6.719,0.363,6.353c0.445-1.374,0.668-3.31,0.668-5.814c0-0.292,0.387-0.586,1.163-0.533L23.56,0.064c0.709-0.104,1.096,0.012,1.16,0.343C25.076,2.096,25.234,4.052,25.198,6.273z" />
@@ -377,7 +377,7 @@ function IconBtn({
       className={`p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)]"
-          : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+          : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
       }`}
       {...rest}
     >
@@ -692,7 +692,7 @@ function AttachedPopover({
         className={`p-1 rounded transition-colors ${
           open || active
             ? "bg-[var(--accent-light)] text-[var(--accent)]"
-            : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
+            : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
         }`}
       >
         {anchor}
@@ -1064,12 +1064,12 @@ function ViewMenu({
     <div className="relative flex items-center" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
+        className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
         title="View options"
       >
         <svg
-          width="4.15"
-          height="18"
+          width="3.69"
+          height="16"
           viewBox="5.75 -1.75 4.5 19.5"
           fill="currentColor"
           style={orientation === "vertical" ? { transform: "rotate(90deg)" } : undefined}
@@ -1081,18 +1081,6 @@ function ViewMenu({
       </button>
       {open && (
         <div ref={dropdownRef} className={dropdownClass}>
-          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Tool bar</div>
-          {(["horizontal", "vertical"] as const).map((o) => (
-            <button
-              key={o}
-              onClick={() => { onSetOrientation(o); setOpen(false); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-            >
-              <span>{o === "horizontal" ? "Horizontal" : "Vertical"}</span>
-              <span className="text-[var(--accent)]">{orientation === o ? "\u2713" : ""}</span>
-            </button>
-          ))}
-          <div className="my-1 border-t border-edge-subtle" />
           <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">Display</div>
           <button
             onClick={() => { onToggleParTitles(); setOpen(false); }}
@@ -1229,36 +1217,43 @@ function MenuBarContent({
   onCloseAllPanels,
   onActionsDetach, onFormatDetach,
   onSetOrientation,
+  kebabAtEnd = false,
 }: {
   editor: Editor;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
+  /** When true, render the kebab/View menu after every other control
+   *  instead of before. Used by the docked MenuBar above the editor. */
+  kebabAtEnd?: boolean;
 } & Omit<MenuBarProps, "editor" | "orientation" | "onSetOrientation" | "onGrabStart" | "atHome" | "onDockUp">) {
   const isVert = orientation === "vertical";
+  const viewMenu = (
+    <ViewMenu
+      showParTitles={showParTitles}
+      onToggleParTitles={onToggleParTitles}
+      showLatexComments={showLatexComments}
+      onToggleLatexComments={onToggleLatexComments}
+      showSectionIndicator={showSectionIndicator}
+      onToggleSectionIndicator={onToggleSectionIndicator}
+      onOpenPreferences={onOpenPreferences}
+      showMarginalia={showMarginalia}
+      onToggleMarginalia={onToggleMarginalia}
+      hiddenMarginaliaTypes={hiddenMarginaliaTypes}
+      onToggleMarginaliaType={onToggleMarginaliaType}
+      alwaysShowLinkedText={alwaysShowLinkedText}
+      onToggleAlwaysShowLinkedText={onToggleAlwaysShowLinkedText}
+      availableDividerLevels={availableDividerLevels}
+      dividerLevels={dividerLevels}
+      onToggleDividerLevel={onToggleDividerLevel}
+      dividerWidth={dividerWidth}
+      onSetDividerWidth={onSetDividerWidth}
+      orientation={orientation}
+      onSetOrientation={onSetOrientation}
+    />
+  );
   return (
     <>
-      <ViewMenu
-        showParTitles={showParTitles}
-        onToggleParTitles={onToggleParTitles}
-        showLatexComments={showLatexComments}
-        onToggleLatexComments={onToggleLatexComments}
-        showSectionIndicator={showSectionIndicator}
-        onToggleSectionIndicator={onToggleSectionIndicator}
-        onOpenPreferences={onOpenPreferences}
-        showMarginalia={showMarginalia}
-        onToggleMarginalia={onToggleMarginalia}
-        hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-        onToggleMarginaliaType={onToggleMarginaliaType}
-        alwaysShowLinkedText={alwaysShowLinkedText}
-        onToggleAlwaysShowLinkedText={onToggleAlwaysShowLinkedText}
-        availableDividerLevels={availableDividerLevels}
-        dividerLevels={dividerLevels}
-        onToggleDividerLevel={onToggleDividerLevel}
-        dividerWidth={dividerWidth}
-        onSetDividerWidth={onSetDividerWidth}
-        orientation={orientation}
-        onSetOrientation={onSetOrientation}
-      />
+      {!kebabAtEnd && viewMenu}
 
       {/* Format popup — each grab spawns a detached Formatting toolbar. */}
       <AttachedPopover
@@ -1299,10 +1294,10 @@ function MenuBarContent({
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               title="Go back"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 22, height: 11 } : { width: 11, height: 22 }}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
+              style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
             >
-              <svg width="9" height="18" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="8" height="16" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="15 18 9 12 15 6" />
               </svg>
             </button>
@@ -1312,10 +1307,10 @@ function MenuBarContent({
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               title="Go forward"
-              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 22, height: 11 } : { width: 11, height: 22 }}
+              className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
+              style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
             >
-              <svg width="9" height="18" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+              <svg width="8" height="16" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
@@ -1327,10 +1322,10 @@ function MenuBarContent({
       {onToggleEditorSplit && (
         <button
           onClick={onToggleEditorSplit}
-          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
+          className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
           title={editorSplit ? "Close split editor" : "Split editor"}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             {editorSplit && activeSplitPane === "top" && (
               <rect x="4" y="4" width="16" height="8" fill="currentColor" fillOpacity="0.35" stroke="none" rx="1" />
             )}
@@ -1349,37 +1344,35 @@ function MenuBarContent({
           onClick={onCloseAllPanels}
           title="Close all panels and windows"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <rect x="4" y="4" width="16" height="16" rx="1.5" />
             <line x1="9" y1="9" x2="15" y2="15" />
             <line x1="15" y1="9" x2="9" y2="15" />
           </svg>
         </IconBtn>
       )}
+
+      {kebabAtEnd && viewMenu}
     </>
   );
 }
 
-/** Main MenuBar — always lives at home (docked in the Virgil top bar).
- *  Grabbing its trailing grab bar spawns a new `DetachedMenuToolbar`
- *  copy rather than moving the bar itself; the home-docked bar stays
- *  put. Each grab spawns an additional copy, matching the tear-off
- *  semantics of the Actions and Formatting popovers. */
-function MenuBar({ orientation: _o, onSetOrientation: _so, atHome: _ah, onDockUp: _du, onGrabStart, ...rest }: MenuBarProps) {
+/** Main MenuBar — docked at the top of the document, centered over
+ *  the text window. Icons sit directly on the canvas background with
+ *  no enclosing pod, mirroring the left tool strip's loose buttons.
+ *  No grab handle, no tear-off; the kebab/View menu sits at the end. */
+function MenuBar({ orientation: _o, onSetOrientation: _so, atHome: _ah, onDockUp: _du, onGrabStart: _gs, ...rest }: MenuBarProps) {
   if (!rest.editor) return null;
-  // MenuBar is always home-docked: a compact lozenge that fits inside
-  // the Virgil top bar, horizontal, with no tab, knob, or shadow.
   return (
-    <FloatingToolbarShell orientation="horizontal" atHome podClassName="gap-0.5 h-[26px] px-1.5">
-      <MenuBarContent {...rest} editor={rest.editor} orientation="horizontal" onSetOrientation={() => {}} />
-      {onGrabStart && (
-        <PodGrabHandle
-          onMouseDown={onGrabStart}
-          title="Drag to spawn a floating copy"
-          orientation="horizontal"
-        />
-      )}
-    </FloatingToolbarShell>
+    <div className="flex flex-row items-center gap-0.5 h-[24px]">
+      <MenuBarContent
+        {...rest}
+        editor={rest.editor}
+        orientation="horizontal"
+        onSetOrientation={() => {}}
+        kebabAtEnd
+      />
+    </div>
   );
 }
 
