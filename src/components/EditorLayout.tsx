@@ -771,6 +771,86 @@ export default function EditorLayout() {
   const nextFormattingIdRef = useRef(0);
   const nextMenuIdRef = useRef(0);
 
+  // MRU focus stack for in-app floating windows. Drives Cmd-W (close
+  // frontmost). Push on first focus / on open; reconcile when underlying
+  // lists shrink. Independent of paint z-index — z is still derived from
+  // insertion order in the popped-out arrays.
+  type FloatingRef =
+    | { kind: "panel"; id: PanelId }
+    | { kind: "card"; key: string }
+    | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string };
+  const refKey = (r: FloatingRef): string =>
+    r.kind === "panel" ? `panel:${r.id}`
+      : r.kind === "card" ? `card:${r.key}`
+      : `tb:${r.bucket}:${r.id}`;
+  const [focusStack, setFocusStack] = useState<FloatingRef[]>([]);
+  const focusFloating = useCallback((ref: FloatingRef) => {
+    setFocusStack((prev) => {
+      const k = refKey(ref);
+      const filtered = prev.filter((r) => refKey(r) !== k);
+      filtered.push(ref);
+      return filtered;
+    });
+  }, []);
+
+  // Single pass that (a) prunes stale entries when a window closes by any
+  // means, and (b) appends newly-opened windows that aren't yet in the
+  // stack — so popping a panel out makes it the Cmd-W target even before
+  // the user clicks it.
+  useEffect(() => {
+    const liveKeys = new Set<string>();
+    for (const id of prefs.poppedOutPanels) liveKeys.add(`panel:${id}`);
+    for (const key of prefs.poppedOutCards) liveKeys.add(`card:${key}`);
+    for (const tb of detachedActions) liveKeys.add(`tb:actions:${tb.id}`);
+    for (const tb of detachedFormatting) liveKeys.add(`tb:formatting:${tb.id}`);
+    for (const tb of detachedMenus) liveKeys.add(`tb:menus:${tb.id}`);
+    setFocusStack((prev) => {
+      const known = new Set(prev.map(refKey));
+      const pruned = prev.filter((r) => liveKeys.has(refKey(r)));
+      const additions: FloatingRef[] = [];
+      for (const id of prefs.poppedOutPanels) {
+        if (!known.has(`panel:${id}`)) additions.push({ kind: "panel", id });
+      }
+      for (const key of prefs.poppedOutCards) {
+        if (!known.has(`card:${key}`)) additions.push({ kind: "card", key });
+      }
+      for (const tb of detachedActions) {
+        if (!known.has(`tb:actions:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "actions", id: tb.id });
+      }
+      for (const tb of detachedFormatting) {
+        if (!known.has(`tb:formatting:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "formatting", id: tb.id });
+      }
+      for (const tb of detachedMenus) {
+        if (!known.has(`tb:menus:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "menus", id: tb.id });
+      }
+      if (pruned.length === prev.length && additions.length === 0) return prev;
+      return [...pruned, ...additions];
+    });
+  }, [prefs.poppedOutPanels, prefs.poppedOutCards, detachedActions, detachedFormatting, detachedMenus]);
+
+  // Cmd-W closes the most-recently-focused floating window (the top of
+  // the MRU stack). When the stack is empty, preventDefault is skipped so
+  // the host (PWA window or browser tab) handles the keystroke as usual.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "w" || !e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      const target = focusStack[focusStack.length - 1];
+      if (!target) return;
+      e.preventDefault();
+      if (target.kind === "panel") closePopout(target.id);
+      else if (target.kind === "card") closeCardPopout(target.key);
+      else if (target.kind === "toolbar") {
+        const setter =
+          target.bucket === "actions" ? setDetachedActions
+            : target.bucket === "formatting" ? setDetachedFormatting
+            : setDetachedMenus;
+        setter((prev) => prev.filter((t) => t.id !== target.id));
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [focusStack, closePopout, closeCardPopout]);
+
   // Shared drag routine for every floating toolbar — single-instance
   // (MenuBar) and multi-instance (Actions, Formatting). Runs the snap
   // grid math per frame against the wrapper resolved by `getWrapper()`.
@@ -4211,6 +4291,7 @@ export default function EditorLayout() {
     close: closeCardPopout,
     getFloatPosition: (key: string) => prefs.cardFloatPositions[key],
     setFloatPosition: setCardFloatPosition,
+    recordFocus: (key: string) => focusFloating({ kind: "card", key }),
   };
 
   // Paragraph popout: click the gutter button in the editor to toggle a
@@ -4863,6 +4944,7 @@ export default function EditorLayout() {
               data-actions-id={tb.id}
               className="fixed z-[9999] pointer-events-auto"
               style={{ left: tb.pos.left, top: tb.pos.top }}
+              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "actions", id: tb.id })}
             >
               <DetachedActionsToolbar
                 actions={{
@@ -4898,6 +4980,7 @@ export default function EditorLayout() {
               data-formatting-id={tb.id}
               className="fixed z-[9999] pointer-events-auto"
               style={{ left: tb.pos.left, top: tb.pos.top }}
+              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "formatting", id: tb.id })}
             >
               <DetachedFormattingToolbar
                 editor={(overrideEditor ?? editorInstance)!}
@@ -4923,6 +5006,7 @@ export default function EditorLayout() {
               data-menu-id={tb.id}
               className="fixed z-[9999] pointer-events-auto"
               style={{ left: tb.pos.left, top: tb.pos.top }}
+              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "menus", id: tb.id })}
             >
               <DetachedMenuToolbar
                 menuProps={{
@@ -5375,6 +5459,7 @@ export default function EditorLayout() {
             initialHeight={initialHeight}
             zIndex={FLOATING_PANEL_Z_BASE + i}
             onChange={(pos) => setFloatPosition(pid, pos)}
+            onFocus={() => focusFloating({ kind: "panel", id: pid })}
           >
             {renderPanelWithChrome(pid, side)}
           </FloatingPanel>

@@ -50,6 +50,7 @@ export function FloatCard({
       initialHeight={initialHeight}
       zIndex={1200 + indexHint}
       onChange={(pos) => ctx.setFloatPosition(cardKey, pos)}
+      onFocus={() => ctx.recordFocus?.(cardKey)}
     >
       <div data-pristine-card-id={pristineId} style={{ display: "contents" }}>
         {children}
