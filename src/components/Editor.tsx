@@ -53,6 +53,7 @@ import {
   sectionFoldingPluginKey,
   getSectionFoldingState,
 } from "@/lib/section-folding";
+import { getSectionRangeByUuid } from "@/lib/section-range";
 
 /**
  * Resolve a ProseMirror position to the nearest anchorable node, handling
@@ -175,6 +176,10 @@ interface EditorProps {
    * the button always renders as "docked".
    */
   paragraphIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
+  /** Same as onToggleParagraphPopout, but for headings (chapters/sections/etc.). */
+  onToggleHeadingPopout?: (uuid: string) => void;
+  /** Same as paragraphIsPoppedRef, but for headings. */
+  headingIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
 }
 
 export interface FootnoteInfo {
@@ -273,6 +278,8 @@ export interface EditorHandle {
    *  the gutter popout-button glyph (arrow ↔ X) stays in sync when the
    *  float is closed via its own X button. */
   refreshParagraphPopouts: () => void;
+  /** Same as refreshParagraphPopouts, but for heading node views. */
+  refreshHeadingPopouts: () => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -311,7 +318,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef, onToggleHeadingPopout, headingIsPoppedRef },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -334,6 +341,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // through this when the popped-cards list changes (e.g. the float's own
   // close button runs, or state is restored from localStorage).
   const paragraphPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
+  // Same triplet for headings (chapters/sections/subsections etc.).
+  const onToggleHeadingPopoutRef = useRef(onToggleHeadingPopout);
+  onToggleHeadingPopoutRef.current = onToggleHeadingPopout;
+  const headingIsPoppedPredicateRef = useRef(headingIsPoppedRef);
+  headingIsPoppedPredicateRef.current = headingIsPoppedRef;
+  const headingPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
   // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
@@ -394,6 +407,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
+
+        // Left-margin hover sensor — covers the gutter strip from the
+        // text edge out to where the popout button sits, so the popout
+        // reveal triggers on grab-handle/left-margin hover but NOT when
+        // hovering the paragraph text itself. Replaces the older
+        // .par-title-wrapper::before hover bridge (pseudo-elements
+        // can't be selected via :has()).
+        const leftZone = document.createElement("div");
+        leftZone.className = "par-left-margin-zone";
+        leftZone.contentEditable = "false";
+        wrapper.appendChild(leftZone);
 
         // Title annotation area (above paragraph — holds +T or title)
         const titleAnnot = document.createElement("div");
@@ -915,6 +939,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const HeadingWithLabel = Heading.extend({
+    // NOTE: deliberately not draggable at the schema level — we want the
+    // gutter drag handle to move the WHOLE section (heading + nested
+    // content) via the MIME_PAR_CAPTURE drop handler, not just the
+    // heading node. PM's internal node-drag would only move the
+    // heading; routing through our handler lets us look up the section
+    // range and move the entire span.
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -1009,6 +1039,106 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         annot.className = "heading-annotation";
         annot.contentEditable = "false";
         wrapper.appendChild(annot);
+
+        // 6-dot drag grip — same shape as the paragraph drag handle, but
+        // absolutely positioned in the heading wrapper so it sits just
+        // left of the heading text. ProseMirror picks up the drag via the
+        // data-drag-handle attribute (the heading node is draggable above).
+        const SVG_NS_DH = "http://www.w3.org/2000/svg";
+        const headingDrag = document.createElement("div");
+        headingDrag.className = "heading-drag-handle";
+        // No data-drag-handle attribute — see HeadingWithLabel.draggable
+        // comment above. PM stays out of this drag so our handler can
+        // move the whole section.
+        headingDrag.draggable = true;
+        const dhSvg = document.createElementNS(SVG_NS_DH, "svg");
+        dhSvg.setAttribute("width", "10");
+        dhSvg.setAttribute("height", "14");
+        dhSvg.setAttribute("viewBox", "0 0 10 14");
+        dhSvg.setAttribute("fill", "currentColor");
+        for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
+          const c = document.createElementNS(SVG_NS_DH, "circle");
+          c.setAttribute("cx", String(cx));
+          c.setAttribute("cy", String(cy));
+          c.setAttribute("r", "1.2");
+          dhSvg.appendChild(c);
+        }
+        headingDrag.appendChild(dhSvg);
+        headingDrag.addEventListener("mousedown", () => {
+          headingDrag.classList.add("is-pressed");
+        });
+        headingDrag.addEventListener("dragend", () => {
+          headingDrag.classList.remove("is-pressed");
+        });
+        headingDrag.addEventListener("mouseup", () => {
+          headingDrag.classList.remove("is-pressed");
+        });
+        // Tag the drag with the same paragraph-capture MIME so panels and
+        // the cross-editor drop handler recognise it. Heading is identified
+        // by its uuid; we ensure one before stashing.
+        headingDrag.addEventListener("dragstart", () => {
+          const handlePos = typeof getPos === "function" ? getPos() : null;
+          if (handlePos == null) return;
+          let uuid = currentNode.attrs?.uuid as string | null;
+          if (!uuid) {
+            uuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+          }
+          if (uuid) pendingParCaptureUuidRef.current = uuid;
+        });
+        wrapper.appendChild(headingDrag);
+
+        // Popout button — sits just left of the heading drag handle, same
+        // geometry as the paragraph version. Wires onToggleHeadingPopout
+        // through the same ref pattern as paragraphs so EditorLayout can
+        // open/close a floating heading card.
+        let headingPopoutBtnEl: HTMLButtonElement | null = null;
+        let headingPoppedState = false;
+        function syncHeadingPoppedFromPredicate() {
+          const uuid = currentNode.attrs?.uuid as string | null;
+          const predicate = headingIsPoppedPredicateRef.current?.current;
+          if (uuid && predicate) headingPoppedState = predicate(uuid);
+        }
+        function renderHeadingPopoutBtn() {
+          const next = createPopoutButtonEl({
+            isPoppedOut: headingPoppedState,
+            variant: "x",
+            labelNoun: "section",
+            extraClass: "heading-popout-btn",
+            onClick: () => {
+              const handlePos = typeof getPos === "function" ? getPos() : null;
+              if (handlePos == null) return;
+              let ensuredUuid = currentNode.attrs?.uuid as string | null;
+              if (!ensuredUuid) {
+                ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+              }
+              if (ensuredUuid) {
+                onToggleHeadingPopoutRef.current?.(ensuredUuid);
+                headingPoppedState = !headingPoppedState;
+                renderHeadingPopoutBtn();
+              }
+            },
+          });
+          if (headingPopoutBtnEl && headingPopoutBtnEl.parentNode === wrapper) {
+            wrapper.replaceChild(next, headingPopoutBtnEl);
+          } else {
+            wrapper.appendChild(next);
+          }
+          headingPopoutBtnEl = next;
+        }
+        syncHeadingPoppedFromPredicate();
+        renderHeadingPopoutBtn();
+
+        const headingRefresher = () => {
+          const uuid = currentNode.attrs?.uuid as string | null;
+          const predicate = headingIsPoppedPredicateRef.current?.current;
+          if (!uuid || !predicate) return;
+          const actual = predicate(uuid);
+          if (actual !== headingPoppedState) {
+            headingPoppedState = actual;
+            renderHeadingPopoutBtn();
+          }
+        };
+        headingPopoutRefreshersRef.current.add(headingRefresher);
 
         function getTypeName(n: typeof node) {
           return TYPE_NAMES[Math.min((n.attrs.level as number) - 1, 3)];
@@ -1229,6 +1359,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           stopEvent(event) {
             if (annot === event.target || annot.contains(event.target as Node)) return true;
             if (foldBtn === event.target || foldBtn.contains(event.target as Node)) return true;
+            // Don't swallow drag-related events on the drag handle — PM
+            // needs them to start the node drag.
+            const t = event.target as Node | null;
+            if (
+              t &&
+              headingPopoutBtnEl &&
+              (t === headingPopoutBtnEl || headingPopoutBtnEl.contains(t))
+            ) return true;
             return false;
           },
           ignoreMutation(mutation) {
@@ -1237,10 +1375,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // Mutations inside the fold chevron (contentEditable=false) should
             // also be ignored.
             if (foldBtn.contains(mutation.target)) return true;
+            if (headingDrag.contains(mutation.target)) return true;
+            if (headingPopoutBtnEl && headingPopoutBtnEl.contains(mutation.target)) return true;
             return false;
           },
           destroy() {
             nodeEditor.off("transaction", onTransaction);
+            headingPopoutRefreshersRef.current.delete(headingRefresher);
           },
           update(updatedNode) {
             if (updatedNode.type.name !== "heading") return false;
@@ -1255,6 +1396,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             // Don't overwrite annot if an input is active
             if (!annot.querySelector("input")) renderAnnot();
             refreshFoldBtn();
+            // Keep popout glyph in sync — uuid may have just been
+            // populated, or the popped predicate's underlying state
+            // may have changed.
+            syncHeadingPoppedFromPredicate();
+            renderHeadingPopoutBtn();
             return true;
           },
         };
@@ -1842,6 +1988,81 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
+        // --- Paragraph / section capture drop, MOVE semantics ---
+        // Heading captures: ALWAYS handle these. Headings aren't
+        // schema-draggable, but PM may still set up a node-drag for
+        // them (selecting the heading node when the drag starts on the
+        // contenteditable child). Letting PM run its default would
+        // move only the heading; we want the whole section.
+        //
+        // Paragraph captures: only intercept when this isn't an
+        // in-editor PM-tracked drag (view.dragging set), so PM keeps
+        // ownership of paragraph reorders.
+        const parCapData = event.dataTransfer?.getData(MIME_PAR_CAPTURE);
+        if (parCapData) {
+          try {
+            const { uuid } = JSON.parse(parCapData) as { uuid: string };
+            if (uuid) {
+              const sectionRange = getSectionRangeByUuid(view.state.doc, uuid);
+              let start: number | null = null;
+              let end: number | null = null;
+              let movedNodes: PMNode[] = [];
+              let isSection = false;
+              if (sectionRange) {
+                start = sectionRange.start;
+                end = sectionRange.end;
+                movedNodes = sectionRange.nodes;
+                isSection = true;
+              } else if (!view.dragging) {
+                // Paragraph fallback — only when PM isn't already handling.
+                let parPos: number | null = null;
+                let parNode: PMNode | null = null;
+                view.state.doc.descendants((n, p) => {
+                  if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
+                    parPos = p;
+                    parNode = n;
+                    return false;
+                  }
+                  return true;
+                });
+                if (parPos != null && parNode) {
+                  start = parPos;
+                  end = parPos + (parNode as PMNode).nodeSize;
+                  movedNodes = [parNode as PMNode];
+                }
+              }
+              if (start != null && end != null && movedNodes.length > 0) {
+                event.preventDefault();
+                if (isSection) {
+                  // PM may have tagged the drag as a node move of the
+                  // heading. Clear it so PM's default drop handler
+                  // doesn't ALSO try to insert the heading after our
+                  // section move runs.
+                  view.dragging = null;
+                }
+                const coords = { left: event.clientX, top: event.clientY };
+                const posResult = view.posAtCoords(coords);
+                if (!posResult) return true;
+                const $drop = view.state.doc.resolve(posResult.pos);
+                const blockStart = $drop.before(1);
+                const blockEnd = $drop.after(1);
+                const targetPos =
+                  posResult.pos - blockStart < blockEnd - posResult.pos
+                    ? blockStart
+                    : blockEnd;
+                if (targetPos >= start && targetPos <= end) return true;
+                const removedSize = end - start;
+                let tr = view.state.tr.delete(start, end);
+                const adjusted = targetPos > end ? targetPos - removedSize : targetPos;
+                tr = tr.insert(adjusted, movedNodes);
+                tr.scrollIntoView();
+                view.dispatch(tr);
+                return true;
+              }
+            }
+          } catch { /* fall through */ }
+        }
+
         return false;
       },
     },
@@ -1855,29 +2076,53 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
 
-  // Paragraph drag-handle hover: delegate from the editor root so that hover
-  // detection works reliably inside contentEditable (CSS :hover and per-wrapper
-  // mouseenter/mouseleave are unreliable when the target is an editable <p>).
+  // Paragraph drag-handle hover: detect via Y coordinate against each
+  // wrapper's bounding rect, scoped to the editor's scroll container.
+  // Why not CSS :hover or mouseover-on-dom? The grab handle and popout
+  // button sit in the marginalia gutter, which is OUTSIDE the
+  // contenteditable element. Once the cursor leaves the contenteditable
+  // (e.g. moving from text into the gutter to grab the handle), a
+  // mouseover-on-dom listener fires mouseleave and the .hovered class
+  // is dropped — so the handle disappears mid-reach. Y-based detection
+  // on the scroll container keeps the band lit for the full row the
+  // paragraph occupies, regardless of where horizontally the cursor
+  // sits (text, left gutter, right gutter).
   useEffect(() => {
-    const dom = editor?.view?.dom;
+    const dom = editor?.view?.dom as HTMLElement | undefined;
     if (!dom) return;
+    let scroller: HTMLElement | null = dom;
+    while (scroller && scroller !== document.body) {
+      const cs = window.getComputedStyle(scroller);
+      if (cs.overflowY === "auto" || cs.overflowY === "scroll") break;
+      scroller = scroller.parentElement;
+    }
+    if (!scroller || scroller === document.body) scroller = dom;
     let prev: Element | null = null;
-    const onOver = (e: Event) => {
-      const target = e.target as HTMLElement;
-      const wrapper = target.closest?.(".par-title-wrapper");
-      if (wrapper === prev) return;
+    const setHovered = (next: Element | null) => {
+      if (next === prev) return;
       if (prev) prev.classList.remove("hovered");
-      if (wrapper && wrapper.classList.contains("has-text")) {
-        wrapper.classList.add("hovered");
+      if (next) next.classList.add("hovered");
+      prev = next;
+    };
+    const onMove = (e: MouseEvent) => {
+      const wrappers = dom.querySelectorAll(".par-title-wrapper.has-text");
+      let found: Element | null = null;
+      for (const w of Array.from(wrappers)) {
+        const r = w.getBoundingClientRect();
+        if (e.clientY >= r.top && e.clientY <= r.bottom) {
+          found = w;
+          break;
+        }
       }
-      prev = wrapper;
+      setHovered(found);
     };
-    const onLeave = () => {
-      if (prev) { prev.classList.remove("hovered"); prev = null; }
+    const onLeave = () => setHovered(null);
+    scroller.addEventListener("mousemove", onMove);
+    scroller.addEventListener("mouseleave", onLeave);
+    return () => {
+      scroller!.removeEventListener("mousemove", onMove);
+      scroller!.removeEventListener("mouseleave", onLeave);
     };
-    dom.addEventListener("mouseover", onOver);
-    dom.addEventListener("mouseleave", onLeave);
-    return () => { dom.removeEventListener("mouseover", onOver); dom.removeEventListener("mouseleave", onLeave); };
   }, [editor]);
 
   // Window-level dragstart fires in the bubble phase AFTER ProseMirror's
@@ -2680,6 +2925,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     refreshParagraphPopouts(): void {
       paragraphPopoutRefreshersRef.current.forEach((fn) => fn());
+    },
+    refreshHeadingPopouts(): void {
+      headingPopoutRefreshersRef.current.forEach((fn) => fn());
     },
   }), [editor]);
 

@@ -13,14 +13,14 @@
  * Intentional omissions vs. the main editor:
  *  - No marginalia rendering or marginalia anchor guard (the float is
  *    a pure paragraph view; marginalia live in the main canvas).
- *  - No paragraph chrome (drag handle, gutter popout button). A
- *    plain Paragraph extension drives content; the title is rendered
- *    as a static label above the editor.
+ *  - No gutter popout button (the card header already has an X close
+ *    button). The 6-dot drag handle and editable paragraph title DO
+ *    appear, mirroring the main-editor chrome.
  *  - No block extensions (heading, list, blockquote, code block): a
  *    paragraph is one node, so Doc > Paragraph is the whole schema.
  */
 
-import { type RefObject, useMemo } from "react";
+import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -40,6 +40,8 @@ import {
 import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
+import { autoSizeInput } from "@/lib/autoSizeInput";
+import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import type { EditorHandle } from "./Editor";
 
 export function ParagraphFloat({
@@ -53,6 +55,8 @@ export function ParagraphFloat({
 }) {
   const popped = usePoppedCards();
   const mainEditor = editorRef.current?.getEditor() ?? null;
+  const [title, setTitle] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
 
   // Initial content + title are read once from the main doc. The float
   // editor owns its own state after mount — changes flow float → main
@@ -83,6 +87,11 @@ export function ParagraphFloat({
     // when the user types (mainEditor's state changes every keystroke).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
+
+  // Seed the editable title state once we've read the initial doc.
+  useEffect(() => {
+    setTitle(initial.title);
+  }, [initial.title]);
 
   const floatEditor = useEditor({
     extensions: [
@@ -131,6 +140,30 @@ export function ParagraphFloat({
       writeBackToMain(editor.getJSON());
     },
   });
+
+  function commitTitle(newTitle: string | null) {
+    setTitle(newTitle);
+    setEditingTitle(false);
+    const ed = editorRef.current?.getEditor();
+    if (!ed) return;
+    let foundPos: number | null = null;
+    let foundAttrs: Record<string, unknown> | null = null;
+    ed.state.doc.descendants((n, p) => {
+      if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
+        foundPos = p;
+        foundAttrs = { ...n.attrs };
+        return false;
+      }
+      return true;
+    });
+    if (foundPos == null || foundAttrs == null) return;
+    const tr = ed.state.tr.setNodeMarkup(
+      foundPos,
+      undefined,
+      { ...(foundAttrs as Record<string, unknown>), parTitle: newTitle },
+    );
+    ed.view.dispatch(tr);
+  }
 
   function writeBackToMain(doc: JSONContent) {
     const ed = editorRef.current?.getEditor();
@@ -205,14 +238,169 @@ export function ParagraphFloat({
           />
         </div>
         <div className="par-float-body flex-1 overflow-auto px-8 py-4">
-          {initial.title ? (
-            <div className="par-title-annotation" style={{ cursor: "default" }}>
-              <span className="par-title-text">{initial.title}</span>
+          <div
+            className={`par-title-wrapper has-text par-float-paragraph${title ? " has-title" : " has-add-btn"}`}
+          >
+            <ParagraphFloatTitle
+              title={title}
+              editing={editingTitle}
+              onStartEdit={() => setEditingTitle(true)}
+              onCommit={commitTitle}
+              onCancel={() => setEditingTitle(false)}
+              onClear={() => commitTitle(null)}
+            />
+            <div className="par-body-container">
+              <EditorContent editor={floatEditor} />
+              <div
+                className="par-drag-handle"
+                aria-hidden="true"
+                title="Drag paragraph"
+                draggable
+                onMouseDown={(e) => e.stopPropagation()}
+                onDragStart={(e) => {
+                  e.stopPropagation();
+                  const dt = e.dataTransfer;
+                  if (!dt) return;
+                  // Tag with paragraph-capture MIME so side panels (archive,
+                  // cuts, etc.) and the main editor's drop handler can act
+                  // on the source paragraph by uuid — same handshake the
+                  // main editor's drag handle uses. Format is JSON so it
+                  // matches usePanelCapture.onDrop's parser.
+                  dt.setData(MIME_PAR_CAPTURE, JSON.stringify({ uuid }));
+                  // Plain-text fallback so dropping into other apps yields
+                  // the paragraph's text.
+                  const text = floatEditor?.getText() ?? "";
+                  if (text) dt.setData("text/plain", text);
+                  dt.effectAllowed = "copyMove";
+                  // Drag image: clone the float's paragraph DOM so the user
+                  // sees the paragraph following the cursor.
+                  const pmEl = floatEditor?.view?.dom?.querySelector("p");
+                  if (pmEl) {
+                    const ghost = pmEl.cloneNode(true) as HTMLElement;
+                    const cs = window.getComputedStyle(pmEl);
+                    const w = (pmEl as HTMLElement).offsetWidth;
+                    ghost.style.cssText =
+                      "position:absolute;top:-9999px;left:-9999px;" +
+                      (w > 0 ? `width:${w}px;` : "max-width:520px;") +
+                      "opacity:0.5;margin:0;padding:0;background:transparent;" +
+                      `color:${cs.color};` +
+                      `font-family:${cs.fontFamily};` +
+                      `font-size:${cs.fontSize};` +
+                      `font-weight:${cs.fontWeight};` +
+                      `font-style:${cs.fontStyle};` +
+                      `line-height:${cs.lineHeight};` +
+                      `letter-spacing:${cs.letterSpacing};` +
+                      "pointer-events:none;";
+                    document.body.appendChild(ghost);
+                    dt.setDragImage(ghost, 12, 12);
+                    requestAnimationFrame(() => {
+                      try { document.body.removeChild(ghost); } catch {}
+                    });
+                  }
+                }}
+              >
+                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                  <circle cx="3" cy="2" r="1.2" />
+                  <circle cx="7" cy="2" r="1.2" />
+                  <circle cx="3" cy="7" r="1.2" />
+                  <circle cx="7" cy="7" r="1.2" />
+                  <circle cx="3" cy="12" r="1.2" />
+                  <circle cx="7" cy="12" r="1.2" />
+                </svg>
+              </div>
             </div>
-          ) : null}
-          <EditorContent editor={floatEditor} />
+          </div>
         </div>
       </div>
     </FloatCard>
+  );
+}
+
+function ParagraphFloatTitle({
+  title,
+  editing,
+  onStartEdit,
+  onCommit,
+  onCancel,
+  onClear,
+}: {
+  title: string | null;
+  editing: boolean;
+  onStartEdit: () => void;
+  onCommit: (next: string | null) => void;
+  onCancel: () => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editing) return;
+    const input = inputRef.current;
+    if (!input) return;
+    const cleanup = autoSizeInput(input);
+    input.focus();
+    input.select();
+    return cleanup;
+  }, [editing]);
+
+  if (editing) {
+    return (
+      <div className="par-title-annotation">
+        <input
+          ref={inputRef}
+          type="text"
+          className="par-title-input"
+          defaultValue={title ?? ""}
+          placeholder="Paragraph title…"
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === "Enter") {
+              e.preventDefault();
+              const val = (e.target as HTMLInputElement).value.trim();
+              onCommit(val || null);
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+          onBlur={(e) => {
+            const val = e.currentTarget.value.trim();
+            onCommit(val || null);
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="par-title-annotation"
+      onClick={onStartEdit}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onStartEdit();
+        }
+      }}
+    >
+      {title ? (
+        <>
+          <span className="par-title-text">{title}</span>
+          <button
+            type="button"
+            className="par-title-delete"
+            title="Remove title"
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); }}
+          >
+            ×
+          </button>
+        </>
+      ) : (
+        <span className="par-title-add">+T</span>
+      )}
+    </div>
   );
 }
