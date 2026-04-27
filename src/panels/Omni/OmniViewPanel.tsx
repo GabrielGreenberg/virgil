@@ -262,7 +262,7 @@ function OmniViewPanel({
     editor,
     inTextItems,
     true,
-    "data-omni-entry",
+    "data-omni-entry-wrapper",
     topOffsetRef,
   );
 
@@ -310,6 +310,7 @@ function OmniViewPanel({
             return (
               <div
                 key={item.id}
+                data-omni-entry-wrapper={item.id}
                 className="absolute left-2 right-2"
                 style={{ top }}
               >
