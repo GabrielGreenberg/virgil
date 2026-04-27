@@ -25,6 +25,7 @@ import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forward
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
+import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import RichTextField from "./RichTextField";
 import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
@@ -175,7 +176,7 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
 
 /* ── Title input (par-title styling) ─────────────────────────────── */
 
-const TITLE_CLASS = "flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
+const TITLE_CLASS = "min-w-0 max-w-full bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
 const TITLE_STYLE: React.CSSProperties = {
   fontSize: "var(--par-title-size, 0.78rem)",
   color: "var(--par-title-color, #c45a5a)",
@@ -184,7 +185,10 @@ const TITLE_STYLE: React.CSSProperties = {
   letterSpacing: "0.02em",
 };
 
-/** Standard title input for card headers. */
+/** Standard title input for card headers.
+ *  Wraps the auto-sized input in a flex-1 container so trailing header items
+ *  stay right-aligned and the empty space inside the wrapper remains
+ *  grabbable for window dragging when the card is popped out. */
 export function CardTitleInput({
   defaultValue,
   onChange,
@@ -201,19 +205,27 @@ export function CardTitleInput({
   const merged = theme
     ? { ...TITLE_STYLE, color: theme.titleColor, ...style }
     : style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE;
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!inputRef.current) return;
+    return autoSizeInput(inputRef.current);
+  }, []);
   return (
-    <input
-      type="text"
-      defaultValue={defaultValue ?? ""}
-      onBlur={onChange ? (e) => onChange(e.target.value) : undefined}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
-      draggable={false}
-      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-      placeholder={placeholder}
-      className={TITLE_CLASS}
-      style={merged}
-    />
+    <div className="flex-1 min-w-0 flex items-center">
+      <input
+        ref={inputRef}
+        type="text"
+        defaultValue={defaultValue ?? ""}
+        onBlur={onChange ? (e) => onChange(e.target.value) : undefined}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        draggable={false}
+        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        placeholder={placeholder}
+        className={TITLE_CLASS}
+        style={merged}
+      />
+    </div>
   );
 }
 
@@ -713,14 +725,18 @@ export function PopoutButton({
   className?: string;
 }) {
   const title = isPoppedOut ? `Dock ${labelNoun}` : `Pop out ${labelNoun}`;
+  // Fire on mousedown (with preventDefault) so the action runs BEFORE the
+  // card's focus-driven selection logic — otherwise an unselected card eats
+  // the first click as a "select" and the user has to click twice.
   return (
     <button
       type="button"
-      onClick={(e) => {
+      onMouseDown={(e) => {
+        e.preventDefault();
         e.stopPropagation();
         onClick();
       }}
-      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
       draggable={false}
       onDragStart={(e) => {
         e.stopPropagation();
@@ -760,7 +776,14 @@ export function createPopoutButtonEl(opts: {
   btn.title = title;
   btn.setAttribute("aria-label", title);
   btn.innerHTML = popoutSvgOuter(popoutSvgInner(opts.isPoppedOut, variant));
-  btn.addEventListener("mousedown", (e) => e.stopPropagation());
+  // Fire on mousedown (with preventDefault) so the action runs BEFORE the
+  // host's focus-driven selection logic — otherwise an unselected card eats
+  // the first click as a "select" and the user has to click twice.
+  btn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    opts.onClick();
+  });
   btn.addEventListener("dragstart", (e) => {
     e.stopPropagation();
     e.preventDefault();
@@ -768,7 +791,6 @@ export function createPopoutButtonEl(opts: {
   btn.addEventListener("click", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    opts.onClick();
   });
   return btn;
 }

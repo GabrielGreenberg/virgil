@@ -43,6 +43,7 @@ import {
 } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
+import { autoSizeInput } from "@/lib/autoSizeInput";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
@@ -111,35 +112,6 @@ function ensureAnchorUuid(
   } catch {
     return null;
   }
-}
-
-/**
- * Auto-sizes an <input> to its content by measuring text in a hidden <span>.
- * Returns a cleanup function that removes the sizer and listener.
- */
-function autoSizeInput(input: HTMLInputElement, minCh = 2): () => void {
-  const sizer = document.createElement("span");
-  sizer.style.cssText =
-    "position:absolute;visibility:hidden;white-space:pre;pointer-events:none;";
-  document.body.appendChild(sizer);
-
-  function sync() {
-    // Copy font from input so measurement matches
-    const cs = getComputedStyle(input);
-    sizer.style.font = cs.font;
-    sizer.style.letterSpacing = cs.letterSpacing;
-    sizer.textContent = input.value || input.placeholder || "";
-    input.style.width = Math.max(sizer.offsetWidth + 2, minCh * 8) + "px";
-  }
-
-  input.addEventListener("input", sync);
-  // Initial size — schedule after the input is rendered
-  requestAnimationFrame(sync);
-
-  return () => {
-    input.removeEventListener("input", sync);
-    if (document.body.contains(sizer)) sizer.remove();
-  };
 }
 
 interface EditorProps {
