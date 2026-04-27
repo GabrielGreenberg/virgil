@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -1435,6 +1435,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       Citation,
       LabelRef,
       ExampleBlock,
+      ExampleItemList,
       ExampleItem,
       ExampleGloss,
       AlignedGlossRow,
@@ -2283,14 +2284,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         },
         content: [
           {
-            type: "exampleItem",
-            attrs: { tag: "", label: "", subLabel: "" },
-            content: [{ type: "paragraph" }],
-          },
-          {
-            type: "exampleItem",
-            attrs: { tag: "", label: "", subLabel: "" },
-            content: [{ type: "paragraph" }],
+            type: "exampleItemList",
+            content: [
+              {
+                type: "exampleItem",
+                attrs: { tag: "", label: "", subLabel: "" },
+                content: [{ type: "paragraph" }],
+              },
+              {
+                type: "exampleItem",
+                attrs: { tag: "", label: "", subLabel: "" },
+                content: [{ type: "paragraph" }],
+              },
+            ],
           },
           {
             type: "exampleGloss",

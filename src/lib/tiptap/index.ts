@@ -12,6 +12,7 @@ export { Citation, consumePendingCitationCreate, markPendingCitationCreate } fro
 export { LabelRef, LabelHandler } from "./label";
 export {
   ExampleBlock,
+  ExampleItemList,
   ExampleItem,
   ExampleGloss,
   AlignedGlossRow,

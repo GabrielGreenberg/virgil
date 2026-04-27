@@ -685,9 +685,9 @@ function numberHeadings(node: JSONContent): void {
   walk(node);
 }
 
-/** Assign sequential numbers to exampleBlocks (global) and sub-labels
- *  ("a", "b", …) to exampleItems within each multi-part block. Also
- *  recomputes colCount on every exampleGloss. Mirrors the live
+/** Assign sequential numbers to exampleBlocks (global) and depth-aware
+ *  sub-labels (a/i/A/I, cycling) to exampleItems within each item list.
+ *  Also recomputes colCount on every exampleGloss. Mirrors the live
  *  ExpexNumbering ProseMirror plugin for the initial parse pass. */
 function numberExamples(node: JSONContent): void {
   function toSubLabel(n: number): string {
@@ -700,6 +700,59 @@ function numberExamples(node: JSONContent): void {
     }
     return s || "a";
   }
+  function toAlphaUpper(n: number): string {
+    let s = "";
+    let i = n;
+    while (i > 0) {
+      i--;
+      s = String.fromCharCode(65 + (i % 26)) + s;
+      i = Math.floor(i / 26);
+    }
+    return s || "A";
+  }
+  function toRomanLower(n: number): string {
+    if (n <= 0) return "i";
+    const arabic = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+    const roman = ["m", "cm", "d", "cd", "c", "xc", "l", "xl", "x", "ix", "v", "iv", "i"];
+    let out = "";
+    let v = n;
+    for (let k = 0; k < arabic.length; k++) {
+      while (v >= arabic[k]) {
+        out += roman[k];
+        v -= arabic[k];
+      }
+    }
+    return out || "i";
+  }
+  function markerForDepth(depth: number, n: number): string {
+    const tier = ((depth % 4) + 4) % 4;
+    if (tier === 0) return toSubLabel(n);
+    if (tier === 1) return toRomanLower(n);
+    if (tier === 2) return toAlphaUpper(n);
+    return toRomanLower(n).toUpperCase();
+  }
+
+  function walkItemList(
+    list: JSONContent,
+    depth: number,
+    counter: { n: number },
+  ) {
+    if (list.type !== "exampleItemList") return;
+    for (const item of list.content || []) {
+      if (item.type !== "exampleItem") continue;
+      counter.n++;
+      item.attrs = {
+        ...(item.attrs || {}),
+        subLabel: markerForDepth(depth, counter.n),
+      };
+      // Nested xlist tiers start a fresh counter.
+      for (const child of item.content || []) {
+        if (child.type === "exampleItemList") {
+          walkItemList(child, depth + 1, { n: 0 });
+        }
+      }
+    }
+  }
 
   let exampleCounter = 0;
   function walk(n: JSONContent) {
@@ -708,16 +761,13 @@ function numberExamples(node: JSONContent): void {
       const override = n.attrs?.exnoOverride;
       const num = override ? override : exampleCounter;
       n.attrs = { ...(n.attrs || {}), number: num };
-      let itemCounter = 0;
-      function walkItems(m: JSONContent) {
-        if (m.type === "exampleItem") {
-          itemCounter++;
-          m.attrs = { ...(m.attrs || {}), subLabel: toSubLabel(itemCounter) };
-          return;
+      // Top-level items number consecutively across multiple lists.
+      const topCounter = { n: 0 };
+      for (const child of n.content || []) {
+        if (child.type === "exampleItemList") {
+          walkItemList(child, 0, topCounter);
         }
-        m.content?.forEach(walkItems);
       }
-      n.content?.forEach(walkItems);
     }
     if (n.type === "exampleGloss") {
       let max = 1;
@@ -767,9 +817,22 @@ function resolveRefs(node: JSONContent): void {
           if (sub) {
             if (m.attrs?.tag) entry.items.set(m.attrs.tag as string, sub);
             if (m.attrs?.label) entry.items.set(m.attrs.label as string, sub);
+            // Flat sub-item resolution: `\ref{foo}` where foo is a
+            // sub-item label resolves to e.g. "3a" (matching expex).
+            const fullSub = `${num}${sub}`;
+            const subItemEntry = { number: fullSub, items: new Map<string, string>() };
+            if (m.attrs?.tag) {
+              const k = m.attrs.tag as string;
+              if (!exampleMap.has(k)) exampleMap.set(k, subItemEntry);
+            }
+            if (m.attrs?.label) {
+              const k = m.attrs.label as string;
+              if (!exampleMap.has(k)) exampleMap.set(k, subItemEntry);
+            }
           }
-          return;
         }
+        // Continue recursing — items can contain nested exampleItemLists
+        // whose items also need to participate in dotted refs.
         m.content?.forEach(walkItems);
       }
       n.content?.forEach(walkItems);
@@ -1425,6 +1488,30 @@ function readParagraph(ctx: ParseContext): string {
 // expex helpers
 // ---------------------------------------------------------------------------
 
+/** Scan for the `\end{xlist}` that closes the `\begin{xlist}` opened at
+ *  `startPos`. Handles nested xlist environments by tracking depth.
+ *  Returns the index of the backslash in `\end{xlist}`, or -1 if not
+ *  found. */
+function findMatchingXlistEnd(src: string, startPos: number): number {
+  let depth = 1;
+  let pos = startPos;
+  while (pos < src.length) {
+    if (src.startsWith("\\begin{xlist}", pos)) {
+      depth++;
+      pos += "\\begin{xlist}".length;
+      continue;
+    }
+    if (src.startsWith("\\end{xlist}", pos)) {
+      depth--;
+      if (depth === 0) return pos;
+      pos += "\\end{xlist}".length;
+      continue;
+    }
+    pos++;
+  }
+  return -1;
+}
+
 /** Scan for the `\xe` that closes the `\ex`/`\pex` opened just before
  *  `startPos`. Handles nested `\ex`/`\pex` by tracking depth. Returns the
  *  index of the backslash in `\xe`, or -1 if not found. */
@@ -1496,11 +1583,17 @@ function splitPexBody(
   };
 
   while (pos < body.length) {
-    // Skip nested \begingl … \endgl and nested \ex/\pex blocks so their
-    // internal \a markers don't get confused with ours.
+    // Skip nested \begingl … \endgl, nested \ex/\pex blocks, and nested
+    // \begin{xlist} … \end{xlist} so their internal \a markers don't get
+    // confused with ours at the current tier.
     if (body.startsWith("\\begingl", pos)) {
       const endIdx = body.indexOf("\\endgl", pos + "\\begingl".length);
       pos = endIdx === -1 ? body.length : endIdx + "\\endgl".length;
+      continue;
+    }
+    if (body.startsWith("\\begin{xlist}", pos)) {
+      const xlistEnd = findMatchingXlistEnd(body, pos + "\\begin{xlist}".length);
+      pos = xlistEnd === -1 ? body.length : xlistEnd + "\\end{xlist}".length;
       continue;
     }
     const exStart = body.slice(pos).match(/^\\(ex|pex)\b/);
@@ -1604,36 +1697,86 @@ function buildExampleBlockFromBody(
       const pNodes = parseExampleBodyAsBlocks(preamble);
       content.push(...pNodes);
     }
+    const itemNodes: JSONContent[] = [];
     for (const item of items) {
-      const itemContent = parseExampleBodyAsBlocks(item.text);
-      // Ensure at least one paragraph child per schema ("paragraph+ exampleGloss?")
-      const normalized: JSONContent[] = [];
-      const paragraphs = itemContent.filter((n) => n.type === "paragraph");
-      const glosses = itemContent.filter((n) => n.type === "exampleGloss");
-      if (paragraphs.length === 0) normalized.push({ type: "paragraph" });
-      else normalized.push(...paragraphs);
-      if (glosses.length > 0) normalized.push(glosses[0]);
-      content.push({
-        type: "exampleItem",
-        attrs: {
-          tag: item.tag,
-          label: item.label,
-          subLabel: "",
-        },
-        content: normalized,
-      });
+      itemNodes.push(buildExampleItemFromText(item.tag, item.label, item.text));
     }
-    if (items.length === 0) {
-      // No \a markers — fall back to a single empty item so the schema holds.
-      content.push({
+    if (itemNodes.length === 0) {
+      itemNodes.push({
         type: "exampleItem",
         attrs: { tag: "", label: "", subLabel: "" },
         content: [{ type: "paragraph" }],
       });
     }
+    content.push({ type: "exampleItemList", content: itemNodes });
   }
 
   return { type: "exampleBlock", attrs, content };
+}
+
+/** Build an exampleItem JSONContent from a raw item body string. The
+ *  body may contain inline paragraphs, an optional gloss, and optional
+ *  nested `\begin{xlist}…\end{xlist}` environments which become a child
+ *  exampleItemList. The schema requires content order
+ *  `paragraph+ exampleItemList? exampleGloss?`. */
+function buildExampleItemFromText(
+  tag: string,
+  label: string,
+  text: string,
+): JSONContent {
+  // Slice out any `\begin{xlist}…\end{xlist}` body before parsing the
+  // surrounding text as paragraphs/gloss. We keep just the FIRST nested
+  // list for schema compliance — multiple xlist environments in the
+  // same item are uncommon and would be flattened by re-serializing.
+  let nestedList: JSONContent | null = null;
+  let stripped = text;
+  const xlistOpen = stripped.indexOf("\\begin{xlist}");
+  if (xlistOpen !== -1) {
+    const innerStart = xlistOpen + "\\begin{xlist}".length;
+    const innerEnd = findMatchingXlistEnd(stripped, innerStart);
+    if (innerEnd !== -1) {
+      const innerBody = stripped.slice(innerStart, innerEnd);
+      nestedList = buildExampleItemListFromBody(innerBody);
+      stripped =
+        stripped.slice(0, xlistOpen) +
+        stripped.slice(innerEnd + "\\end{xlist}".length);
+    }
+  }
+
+  const itemContent = parseExampleBodyAsBlocks(stripped);
+  const normalized: JSONContent[] = [];
+  const paragraphs = itemContent.filter((n) => n.type === "paragraph");
+  const glosses = itemContent.filter((n) => n.type === "exampleGloss");
+  if (paragraphs.length === 0) normalized.push({ type: "paragraph" });
+  else normalized.push(...paragraphs);
+  if (nestedList) normalized.push(nestedList);
+  if (glosses.length > 0) normalized.push(glosses[0]);
+
+  return {
+    type: "exampleItem",
+    attrs: { tag, label, subLabel: "" },
+    content: normalized,
+  };
+}
+
+/** Parse an `\begin{xlist} … \end{xlist}` body into an exampleItemList
+ *  node. Items are split on top-level `\a` markers (same logic as a
+ *  `\pex` body). Recurses through buildExampleItemFromText for nested
+ *  xlists. */
+function buildExampleItemListFromBody(body: string): JSONContent {
+  const { items } = splitPexBody(body);
+  const itemNodes: JSONContent[] = [];
+  for (const item of items) {
+    itemNodes.push(buildExampleItemFromText(item.tag, item.label, item.text));
+  }
+  if (itemNodes.length === 0) {
+    itemNodes.push({
+      type: "exampleItem",
+      attrs: { tag: "", label: "", subLabel: "" },
+      content: [{ type: "paragraph" }],
+    });
+  }
+  return { type: "exampleItemList", content: itemNodes };
 }
 
 /** Parse an example body fragment (between `\ex`/`\pex` and `\xe`, or between

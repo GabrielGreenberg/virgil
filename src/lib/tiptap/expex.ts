@@ -1,20 +1,24 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
+import { generateEntityId } from "@/lib/uuid";
 
-// Six nodes implement the expex package:
+// Seven nodes implement the expex package:
 //
 //   exampleBlock         — top-level numbered example (\ex … \xe or \pex … \xe)
-//   exampleItem          — one \a sub-part inside a \pex
+//   exampleItemList      — invisible wrapper around \a items at one nesting tier
+//                          (top-level inside exampleBlock, or nested inside an
+//                          item to express \begin{xlist}…\end{xlist})
+//   exampleItem          — one \a sub-part
 //   exampleGloss         — a \begingl … \endgl interlinear gloss block
 //   alignedGlossRow      — one \gla / \glb / \glc row (columnar)
 //   proseGlossRow        — one \glpreamble / \glft row (prose)
 //   glossCell            — a single column inside an alignedGlossRow
 //
 // The exampleBlock carries a `number` attr and each exampleItem carries a
-// `subLabel` ("a", "b", …); both are maintained live by the numbering
-// ProseMirror plugin below, and also one-shot at parse time by a helper
-// invoked from latex-parser.ts.
+// depth-aware `subLabel` ("a"/"i"/"A"/"I"); both are maintained live by the
+// numbering ProseMirror plugin below, and also one-shot at parse time by a
+// helper invoked from latex-parser.ts.
 
 function toSubLabel(n: number): string {
   // 1→"a", 2→"b", … 26→"z", 27→"aa", …
@@ -28,6 +32,55 @@ function toSubLabel(n: number): string {
   return s || "a";
 }
 
+function toAlphaUpper(n: number): string {
+  // 1→"A", 2→"B", … 26→"Z", 27→"AA", …
+  let s = "";
+  let i = n;
+  while (i > 0) {
+    i--;
+    s = String.fromCharCode(65 + (i % 26)) + s;
+    i = Math.floor(i / 26);
+  }
+  return s || "A";
+}
+
+function toRomanLower(n: number): string {
+  if (n <= 0) return "i";
+  const arabic = [1000, 900, 500, 400, 100, 90, 50, 40, 10, 9, 5, 4, 1];
+  const roman = ["m", "cm", "d", "cd", "c", "xc", "l", "xl", "x", "ix", "v", "iv", "i"];
+  let out = "";
+  let v = n;
+  for (let k = 0; k < arabic.length; k++) {
+    while (v >= arabic[k]) {
+      out += roman[k];
+      v -= arabic[k];
+    }
+  }
+  return out || "i";
+}
+
+function toRomanUpper(n: number): string {
+  return toRomanLower(n).toUpperCase();
+}
+
+/** Depth-aware item marker. Mirrors the expex package counter defaults:
+ *  depth 0 (items inside an exampleBlock)        → a, b, c
+ *  depth 1 (items inside an item's xlist)        → i, ii, iii
+ *  depth 2                                       → A, B, C
+ *  depth 3                                       → I, II, III
+ *  Beyond depth 3 the cycle repeats.
+ */
+export function markerForDepth(depth: number, n: number): string {
+  const tier = ((depth % 4) + 4) % 4;
+  switch (tier) {
+    case 0: return toSubLabel(n);
+    case 1: return toRomanLower(n);
+    case 2: return toAlphaUpper(n);
+    case 3: return toRomanUpper(n);
+    default: return toSubLabel(n);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // exampleBlock
 // ---------------------------------------------------------------------------
@@ -35,14 +88,267 @@ function toSubLabel(n: number): string {
 export const ExampleBlock = Node.create({
   name: "exampleBlock",
   group: "block",
-  // Preamble paragraphs or a lone gloss first, then any number of items,
-  // then any trailing paragraphs / gloss. Positional constraints
-  // (preamble-before-items) are enforced by the parser + numbering plugin,
-  // not the schema — ProseMirror can't express that gracefully.
-  content: "(paragraph | exampleGloss)* exampleItem* (paragraph | exampleGloss)*",
+  // Free-order content: paragraphs, gloss blocks, and item lists can
+  // interleave in any order. The relaxed schema lets list-item Shift-Tab
+  // demote a middle item out of its list (which splits the list into
+  // two). The serializer walks children in document order so the .tex
+  // round-trip preserves the layout.
+  content: "(paragraph | exampleGloss | exampleItemList)*",
   defining: true,
   isolating: true,
   draggable: true,
+
+  // Top-level keyboard shortcuts:
+  //   Enter — when cursor is at the end of the LAST paragraph of the
+  //           block (and not inside a sub-item), or in any empty
+  //           trailing paragraph anywhere in the block, escape out and
+  //           create a new sibling exampleBlock — i.e. a new (n+1).
+  //   Tab — in a paragraph at the top level of the block (not yet a
+  //         sub-item), convert it into a sub-item (single → multi).
+  //   Shift-Tab — when the cursor is in a sub-item and that's the only
+  //               item in the block, demote it back to a top-level
+  //               paragraph (multi → single).
+  // Sub-item Enter / Tab / Shift-Tab are owned by ExampleItem (which is
+  // registered after this node, so it picks up Enter/Tab in the
+  // already-multi case after this handler defers).
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+
+        // Find enclosing exampleBlock.
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleBlock") {
+            blockDepth = d;
+            break;
+          }
+        }
+        if (blockDepth < 0) return false;
+
+        // The paragraph must be at the END of the exampleBlock — every
+        // wrapping level between cursor and block must be the last
+        // position in its parent.
+        for (let d = $from.depth; d > blockDepth; d--) {
+          if ($from.indexAfter(d - 1) !== $from.node(d - 1).childCount) {
+            return false;
+          }
+        }
+
+        // Are we inside an exampleItem (i.e. a sub-item)?
+        let inItem = false;
+        for (let d = $from.depth - 1; d > blockDepth; d--) {
+          if ($from.node(d).type.name === "exampleItem") {
+            inItem = true;
+            break;
+          }
+        }
+
+        const isEmpty = $from.parent.content.size === 0;
+        const cursorAtEnd = $from.pos === $from.end();
+
+        // Decide whether to escape:
+        //   - Inside a sub-item: only escape on empty trailing (let
+        //     ExampleItem's Enter split a non-empty item normally).
+        //   - At the block's top level (preamble/trailing paragraph):
+        //     escape on cursor-at-end OR on empty paragraph — single
+        //     press creates a new (n+1).
+        if (inItem) {
+          if (!isEmpty) return false;
+        } else {
+          if (!isEmpty && !cursorAtEnd) return false;
+        }
+
+        // If escaping on empty trailing, find the deepest "trailing-
+        // only-child" wrapper to delete; the whole subtree is just
+        // empty trailing structure and gets removed.
+        let deleteDepth = -1;
+        if (isEmpty) {
+          deleteDepth = $from.depth;
+          for (let d = $from.depth - 1; d > blockDepth; d--) {
+            if ($from.node(d).childCount === 1) {
+              deleteDepth = d;
+            } else {
+              break;
+            }
+          }
+        }
+        const blockNode = $from.node(blockDepth);
+        const blockStart = $from.before(blockDepth);
+        const blockEnd = $from.after(blockDepth);
+        const paraType = state.schema.nodes.paragraph;
+        const blockType = state.schema.nodes.exampleBlock;
+        if (!blockType || !paraType) return false;
+
+        // Special case: if the entire exampleBlock is empty (just one
+        // empty paragraph), Enter escapes the block — replace the block
+        // with a plain empty paragraph rather than spawning a new (n+1).
+        const blockIsEmpty =
+          blockNode.childCount === 1 &&
+          blockNode.firstChild?.type.name === "paragraph" &&
+          blockNode.firstChild.content.size === 0;
+        if (blockIsEmpty) {
+          const tr = state.tr.replaceWith(
+            blockStart,
+            blockEnd,
+            paraType.create(),
+          );
+          tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
+          view.dispatch(tr.scrollIntoView());
+          return true;
+        }
+
+        // If deleting would leave the exampleBlock empty (the only
+        // content was this trailing chain), keep the block intact and
+        // just append a new sibling.
+        const willEmptyBlock =
+          deleteDepth >= 0 &&
+          deleteDepth === blockDepth + 1 &&
+          blockNode.childCount === 1;
+
+        const newBlock = blockType.create(
+          {
+            uuid: generateEntityId(),
+            kind: "single",
+            tag: "",
+            label: "",
+            exnoOverride: null,
+            suppressSpace: false,
+            number: 0,
+          },
+          paraType.create(),
+        );
+
+        const tr = state.tr;
+        if (deleteDepth >= 0 && !willEmptyBlock) {
+          const deleteFrom = $from.before(deleteDepth);
+          const deleteTo = $from.after(deleteDepth);
+          tr.delete(deleteFrom, deleteTo);
+        }
+        const insertPos = tr.mapping.map(blockEnd);
+        tr.insert(insertPos, newBlock);
+        // Cursor inside the new block's paragraph: +1 into block, +1
+        // into paragraph.
+        const cursorPos = insertPos + 2;
+        tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+        view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
+      Tab: () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+        if ($from.parent.type.name !== "paragraph") return false;
+
+        // Find enclosing exampleBlock.
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 0; d--) {
+          if ($from.node(d).type.name === "exampleBlock") {
+            blockDepth = d;
+            break;
+          }
+        }
+        if (blockDepth < 0) return false;
+
+        // If already inside a sub-item, defer to ExampleItem's Tab
+        // (which handles sink-list behavior for nested tiers).
+        for (let d = $from.depth - 1; d > blockDepth; d--) {
+          if ($from.node(d).type.name === "exampleItem") return false;
+        }
+
+        // Convert this top-level paragraph into a sub-item: wrap it in
+        // an exampleItem inside an exampleItemList. If the block is
+        // currently kind="single", flip it to "multi".
+        const itemListType = state.schema.nodes.exampleItemList;
+        const itemType = state.schema.nodes.exampleItem;
+        if (!itemListType || !itemType) return false;
+
+        const blockNode = $from.node(blockDepth);
+        const blockPos = $from.before(blockDepth);
+        const paraNode = $from.parent;
+        const paraStart = $from.before($from.depth);
+        const paraEnd = paraStart + paraNode.nodeSize;
+        const parentOffset = $from.parentOffset;
+
+        // Wrap the paragraph in exampleItemList → exampleItem.
+        const newItem = itemType.create(
+          { tag: "", label: "", subLabel: "" },
+          paraNode,
+        );
+        const newList = itemListType.create(null, newItem);
+
+        const tr = state.tr;
+        tr.replaceWith(paraStart, paraEnd, newList);
+
+        // Flip the block's kind to "multi" if it was "single".
+        if (blockNode.attrs.kind !== "multi") {
+          tr.setNodeMarkup(blockPos, undefined, {
+            ...blockNode.attrs,
+            kind: "multi",
+          });
+        }
+
+        // The wrapped paragraph now sits 2 tokens deeper (list-open,
+        // item-open) than the original; restore the cursor at the same
+        // offset inside it.
+        const newCursor = paraStart + 2 + 1 + parentOffset;
+        tr.setSelection(TextSelection.create(tr.doc, newCursor));
+        view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+
+      // Shift-Tab on a top-level (n) block when it has no text:
+      // dissolve the block, leaving an empty paragraph in its place.
+      // (The sub-item promote/lift cases are owned by ExampleItem,
+      // which fires before this handler.)
+      "Shift-Tab": () => {
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from, empty } = state.selection;
+        if (!empty) return false;
+
+        // Find enclosing exampleBlock; bail if not in one or if cursor
+        // is inside a sub-item (that case is handled by ExampleItem).
+        let blockDepth = -1;
+        for (let d = $from.depth; d >= 0; d--) {
+          const name = $from.node(d).type.name;
+          if (name === "exampleItem") return false;
+          if (name === "exampleBlock") {
+            blockDepth = d;
+            break;
+          }
+        }
+        if (blockDepth < 0) return false;
+
+        const blockNode = $from.node(blockDepth);
+        // Only fire on a fully-empty block — a single empty paragraph.
+        const blockIsEmpty =
+          blockNode.childCount === 1 &&
+          blockNode.firstChild?.type.name === "paragraph" &&
+          blockNode.firstChild.content.size === 0;
+        if (!blockIsEmpty) return false;
+
+        const blockStart = $from.before(blockDepth);
+        const blockEnd = $from.after(blockDepth);
+        const paraType = state.schema.nodes.paragraph;
+        if (!paraType) return false;
+        const tr = state.tr.replaceWith(
+          blockStart,
+          blockEnd,
+          paraType.create(),
+        );
+        tr.setSelection(TextSelection.create(tr.doc, blockStart + 1));
+        view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+    };
+  },
 
   addAttributes() {
     return {
@@ -84,10 +390,11 @@ export const ExampleBlock = Node.create({
     return ({ node, HTMLAttributes, editor, getPos }) => {
       let currentNode = node;
 
-      // Outer wrapper — hosts the par-title annotation strip on top and
-      // the block body (drag handle + number + content) below. Same
-      // structural shape as ParagraphWithTitle so the editor's existing
-      // CSS and event handling keeps working.
+      // Outer wrapper — hosts the par-title annotation strip on top, the
+      // small "Ex." label-annotation pod, and the block body (drag handle
+      // + number + content) below. Same structural shape as
+      // ParagraphWithTitle so the editor's existing CSS and event handling
+      // keep working.
       const wrapper = document.createElement("div");
       wrapper.className = "par-title-wrapper expex-par-wrapper";
 
@@ -96,6 +403,15 @@ export const ExampleBlock = Node.create({
       titleAnnot.className = "par-title-annotation";
       titleAnnot.contentEditable = "false";
       wrapper.appendChild(titleAnnot);
+
+      // The label pod is created here but appended AFTER the block dom
+      // below, so it sits beneath the example body — small bordered
+      // chip matching the heading "Section 1.2" pod, with a hover-
+      // revealed "Label +" affordance when there's no label yet. Click
+      // an existing label to rename in place.
+      const labelAnnot = document.createElement("div");
+      labelAnnot.className = "heading-annotation expex-label-annotation";
+      labelAnnot.contentEditable = "false";
 
       // Block body — the example itself.
       const dom = document.createElement("div");
@@ -146,14 +462,7 @@ export const ExampleBlock = Node.create({
       dom.appendChild(body);
 
       wrapper.appendChild(dom);
-
-      // Blue "Example" annotation pod, same visual treatment as the
-      // "Section 1" pod under headings. Click the "Label +" affordance
-      // to set the example's \label{…}, click an existing label to
-      // rename it in place.
-      const labelAnnot = document.createElement("div");
-      labelAnnot.className = "heading-annotation expex-label-annotation";
-      labelAnnot.contentEditable = "false";
+      // Label pod sits BELOW the block.
       wrapper.appendChild(labelAnnot);
 
       // --- Par-title rendering / editing ---
@@ -181,12 +490,12 @@ export const ExampleBlock = Node.create({
       };
       renderTitle();
 
-      // --- Blue "Example" label pod ---
+      // --- "Ex." label pod (above the marker) ---
       const renderLabelAnnot = () => {
         const label = (currentNode.attrs.label as string | null) || null;
         labelAnnot.innerHTML = "";
         const typeSpan = document.createElement("span");
-        typeSpan.textContent = "Example";
+        typeSpan.textContent = "Ex.";
         labelAnnot.appendChild(typeSpan);
         if (label) {
           const sep = document.createElement("span");
@@ -425,14 +734,214 @@ export const ExampleBlock = Node.create({
 });
 
 // ---------------------------------------------------------------------------
+// exampleItemList — invisible wrapper around \a items at one nesting tier.
+// Both the top-level (inside an exampleBlock) and any nested xlist
+// (inside an exampleItem) use the same wrapper so prosemirror-schema-list's
+// sink/lift/split commands operate without extra schema bookkeeping.
+// ---------------------------------------------------------------------------
+
+export const ExampleItemList = Node.create({
+  name: "exampleItemList",
+  content: "exampleItem+",
+  defining: true,
+
+  parseHTML() {
+    return [{ tag: 'div[data-type="example-item-list"]' }];
+  },
+
+  renderHTML({ HTMLAttributes }) {
+    return [
+      "div",
+      mergeAttributes(HTMLAttributes, {
+        "data-type": "example-item-list",
+        class: "expex-item-list",
+      }),
+      0,
+    ];
+  },
+});
+
+// ---------------------------------------------------------------------------
 // exampleItem
 // ---------------------------------------------------------------------------
 
 export const ExampleItem = Node.create({
   name: "exampleItem",
-  content: "paragraph+ exampleGloss?",
+  content: "paragraph+ exampleItemList? exampleGloss?",
   defining: true,
-  isolating: true,
+  // NOTE: not isolating — prosemirror-schema-list's liftTarget breaks at
+  // isolating ancestors, which would prevent Shift-Tab from un-nesting an
+  // item out through its parent item. Standard listItem isn't isolating
+  // either; treat exampleItem the same so list mechanics behave as
+  // expected.
+
+  // List mechanics — direct port of TipTap's `listItem` keymap so Enter /
+  // Tab / Shift-Tab behave exactly the same as inside a bullet/ordered
+  // list. The glossCell ancestor check defers to ExpexNumbering's
+  // gloss-cell Tab/Shift-Tab when the cursor is in an interlinear gloss
+  // table (where Tab navigates between cells, not nesting tiers).
+  addKeyboardShortcuts() {
+    const inGlossCell = (): boolean => {
+      const { $from } = this.editor.state.selection;
+      for (let d = $from.depth; d >= 0; d--) {
+        if ($from.node(d).type.name === "glossCell") return true;
+      }
+      return false;
+    };
+    return {
+      Enter: () => {
+        if (inGlossCell()) return false;
+        return this.editor.commands.splitListItem(this.name);
+      },
+      Tab: () => {
+        if (inGlossCell()) return false;
+        return this.editor.commands.sinkListItem(this.name);
+      },
+      "Shift-Tab": () => {
+        if (inGlossCell()) return false;
+        const { state } = this.editor;
+        const view = this.editor.view;
+        const { $from } = state.selection;
+
+        // Find nearest exampleItem, its enclosing list, and the block.
+        let itemDepth = -1, listDepth = -1, blockDepth = -1;
+        for (let d = $from.depth; d >= 0; d--) {
+          const name = $from.node(d).type.name;
+          if (itemDepth < 0 && name === "exampleItem") itemDepth = d;
+          else if (
+            listDepth < 0 &&
+            itemDepth >= 0 &&
+            name === "exampleItemList"
+          )
+            listDepth = d;
+          if (name === "exampleBlock") {
+            blockDepth = d;
+            break;
+          }
+        }
+        if (itemDepth < 0) return false;
+
+        // Nested tier (list is inside another item): standard
+        // liftListItem moves it up one tier (e.g. A → i).
+        if (listDepth !== blockDepth + 1) {
+          return this.editor.commands.liftListItem(this.name);
+        }
+
+        // Outermost tier (list directly inside exampleBlock): promote
+        // the sub-item to a new top-level exampleBlock — i.e. a. → (n).
+        const itemNode = $from.node(itemDepth);
+        const itemStart = $from.before(itemDepth);
+        const itemEnd = itemStart + itemNode.nodeSize;
+        const listNode = $from.node(listDepth);
+        const listStart = $from.before(listDepth);
+        const listEnd = listStart + listNode.nodeSize;
+        const blockNode = $from.node(blockDepth);
+        const blockStart = $from.before(blockDepth);
+        const blockEnd = $from.after(blockDepth);
+
+        const blockType = state.schema.nodes.exampleBlock;
+        const paraType = state.schema.nodes.paragraph;
+        if (!blockType || !paraType) return false;
+
+        // The promoted item's content (paragraph+ exampleItemList? exampleGloss?)
+        // becomes the new block's content directly.
+        const newBlockContent: import("@tiptap/pm/model").Node[] = [];
+        itemNode.forEach((c) => newBlockContent.push(c));
+        // Schema requires exampleBlock to have at least one child;
+        // ensure a paragraph exists if the item somehow had none.
+        if (newBlockContent.length === 0) {
+          newBlockContent.push(paraType.create());
+        }
+        const newKind = newBlockContent.some(
+          (c) => c.type.name === "exampleItemList",
+        )
+          ? "multi"
+          : "single";
+        const newBlock = blockType.create(
+          {
+            uuid: generateEntityId(),
+            kind: newKind,
+            tag: "",
+            label: "",
+            exnoOverride: null,
+            suppressSpace: false,
+            number: 0,
+          },
+          newBlockContent,
+        );
+
+        // Capture the cursor's position offset within its paragraph so
+        // we can land in the same spot inside the promoted block.
+        const parentOffset = $from.parentOffset;
+
+        const tr = state.tr;
+        // Decide what to delete from the original block:
+        //   - If the promoted item was the only one in its list AND the
+        //     block has no other content, delete the whole block.
+        //   - Else if the item was the only one in its list, delete the
+        //     entire (now-empty) list from the block.
+        //   - Else, delete just the item.
+        let originalBlockGone = false;
+        if (
+          listNode.childCount === 1 &&
+          blockNode.childCount === 1 &&
+          blockNode.firstChild?.type.name === "exampleItemList"
+        ) {
+          tr.delete(blockStart, blockEnd);
+          originalBlockGone = true;
+        } else if (listNode.childCount === 1) {
+          tr.delete(listStart, listEnd);
+        } else {
+          tr.delete(itemStart, itemEnd);
+        }
+
+        // Insert the new block immediately after the (possibly modified)
+        // original block. If the original block was deleted, the insert
+        // position is just where it used to start.
+        const insertPos = originalBlockGone
+          ? blockStart
+          : tr.mapping.map(blockEnd);
+        tr.insert(insertPos, newBlock);
+
+        // Land cursor inside the first paragraph of the new block.
+        let cursorPos = insertPos + 1; // step inside new block
+        for (const c of newBlockContent) {
+          if (c.type.name === "paragraph") {
+            cursorPos += 1 + parentOffset; // step into paragraph + offset
+            break;
+          }
+          cursorPos += c.nodeSize;
+        }
+        tr.setSelection(TextSelection.create(tr.doc, cursorPos));
+
+        // If the original block survived but no longer contains any
+        // item lists, flip its kind back to "single" so serialization
+        // emits \ex.
+        if (!originalBlockGone) {
+          const updatedBlock = tr.doc.nodeAt(blockStart);
+          if (
+            updatedBlock &&
+            updatedBlock.type.name === "exampleBlock" &&
+            updatedBlock.attrs.kind === "multi"
+          ) {
+            let hasList = false;
+            updatedBlock.forEach((c) => {
+              if (c.type.name === "exampleItemList") hasList = true;
+            });
+            if (!hasList) {
+              tr.setNodeMarkup(blockStart, undefined, {
+                ...updatedBlock.attrs,
+                kind: "single",
+              });
+            }
+          }
+        }
+
+        view.dispatch(tr.scrollIntoView());
+        return true;
+      },
+    };
+  },
 
   addAttributes() {
     return {
@@ -459,7 +968,8 @@ export const ExampleItem = Node.create({
   },
 
   addNodeView() {
-    return ({ node, HTMLAttributes }) => {
+    return ({ node, HTMLAttributes, editor, getPos }) => {
+      let currentNode = node;
       const dom = document.createElement("div");
       Object.entries(
         mergeAttributes(HTMLAttributes, {
@@ -473,21 +983,152 @@ export const ExampleItem = Node.create({
       if (node.attrs.label) dom.dataset.label = node.attrs.label;
       dom.dataset.sublabel = node.attrs.subLabel || "";
 
+      // .expex-item is a block-flow container. Inside it, an inner row
+      // div hosts the marker + body grid; the label pod sits as a plain
+      // block sibling beneath that row, so block-flow margins (negative
+      // top, normal bottom) work the same way as in the heading pattern.
+      const row = document.createElement("div");
+      row.className = "expex-item-row";
+      dom.appendChild(row);
+
       const marker = document.createElement("span");
       marker.className = "expex-item-marker";
       marker.contentEditable = "false";
       marker.textContent = `${node.attrs.subLabel || "?"}.`;
-      dom.appendChild(marker);
+      row.appendChild(marker);
 
       const body = document.createElement("div");
       body.className = "expex-item-body";
-      dom.appendChild(body);
+      row.appendChild(body);
+
+      // Label pod — small "ex." chip with hover-revealed "Label +"
+      // affordance, identical pattern to section headings and exampleBlock.
+      const labelAnnot = document.createElement("div");
+      labelAnnot.className = "heading-annotation expex-item-label-annotation";
+      labelAnnot.contentEditable = "false";
+      dom.appendChild(labelAnnot);
+
+      const renderLabelAnnot = () => {
+        const label = (currentNode.attrs.label as string | null) || null;
+        labelAnnot.innerHTML = "";
+        const typeSpan = document.createElement("span");
+        typeSpan.textContent = "ex.";
+        labelAnnot.appendChild(typeSpan);
+        if (label) {
+          const sep = document.createElement("span");
+          sep.textContent = "  ·  label: ";
+          labelAnnot.appendChild(sep);
+          const labelSpan = document.createElement("span");
+          labelSpan.textContent = label;
+          labelSpan.className = "heading-label-text";
+          labelAnnot.appendChild(labelSpan);
+        } else {
+          const addBtn = document.createElement("span");
+          addBtn.className = "heading-label-add";
+          addBtn.textContent = "Label +";
+          labelAnnot.appendChild(addBtn);
+        }
+      };
+      renderLabelAnnot();
+
+      const commitLabel = (raw: string) => {
+        const next = raw.trim();
+        let pos: number | null = null;
+        if (typeof getPos === "function") {
+          const p = getPos();
+          if (typeof p === "number") pos = p;
+        }
+        if (pos == null) return;
+        const nd = editor.state.doc.nodeAt(pos);
+        if (!nd || nd.type.name !== "exampleItem") return;
+        const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
+          ...nd.attrs,
+          label: next,
+        });
+        editor.view.dispatch(tr);
+      };
+
+      const beginLabelEdit = (replaceTarget: HTMLElement) => {
+        if (labelAnnot.querySelector("input")) return;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "heading-label-input expex-label-input";
+        input.value = (currentNode.attrs.label as string) || "";
+        input.placeholder = "label key";
+        replaceTarget.replaceWith(input);
+        let committed = false;
+        const commit = () => {
+          if (committed) return;
+          committed = true;
+          commitLabel(input.value);
+          renderLabelAnnot();
+        };
+        input.addEventListener("mousedown", (e) => e.stopPropagation());
+        let armed = false;
+        input.addEventListener("blur", () => {
+          if (armed) commit();
+        });
+        input.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            committed = true;
+            renderLabelAnnot();
+          }
+        });
+        requestAnimationFrame(() => {
+          input.focus();
+          if (currentNode.attrs.label) {
+            input.selectionStart = input.selectionEnd = input.value.length;
+          } else {
+            input.select();
+          }
+        });
+        setTimeout(() => {
+          armed = true;
+        }, 200);
+      };
+
+      labelAnnot.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      labelAnnot.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const target = e.target as HTMLElement;
+        if (target.classList.contains("heading-label-text")) {
+          beginLabelEdit(target);
+        } else if (target.classList.contains("heading-label-add")) {
+          const sep = document.createElement("span");
+          sep.textContent = "  ·  label: ";
+          const labelSpan = document.createElement("span");
+          labelSpan.className = "heading-label-text";
+          target.replaceWith(sep);
+          sep.after(labelSpan);
+          beginLabelEdit(labelSpan);
+        }
+      });
 
       return {
         dom,
         contentDOM: body,
+        stopEvent(event) {
+          const target = event.target as globalThis.Node | null;
+          if (!target) return false;
+          if (labelAnnot === target || labelAnnot.contains(target)) return true;
+          return false;
+        },
+        ignoreMutation(mutation) {
+          const t = mutation.target as globalThis.Node;
+          if (labelAnnot.contains(t)) return true;
+          return false;
+        },
         update(updatedNode) {
           if (updatedNode.type.name !== "exampleItem") return false;
+          currentNode = updatedNode;
           marker.textContent = `${updatedNode.attrs.subLabel || "?"}.`;
           dom.dataset.sublabel = updatedNode.attrs.subLabel || "";
           if (updatedNode.attrs.tag) dom.dataset.tag = updatedNode.attrs.tag;
@@ -495,6 +1136,7 @@ export const ExampleItem = Node.create({
           if (updatedNode.attrs.label)
             dom.dataset.label = updatedNode.attrs.label;
           else delete dom.dataset.label;
+          if (!labelAnnot.querySelector("input")) renderLabelAnnot();
           return true;
         },
       };
@@ -666,6 +1308,47 @@ export const ExpexNumbering = Extension.create({
           const tr = newState.tr;
           let changed = false;
 
+          // Recursively re-letter exampleItems within exampleItemLists.
+          // The counter is passed by reference so MULTIPLE lists at the
+          // same depth (e.g. inside one exampleBlock with paragraphs
+          // splitting the lists) continue numbering across them — top-
+          // level items are a, b, c, d... regardless of how the lists
+          // are split. Depth-aware markers cycle a/b/c → i/ii/iii →
+          // A/B/C → I/II/III.
+          const walkList = (
+            list: import("@tiptap/pm/model").Node,
+            listAbsPos: number,
+            depth: number,
+            counter: { n: number },
+          ) => {
+            list.forEach((item, offsetIntoList) => {
+              if (item.type.name !== "exampleItem") return;
+              counter.n++;
+              const target = markerForDepth(depth, counter.n);
+              const itemAbsPos = listAbsPos + 1 + offsetIntoList;
+              if (item.attrs.subLabel !== target) {
+                tr.setNodeMarkup(itemAbsPos, undefined, {
+                  ...item.attrs,
+                  subLabel: target,
+                });
+                changed = true;
+              }
+              // Each item starts a fresh nested counter for its child
+              // xlist (nested items are i, ii, iii… regardless of the
+              // parent counter).
+              item.forEach((childNode, offsetIntoItem) => {
+                if (childNode.type.name === "exampleItemList") {
+                  walkList(
+                    childNode,
+                    itemAbsPos + 1 + offsetIntoItem,
+                    depth + 1,
+                    { n: 0 },
+                  );
+                }
+              });
+            });
+          };
+
           let exampleCounter = 0;
           newState.doc.descendants((node, pos) => {
             if (node.type.name === "exampleBlock") {
@@ -680,24 +1363,14 @@ export const ExpexNumbering = Extension.create({
                 });
                 changed = true;
               }
-              // Items are children — walk them now and return false to skip
-              // re-entry (descendants will still traverse, but we've set
-              // our numbering by then).
-              let itemCounter = 0;
-              node.descendants((child, relPos) => {
-                if (child.type.name === "exampleItem") {
-                  itemCounter++;
-                  const target = toSubLabel(itemCounter);
-                  if (child.attrs.subLabel !== target) {
-                    tr.setNodeMarkup(pos + 1 + relPos, undefined, {
-                      ...child.attrs,
-                      subLabel: target,
-                    });
-                    changed = true;
-                  }
-                  return false; // don't recurse into item bodies
+              // Walk every exampleItemList at the top level of the
+              // block; counter persists across them so top-level items
+              // are numbered consecutively even when split into pieces.
+              const topCounter = { n: 0 };
+              node.forEach((child, offsetIntoBlock) => {
+                if (child.type.name === "exampleItemList") {
+                  walkList(child, pos + 1 + offsetIntoBlock, 0, topCounter);
                 }
-                return true;
               });
               return false; // don't recurse; we've handled items ourselves
             }
@@ -732,100 +1405,70 @@ export const ExpexNumbering = Extension.create({
     ];
   },
 
+  // Gloss-cell-only Tab / Shift-Tab navigation. List-style Enter / Tab /
+  // Shift-Tab live on the ExampleItem node itself (same pattern as
+  // listItem) and bail out when the cursor is inside a glossCell so this
+  // handler can take over.
   addKeyboardShortcuts() {
+    const glossCellDepth = (
+      $from: import("@tiptap/pm/model").ResolvedPos,
+    ): number => {
+      for (let d = $from.depth; d >= 0; d--) {
+        if ($from.node(d).type.name === "glossCell") return d;
+      }
+      return -1;
+    };
+
     return {
-      // Tab inside a glossCell moves to next cell (create one at end).
       Tab: ({ editor }) => {
         const { state } = editor;
         const { $from } = state.selection;
-        for (let d = $from.depth; d >= 0; d--) {
-          const node = $from.node(d);
-          if (node.type.name !== "glossCell") continue;
-          const rowDepth = d - 1;
-          const row = $from.node(rowDepth);
-          if (row.type.name !== "alignedGlossRow") return false;
-          const cellIndex = $from.index(rowDepth);
-          const rowStart = $from.before(rowDepth);
-          if (cellIndex < row.childCount - 1) {
-            // Move to start of next cell
-            const nextCellStart =
-              rowStart + 1 + row.child(cellIndex).nodeSize;
-            const pos = nextCellStart + 1;
-            editor.view.dispatch(
-              state.tr.setSelection(TextSelection.create(state.doc, pos)),
-            );
-            return true;
-          }
-          // At last cell — insert a new empty cell
-          const endOfRow = rowStart + row.nodeSize - 1;
-          const cellType = state.schema.nodes.glossCell;
-          if (!cellType) return false;
-          const tr = state.tr.insert(endOfRow, cellType.create());
-          const pos = endOfRow + 2; // inside the new empty cell
-          tr.setSelection(TextSelection.create(tr.doc, pos));
-          editor.view.dispatch(tr);
-          return true;
-        }
-        return false;
-      },
-      // Full carriage return inside an `\a` sub-item → append a fresh
-      // sibling `\a` item below and move cursor into it. The numbering
-      // plugin re-letters the whole sequence on the resulting tx.
-      // Shift-Enter still inserts a hard break (TipTap default).
-      Enter: ({ editor }) => {
-        const { state } = editor;
-        const { $from, empty } = state.selection;
-        if (!empty) return false;
-        let itemDepth = -1;
-        for (let d = $from.depth; d >= 0; d--) {
-          if ($from.node(d).type.name === "exampleItem") {
-            itemDepth = d;
-            break;
-          }
-        }
-        if (itemDepth < 0) return false;
-        const itemType = state.schema.nodes.exampleItem;
-        const paragraphType = state.schema.nodes.paragraph;
-        if (!itemType || !paragraphType) return false;
-        const item = $from.node(itemDepth);
-        const itemStart = $from.before(itemDepth);
-        const itemEnd = itemStart + item.nodeSize;
-        const newItem = itemType.create(
-          { tag: "", label: "", subLabel: "" },
-          paragraphType.create(),
-        );
-        const tr = state.tr.insert(itemEnd, newItem);
-        const cursorPos = itemEnd + 2;
-        tr.setSelection(TextSelection.create(tr.doc, cursorPos));
-        editor.view.dispatch(tr);
-        editor.view.focus();
-        return true;
-      },
-      "Shift-Tab": ({ editor }) => {
-        const { state } = editor;
-        const { $from } = state.selection;
-        for (let d = $from.depth; d >= 0; d--) {
-          const node = $from.node(d);
-          if (node.type.name !== "glossCell") continue;
-          const rowDepth = d - 1;
-          const row = $from.node(rowDepth);
-          if (row.type.name !== "alignedGlossRow") return false;
-          const cellIndex = $from.index(rowDepth);
-          if (cellIndex === 0) return true; // swallow at first cell
-          const rowStart = $from.before(rowDepth);
-          let prevStart = rowStart + 1;
-          for (let i = 0; i < cellIndex - 1; i++) {
-            prevStart += row.child(i).nodeSize;
-          }
-          // prevStart now points to the start of the (cellIndex-1) cell
-          const prevCell = row.child(cellIndex - 1);
-          const pos = prevStart + 1 + prevCell.content.size;
+        const cellDepth = glossCellDepth($from);
+        if (cellDepth < 0) return false;
+        const rowDepth = cellDepth - 1;
+        const row = $from.node(rowDepth);
+        if (row.type.name !== "alignedGlossRow") return false;
+        const cellIndex = $from.index(rowDepth);
+        const rowStart = $from.before(rowDepth);
+        if (cellIndex < row.childCount - 1) {
+          const nextCellStart =
+            rowStart + 1 + row.child(cellIndex).nodeSize;
+          const pos = nextCellStart + 1;
           editor.view.dispatch(
             state.tr.setSelection(TextSelection.create(state.doc, pos)),
           );
           return true;
         }
-        return false;
+        const endOfRow = rowStart + row.nodeSize - 1;
+        const cellType = state.schema.nodes.glossCell;
+        if (!cellType) return false;
+        const tr = state.tr.insert(endOfRow, cellType.create());
+        const pos = endOfRow + 2;
+        tr.setSelection(TextSelection.create(tr.doc, pos));
+        editor.view.dispatch(tr);
+        return true;
+      },
+      "Shift-Tab": ({ editor }) => {
+        const { state } = editor;
+        const { $from } = state.selection;
+        const cellDepth = glossCellDepth($from);
+        if (cellDepth < 0) return false;
+        const rowDepth = cellDepth - 1;
+        const row = $from.node(rowDepth);
+        if (row.type.name !== "alignedGlossRow") return false;
+        const cellIndex = $from.index(rowDepth);
+        if (cellIndex === 0) return true;
+        const rowStart = $from.before(rowDepth);
+        let prevStart = rowStart + 1;
+        for (let i = 0; i < cellIndex - 1; i++) {
+          prevStart += row.child(i).nodeSize;
+        }
+        const prevCell = row.child(cellIndex - 1);
+        const pos = prevStart + 1 + prevCell.content.size;
+        editor.view.dispatch(
+          state.tr.setSelection(TextSelection.create(state.doc, pos)),
+        );
+        return true;
       },
     };
   },

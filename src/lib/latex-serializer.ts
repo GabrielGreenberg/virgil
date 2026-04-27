@@ -274,8 +274,12 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "exampleBlock":
       return serializeExampleBlock(node);
 
+    case "exampleItemList":
     case "exampleItem":
-      return serializeExampleItem(node);
+      // These are consumed by serializeExampleBlock / serializeExampleItem
+      // contextually — the wrapper at top level has no LaTeX expansion of
+      // its own, and items are emitted by their parent walk.
+      return "";
 
     case "exampleGloss":
       return serializeExampleGloss(node);
@@ -348,33 +352,24 @@ function serializeExampleBlock(node: JSONContent): string {
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
 
-  // Partition children into: leading (paragraphs/gloss before first item),
-  // items, trailing (paragraphs/gloss after the last item).
+  // Walk children in document order — paragraphs, gloss blocks, and
+  // exampleItemLists can interleave freely. Schema:
+  // `(paragraph | exampleGloss | exampleItemList)*`.
   const children = node.content || [];
-  const firstItemIdx = children.findIndex((c) => c.type === "exampleItem");
-  const lastItemIdx = (() => {
-    for (let i = children.length - 1; i >= 0; i--) {
-      if (children[i].type === "exampleItem") return i;
-    }
-    return -1;
-  })();
-  const leading =
-    firstItemIdx === -1 ? children : children.slice(0, firstItemIdx);
-  const items =
-    firstItemIdx === -1
-      ? []
-      : children.slice(firstItemIdx, lastItemIdx + 1).filter((c) => c.type === "exampleItem");
-  const trailing =
-    lastItemIdx === -1 ? [] : children.slice(lastItemIdx + 1);
-
-  const leadingStr = serializeExampleBlockBodyParagraphs(leading);
-  const itemsStr = items.map(serializeExampleItem).join("");
-  const trailingStr = serializeExampleBlockBodyParagraphs(trailing);
-
   const bodyPieces: string[] = [];
-  if (leadingStr) bodyPieces.push(leadingStr);
-  if (itemsStr) bodyPieces.push(itemsStr.trimEnd());
-  if (trailingStr) bodyPieces.push(trailingStr);
+  for (const child of children) {
+    if (child.type === "paragraph") {
+      bodyPieces.push(serializeExampleInlineChildren(child.content));
+    } else if (child.type === "exampleGloss") {
+      bodyPieces.push(serializeExampleGloss(child).trimEnd());
+    } else if (child.type === "exampleItemList") {
+      const items = (child.content || []).filter(
+        (c) => c.type === "exampleItem",
+      );
+      const itemsStr = items.map((it) => serializeExampleItem(it)).join("");
+      if (itemsStr) bodyPieces.push(itemsStr.trimEnd());
+    }
+  }
   const body = bodyPieces.join("\n");
 
   return (
@@ -395,6 +390,17 @@ function serializeExampleItem(node: JSONContent): string {
       pieces.push(serializeExampleInlineChildren(child.content));
     } else if (child.type === "exampleGloss") {
       pieces.push(serializeExampleGloss(child).trimEnd());
+    } else if (child.type === "exampleItemList") {
+      // Nested tier of \a items — wrap in expex's xlist environment.
+      const nestedItems = (child.content || []).filter(
+        (c) => c.type === "exampleItem",
+      );
+      const nestedStr = nestedItems
+        .map((n) => serializeExampleItem(n))
+        .join("");
+      pieces.push(
+        `\\begin{xlist}\n${nestedStr.trimEnd()}\n\\end{xlist}`,
+      );
     }
   }
   const body = pieces.join("\n");
