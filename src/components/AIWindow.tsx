@@ -8,8 +8,8 @@
  *   1. Bibliography field reviews   (useBibReview, type "fields")
  *   2. Bibliography note reviews    (useBibReview, type "notes")
  *   3. Bibliography entry creation  (useBibSettings.entryRequests)
- *   4. General revisions / dialogue (useRevisions.generalRevisions)
- *   5. Anchored text revisions      (useRevisions.textRevisions)
+ *   4. Free-floating comments / dialogue   (useRevisions.comments, no selectedText)
+ *   5. Anchored text comments              (useRevisions.comments, selectedText set)
  *
  * Requests are bucketed into Open / Responded / Resolved. "Responded"
  * only really applies to revisions where Claude has added a turn but the
@@ -41,9 +41,8 @@ import type {
   BibEntry,
   BibEntryRequest,
   BibReviewRequest,
-  GeneralRevision,
+  Comment,
   RevisionUser,
-  TextRevision,
 } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
@@ -189,8 +188,7 @@ function relTime(iso: string): string {
 interface BuildArgs {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
   users: RevisionUser[];
   panelAiRequests: AiRequest[];
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
@@ -247,43 +245,26 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
   const hasClaudeReply = (turns: { authorId: string }[]): boolean =>
     turns.some((t) => claudeIds.has(t.authorId));
 
-  for (const rev of args.generalRevisions) {
-    const author = userById.get(rev.authorId);
-    const status: AIRequestStatus = rev.resolved
+  for (const c of args.comments) {
+    const author = userById.get(c.authorId);
+    const status: AIRequestStatus = c.resolved
       ? "resolved"
-      : hasClaudeReply(rev.turns.slice(1))
+      : hasClaudeReply(c.turns.slice(1))
         ? "responded"
         : "open";
+    const isAnchored = !!c.selectedText;
     out.push({
-      id: `genrev:${rev.id}`,
-      kind: "revision-general",
+      id: `${isAnchored ? "txtrev" : "genrev"}:${c.id}`,
+      kind: isAnchored ? "revision-text" : "revision-general",
       status,
       label: author?.name || "Me",
-      snippet: rev.text,
-      turnCount: rev.turns.length,
-      createdAt: rev.createdAt,
-      hasUserText: !!rev.text.trim(),
-    });
-  }
-
-  for (const rev of args.textRevisions) {
-    const author = userById.get(rev.authorId);
-    const status: AIRequestStatus = rev.resolved
-      ? "resolved"
-      : hasClaudeReply(rev.turns.slice(1))
-        ? "responded"
-        : "open";
-    out.push({
-      id: `txtrev:${rev.id}`,
-      kind: "revision-text",
-      status,
-      label: author?.name || "Me",
-      snippet:
-        (rev.selectedText ? `"${truncate(rev.selectedText, 60)}" — ` : "") +
-        rev.text,
-      turnCount: rev.turns.length,
-      createdAt: rev.createdAt,
-      hasUserText: !!rev.text.trim(),
+      snippet: isAnchored
+        ? (c.selectedText ? `"${truncate(c.selectedText, 60)}" — ` : "") +
+          c.text
+        : c.text,
+      turnCount: c.turns.length,
+      createdAt: c.createdAt,
+      hasUserText: !!c.text.trim(),
     });
   }
 
@@ -327,11 +308,10 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
 export function aiRequestDotStatus(args: {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
   panelAiRequests: AiRequest[];
 }): "red" | "green" | "yellow" | null {
-  const { bibReviewRequests, bibEntryRequests, generalRevisions, textRevisions, panelAiRequests } = args;
+  const { bibReviewRequests, bibEntryRequests, comments, panelAiRequests } = args;
 
   let hasOpen = false;
   let hasResponded = false;
@@ -355,18 +335,10 @@ export function aiRequestDotStatus(args: {
     }
   }
 
-  // General revisions: !resolved + no AI turns → open, !resolved + AI turns → responded
-  for (const r of generalRevisions) {
-    if (r.resolved) continue;
-    const hasAiTurn = r.turns.length > 0 && r.turns.some((t) => t.authorId === "claude");
-    if (hasAiTurn) hasResponded = true;
-    else hasOpen = true;
-  }
-
-  // Text revisions: same logic
-  for (const r of textRevisions) {
-    if (r.resolved) continue;
-    const hasAiTurn = r.turns.length > 0 && r.turns.some((t) => t.authorId === "claude");
+  // Comments: !resolved + no AI turns → open, !resolved + AI turns → responded
+  for (const c of comments) {
+    if (c.resolved) continue;
+    const hasAiTurn = c.turns.length > 0 && c.turns.some((t) => t.authorId === "claude");
     if (hasAiTurn) hasResponded = true;
     else hasOpen = true;
   }
@@ -385,8 +357,7 @@ export interface AIWindowProps {
   // Live state — flow straight from the hooks in EditorLayout.
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
   users: RevisionUser[];
   bibEntries: BibEntry[];
 
@@ -404,7 +375,7 @@ export interface AIWindowProps {
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   addEntryRequest: (description: string) => void;
   removeEntryRequest: (id: string) => void;
-  addGeneralRevision: (text: string) => unknown;
+  addComment: (opts: { text?: string }) => unknown;
 
   // Refresh on open
   refreshAll: () => void;
@@ -423,8 +394,7 @@ export default function AIWindow({
   onClose,
   bibReviewRequests,
   bibEntryRequests,
-  generalRevisions,
-  textRevisions,
+  comments,
   users,
   bibEntries,
   panelAiRequests,
@@ -434,7 +404,7 @@ export default function AIWindow({
   cancelBibReview,
   addEntryRequest,
   removeEntryRequest,
-  addGeneralRevision,
+  addComment,
   refreshAll,
 }: AIWindowProps) {
   const [section, setSection] = useState<AISection>("requests");
@@ -456,8 +426,7 @@ export default function AIWindow({
       buildRequests({
         bibReviewRequests,
         bibEntryRequests,
-        generalRevisions,
-        textRevisions,
+        comments,
         users,
         panelAiRequests,
         cancelBibReview,
@@ -467,8 +436,7 @@ export default function AIWindow({
     [
       bibReviewRequests,
       bibEntryRequests,
-      generalRevisions,
-      textRevisions,
+      comments,
       users,
       panelAiRequests,
       cancelBibReview,
@@ -499,7 +467,7 @@ export default function AIWindow({
     const text = composerText.trim();
     if (composerKind === "revision-general") {
       if (!text) return;
-      addGeneralRevision(text);
+      addComment({ text });
     } else if (composerKind === "bib-entry") {
       if (!text) return;
       addEntryRequest(text);
@@ -521,7 +489,7 @@ export default function AIWindow({
     composerKind,
     composerText,
     composerBibKey,
-    addGeneralRevision,
+    addComment,
     addEntryRequest,
     requestBibReview,
     addPanelAiRequest,

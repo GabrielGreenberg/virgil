@@ -14,11 +14,10 @@ import type { Link } from "@/links/_shared/types";
 import type {
   ArchivedSnippet,
   CitationRef,
+  Comment,
   CutItem,
-  GeneralRevision,
   OrphanedFootnote,
   QuotationGroup,
-  TextRevision,
   TodoItem,
   UserNote,
   BibEntry,
@@ -440,35 +439,24 @@ export function searchQuotations(
   return out;
 }
 
-/* ── Revisions ───────────────────────────────────────────────────────── */
+/* ── Comments ────────────────────────────────────────────────────────── */
 
-export function searchRevisions(
-  textRevisions: TextRevision[],
-  generalRevisions: GeneralRevision[],
+export function searchComments(
+  comments: Comment[],
   editor: Editor,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
-  for (const r of textRevisions) {
-    const ta = getTextAnchor(r);
+  for (const c of comments) {
+    const ta = getTextAnchor(c);
     const range = ta ? resolveAnchorRange(editor, ta.anchorId) : null;
     const pos = range?.from ?? null;
-    for (const m of scanText(r.text, re)) {
-      out.push(hitFromMatch("revisions", r.id, pos, "body", m));
+    for (const m of scanText(c.text, re)) {
+      out.push(hitFromMatch("revisions", c.id, pos, "body", m));
     }
-    for (const t of r.turns) {
+    for (const t of c.turns) {
       for (const m of scanText(t.text, re)) {
-        out.push(hitFromMatch("revisions", r.id, pos, "text", m));
-      }
-    }
-  }
-  for (const r of generalRevisions) {
-    for (const m of scanText(r.text, re)) {
-      out.push(hitFromMatch("revisions", r.id, null, "body", m));
-    }
-    for (const t of r.turns) {
-      for (const m of scanText(t.text, re)) {
-        out.push(hitFromMatch("revisions", r.id, null, "text", m));
+        out.push(hitFromMatch("revisions", c.id, pos, "text", m));
       }
     }
   }

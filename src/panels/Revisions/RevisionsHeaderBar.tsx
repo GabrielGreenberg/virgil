@@ -2,31 +2,36 @@
 
 import type { Suggestion } from "@/lib/types";
 
-interface ProgressBarProps {
+interface RevisionsHeaderBarProps {
   suggestions: Suggestion[];
   currentIndex: number;
   onJump: (index: number) => void;
 }
 
-export default function ProgressBar({
+/** In-panel suggestion-review progress bar. Mounted in the Revisions
+ *  panel header (between PanelHeader and the card list). Hidden when
+ *  there are no suggestions in the document — comments-only documents
+ *  show no bar. */
+export function RevisionsHeaderBar({
   suggestions,
   currentIndex,
   onJump,
-}: ProgressBarProps) {
+}: RevisionsHeaderBarProps) {
   if (suggestions.length === 0) return null;
 
   const completed = suggestions.filter((s) => s.status !== "pending").length;
+  const isComplete = completed === suggestions.length;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 bg-surface/95 backdrop-blur-sm border-b border-[var(--border)] px-4 py-2">
-      <div className="flex items-center gap-3 max-w-screen-2xl mx-auto">
-        <span className="text-[var(--muted)] text-sm whitespace-nowrap">
-          {completed === suggestions.length
+    <div className="px-3 pt-2 pb-2 border-b border-edge-subtle">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] text-[var(--muted)] whitespace-nowrap">
+          {isComplete
             ? "Review complete"
             : `Suggestion ${Math.min(currentIndex + 1, suggestions.length)} of ${suggestions.length}`}
         </span>
 
-        <div className="flex-1 flex gap-0.5 h-2 rounded-full overflow-hidden bg-[var(--border-light)]">
+        <div className="flex-1 flex gap-0.5 h-1.5 rounded-full overflow-hidden bg-[var(--border-light)]">
           {suggestions.map((s, i) => {
             let bg = "bg-edge-subtle"; // pending
             if (s.status === "accepted") bg = "bg-emerald-500";
@@ -45,7 +50,7 @@ export default function ProgressBar({
           })}
         </div>
 
-        <span className="text-[var(--muted-light)] text-xs">
+        <span className="text-[10px] text-[var(--muted-light)] tabular-nums">
           {completed}/{suggestions.length}
         </span>
       </div>

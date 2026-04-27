@@ -31,8 +31,7 @@ export interface SearchHostProps {
   archiveSnippets: ArchivedSnippet[];
   cuts: CutterHook["cuts"];
   quotationGroups: QuotationsHook["groups"];
-  textRevisions: RevisionsHook["textRevisions"];
-  generalRevisions: RevisionsHook["generalRevisions"];
+  comments: RevisionsHook["comments"];
   bibEntries: CitationsHook["bibEntries"];
   openItemInPanel: (panel: PanelId, itemId: string) => void;
   searchState: SearchPanelState;
@@ -57,8 +56,7 @@ export function SearchHost(p: SearchHostProps) {
       archiveSnippets={p.archiveSnippets}
       cuts={p.cuts}
       quotationGroups={p.quotationGroups}
-      textRevisions={p.textRevisions}
-      generalRevisions={p.generalRevisions}
+      comments={p.comments}
       bibEntries={p.bibEntries}
       onOpenItem={p.openItemInPanel}
       state={p.searchState}

@@ -5,12 +5,11 @@ import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type {
+  Comment,
   CommentsState,
-  GeneralRevision,
   RevisionTurn,
   RevisionUser,
   RevisionsState,
-  TextRevision,
 } from "@/lib/types";
 import {
   clearTextAnchorLink,
@@ -42,63 +41,70 @@ const DEFAULT_USERS: RevisionUser[] = [
 
 const EMPTY_STATE: RevisionsState = {
   users: [...DEFAULT_USERS],
-  generalRevisions: [],
-  textRevisions: [],
+  comments: [],
   activeUserId: "me",
 };
 
-export type RevisionKind = "general" | "text";
-
-function migrateGeneralRevision(raw: GeneralRevision): GeneralRevision {
+function migrateComment(raw: Partial<Comment> & { anchorPos?: number; anchorId?: string }): Comment {
   const content = deriveContent(raw);
-  return {
-    id: raw.id,
-    authorId: raw.authorId,
-    createdAt: raw.createdAt,
+  const base: Comment = {
+    id: raw.id!,
+    authorId: raw.authorId ?? "me",
+    createdAt: raw.createdAt ?? new Date().toISOString(),
+    resolved: raw.resolved ?? false,
     text: raw.text ?? richJsonToPlainText(content),
     content,
     turns: raw.turns ?? [],
-    resolved: raw.resolved ?? false,
+    links: Array.isArray(raw.links) ? raw.links : [],
   };
+  if (typeof raw.selectedText === "string" && raw.selectedText.length > 0) {
+    base.selectedText = raw.selectedText;
+  }
+  // Legacy TextRevision records carried anchorId/anchorPos at top-level
+  // before the unified links[] migration. Fold them in now.
+  if (base.links.length === 0 && (raw.anchorId || base.selectedText)) {
+    base.links = derivedLinksForCard("comment", {
+      id: base.id,
+      anchorId: raw.anchorId,
+      anchorText: base.selectedText,
+    });
+  }
+  return base;
 }
 
-/** Upgrade a legacy TextRevision record (with anchorId/anchorPos) to links[]. */
-function migrateTextRevision(raw: TextRevision & { anchorPos?: number; anchorId?: string }): TextRevision {
-  const content = deriveContent(raw);
-  const base = {
-    id: raw.id,
-    authorId: raw.authorId,
-    createdAt: raw.createdAt,
-    resolved: raw.resolved,
-    selectedText: raw.selectedText,
-    text: raw.text ?? richJsonToPlainText(content),
-    content,
-    turns: raw.turns ?? [],
-  };
-  if (Array.isArray(raw.links) && raw.links.length > 0) {
-    return { ...base, links: raw.links };
-  }
-  return {
-    ...base,
-    links: derivedLinksForCard("comment", {
-      id: raw.id,
-      anchorId: raw.anchorId,
-      anchorText: raw.selectedText,
-    }),
-  };
+interface LegacyRevisionsState {
+  users?: RevisionUser[];
+  generalRevisions?: Array<Partial<Comment>>;
+  textRevisions?: Array<Partial<Comment> & { anchorPos?: number; anchorId?: string }>;
+  comments?: Array<Partial<Comment>>;
+  activeUserId?: string;
 }
 
 function migrateRevisions(raw: unknown): RevisionsState {
-  const s = raw as Partial<RevisionsState>;
-  if (!s || (!s.users && !s.generalRevisions && !s.textRevisions)) {
+  const s = raw as LegacyRevisionsState | null;
+  if (!s || (!s.users && !s.comments && !s.generalRevisions && !s.textRevisions)) {
     return EMPTY_STATE;
   }
+  const fromComments = (s.comments ?? []).map((r) => migrateComment(r));
+  // Legacy general/text arrays — fold them into the unified comments list.
+  const fromGeneral = (s.generalRevisions ?? []).map((r) => migrateComment(r));
+  const fromText = (s.textRevisions ?? []).map((r) =>
+    migrateComment(r as Partial<Comment> & { anchorPos?: number; anchorId?: string }),
+  );
+  const merged = [...fromComments, ...fromGeneral, ...fromText];
+  // De-dup by id (in case the same id appeared in both legacy + new shape).
+  const seen = new Set<string>();
+  const comments: Comment[] = [];
+  for (const c of merged) {
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    comments.push(c);
+  }
+  // Preserve creation order across the merged sources.
+  comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   return {
     users: s.users?.length ? s.users : [...DEFAULT_USERS],
-    generalRevisions: (s.generalRevisions ?? []).map(migrateGeneralRevision),
-    textRevisions: (s.textRevisions ?? []).map((r) =>
-      migrateTextRevision(r as TextRevision & { anchorPos?: number; anchorId?: string }),
-    ),
+    comments,
     activeUserId: s.activeUserId ?? "me",
   };
 }
@@ -106,7 +112,7 @@ function migrateRevisions(raw: unknown): RevisionsState {
 /** One-shot fallback: if revisions.json didn't exist, try comments.json. */
 function migrateFromComments(comments: CommentsState | null): RevisionsState | null {
   if (!comments?.comments?.length) return null;
-  const textRevisions: TextRevision[] = comments.comments.map((c) => ({
+  const out: Comment[] = comments.comments.map((c) => ({
     id: c.id,
     authorId: "claude",
     createdAt: c.createdAt,
@@ -126,8 +132,7 @@ function migrateFromComments(comments: CommentsState | null): RevisionsState | n
   }));
   return {
     users: [...DEFAULT_USERS],
-    generalRevisions: [],
-    textRevisions,
+    comments: out,
     activeUserId: "me",
   };
 }
@@ -193,24 +198,24 @@ export function useRevisions(docId: string | null) {
     [update],
   );
 
-  const addGeneralRevision = useCallback(
-    (text: string = "", authorIdOverride?: string) => {
+  const addComment = useCallback(
+    (
+      opts: {
+        text?: string;
+        selectedText?: string;
+        anchorId?: string | null;
+        authorId?: string;
+      } = {},
+    ): Comment => {
       const now = new Date().toISOString();
-      const body = text.trim();
-      const content = body
-        ? normalizeRichContent(body)
-        : emptyRichContent();
-      // The revision must be fully constructed *outside* the updater: the
-      // updater runs asynchronously inside `setState`, so returning a value
-      // written from within the updater yields `null` to synchronous callers.
-      // We resolve `authorId` against the current state snapshot via stateRef,
-      // falling back to the default user id when no state has loaded yet.
+      const body = (opts.text ?? "").trim();
+      const content = body ? normalizeRichContent(body) : emptyRichContent();
       const authorId =
-        authorIdOverride ?? stateRef.current.activeUserId ?? "me";
+        opts.authorId ?? stateRef.current.activeUserId ?? "me";
       const turns: RevisionTurn[] = body
         ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
         : [];
-      const rev: GeneralRevision = {
+      let comment: Comment = {
         id: generateEntityId(),
         authorId,
         createdAt: now,
@@ -218,127 +223,74 @@ export function useRevisions(docId: string | null) {
         content,
         turns,
         resolved: false,
+        links: [],
       };
-      update((prev) => ({
-        ...prev,
-        generalRevisions: [...prev.generalRevisions, rev],
-      }));
-      return rev;
+      if (opts.selectedText) comment.selectedText = opts.selectedText;
+      if (opts.anchorId) {
+        comment = setTextAnchorLink(
+          comment,
+          "comment",
+          opts.anchorId,
+          opts.selectedText ?? "",
+        );
+      }
+      update((prev) => ({ ...prev, comments: [...prev.comments, comment] }));
+      return comment;
     },
     [update, stateRef],
   );
 
-  const addTextRevision = useCallback(
-    (
-      selectedText: string,
-      anchorId: string | null,
-      text: string = "",
-      authorIdOverride?: string,
-    ): TextRevision | null => {
-      const now = new Date().toISOString();
-      const body = text.trim();
-      const content = body
-        ? normalizeRichContent(body)
-        : emptyRichContent();
-      let created: TextRevision | null = null;
-      update((prev) => {
-        const authorId = authorIdOverride ?? prev.activeUserId ?? "me";
-        const turns: RevisionTurn[] = body
-          ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
-          : [];
-        let rev: TextRevision = {
-          id: generateEntityId(),
-          authorId,
-          createdAt: now,
-          resolved: false,
-          selectedText,
-          text: body,
-          content,
-          turns,
-          links: [],
-        };
-        if (anchorId) {
-          rev = setTextAnchorLink(rev, "comment", anchorId, selectedText);
-        }
-        created = rev;
-        return { ...prev, textRevisions: [...prev.textRevisions, rev] };
-      });
-      return created;
-    },
-    [update],
-  );
-
-  const updateRevisionContent = useCallback(
-    (kind: RevisionKind, revisionId: string, content: JSONContent) => {
+  const updateCommentContent = useCallback(
+    (id: string, content: JSONContent) => {
       const normalized = normalizeRichContent(content);
       const text = richJsonToPlainText(normalized);
-      update((prev) => {
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.map((r) =>
-              r.id === revisionId ? { ...r, content: normalized, text } : r,
-            ),
-          };
-        }
-        return {
-          ...prev,
-          textRevisions: prev.textRevisions.map((r) =>
-            r.id === revisionId ? { ...r, content: normalized, text } : r,
-          ),
-        };
-      });
+      update((prev) => ({
+        ...prev,
+        comments: prev.comments.map((c) =>
+          c.id === id ? { ...c, content: normalized, text } : c,
+        ),
+      }));
     },
     [update],
   );
 
-  const setRevisionAuthor = useCallback(
-    (kind: RevisionKind, revisionId: string, authorId: string) => {
-      update((prev) => {
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.map((r) =>
-              r.id === revisionId ? { ...r, authorId } : r,
-            ),
-          };
-        }
-        return {
-          ...prev,
-          textRevisions: prev.textRevisions.map((r) =>
-            r.id === revisionId ? { ...r, authorId } : r,
-          ),
-        };
-      });
+  const setCommentAuthor = useCallback(
+    (id: string, authorId: string) => {
+      update((prev) => ({
+        ...prev,
+        comments: prev.comments.map((c) =>
+          c.id === id ? { ...c, authorId } : c,
+        ),
+      }));
     },
     [update],
   );
 
-  const setRevisionAnchor = useCallback(
+  const setCommentAnchor = useCallback(
     (id: string, anchorId: string | null) => {
       update((prev) => ({
         ...prev,
-        textRevisions: prev.textRevisions.map((r) => {
-          if (r.id !== id) return r;
-          if (anchorId == null) return clearTextAnchorLink(r, "comment");
-          return setTextAnchorLink(r, "comment", anchorId, r.selectedText);
+        comments: prev.comments.map((c) => {
+          if (c.id !== id) return c;
+          if (anchorId == null) return clearTextAnchorLink(c, "comment");
+          return setTextAnchorLink(c, "comment", anchorId, c.selectedText ?? "");
         }),
       }));
     },
     [update],
   );
 
-  // Orphan listener — clear the dead anchor id on the matching revision.
+  // Orphan listener — clear the dead anchor id on the matching comment.
   useEffect(() => {
     const handler = (e: Event) => {
       const { anchorId, kind } = (e as CustomEvent).detail || {};
       if (kind !== "revision" || !anchorId) return;
       update((prev) => ({
         ...prev,
-        textRevisions: prev.textRevisions.map((r) =>
-          getTextAnchor(r)?.anchorId === anchorId
-            ? clearTextAnchorLink(r, "comment")
-            : r,
+        comments: prev.comments.map((c) =>
+          getTextAnchor(c)?.anchorId === anchorId
+            ? clearTextAnchorLink(c, "comment")
+            : c,
         ),
       }));
     };
@@ -347,25 +299,17 @@ export function useRevisions(docId: string | null) {
   }, [update]);
 
   const addTurn = useCallback(
-    (kind: RevisionKind, revisionId: string, text: string) => {
+    (id: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       const now = new Date().toISOString();
       update((prev) => {
         const authorId = prev.activeUserId ?? "me";
         const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.map((r) =>
-              r.id === revisionId ? { ...r, turns: [...r.turns, turn] } : r,
-            ),
-          };
-        }
         return {
           ...prev,
-          textRevisions: prev.textRevisions.map((r) =>
-            r.id === revisionId ? { ...r, turns: [...r.turns, turn] } : r,
+          comments: prev.comments.map((c) =>
+            c.id === id ? { ...c, turns: [...c.turns, turn] } : c,
           ),
         };
       });
@@ -373,64 +317,36 @@ export function useRevisions(docId: string | null) {
     [update],
   );
 
-  const resolveRevision = useCallback(
-    (kind: RevisionKind, revisionId: string) => {
-      update((prev) => {
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.map((r) =>
-              r.id === revisionId ? { ...r, resolved: true } : r,
-            ),
-          };
-        }
-        return {
-          ...prev,
-          textRevisions: prev.textRevisions.map((r) =>
-            r.id === revisionId ? { ...r, resolved: true } : r,
-          ),
-        };
-      });
+  const resolveComment = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        comments: prev.comments.map((c) =>
+          c.id === id ? { ...c, resolved: true } : c,
+        ),
+      }));
     },
     [update],
   );
 
-  const reopenRevision = useCallback(
-    (kind: RevisionKind, revisionId: string) => {
-      update((prev) => {
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.map((r) =>
-              r.id === revisionId ? { ...r, resolved: false } : r,
-            ),
-          };
-        }
-        return {
-          ...prev,
-          textRevisions: prev.textRevisions.map((r) =>
-            r.id === revisionId ? { ...r, resolved: false } : r,
-          ),
-        };
-      });
+  const reopenComment = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        comments: prev.comments.map((c) =>
+          c.id === id ? { ...c, resolved: false } : c,
+        ),
+      }));
     },
     [update],
   );
 
-  const deleteRevision = useCallback(
-    (kind: RevisionKind, revisionId: string) => {
-      update((prev) => {
-        if (kind === "general") {
-          return {
-            ...prev,
-            generalRevisions: prev.generalRevisions.filter((r) => r.id !== revisionId),
-          };
-        }
-        return {
-          ...prev,
-          textRevisions: prev.textRevisions.filter((r) => r.id !== revisionId),
-        };
-      });
+  const deleteComment = useCallback(
+    (id: string) => {
+      update((prev) => ({
+        ...prev,
+        comments: prev.comments.filter((c) => c.id !== id),
+      }));
     },
     [update],
   );
@@ -443,19 +359,17 @@ export function useRevisions(docId: string | null) {
     state,
     users: state.users,
     activeUserId: state.activeUserId ?? "me",
-    generalRevisions: state.generalRevisions,
-    textRevisions: state.textRevisions,
+    comments: state.comments,
     setActiveUser,
     addUser,
-    addGeneralRevision,
-    addTextRevision,
-    updateRevisionContent,
-    setRevisionAuthor,
-    setRevisionAnchor,
+    addComment,
+    updateCommentContent,
+    setCommentAuthor,
+    setCommentAnchor,
     addTurn,
-    resolveRevision,
-    reopenRevision,
-    deleteRevision,
+    resolveComment,
+    reopenComment,
+    deleteComment,
     refresh: reload,
   };
 }

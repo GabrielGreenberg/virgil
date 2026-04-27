@@ -2,7 +2,7 @@
 
 import { useCallback } from "react";
 import type { JSONContent } from "@tiptap/react";
-import type { GeneralRevision, TextRevision } from "@/lib/types";
+import type { Comment } from "@/lib/types";
 import {
   EditableCard,
   BadgeLabel,
@@ -43,17 +43,14 @@ function AiBadge() {
   );
 }
 
-export type RevisionCardKind = "general" | "text";
-
-export interface RevisionCardProps {
-  kind: RevisionCardKind;
-  revision: GeneralRevision | TextRevision;
+export interface CommentCardProps {
+  comment: Comment;
   selected: boolean;
   onSelect: (id: string | null) => void;
   onJump?: () => void;
-  onUpdateContent: (kind: RevisionCardKind, id: string, content: JSONContent) => void;
-  onSetAuthor: (kind: RevisionCardKind, id: string, authorId: string) => void;
-  onDelete: (kind: RevisionCardKind, id: string) => void;
+  onUpdateContent: (id: string, content: JSONContent) => void;
+  onSetAuthor: (id: string, authorId: string) => void;
+  onDelete: (id: string) => void;
   registerRef?: (el: HTMLDivElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
   onTogglePopout?: () => void;
@@ -61,9 +58,8 @@ export interface RevisionCardProps {
   extraDataAttrs?: Record<string, string>;
 }
 
-export function RevisionCard({
-  kind,
-  revision,
+export function CommentCard({
+  comment,
   selected,
   onSelect,
   onJump,
@@ -75,39 +71,39 @@ export function RevisionCard({
   onTogglePopout,
   isPoppedOut,
   extraDataAttrs,
-}: RevisionCardProps) {
+}: CommentCardProps) {
   const theme = useCardTheme("revision");
   const popped = usePoppedCards();
-  const cardKey = popKey("revisions", revision.id);
+  const cardKey = popKey("revisions", comment.id);
   const onToggleFromCtx =
     onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
 
-  const isAiRequest = revision.authorId === CLAUDE_ID;
-  const isTextKind = kind === "text";
-  const quotedText = isTextKind ? (revision as TextRevision).selectedText : undefined;
+  const isAiRequest = comment.authorId === CLAUDE_ID;
+  const quotedText = comment.selectedText;
+  const isAnchored = quotedText != null;
   const isOrphaned =
-    isTextKind && getLinkedParagraphIds(revision as TextRevision).length === 0;
+    isAnchored && getLinkedParagraphIds(comment).length === 0;
 
   const handleChange = useCallback(
     (json: JSONContent) => {
-      onUpdateContent(kind, revision.id, normalizeRichContent(json));
+      onUpdateContent(comment.id, normalizeRichContent(json));
     },
-    [onUpdateContent, kind, revision.id],
+    [onUpdateContent, comment.id],
   );
 
   const handleToggleAi = useCallback(
     (checked: boolean) => {
-      onSetAuthor(kind, revision.id, checked ? CLAUDE_ID : ME_ID);
+      onSetAuthor(comment.id, checked ? CLAUDE_ID : ME_ID);
     },
-    [onSetAuthor, kind, revision.id],
+    [onSetAuthor, comment.id],
   );
 
   const badge = isAiRequest ? (
     <AiBadge />
-  ) : isTextKind && isOrphaned ? (
+  ) : isAnchored && isOrphaned ? (
     <BadgeOrphaned theme={theme} />
   ) : (
-    <BadgeLabel label="R" theme={theme} />
+    <BadgeLabel label="C" theme={theme} />
   );
 
   const headerContent = quotedText ? (
@@ -116,7 +112,7 @@ export function RevisionCard({
     </div>
   ) : undefined;
 
-  const headerTrailing = isTextKind ? (
+  const headerTrailing = isAnchored ? (
     <CardTargetIcon
       selected={selected}
       disabled={!onJump || isOrphaned}
@@ -147,7 +143,7 @@ export function RevisionCard({
 
   const card = (
     <EditableCard
-      id={revision.id}
+      id={comment.id}
       selected={selected}
       theme={theme}
       grabHandle={false}
@@ -157,18 +153,18 @@ export function RevisionCard({
       headerContent={headerContent}
       headerTrailing={headerTrailing}
       footer={footer}
-      value={revision.content}
+      value={comment.content}
       variant="note"
       panelKey="revision"
-      placeholder="Revision text…"
+      placeholder="Comment text…"
       onChange={handleChange}
-      onDelete={() => onDelete(kind, revision.id)}
-      onClick={() => onSelect(selected ? null : revision.id)}
-      onTextDragStart={(e) => startTextDrag(e, revision.content, revision.text)}
+      onDelete={() => onDelete(comment.id)}
+      onClick={() => onSelect(selected ? null : comment.id)}
+      onTextDragStart={(e) => startTextDrag(e, comment.content, comment.text)}
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
-      dataAttr={isTextKind ? { name: "revision-entry", value: revision.id } : undefined}
+      dataAttr={isAnchored ? { name: "revision-entry", value: comment.id } : undefined}
       extraDataAttrs={extraDataAttrs}
       wrapperStyle={{}}
     />

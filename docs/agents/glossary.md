@@ -56,7 +56,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `examples` | Examples | `example` | left | (default) |
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
-| `revisions` | Revisions | `comment` (key prefix `revision`) | right | stone |
+| `revisions` | Revisions | `comment` (key prefix `revision`) and `suggestion` | right | stone (suggestion progress bar in panel header) |
 | `cutter` | Cutter | `cut` | right | red |
 | `errors` | Errors | `error` | right | light red |
 
@@ -67,7 +67,6 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `outline` | Outline | left | Heading tree with edit/focus/lock |
 | `search` | Search | left | Full-text search |
 | `wordcount` | Word Count | right | Live word counts by section |
-| `suggestions` | Suggestions | — | AI line-edit cards; not normally strip-mounted |
 | `omni` | Omni-view | — | Two-column view aggregating all omni-eligible panels |
 
 Each panel lives in `src/panels/<PanelFolder>/`.
@@ -134,8 +133,9 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Sidecar** | JSON file alongside `.tex` in `virgil/` folder | Types in [src/lib/types.ts](../../src/lib/types.ts) (`VirgilSidecar`) |
-| **Suggestions** | AI line-edit proposals | `suggestions.json`; [src/hooks/useSuggestions.ts](../../src/hooks/useSuggestions.ts) |
-| **Revisions** (threads) | AI/user comment threads, anchored or paper-wide | `revisions.json`; [src/hooks/useRevisions.ts](../../src/hooks/useRevisions.ts) |
+| **Suggestions** | AI line-edit proposals (review cards in the Revisions panel; progress bar in panel header) | `suggestions.json`; [src/hooks/useSuggestions.ts](../../src/hooks/useSuggestions.ts) |
+| **Comments** (was: Revisions) | AI/user comment threads, anchored or paper-wide. Live alongside suggestion cards in the Revisions panel | `revisions.json`; [src/hooks/useRevisions.ts](../../src/hooks/useRevisions.ts) |
+| **Cutter goal** | Per-document word-count cutting target | Stored on `CutterState.goal` in `cutter.json`; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
 | **AI requests** | Queued requests for an agent to resolve | `ai-requests.json` |
 | **Bib review requests** | Per-entry bibliography field/notes reviews | `bib-review-requests.json` |
 | **FSA** (File System Access API) | Disk boundary — only place disk is touched | [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) |

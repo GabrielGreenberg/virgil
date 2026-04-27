@@ -81,7 +81,13 @@ export interface RevisionTurn {
   text: string;
 }
 
-export interface GeneralRevision {
+/**
+ * Unified comment record. Lives in the Revisions panel alongside
+ * AI-suggestion cards. A comment may be free-floating (no `selectedText`,
+ * `links: []`) or anchored to a specific text selection (`selectedText`
+ * present + Mode B text-anchor link in `links`).
+ */
+export interface Comment {
   id: string;
   authorId: string;
   createdAt: string;
@@ -93,30 +99,18 @@ export interface GeneralRevision {
   content: unknown;
   turns: RevisionTurn[];
   resolved: boolean;
-}
-
-export interface TextRevision {
-  id: string;
-  authorId: string;
-  createdAt: string;
-  resolved: boolean;
-  selectedText: string;
-  /** Plain-text mirror of `content`, maintained on every write so agents
-   *  and legacy readers that only understand strings keep working. */
-  text: string;
-  /** Tiptap JSONContent — canonical editable body. Legacy records that only
-   *  have `text` are migrated on read. */
-  content: unknown;
-  turns: RevisionTurn[];
-  /** All connections this revision makes to the editor: Mode B
-   *  text-range anchor, paragraph anchors, etc. See src/links/links.ts. */
+  /** When the comment is anchored to a text selection, the captured text
+   *  for display. Undefined for free-floating comments. */
+  selectedText?: string;
+  /** All connections this comment makes to the editor: Mode B text-range
+   *  anchor, paragraph anchors, etc. Empty for free-floating comments.
+   *  See src/links/links.ts. */
   links: Link[];
 }
 
 export interface RevisionsState {
   users: RevisionUser[];
-  generalRevisions: GeneralRevision[];
-  textRevisions: TextRevision[];
+  comments: Comment[];
   activeUserId?: string;
 }
 
@@ -280,6 +274,10 @@ export interface CutItem {
 
 export interface CutterState {
   cuts: CutItem[];
+  /** Optional word-count cutting goal. Set via the panel header's "+Goal"
+   *  button; cleared with the inline ✕. When unset (null/undefined), the
+   *  progress bar is hidden — only the live document word count shows. */
+  goal?: number | null;
 }
 
 // --- Annotations ---

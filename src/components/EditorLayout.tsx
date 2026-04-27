@@ -10,7 +10,6 @@ import { isDevStorage } from "@/lib/storage-mode";
 import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMenuToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
-import ProgressBar from "./ProgressBar";
 import { useDragGap } from "@/hooks/useDragGap";
 import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
@@ -175,7 +174,6 @@ import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
-import { SuggestionsHost } from "./editor-layout/panels/suggestions-host";
 import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
@@ -334,19 +332,15 @@ export default function EditorLayout() {
   } = useSuggestions(docIdForHooks);
   const {
     users: revisionUsers,
-    generalRevisions,
-    textRevisions,
-    addGeneralRevision,
-    addTextRevision,
-    updateRevisionContent,
-    setRevisionAuthor,
-    setRevisionAnchor,
-    deleteRevision,
+    comments,
+    addComment,
+    updateCommentContent,
+    setCommentAuthor,
+    setCommentAnchor,
+    deleteComment,
     refresh: refreshRevisions,
   } = useRevisions(docIdForHooks);
-  const activeRevisionsCount =
-    generalRevisions.filter((r) => !r.resolved).length +
-    textRevisions.filter((r) => !r.resolved).length;
+  const activeRevisionsCount = comments.filter((c) => !c.resolved).length;
   // Unified pristine-card manager — tracks blank-on-create cards across all
   // kinds and discards them via a global click-away listener once the user
   // clicks outside the card's DOM. Each per-kind hook gets its slice here.
@@ -370,6 +364,8 @@ export default function EditorLayout() {
   } = useNotes(docIdForHooks, notePristine);
   const {
     cuts,
+    goal: cutterGoal,
+    setGoal: setCutterGoal,
     addCut,
     updateCut,
     updateCutTitle,
@@ -1018,10 +1014,9 @@ export default function EditorLayout() {
   const aiDot = useMemo(() => aiRequestDotStatus({
     bibReviewRequests,
     bibEntryRequests: entryRequests,
-    generalRevisions,
-    textRevisions,
+    comments,
     panelAiRequests: aiRequests,
-  }), [bibReviewRequests, entryRequests, generalRevisions, textRevisions, aiRequests]);
+  }), [bibReviewRequests, entryRequests, comments, aiRequests]);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
   // Preference mode toggle. `on` drives the top-bar button styling and gates
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
@@ -1870,8 +1865,7 @@ export default function EditorLayout() {
     archiveSnippets,
     quotationGroups,
     todos: todoItems,
-    generalRevisions,
-    textRevisions,
+    comments,
   });
 
   // Clear the toolbar-override editor when the main editor regains focus,
@@ -2214,11 +2208,12 @@ export default function EditorLayout() {
 
   const hasSuggestions = suggestionsState.suggestions.length > 0;
 
-  // Auto-show suggestions panel when suggestions load
+  // Auto-show the Revisions panel when suggestions load (suggestions
+  // now live inside that merged panel alongside comment cards).
   useEffect(() => {
     if (hasSuggestions) {
       const hasPending = suggestionsState.suggestions.some((s) => s.status === "pending");
-      if (hasPending && prefsRef.current.activeRight !== "suggestions") setActiveRight("suggestions");
+      if (hasPending && prefsRef.current.activeRight !== "revisions") setActiveRight("revisions");
     }
   }, [suggestionsState.suggestions.length, hasSuggestions, setActiveRight]);
 
@@ -2393,7 +2388,7 @@ export default function EditorLayout() {
   });
   useSelectedAnchorSync({
     selectedId: selectedCommentId,
-    entities: textRevisions,
+    entities: comments,
     kind: "revision",
     dataAttrName: "revision-entry",
     setSelectedId: setSelectedCommentId,
@@ -2813,14 +2808,17 @@ export default function EditorLayout() {
       anchorId = record?.anchorId ?? null;
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
-    const rev = addGeneralRevision(sel?.text ?? "");
+    const created = addComment({
+      text: sel?.text ?? "",
+      selectedText: sel?.text || undefined,
+      anchorId,
+    });
     if (anchorId) {
-      setRevisionAnchor(rev.id, anchorId);
       const ed = editorRef.current?.getEditor();
-      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", rev.id);
+      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", created.id);
     }
-    popCardAtAnchor("revision", rev.id, anchorRect);
-  }, [readSelection, addGeneralRevision, setRevisionAnchor, popCardAtAnchor]);
+    popCardAtAnchor("revision", created.id, anchorRect);
+  }, [readSelection, addComment, popCardAtAnchor]);
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
@@ -3396,12 +3394,12 @@ export default function EditorLayout() {
       }
     }
 
-    // Text revision markers — one marker per anchored revision. The
-    // paragraph uuid is resolved live from the mark's range; if the mark
-    // is gone the revision becomes orphaned and gets no marker.
+    // Anchored-comment markers — one marker per comment with a text
+    // anchor. The paragraph uuid is resolved live from the mark's range;
+    // if the mark is gone the comment becomes orphaned and gets no marker.
     const ed = editorRef.current?.getEditor();
     if (ed) {
-      for (const r of textRevisions) {
+      for (const r of comments) {
         if (r.resolved) continue;
         const revAnchor = getTextAnchor(r);
         if (!revAnchor) continue;
@@ -3575,7 +3573,7 @@ export default function EditorLayout() {
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleTodoMarkerClick,
-    textRevisions,
+    comments,
     selectedCommentId,
     setActiveLeft,
     setActiveRight,
@@ -3623,10 +3621,10 @@ export default function EditorLayout() {
         records.push({ anchorId: ta.anchorId, kind: "note", text: ta.anchorText });
       }
     }
-    for (const r of textRevisions) {
-      const ta = getTextAnchor(r);
+    for (const c of comments) {
+      const ta = getTextAnchor(c);
       if (ta) {
-        records.push({ anchorId: ta.anchorId, kind: "revision", text: ta.anchorText || r.selectedText });
+        records.push({ anchorId: ta.anchorId, kind: "revision", text: ta.anchorText || (c.selectedText ?? "") });
       }
     }
     for (const c of cuts) {
@@ -3639,15 +3637,15 @@ export default function EditorLayout() {
       editorRef.current.applyLinkedAnchors(records);
     }
 
-    // Legacy text revisions: no text-anchor link yet, only `selectedText`.
+    // Legacy anchored comments: no text-anchor link yet, only `selectedText`.
     // Try to reanchor by searching for that text; on success, persist the
-    // new id onto the revision.
-    for (const r of textRevisions) {
-      if (getTextAnchor(r) || !r.selectedText) continue;
-      const rec = reanchorByText(editorInstance, "revision", r.selectedText);
-      if (rec) setRevisionAnchor(r.id, rec.anchorId);
+    // new id onto the comment.
+    for (const c of comments) {
+      if (getTextAnchor(c) || !c.selectedText) continue;
+      const rec = reanchorByText(editorInstance, "revision", c.selectedText);
+      if (rec) setCommentAnchor(c.id, rec.anchorId);
     }
-  }, [editorInstance, docIdForHooks, notes, textRevisions, cuts, setRevisionAnchor]);
+  }, [editorInstance, docIdForHooks, notes, comments, cuts, setCommentAnchor]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {
@@ -3685,14 +3683,14 @@ export default function EditorLayout() {
       ? pendingCommentText
       : commentHighlight
         ? commentHighlight
-        : (activeLeft === "suggestions" || activeRight === "suggestions") && currentSuggestion
+        : (activeLeft === "revisions" || activeRight === "revisions") &&
+            currentSuggestion &&
+            currentSuggestion.status === "pending"
           ? currentSuggestion.original_text
           : null;
   // Range-based highlights — search wins over error (search is an
   // explicit user action, error highlight is derived from selection).
   const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
-
-  const suggestionPanelVisible = (activeLeft === "suggestions" || activeRight === "suggestions") && hasSuggestions;
   // OmniView aggregates several child panels on one side; when omni is
   // active, the side-of-panel lookups must include its children so
   // connector lines render from the correct side.
@@ -3717,7 +3715,7 @@ export default function EditorLayout() {
   // omitted for single-column and floating panels.
   const renderPanelWithChrome = (panelId: PanelId, side: Side, half?: "top" | "bottom"): React.ReactNode => {
     const inner = renderPanelInner(panelId, side);
-    if (panelId === "blank" || panelId === "omni" || panelId === "suggestions") return inner;
+    if (panelId === "blank" || panelId === "omni") return inner;
     const isPoppedOut = prefs.poppedOutPanels.includes(panelId);
     const onClose = () => {
       if (isPoppedOut) {
@@ -3742,28 +3740,12 @@ export default function EditorLayout() {
 
   // Render the inner JSX for a panel by id, without any column wrapper.
   // The caller is responsible for wrapping in <PanelColumn> (or rendering
-  // it inside a split half). The "suggestions" panel is special-cased
-  // because it manages its own layout.
+  // it inside a split half).
   function renderPanelInner(panelId: PanelId, side: Side): React.ReactNode {
     if (!(panelId in PANEL_ICONS)) return null;
 
     if (panelId === "blank") {
       return <div className="w-full h-full bg-[var(--background)]" />;
-    }
-
-    if (panelId === "suggestions" && hasSuggestions) {
-      return (
-        <SuggestionsHost
-          side={side}
-          currentSuggestion={currentSuggestion}
-          isComplete={isComplete}
-          onAct={handleAct}
-          updateSuggestionField={updateSuggestionField}
-          clearSuggestions={clearSuggestions}
-          setActiveLeft={setActiveLeft}
-          setActiveRight={setActiveRight}
-        />
-      );
     }
 
     if (panelId === "todo") {
@@ -3835,13 +3817,16 @@ export default function EditorLayout() {
         <RevisionsHost
           side={side}
           panelSide={revisionsPanelSide}
-          generalRevisions={generalRevisions}
-          textRevisions={textRevisions}
-          addGeneralRevision={addGeneralRevision}
-          addTextRevision={addTextRevision}
-          updateRevisionContent={updateRevisionContent}
-          setRevisionAuthor={setRevisionAuthor}
-          deleteRevision={deleteRevision}
+          comments={comments}
+          addComment={addComment}
+          updateCommentContent={updateCommentContent}
+          setCommentAuthor={setCommentAuthor}
+          deleteComment={deleteComment}
+          suggestions={suggestionsState.suggestions}
+          currentSuggestionIndex={suggestionsState.currentIndex}
+          actOnSuggestion={handleAct}
+          updateSuggestionField={updateSuggestionField}
+          jumpToSuggestion={jumpToSuggestion}
           pendingCommentText={pendingCommentText}
           setPendingCommentText={setPendingCommentText}
           pendingRevisionAnchorIdRef={pendingRevisionAnchorIdRef}
@@ -4007,8 +3992,7 @@ export default function EditorLayout() {
           archiveSnippets={archiveSnippets}
           cuts={cuts}
           quotationGroups={quotationGroups}
-          textRevisions={textRevisions}
-          generalRevisions={generalRevisions}
+          comments={comments}
           bibEntries={bibEntries}
           openItemInPanel={openItemInPanel}
           searchState={searchState}
@@ -4095,6 +4079,8 @@ export default function EditorLayout() {
           side={side}
           panelSide={cutterPanelSide}
           cuts={cuts}
+          goal={cutterGoal}
+          setGoal={setCutterGoal}
           addCut={addCut}
           updateCut={updateCut}
           updateCutTitle={updateCutTitle}
@@ -4194,11 +4180,11 @@ export default function EditorLayout() {
     );
   }
 
-  // Build strip icon list, filtering out suggestions if none exist.
+  // Build strip icon list.
   // The Errors panel lives in the strip on both sides — its cards (with
   // jump-to, margin markers, etc.) are useful in the rich-text view too.
-  const leftStripItems = leftItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
-  const rightStripItems = rightItems.filter((p) => p.id !== "blank" && (p.id !== "suggestions" || hasSuggestions));
+  const leftStripItems = leftItems.filter((p) => p.id !== "blank");
+  const rightStripItems = rightItems.filter((p) => p.id !== "blank");
 
   if (!fsaSupported) {
     return <UnsupportedBrowserNotice />;
@@ -4226,7 +4212,7 @@ export default function EditorLayout() {
   const poppedCardDeps = {
     notes, footnotes, archiveSnippets, cuts, todoItems, bibEntries,
     citations, citationPositionMap, allEditorCitations,
-    generalRevisions, textRevisions,
+    comments,
     quotationGroups, aiRequests, anchoredIds,
     selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutId,
     selectedTodoId, selectedBibKey, selectedCitationId, selectedCommentId,
@@ -4246,7 +4232,7 @@ export default function EditorLayout() {
     requestBibReview, cancelBibReview, getBibReviewStatus,
     updateBibEntry, updateBibKeyAndType,
     updateCitation,
-    updateRevisionContent, setRevisionAuthor, deleteRevision,
+    updateCommentContent, setCommentAuthor, deleteComment,
     deleteQuotationGroup, updateQuotationGroupTitle,
     addQuotationReference, deleteQuotationReference, updateQuotationReferenceCiteKey,
     addQuotationQuote, updateQuotationQuote, deleteQuotationQuote, updateQuotationNotes,
@@ -4278,15 +4264,6 @@ export default function EditorLayout() {
     <CardCreationProvider value={cardCreation}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
-      {/* Progress bar */}
-      {suggestionPanelVisible && (
-        <ProgressBar
-          suggestions={suggestionsState.suggestions}
-          currentIndex={suggestionsState.currentIndex}
-          onJump={jumpToSuggestion}
-        />
-      )}
-
       {/* Top bar: logo + tabs */}
       <div
         // Preference-mode: the VIRGIL top bar. topbarBackground is locked to
@@ -4296,9 +4273,7 @@ export default function EditorLayout() {
         // bar without pushing the tabs taller (tabs are items-end anchored
         // at the bottom edge, so the extra space accumulates above them).
         data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-        className={`virgil-bar flex items-center relative min-h-[34px] ${
-        suggestionPanelVisible ? "mt-10" : ""
-      }`}
+        className="virgil-bar flex items-center relative min-h-[34px]"
         style={{
           color: "var(--virgil-bar-text)",
           background: "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
@@ -5270,8 +5245,7 @@ export default function EditorLayout() {
         onClose={() => setAiWindowOpen(false)}
         bibReviewRequests={bibReviewRequests}
         bibEntryRequests={entryRequests}
-        generalRevisions={generalRevisions}
-        textRevisions={textRevisions}
+        comments={comments}
         users={revisionUsers}
         bibEntries={bibEntries}
         panelAiRequests={aiRequests}
@@ -5281,7 +5255,7 @@ export default function EditorLayout() {
         cancelBibReview={cancelBibReview}
         addEntryRequest={addEntryRequest}
         removeEntryRequest={removeEntryRequest}
-        addGeneralRevision={addGeneralRevision}
+        addComment={addComment}
         refreshAll={() => {
           refreshBibReview();
           refreshBibSettings();
