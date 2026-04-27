@@ -1390,10 +1390,10 @@ export default function EditorLayout() {
     for (const entry of DERIVED_CSS) {
       s.setProperty(entry.cssVar, entry.compute(editorPrefs));
     }
-    // Update browser theme-color meta tag. Zen mode hides the in-app top
-    // bar, so we let the OS/PWA chrome blend into the page canvas; normally
-    // it mirrors the topbar background.
-    const tcSource = zenModeOn ? editorPrefs.backgroundColor : editorPrefs.topbarBackground;
+    // Update browser theme-color meta tag. Always mirrors the topbar
+    // background — in enhanced zen mode the whole window canvas is also
+    // the topbar color, so this stays correct in both modes.
+    const tcSource = editorPrefs.topbarBackground;
     const tc = applyTransforms(tcSource, editorTransforms);
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", tc);
   }, [editorPrefs, editorTransforms, zenModeOn]);
@@ -4275,7 +4275,7 @@ export default function EditorLayout() {
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Progress bar */}
-      {suggestionPanelVisible && (
+      {!zenModeOn && suggestionPanelVisible && (
         <ProgressBar
           suggestions={suggestionsState.suggestions}
           currentIndex={suggestionsState.currentIndex}
@@ -4298,13 +4298,19 @@ export default function EditorLayout() {
         style={{
           color: "var(--virgil-bar-text)",
           background: "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
-          boxShadow: "inset 0 -2px 4px -1px rgba(0,0,0,0.10)",
+          boxShadow: zenModeOn ? "none" : "inset 0 -2px 4px -1px rgba(0,0,0,0.10)",
         }}
       >
         {/* Logo + file buttons + tabs — all bottom-aligned. The MenuBar's
             "home" position clamps against the topbar-left sentinel at the
             end of this group (after the "Open folder" "+" button), so the
-            toolbar never overlaps tabs even when they crowd the middle. */}
+            toolbar never overlaps tabs even when they crowd the middle.
+            Zen mode hides this whole group; the MenuBar is also gated off
+            in zen, so dropping the sentinel is safe. The flex spacer below
+            keeps the right-group buttons (incl. Zen toggle) right-aligned. */}
+        {zenModeOn ? (
+          <div className="flex-1" />
+        ) : (
         <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
           {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
@@ -4366,9 +4372,10 @@ export default function EditorLayout() {
               because flex-1 expands to fill the whole middle gap. */}
           <div ref={topbarLeftRefCb} aria-hidden className="shrink-0 self-stretch" style={{ width: 0 }} />
         </div>
+        )}
 
         <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2 gap-1">
-          {focusMode.state.active && (
+          {!zenModeOn && focusMode.state.active && (
             <button
               onClick={focusMode.deactivate}
               className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium text-[var(--accent)] bg-[var(--accent-light)] hover-on-dark"
@@ -4392,7 +4399,7 @@ export default function EditorLayout() {
             onClick={handleToggleZen}
             className={`px-1.5 py-0.5 rounded text-xs font-medium transition-colors ${
               zenModeOn
-                ? "text-[var(--accent)] bg-[var(--accent-light)]"
+                ? "fixed top-3 right-3 z-50 text-[var(--accent)] bg-[var(--accent-light)]"
                 : "text-ink-subtle hover-on-dark hover:text-[var(--accent)]"
             }`}
             title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
@@ -4400,6 +4407,7 @@ export default function EditorLayout() {
           >
             Zen
           </button>
+          {!zenModeOn && (<>
           {/* ── Preference Mode toggle ─────────────────────────────────
               Flips the global preference-mode state. When on, every DOM
               element with `data-prefs="<pref-key>"` becomes ctrl+clickable
@@ -4560,6 +4568,7 @@ export default function EditorLayout() {
             )}
             Compile
           </button>
+          </>)}
         </div>
       </div>
 
@@ -4798,9 +4807,9 @@ export default function EditorLayout() {
               across the viewport and always sits above every panel. Home
               position sits centered in the Virgil top bar above the
               document; dragging the grab bar pops it down into the
-              document area as a free-floating pod. In Zen mode it stays
-              pinned to home so the toolbar remains reachable. */}
-          {menuPortalReady && createPortal(
+              document area as a free-floating pod. Hidden entirely in
+              Zen mode for the unified just-text view. */}
+          {!zenModeOn && menuPortalReady && createPortal(
             <div
               ref={menuWrapRefCb}
               className="fixed z-[9999] pointer-events-auto flex"
