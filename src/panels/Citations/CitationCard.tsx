@@ -61,7 +61,7 @@ export interface CitationCardProps {
   wrapperClassName?: string;
   wrapperStyle?: React.CSSProperties;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }
 
@@ -203,13 +203,16 @@ export function CitationCard({
       ? "border-dashed opacity-80"
       : "";
 
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
   const card = (
     <PanelCard
       data-link-card={`citation:${cit.id}`}
       data-pristine-card-id={cit.id}
+      data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
       selected={isSelected}

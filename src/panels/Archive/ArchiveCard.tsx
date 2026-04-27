@@ -53,7 +53,7 @@ export function ArchiveCard({
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   extraDataAttrs?: Record<string, string>;
-  onTogglePopout?: () => void;
+  onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
   const isAnchored = !orphaned;
@@ -63,8 +63,10 @@ export function ArchiveCard({
   const handleEditContent = (json: JSONContent) => {
     onEdit(snippet.id, normalizeRichContent(json));
   };
-  const onToggleFromCtx =
-    onTogglePopout ?? (popped ? () => popped.toggle(cardKey) : undefined);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
   const card = (
     <EditableCard
       id={snippet.id}
@@ -111,7 +113,7 @@ export function ArchiveCard({
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "archive-entry", value: snippet.id }}
-      extraDataAttrs={extraDataAttrs}
+      extraDataAttrs={{ "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
     />
