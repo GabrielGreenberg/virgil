@@ -1,4 +1,4 @@
-<!-- last-verified: 0c7dc09 2026-04-25 -->
+<!-- last-verified: 7e546d2 2026-04-26 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -62,8 +62,8 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | Sidecar | Purpose | Surfaced as |
 |---|---|---|
 | `virgil.json` | Per-paragraph metadata: titles, fingerprints | Omni view, search breadcrumbs |
-| `suggestions.json` | AI line-edit proposals | Suggestions panel; `y`/`n`/`s` keyboard controls |
-| `revisions.json` | Comment threads (anchored or paper-wide) | Revisions panel |
+| `suggestions.json` | AI line-edit proposals | **Revisions panel** (suggestion cards beside comments; `y`/`n`/`s` keyboard controls); progress bar lives in the Revisions panel header |
+| `revisions.json` | Comment threads (anchored or paper-wide); legacy `GeneralRevision`/`TextRevision` shapes fold forward to one `Comment` type on read | Revisions panel |
 | `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo) |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
 | `editor-state.json` | Cursor position, selection, misc editor state | Restored on reopen |
@@ -82,8 +82,8 @@ Cards inside a `CardListPanel`:
 2. **In-text** — positioned via `inTextRenderItem` (uses `useInTextPositions`).
 3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
 
-Popout key prefixes (DO NOT rename without migration — they're persisted):
-`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision`, `quotation`, `example`, `cut`, `ai`, `error`.
+Popout key prefixes (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
+`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `quotation`, `example`, `cut`, `ai`, `error`.
 
 ## Panel context
 

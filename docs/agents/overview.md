@@ -1,4 +1,4 @@
-<!-- last-verified: 0c7dc09 2026-04-25 -->
+<!-- last-verified: 7e546d2 2026-04-26 -->
 
 # Virgil Overview
 
@@ -27,7 +27,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (5354 lines, orchestrator), `Editor.tsx` (2806 lines, TipTap wrapper), `panel-primitives.tsx` (1505 lines, card/panel design system), `MenuBar.tsx` (1424 lines, floating toolbar)
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5450 lines, orchestrator), `Editor.tsx` (~2780 lines, TipTap wrapper), `panel-primitives.tsx` (~1550 lines, card/panel design system), `MenuBar.tsx` (~1420 lines, floating toolbar)
 - `src/hooks/` — React hooks for state management (42 files)
 - `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (39 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
@@ -40,7 +40,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 - **Main text editor** — central prose area with visual rendering of LaTeX commands
 - **Paragraph UUIDs** — every editable block (paragraph, heading, list, etc.) carries a `uuid` attr so margins and panels can anchor to specific locations
 - **Marginalia gutter** — left/right strips of icon markers anchored to paragraphs, representing linked cards (notes, quotations, todos, cuts, archives, revisions)
-- **Side panels** — configurable stack per side: notes, footnotes, citations, bibliography, quotations, todo, archive, revisions, cutter, outline, search, wordcount, errors, suggestions, omni
+- **Side panels** — configurable stack per side: notes, footnotes, citations, bibliography, quotations, examples, todo, archive, revisions (comments + suggestions), cutter, outline, search, wordcount, errors, omni
 - **Cards** — every panel displays items as themed cards; cards can be popped out as floating windows
 - **Links** — unified model connecting editor content to panel cards (three kinds: footnote, citation, anchor)
 - **AI exchange** — sidecar JSON files (`suggestions.json`, `revisions.json`, `ai-requests.json`, `bib-review-requests.json`) in `virgil/` folder drive structured UI affordances

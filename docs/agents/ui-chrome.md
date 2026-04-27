@@ -1,4 +1,4 @@
-<!-- last-verified: 0c7dc09 2026-04-25 -->
+<!-- last-verified: 7e546d2 2026-04-26 -->
 
 # UI Chrome
 
@@ -8,13 +8,13 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (5129 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5450 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
-- Mounts the `MenuBar` and each `DetachedActionsToolbar` via portals to `document.body`
+- Mounts the home `MenuBar` **inline** at the top of the editor column (no portal — change c40d8d2). Detached `DetachedActionsToolbar` / `DetachedFormattingToolbar` / `DetachedMenuToolbar` copies still mount via portals to `document.body`
 - Manages panel state: `activeLeft`, `activeRight`, `prefs.activeLeftTop/Bottom`, `prefs.activeRightTop/Bottom` (default to `"omni"`, not null/"blank")
 - Manages layout state: `prefs.pageWidth`, panel-width map, `prefs.placements` (which panels live on which side)
-- Manages floating state: `prefs.poppedOutPanels`, `prefs.poppedOutCards`, `prefs.menuLocation` (`{kind:"home"}` or `{kind:"free", left, top}`), `menuOrientation`, `dragFreePos` (transient during drag), `detachedActions[]` (array of `{id, pos}` — multi-copy after successive tear-offs)
+- Manages floating state: `prefs.poppedOutPanels`, `prefs.poppedOutCards`, `prefs.menuLocation` (still `{kind:"home"}` by default; "free" mode is effectively dead since home no longer tears off), `detachedActions[]`, `detachedFormatting[]`, `detachedMenus[]` (multi-copy arrays after successive tear-offs)
 - Handles all drag/drop, split/unsplit, collapse/expand logic
 
 When anything touches UI layout, chrome, or panel placement, EditorLayout is almost certainly where it happens.
@@ -30,8 +30,10 @@ EditorLayout
 ├─ PanelColumn side="left"                            — ~line 4760
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar (portal) — home-docked or free-floating — ~line 4804
-│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4857
+│   ├─ MenuBar — docked inline at top of editor column — ~line 4995
+│   ├─ DetachedActionsToolbar (portal × N)            — ~line 4864
+│   ├─ DetachedFormattingToolbar (portal × N)         — ~line 4900
+│   ├─ DetachedMenuToolbar (portal × N)               — ~line 4926
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatingPanel portals (popped-out panels)
@@ -100,31 +102,25 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 ### Panel list
 
-See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 5 non-card panels (`outline`, `search`, `wordcount`, `suggestions`, `omni`).
+See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). Revisions hosts both `comment` cards (was: revisions; suggestions panel was folded into Revisions in 2073376).
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive.
 
-## MenuBar (the menu pod inside the Virgil bar)
+## MenuBar (the menu pod inside the editor column)
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 
-Mounted via portal to `document.body`. Two-mode position model:
+Mounted **inline** at the top of the editor column (no portal). Renders in `atHome` mode — orientation locked horizontal; rotation knob and tab silhouette suppressed; no drop shadow; bare icons sit on the canvas. The home-bar grab handle was dropped in c40d8d2, so the home MenuBar no longer tears off.
 
-- **Home** (default): docked inside the Virgil top bar, centered between the tabs (left) and Zen/Prefs/Version cluster (right). Orientation is locked horizontal; rotation knob and tab silhouette are hidden; the pod shares the top-bar chrome (no drop shadow).
-- **Free**: dragged out of the top bar. Free-floating at a viewport coordinate. Rotation knob + tab silhouette visible; pod carries its own drop shadow. A dock-up button (chevron-up) in this mode re-pins to home.
+Detached copies still spawn from the Format and Actions popovers' grab bars — those become free-floating `DetachedMenuToolbar`/`DetachedFormattingToolbar`/`DetachedActionsToolbar` instances mounted via portals to `document.body`. State arrays in EditorLayout: `detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]` (each `{id, pos}`, multi-instance).
 
-Position state in EditorLayout: `prefs.menuLocation` ({kind:"home"} | {kind:"free", left, top}), `menuOrientation`, transient `dragFreePos` during drag. Drop zone for home-snap is computed from `topbarGaps` (derived from `topbarLeftRef`/`topbarRightRef` via ResizeObserver). Zen mode force-pins to home regardless of persisted state.
+`prefs.menuLocation` still exists in `useViewPrefs` (default `{kind:"home"}`) but the "free" branch is effectively unreachable now that the home grab handle is gone.
 
 ### Contents in order (horizontal)
 
-1. **View menu** (three vertical dots) — `ViewMenu` at `MenuBar.tsx:735`. Dropdown with toolbar orientation, display toggles (paragraph titles, % comments, current section, marginalia, dividers), preferences link.
-2. **Format popup** (A-glyph anchor) — `AttachedPopover` at `MenuBar.tsx:1058`. Contents: Bold, Italic, `BlockTypeDropdown` (body/chapter/section/subsection/subsubsection at `MenuBar.tsx:176`), bullet list, ordered list, blockquote, inline math, display math.
-3. **Actions popup** (8-ray star anchor) — `AttachedPopover` at `MenuBar.tsx:1155` wrapping `ActionButtonsRow` (at `MenuBar.tsx:484`). Has a grab bar on its right edge — each drag tears off a **new** `DetachedActionsToolbar` copy (the anchor button stays a plain popover toggle; nothing special happens when detached copies exist).
-4. **Paragraph nav** (back/forward chevrons, stacked vertically) — `MenuBar.tsx:1205`. Disabled at history bounds.
-5. **Split editor toggle**.
-6. **Close all panels** (X).
-7. **Grab handle** (`PodGrabHandle` at `MenuBar.tsx:371`) — drag to reposition the whole pod (home → free, or move free-float position).
-8. **Rotation knob** — click to toggle horizontal ↔ vertical. Hidden when at home.
+Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
+
+The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedPopover` instances; each has a grab bar on its right edge — dragging spawns a new `DetachedFormattingToolbar` / `DetachedActionsToolbar` instance (the anchor button continues to function as a plain popover toggle). Paragraph back/forward chevrons sit between the popups and are disabled at history bounds. The View menu's orientation toggle was also dropped in c40d8d2.
 
 ## Action buttons (the "action toolbar")
 
@@ -174,7 +170,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## Panel icons
 
-[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconErrors`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconSuggestions`, `IconLibrary`. All use `currentColor`.
+[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions.)
 
 ## Floating panels & cards
 

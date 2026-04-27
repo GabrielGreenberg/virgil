@@ -1,4 +1,4 @@
-<!-- last-verified: 0c7dc09 2026-04-25 -->
+<!-- last-verified: 7e546d2 2026-04-26 -->
 
 # Glossary
 
@@ -13,7 +13,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4290; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
-| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted via portal in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4804. Docks "home" in the Virgil bar by default; tears off to free-floating when dragged out (persisted as `prefs.menuLocation`) |
+| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** at the top of the editor column in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4995 (the home MenuBar no longer tears off — drop happened in c40d8d2). Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]`. `prefs.menuLocation` is now effectively home-only |
 | **Menu toolbar** | Same as Menu pod above | Same |
 | **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4703` |
 | **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:5184` |
@@ -42,7 +42,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 ## Panels (what "panel" means)
 
-All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 11 card panels, 5 non-card panels.
+All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY` is SSOT). 11 card panels, 4 non-card panels.
 
 ### Card panels (have cards anchored in the document)
 
