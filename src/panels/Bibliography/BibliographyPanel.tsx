@@ -785,6 +785,7 @@ function BibliographyPanel({
         const ids = keyToCitationIds()[entry.key] || [];
         const idx = keyOccurrenceIdx[entry.key] || 0;
         const isCited = citedKeys.has(entry.key);
+        const libInfo = libraryChipFor(entry.key);
         return (
           <BibEntryCard
             entry={entry}
@@ -806,10 +807,9 @@ function BibliographyPanel({
             bibEntries={bibEntries}
             isCited={isCited}
             libraryChip={
-              <BibLibraryChip
-                citekey={entry.key}
-                info={libraryChipFor(entry.key)}
-              />
+              libInfo.kind === "missing"
+                ? undefined
+                : <BibLibraryChip citekey={entry.key} info={libInfo} />
             }
             occurrenceInfo={
               ids.length > 1

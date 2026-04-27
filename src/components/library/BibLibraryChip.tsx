@@ -76,15 +76,6 @@ export function BibLibraryChip({ citekey, info }: Props) {
       </button>
     );
   }
-  // missing
-  return (
-    <button
-      type="button"
-      onClick={() => dispatchOpen({ citekey })}
-      title="Not in library — open to add"
-      className={`${common} bg-surface-muted text-ink-muted border-edge-hover hover-on-dark`}
-    >
-      — no PDF
-    </button>
-  );
+  // missing — render nothing; absence of an affirmative chip is the signal
+  return null;
 }

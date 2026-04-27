@@ -167,4 +167,6 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 
 ## Pending terminology
 
-_(Empty. Add entries here when the user uses a term not yet in the glossary.)_
+| User term | Best-guess referent | Date noted |
+|---|---|---|
+| **Quick card** | `BibEntryCard` (compact bib-entry card with chip, target icon, and popout button in the header) — [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) | 2026-04-27 |

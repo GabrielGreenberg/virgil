@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, Button } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -422,21 +422,24 @@ export default function BibEntryCard({
   const bibBodyStyle = usePanelBodyStyle("bib");
   const onToggleFromCtx = onTogglePopout ?? (popped ? () => popped.toggle(popKey) : undefined);
 
+  const showCluster = !!onToggleFromCtx || showTargetIcon;
+
   const card = (
     <PanelCard
       data-bib-entry={entry.key}
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`}
       draggable
       onDragStart={handleDragStart}
       onClick={onClick}
     >
-      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
+      {/* Header — pr-14 reserves space for the absolute top-right control
+          stack (target + popout cluster, with optional occurrence counter
+          stacked below). */}
       <div
-        className="flex items-start gap-2 pl-3 pr-7 py-1.5"
+        className="flex items-center gap-2 pl-3 pr-14 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
         <div
@@ -469,29 +472,48 @@ export default function BibEntryCard({
             {libraryChip}
           </div>
         ) : null}
-        {hasOccCounter && (
-          <div
-            className="flex items-center gap-0.5 text-xs text-ink-muted shrink-0"
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body px-0.5" title="Previous occurrence">&#x25B2;</button>
-            <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
-            <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body px-0.5" title="Next occurrence">&#x25BC;</button>
-          </div>
-        )}
-        {showTargetIcon && (
-          <div
-            className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
-            onClick={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
-          </div>
-        )}
       </div>
+
+      {/* Top-right control stack: target + popout in a cluster, with the
+          occurrence counter stacked below when there is more than one ref. */}
+      {(showCluster || hasOccCounter) && (
+        <div
+          className="absolute top-1.5 right-1.5 z-10 flex flex-col items-start gap-1"
+          onClick={(e) => e.stopPropagation()}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          {showCluster && (
+            <div className="flex items-center gap-1">
+              {showTargetIcon && (
+                <div className={`transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}>
+                  <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+                </div>
+              )}
+              {onToggleFromCtx && (
+                <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
+              )}
+            </div>
+          )}
+          {hasOccCounter && (
+            <div className="flex items-center gap-1 text-xs text-ink-muted">
+              <div className="flex flex-col items-center leading-none w-6">
+                <button onClick={() => occurrenceInfo!.onCycle(-1)} className="hover:text-ink-body flex items-center justify-center" title="Previous occurrence">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 15 12 9 18 15" />
+                  </svg>
+                </button>
+                <button onClick={() => occurrenceInfo!.onCycle(1)} className="hover:text-ink-body flex items-center justify-center" title="Next occurrence">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+              </div>
+              <span className="font-mono">{occurrenceInfo!.current + 1}/{occurrenceInfo!.total}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Separator */}
       <div
