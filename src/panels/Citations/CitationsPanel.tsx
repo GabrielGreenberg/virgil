@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback, memo } from "react";
+import { useMemo, useEffect, useCallback, memo } from "react";
 import type { Editor } from "@tiptap/react";
 import type { BibEntry, CitationRef, AiRequest } from "@/lib/types";
 import ViewToggle from "@/components/ViewToggle";
 import { useInTextPositions } from "@/hooks/useInTextPositions";
 import {
+  ItemMenu,
   PANEL,
   PrevNextCounter,
   useCycle,
@@ -128,19 +129,6 @@ function CitationsPanel({
     inTextItems,
     viewMode === "in-text",
   );
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node))
-        setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [menuOpen]);
-
   const orderedCitations = useMemo(
     () =>
       [...citations].sort((a, b) => {
@@ -240,65 +228,44 @@ function CitationsPanel({
       }}
       onAiRequest={onAddAiRequest}
       headerLeading={
-        <div className="relative -ml-3" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-            title="View options"
-          >
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <div className="absolute left-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg z-50 w-48 py-1">
-              <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-                <PanelThemePicker panelKey="citation" label="Citation color" />
-                <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-              </div>
-              <div className="my-1 border-t border-edge-subtle" />
-              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-                Package
-              </div>
-              {BIB_PACKAGES.map((p) => (
-                <button
-                  key={p.value}
-                  onClick={() => {
-                    onSetBibPackage(p.value);
-                    setMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-                >
-                  <span>{p.label}</span>
-                  <span className="text-[var(--accent)]">
-                    {bibPackage === p.value ? "\u2713" : ""}
-                  </span>
-                </button>
-              ))}
-              <div className="my-1 border-t border-edge-subtle" />
-              <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
-                Style
-              </div>
-              {STYLES.map((s) => (
-                <button
-                  key={s.value}
-                  onClick={() => {
-                    onSetStyle(s.value);
-                    setMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
-                >
-                  <span>{s.label}</span>
-                  <span className="text-[var(--accent)]">
-                    {citationStyle === s.value ? "\u2713" : ""}
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <ItemMenu align="left">
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="citation" label="Citation color" />
+            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+          </div>
+          <div className="my-1 border-t border-edge-subtle" />
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
+            Package
+          </div>
+          {BIB_PACKAGES.map((p) => (
+            <button
+              key={p.value}
+              onClick={() => onSetBibPackage(p.value)}
+              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+            >
+              <span>{p.label}</span>
+              <span className="text-[var(--accent)]">
+                {bibPackage === p.value ? "\u2713" : ""}
+              </span>
+            </button>
+          ))}
+          <div className="my-1 border-t border-edge-subtle" />
+          <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
+            Style
+          </div>
+          {STYLES.map((s) => (
+            <button
+              key={s.value}
+              onClick={() => onSetStyle(s.value)}
+              className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+            >
+              <span>{s.label}</span>
+              <span className="text-[var(--accent)]">
+                {citationStyle === s.value ? "\u2713" : ""}
+              </span>
+            </button>
+          ))}
+        </ItemMenu>
       }
       headerExtras={
         <PrevNextCounter

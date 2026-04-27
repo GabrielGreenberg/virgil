@@ -21,13 +21,15 @@
  *  </div>
  */
 
-import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext } from "react";
+import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forwardRef, useState, useRef, useEffect, useLayoutEffect, useCallback, createContext, useContext, Children, cloneElement, isValidElement, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import RichTextField from "./RichTextField";
+import PanelTextSizeRow from "./PanelTextSizeRow";
+import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -1338,6 +1340,37 @@ export function ItemMenu({
   const btnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left?: number; right?: number }>({ top: 0 });
+  // Auto-injected text-size widget for any panel-header menu inside a Panel.
+  // Card-level menus (align="right") are skipped. The widget is appended
+  // INTO the first child of the menu (the standard color-swatch + view-toggle
+  // row) so it renders on the same line. If the first child isn't a row, the
+  // widget falls back to its own row at the top.
+  const bodyKey = useEnclosingPanelBodyKey();
+  const injectTextSize = align === "left" && bodyKey != null;
+  const enhancedChildren = useMemo<ReactNode>(() => {
+    if (!injectTextSize || !bodyKey) return children;
+    const arr = Children.toArray(children);
+    const first = arr[0];
+    if (isValidElement(first)) {
+      const firstProps = first.props as { children?: ReactNode };
+      arr[0] = cloneElement(
+        first as React.ReactElement<{ children?: ReactNode }>,
+        {},
+        ...Children.toArray(firstProps.children),
+        <PanelTextSizeRow key="__text-size__" panelKey={bodyKey} />,
+      );
+      return arr;
+    }
+    // Fallback: render text-size as its own row before the children
+    return (
+      <>
+        <div className="px-3 py-1.5 flex items-center justify-end">
+          <PanelTextSizeRow panelKey={bodyKey} />
+        </div>
+        {children}
+      </>
+    );
+  }, [children, injectTextSize, bodyKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -1389,7 +1422,7 @@ export function ItemMenu({
           style={{ top: pos.top, left: pos.left, right: pos.right }}
           onClick={() => setOpen(false)}
         >
-          {children}
+          {enhancedChildren}
         </div>
       )}
     </div>

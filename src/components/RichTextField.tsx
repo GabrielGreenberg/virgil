@@ -397,8 +397,17 @@ function RichTextFieldImpl({
     else dom.removeAttribute("data-panel-kind");
     if (bodyStyle.fontFamily) dom.style.fontFamily = String(bodyStyle.fontFamily);
     else dom.style.removeProperty("font-family");
-    if (bodyStyle.fontSize) dom.style.fontSize = String(bodyStyle.fontSize);
-    else dom.style.removeProperty("font-size");
+    // Setting --editor-font-size (rather than just `font-size`) is required
+    // because `.tiptap p` in globals.css resolves its own font-size from the
+    // var, which would otherwise mask any inherited value coming from the
+    // editor's inline style.
+    if (bodyStyle.fontSize) {
+      dom.style.fontSize = String(bodyStyle.fontSize);
+      dom.style.setProperty("--editor-font-size", String(bodyStyle.fontSize));
+    } else {
+      dom.style.removeProperty("font-size");
+      dom.style.removeProperty("--editor-font-size");
+    }
     if (bodyStyle.color) dom.style.color = String(bodyStyle.color);
     else dom.style.removeProperty("color");
   }, [editor, panelKey, bodyStyle]);

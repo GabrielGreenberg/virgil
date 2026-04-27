@@ -7,6 +7,7 @@ import {
   CardTargetIcon,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -29,6 +30,7 @@ export function ExampleCard({
   isPoppedOut,
 }: ExampleCardProps) {
   const theme = useCardTheme("example");
+  const bodyStyle = usePanelBodyStyle("example");
   const kindLabel = example.kind === "multi" ? "\\pex" : "\\ex";
 
   return (
@@ -81,7 +83,7 @@ export function ExampleCard({
       </div>
       <div
         className="px-3 py-2 text-xs text-ink-body leading-snug line-clamp-3"
-        style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+        style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}
       >
         {example.preview || (
           <span className="italic text-ink-muted">Empty</span>
