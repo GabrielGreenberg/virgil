@@ -3,23 +3,11 @@ import type { VirgilSidecar } from "@/lib/types";
 import { ANCHORABLE_NODES } from "@/lib/marginalia";
 import { generateNodeUuid } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
+import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 
-const DEFAULT_PREAMBLE = `\\documentclass{article}
-\\usepackage[utf8]{inputenc}
-\\usepackage{amsmath}
-\\usepackage{amssymb}
-
-% Virgil entity-id markers — no-op commands that carry stable UUIDs for
-% inline entities (footnotes, citations, examples) across .tex parse
-% cycles. Without these, every re-parse regenerates the ids and any UI
-% state keyed by them (e.g. popped-out cards) becomes stale.
-\\providecommand{\\vfid}[1]{}
-\\providecommand{\\vcid}[1]{}
-\\providecommand{\\vexid}[1]{}
-
-\\begin{document}
-
-`;
+// The classic preset is the historical default — used as the fallback
+// when a doc has no preserved preamble and the caller didn't pass one.
+const DEFAULT_PREAMBLE = CLASSIC_PREAMBLE;
 
 const DEFAULT_POSTAMBLE = `
 \\end{document}

@@ -34,6 +34,7 @@ import {
   assignUuids,
   extractSidecarData,
 } from "@/lib/latex-serializer";
+import { getStyle, DEFAULT_STYLE_ID, type DocumentStyleId } from "@/lib/document-styles";
 import {
   readIndex,
   writeIndex,
@@ -262,7 +263,20 @@ export async function writeDocBundle(
     const delimiters = extractPreambleAndPostamble(existingLatex);
 
     const newSidecar = extractSidecarData(content);
-    const latex = serializeToLatex(content, delimiters ?? undefined);
+    // For brand-new / empty docs with no \begin{document} marker yet,
+    // seed the preamble from the doc's currently-selected style instead
+    // of the historical hardcoded fallback. Existing docs keep their
+    // verbatim preamble.
+    let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
+    if (!delimiters) {
+      const settings = await safeReadJson<{ style?: DocumentStyleId }>(
+        virgil,
+        "document-settings.json",
+        { style: DEFAULT_STYLE_ID },
+      );
+      serializeOpts = { preamble: getStyle(settings.style).preamble };
+    }
+    const latex = serializeToLatex(content, serializeOpts);
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,

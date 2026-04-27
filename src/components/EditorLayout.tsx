@@ -29,6 +29,8 @@ import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
+import { useDocumentStyle } from "@/hooks/useDocumentStyle";
+import { DOCUMENT_STYLES, type DocumentStyleId } from "@/lib/document-styles";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
 import { useQuotations } from "@/hooks/useQuotations";
@@ -205,6 +207,87 @@ import { getDocHandle } from "@/lib/doc-index";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
 import { LibraryTabView } from "./library/LibraryTabView";
+
+/**
+ * "Style" dropdown for the active document, mounted in the Virgil bar.
+ * Shows the currently-selected preamble preset and lets the user swap
+ * presets — see useDocumentStyle for the rewrite mechanics. Renders
+ * nothing when no doc is open.
+ */
+function DocStyleDropdown({ docId }: { docId: string | null }) {
+  const { style, setStyle } = useDocumentStyle(docId);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  if (!docId) return null;
+
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const POPUP_H = 24 * DOCUMENT_STYLES.length + 8;
+      const POPUP_W = 160;
+      const GAP = 4;
+      const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
+      const flipLeft = r.left + POPUP_W > window.innerWidth - 4 && window.innerWidth - r.right > POPUP_W;
+      const vertical = flipUp ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP };
+      const horizontal = flipLeft ? { right: window.innerWidth - r.right } : { left: r.left };
+      setPos({ ...vertical, ...horizontal });
+    }
+    setOpen(!open);
+  };
+
+  const pick = (id: DocumentStyleId) => {
+    setOpen(false);
+    if (id !== style) void setStyle(id);
+  };
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center">
+      <button
+        onClick={handleToggle}
+        className="topbarbtn ml-1"
+        title="Document style"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        Style
+        <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[140px]"
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right }}
+        >
+          {DOCUMENT_STYLES.map((s) => {
+            const active = s.id === style;
+            return (
+              <button
+                key={s.id}
+                role="menuitem"
+                onClick={() => pick(s.id)}
+                className="w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
+              >
+                <span className="w-3 inline-block text-[var(--accent)]">{active ? "✓" : ""}</span>
+                {s.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function EditorLayout() {
   // In-app confirmation dialog — replaces native window.confirm for
@@ -4579,6 +4662,12 @@ export default function EditorLayout() {
               />
             )}
           </button>
+          {/* ── Document style dropdown ────────────────────────────────
+              Per-doc preamble preset selector. Switching style rewrites
+              the bytes before \begin{document} in the active doc's .tex
+              file (see useDocumentStyle). Sits just left of Code/Compile
+              so it reads as part of the doc-action cluster. */}
+          <DocStyleDropdown docId={currentDocId} />
           <button
             onClick={codeView ? switchToVisualView : switchToCodeView}
             className="topbarbtn ml-1"
