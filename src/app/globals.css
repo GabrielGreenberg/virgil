@@ -173,6 +173,15 @@
   --pref-mode-accent: var(--drag-highlight);
 }
 
+/* Zen mode (enhanced): unify window canvas with topbar background so the
+   topbar visually melts into the surrounding canvas. The editor pod
+   keeps its own surface (white pod with border/shadow/radius) — only
+   the surrounding canvas changes. data-zen-mode is set on document.body
+   by useZenMode. */
+body[data-zen-mode="on"] {
+  --background: var(--topbar-bg);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
