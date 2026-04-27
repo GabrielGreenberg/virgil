@@ -115,13 +115,26 @@ export function useRefActions(deps: {
             title: preview,
           });
         }
-        // Sub-item entries: dotted form (parent.sub) → e.g. "3b".
+        // Sub-item entries: surface both the flat form (matching expex's
+        // `\label{foo}` inside `\a` → "3a") and the Virgil dotted form
+        // (parent.sub) for backwards-compat. Recurses through nested
+        // exampleItemList wrappers (xlist tiers).
         nd.descendants((child) => {
           if (child.type.name !== "exampleItem") return true;
           const sub = (child.attrs.subLabel as string) || "";
-          if (!sub) return false;
+          if (!sub) return true;
           const childTag = (child.attrs.tag as string) || "";
           const childLabel = (child.attrs.label as string) || "";
+          // Flat: \label{foo} on a sub-item is its own ref target.
+          for (const s of [childTag, childLabel].filter(Boolean)) {
+            pushUnique({
+              label: s,
+              kind: "example",
+              typeLabel: `Example (${number}${sub})`,
+              title: preview,
+            });
+          }
+          // Dotted: parent.sub form (Virgil-specific shorthand).
           const parents = [parentTag, parentLabel].filter(Boolean);
           const subs = [childTag, childLabel].filter(Boolean);
           for (const p of parents) {
@@ -135,7 +148,8 @@ export function useRefActions(deps: {
               });
             }
           }
-          return false;
+          // Continue recursing — nested item lists carry more items.
+          return true;
         });
         return true;
       }
@@ -246,13 +260,31 @@ export function useRefActions(deps: {
         return true;
       });
       if (targetPos < 0) {
-        // Example match — tag or \label on a block, or a sub-item.
+        // Example match — tag or \label on a block, a flat sub-item
+        // label, or the Virgil dotted parent.sub form.
         editor.state.doc.descendants((nd, pos) => {
           if (nd.type.name !== "exampleBlock") return true;
           const parentTag = (nd.attrs.tag as string) || "";
           const parentLabel = (nd.attrs.label as string) || "";
           if (label === parentTag || label === parentLabel) {
             targetPos = pos + 1;
+            return false;
+          }
+          // Flat sub-item match — walk all descendants (including
+          // nested xlist items).
+          let flatItemPos = -1;
+          nd.descendants((child, rel) => {
+            if (child.type.name !== "exampleItem") return true;
+            const childTag = (child.attrs.tag as string) || "";
+            const childLabel = (child.attrs.label as string) || "";
+            if (label === childTag || label === childLabel) {
+              flatItemPos = pos + 1 + rel + 1;
+              return false;
+            }
+            return true;
+          });
+          if (flatItemPos >= 0) {
+            targetPos = flatItemPos;
             return false;
           }
           // Dotted parent.sub
@@ -356,6 +388,7 @@ function resolveLabelDisplay(
   // Example scan
   let exactNum: string | null = null;
   let dottedNum: string | null = null;
+  let flatSubNum: string | null = null;
   doc.descendants((nd) => {
     if (nd.type.name !== "exampleBlock") return true;
     const parentTag = (nd.attrs.tag as string) || "";
@@ -365,6 +398,22 @@ function resolveLabelDisplay(
     if (label === parentTag || label === parentLabel) {
       exactNum = numAttr;
       return false;
+    }
+    // Flat sub-item label: walk all items (including nested) and look
+    // for one whose tag/label equals the queried label.
+    if (!flatSubNum) {
+      nd.descendants((child) => {
+        if (child.type.name !== "exampleItem") return true;
+        const childTag = (child.attrs.tag as string) || "";
+        const childLabel = (child.attrs.label as string) || "";
+        const sub = (child.attrs.subLabel as string) || "";
+        if (sub && (label === childTag || label === childLabel)) {
+          flatSubNum = `${numAttr}${sub}`;
+          return false;
+        }
+        return true;
+      });
+      if (flatSubNum) return false;
     }
     const dot = label.lastIndexOf(".");
     if (dot > 0) {
@@ -385,7 +434,7 @@ function resolveLabelDisplay(
     }
     return true;
   });
-  const num = exactNum || dottedNum;
+  const num = exactNum || flatSubNum || dottedNum;
   if (num) {
     return {
       display: refCommand === "ref" ? num : `(${num})`,

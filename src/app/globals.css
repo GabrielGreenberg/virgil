@@ -1721,32 +1721,32 @@ body {
   padding-left: 0;
 }
 
-/* Blue "Example" annotation pod — sits flush with the left edge of the
- * teal example-block above it (no number-column indent). */
+/* "Ex." annotation pod under the block — small bordered chip matching
+ * the heading "Section 1.2" pod. Aligned with B (left edge of the
+ * letter column / body column of the block). Shrinks to fit its own
+ * content. Vertical rhythm mirrors the heading pattern: the block's
+ * margin-bottom: -0.1em tucks the pod tight under the last text line,
+ * and the pod itself carries the 1.2em margin-bottom from
+ * .heading-annotation for breathing room before the next content. */
 .expex-label-annotation {
-  margin-left: 0;
-  margin-top: 0.25em;
-  margin-bottom: 0.6em;
+  margin-left: 2rem; /* matches A-B in the block grid (1.5em + 0.5em at body font) */
+  margin-top: 0;
+  /* margin-bottom inherited from .heading-annotation (1.2em) */
+  width: max-content;
+  max-width: 100%;
 }
 
 .expex-block {
   position: relative;
   display: grid;
-  grid-template-columns: 3em 1fr;
+  /* A-B = 2em: number col + gap. Same total width as B-C in
+   * .expex-item below so (n)/letter/text align in equal increments. */
+  grid-template-columns: 1.5em 1fr;
   column-gap: 0.5em;
   row-gap: 0;
   align-items: start;
-  margin: 0;
-  padding: 0.2em 0.5em;
-  border-left: 3px solid transparent;
-  border-radius: 4px;
-  background: linear-gradient(to right, rgba(13, 148, 136, 0.06), transparent 240px);
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.expex-block:hover {
-  background: linear-gradient(to right, rgba(13, 148, 136, 0.11), transparent 260px);
-  border-left-color: rgba(13, 148, 136, 0.3);
+  margin: 0 0 -0.1em 0; /* pull pod tight under last text line, like h1/h2 do */
+  padding: 0;
 }
 
 /* Drag handle on the block's left edge — positioned relative to the
@@ -1755,10 +1755,7 @@ body {
  * until the block is hovered. */
 .expex-drag-handle {
   position: absolute;
-  /* -17px = -14px (paragraph handle offset) minus the 3px border-left
-   * on .expex-block, so the handle sits in the same visual column as a
-   * regular paragraph's grab bar. */
-  left: -17px;
+  left: -14px;
   top: 0.2em;
   display: flex;
   align-items: center;
@@ -1789,13 +1786,10 @@ body {
 
 .expex-number {
   grid-column: 1;
-  padding-top: 0.15em;
+  padding-top: 0;
   font-family: var(--font-serif), Georgia, serif;
   font-size: 0.95em;
-  /* Match the muted-grey tone used by heading section numbers so the
-   * example number reads as an auto-generated annotation rather than
-   * body text. */
-  color: var(--muted, #8a8580);
+  color: inherit;
   user-select: none;
 }
 
@@ -1804,21 +1798,56 @@ body {
   min-width: 0;
 }
 
-/* Sub-item — a/b/c rows inside a \pex */
+/* Tuck the body's last paragraph margin so the block-level "Ex." pod
+ * sits flush under the text — same fix as .expex-item-body below. */
+.expex-body > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Item-list wrapper — invisible structural container around \a items
+ * at one nesting tier. No layout of its own; the items lay themselves
+ * out inside their parent. */
+.expex-item-list {
+  display: contents;
+}
+
+/* Sub-item — a/b/c rows inside a \pex (or i/ii/iii … one tier deeper).
+ * Block-flow container; the inner .expex-item-row holds the marker+body
+ * grid, and the label pod sits below as a plain block sibling so
+ * block-flow margins (heading pattern) work. The negative bottom
+ * margin tucks the pod tight under the last text line.
+ * B-C = 2em (marker col + gap), matching A-B in the block grid above. */
 .expex-item {
+  display: block;
+  margin: 0.1em 0 -0.1em 0;
+  grid-template-columns: none; /* nuke any stale grid rule */
+  grid-template-rows: none;
+}
+
+.expex-item-row {
   display: grid;
-  grid-template-columns: 1.6em 1fr;
-  column-gap: 0.35em;
+  grid-template-columns: 1.5em 1fr;
+  column-gap: 0.5em;
   align-items: start;
-  margin: 0.2em 0;
+}
+
+/* Per-item label pod — small "ex." chip BELOW the body, aligned with C
+ * (the left edge of the body column = where the item's text starts).
+ * Bottom margin inherits the 1.2em from .heading-annotation. */
+.expex-item-label-annotation {
+  margin-left: 2rem; /* shift by B-C so the pod sits at C, the body column */
+  margin-top: 0;
+  /* margin-bottom inherited from .heading-annotation (1.2em) */
+  width: max-content;
+  max-width: 100%;
 }
 
 .expex-item-marker {
   grid-column: 1;
-  padding-top: 0.15em;
+  padding-top: 0;
   font-family: var(--font-serif), Georgia, serif;
   font-size: 0.95em;
-  color: var(--muted, #8a8580);
+  color: inherit;
   user-select: none;
   text-align: right;
 }
@@ -1827,6 +1856,16 @@ body {
   grid-column: 2;
   min-width: 0;
 }
+
+/* Tuck the body's last paragraph margin so the per-item pod sits flush
+ * under the text — same rhythm as the heading "Section 1.2" pod. */
+.expex-item-body > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Nested items inherit the 1.5em + 0.5em column structure, so each
+ * tier indents by exactly 2em (B-C) — matching A-B in the block grid.
+ * No extra margin needed; the grid alone produces a regular cadence. */
 
 /* Gloss — interlinear tiers aligned on a CSS grid. Each aligned row
  * forms its own subgrid; column count is set as a CSS var by the
@@ -1881,7 +1920,7 @@ body {
 /* Keyboard focus: when cursor is inside an example, add a soft focus ring. */
 .expex-block.ProseMirror-selectednode,
 .expex-block[data-node-selection="true"] {
-  outline: 2px solid rgba(13, 148, 136, 0.35);
+  outline: 2px solid rgba(0, 0, 0, 0.18);
   outline-offset: 2px;
 }
 

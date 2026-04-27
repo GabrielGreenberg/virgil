@@ -88,7 +88,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **LaTeX comment** | TipTap node `latexComment` (`%…`) | [src/lib/tiptap/latex-comment.ts](../../src/lib/tiptap/latex-comment.ts) |
 | **Label** | TipTap mark `label` (`\label{ref}`); `LabelRef` node for `\ref{}` / `\getref{}` / `\getfullref{}` with `refCommand` + `targetKind` attrs | [src/lib/tiptap/label.ts](../../src/lib/tiptap/label.ts) |
 | **Title field** | TipTap node `titleField` for hoisted `\title{}`, `\author{}`, `\date{}` from preamble | [src/lib/tiptap/title.ts](../../src/lib/tiptap/title.ts) |
-| **Example block** (expex `\ex`/`\pex`) | TipTap node `exampleBlock`; sub-items are `exampleItem`; glosses nest as `exampleGloss` → `alignedGlossRow`/`proseGlossRow` → `glossCell` | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) |
+| **Example block** (expex `\ex`/`\pex`) | TipTap node `exampleBlock`; sub-items wrapped in `exampleItemList` (recursive — nested xlist tiers reuse the same wrapper for 1 → a → i → A → I marker cycle); each item is `exampleItem`; glosses nest as `exampleGloss` → `alignedGlossRow`/`proseGlossRow` → `glossCell` | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) |
 
 ## Cards
 
@@ -170,3 +170,4 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | User term | Best-guess referent | Date noted |
 |---|---|---|
 | **Quick card** | `BibEntryCard` (compact bib-entry card with chip, target icon, and popout button in the header) — [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) | 2026-04-27 |
+| **Treatment** | Numbered-examples / xpex feature: `\ex` / `\pex` machinery rendered as numbered examples in the editor and the Examples panel. Nodes `exampleBlock`, `exampleItemList`, `exampleItem`, `exampleGloss`, `alignedGlossRow`, `proseGlossRow`, `glossCell`, plus `ExpexNumbering` plugin in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts); panel folder [src/panels/Examples](../../src/panels/Examples) | 2026-04-27 |
