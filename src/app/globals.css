@@ -371,6 +371,16 @@ body[data-zen-mode="on"] {
   background-color: var(--accent-light);
 }
 
+/* Accent-hover variant — icon buttons that should hover to brand
+   accent text on a light parent (Open-folder "+", Preferences,
+   Version-info chrome). Pairs with iconbtn-toggle when the same
+   button also has an active state. */
+.iconbtn-sm.iconbtn-accent:hover,
+.iconbtn-md.iconbtn-accent:hover,
+.iconbtn-lg.iconbtn-accent:hover {
+  color: var(--accent);
+}
+
 html, body {
   overscroll-behavior: none;
 }
