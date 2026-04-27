@@ -285,11 +285,9 @@ function OmniViewPanel({
           }
         }}
       >
-        {visibleItems.length === 0 && (
+        {visibleItems.length === 0 && enabledCategories.size === 0 && (
           <div className="text-center text-ink-muted text-xs px-3 py-6">
-            {enabledCategories.size === 0
-              ? "No item types selected — use the filter menu at the bottom of the strip."
-              : "No items to show yet."}
+            No item types selected — use the filter menu at the bottom of the strip.
           </div>
         )}
         {unanchored.length > 0 && (
