@@ -97,7 +97,7 @@ import {
   deriveCategorySides,
   OmniFilterMenu,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, Side, Half } from "@/hooks/useViewPrefs";
+import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
 import { PanelChromeProvider } from "./panel-primitives";
@@ -566,7 +566,8 @@ export default function EditorLayout() {
     setEditorSplitRatio,
     setTopGutter,
     setBottomGutter,
-    setAlwaysShowLinkedText,
+    setShowHighlights,
+    toggleHighlightType,
     togglePopout,
     closePopout,
     setFloatPosition,
@@ -1428,14 +1429,29 @@ export default function EditorLayout() {
 
   // CSS-based coupled highlight: the `.linked-anchor` span for the
   // active/hovered link gets `data-link-highlight`, and the editor root
-  // gets `data-always-show-links` when the pref is on. Margin icons read
-  // the same `activeAnchorId`/`hoveredAnchorId` state via their own
-  // `selected` prop. Bidirectional by construction.
+  // gets `data-show-hl-<kind>` for each visible highlight kind. Margin
+  // icons read the same `activeAnchorId`/`hoveredAnchorId` state via
+  // their own `selected` prop. Bidirectional by construction.
+  const hiddenHighlightTypes = useMemo(
+    () => new Set<HighlightType>(prefs.hiddenHighlightTypes),
+    [prefs.hiddenHighlightTypes],
+  );
+  const visibleHighlightKinds = useMemo(() => {
+    const out = new Set<"quotation" | "note" | "todo" | "comment" | "cut" | "archive">();
+    if (!prefs.showHighlights) return out;
+    for (const t of ALL_HIGHLIGHT_TYPES) {
+      if (!hiddenHighlightTypes.has(t)) out.add(t);
+    }
+    // Archive linked anchors aren't toggleable from the menu — keep
+    // them visible whenever the master switch is on.
+    out.add("archive");
+    return out;
+  }, [prefs.showHighlights, hiddenHighlightTypes]);
   useLinkHighlight({
     editor: editorInstance,
     activeLinkId: activeAnchorId,
     hoveredLinkId: hoveredAnchorId,
-    alwaysShowLinkedText: prefs.alwaysShowLinkedText,
+    visibleHighlightKinds,
   });
 
   // ── LabelRef popover state ──
@@ -3836,15 +3852,17 @@ export default function EditorLayout() {
   // Search range highlight takes priority — skip text-based highlight when active
   const highlightText = searchHighlightRange || errorHighlightRange
     ? null
-    : pendingCommentText
-      ? pendingCommentText
-      : commentHighlight
-        ? commentHighlight
-        : (activeLeft === "revisions" || activeRight === "revisions") &&
-            currentSuggestion &&
-            currentSuggestion.status === "pending"
-          ? currentSuggestion.original_text
-          : null;
+    : !visibleHighlightKinds.has("comment")
+      ? null
+      : pendingCommentText
+        ? pendingCommentText
+        : commentHighlight
+          ? commentHighlight
+          : (activeLeft === "revisions" || activeRight === "revisions") &&
+              currentSuggestion &&
+              currentSuggestion.status === "pending"
+            ? currentSuggestion.original_text
+            : null;
   // Range-based highlights — search wins over error (search is an
   // explicit user action, error highlight is derived from selection).
   const effectiveHighlightRange = searchHighlightRange ?? errorHighlightRange;
@@ -5083,8 +5101,10 @@ export default function EditorLayout() {
                   onToggleMarginalia: toggleMarginalia,
                   hiddenMarginaliaTypes,
                   onToggleMarginaliaType: toggleMarginaliaType,
-                  alwaysShowLinkedText: prefs.alwaysShowLinkedText,
-                  onToggleAlwaysShowLinkedText: () => setAlwaysShowLinkedText((v) => !v),
+                  showHighlights: prefs.showHighlights,
+                  onToggleHighlights: () => setShowHighlights((v) => !v),
+                  hiddenHighlightTypes,
+                  onToggleHighlightType: toggleHighlightType,
                   availableDividerLevels,
                   dividerLevels: activeDividerLevels,
                   onToggleDividerLevel: toggleDividerLevel,
@@ -5144,8 +5164,10 @@ export default function EditorLayout() {
                 onToggleMarginalia={toggleMarginalia}
                 hiddenMarginaliaTypes={hiddenMarginaliaTypes}
                 onToggleMarginaliaType={toggleMarginaliaType}
-                alwaysShowLinkedText={prefs.alwaysShowLinkedText}
-                onToggleAlwaysShowLinkedText={() => setAlwaysShowLinkedText((v) => !v)}
+                showHighlights={prefs.showHighlights}
+                onToggleHighlights={() => setShowHighlights((v) => !v)}
+                hiddenHighlightTypes={hiddenHighlightTypes}
+                onToggleHighlightType={toggleHighlightType}
                 availableDividerLevels={availableDividerLevels}
                 dividerLevels={activeDividerLevels}
                 onToggleDividerLevel={toggleDividerLevel}

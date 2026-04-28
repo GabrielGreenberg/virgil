@@ -3,6 +3,23 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
+
+/** Card kinds whose linked-anchor highlights are togglable from the
+ *  Highlights menu. Values match the prefix of `data-link-card`. */
+export type HighlightType =
+  | "quotation"
+  | "note"
+  | "todo"
+  | "comment"
+  | "cut";
+
+export const ALL_HIGHLIGHT_TYPES: HighlightType[] = [
+  "quotation",
+  "note",
+  "todo",
+  "comment",
+  "cut",
+];
 export type Side = "left" | "right";
 
 export interface PanelPlacement {
@@ -51,10 +68,16 @@ export interface ViewPrefs {
   poppedOutCards: string[];
   /** Saved position/size of each floating card, keyed by card key. */
   cardFloatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
-  /** When true, Mode B anchor links (`.linked-anchor` spans) show a subtle
-   *  persistent background, intensifying on hover/select. Off by default
-   *  to preserve the clean reading surface. */
-  alwaysShowLinkedText: boolean;
+  /** Master switch for highlight-style decorations in the main text.
+   *  When false, all per-kind highlights below are suppressed
+   *  regardless of `hiddenHighlightTypes`. */
+  showHighlights: boolean;
+  /** Per-kind suppression — each entry hides one card-kind's highlight.
+   *  Stored as an array (rather than a Set) so it round-trips through
+   *  JSON. Values use the CardKind names that appear in the
+   *  `data-link-card` prefix: "quotation", "note", "todo", "comment"
+   *  (= revisions panel), "cut". */
+  hiddenHighlightTypes: HighlightType[];
   /** Location of the floating MenuBar. Defaults to "home" (docked in the
    *  Virgil top bar, centered over the document). */
   menuLocation: MenuLocation;
@@ -105,7 +128,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   floatPositions: {},
   poppedOutCards: [],
   cardFloatPositions: {},
-  alwaysShowLinkedText: false,
+  showHighlights: true,
+  hiddenHighlightTypes: [],
   menuLocation: { kind: "home" },
   pageWidth: 880,
   topGutter: 0,
@@ -390,12 +414,23 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
 
-  const setAlwaysShowLinkedText = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+  const setShowHighlights = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
     update((p) => ({
       ...p,
-      alwaysShowLinkedText:
-        typeof v === "function" ? v(p.alwaysShowLinkedText) : v,
+      showHighlights: typeof v === "function" ? v(p.showHighlights) : v,
     }));
+  }, [update]);
+
+  const toggleHighlightType = useCallback((type: HighlightType) => {
+    update((p) => {
+      const has = p.hiddenHighlightTypes.includes(type);
+      return {
+        ...p,
+        hiddenHighlightTypes: has
+          ? p.hiddenHighlightTypes.filter((t) => t !== type)
+          : [...p.hiddenHighlightTypes, type],
+      };
+    });
   }, [update]);
 
   const setMenuLocation = useCallback((v: MenuLocation | ((prev: MenuLocation) => MenuLocation)) => {
@@ -572,7 +607,8 @@ export function useViewPrefs() {
     setPageWidth,
     setTopGutter,
     setBottomGutter,
-    setAlwaysShowLinkedText,
+    setShowHighlights,
+    toggleHighlightType,
     setMenuLocation,
     togglePopout,
     closePopout,

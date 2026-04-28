@@ -14,6 +14,7 @@ import {
   IconExample,
 } from "./editor-layout/panel-icons";
 import { generateEntityId } from "@/lib/uuid";
+import type { HighlightType } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import {
   FloatingToolbarShell,
@@ -317,8 +318,10 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onToggleMarginalia: () => void;
   hiddenMarginaliaTypes: Set<MarginaliaType>;
   onToggleMarginaliaType: (type: MarginaliaType) => void;
-  alwaysShowLinkedText: boolean;
-  onToggleAlwaysShowLinkedText: () => void;
+  showHighlights: boolean;
+  onToggleHighlights: () => void;
+  hiddenHighlightTypes: Set<HighlightType>;
+  onToggleHighlightType: (type: HighlightType) => void;
   availableDividerLevels: Set<DividerLevel>;
   dividerLevels: Set<DividerLevel>;
   onToggleDividerLevel: (level: DividerLevel) => void;
@@ -1006,8 +1009,10 @@ function ViewMenu({
   onToggleMarginalia,
   hiddenMarginaliaTypes,
   onToggleMarginaliaType,
-  alwaysShowLinkedText,
-  onToggleAlwaysShowLinkedText,
+  showHighlights,
+  onToggleHighlights,
+  hiddenHighlightTypes,
+  onToggleHighlightType,
   availableDividerLevels,
   dividerLevels,
   onToggleDividerLevel,
@@ -1022,13 +1027,15 @@ function ViewMenu({
   | "onOpenPreferences"
   | "showMarginalia" | "onToggleMarginalia"
   | "hiddenMarginaliaTypes" | "onToggleMarginaliaType"
-  | "alwaysShowLinkedText" | "onToggleAlwaysShowLinkedText"
+  | "showHighlights" | "onToggleHighlights"
+  | "hiddenHighlightTypes" | "onToggleHighlightType"
   | "availableDividerLevels" | "dividerLevels" | "onToggleDividerLevel"
   | "dividerWidth" | "onSetDividerWidth"
   | "orientation" | "onSetOrientation"
 >) {
   const [open, setOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
+  const [highlightsExpanded, setHighlightsExpanded] = useState(false);
   const [dividersExpanded, setDividersExpanded] = useState(false);
   const [dividerPrefsExpanded, setDividerPrefsExpanded] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1052,7 +1059,7 @@ function ViewMenu({
     const v: "below" | "above" = tr.bottom + pr.height + GAP > window.innerHeight && tr.top > pr.height + GAP ? "above" : "below";
     const h: "right" | "left" = tr.right - pr.width < 4 && window.innerWidth - tr.left > pr.width ? "left" : "right";
     setPlacement((prev) => (prev.v === v && prev.h === h ? prev : { v, h }));
-  }, [open, marginaliaExpanded, dividersExpanded, dividerPrefsExpanded]);
+  }, [open, marginaliaExpanded, highlightsExpanded, dividersExpanded, dividerPrefsExpanded]);
 
   const dropdownClass = [
     "absolute bg-surface border border-[var(--border)] rounded-lg shadow-lg z-[55] w-52 py-1",
@@ -1132,14 +1139,42 @@ function ViewMenu({
                   <span className="text-[var(--accent)]">{!hiddenMarginaliaTypes.has(type) ? "\u2713" : ""}</span>
                 </button>
               ))}
+            </>
+          )}
+          <button
+            onClick={() => setHighlightsExpanded((p) => !p)}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+          >
+            <span>Highlights</span>
+            <svg className="w-3 h-3 text-ink-muted transition-transform" style={{ transform: highlightsExpanded ? "rotate(90deg)" : "rotate(0deg)" }} viewBox="0 0 8 8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2.5 1L5.5 4L2.5 7" />
+            </svg>
+          </button>
+          {highlightsExpanded && (
+            <>
               <button
-                onClick={onToggleAlwaysShowLinkedText}
-                title="Persistently highlight text ranges that are linked to notes, cuts, or revisions. When off, highlights appear only on hover or selection."
+                onClick={onToggleHighlights}
                 className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
               >
-                <span>Always show linked text</span>
-                <span className="text-[var(--accent)]">{alwaysShowLinkedText ? "\u2713" : ""}</span>
+                <span>Show highlights</span>
+                <span className="text-[var(--accent)]">{showHighlights ? "\u2713" : ""}</span>
               </button>
+              {showHighlights && (["quotation", "note", "todo", "comment", "cut"] as const).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => onToggleHighlightType(type)}
+                  className="w-full text-left pl-6 pr-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+                >
+                  <span>{
+                    type === "quotation" ? "Quotations"
+                      : type === "note" ? "Notes"
+                      : type === "todo" ? "Todo"
+                      : type === "comment" ? "Revisions"
+                      : "Cuts"
+                  }</span>
+                  <span className="text-[var(--accent)]">{!hiddenHighlightTypes.has(type) ? "\u2713" : ""}</span>
+                </button>
+              ))}
             </>
           )}
           {availableDividerLevels.size > 0 && (
@@ -1210,7 +1245,8 @@ function MenuBarContent({
   editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
   hiddenMarginaliaTypes, onToggleMarginaliaType,
-  alwaysShowLinkedText, onToggleAlwaysShowLinkedText,
+  showHighlights, onToggleHighlights,
+  hiddenHighlightTypes, onToggleHighlightType,
   availableDividerLevels, dividerLevels, onToggleDividerLevel,
   dividerWidth, onSetDividerWidth,
   onParaNavBack, onParaNavForward, paraNavBackDisabled, paraNavForwardDisabled,
@@ -1240,8 +1276,10 @@ function MenuBarContent({
       onToggleMarginalia={onToggleMarginalia}
       hiddenMarginaliaTypes={hiddenMarginaliaTypes}
       onToggleMarginaliaType={onToggleMarginaliaType}
-      alwaysShowLinkedText={alwaysShowLinkedText}
-      onToggleAlwaysShowLinkedText={onToggleAlwaysShowLinkedText}
+      showHighlights={showHighlights}
+      onToggleHighlights={onToggleHighlights}
+      hiddenHighlightTypes={hiddenHighlightTypes}
+      onToggleHighlightType={onToggleHighlightType}
       availableDividerLevels={availableDividerLevels}
       dividerLevels={dividerLevels}
       onToggleDividerLevel={onToggleDividerLevel}
