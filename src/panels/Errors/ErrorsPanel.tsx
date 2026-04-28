@@ -10,16 +10,17 @@ export interface ErrorsPanelProps {
   errors: LatexError[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** Jump to the error's location. In code view scrolls the CodeEditor; in
-   *  rich-text view switches into code view at the line (or jumps to an
-   *  anchored paragraph when one was found). */
+  /** Jump to the error's location in the rich-text editor. Scrolls the
+   *  mapped paragraph into view and applies a transient highlight to the
+   *  offending range. Always stays in (or switches to) the visual editor —
+   *  never the code view. */
   onJump: (err: LatexError) => void;
   /** Maps `err.id` → a short source snippet (e.g. the offending code line).
    *  Shown as the card's quoted header fragment. */
   snippets?: Map<string, string>;
   /** Maps `err.id` → a paragraph-anchor id when the error's line was
-   *  resolved to a paragraph. Used purely to dim the jump target title
-   *  ("Jump to in text" vs. "Jump to line in code"). */
+   *  resolved to a paragraph. Used to dim the jump-target icon when no
+   *  anchor was found. */
   anchoredIds?: Set<string>;
   dismissedIds: Set<string>;
   onDismiss: (id: string) => void;
