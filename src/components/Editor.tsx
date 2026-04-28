@@ -180,6 +180,10 @@ interface EditorProps {
   onToggleHeadingPopout?: (uuid: string) => void;
   /** Same as paragraphIsPoppedRef, but for headings. */
   headingIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
+  /** Same as onToggleParagraphPopout, but for `\ex` / `\pex` example blocks. */
+  onToggleExamplePopout?: (uuid: string, anchor?: DOMRect | null) => void;
+  /** Same as paragraphIsPoppedRef, but for example blocks. */
+  exampleIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
 }
 
 export interface FootnoteInfo {
@@ -280,6 +284,8 @@ export interface EditorHandle {
   refreshParagraphPopouts: () => void;
   /** Same as refreshParagraphPopouts, but for heading node views. */
   refreshHeadingPopouts: () => void;
+  /** Same as refreshParagraphPopouts, but for `\ex` / `\pex` example blocks. */
+  refreshExamplePopouts: () => void;
 }
 
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
@@ -318,7 +324,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef, onToggleHeadingPopout, headingIsPoppedRef },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, paragraphIsPoppedRef, onToggleHeadingPopout, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -347,6 +353,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const headingIsPoppedPredicateRef = useRef(headingIsPoppedRef);
   headingIsPoppedPredicateRef.current = headingIsPoppedRef;
   const headingPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
+  // Same triplet for example blocks (`\ex` / `\pex`). Threaded into the
+  // ExampleBlock extension via .configure() so its node view can dispatch
+  // popout toggles and read the current popped state.
+  const onToggleExamplePopoutRef = useRef(onToggleExamplePopout);
+  onToggleExamplePopoutRef.current = onToggleExamplePopout;
+  const exampleIsPoppedPredicateRef = useRef(exampleIsPoppedRef);
+  exampleIsPoppedPredicateRef.current = exampleIsPoppedRef;
+  const examplePopoutRefreshersRef = useRef<Set<() => void>>(new Set());
   // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
@@ -1580,7 +1594,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       ArchiveMarker,
       Citation,
       LabelRef,
-      ExampleBlock,
+      ExampleBlock.configure({
+        onTogglePopoutRef: onToggleExamplePopoutRef,
+        isPoppedRef: exampleIsPoppedPredicateRef,
+        refresherRegistryRef: examplePopoutRefreshersRef,
+      }),
       ExampleItemList,
       ExampleItem,
       ExampleGloss,
@@ -2934,6 +2952,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     refreshHeadingPopouts(): void {
       headingPopoutRefreshersRef.current.forEach((fn) => fn());
+    },
+    refreshExamplePopouts(): void {
+      examplePopoutRefreshersRef.current.forEach((fn) => fn());
     },
   }), [editor]);
 

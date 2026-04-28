@@ -1853,7 +1853,8 @@ body {
 /* Drag handle on the block's left edge — positioned relative to the
  * block so its top aligns with the first line of text, horizontally
  * matching the regular paragraph drag handle (left: -14px). Hidden
- * until the block is hovered. */
+ * until the gutter (left-margin zone, drag handle, or popout button)
+ * is hovered — same trigger pattern as paragraph chrome. */
 .expex-drag-handle {
   position: absolute;
   left: -14px;
@@ -1871,7 +1872,9 @@ body {
   user-select: none;
 }
 
-.expex-par-wrapper:hover .expex-drag-handle {
+.expex-par-wrapper:has(.expex-drag-handle:hover) .expex-drag-handle,
+.expex-par-wrapper:has(.par-left-margin-zone:hover) .expex-drag-handle,
+.expex-par-wrapper:has(.expex-popout-btn:hover) .expex-drag-handle {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1883,6 +1886,25 @@ body {
 .expex-drag-handle:active {
   cursor: grabbing;
   color: var(--ink, #3a362f);
+}
+
+/* Example popout button — sits in the gutter immediately to the left
+ * of the drag handle, hover-revealed via the left-margin zone or the
+ * handle/button itself. Mirrors .par-popout-btn geometry: -36px puts
+ * its right edge ~2px before the handle at -14px. */
+.expex-popout-btn {
+  position: absolute;
+  left: -36px;
+  top: calc(0.2em + (var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8) - 20px) / 2);
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.15s;
+  z-index: 2;
+}
+.expex-par-wrapper:has(.expex-drag-handle:hover) .expex-popout-btn,
+.expex-par-wrapper:has(.par-left-margin-zone:hover) .expex-popout-btn,
+.expex-par-wrapper:has(.expex-popout-btn:hover) .expex-popout-btn {
+  opacity: 1;
 }
 
 .expex-number {

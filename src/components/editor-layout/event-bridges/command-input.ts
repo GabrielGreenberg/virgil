@@ -14,6 +14,9 @@ type CitationMode = "anchored" | "unanchored";
  *   anchored-mode create in the citations panel.
  * - `virgil-ref-create` — bare `\ref` opens the LabelRef popover in
  *   create mode anchored at the current cursor.
+ * - `virgil-ex-create` — bare `\ex` inserts a single-part example block
+ *   at the cursor, selects it in the Examples panel, and opens the
+ *   panel on whichever side it's placed.
  * - `virgil-footnote-input` — bare `\footnote` inserts an empty footnote
  *   node at cursor, opens the panel, and broadcasts
  *   `virgil-footnote-created` so the panel can scroll-to-new.
@@ -28,6 +31,7 @@ export function useCommandInputBridges(deps: {
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
+  setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
     editorRef,
@@ -39,6 +43,7 @@ export function useCommandInputBridges(deps: {
     setActiveRefLabel,
     setActiveRefRect,
     setSelectedFootnoteId,
+    setSelectedExampleId,
   } = deps;
 
   useEffect(() => {
@@ -73,6 +78,23 @@ export function useCommandInputBridges(deps: {
     window.addEventListener("virgil-ref-create", handler);
     return () => window.removeEventListener("virgil-ref-create", handler);
   }, [editorRef, setActiveRefLabel, setActiveRefRect]);
+
+  useEffect(() => {
+    const handler = () => {
+      const result = editorRef.current?.insertExample("single");
+      if (!result) return;
+      setSelectedExampleId(result.exampleId);
+      const p = prefsRef.current;
+      const placement = p.placements.find((pl) => pl.id === "examples");
+      if (placement?.side === "left") {
+        if (p.activeLeft !== "examples") setActiveLeft("examples");
+      } else {
+        if (p.activeRight !== "examples") setActiveRight("examples");
+      }
+    };
+    window.addEventListener("virgil-ex-create", handler);
+    return () => window.removeEventListener("virgil-ex-create", handler);
+  }, [editorRef, prefsRef, setActiveLeft, setActiveRight, setSelectedExampleId]);
 
   useEffect(() => {
     const handler = () => {

@@ -60,6 +60,12 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
     },
   },
   {
+    name: "ex",
+    action: () => {
+      window.dispatchEvent(new CustomEvent("virgil-ex-create"));
+    },
+  },
+  {
     name: "cite",
     action: () => {
       markPendingCitationCreate("\\cite");

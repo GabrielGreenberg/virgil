@@ -298,7 +298,6 @@ export interface ActionToolbarCallbacks {
   onCreateFootnote?: ActionToolbarCallback;
   onInsertCitation?: ActionToolbarCallback;
   onQuoteSelection?: ActionToolbarCallback;
-  onCreateExample?: ActionToolbarCallback;
 }
 
 interface MenuBarProps extends ActionToolbarCallbacks {
@@ -798,7 +797,6 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote /> },
   { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation />, dataAttr: "data-insert-citation-button" },
   { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
-  { callbackKey: "onCreateExample", panelId: "examples", title: "Add example (expex)", color: "#0d9488", hoverBg: "#f0fdfa", hoverColor: "#115e59", icon: <IconExample size={16} /> },
 ];
 
 /** Renders the full row of Actions buttons shared by the attached
@@ -1202,7 +1200,7 @@ function ViewMenu({
 function MenuBarContent({
   editor,
   orientation,
-  onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation, onCreateExample,
+  onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
   showLatexComments, onToggleLatexComments,
   showSectionIndicator, onToggleSectionIndicator,
@@ -1281,7 +1279,6 @@ function MenuBarContent({
             onCreateFootnote={onCreateFootnote}
             onInsertCitation={onInsertCitation}
             onQuoteSelection={onQuoteSelection}
-            onCreateExample={onCreateExample}
           />
         )}
       </AttachedPopover>

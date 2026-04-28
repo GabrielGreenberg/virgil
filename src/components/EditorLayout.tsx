@@ -1082,6 +1082,19 @@ export default function EditorLayout() {
   useEffect(() => {
     editorRef.current?.refreshHeadingPopouts();
   }, [headingPoppedKeys]);
+  // Same setup for example blocks.
+  const exampleIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
+  const examplePoppedKeys = useMemo(
+    () =>
+      prefs.poppedOutCards
+        .filter((k) => k.startsWith("example:"))
+        .sort()
+        .join("|"),
+    [prefs.poppedOutCards],
+  );
+  useEffect(() => {
+    editorRef.current?.refreshExamplePopouts();
+  }, [examplePoppedKeys]);
   const [editorInstance, setEditorInstance] = useState<Editor | null>(null);
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.
@@ -2762,6 +2775,7 @@ export default function EditorLayout() {
     setActiveRefLabel,
     setActiveRefRect,
     setSelectedFootnoteId,
+    setSelectedExampleId,
   });
 
   // Handle drag-and-drop of archive snippets into the editor.
@@ -3046,28 +3060,6 @@ export default function EditorLayout() {
     cardCreation.createCitation({ anchorRect });
   }, [cardCreation]);
 
-  const handleToolbarCreateExample = useCallback(
-    (_anchorRect: DOMRect | null) => {
-      // Insert a blank single-part example at the cursor. Users can
-      // Alt-click the Format-popover button for the multi-part variant;
-      // the Actions toolbar button always inserts a simple `\ex`.
-      const result = editorRef.current?.insertExample("single");
-      if (result) {
-        setSelectedExampleId(result.exampleId);
-        if (!prefs.activeLeft && !prefs.activeRight) return;
-        // Ensure the Examples panel is visible on whichever side it's
-        // placed on so the user sees the card spring in.
-        const side = prefs.placements.find((p) => p.id === "examples")?.side ?? "left";
-        if (side === "left" && prefs.activeLeft !== "examples") {
-          setActiveLeft("examples");
-        } else if (side === "right" && prefs.activeRight !== "examples") {
-          setActiveRight("examples");
-        }
-      }
-    },
-    [prefs.activeLeft, prefs.activeRight, prefs.placements, setActiveLeft, setActiveRight],
-  );
-
   const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
     cardCreation.createQuotation({
@@ -3091,7 +3083,6 @@ export default function EditorLayout() {
     onCreateFootnote: handleToolbarCreateFootnote,
     onInsertCitation: handleToolbarInsertCitation,
     onQuoteSelection: handleToolbarQuoteSelection,
-    onCreateExample: handleToolbarCreateExample,
   }), [
     handleToolbarAddComment,
     handleToolbarAddNote,
@@ -3101,7 +3092,6 @@ export default function EditorLayout() {
     handleToolbarCreateFootnote,
     handleToolbarInsertCitation,
     handleToolbarQuoteSelection,
-    handleToolbarCreateExample,
   ]);
 
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
@@ -4404,6 +4394,20 @@ export default function EditorLayout() {
   };
   headingIsPoppedRef.current = (uuid: string) =>
     prefs.poppedOutCards.includes(`heading:${uuid}`);
+  // Same for example blocks. Anchor seeds the spawn position so the
+  // float appears near the gutter button. Keyed as `example:${uuid}` in
+  // poppedCards — paired with the `case "example"` renderer in
+  // floating-cards.tsx.
+  const handleToggleExamplePopout = (uuid: string, anchor?: DOMRect | null) => {
+    const key = `example:${uuid}`;
+    if (!prefsRef.current.poppedOutCards.includes(key) && anchor) {
+      const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
+      setCardFloatPosition(key, pos);
+    }
+    toggleCardPopout(key);
+  };
+  exampleIsPoppedRef.current = (uuid: string) =>
+    prefs.poppedOutCards.includes(`example:${uuid}`);
 
   // Popped-out card rendering lives in ./editor-layout/floating-cards.tsx —
   // the deps bundle below is the contract for what a popped card needs.
@@ -4411,13 +4415,14 @@ export default function EditorLayout() {
     notes, footnotes, archiveSnippets, cuts, todoItems, bibEntries,
     citations, citationPositionMap, allEditorCitations,
     comments,
-    quotationGroups, aiRequests, anchoredIds,
+    quotationGroups, aiRequests, anchoredIds, examples,
     selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutId,
     selectedTodoId, selectedBibKey, selectedCitationId, selectedCommentId,
-    selectedQuotationGroupId,
+    selectedQuotationGroupId, selectedExampleId,
     setSelectedNoteId, setSelectedFootnoteId, setSelectedArchiveId,
     setSelectedCutId, setSelectedTodoId, setSelectedBibKey,
     setSelectedCitationId, setSelectedCommentId, setSelectedQuotationGroupId,
+    setSelectedExampleId,
     editorRef,
     setOverrideEditor, getCitationDisplayText, handleCitationCreated,
     handleHoverNote, handleHoverCut, bibPackage,
@@ -5006,7 +5011,6 @@ export default function EditorLayout() {
                   onCreateFootnote: handleToolbarCreateFootnote,
                   onInsertCitation: handleToolbarInsertCitation,
                   onQuoteSelection: handleToolbarQuoteSelection,
-                  onCreateExample: handleToolbarCreateExample,
                 }}
                 onGrabStart={(e) => {
                   e.preventDefault();
@@ -5129,7 +5133,6 @@ export default function EditorLayout() {
                 onAddTodo={handleToolbarAddTodo}
                 onCutSelection={handleToolbarAddCut}
                 onInsertCitation={handleToolbarInsertCitation}
-                onCreateExample={handleToolbarCreateExample}
                 showParTitles={showParTitles}
                 onToggleParTitles={() => setShowParTitles((p) => !p)}
                 showLatexComments={showLatexComments}
@@ -5230,6 +5233,8 @@ export default function EditorLayout() {
                       paragraphIsPoppedRef={paragraphIsPoppedRef}
                       onToggleHeadingPopout={handleToggleHeadingPopout}
                       headingIsPoppedRef={headingIsPoppedRef}
+                      onToggleExamplePopout={handleToggleExamplePopout}
+                      exampleIsPoppedRef={exampleIsPoppedRef}
                     />
                     {!zenModeOn && (
                       <Marginalia
@@ -5270,6 +5275,8 @@ export default function EditorLayout() {
                   paragraphIsPoppedRef={paragraphIsPoppedRef}
                   onToggleHeadingPopout={handleToggleHeadingPopout}
                   headingIsPoppedRef={headingIsPoppedRef}
+                  onToggleExamplePopout={handleToggleExamplePopout}
+                  exampleIsPoppedRef={exampleIsPoppedRef}
                 />
                 {!zenModeOn && (
                   <div className="group absolute top-0 left-0 right-0 h-6 z-20">

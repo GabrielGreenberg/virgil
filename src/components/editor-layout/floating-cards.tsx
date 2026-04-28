@@ -8,11 +8,12 @@ import { TodoRow } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
 import { CommentCard } from "@/panels/Revisions";
 import { QuotationGroupCard } from "@/panels/Quotations";
+import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
 import { ParagraphFloat } from "../ParagraphFloat";
 import { HeadingFloat } from "../HeadingFloat";
-import type { EditorHandle, FootnoteInfo } from "../Editor";
+import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
 import type {
   UserNote,
@@ -48,6 +49,7 @@ export interface PoppedCardDeps {
   comments: Comment[];
   quotationGroups: QuotationGroup[];
   aiRequests: AiRequest[];
+  examples: ExampleInfo[];
   anchoredIds?: Set<string>;
 
   // Selected-id slots
@@ -60,6 +62,7 @@ export interface PoppedCardDeps {
   selectedCitationId: string | null;
   selectedCommentId: string | null;
   selectedQuotationGroupId: string | null;
+  selectedExampleId: string | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
@@ -69,6 +72,7 @@ export interface PoppedCardDeps {
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
+  setSelectedExampleId: Dispatch<SetStateAction<string | null>>;
 
   // Editor handle (for scroll-to-X navigation)
   editorRef: RefObject<EditorHandle | null>;
@@ -388,6 +392,22 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     }
     case "heading": {
       return <HeadingFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    }
+    case "example": {
+      const ex = d.examples.find((e) => e.exampleId === id);
+      if (!ex) return null;
+      return (
+        <ExampleCard
+          key={key}
+          example={ex}
+          isSelected={d.selectedExampleId === ex.exampleId}
+          onSelect={() =>
+            d.setSelectedExampleId(d.selectedExampleId === ex.exampleId ? null : ex.exampleId)
+          }
+          onJump={() => d.editorRef.current?.scrollToExample(ex.exampleId)}
+          isPoppedOut
+        />
+      );
     }
     default:
       return null;

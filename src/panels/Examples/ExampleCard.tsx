@@ -6,8 +6,11 @@ import {
   BadgeLabel,
   CardTargetIcon,
 } from "@/components/panel-primitives";
+import { FloatCard } from "@/components/FloatingCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { popKey } from "@/panels/panel-registry";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -32,13 +35,19 @@ export function ExampleCard({
   const theme = useCardTheme("example");
   const bodyStyle = usePanelBodyStyle("example");
   const kindLabel = example.kind === "multi" ? "\\pex" : "\\ex";
+  const popped = usePoppedCards();
+  const cardKey = popKey("examples", example.exampleId);
+  const onToggleFromCtx = onTogglePopout
+    ?? (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
 
-  return (
+  const card = (
     <PanelCard
       theme={theme}
       selected={isSelected}
       onClick={onSelect}
-      onTogglePopout={onTogglePopout}
+      onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       data-link-card={`example:${example.exampleId}`}
     >
@@ -91,4 +100,10 @@ export function ExampleCard({
       </div>
     </PanelCard>
   );
+  // When popped: wrap in FloatCard (portals to body, draggable/resizable).
+  // The panel-side render checks isPopped and skips itself so the card
+  // mounts only once, in the float.
+  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
+  if (popped?.isPopped(cardKey) && !isPoppedOut) return null;
+  return card;
 }
