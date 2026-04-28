@@ -36,7 +36,7 @@ export interface CitationCardProps {
   bibPackage: string;
   getDisplayText: (command: string) => string;
   onSelect: () => void;
-  onJump: () => void;
+  onJump: (sourceEl: HTMLElement | null) => void;
   onUpdateCitation: (id: string, command: string) => void;
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
@@ -321,7 +321,10 @@ export function CitationCard({
             e.preventDefault();
           }}
         >
-          <TargetIcon onClick={onJump} title="Jump to citation" />
+          <TargetIcon
+            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+            title="Jump to citation"
+          />
         </div>
       </div>
 

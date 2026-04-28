@@ -39,7 +39,7 @@ interface BibliographyPanelProps {
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   allEditorCitations?: Array<{ citationId: string; command: string; keys: string[] }>;
   citationPositions?: Map<string, number>;
-  onScrollToCitation?: (citationId: string) => void;
+  onScrollToCitation?: (citationId: string, sourceEl?: HTMLElement | null) => void;
   onActiveCitationChange?: (citationId: string | null) => void;
   bibPackage?: string;
   onAddBibEntry?: (entry: BibEntry) => void;
@@ -202,12 +202,12 @@ function BibliographyPanel({
   );
 
   const handleJumpToBibKey = useCallback(
-    (key: string) => {
+    (key: string, sourceEl?: HTMLElement | null) => {
       const ids = keyToCitationIds()[key] || [];
       const idx = keyOccurrenceIdx[key] || 0;
       const targetId = ids[idx] || ids[0];
       if (targetId) {
-        onScrollToCitation?.(targetId);
+        onScrollToCitation?.(targetId, sourceEl);
         onActiveCitationChange?.(targetId);
       }
     },
@@ -845,7 +845,7 @@ function BibliographyPanel({
               handleSelectBibKey(selected ? null : entry.key);
               listRef.current?.focus();
             }}
-            onJump={isCited ? () => handleJumpToBibKey(entry.key) : undefined}
+            onJump={isCited ? (sourceEl) => handleJumpToBibKey(entry.key, sourceEl) : undefined}
             getFormattedBib={getFormattedBib}
             getAnnotation={getAnnotation}
             setAnnotation={setAnnotation}

@@ -12,7 +12,7 @@ interface BuildArgs {
   orphanedFootnotes: OrphanedFootnote[];
   selectedFootnoteId: string | null;
   setSelectedFootnoteId: (id: string | null) => void;
-  scrollToFootnote: (id: string) => void;
+  scrollToFootnote: (id: string, sourceEl?: HTMLElement | null) => void;
   onEditFootnote: (id: string, json: JSONContent) => void;
   onDeleteFootnote: (id: string) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
@@ -41,7 +41,7 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
           onSelect={() =>
             a.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)
           }
-          onJump={() => a.scrollToFootnote(fn.footnoteId)}
+          onJump={(sourceEl) => a.scrollToFootnote(fn.footnoteId, sourceEl)}
           onEdit={(json) => a.onEditFootnote(fn.footnoteId, json)}
           onDelete={() => a.onDeleteFootnote(fn.footnoteId)}
           onEditTitle={(title) => a.onEditFootnoteTitle(fn.footnoteId, title)}

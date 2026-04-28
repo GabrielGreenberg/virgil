@@ -47,7 +47,7 @@ export function NotesHost(p: NotesHostProps) {
       onDelete={p.deleteNote}
       onSelectNote={setSelectedNoteId}
       selectedNoteId={selectedNoteId}
-      onJumpToCard={(note) => editorRef.current?.jumpToCard(note)}
+      onJumpToCard={(note, sourceEl) => editorRef.current?.jumpToCard(note, sourceEl)}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       aiRequests={aiRequests}

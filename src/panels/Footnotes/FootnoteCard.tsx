@@ -57,7 +57,7 @@ export interface FootnoteCardProps {
   footnote: FootnoteInfo;
   isSelected: boolean;
   onSelect: () => void;
-  onJump: () => void;
+  onJump: (sourceEl: HTMLElement | null) => void;
   onEdit: (json: JSONContent) => void;
   onDelete: () => void;
   onEditTitle?: (title: string) => void;
@@ -120,7 +120,7 @@ export function FootnoteCard({
       headerTrailing={
         <CardTargetIcon
           selected={isSelected}
-          onClick={() => onJump()}
+          onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
           title="Jump to footnote marker"
         />
       }

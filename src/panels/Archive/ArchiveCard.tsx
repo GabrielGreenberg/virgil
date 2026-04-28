@@ -48,7 +48,7 @@ export function ArchiveCard({
   onEdit: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
@@ -94,7 +94,7 @@ export function ArchiveCard({
         isAnchored && onJump ? (
           <CardTargetIcon
             selected={selected}
-            onClick={onJump}
+            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to archive marker"
           />
         ) : orphaned ? (

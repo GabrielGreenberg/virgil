@@ -626,7 +626,7 @@ export function QuotationGroupCard({
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
   onDeleteReference: (groupId: string, referenceId: string) => void;
@@ -790,7 +790,10 @@ export function QuotationGroupCard({
           onCancel={() => setConfirmOpen(false)}
         />
         {onJump && (
-          <TargetIcon onClick={onJump} title="Jump to quotation in text" />
+          <TargetIcon
+            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+            title="Jump to quotation in text"
+          />
         )}
       </div>
 

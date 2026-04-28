@@ -61,7 +61,7 @@ export function BibliographyHost(p: BibliographyHostProps) {
       onCancelReview={p.cancelBibReview}
       getReviewStatus={p.getBibReviewStatus}
       allEditorCitations={p.allEditorCitations}
-      onScrollToCitation={(id) => editorRef.current?.scrollToCitation(id)}
+      onScrollToCitation={(id, sourceEl) => editorRef.current?.scrollToCitation(id, sourceEl)}
       onActiveCitationChange={p.setBibActiveCitationId}
       bibPackage={p.bibPackage}
       onAddBibEntry={p.addBibEntry}

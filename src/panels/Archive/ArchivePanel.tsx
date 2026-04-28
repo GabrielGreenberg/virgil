@@ -31,7 +31,7 @@ interface ArchivePanelProps {
   onInsert: (id: string) => void;
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
-  onJumpToCard?: (card: ArchivedSnippet) => void;
+  onJumpToCard?: (card: ArchivedSnippet, sourceEl?: HTMLElement | null) => void;
   anchoredIds?: Set<string>;
   editor: Editor | null;
   panelSide: "left" | "right";
@@ -116,7 +116,7 @@ function ArchivePanel({
           onEdit={onEdit}
           onUpdateTitle={onUpdateTitle}
           onDelete={onDelete}
-          onJump={onJumpToCard ? () => onJumpToCard(s) : undefined}
+          onJump={onJumpToCard ? (sourceEl) => onJumpToCard(s, sourceEl) : undefined}
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}

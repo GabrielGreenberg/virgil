@@ -246,21 +246,21 @@ export function OmniHost(p: OmniHostProps) {
     [editorInstance],
   );
   const jumpToCard = useCallback(
-    (card: CardWithLinks) => {
-      editorRef.current?.jumpToCard(card);
+    (card: CardWithLinks, sourceEl?: HTMLElement | null) => {
+      editorRef.current?.jumpToCard(card, sourceEl);
     },
     [editorRef],
   );
   const scrollToFootnote = useCallback(
-    (id: string) => editorRef.current?.scrollToFootnote(id),
+    (id: string, sourceEl?: HTMLElement | null) => editorRef.current?.scrollToFootnote(id, sourceEl),
     [editorRef],
   );
   const scrollToCitation = useCallback(
-    (id: string) => editorRef.current?.scrollToCitation(id),
+    (id: string, sourceEl?: HTMLElement | null) => editorRef.current?.scrollToCitation(id, sourceEl),
     [editorRef],
   );
   const scrollToExample = useCallback(
-    (id: string) => editorRef.current?.scrollToExample(id),
+    (id: string, sourceEl?: HTMLElement | null) => editorRef.current?.scrollToExample(id, sourceEl),
     [editorRef],
   );
   const setExampleInOmni = useCallback(

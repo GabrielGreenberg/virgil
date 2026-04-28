@@ -28,7 +28,7 @@ interface TodoPanelProps {
   onArchiveDone: () => void;
   selectedTodoId: string | null;
   onSelectTodo: (id: string | null) => void;
-  onJumpToCard?: (card: TodoItem) => void;
+  onJumpToCard?: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
   aiRequests?: AiRequest[];
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
@@ -189,7 +189,7 @@ export default function TodoPanel({
           isAnchored={getLinkedParagraphIds(item).length > 0}
           onJump={
             onJumpToCard && getLinkedParagraphIds(item).length > 0
-              ? () => onJumpToCard(item)
+              ? (sourceEl) => onJumpToCard(item, sourceEl)
               : undefined
           }
         />

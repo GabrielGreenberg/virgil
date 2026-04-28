@@ -10,7 +10,7 @@ interface BuildArgs {
   citationPositionMap: Map<string, number>;
   selectedCitationId: string | null;
   setSelectedCitationId: (id: string | null) => void;
-  scrollToCitation: (id: string) => void;
+  scrollToCitation: (id: string, sourceEl?: HTMLElement | null) => void;
   bibEntries: BibEntry[];
   bibPackage: string;
   getCitationDisplayText: (command: string) => string;
@@ -54,9 +54,9 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
           onSelect={() =>
             a.setSelectedCitationId(isSelected ? null : cit.id)
           }
-          onJump={() => {
+          onJump={(sourceEl) => {
             a.setSelectedCitationId(cit.id);
-            a.scrollToCitation(cit.id);
+            a.scrollToCitation(cit.id, sourceEl);
           }}
           onUpdateCitation={a.updateCitation}
           getFormattedBib={a.getFormattedBib}

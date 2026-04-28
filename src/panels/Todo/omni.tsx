@@ -10,7 +10,7 @@ interface BuildArgs {
   todoItems: TodoItem[];
   selectedTodoId: string | null;
   setSelectedTodoId: (id: string | null) => void;
-  jumpToCard: (card: TodoItem) => void;
+  jumpToCard: (card: TodoItem, sourceEl?: HTMLElement | null) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   toggleTodo: (id: string) => void;
   updateTodo: (id: string, text: string) => void;
@@ -69,7 +69,7 @@ export function buildTodoOmniItems(a: BuildArgs): OmniItem[] {
               onDelete={a.deleteTodo}
               onSelect={a.setSelectedTodoId}
               isAnchored={true}
-              onJump={() => a.jumpToCard(item)}
+              onJump={(sourceEl) => a.jumpToCard(item, sourceEl)}
               extraDataAttrs={{ "data-omni-entry": omniId }}
             />
           ),

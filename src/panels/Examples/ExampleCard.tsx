@@ -16,7 +16,7 @@ export interface ExampleCardProps {
   example: ExampleInfo;
   isSelected: boolean;
   onSelect: () => void;
-  onJump: () => void;
+  onJump: (sourceEl: HTMLElement | null) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }
@@ -85,7 +85,7 @@ export function ExampleCard({
           selected={isSelected}
           onClick={(e) => {
             e.stopPropagation();
-            onJump();
+            onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
           }}
           title="Jump to example"
         />

@@ -1004,6 +1004,7 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   return (
     <div
       ref={setRefs}
+      data-card="1"
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),

@@ -22,7 +22,7 @@ interface ExamplesPanelProps {
   examples: ExampleInfo[];
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  onJump: (id: string) => void;
+  onJump: (id: string, sourceEl?: HTMLElement | null) => void;
   editor: Editor | null;
   panelSide: "left" | "right";
   viewMode: "list" | "in-text";
@@ -129,7 +129,7 @@ function ExamplesPanel({
           onSelect={() =>
             onSelect(selectedId === ex.exampleId ? null : ex.exampleId)
           }
-          onJump={() => onJump(ex.exampleId)}
+          onJump={(sourceEl) => onJump(ex.exampleId, sourceEl)}
         />
       )}
       inTextRenderItem={(ex, { selected: _selected }) => (
@@ -152,7 +152,7 @@ function ExamplesPanel({
             }`}
           >
             <TargetIcon
-              onClick={() => onJump(ex.exampleId)}
+              onClick={(e) => onJump(ex.exampleId, (e.currentTarget as HTMLElement).closest('[data-card], [data-link-card]') as HTMLElement | null)}
               title="Jump to example"
             />
           </div>

@@ -185,7 +185,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onUpdateTitle={d.updateNoteTitle}
           onDelete={d.deleteNote}
           onSelect={d.setSelectedNoteId}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(note) : undefined}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(note, sourceEl) : undefined}
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
@@ -208,7 +208,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           footnote={fn}
           isSelected={isSelected}
           onSelect={() => d.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)}
-          onJump={() => d.editorRef.current?.scrollToFootnote(fn.footnoteId)}
+          onJump={(sourceEl) => d.editorRef.current?.scrollToFootnote(fn.footnoteId, sourceEl)}
           onEdit={(json) => d.handleEditFootnote(fn.footnoteId, json)}
           onDelete={() => d.handleDeleteFootnote(fn.footnoteId)}
           onEditTitle={(title) => d.handleEditFootnoteTitle(fn.footnoteId, title)}
@@ -233,7 +233,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onEdit={d.updateArchiveSnippet}
           onUpdateTitle={d.updateArchiveSnippetTitle}
           onDelete={d.handleDeleteArchive}
-          onJump={() => d.editorRef.current?.jumpToCard(snippet)}
+          onJump={(sourceEl) => d.editorRef.current?.jumpToCard(snippet, sourceEl)}
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
@@ -256,7 +256,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onSetAiRequest={d.setCutterCommentAiRequest}
           onDelete={d.deleteCutterCard}
           onSelect={d.setSelectedCutterCardId}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(card) : undefined}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
           onHoverChange={(hovering) => d.handleHoverCut(hovering ? card.id : null)}
           isPoppedOut
         />
@@ -282,7 +282,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onReject={(cid) => d.setCutterSuggestionStatus(cid, "rejected")}
           onDelete={d.deleteCutterCard}
           onSelect={d.setSelectedCutterCardId}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(card) : undefined}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
           isPoppedOut
         />
       );
@@ -303,7 +303,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onDelete={d.deleteTodo}
           onSelect={d.setSelectedTodoId}
           isAnchored={canJump}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(item) : undefined}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(item, sourceEl) : undefined}
           isPoppedOut
         />
       );
@@ -348,9 +348,9 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           bibPackage={d.bibPackage}
           getDisplayText={d.getCitationDisplayText}
           onSelect={() => d.setSelectedCitationId(isSelected ? null : cit.id)}
-          onJump={() => {
+          onJump={(sourceEl) => {
             d.setSelectedCitationId(cit.id);
-            d.editorRef.current?.scrollToCitation(cit.id);
+            d.editorRef.current?.scrollToCitation(cit.id, sourceEl);
           }}
           onUpdateCitation={d.updateCitation}
           getFormattedBib={d.getFormattedBib}
@@ -398,7 +398,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
             )
           }
           onDelete={() => d.deleteQuotationGroup(group.id)}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(group) : undefined}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(group, sourceEl) : undefined}
           onUpdateGroupTitle={d.updateQuotationGroupTitle}
           onAddReference={d.addQuotationReference}
           onDeleteReference={d.deleteQuotationReference}

@@ -4206,7 +4206,7 @@ export default function EditorLayout() {
           examples={examples}
           selectedId={selectedExampleId}
           onSelect={setSelectedExampleId}
-          onJump={(id) => editorRef.current?.scrollToExample(id)}
+          onJump={(id, sourceEl) => editorRef.current?.scrollToExample(id, sourceEl)}
           editor={editorRef.current?.getEditor() ?? null}
           panelSide={examplesPanelSide}
           viewMode={getPanelViewMode("examples")}

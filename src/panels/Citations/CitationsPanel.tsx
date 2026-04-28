@@ -26,7 +26,7 @@ interface CitationsPanelProps {
   selectedId: string | null;
   citationOrder: string[];
   onSelect: (id: string | null) => void;
-  onScrollToMarker: (citationId: string) => void;
+  onScrollToMarker: (citationId: string, sourceEl?: HTMLElement | null) => void;
   onUpdateCitation: (id: string, command: string) => void;
   onDeleteCitation: (id: string) => void;
   onSetStyle: (style: string) => void;
@@ -154,9 +154,9 @@ function CitationsPanel({
   const anchoredIds = useMemo(() => new Set(citationOrder), [citationOrder]);
 
   const jumpToCitation = useCallback(
-    (id: string) => {
+    (id: string, sourceEl?: HTMLElement | null) => {
       onSelect(id);
-      onScrollToMarker(id);
+      onScrollToMarker(id, sourceEl);
     },
     [onSelect, onScrollToMarker],
   );
@@ -329,7 +329,7 @@ function CitationsPanel({
             onSelect(selected ? null : cit.id);
             panelScrollRef.current?.focus();
           }}
-          onJump={() => jumpToCitation(cit.id)}
+          onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
           {...sharedCardProps}
         />
       )}
@@ -342,7 +342,7 @@ function CitationsPanel({
             onSelect(selected ? null : cit.id);
             panelScrollRef.current?.focus();
           }}
-          onJump={() => jumpToCitation(cit.id)}
+          onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
           wrapperClassName={`in-text-connector in-text-connector-${panelSide}`}
           {...sharedCardProps}
         />

@@ -33,7 +33,7 @@ export interface BibEntryCardProps {
   /** Whether this entry is cited in the document. */
   isCited?: boolean;
   /** Called when user clicks the target icon to jump to this entry in the text. Only shown when selected. */
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   /** When provided, renders a popout chevron at the left edge of the header. */
   onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
@@ -517,7 +517,10 @@ export default function BibEntryCard({
             <div className="flex items-center gap-1">
               {showTargetIcon && (
                 <div className={`transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}>
-                  <TargetIcon onClick={() => onJump?.()} title="Jump to citation" />
+                  <TargetIcon
+                    onClick={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+                    title="Jump to citation"
+                  />
                 </div>
               )}
               {onToggleFromCtx && (

@@ -39,7 +39,7 @@ export function TodoRow({
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   isAnchored: boolean;
   extraDataAttrs?: Record<string, string>;
   onTogglePopout?: (anchor: DOMRect) => void;
@@ -159,7 +159,7 @@ export function TodoRow({
           disabled={!isAnchored}
           onClick={(e) => {
             e.stopPropagation();
-            onJump?.();
+            onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
           }}
           title={isAnchored ? "Jump to in text" : "Not anchored in document"}
         />

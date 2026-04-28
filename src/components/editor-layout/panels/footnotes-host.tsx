@@ -37,7 +37,7 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onSelect={setSelectedFootnoteId}
       onEdit={p.onEdit}
       onDelete={p.onDelete}
-      onScrollToMarker={(id) => editorRef.current?.scrollToFootnote(id)}
+      onScrollToMarker={(id, sourceEl) => editorRef.current?.scrollToFootnote(id, sourceEl)}
       editor={editorInstance}
       panelSide={p.side}
       viewMode={getPanelViewMode("footnotes")}

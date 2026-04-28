@@ -25,6 +25,7 @@ import {
   type LinkedAnchorKind,
 } from "@/links/links";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
+import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -221,7 +222,7 @@ export interface EditorHandle {
   archiveSelection: (archiveId: string) => { content: unknown; paragraphId: string | null } | null;
   restoreArchive: (content: unknown) => void;
   getFootnotes: () => FootnoteInfo[];
-  scrollToFootnote: (footnoteId: string) => void;
+  scrollToFootnote: (footnoteId: string, sourceEl?: HTMLElement | null) => void;
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
   updateFootnoteTitle: (footnoteId: string, title: string) => void;
   deleteFootnote: (footnoteId: string) => void;
@@ -233,10 +234,10 @@ export interface EditorHandle {
   createEmptyFootnote: (opts?: { title?: string }) => { footnoteId: string } | null;
   renumberFootnotes: () => void;
   getExamples: () => ExampleInfo[];
-  scrollToExample: (exampleId: string) => void;
+  scrollToExample: (exampleId: string, sourceEl?: HTMLElement | null) => void;
   insertExample: (kind: "single" | "multi") => { exampleId: string } | null;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
-  scrollToCitation: (citationId: string) => void;
+  scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
   updateCitationDisplay: (citationId: string, displayText: string) => void;
   getCitationIds: () => Set<string>;
   getCitationOrder: () => string[];
@@ -246,8 +247,10 @@ export interface EditorHandle {
   /** Jump to the first resolvable link on a card. Preferred over
    *  scrollToParagraphId for any card that carries a `links[]` — it picks
    *  the first anchor still present in the doc and respects Mode B
-   *  text-range anchors. */
-  jumpToCard: (card: CardWithLinks) => boolean;
+   *  text-range anchors. When `sourceEl` is provided, the in-text marker
+   *  is aligned to that element's top edge (mirrors the marker→card
+   *  alignment used when clicking links in text). */
+  jumpToCard: (card: CardWithLinks, sourceEl?: HTMLElement | null) => boolean;
   /** Jump to a specific link. Exposed so callers (omni, popped-out cards)
    *  can target a particular anchor when a card has several. */
   jumpToLink: (link: VirgilLink) => void;
@@ -2347,7 +2350,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       return footnotes;
     },
-    scrollToFootnote(footnoteId: string): void {
+    scrollToFootnote(footnoteId: string, sourceEl?: HTMLElement | null): void {
       if (!editor) return;
       const link: VirgilLink = {
         id: footnoteId,
@@ -2356,7 +2359,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         target: { type: "card", ref: { kind: "footnote", id: footnoteId } },
         createdAt: "",
       };
-      jumpToLink(editor, link, "to-marker");
+      jumpToLink(editor, link, "to-marker", sourceEl);
     },
     updateFootnoteContent(footnoteId: string, newContent: TipJSON): void {
       if (!editor) return;
@@ -2506,19 +2509,25 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return out;
     },
 
-    scrollToExample(exampleId: string): void {
+    scrollToExample(exampleId: string, sourceEl?: HTMLElement | null): void {
       if (!editor) return;
       let target = -1;
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name === "exampleBlock" && node.attrs.uuid === exampleId) {
-          target = pos + 1;
+          target = pos;
           return false;
         }
         return true;
       });
-      if (target >= 0) {
-        editor.chain().focus().setTextSelection(target).scrollIntoView().run();
+      if (target < 0) return;
+      if (sourceEl) {
+        const domEl = editor.view.nodeDOM(target) as HTMLElement | null;
+        if (domEl && domEl.getBoundingClientRect) {
+          alignEntryToY(domEl, sourceEl.getBoundingClientRect().top);
+          return;
+        }
       }
+      editor.chain().focus().setTextSelection(target + 1).scrollIntoView().run();
     },
 
     insertExample(kind: "single" | "multi"): { exampleId: string } | null {
@@ -2635,7 +2644,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       return results;
     },
 
-    scrollToCitation(citationId: string): void {
+    scrollToCitation(citationId: string, sourceEl?: HTMLElement | null): void {
       if (!editor) return;
       const link: VirgilLink = {
         id: citationId,
@@ -2644,7 +2653,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         target: { type: "card", ref: { kind: "citation", id: citationId } },
         createdAt: "",
       };
-      jumpToLink(editor, link, "to-marker");
+      jumpToLink(editor, link, "to-marker", sourceEl);
     },
 
     updateCitationDisplay(citationId: string, displayText: string): void {
@@ -2820,9 +2829,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
       } catch { /* pos out of range */ }
     },
-    jumpToCard(card: CardWithLinks): boolean {
+    jumpToCard(card: CardWithLinks, sourceEl?: HTMLElement | null): boolean {
       if (!editor) return false;
-      return jumpToCard(editor, card);
+      return jumpToCard(editor, card, sourceEl);
     },
     jumpToLink(link: VirgilLink): void {
       if (!editor) return;
