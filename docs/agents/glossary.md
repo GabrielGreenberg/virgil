@@ -1,4 +1,4 @@
-<!-- last-verified: 562a431 2026-04-27 -->
+<!-- last-verified: 71f140d 2026-04-27 -->
 
 # Glossary
 
@@ -34,6 +34,8 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:735` |
 | **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:176` |
 | **Style dropdown** / **document style** (preamble preset selector on the Virgil bar) | `DocStyleDropdown` (inline component); presets in `DOCUMENT_STYLES`; per-doc state in `useDocumentStyle` | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 211; [src/lib/document-styles.ts](../../src/lib/document-styles.ts); [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) |
+| **Print button** / **print dialog** (printer icon on the Virgil bar; opens a dialog with show/hide toggles for paragraph titles, marginalia, footnotes, citations, comments, etc., then triggers `window.print()`) | `PrintDialog` + `PrintAppendices`; print orchestration in `lib/print.ts`; pref state via `useViewPrefs` | [src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx); [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx); [src/lib/print.ts](../../src/lib/print.ts) |
+| **Highlights menu** / **per-kind highlight toggles** (sub-menu in the View menu that hides linked-anchor highlights for individual card kinds) | `HighlightType` union (`quotation`, `note`, `todo`, `comment`, `cut`); `hiddenHighlightTypes` pref in `useViewPrefs`; toggles rendered inside `ViewMenu` | [src/hooks/useViewPrefs.ts](../../src/hooks/useViewPrefs.ts); `MenuBar.tsx` ViewMenu section |
 | **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx` ~line 1205 |
 | **Split screen toggle** | Inline button in MenuBar | `MenuBar.tsx` |
 | **Close all panels** (X button) | Inline button in MenuBar | `MenuBar.tsx` |
@@ -58,7 +60,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
 | `revisions` | Revisions | `comment` (key prefix `revision`) and `suggestion` | right | stone (suggestion progress bar in panel header) |
-| `cutter` | Cutter | `cut` | right | red |
+| `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry) | right | red |
 | `errors` | Errors | `error` | right | light red |
 
 ### Non-card panels
@@ -105,6 +107,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Quick card** (compact bib-entry card with chip, target icon, popout button in header) | `BibEntryCard` | [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) |
 | **Paragraph float** (popped-out single paragraph with editable title + drag handle) | `ParagraphFloat`; popout key `paragraph:${uuid}` in `prefs.poppedOutCards` | [src/components/ParagraphFloat.tsx](../../src/components/ParagraphFloat.tsx) |
 | **Heading float** (popped-out heading + its body section) | `HeadingFloat`; popout key `heading:${uuid}` in `prefs.poppedOutCards`; section-body extraction in `section-range.ts` | [src/components/HeadingFloat.tsx](../../src/components/HeadingFloat.tsx); [src/lib/section-range.ts](../../src/lib/section-range.ts) |
+| **Example float** (popped-out example block from the editor gutter) | `ExampleBlock` node-view popout button (via `ExampleBlockOptions`); popout key `example:${uuid}` in `prefs.poppedOutCards` (NOTE: this is the in-editor block popout — distinct from the Examples panel's `ExampleCard` popout, which uses the same key prefix) | [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts); render via `FloatCard` in [src/components/editor-layout/floating-cards.tsx](../../src/components/editor-layout/floating-cards.tsx) |
 
 ## General buttons
 

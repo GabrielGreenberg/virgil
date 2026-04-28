@@ -1,4 +1,4 @@
-<!-- last-verified: 562a431 2026-04-27 -->
+<!-- last-verified: 71f140d 2026-04-27 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -52,11 +52,14 @@ Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also 
 
 ## UUID stability across parse cycles
 
-The parser writes invisible UUID anchor commands into the LaTeX source so round-tripping doesn't regenerate IDs (which would break any UI state keyed by those IDs):
+The parser writes invisible ID anchor commands into the LaTeX source so round-tripping doesn't regenerate IDs (which would break any UI state keyed by those IDs):
 
-- `\vfid{<uuid>}` — precedes each footnote
-- `\vcid{<uuid>}` — precedes each citation
-- Paragraph/block UUIDs — stored in the Tiptap tree, re-emitted during serialization
+- `\vfid{<id>}` — precedes each footnote
+- `\vcid{<id>}` — precedes each citation
+- `\vexid{<id>}` — precedes each example block
+- Paragraph/block IDs (`%!v:xxxx` comment markers) — stored in the Tiptap tree, re-emitted during serialization
+
+In-source IDs use the **4-char hex** short-id format (`generateShortId(existing?)`). The same generator powers paragraph anchors and the three `\v*id` markers; each emit site collects existing ids of the relevant kind from the doc and passes them as the collision-avoidance set. Sidecar-only IDs (notes, todos, comments, etc.) still use full UUIDs (`generateEntityId`) since they never appear in `.tex`. Mixed long/short IDs in the same file round-trip cleanly — the parser accepts arbitrary strings in the brace.
 
 Round-trip files: [src/lib/latex-parser.ts](../../src/lib/latex-parser.ts) (`.tex` → JSONContent), [src/lib/latex-serializer.ts](../../src/lib/latex-serializer.ts) (JSONContent → `.tex`). Paragraph UUID mapping in [src/lib/latex-paragraph-map.ts](../../src/lib/latex-paragraph-map.ts).
 

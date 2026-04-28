@@ -1,4 +1,4 @@
-<!-- last-verified: 562a431 2026-04-27 -->
+<!-- last-verified: 71f140d 2026-04-27 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -11,6 +11,7 @@ Cross-cutting systems that most features touch.
 | Panel/card taxonomy | [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY`) | Display labels, card kinds, key prefixes, view-mode defaults, omni eligibility, default strip side |
 | Link kinds | [src/links/link-registry.ts](../../src/links/link-registry.ts) (`LINK_REGISTRY`) | Multiplicity, connector style, highlight behavior per link kind |
 | Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) | 11 themes (footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error, quotation falls back to default) |
+| Auto-title labels | `CARD_TITLE_LABELS` + `nextCardTitle(kind, count)` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) | Per-CardKind label string (or `null` to opt out — comments / suggestions / citations / ai / bib / error don't auto-title). Used at card creation: `nextCardTitle("note", existingCount)` → `"Note 4"` |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) | Semantic CSS variables (`--surface`, `--ink-body`, `--accent`, etc.) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) | `VirgilSidecar`, `EditorStateData`, `Suggestion`, `ReviewRequest`, `Link`, etc. |
 
@@ -40,6 +41,7 @@ All in `src/hooks/`. Full list (42 files) is large; these are the ones most ofte
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
 | `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
+| `useZenMode` | Zen-mode pref + chrome-hide orchestration. Hides Virgil bar / strips / panels and extends the editor to window edges; restores on exit |
 
 ## Persistence layers
 
@@ -76,8 +78,8 @@ Agents never touch this app — they read the same `.tex`/`.bib` and write these
 
 Entry points for rendering a panel instance:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 3873).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 5560).
+1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 3962).
+2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 5726).
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.
@@ -85,9 +87,11 @@ Cards inside a `CardListPanel`:
 3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
-`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `quotation`, `example`, `cut`, `ai`, `error`.
+`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
-**Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}` and `heading:${uuid}`. They render `ParagraphFloat` / `HeadingFloat` (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
+**Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
+
+**Jump-to alignment.** All `onJump` callbacks accept an optional `sourceEl: HTMLElement | null` argument — typically the clicked card element (use `(e.currentTarget as HTMLElement).closest('[data-card]')`). When passed, `jumpToCard` aligns the in-text marker's vertical position to the card so the page doesn't lurch.
 
 ## Panel context
 
@@ -125,6 +129,10 @@ From the existing memory: the File System Access folder picker doesn't work insi
 
 - `src/app/` — almost pure Next.js scaffolding (manifest, layout, page, global styles). Real work happens in `components/`, `hooks/`, `lib/`, `links/`, `panels/`.
 - Top-level config files (`next.config.ts`, `tsconfig.json`, `tailwind.config.*`) — only relevant when changing build/bundling behavior.
+
+## Print
+
+[src/lib/print.ts](../../src/lib/print.ts) orchestrates the print path triggered from the Virgil-bar print button → `PrintDialog` ([src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx)) → `window.print()`. Show/hide toggles for marginalia, footnotes, citations, comments, paragraph titles, etc. live in `useViewPrefs`. Appendix collection (e.g. all footnotes / comments rendered as a tail section) is in [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx).
 
 ## Related docs
 
