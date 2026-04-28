@@ -13,7 +13,7 @@ import {
   useInTextPositions,
   type PositionItem,
 } from "@/hooks/useInTextPositions";
-import { searchGeneralBib } from "@/lib/bib-search";
+import { searchGeneralBib, searchLocalBib } from "@/lib/bib-search";
 import { pickGeneralBib } from "@/lib/storage";
 import { formatMinimalCitation } from "@/lib/bib-parser";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -95,6 +95,7 @@ function BibliographyPanel({
 
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<"local" | "global">("local");
   const [searchResults, setSearchResults] = useState<BibEntry[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -125,7 +126,9 @@ function BibliographyPanel({
   }, [showRequestForm]);
 
   useEffect(() => {
-    if (!showSearch || !generalBibPath || !docId) return;
+    if (!showSearch || searchScope !== "global" || !generalBibPath || !docId) {
+      return;
+    }
     if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim()) {
       setSearchResults([]);
@@ -145,7 +148,14 @@ function BibliographyPanel({
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [searchQuery, showSearch, generalBibPath, docId]);
+  }, [searchQuery, showSearch, searchScope, generalBibPath, docId]);
+
+  useEffect(() => {
+    if (searchScope === "local") {
+      setSearchResults([]);
+      setSearchLoading(false);
+    }
+  }, [searchScope]);
 
   const keyToCitationIds = useCallback(() => {
     const map: Record<string, string[]> = {};
@@ -237,6 +247,20 @@ function BibliographyPanel({
     });
   }, [bibEntries, citedKeys, filter]);
 
+  // The list actually rendered by CardListPanel and walked by keyboard nav.
+  // Drives selectedIdx, goNext/goPrev, in-text positions, and PrevNextCounter
+  // so that local-search filtering and global-search results both flow
+  // through the same path.
+  const displayedEntries = useMemo(() => {
+    if (showSearch && searchScope === "local" && searchQuery.trim()) {
+      return searchLocalBib(sortedEntries, searchQuery);
+    }
+    if (showSearch && searchScope === "global") {
+      return searchResults;
+    }
+    return sortedEntries;
+  }, [showSearch, searchScope, searchQuery, sortedEntries, searchResults]);
+
   const existingKeys = useMemo(
     () => new Set(bibEntries.map((e) => e.key)),
     [bibEntries],
@@ -274,12 +298,12 @@ function BibliographyPanel({
       }
     }
     const out: PositionItem[] = [];
-    for (const e of sortedEntries) {
+    for (const e of displayedEntries) {
       const pos = firstCitationByKey.get(e.key);
       if (pos !== undefined) out.push({ id: e.key, pos });
     }
     return out;
-  }, [allEditorCitations, citationPositions, sortedEntries]);
+  }, [allEditorCitations, citationPositions, displayedEntries]);
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor ?? null,
     inTextItems,
@@ -288,8 +312,8 @@ function BibliographyPanel({
 
   const selectedIdx = useMemo(() => {
     if (!selectedBibKey) return -1;
-    return sortedEntries.findIndex((e) => e.key === selectedBibKey);
-  }, [selectedBibKey, sortedEntries]);
+    return displayedEntries.findIndex((e) => e.key === selectedBibKey);
+  }, [selectedBibKey, displayedEntries]);
 
   const navigateToEntry = useCallback(
     (key: string) => {
@@ -305,24 +329,24 @@ function BibliographyPanel({
   );
 
   const goNext = useCallback(() => {
-    if (sortedEntries.length === 0) return;
+    if (displayedEntries.length === 0) return;
     const next =
-      selectedIdx === -1 ? 0 : (selectedIdx + 1) % sortedEntries.length;
-    navigateToEntry(sortedEntries[next].key);
-  }, [sortedEntries, selectedIdx, navigateToEntry]);
+      selectedIdx === -1 ? 0 : (selectedIdx + 1) % displayedEntries.length;
+    navigateToEntry(displayedEntries[next].key);
+  }, [displayedEntries, selectedIdx, navigateToEntry]);
 
   const goPrev = useCallback(() => {
-    if (sortedEntries.length === 0) return;
+    if (displayedEntries.length === 0) return;
     const prev =
       selectedIdx === -1
-        ? sortedEntries.length - 1
-        : (selectedIdx - 1 + sortedEntries.length) % sortedEntries.length;
-    navigateToEntry(sortedEntries[prev].key);
-  }, [sortedEntries, selectedIdx, navigateToEntry]);
+        ? displayedEntries.length - 1
+        : (selectedIdx - 1 + displayedEntries.length) % displayedEntries.length;
+    navigateToEntry(displayedEntries[prev].key);
+  }, [displayedEntries, selectedIdx, navigateToEntry]);
 
   const handleNavKeys = useCallback(
     (e: React.KeyboardEvent) => {
-      if (sortedEntries.length === 0) return;
+      if (displayedEntries.length === 0) return;
       const target = e.target as HTMLElement | null;
       const tag = target?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) {
@@ -338,7 +362,7 @@ function BibliographyPanel({
         clearStaleHover(e.currentTarget as HTMLElement);
       }
     },
-    [sortedEntries, goNext, goPrev],
+    [displayedEntries, goNext, goPrev],
   );
 
   const handlePickGeneralBib = useCallback(async () => {
@@ -382,8 +406,30 @@ function BibliographyPanel({
     setAddMenuOpen(false);
     setShowRequestForm(false);
     setShowSearch(true);
+    setSearchScope("global");
     setSearchQuery("");
     setSearchResults([]);
+  }, []);
+
+  const handleToggleSearch = useCallback(() => {
+    setShowSearch((prev) => {
+      const next = !prev;
+      if (!next) {
+        setSearchQuery("");
+        setSearchResults([]);
+        setSearchScope("local");
+      } else {
+        setShowRequestForm(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setShowSearch(false);
+    setSearchQuery("");
+    setSearchResults([]);
+    setSearchScope("local");
   }, []);
 
   const handleOpenRequestForm = useCallback(() => {
@@ -403,7 +449,9 @@ function BibliographyPanel({
   const handleAddEntry = useCallback(
     (entry: BibEntry) => {
       onAddBibEntry?.(entry);
-      setSearchResults((prev) => prev.filter((e) => e.key !== entry.key));
+      // Keep the entry in the global results — existingKeys re-render flips
+      // the chip from "Add" to "Added" so the list doesn't shift under the
+      // user's cursor while they're typing.
     },
     [onAddBibEntry],
   );
@@ -416,7 +464,7 @@ function BibliographyPanel({
     <ItemMenu align="left">
       <div className="px-3 py-1.5 flex items-center justify-end gap-2">
         <PanelThemePicker panelKey="bib" label="Bibliography color" />
-        {onViewModeChange && (
+        {onViewModeChange && !(showSearch && searchScope === "global") && (
           <ViewToggle mode={viewMode} onChange={onViewModeChange} />
         )}
       </div>
@@ -491,9 +539,25 @@ function BibliographyPanel({
     <>
       <PrevNextCounter
         current={selectedIdx >= 0 ? selectedIdx : null}
-        total={sortedEntries.length}
+        total={displayedEntries.length}
         label=""
       />
+      <button
+        type="button"
+        onClick={handleToggleSearch}
+        className={`w-6 h-6 flex items-center justify-center rounded-md ${
+          showSearch
+            ? "text-ink-body bg-surface-muted"
+            : "text-ink-muted hover:text-ink-body hover-on-light"
+        }`}
+        title={showSearch ? "Close search" : "Search bibliography"}
+        aria-pressed={showSearch}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+      </button>
       <div className="flex items-center gap-1">
         <div className="relative" ref={addMenuRef}>
           {addMenuOpen && (
@@ -511,7 +575,7 @@ function BibliographyPanel({
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                From general bibliography
+                Search general bibliography…
               </button>
               <button
                 className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-2"
@@ -536,27 +600,17 @@ function BibliographyPanel({
     <>
       {showSearch && (
         <div className="px-3 py-2 border-b border-[var(--border-light)] bg-surface-muted/50">
-          <div className="flex items-center gap-1.5 mb-1.5">
-            <span className="text-[10px] font-medium text-ink-subtle uppercase tracking-wide">
-              Search general bibliography
-            </span>
-            <button
-              onClick={() => {
-                setShowSearch(false);
-                setSearchQuery("");
-                setSearchResults([]);
-              }}
-              className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
-              title="Close search"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
           <div className="flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-ink-muted shrink-0">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              className="text-ink-muted shrink-0"
+            >
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
@@ -566,54 +620,77 @@ function BibliographyPanel({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  setShowSearch(false);
-                  setSearchQuery("");
-                  setSearchResults([]);
-                }
+                if (e.key === "Escape") closeSearch();
               }}
-              placeholder="Search by key, author, or title..."
-              className="flex-1 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 outline-none focus:border-edge-strong"
+              placeholder={
+                searchScope === "local"
+                  ? "Search local bibliography…"
+                  : "Search general bibliography…"
+              }
+              className="flex-1 min-w-0 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 outline-none focus:border-edge-strong"
             />
+            <div className="flex items-center bg-surface border border-edge-subtle rounded overflow-hidden shrink-0">
+              <button
+                type="button"
+                onClick={() => setSearchScope("local")}
+                className={`text-[10px] px-1.5 py-1 ${
+                  searchScope === "local"
+                    ? "bg-surface-muted text-ink-body"
+                    : "text-ink-muted hover:text-ink-body"
+                }`}
+                title="Search this paper's bibliography"
+              >
+                Local
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (generalBibPath) setSearchScope("global");
+                  else handlePickGeneralBib();
+                }}
+                className={`text-[10px] px-1.5 py-1 border-l border-edge-subtle ${
+                  searchScope === "global"
+                    ? "bg-surface-muted text-ink-body"
+                    : generalBibPath
+                      ? "text-ink-muted hover:text-ink-body"
+                      : "text-ink-faint hover:text-ink-body"
+                }`}
+                title={
+                  generalBibPath
+                    ? "Search the user-wide general bibliography"
+                    : "Set a general bibliography first…"
+                }
+              >
+                Global
+              </button>
+            </div>
+            <button
+              onClick={closeSearch}
+              className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
+              title="Close search"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
           </div>
-          {searchLoading && (
-            <div className="text-[10px] text-ink-muted mt-1.5">Searching...</div>
+          {searchScope === "global" && searchLoading && (
+            <div className="text-[10px] text-ink-muted mt-1.5">Searching…</div>
           )}
-          {!searchLoading && searchResults.length > 0 && (
-            <div className="mt-1.5 max-h-[200px] overflow-y-auto space-y-1">
-              {searchResults.map((entry) => {
-                const alreadyAdded = existingKeys.has(entry.key);
-                return (
-                  <div key={entry.key} className="flex items-start justify-between gap-2 text-xs px-1 py-1 rounded hover-on-light">
-                    <div className="min-w-0">
-                      <span className="font-mono text-[10px] text-ink-subtle">{entry.key}</span>
-                      <span className="text-ink-muted mx-1">&middot;</span>
-                      <span className="text-ink-body">{entry.fields.author || "Unknown"}</span>
-                      {entry.fields.year && (
-                        <span className="text-ink-muted"> ({entry.fields.year})</span>
-                      )}
-                      {entry.fields.title && (
-                        <div className="text-[10px] text-ink-subtle truncate">{entry.fields.title}</div>
-                      )}
-                    </div>
-                    {alreadyAdded ? (
-                      <span className="text-[10px] text-ink-muted shrink-0 py-0.5">Added</span>
-                    ) : (
-                      <button
-                        onClick={() => handleAddEntry(entry)}
-                        className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded shrink-0"
-                      >
-                        Add
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+          {searchScope === "global" && !generalBibPath && (
+            <div className="text-[10px] text-ink-muted mt-1.5">
+              No general bibliography is set. Click Global to choose one.
             </div>
           )}
-          {!searchLoading && searchQuery.trim() && searchResults.length === 0 && (
-            <div className="text-[10px] text-ink-muted mt-1.5">No results found</div>
-          )}
+          {searchScope === "global" &&
+            !searchLoading &&
+            generalBibPath &&
+            !searchQuery.trim() && (
+              <div className="text-[10px] text-ink-muted mt-1.5">
+                Type to search the general bibliography.
+              </div>
+            )}
         </div>
       )}
 
@@ -724,18 +801,24 @@ function BibliographyPanel({
       headerLeading={headerLeading}
       headerExtras={headerExtras}
       panelExtras={panelExtras}
-      items={sortedEntries}
+      items={displayedEntries}
       getId={(e) => e.key}
       selectedId={selectedBibKey}
       onSelect={handleSelectBibKey}
       emptyState={
         <div className={PANEL.empty}>
-          {filter === "cited"
-            ? "No cited entries found. Add citations in the editor and ensure a .bib file is available."
-            : "No entries found in the .bib file."}
+          {showSearch && searchScope === "local" && searchQuery.trim()
+            ? `No local entries match "${searchQuery}"${filter === "cited" ? " (cited only — switch to Full bibliography to widen)" : ""}.`
+            : showSearch && searchScope === "global" && searchQuery.trim() && !searchLoading
+              ? `No general-bib entries match "${searchQuery}".`
+              : showSearch && searchScope === "global" && !searchQuery.trim() && generalBibPath
+                ? "Type to search the general bibliography."
+                : filter === "cited"
+                  ? "No cited entries found. Add citations in the editor and ensure a .bib file is available."
+                  : "No entries found in the .bib file."}
         </div>
       }
-      viewMode={viewMode}
+      viewMode={searchScope === "global" && showSearch ? "list" : viewMode}
       inTextPositions={positions}
       inTextScrollHeight={editorScrollHeight}
       scrollRef={viewMode === "in-text" ? panelScrollRef : listRef}
@@ -747,6 +830,13 @@ function BibliographyPanel({
         const idx = keyOccurrenceIdx[entry.key] || 0;
         const isCited = citedKeys.has(entry.key);
         const libInfo = libraryChipFor(entry.key);
+        const isGlobalResult = showSearch && searchScope === "global";
+        const addAction = isGlobalResult
+          ? {
+              onAdd: () => handleAddEntry(entry),
+              alreadyAdded: existingKeys.has(entry.key),
+            }
+          : undefined;
         return (
           <BibEntryCard
             entry={entry}
@@ -772,6 +862,8 @@ function BibliographyPanel({
                 ? undefined
                 : <BibLibraryChip citekey={entry.key} info={libInfo} />
             }
+            addAction={addAction}
+            draggable={!isGlobalResult}
             occurrenceInfo={
               ids.length > 1
                 ? {
