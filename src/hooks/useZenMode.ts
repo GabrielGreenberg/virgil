@@ -36,10 +36,17 @@ interface ZenState {
   on: boolean;
   leftMargin: number;
   rightMargin: number;
+  // Top/bottom gutter heights around the page in zen mode. Independent
+  // of `prefs.topGutter` / `prefs.bottomGutter` so the non-zen layout's
+  // gutter prefs are preserved when toggling zen on/off. Default 0 —
+  // the page extends to the top/bottom edges of the window symmetrically.
+  // User can drag either handle to grow that side.
+  topGutter: number;
+  bottomGutter: number;
 }
 
-let _state: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
-const _ssrSnapshot: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN };
+let _state: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN, topGutter: 0, bottomGutter: 0 };
+const _ssrSnapshot: ZenState = { on: false, leftMargin: DEFAULT_MARGIN, rightMargin: DEFAULT_MARGIN, topGutter: 0, bottomGutter: 0 };
 let _loaded = false;
 const _listeners = new Set<() => void>();
 
@@ -63,6 +70,8 @@ function _loadOnce() {
         on: parsed.on === true,
         leftMargin: typeof parsed.leftMargin === "number" ? parsed.leftMargin : DEFAULT_MARGIN,
         rightMargin: typeof parsed.rightMargin === "number" ? parsed.rightMargin : DEFAULT_MARGIN,
+        topGutter: typeof parsed.topGutter === "number" ? parsed.topGutter : 0,
+        bottomGutter: typeof parsed.bottomGutter === "number" ? parsed.bottomGutter : 0,
       };
     }
   } catch {
@@ -136,6 +145,22 @@ export function useZenMode() {
     _notify();
   }, []);
 
+  const setTopGutter = useCallback((h: number) => {
+    const next = _clamp(h);
+    if (_state.topGutter === next) return;
+    _state = { ..._state, topGutter: next };
+    _persist();
+    _notify();
+  }, []);
+
+  const setBottomGutter = useCallback((h: number) => {
+    const next = _clamp(h);
+    if (_state.bottomGutter === next) return;
+    _state = { ..._state, bottomGutter: next };
+    _persist();
+    _notify();
+  }, []);
+
   return {
     on: state.on,
     toggle,
@@ -144,5 +169,9 @@ export function useZenMode() {
     rightMargin: state.rightMargin,
     setLeftMargin,
     setRightMargin,
+    topGutter: state.topGutter,
+    setTopGutter,
+    bottomGutter: state.bottomGutter,
+    setBottomGutter,
   };
 }
