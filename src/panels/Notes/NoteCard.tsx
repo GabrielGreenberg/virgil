@@ -52,7 +52,7 @@ export function NoteCard({
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onEditorFocus?: (editor: any) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
@@ -104,7 +104,7 @@ export function NoteCard({
         onJump ? (
           <CardTargetIcon
             selected={selected}
-            onClick={onJump}
+            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to note anchor"
           />
         ) : (

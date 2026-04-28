@@ -33,7 +33,7 @@ interface FootnotePanelProps {
   onSelect: (id: string | null) => void;
   onEdit: (id: string, newContent: JSONContent) => void;
   onDelete: (id: string) => void;
-  onScrollToMarker: (id: string) => void;
+  onScrollToMarker: (id: string, sourceEl?: HTMLElement | null) => void;
   editor: Editor | null;
   panelSide: "left" | "right";
   viewMode: "list" | "in-text";
@@ -256,7 +256,7 @@ function FootnotePanel({
             onSelect={() =>
               onSelect(selectedId === it.data.footnoteId ? null : it.data.footnoteId)
             }
-            onJump={() => onScrollToMarker(it.data.footnoteId)}
+            onJump={(sourceEl) => onScrollToMarker(it.data.footnoteId, sourceEl)}
             onEdit={(json) => onEdit(it.data.footnoteId, json)}
             onDelete={() => onDelete(it.data.footnoteId)}
             onEditTitle={(title) => onEditTitle?.(it.data.footnoteId, title)}
@@ -313,7 +313,7 @@ function FootnotePanel({
               }}
             >
               <TargetIcon
-                onClick={() => onScrollToMarker(fn.footnoteId)}
+                onClick={(e) => onScrollToMarker(fn.footnoteId, (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
                 title="Jump to footnote marker"
               />
             </div>

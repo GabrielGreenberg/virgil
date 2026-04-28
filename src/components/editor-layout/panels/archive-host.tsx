@@ -36,7 +36,7 @@ export function ArchiveHost(p: ArchiveHostProps) {
       onInsert={p.onInsert}
       onRestore={p.onRestore}
       onDelete={p.onDelete}
-      onJumpToCard={(snippet) => editorRef.current?.jumpToCard(snippet)}
+      onJumpToCard={(snippet, sourceEl) => editorRef.current?.jumpToCard(snippet, sourceEl)}
       anchoredIds={p.anchoredIds}
       editor={editorInstance}
       panelSide={p.side}

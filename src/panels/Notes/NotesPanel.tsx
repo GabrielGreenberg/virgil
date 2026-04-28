@@ -31,7 +31,7 @@ interface NotesPanelProps {
   onDelete: (id: string) => void;
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
-  onJumpToCard?: (card: UserNote) => void;
+  onJumpToCard?: (card: UserNote, sourceEl?: HTMLElement | null) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   aiRequests?: AiRequest[];
@@ -227,7 +227,7 @@ export default function NotesPanel({
           onSelect={onSelectNote}
           onJump={
             onJumpToCard && getLinkedParagraphIds(note).length > 0
-              ? () => onJumpToCard(note)
+              ? (sourceEl) => onJumpToCard(note, sourceEl)
               : undefined
           }
           onEditorFocus={onEditorFocus}

@@ -47,7 +47,7 @@ export interface CommentCardProps {
   comment: Comment;
   selected: boolean;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onUpdateContent: (id: string, content: JSONContent) => void;
   onSetAuthor: (id: string, authorId: string) => void;
   onDelete: (id: string) => void;
@@ -120,7 +120,9 @@ export function CommentCard({
       disabled={!onJump || isOrphaned}
       onClick={(e) => {
         e.stopPropagation();
-        if (onJump && !isOrphaned) onJump();
+        if (onJump && !isOrphaned) {
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        }
       }}
       title="Jump to text in document"
     />

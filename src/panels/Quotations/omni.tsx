@@ -10,7 +10,7 @@ interface BuildArgs {
   quotationGroups: QuotationGroup[];
   selectedQuotationGroupId: string | null;
   setSelectedQuotationGroupId: (id: string | null) => void;
-  jumpToCard: (card: QuotationGroup) => void;
+  jumpToCard: (card: QuotationGroup, sourceEl?: HTMLElement | null) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   bibEntries: BibEntry[];
   bibPackage: string;
@@ -93,7 +93,7 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
                 a.setSelectedQuotationGroupId(isSelected ? null : group.id)
               }
               onDelete={() => a.deleteQuotationGroup(group.id)}
-              onJump={() => a.jumpToCard(group)}
+              onJump={(sourceEl) => a.jumpToCard(group, sourceEl)}
               onUpdateGroupTitle={a.updateQuotationGroupTitle}
               onAddReference={a.addQuotationReference}
               onDeleteReference={a.deleteQuotationReference}

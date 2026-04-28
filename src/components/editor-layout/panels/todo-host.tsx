@@ -48,7 +48,7 @@ export function TodoHost(p: TodoHostProps) {
       onArchiveDone={p.archiveTodos}
       selectedTodoId={selectedTodoId}
       onSelectTodo={setSelectedTodoId}
-      onJumpToCard={(item) => editorRef.current?.jumpToCard(item)}
+      onJumpToCard={(item, sourceEl) => editorRef.current?.jumpToCard(item, sourceEl)}
       aiRequests={aiRequests}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}

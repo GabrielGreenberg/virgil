@@ -64,7 +64,7 @@ export function CitationsHost(p: CitationsHostProps) {
       selectedId={selectedCitationId}
       citationOrder={p.citationOrder}
       onSelect={setSelectedCitationId}
-      onScrollToMarker={(id) => editorRef.current?.scrollToCitation(id)}
+      onScrollToMarker={(id, sourceEl) => editorRef.current?.scrollToCitation(id, sourceEl)}
       onUpdateCitation={p.updateCitation}
       onDeleteCitation={p.deleteCitation}
       onSetStyle={p.setCitationStyle}

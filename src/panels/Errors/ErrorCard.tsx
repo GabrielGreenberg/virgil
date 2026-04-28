@@ -80,7 +80,7 @@ export interface ErrorCardProps {
   selected: boolean;
   hasAnchor: boolean;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onDismiss: (id: string) => void;
   onHoverChange?: (hovering: boolean) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
@@ -202,7 +202,7 @@ export function ErrorCard({
           disabled={!onJump}
           onClick={(e) => {
             e.stopPropagation();
-            onJump?.();
+            onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
           }}
           title={
             hasAnchor

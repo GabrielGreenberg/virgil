@@ -42,7 +42,7 @@ export function CutCard({
   onUpdateTitle: (id: string, title: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl: HTMLElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
@@ -86,7 +86,7 @@ export function CutCard({
         onJump ? (
           <CardTargetIcon
             selected={selected}
-            onClick={onJump}
+            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to cut anchor"
           />
         ) : (

@@ -25,6 +25,7 @@ import {
   linkCardKey,
   parseLinkCardKey,
 } from "./link-registry";
+import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
 
 // Re-exports so callers import everything from one module.
 export type { Link, LinkAnchor, LinkKind, LinkResolution, LinkTarget, ModeBAnchorLink } from "./_shared/types";
@@ -470,17 +471,27 @@ export function resolveLink(
  *  - `"to-card"`:   scroll the panel to the card entry.
  *  - `"both"`:      do both.
  *
+ *  When `sourceEl` is provided, the moving end is aligned to that
+ *  element's top edge (mirroring `alignEntryToY`). Without it, the
+ *  moving end is centered in the viewport (legacy behavior).
+ *
  *  The post-jump visual highlight is handled separately, driven by card
  *  selection state via `useCardSelectionHighlight`. */
 export function jumpToLink(
   editor: Editor,
   link: Link,
   dir: "to-marker" | "to-card" | "both",
+  sourceEl?: HTMLElement | null,
 ): void {
+  const sourceY = sourceEl ? sourceEl.getBoundingClientRect().top : null;
   if (dir === "to-marker" || dir === "both") {
     const resolved = resolveLink(editor, link);
     if (resolved?.domEl) {
-      resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+      if (sourceY != null) {
+        alignEntryToY(resolved.domEl, sourceY);
+      } else {
+        resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+      }
     }
   }
   if (dir === "to-card" || dir === "both") {
@@ -488,7 +499,13 @@ export function jumpToLink(
     const entryEl = document.querySelector(
       `[data-link-card="${cardKey}"]`,
     ) as HTMLElement | null;
-    entryEl?.scrollIntoView({ behavior: "instant", block: "center" });
+    if (entryEl) {
+      if (sourceY != null) {
+        alignEntryToY(entryEl, sourceY);
+      } else {
+        entryEl.scrollIntoView({ behavior: "instant", block: "center" });
+      }
+    }
   }
 }
 
@@ -496,12 +513,26 @@ export function jumpToLink(
  *  scrolls to the first entry whose anchor still exists in the document —
  *  `links[0].paragraphIds[0]` may be stale when a card has multiple
  *  anchors and the earliest paragraph was edited away. Returns true if a
- *  link was jumped to. */
-export function jumpToCard(editor: Editor, card: CardWithLinks): boolean {
+ *  link was jumped to.
+ *
+ *  When `sourceEl` is provided (the clicked card's wrapper), the in-text
+ *  marker is aligned to that card's vertical position — the inverse of
+ *  the marker→card alignment via `alignEntryToY`. Without `sourceEl`, the
+ *  marker is centered in the viewport (legacy behavior). */
+export function jumpToCard(
+  editor: Editor,
+  card: CardWithLinks,
+  sourceEl?: HTMLElement | null,
+): boolean {
   const links = card.links ?? [];
   for (const link of links) {
-    if (resolveLink(editor, link)) {
-      jumpToLink(editor, link, "to-marker");
+    const resolved = resolveLink(editor, link);
+    if (resolved?.domEl) {
+      if (sourceEl) {
+        alignEntryToY(resolved.domEl, sourceEl.getBoundingClientRect().top);
+      } else {
+        resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
+      }
       return true;
     }
   }

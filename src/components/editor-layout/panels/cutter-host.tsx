@@ -46,7 +46,7 @@ export function CutterHost(p: CutterHostProps) {
       onDelete={p.deleteCut}
       onSelect={setSelectedCutId}
       selectedId={selectedCutId}
-      onJumpToCard={(cut) => editorRef.current?.jumpToCard(cut)}
+      onJumpToCard={(cut, sourceEl) => editorRef.current?.jumpToCard(cut, sourceEl)}
       onHoverCut={p.onHoverCut}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}

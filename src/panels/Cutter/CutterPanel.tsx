@@ -48,7 +48,7 @@ export default function CutterPanel({
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
-  onJumpToCard?: (card: CutItem) => void;
+  onJumpToCard?: (card: CutItem, sourceEl?: HTMLElement | null) => void;
   onHoverCut?: (id: string | null) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph?: (paragraphId: string) => void;
@@ -196,7 +196,7 @@ export default function CutterPanel({
           onSelect={onSelect}
           onJump={
             onJumpToCard && getLinkedParagraphIds(cut).length > 0
-              ? () => onJumpToCard(cut)
+              ? (sourceEl) => onJumpToCard(cut, sourceEl)
               : undefined
           }
           onHoverChange={
