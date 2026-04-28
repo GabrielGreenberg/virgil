@@ -8,7 +8,7 @@
 // promote those old strings to JSON the first time they're read.
 
 import type { JSONContent } from "@tiptap/react";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 
 const HTML_TAG_RE = /<[^>]+>/;
 
@@ -419,7 +419,7 @@ function parseInlineLatex(text: string): JSONContent[] {
           nodes.push({
             type: "citation",
             attrs: {
-              citationId: pendingCitationId || generateEntityId(),
+              citationId: pendingCitationId || generateShortId(),
               command: fullCmd,
               displayText: "",
             },

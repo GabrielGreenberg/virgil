@@ -2,7 +2,7 @@ import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection, NodeSelection } from "@tiptap/pm/state";
 import type { RefObject } from "react";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { createPopoutButtonEl } from "@/components/panel-primitives";
 
 export interface ExampleBlockOptions {
@@ -18,6 +18,17 @@ export interface ExampleBlockOptions {
    *  itself; the Editor pings the set when poppedOutCards changes from
    *  outside the gutter button so glyphs stay in sync. */
   refresherRegistryRef: RefObject<Set<() => void> | undefined> | null;
+}
+
+function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
+  const out = new Set<string>();
+  doc.descendants((node) => {
+    if (node.type.name === "exampleBlock" && node.attrs.uuid) {
+      out.add(node.attrs.uuid as string);
+    }
+    return true;
+  });
+  return out;
 }
 
 // Seven nodes implement the expex package:
@@ -237,7 +248,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
 
         const newBlock = blockType.create(
           {
-            uuid: generateEntityId(),
+            uuid: generateShortId(collectExampleIds(state.doc)),
             kind: "single",
             tag: "",
             label: "",
@@ -1016,7 +1027,7 @@ export const ExampleItem = Node.create({
           : "single";
         const newBlock = blockType.create(
           {
-            uuid: generateEntityId(),
+            uuid: generateShortId(collectExampleIds(state.doc)),
             kind: newKind,
             tag: "",
             label: "",

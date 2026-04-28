@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 
 export const Footnote = Node.create({
   name: "footnote",
@@ -73,7 +73,14 @@ export const Footnote = Node.create({
             const match = textBefore.match(/\\footnote\{([^}]*)\}$/);
             if (!match) return false;
             const content = normalizeRichContent(match[1]);
-            const footnoteId = generateEntityId();
+            const existing = new Set<string>();
+            state.doc.descendants((node) => {
+              if (node.type.name === "footnote" && node.attrs.footnoteId) {
+                existing.add(node.attrs.footnoteId as string);
+              }
+              return true;
+            });
+            const footnoteId = generateShortId(existing);
             const start = from + 1 - match[0].length;
             const tr = state.tr.replaceWith(
               start,

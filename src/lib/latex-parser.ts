@@ -2,7 +2,7 @@ import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
-import { generateEntityId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
+import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
 
 interface ParseContext {
   pos: number;
@@ -159,8 +159,8 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * `footnoteId` / `citationId` values across parse cycles. When we see one,
  * we stash the id in `pendingFootnoteId` / `pendingCitationId`; the next
  * matching entity consumes it. Without these markers we fall back to
- * `generateEntityId()` (current behavior for legacy `.tex` files that
- * haven't been re-saved yet).
+ * `generateShortId()` for legacy `.tex` files without markers — first
+ * save will anchor the generated id back into the source.
  */
 function parseInlineContent(text: string): JSONContent[] {
   const nodes: JSONContent[] = [];
@@ -319,7 +319,7 @@ function parseInlineContent(text: string): JSONContent[] {
             attrs: {
               content: richLatexToJson(inner.content),
               number: 0,
-              footnoteId: pendingFootnoteId || generateEntityId(),
+              footnoteId: pendingFootnoteId || generateShortId(),
             },
           });
           pendingFootnoteId = null;
@@ -391,7 +391,7 @@ function parseInlineContent(text: string): JSONContent[] {
             nodes.push({
               type: "citation",
               attrs: {
-                citationId: pendingCitationId || generateEntityId(),
+                citationId: pendingCitationId || generateShortId(),
                 command: fullCmd,
                 displayText: "",
               },
@@ -419,7 +419,7 @@ function parseInlineContent(text: string): JSONContent[] {
               nodes.push({
                 type: "citation",
                 attrs: {
-                  citationId: pendingCitationId || generateEntityId(),
+                  citationId: pendingCitationId || generateShortId(),
                   command: fullCmd,
                   displayText: "",
                 },
@@ -1675,7 +1675,7 @@ function buildExampleBlockFromBody(
     // the panel and sidecar have a stable id to key by. The serializer
     // then emits `\vexid{…}` on the next save, anchoring the id in the
     // .tex itself.
-    uuid: opts.uuid || generateEntityId(),
+    uuid: opts.uuid || generateShortId(),
     kind: opts.kind,
     tag: opts.tag,
     label: opts.label,

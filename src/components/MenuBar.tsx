@@ -13,7 +13,7 @@ import {
   IconQuotations,
   IconExample,
 } from "./editor-layout/panel-icons";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import type { HighlightType } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import {
@@ -28,11 +28,14 @@ export { type ToolbarOrientation };
 /** Build a fresh example-block JSONContent template for insertion. The
  *  template includes a pre-assigned uuid so callers can locate the node
  *  after insertion to place the cursor inside its first paragraph. */
-export function buildExampleTemplate(kind: "single" | "multi"): {
+export function buildExampleTemplate(
+  kind: "single" | "multi",
+  existing?: Set<string>,
+): {
   uuid: string;
   node: Record<string, unknown>;
 } {
-  const uuid = generateEntityId();
+  const uuid = generateShortId(existing);
   if (kind === "single") {
     return {
       uuid,
@@ -103,7 +106,14 @@ export function insertExampleAtCursor(
   editor: Editor,
   kind: "single" | "multi",
 ): { uuid: string } {
-  const { uuid, node } = buildExampleTemplate(kind);
+  const existing = new Set<string>();
+  editor.state.doc.descendants((n) => {
+    if (n.type.name === "exampleBlock" && n.attrs.uuid) {
+      existing.add(n.attrs.uuid as string);
+    }
+    return true;
+  });
+  const { uuid, node } = buildExampleTemplate(kind, existing);
   editor.chain().focus().insertContent(node).run();
   let target = -1;
   editor.state.doc.descendants((nd, pos) => {

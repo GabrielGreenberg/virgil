@@ -2,18 +2,22 @@
  * Centralized UUID generation for Virgil.
  *
  * Two flavours:
- *  1. **Node UUIDs** — 4-char hex strings persisted as `%!v:xxxx` anchors in
- *     LaTeX source. Used for paragraphs, headings, lists, math blocks, etc.
- *  2. **Entity IDs** — full v4 UUIDs for panel/sidecar entities (notes, todos,
- *     citations, quotations, revisions, etc.).
+ *  1. **Short IDs** — 4-char hex strings used wherever an id appears in the
+ *     `.tex` source: `%!v:xxxx` paragraph anchors and the `\vfid{xxxx}` /
+ *     `\vcid{xxxx}` / `\vexid{xxxx}` no-op markers serialized before
+ *     footnotes, citations, and example blocks. Compact and human-readable
+ *     in the source. 65K-id space with optional collision-avoidance retry.
+ *  2. **Entity IDs** — full v4 UUIDs for sidecar-only entities (notes,
+ *     todos, comments, archive, revisions, links, etc.) that never appear
+ *     in the `.tex` source.
  */
 
 // ---------------------------------------------------------------------------
-// Node UUIDs (4-char hex, for %!v:xxxx anchors)
+// Short IDs (4-char hex, used in .tex source)
 // ---------------------------------------------------------------------------
 
-/** Generate a 4-char hex node UUID, optionally avoiding collisions with `existing`. */
-export function generateNodeUuid(existing?: Set<string>): string {
+/** Generate a 4-char hex id, optionally avoiding collisions with `existing`. */
+export function generateShortId(existing?: Set<string>): string {
   let id: string;
   do {
     id = Math.random().toString(16).slice(2, 6);
@@ -28,10 +32,10 @@ export const NODE_UUID_REGEX = /%!v:([0-9a-f]{4})/;
 export const NODE_UUID_ANCHOR = /^[ \t]*%!v:([0-9a-f]{4})/;
 
 // ---------------------------------------------------------------------------
-// Entity IDs (full v4 UUIDs for panel/sidecar data)
+// Entity IDs (full v4 UUIDs for sidecar-only data)
 // ---------------------------------------------------------------------------
 
-/** Generate a full v4 UUID for panel entities. */
+/** Generate a full v4 UUID for sidecar-only entities. */
 export function generateEntityId(): string {
   return crypto.randomUUID();
 }

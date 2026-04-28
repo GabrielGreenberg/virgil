@@ -25,7 +25,7 @@ import {
   LatexCommandMark,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_NOTE, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -270,7 +270,16 @@ function RichTextFieldImpl({
                 if (created.displayText) displayText = created.displayText;
               }
             }
-            if (!resolvedId) resolvedId = generateEntityId();
+            if (!resolvedId) {
+              const existing = new Set<string>();
+              view.state.doc.descendants((n) => {
+                if (n.type.name === "citation" && n.attrs.citationId) {
+                  existing.add(n.attrs.citationId as string);
+                }
+                return true;
+              });
+              resolvedId = generateShortId(existing);
+            }
 
             const node = view.state.schema.nodes.citation.create({
               citationId: resolvedId,

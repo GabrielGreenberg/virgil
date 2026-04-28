@@ -43,7 +43,7 @@ import {
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
-import { generateNodeUuid, generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -102,7 +102,7 @@ function ensureAnchorUuid(
   view.state.doc.descendants((n) => {
     if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
   });
-  const newUuid = generateNodeUuid(existing);
+  const newUuid = generateShortId(existing);
   try {
     const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
       ...node.attrs,
@@ -600,7 +600,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
               // Assign UUID if setting a title and node doesn't have one yet
               if (newTitle && !attrs.uuid) {
-                attrs.uuid = generateNodeUuid();
+                attrs.uuid = generateShortId();
               }
               const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
               nodeEditor.view.dispatch(tr);
@@ -789,7 +789,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (n) {
             const attrs = { ...n.attrs, parTitle: newTitle } as Record<string, unknown>;
             if (newTitle && !attrs.uuid) {
-              attrs.uuid = generateNodeUuid();
+              attrs.uuid = generateShortId();
             }
             const tr = nodeEditor.state.tr.setNodeMarkup(pos, undefined, attrs);
             nodeEditor.view.dispatch(tr);
@@ -2420,7 +2420,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (from === to) return null;
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
-      const footnoteId = generateEntityId();
+      const existing = new Set<string>();
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "footnote" && n.attrs.footnoteId) {
+          existing.add(n.attrs.footnoteId as string);
+        }
+        return true;
+      });
+      const footnoteId = generateShortId(existing);
       const content: TipJSON = {
         type: "doc",
         content: [{ type: "paragraph", content: [{ type: "text", text }] }],
@@ -2438,7 +2445,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     createEmptyFootnote(opts): { footnoteId: string } | null {
       if (!editor) return null;
-      const footnoteId = generateEntityId();
+      const existing = new Set<string>();
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "footnote" && n.attrs.footnoteId) {
+          existing.add(n.attrs.footnoteId as string);
+        }
+        return true;
+      });
+      const footnoteId = generateShortId(existing);
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
       editor
         .chain()
@@ -2532,7 +2546,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
     insertExample(kind: "single" | "multi"): { exampleId: string } | null {
       if (!editor) return null;
-      const exampleId = generateEntityId();
+      const existing = new Set<string>();
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "exampleBlock" && n.attrs.uuid) {
+          existing.add(n.attrs.uuid as string);
+        }
+        return true;
+      });
+      const exampleId = generateShortId(existing);
       const single: any = {
         type: "exampleBlock",
         attrs: {
@@ -2939,7 +2960,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       let mutated = false;
       editor.state.doc.forEach((node, offset) => {
         if (node.type.name === "heading" && !node.attrs?.uuid) {
-          const newUuid = generateNodeUuid(existing);
+          const newUuid = generateShortId(existing);
           existing.add(newUuid);
           tr.setNodeMarkup(offset, undefined, { ...node.attrs, uuid: newUuid });
           mutated = true;
