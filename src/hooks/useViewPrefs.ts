@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 export type Side = "left" | "right";
@@ -68,6 +69,9 @@ export interface ViewPrefs {
    *  touching the page's 400 min-height. */
   topGutter: number;
   bottomGutter: number;
+  /** Last-used print options. The Print dialog reads and writes here so
+   *  user choices persist across sessions. */
+  printOptions: PrintOptions;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -110,6 +114,7 @@ const DEFAULT_PREFS: ViewPrefs = {
   pageWidth: 880,
   topGutter: 0,
   bottomGutter: 0,
+  printOptions: DEFAULT_PRINT_OPTIONS,
 };
 
 const STORAGE_KEY = "virgil-view-prefs";
@@ -156,7 +161,21 @@ function loadPrefs(): ViewPrefs {
     for (const dp of DEFAULT_PREFS.placements) {
       if (!existingIds.has(dp.id)) merged.push(dp);
     }
-    return { ...DEFAULT_PREFS, ...parsed, placements: merged };
+    // Deep-merge printOptions so new toggles added to the schema get
+    // their defaults instead of falling out when an old pref blob loads.
+    const printOptions: PrintOptions = {
+      ...DEFAULT_PREFS.printOptions,
+      ...(parsed.printOptions ?? {}),
+      elements: {
+        ...DEFAULT_PREFS.printOptions.elements,
+        ...(parsed.printOptions?.elements ?? {}),
+      },
+      panels: {
+        ...DEFAULT_PREFS.printOptions.panels,
+        ...(parsed.printOptions?.panels ?? {}),
+      },
+    };
+    return { ...DEFAULT_PREFS, ...parsed, placements: merged, printOptions };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -544,6 +563,16 @@ export function useViewPrefs() {
     update((p) => ({ ...p, bottomGutter: Math.max(0, h) }));
   }, [update]);
 
+  const setPrintOptions = useCallback(
+    (v: PrintOptions | ((prev: PrintOptions) => PrintOptions)) => {
+      update((p) => ({
+        ...p,
+        printOptions: typeof v === "function" ? v(p.printOptions) : v,
+      }));
+    },
+    [update],
+  );
+
   const leftItems = prefs.placements.filter((p) => p.side === "left");
   const rightItems = prefs.placements.filter((p) => p.side === "right");
 
@@ -580,5 +609,6 @@ export function useViewPrefs() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    setPrintOptions,
   };
 }

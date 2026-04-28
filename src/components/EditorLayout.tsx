@@ -20,6 +20,9 @@ import type { LatexError } from "@/lib/latex-errors";
 import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map";
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { IconErrors } from "./editor-layout/panel-icons";
+import PrintDialog from "./PrintDialog";
+import PrintAppendices from "./PrintAppendices";
+import type { PrintPanelKey } from "@/lib/print";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
@@ -573,6 +576,7 @@ export default function EditorLayout() {
     toggleCardPopout,
     closeCardPopout,
     setCardFloatPosition,
+    setPrintOptions,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -1166,6 +1170,7 @@ export default function EditorLayout() {
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [versionOpen, setVersionOpen] = useState(false);
   const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
 
   useEffect(() => {
     if (!versionOpen) return;
@@ -1576,6 +1581,21 @@ export default function EditorLayout() {
   const codeEditorHandleRef = useRef<CodeEditorHandle | null>(null);
   const pendingScrollText = useRef<string | null>(null);
   const pendingParagraphId = useRef<string | null>(null);
+
+  // Route Cmd/Ctrl+P to our Print dialog instead of the browser's bare
+  // print sheet. Falls through to the browser when there's no active
+  // doc or in code view (where our dialog is disabled).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isPrint = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p";
+      if (!isPrint) return;
+      if (!currentDocId || codeView) return;
+      e.preventDefault();
+      setPrintOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [currentDocId, codeView]);
 
   // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook
   // and to the Errors panel for snippet/paragraph derivation. Persists
@@ -4750,6 +4770,24 @@ export default function EditorLayout() {
             )}
             Compile
           </button>
+          {/* Print — opens a dialog with toggles for which document
+              elements and panel appendices to include, then hands off
+              to the browser's native print sheet. Cmd/Ctrl+P routes to
+              the same dialog. Disabled in code view (CodeMirror's
+              virtualized rendering doesn't paginate cleanly). */}
+          <button
+            onClick={() => setPrintOpen(true)}
+            disabled={!currentDocId || codeView}
+            className="topbarbtn ml-1"
+            title="Print…"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            Print
+          </button>
           </>)}
         </div>
       </div>
@@ -5345,6 +5383,15 @@ export default function EditorLayout() {
               </div>
             </div>
           )}
+          {/* Print appendices — hidden in live UI (`.print-only`),
+              revealed by the @media print rules. Mounted inside
+              [data-editor-page] so the visibility-trick includes them. */}
+          <PrintAppendices
+            options={prefs.printOptions}
+            renderPanel={(kind: PrintPanelKey) =>
+              renderPanelWithChrome(kind, "left")
+            }
+          />
           </div>
           {/* Bottom drag gap — grab bar below the page */}
           <div
@@ -5442,6 +5489,13 @@ export default function EditorLayout() {
         )}
       </div>
       )}
+      <PrintDialog
+        open={printOpen}
+        onClose={() => setPrintOpen(false)}
+        options={prefs.printOptions}
+        onOptionsChange={setPrintOptions}
+        marginaliaLive={showMarginalia}
+      />
       {preferencesOpen && (
         <PreferencesModal
           prefs={editorPrefs}
