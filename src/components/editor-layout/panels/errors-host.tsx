@@ -14,9 +14,9 @@ export interface ErrorsHostProps {
   onHover?: (id: string | null) => void;
   /** Pre-computed `error.id → trimmed source-line` snippet map. */
   snippets: Map<string, string>;
-  /** Pre-computed `error.id → paragraphUuid` map. Determines which
-   *  errors render with the "Jump to in text" jump-target title (vs.
-   *  the fallback "Jump to line in code"). */
+  /** Pre-computed `error.id → paragraphUuid` map. Drives the dimmed
+   *  state of the per-card jump-target icon when an error has no
+   *  resolvable paragraph anchor. */
   paragraphByErrorId: Map<string, string>;
 }
 

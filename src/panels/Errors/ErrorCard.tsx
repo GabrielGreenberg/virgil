@@ -151,7 +151,8 @@ export function ErrorCard({
       tabIndex={selected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(selected ? null : err.id);
+        onSelect(err.id);
+        onJump?.();
       }}
       onKeyDown={(e) => {
         if (!selected) return;
@@ -205,11 +206,7 @@ export function ErrorCard({
             onJump?.();
           }}
           title={
-            hasAnchor
-              ? "Jump to in text"
-              : err.line > 0
-                ? "Jump to line in code"
-                : "No location"
+            hasAnchor || err.line > 0 ? "Jump to in text" : "No location"
           }
         />
       </div>
