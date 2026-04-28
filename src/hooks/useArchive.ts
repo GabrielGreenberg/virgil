@@ -6,6 +6,7 @@ import type { ArchiveState, ArchivedSnippet } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { addParagraphLink, removeParagraphLink } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 
 const EMPTY: ArchiveState = { snippets: [] };
@@ -42,7 +43,7 @@ export function useArchive(docId: string | null) {
     (content: unknown): ArchivedSnippet => {
       const snippet: ArchivedSnippet = {
         id: generateEntityId(),
-        title: "",
+        title: nextCardTitle("archive", state.snippets.length),
         content: normalizeRichContent(content),
         createdAt: new Date().toISOString(),
         links: [],
@@ -50,7 +51,7 @@ export function useArchive(docId: string | null) {
       update((prev) => ({ snippets: [...prev.snippets, snippet] }));
       return snippet;
     },
-    [update],
+    [update, state.snippets.length],
   );
 
   const updateSnippet = useCallback(

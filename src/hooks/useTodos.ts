@@ -5,6 +5,7 @@ import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
 import { addParagraphLink, removeParagraphLink } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -42,7 +43,7 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
   const addItem = useCallback((): TodoItem => {
     const item: TodoItem = {
       id: generateEntityId(),
-      text: `Task ${state.items.length + 1}`,
+      text: nextCardTitle("todo", state.items.length),
       notes: "",
       done: false,
       aiRequest: false,

@@ -221,12 +221,12 @@ export interface EditorHandle {
   updateFootnoteContent: (footnoteId: string, newContent: TipJSON) => void;
   updateFootnoteTitle: (footnoteId: string, title: string) => void;
   deleteFootnote: (footnoteId: string) => void;
-  createFootnoteFromSelection: () => { footnoteId: string } | null;
+  createFootnoteFromSelection: (opts?: { title?: string }) => { footnoteId: string } | null;
   /** Insert an empty footnote atom at the current cursor position (or
    *  the start of the doc if no cursor) and return its id. Used by
    *  toolbar actions that need to create a footnote regardless of
    *  whether text is selected. */
-  createEmptyFootnote: () => { footnoteId: string } | null;
+  createEmptyFootnote: (opts?: { title?: string }) => { footnoteId: string } | null;
   renumberFootnotes: () => void;
   getExamples: () => ExampleInfo[];
   scrollToExample: (exampleId: string) => void;
@@ -2390,7 +2390,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       };
       deleteLink(editor, link);
     },
-    createFootnoteFromSelection(): { footnoteId: string } | null {
+    createFootnoteFromSelection(opts): { footnoteId: string } | null {
       if (!editor) return null;
       const { from, to } = editor.state.selection;
       if (from === to) return null;
@@ -2407,12 +2407,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         .deleteSelection()
         .insertContent({
           type: "footnote",
-          attrs: { footnoteId, content, number: 0 },
+          attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
         })
         .run();
       return { footnoteId };
     },
-    createEmptyFootnote(): { footnoteId: string } | null {
+    createEmptyFootnote(opts): { footnoteId: string } | null {
       if (!editor) return null;
       const footnoteId = generateEntityId();
       const content: TipJSON = { type: "doc", content: [{ type: "paragraph" }] };
@@ -2421,7 +2421,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         .focus()
         .insertContent({
           type: "footnote",
-          attrs: { footnoteId, content, number: 0 },
+          attrs: { footnoteId, content, number: 0, title: opts?.title ?? "" },
         })
         .run();
       return { footnoteId };

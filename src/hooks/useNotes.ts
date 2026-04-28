@@ -13,6 +13,7 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -53,7 +54,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     ) => {
       let newNote: UserNote = {
         id: generateEntityId(),
-        title: "",
+        title: nextCardTitle("note", state.notes.length),
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
         links: [],
@@ -69,7 +70,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       update((prev) => ({ notes: [...prev.notes, newNote] }));
       return newNote;
     },
-    [update, pristine],
+    [update, pristine, state.notes.length],
   );
 
   const setNoteAnchor = useCallback(

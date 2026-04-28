@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ExamplesState, ExampleRef } from "@/lib/types";
+import { nextCardTitle } from "@/panels/panel-registry";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: ExamplesState = { examples: [] };
@@ -84,6 +85,7 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
     (editorExamples: Array<{ id: string; tag: string; label: string }>) => {
       const current = stateRef.current;
       const byId = new Map(current.examples.map((e) => [e.id, e]));
+      let newCount = 0;
       const next: ExampleRef[] = editorExamples.map((ee) => {
         const existing = byId.get(ee.id);
         if (existing) {
@@ -93,11 +95,13 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
             label: ee.label,
           };
         }
+        const title = nextCardTitle("example", current.examples.length + newCount);
+        newCount++;
         return {
           id: ee.id,
           tag: ee.tag,
           label: ee.label,
-          title: "",
+          title,
           createdAt: new Date().toISOString(),
         };
       });

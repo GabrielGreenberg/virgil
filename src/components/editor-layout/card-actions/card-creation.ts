@@ -8,6 +8,7 @@ import type {
   CitationRef,
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
+import { nextCardTitle } from "@/panels/panel-registry";
 import type { EditorHandle } from "../../Editor";
 
 /**
@@ -56,6 +57,9 @@ export interface CardCreationDeps {
   setActiveRight: (id: PanelId) => void;
   popCardAtAnchor: (kind: string, id: string, anchorRect: DOMRect | null) => void;
   markFootnotePristine: (id: string) => void;
+  /** Total footnote count (anchored + orphans) the panel currently
+   *  shows. Used to seed the auto-title of newly created footnotes. */
+  getFootnoteCount: () => number;
 }
 
 export interface CardCreationApi {
@@ -113,6 +117,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     setActiveRight,
     popCardAtAnchor,
     markFootnotePristine,
+    getFootnoteCount,
   } = deps;
 
   const ensurePanelActive = useCallback(
@@ -175,9 +180,10 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const handle = editorRef.current;
       if (!handle) return null;
+      const title = nextCardTitle("footnote", getFootnoteCount());
       const result = opts.fromSelection
-        ? handle.createFootnoteFromSelection()
-        : handle.createEmptyFootnote();
+        ? handle.createFootnoteFromSelection({ title })
+        : handle.createEmptyFootnote({ title });
       if (!result) return null;
       handle.renumberFootnotes();
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
@@ -186,7 +192,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       else ensurePanelActive("footnotes");
       return result;
     },
-    [editorRef, markFootnotePristine, setSelectedFootnoteId, ensurePanelActive, popCardAtAnchor],
+    [editorRef, markFootnotePristine, setSelectedFootnoteId, ensurePanelActive, popCardAtAnchor, getFootnoteCount],
   );
 
   const createQuotation = useCallback<CardCreationApi["createQuotation"]>(

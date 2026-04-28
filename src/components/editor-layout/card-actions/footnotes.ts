@@ -3,6 +3,7 @@ import type { JSONContent } from "@tiptap/react";
 import type { OrphanedFootnote } from "@/lib/types";
 import type { EditorHandle } from "../../Editor";
 import { generateEntityId } from "@/lib/uuid";
+import { nextCardTitle } from "@/panels/panel-registry";
 
 /**
  * Footnote action handlers that operate on the footnote's editor marker.
@@ -51,16 +52,18 @@ export function useFootnoteActions(deps: {
 
   const handleAddFootnote = useCallback((): string => {
     const id = generateEntityId();
+    const anchored = editorRef.current?.getFootnotes().length ?? 0;
     setOrphanedFootnotes((prev) => [
       ...prev,
       {
         footnoteId: id,
         content: { type: "doc", content: [{ type: "paragraph" }] },
+        title: nextCardTitle("footnote", anchored + prev.length),
         orphanedAt: new Date().toISOString(),
       },
     ]);
     return id;
-  }, [setOrphanedFootnotes]);
+  }, [editorRef, setOrphanedFootnotes]);
 
   return {
     handleEditFootnote,

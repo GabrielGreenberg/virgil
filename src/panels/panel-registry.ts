@@ -217,6 +217,35 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   error: "error",
 };
 
+/** Singular display name for a card type, used as the auto-title prefix
+ *  when a new card is created (e.g. "Note 3", "Footnote 1"). null = the
+ *  kind opts out of auto-titling because it has no user-editable title
+ *  field (citations are LaTeX-keyed, comments are threaded, suggestions /
+ *  ai-requests / bib entries / errors are externally generated). */
+export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
+  note: "Note",
+  cut: "Cut",
+  archive: "Archive Text",
+  quotation: "Quotation",
+  todo: "Task",
+  example: "Example",
+  footnote: "Footnote",
+  citation: null,
+  comment: null,
+  suggestion: null,
+  ai: null,
+  bib: null,
+  error: null,
+};
+
+/** Default title for a freshly created card: `${label} ${currentCount + 1}`.
+ *  Returns "" for kinds that opt out (label is null). */
+export function nextCardTitle(kind: CardKind, currentCount: number): string {
+  const label = CARD_TITLE_LABELS[kind];
+  if (!label) return "";
+  return `${label} ${currentCount + 1}`;
+}
+
 /** `${keyPrefix}:${id}` — canonical popout key for this card. Throws if
  *  the panel has no card kind. */
 export function popKey(panelKind: PanelKind, id: string): string {

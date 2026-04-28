@@ -13,6 +13,7 @@ import {
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -60,7 +61,7 @@ export function useCutter(docId: string | null, externalPristine?: PristineKindA
     ) => {
       let cut: CutItem = {
         id: generateEntityId(),
-        title: "",
+        title: nextCardTitle("cut", state.cuts.length),
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
         links: [],
@@ -73,7 +74,7 @@ export function useCutter(docId: string | null, externalPristine?: PristineKindA
       update((prev) => ({ cuts: [...prev.cuts, cut] }));
       return cut;
     },
-    [update, pristine],
+    [update, pristine, state.cuts.length],
   );
 
   const updateCut = useCallback(
