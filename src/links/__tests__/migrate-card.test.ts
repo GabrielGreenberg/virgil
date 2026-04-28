@@ -67,9 +67,9 @@ describe("migrateCardLinks", () => {
     expect(migrateCardLinks("note", "garbage")).toEqual([]);
   });
 
-  it("works across card kinds (cut, archive, todo, quotation)", () => {
+  it("works across card kinds (cutter-comment, archive, todo, quotation)", () => {
     const legacy = { id: "x1", paragraphIds: ["p1"] };
-    for (const kind of ["cut", "archive", "todo", "quotation"] as const) {
+    for (const kind of ["cutter-comment", "archive", "todo", "quotation"] as const) {
       const links = migrateCardLinks(kind, legacy);
       expect(links).toHaveLength(1);
       expect(links[0].target).toEqual({ type: "card", ref: { kind, id: "x1" } });

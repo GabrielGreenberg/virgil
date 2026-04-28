@@ -27,7 +27,7 @@ import {
   searchCitations,
   searchTodos,
   searchArchive,
-  searchCuts,
+  searchCutter,
   searchQuotations,
   searchComments,
   searchBibliography,
@@ -37,7 +37,7 @@ import type {
   BibEntry,
   CitationRef,
   Comment,
-  CutItem,
+  CutterCard,
   OrphanedFootnote,
   QuotationGroup,
   TodoItem,
@@ -81,7 +81,7 @@ interface SearchPanelProps {
   getCitationDisplayText: (command: string) => string;
   todos: TodoItem[];
   archiveSnippets: ArchivedSnippet[];
-  cuts: CutItem[];
+  cutterCards: CutterCard[];
   quotationGroups: QuotationGroup[];
   comments: Comment[];
   bibEntries: BibEntry[];
@@ -237,7 +237,7 @@ function SearchPanel({
   getCitationDisplayText,
   todos,
   archiveSnippets,
-  cuts,
+  cutterCards,
   quotationGroups,
   comments,
   bibEntries,
@@ -350,7 +350,7 @@ function SearchPanel({
       hits.push(...searchArchive(archiveSnippets, uuidPos, re));
     }
     if (enabledScopes.has("cuts")) {
-      hits.push(...searchCuts(cuts, editor, uuidPos, re));
+      hits.push(...searchCutter(cutterCards, editor, uuidPos, re));
     }
     if (enabledScopes.has("quotations")) {
       hits.push(...searchQuotations(quotationGroups, uuidPos, re));
@@ -382,7 +382,7 @@ function SearchPanel({
     getCitationDisplayText,
     todos,
     archiveSnippets,
-    cuts,
+    cutterCards,
     quotationGroups,
     comments,
     bibEntries,

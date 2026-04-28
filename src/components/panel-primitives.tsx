@@ -144,8 +144,12 @@ export const CARD_THEMES = {
   // tint error cards.
   aiRequest: themeFromAccent("#0ea5e9"),  // sky
   error:     themeFromAccent("#b45757"),  // rust (same family as footnote, decoupled)
-  cut:       themeFromAccent(DEFAULT_PANEL_COLORS.cut),
-  example:   themeFromAccent(DEFAULT_PANEL_COLORS.example),
+  // Cutter panel hosts two card kinds. Comments share the panel accent
+  // (rust); suggestions get a distinct fixed accent so the kind reads at
+  // a glance regardless of the user's panel-color override.
+  cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
+  cutterSuggestion: themeFromAccent("#7c3aed"),  // violet
+  example:          themeFromAccent(DEFAULT_PANEL_COLORS.example),
 } satisfies Record<string, CardTheme>;
 
 /* ── Shared badge classes ────────────────────────────────────────── */
@@ -1028,6 +1032,7 @@ export function PanelHeader({
   title,
   count,
   onAdd,
+  onAddOptions,
   onAiRequest,
   leading,
   titleAfter,
@@ -1036,6 +1041,11 @@ export function PanelHeader({
   title: string;
   count?: number;
   onAdd?: () => void;
+  /** When provided, the "+" button opens a small dropdown menu of
+   *  choices instead of firing `onAdd` directly. Use when a panel
+   *  hosts more than one card kind (e.g. Cutter: Comment vs Suggestion).
+   *  `onAdd` is ignored when `onAddOptions` is set. */
+  onAddOptions?: { label: string; onClick: () => void }[];
   /**
    * When provided, renders a small star button next to the "+" button
    * that creates a new AI request (or opens a request form, depending
@@ -1064,7 +1074,9 @@ export function PanelHeader({
         )}
       </h3>
       {titleAfter}
-      {onAdd && (
+      {onAddOptions ? (
+        <HeaderAddDropdown options={onAddOptions} />
+      ) : onAdd && (
         <button
           onClick={onAdd}
           className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
@@ -1099,6 +1111,108 @@ export function PanelHeader({
   );
 }
 
+/** "+" button that, when clicked, drops a small dropdown menu of choices
+ *  (instead of firing a single onAdd). Used by panels that host more than
+ *  one card kind. Mirrors the flip-on-overflow / click-outside-to-close
+ *  pattern from `DocStyleDropdown`. */
+function HeaderAddDropdown({
+  options,
+}: {
+  options: { label: string; onClick: () => void }[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{
+    top?: number;
+    bottom?: number;
+    left?: number;
+    right?: number;
+  }>({});
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  const handleToggle = () => {
+    if (!open && ref.current) {
+      const r = ref.current.getBoundingClientRect();
+      const POPUP_H = 28 * options.length + 8;
+      const POPUP_W = 160;
+      const GAP = 4;
+      const flipUp =
+        r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
+      const flipLeft =
+        r.left + POPUP_W > window.innerWidth - 4 &&
+        window.innerWidth - r.right > POPUP_W;
+      const vertical = flipUp
+        ? { bottom: window.innerHeight - r.top + GAP }
+        : { top: r.bottom + GAP };
+      const horizontal = flipLeft
+        ? { right: window.innerWidth - r.right }
+        : { left: r.left };
+      setPos({ ...vertical, ...horizontal });
+    }
+    setOpen(!open);
+  };
+
+  const pick = (onClick: () => void) => {
+    setOpen(false);
+    onClick();
+  };
+
+  return (
+    <div ref={ref} className="relative inline-flex items-center">
+      <button
+        onClick={handleToggle}
+        className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
+        title="Add"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+        >
+          <path d="M12 5v14M5 12h14" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[140px]"
+          style={{
+            top: pos.top,
+            bottom: pos.bottom,
+            left: pos.left,
+            right: pos.right,
+          }}
+        >
+          {options.map((o) => (
+            <button
+              key={o.label}
+              role="menuitem"
+              onClick={() => pick(o.onClick)}
+              className="w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light"
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── AI request card ───────────────────────────────────────────────── */
 
 const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
@@ -1107,6 +1221,7 @@ const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
   quotation: "quotation",
   citation: "citation",
   todo: "todo",
+  suggestion: "suggestion",
 };
 
 /**

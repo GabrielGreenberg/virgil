@@ -11,7 +11,7 @@ import type { AiRequest, AiRequestKind } from "@/lib/types";
  */
 export interface AiRequestsContextValue {
   aiRequests: AiRequest[];
-  addAiRequest: (kind: AiRequestKind) => void;
+  addAiRequest: (kind: AiRequestKind, text?: string) => void;
   updateAiRequestText: (id: string, text: string) => void;
   deleteAiRequest: (id: string) => void;
 }

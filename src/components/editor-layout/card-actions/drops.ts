@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { JSONContent } from "@tiptap/react";
-import type { UserNote, CutItem } from "@/lib/types";
+import type { UserNote, CutterCommentCard } from "@/lib/types";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 
@@ -10,11 +10,11 @@ type AddNote = (
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
 ) => UserNote;
-type AddCut = (
+type AddCutterComment = (
   paragraphId: string | null,
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
-) => CutItem;
+) => CutterCommentCard;
 
 /**
  * Panel-drop handlers for Notes and Cutter.
@@ -38,11 +38,17 @@ type AddCut = (
 export function useDropActions(deps: {
   editorRef: RefObject<EditorHandle | null>;
   addNote: AddNote;
-  addCut: AddCut;
+  addCutterComment: AddCutterComment;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
 }) {
-  const { editorRef, addNote, addCut, setSelectedNoteId, setSelectedCutId } = deps;
+  const {
+    editorRef,
+    addNote,
+    addCutterComment,
+    setSelectedNoteId,
+    setSelectedCutterCardId,
+  } = deps;
 
   const handleDropSelectionOnNotes = useCallback(
     (payload: DropSelectionPayload) => {
@@ -76,26 +82,32 @@ export function useDropActions(deps: {
       const ed = editorRef.current?.getEditor();
       if (!ed || !editorRef.current) return;
       const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
-      const record = createLinkedAnchor(ed, "cut", { from: payload.from, to: payload.to });
+      const record = createLinkedAnchor(ed, "cutter-comment", {
+        from: payload.from,
+        to: payload.to,
+      });
       if (!record) return;
-      const cut = addCut(
+      const card = addCutterComment(
         paragraphId,
         undefined,
-        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
+        {
+          anchorId: record.anchorId,
+          anchorText: record.text || payload.selectedText,
+        },
       );
-      updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
-      setSelectedCutId(cut.id);
+      updateLinkedAnchorCard(ed, record.anchorId, "cutter-comment", card.id);
+      setSelectedCutterCardId(card.id);
     },
-    [editorRef, addCut, setSelectedCutId],
+    [editorRef, addCutterComment, setSelectedCutterCardId],
   );
 
   const handleDropParagraphOnCutter = useCallback(
     (paragraphId: string) => {
       if (!paragraphId) return;
-      const cut = addCut(paragraphId);
-      setSelectedCutId(cut.id);
+      const card = addCutterComment(paragraphId);
+      setSelectedCutterCardId(card.id);
     },
-    [addCut, setSelectedCutId],
+    [addCutterComment, setSelectedCutterCardId],
   );
 
   return {

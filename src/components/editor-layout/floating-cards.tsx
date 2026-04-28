@@ -3,7 +3,7 @@ import type { JSONContent, Editor } from "@tiptap/react";
 import { NoteCard } from "@/panels/Notes";
 import { FootnoteCard } from "@/panels/Footnotes";
 import { ArchiveCard } from "@/panels/Archive";
-import { CutCard } from "@/panels/Cutter";
+import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
 import { TodoRow } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
 import { CommentCard } from "@/panels/Revisions";
@@ -19,7 +19,8 @@ import type {
   UserNote,
   ArchivedSnippet,
   Comment,
-  CutItem,
+  CutterCard,
+  CutterSuggestionCard as CutterSuggestionCardData,
   TodoItem,
   BibEntry,
   CitationRef,
@@ -40,7 +41,7 @@ export interface PoppedCardDeps {
   notes: UserNote[];
   footnotes: FootnoteInfo[];
   archiveSnippets: ArchivedSnippet[];
-  cuts: CutItem[];
+  cutterCards: CutterCard[];
   todoItems: TodoItem[];
   bibEntries: BibEntry[];
   citations: CitationRef[];
@@ -56,7 +57,7 @@ export interface PoppedCardDeps {
   selectedNoteId: string | null;
   selectedFootnoteId: string | null;
   selectedArchiveId: string | null;
-  selectedCutId: string | null;
+  selectedCutterCardId: string | null;
   selectedTodoId: string | null;
   selectedBibKey: string | null;
   selectedCitationId: string | null;
@@ -66,7 +67,7 @@ export interface PoppedCardDeps {
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedBibKey: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
@@ -101,9 +102,18 @@ export interface PoppedCardDeps {
   handleDeleteArchive: (id: string) => void;
 
   // Cutter
-  updateCut: (id: string, content: JSONContent) => void;
-  updateCutTitle: (id: string, title: string) => void;
-  deleteCut: (id: string) => void;
+  updateCutterCommentContent: (id: string, content: JSONContent) => void;
+  setCutterCommentAiRequest: (id: string, value: boolean) => void;
+  updateCutterSuggestionField: (
+    id: string,
+    field: "original_text" | "suggested_text" | "explanation",
+    value: string,
+  ) => void;
+  setCutterSuggestionStatus: (
+    id: string,
+    status: CutterSuggestionCardData["status"],
+  ) => void;
+  deleteCutterCard: (id: string) => void;
 
   // Todos
   toggleTodo: (id: string) => void;
@@ -231,21 +241,48 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
         />
       );
     }
-    case "cut": {
-      const cut = d.cuts.find((c) => c.id === id);
-      if (!cut) return null;
-      const canJump = getLinkedParagraphIds(cut).length > 0;
+    case "cutter-comment": {
+      const card = d.cutterCards.find(
+        (c) => c.id === id && c.kind === "comment",
+      );
+      if (!card || card.kind !== "comment") return null;
+      const canJump = getLinkedParagraphIds(card).length > 0;
       return (
-        <CutCard
+        <CutterCommentCard
           key={key}
-          cut={cut}
-          selected={d.selectedCutId === cut.id}
-          onUpdate={d.updateCut}
-          onUpdateTitle={d.updateCutTitle}
-          onDelete={d.deleteCut}
-          onSelect={d.setSelectedCutId}
-          onJump={canJump ? () => d.editorRef.current?.jumpToCard(cut) : undefined}
-          onHoverChange={(hovering) => d.handleHoverCut(hovering ? cut.id : null)}
+          card={card}
+          selected={d.selectedCutterCardId === card.id}
+          onUpdate={d.updateCutterCommentContent}
+          onSetAiRequest={d.setCutterCommentAiRequest}
+          onDelete={d.deleteCutterCard}
+          onSelect={d.setSelectedCutterCardId}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(card) : undefined}
+          onHoverChange={(hovering) => d.handleHoverCut(hovering ? card.id : null)}
+          isPoppedOut
+        />
+      );
+    }
+    case "cutter-suggestion": {
+      const card = d.cutterCards.find(
+        (c) => c.id === id && c.kind === "suggestion",
+      );
+      if (!card || card.kind !== "suggestion") return null;
+      const canJump = getLinkedParagraphIds(card).length > 0;
+      // Popped suggestions mirror status changes locally; the panel-host
+      // owns the AiRequest enqueue path. Both buttons in popped mode just
+      // flip status — the user can re-open the panel to trigger enqueue
+      // there (out-of-scope for v1).
+      return (
+        <CutterSuggestionCard
+          key={key}
+          card={card}
+          selected={d.selectedCutterCardId === card.id}
+          onUpdateField={d.updateCutterSuggestionField}
+          onAccept={(cid) => d.setCutterSuggestionStatus(cid, "accepted")}
+          onReject={(cid) => d.setCutterSuggestionStatus(cid, "rejected")}
+          onDelete={d.deleteCutterCard}
+          onSelect={d.setSelectedCutterCardId}
+          onJump={canJump ? () => d.editorRef.current?.jumpToCard(card) : undefined}
           isPoppedOut
         />
       );

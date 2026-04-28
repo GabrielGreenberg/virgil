@@ -56,7 +56,7 @@ export const PANEL_BODY_LABELS: Record<PanelBodyKey, string> = {
   footnote: "Footnotes",
   note:     "Margin notes",
   archive:  "Archive",
-  cut:      "Cuts",
+  cut:      "Cutter cards",
   revision: "Revisions",
   citation: "Citations",
   bib:      "Bibliography",

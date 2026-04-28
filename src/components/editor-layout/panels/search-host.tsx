@@ -29,7 +29,7 @@ export interface SearchHostProps {
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
   todoItems: TodosHook["items"];
   archiveSnippets: ArchivedSnippet[];
-  cuts: CutterHook["cuts"];
+  cutterCards: CutterHook["cards"];
   quotationGroups: QuotationsHook["groups"];
   comments: RevisionsHook["comments"];
   bibEntries: CitationsHook["bibEntries"];
@@ -54,7 +54,7 @@ export function SearchHost(p: SearchHostProps) {
       getCitationDisplayText={getCitationDisplayText}
       todos={p.todoItems}
       archiveSnippets={p.archiveSnippets}
-      cuts={p.cuts}
+      cutterCards={p.cutterCards}
       quotationGroups={p.quotationGroups}
       comments={p.comments}
       bibEntries={p.bibEntries}

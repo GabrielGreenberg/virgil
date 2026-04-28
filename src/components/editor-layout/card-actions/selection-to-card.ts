@@ -1,7 +1,12 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
-import type { UserNote, CutItem, QuotationGroup, Suggestion } from "@/lib/types";
+import type {
+  UserNote,
+  CutterCommentCard,
+  QuotationGroup,
+  Suggestion,
+} from "@/lib/types";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 
@@ -10,11 +15,11 @@ type AddNote = (
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
 ) => UserNote;
-type AddCut = (
+type AddCutterComment = (
   paragraphId: string | null,
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
-) => CutItem;
+) => CutterCommentCard;
 type AddQuotationGroup = (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
 
 /**
@@ -33,12 +38,12 @@ type AddQuotationGroup = (init?: { text?: string; paragraphId?: string | null })
 export function useSelectionToCardActions(deps: {
   editorRef: RefObject<EditorHandle | null>;
   addNote: AddNote;
-  addCut: AddCut;
+  addCutterComment: AddCutterComment;
   addQuotationGroup: AddQuotationGroup;
   actOnSuggestion: (id: string, action: "accepted" | "rejected" | "skipped") => void;
   currentSuggestion: Suggestion | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   prefs: ViewPrefs;
@@ -48,12 +53,12 @@ export function useSelectionToCardActions(deps: {
   const {
     editorRef,
     addNote,
-    addCut,
+    addCutterComment,
     addQuotationGroup,
     actOnSuggestion,
     currentSuggestion,
     setSelectedNoteId,
-    setSelectedCutId,
+    setSelectedCutterCardId,
     setSelectedQuotationGroupId,
     setSelectedFootnoteId,
     prefs,
@@ -135,15 +140,15 @@ export function useSelectionToCardActions(deps: {
     const { from, to } = ed.state.selection;
     if (from === to) return;
     const paragraphId = editorRef.current.ensureParagraphUuid(from);
-    const record = createLinkedAnchor(ed, "cut");
+    const record = createLinkedAnchor(ed, "cutter-comment");
     if (!record) return;
-    const cut = addCut(
+    const card = addCutterComment(
       paragraphId,
       undefined,
       { anchorId: record.anchorId, anchorText: record.text },
     );
-    updateLinkedAnchorCard(ed, record.anchorId, "cut", cut.id);
-    setSelectedCutId(cut.id);
+    updateLinkedAnchorCard(ed, record.anchorId, "cutter-comment", card.id);
+    setSelectedCutterCardId(card.id);
     try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     const placement = prefs.placements.find((p) => p.id === "cutter");
     if (placement?.side === "left") {
@@ -151,7 +156,7 @@ export function useSelectionToCardActions(deps: {
     } else {
       if (prefs.activeRight !== "cutter") setActiveRight("cutter");
     }
-  }, [editorRef, addCut, setSelectedCutId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
+  }, [editorRef, addCutterComment, setSelectedCutterCardId, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight]);
 
   return {
     handleAct,

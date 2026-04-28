@@ -67,6 +67,10 @@ export interface CardListPanelProps<T> {
   title?: string;
   count?: number;
   onAdd?: () => void;
+  /** When provided, the "+" button opens a small dropdown of choices
+   *  instead of firing `onAdd`. Used by panels hosting more than one
+   *  card kind (Cutter: Comment / Suggestion). */
+  onAddOptions?: { label: string; onClick: () => void }[];
   onAiRequest?: () => void;
   headerLeading?: ReactNode;
   headerExtras?: ReactNode;
@@ -105,6 +109,7 @@ export function CardListPanel<T>({
   title,
   count,
   onAdd,
+  onAddOptions,
   onAiRequest,
   headerLeading,
   headerExtras,
@@ -151,6 +156,7 @@ export function CardListPanel<T>({
         title={title}
         count={count}
         onAdd={onAdd}
+        onAddOptions={onAddOptions}
         onAiRequest={onAiRequest}
         headerLeading={headerLeading}
         headerExtras={headerExtras}
@@ -211,6 +217,7 @@ export function CardListPanel<T>({
       title={title}
       count={count}
       onAdd={onAdd}
+      onAddOptions={onAddOptions}
       onAiRequest={onAiRequest}
       headerLeading={headerLeading}
       headerExtras={headerExtras}

@@ -15,7 +15,7 @@ import type {
   ArchivedSnippet,
   CitationRef,
   Comment,
-  CutItem,
+  CutterCard,
   OrphanedFootnote,
   QuotationGroup,
   TodoItem,
@@ -381,25 +381,32 @@ export function searchArchive(
   return out;
 }
 
-/* ── Cuts ────────────────────────────────────────────────────────────── */
+/* ── Cutter (comments + suggestions) ────────────────────────────────── */
 
-export function searchCuts(
-  cuts: CutItem[],
+export function searchCutter(
+  cards: CutterCard[],
   editor: Editor,
   uuidPos: Map<string, number>,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
-  for (const c of cuts) {
+  for (const c of cards) {
     const pos = resolveItemPos(editor, uuidPos, c);
-    if (c.title) {
-      for (const m of scanText(c.title, re)) {
+    if (c.kind === "comment") {
+      const body = c.text || richJsonToPlainText(c.content);
+      for (const m of scanText(body, re)) {
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+      }
+    } else {
+      for (const m of scanText(c.original_text, re)) {
         out.push(hitFromMatch("cuts", c.id, pos, "title", m));
       }
-    }
-    const body = richJsonToPlainText(c.content);
-    for (const m of scanText(body, re)) {
-      out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+      for (const m of scanText(c.suggested_text, re)) {
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+      }
+      for (const m of scanText(c.explanation, re)) {
+        out.push(hitFromMatch("cuts", c.id, pos, "body", m));
+      }
     }
   }
   return out;

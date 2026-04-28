@@ -11,7 +11,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 
 type RevisionsHook = ReturnType<typeof useRevisions>;
-type AnchorKind = "note" | "revision" | "cut" | null;
+type AnchorKind = "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
 
 export interface RevisionsHostProps {
   side: Side;

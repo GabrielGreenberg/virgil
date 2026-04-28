@@ -2,36 +2,45 @@
 
 import { useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { CutItem } from "@/lib/types";
+import type {
+  CutterCard,
+  CutterCommentCard as CutterCommentCardData,
+  CutterSuggestionCard as CutterSuggestionCardData,
+} from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedParagraphIds } from "@/links/links";
+import { getLinkedParagraphIds, getTextAnchor } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import {
   useInTextPositions,
-  getParagraphAnchorPositions,
+  type PositionItem,
 } from "@/hooks/useInTextPositions";
-import { richJsonToPlainText } from "@/lib/footnote-content";
-import { countWords, useWordCount } from "@/hooks/useWordCount";
+import { resolveAnchorRange } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
-import { CutCard } from "./CutCard";
-import { CutterHeader } from "./CutterHeader";
+import { CutterCommentCard } from "./CutterCommentCard";
+import { CutterSuggestionCard } from "./CutterSuggestionCard";
+
+type Item =
+  | { kind: "comment"; id: string; createdAt: string; data: CutterCommentCardData }
+  | { kind: "suggestion"; id: string; createdAt: string; data: CutterSuggestionCardData };
 
 export default function CutterPanel({
-  cuts,
-  goal,
-  onSetGoal,
-  onAdd,
-  onUpdate,
-  onUpdateTitle,
+  cards,
+  onAddComment,
+  onAddSuggestion,
+  onUpdateCommentContent,
+  onSetCommentAiRequest,
+  onUpdateSuggestionField,
+  onAcceptSuggestion,
+  onRejectSuggestion,
   onDelete,
   onSelect,
   selectedId,
   onJumpToCard,
-  onHoverCut,
+  onHoverCard,
   onDropSelection,
   onDropParagraph,
   editor,
@@ -39,48 +48,68 @@ export default function CutterPanel({
   viewMode = "list",
   onViewModeChange,
 }: {
-  cuts: CutItem[];
-  goal: number | null;
-  onSetGoal: (goal: number | null) => void;
-  onAdd: () => CutItem;
-  onUpdate: (id: string, content: JSONContent) => void;
-  onUpdateTitle: (id: string, title: string) => void;
+  cards: CutterCard[];
+  onAddComment: () => CutterCommentCardData;
+  onAddSuggestion: () => CutterSuggestionCardData;
+  onUpdateCommentContent: (id: string, content: JSONContent) => void;
+  onSetCommentAiRequest: (id: string, value: boolean) => void;
+  onUpdateSuggestionField: (
+    id: string,
+    field: "original_text" | "suggested_text" | "explanation",
+    value: string,
+  ) => void;
+  onAcceptSuggestion: (id: string) => void;
+  onRejectSuggestion: (id: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
-  onJumpToCard?: (card: CutItem) => void;
-  onHoverCut?: (id: string | null) => void;
-  onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
+  onJumpToCard?: (card: CutterCard) => void;
+  onHoverCard?: (id: string | null) => void;
+  onDropSelection?: (payload: {
+    from: number;
+    to: number;
+    selectedText: string;
+  }) => void;
   onDropParagraph?: (paragraphId: string) => void;
   editor?: Editor | null;
   panelSide?: "left" | "right";
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
 }) {
-  const { counts: docCounts } = useWordCount(editor ?? null);
-  const cutWords = useMemo(
-    () =>
-      cuts.reduce(
-        (sum, c) => sum + countWords(richJsonToPlainText(c.content)),
-        0,
-      ),
-    [cuts],
-  );
-  const sorted = useMemo(
-    () =>
-      [...cuts].sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      ),
-    [cuts],
-  );
-  const cutTheme = useCardTheme("cut");
+  const cutterTheme = useCardTheme("cut");
 
-  const inTextItems = useMemo(
-    () => getParagraphAnchorPositions(editor ?? null, sorted),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, sorted],
-  );
+  const items = useMemo<Item[]>(() => {
+    const out: Item[] = cards.map((c) =>
+      c.kind === "suggestion"
+        ? { kind: "suggestion", id: c.id, createdAt: c.createdAt, data: c }
+        : { kind: "comment", id: c.id, createdAt: c.createdAt, data: c },
+    );
+    out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return out;
+  }, [cards]);
+
+  const inTextItems = useMemo<PositionItem[]>(() => {
+    if (!editor) return [];
+    const out: PositionItem[] = [];
+    for (const c of cards) {
+      const ta = getTextAnchor(c);
+      if (ta) {
+        const range = resolveAnchorRange(editor, ta.anchorId);
+        if (range) {
+          out.push({ id: c.id, pos: range.from });
+          continue;
+        }
+      }
+      // Fall back to first paragraph anchor (Mode A) — getParagraphAnchorPositions
+      // would do this but we need uniform fallback per item.
+      const pids = getLinkedParagraphIds(c);
+      if (pids.length === 0) continue;
+      // Resolve via DOM after layout — cheaper to skip here and let the
+      // grid skip un-positioned cards rather than synthesize positions.
+      out.push({ id: c.id, pos: 0 });
+    }
+    return out;
+  }, [editor, cards]);
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor ?? null,
     inTextItems,
@@ -145,19 +174,19 @@ export default function CutterPanel({
       }
     : undefined;
 
+  const onAddOptions = useMemo(
+    () => [
+      { label: "Comment", onClick: () => onAddComment() },
+      { label: "Suggestion", onClick: () => onAddSuggestion() },
+    ],
+    [onAddComment, onAddSuggestion],
+  );
+
   return (
-    <CardListPanel
+    <CardListPanel<Item>
       kind="cutter"
-      count={cuts.length}
-      onAdd={() => onAdd()}
-      panelExtras={
-        <CutterHeader
-          documentWords={docCounts.total}
-          cutWords={cutWords}
-          goal={goal}
-          onSetGoal={onSetGoal}
-        />
-      }
+      count={cards.length}
+      onAddOptions={onAddOptions}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -168,14 +197,14 @@ export default function CutterPanel({
           </div>
         </ItemMenu>
       }
-      items={sorted}
-      getId={(c) => c.id}
+      items={items}
+      getId={(it) => it.id}
       selectedId={selectedId}
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No cuts yet. Select text and click the Cutter button in the toolbar,
-          or drag a selection into this panel.
+          No comments or suggestions yet. Click + to add one, or drop a
+          paragraph or selection here.
         </div>
       }
       viewMode={viewMode}
@@ -186,57 +215,109 @@ export default function CutterPanel({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       showDropPlaceholder={isDragOver}
-      renderCard={(cut, { selected }) => (
-        <CutCard
-          cut={cut}
-          selected={selected}
-          onUpdate={onUpdate}
-          onUpdateTitle={onUpdateTitle}
-          onDelete={onDelete}
-          onSelect={onSelect}
-          onJump={
-            onJumpToCard && getLinkedParagraphIds(cut).length > 0
-              ? () => onJumpToCard(cut)
-              : undefined
-          }
-          onHoverChange={
-            onHoverCut
-              ? (hovering) => onHoverCut(hovering ? cut.id : null)
-              : undefined
-          }
-        />
-      )}
-      inTextRenderItem={(cut, { selected }) => {
-        const preview = richJsonToPlainText(cut.content) || "";
-        const borderColor =
-          cutTheme.borderSelected;
-        const selectedBg = cutTheme.headerSelected;
+      renderCard={(it, { selected }) => {
+        if (it.kind === "suggestion") {
+          return (
+            <CutterSuggestionCard
+              card={it.data}
+              selected={selected}
+              onUpdateField={onUpdateSuggestionField}
+              onAccept={onAcceptSuggestion}
+              onReject={onRejectSuggestion}
+              onDelete={onDelete}
+              onSelect={onSelect}
+              onJump={
+                onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+                  ? () => onJumpToCard(it.data)
+                  : undefined
+              }
+            />
+          );
+        }
+        return (
+          <CutterCommentCard
+            card={it.data}
+            selected={selected}
+            onUpdate={onUpdateCommentContent}
+            onSetAiRequest={onSetCommentAiRequest}
+            onDelete={onDelete}
+            onSelect={onSelect}
+            onJump={
+              onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+                ? () => onJumpToCard(it.data)
+                : undefined
+            }
+            onHoverChange={
+              onHoverCard
+                ? (hovering) => onHoverCard(hovering ? it.data.id : null)
+                : undefined
+            }
+          />
+        );
+      }}
+      inTextRenderItem={(it, { selected }) => {
+        const borderColor = cutterTheme.borderSelected;
+        const selectedBg = cutterTheme.headerSelected;
+        if (it.kind === "suggestion") {
+          const s = it.data;
+          return (
+            <div
+              data-cutter-suggestion-entry={s.id}
+              className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
+              style={
+                selected
+                  ? {
+                      borderLeftColor: borderColor,
+                      backgroundColor:
+                        selectedBg ?? "rgba(124, 58, 237, 0.08)",
+                    }
+                  : undefined
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(selected ? null : s.id);
+              }}
+            >
+              {s.original_text && (
+                <p className="text-[11px] line-through text-red-700 truncate">
+                  {s.original_text}
+                </p>
+              )}
+              <p
+                className="text-xs text-emerald-800 line-clamp-2 pr-6"
+                style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+              >
+                {s.suggested_text || (
+                  <span className="italic text-ink-muted">No replacement</span>
+                )}
+              </p>
+            </div>
+          );
+        }
+        const c = it.data;
+        const preview = c.text || "";
         return (
           <div
-            data-cut-entry={cut.id}
+            data-cutter-comment-entry={c.id}
             className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
             style={
               selected
                 ? {
                     borderLeftColor: borderColor,
-                    backgroundColor:
-                      selectedBg ?? "rgba(180, 87, 87, 0.08)",
+                    backgroundColor: selectedBg ?? "rgba(180, 87, 87, 0.08)",
                   }
                 : undefined
             }
             onClick={(e) => {
               e.stopPropagation();
-              onSelect(selected ? null : cut.id);
+              onSelect(selected ? null : c.id);
             }}
-            onMouseEnter={onHoverCut ? () => onHoverCut(cut.id) : undefined}
-            onMouseLeave={onHoverCut ? () => onHoverCut(null) : undefined}
+            onMouseEnter={onHoverCard ? () => onHoverCard(c.id) : undefined}
+            onMouseLeave={onHoverCard ? () => onHoverCard(null) : undefined}
           >
-            {cut.title && (
-              <div
-                className="text-[11px] font-medium truncate mb-0.5"
-                style={{ color: cutTheme.titleColor }}
-              >
-                {cut.title}
+            {c.selectedText && (
+              <div className="text-[10px] italic text-ink-muted truncate mb-0.5">
+                &ldquo;{c.selectedText}&rdquo;
               </div>
             )}
             <p
@@ -244,7 +325,7 @@ export default function CutterPanel({
               style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
             >
               {preview || (
-                <span className="italic text-ink-muted">Empty cut</span>
+                <span className="italic text-ink-muted">Empty comment</span>
               )}
             </p>
           </div>

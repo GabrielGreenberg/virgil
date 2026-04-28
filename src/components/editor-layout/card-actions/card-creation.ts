@@ -2,7 +2,8 @@ import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateActio
 import type { JSONContent } from "@tiptap/react";
 import type {
   UserNote,
-  CutItem,
+  CutterCommentCard,
+  CutterSuggestionCard,
   TodoItem,
   QuotationGroup,
   CitationRef,
@@ -35,18 +36,23 @@ export interface CardCreationDeps {
     content?: JSONContent,
     anchor?: AnchorRef,
   ) => UserNote;
-  addCut: (
+  addCutterComment: (
     paragraphId: string | null,
     content?: JSONContent,
     anchor?: AnchorRef,
-  ) => CutItem;
+  ) => CutterCommentCard;
+  addCutterSuggestion: (
+    paragraphId: string | null,
+    originalText?: string,
+    anchor?: AnchorRef,
+  ) => CutterSuggestionCard;
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
   addTodoParagraphId: (id: string, paragraphId: string) => void;
   addQuotationGroup: (init?: { text?: string; paragraphId?: string | null }) => QuotationGroup;
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
@@ -65,12 +71,18 @@ export interface CardCreationApi {
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
   }) => UserNote;
-  createCut: (opts: {
+  createCutterComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
-  }) => CutItem;
+  }) => CutterCommentCard;
+  createCutterSuggestion: (opts: {
+    paragraphId?: string | null;
+    originalText?: string;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+  }) => CutterSuggestionCard;
   createTodo: (opts: {
     text?: string;
     paragraphId?: string | null;
@@ -96,14 +108,15 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   const {
     editorRef,
     addNote,
-    addCut,
+    addCutterComment,
+    addCutterSuggestion,
     addTodo,
     updateTodo,
     addTodoParagraphId,
     addQuotationGroup,
     addCitation,
     setSelectedNoteId,
-    setSelectedCutId,
+    setSelectedCutterCardId,
     setSelectedTodoId,
     setSelectedFootnoteId,
     setSelectedQuotationGroupId,
@@ -147,15 +160,48 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [addNote, setSelectedNoteId, ensurePanelActive, popCardAtAnchor],
   );
 
-  const createCut = useCallback<CardCreationApi["createCut"]>(
+  const createCutterComment = useCallback<CardCreationApi["createCutterComment"]>(
     (opts) => {
-      const cut = addCut(opts.paragraphId ?? null, opts.content, opts.anchor);
-      setSelectedCutId(cut.id);
-      if (fromToolbar(opts)) popCardAtAnchor("cut", cut.id, opts.anchorRect!);
+      const card = addCutterComment(
+        opts.paragraphId ?? null,
+        opts.content,
+        opts.anchor,
+      );
+      setSelectedCutterCardId(card.id);
+      if (fromToolbar(opts))
+        popCardAtAnchor("cutter-comment", card.id, opts.anchorRect!);
       else ensurePanelActive("cutter");
-      return cut;
+      return card;
     },
-    [addCut, setSelectedCutId, ensurePanelActive, popCardAtAnchor],
+    [
+      addCutterComment,
+      setSelectedCutterCardId,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
+  );
+
+  const createCutterSuggestion = useCallback<
+    CardCreationApi["createCutterSuggestion"]
+  >(
+    (opts) => {
+      const card = addCutterSuggestion(
+        opts.paragraphId ?? null,
+        opts.originalText,
+        opts.anchor,
+      );
+      setSelectedCutterCardId(card.id);
+      if (fromToolbar(opts))
+        popCardAtAnchor("cutter-suggestion", card.id, opts.anchorRect!);
+      else ensurePanelActive("cutter");
+      return card;
+    },
+    [
+      addCutterSuggestion,
+      setSelectedCutterCardId,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
   );
 
   const createTodo = useCallback<CardCreationApi["createTodo"]>(
@@ -217,12 +263,21 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   return useMemo<CardCreationApi>(
     () => ({
       createNote,
-      createCut,
+      createCutterComment,
+      createCutterSuggestion,
       createTodo,
       createFootnote,
       createQuotation,
       createCitation,
     }),
-    [createNote, createCut, createTodo, createFootnote, createQuotation, createCitation],
+    [
+      createNote,
+      createCutterComment,
+      createCutterSuggestion,
+      createTodo,
+      createFootnote,
+      createQuotation,
+      createCitation,
+    ],
   );
 }

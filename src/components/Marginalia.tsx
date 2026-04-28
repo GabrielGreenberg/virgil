@@ -329,15 +329,16 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
         return;
       }
 
-      // --- Cut drop (from CutterPanel) ---
+      // --- Cutter card drop (comment or suggestion, from CutterPanel) ---
       const cutData = e.dataTransfer?.getData(MIME_CUT);
       if (cutData) {
         try {
-          const { cutId } = JSON.parse(cutData);
-          if (cutId) {
+          const parsed = JSON.parse(cutData);
+          const cardId: string | undefined = parsed.cardId ?? parsed.cutId;
+          if (cardId) {
             window.dispatchEvent(
               new CustomEvent("virgil-cut-drop", {
-                detail: { cutId, paragraphId },
+                detail: { cardId, paragraphId },
               })
             );
           }

@@ -1,11 +1,11 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
-import type { UserNote, CutItem, QuotationGroup } from "@/lib/types";
+import type { UserNote, CutterCard, QuotationGroup } from "@/lib/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
 import { openForCard } from "../event-bridges/open-for-card";
 
-type AnchorKind = "note" | "revision" | "cut" | null;
+type AnchorKind = "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
 
 /**
  * Gutter-marker click + hover handlers for the four panel kinds that
@@ -38,9 +38,9 @@ export function useMarkerActions(deps: {
   notes: UserNote[];
   selectedNoteId: string | null;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  cuts: CutItem[];
-  selectedCutId: string | null;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  cutterCards: CutterCard[];
+  selectedCutterCardId: string | null;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   selectedTodoId: string | null;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
@@ -59,9 +59,9 @@ export function useMarkerActions(deps: {
     notes,
     selectedNoteId,
     setSelectedNoteId,
-    cuts,
-    selectedCutId,
-    setSelectedCutId,
+    cutterCards,
+    selectedCutterCardId,
+    setSelectedCutterCardId,
     selectedTodoId,
     setSelectedTodoId,
     setSelectedQuotationGroupId,
@@ -145,15 +145,17 @@ export function useMarkerActions(deps: {
   );
 
   const handleCutMarkerClick = useCallback(
-    (cutId: string) => {
-      const nextSelected = selectedCutId === cutId ? null : cutId;
-      setSelectedCutId(nextSelected);
-      const cut = cuts.find((c) => c.id === cutId);
-      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
+    (cardId: string) => {
+      const nextSelected = selectedCutterCardId === cardId ? null : cardId;
+      setSelectedCutterCardId(nextSelected);
+      const card = cutterCards.find((c) => c.id === cardId);
+      const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
+      const kind: AnchorKind =
+        card?.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
       if (anchorId) {
         if (nextSelected) {
           setActiveAnchorId(anchorId);
-          setActiveAnchorKind("cut");
+          setActiveAnchorKind(kind);
         } else {
           setActiveAnchorId(null);
           setActiveAnchorKind(null);
@@ -167,20 +169,22 @@ export function useMarkerActions(deps: {
         if (p.activeRight !== "cutter") setActiveRight("cutter");
       }
     },
-    [prefsRef, cuts, selectedCutId, setSelectedCutId, setActiveLeft, setActiveRight, setActiveAnchorId, setActiveAnchorKind],
+    [prefsRef, cutterCards, selectedCutterCardId, setSelectedCutterCardId, setActiveLeft, setActiveRight, setActiveAnchorId, setActiveAnchorKind],
   );
 
   const handleHoverCut = useCallback(
-    (cutId: string | null) => {
-      if (!cutId) { setHoveredAnchorId(null); return; }
-      const cut = cuts.find((c) => c.id === cutId);
-      const anchorId = cut ? getTextAnchor(cut)?.anchorId : undefined;
+    (cardId: string | null) => {
+      if (!cardId) { setHoveredAnchorId(null); return; }
+      const card = cutterCards.find((c) => c.id === cardId);
+      const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
       if (anchorId) {
         setHoveredAnchorId(anchorId);
-        setActiveAnchorKind("cut");
+        setActiveAnchorKind(
+          card?.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
+        );
       }
     },
-    [cuts, setHoveredAnchorId, setActiveAnchorKind],
+    [cutterCards, setHoveredAnchorId, setActiveAnchorKind],
   );
 
   const handleTodoMarkerClick = useCallback(

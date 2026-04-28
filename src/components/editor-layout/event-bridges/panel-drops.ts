@@ -18,8 +18,8 @@ export function usePanelDropBridges(deps: {
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   addNoteParagraphId: (noteId: string, paragraphId: string) => void;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
-  addCutParagraphId: (cutId: string, paragraphId: string) => void;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  addCardParagraphId: (cutId: string, paragraphId: string) => void;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
 }) {
   const {
     addQuotationParagraphId,
@@ -28,8 +28,8 @@ export function usePanelDropBridges(deps: {
     setSelectedTodoId,
     addNoteParagraphId,
     setSelectedNoteId,
-    addCutParagraphId,
-    setSelectedCutId,
+    addCardParagraphId,
+    setSelectedCutterCardId,
   } = deps;
 
   useEffect(() => {
@@ -71,12 +71,13 @@ export function usePanelDropBridges(deps: {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail?.cutId && detail?.paragraphId) {
-        addCutParagraphId(detail.cutId, detail.paragraphId);
-        setSelectedCutId(detail.cutId);
+      const cardId: string | undefined = detail?.cardId ?? detail?.cutId;
+      if (cardId && detail?.paragraphId) {
+        addCardParagraphId(cardId, detail.paragraphId);
+        setSelectedCutterCardId(cardId);
       }
     };
     window.addEventListener("virgil-cut-drop", handler);
     return () => window.removeEventListener("virgil-cut-drop", handler);
-  }, [addCutParagraphId, setSelectedCutId]);
+  }, [addCardParagraphId, setSelectedCutterCardId]);
 }
