@@ -152,7 +152,7 @@ export function ErrorCard({
       onClick={(e) => {
         e.stopPropagation();
         onSelect(err.id);
-        onJump?.();
+        onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
       onKeyDown={(e) => {
         if (!selected) return;

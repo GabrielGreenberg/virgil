@@ -2522,7 +2522,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (target < 0) return;
       if (sourceEl) {
         const domEl = editor.view.nodeDOM(target) as HTMLElement | null;
-        if (domEl && domEl.getBoundingClientRect) {
+        if (domEl) {
           alignEntryToY(domEl, sourceEl.getBoundingClientRect().top);
           return;
         }

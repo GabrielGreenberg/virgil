@@ -229,7 +229,6 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
  *  ai-requests / bib entries / errors are externally generated). */
 export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
   note: "Note",
-  cut: "Cut",
   archive: "Archive Text",
   quotation: "Quotation",
   todo: "Task",
@@ -238,6 +237,8 @@ export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
   citation: null,
   comment: null,
   suggestion: null,
+  "cutter-comment": null,
+  "cutter-suggestion": null,
   ai: null,
   bib: null,
   error: null,

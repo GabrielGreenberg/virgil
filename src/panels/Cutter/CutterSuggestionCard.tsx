@@ -57,7 +57,7 @@ export function CutterSuggestionCard({
   onReject: (id: string) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl?: HTMLElement | null) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
@@ -129,7 +129,7 @@ export function CutterSuggestionCard({
                 disabled={!isAnchored}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (isAnchored) onJump();
+                  if (isAnchored) onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
                 }}
                 title={
                   isAnchored

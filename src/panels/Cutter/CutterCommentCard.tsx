@@ -45,7 +45,7 @@ export function CutterCommentCard({
   onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
-  onJump?: () => void;
+  onJump?: (sourceEl?: HTMLElement | null) => void;
   onHoverChange?: (hovering: boolean) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
@@ -110,7 +110,7 @@ export function CutterCommentCard({
             disabled={isOrphaned}
             onClick={(e) => {
               e.stopPropagation();
-              if (!isOrphaned) onJump();
+              if (!isOrphaned) onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
             }}
             title="Jump to text in document"
           />
