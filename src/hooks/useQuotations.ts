@@ -10,6 +10,7 @@ import type {
 } from "@/lib/types";
 import { migrateQuotationsState } from "@/lib/migrate-quotations";
 import { addParagraphLink, removeParagraphLink } from "@/links/links";
+import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
 
@@ -54,7 +55,7 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
     (init?: { text?: string; paragraphId?: string | null }) => {
       let newGroup: QuotationGroup = {
         id: generateEntityId(),
-        title: "",
+        title: nextCardTitle("quotation", state.groups.length),
         references: [makeReference("", [makeQuote(init?.text ?? "")])],
         notes: "",
         createdAt: new Date().toISOString(),
@@ -68,7 +69,7 @@ export function useQuotations(docId: string | null, pristine?: PristineKindApi |
       update((prev) => ({ ...prev, groups: [newGroup, ...prev.groups] }));
       return newGroup;
     },
-    [update, pristine],
+    [update, pristine, state.groups.length],
   );
 
   const deleteGroup = useCallback(

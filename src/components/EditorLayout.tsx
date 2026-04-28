@@ -2969,6 +2969,8 @@ export default function EditorLayout() {
     setActiveRight,
     popCardAtAnchor,
     markFootnotePristine,
+    getFootnoteCount: () =>
+      (editorRef.current?.getFootnotes().length ?? 0) + orphanedFootnotes.length,
   });
 
   // Register per-kind discard callbacks. When the click-away watcher in

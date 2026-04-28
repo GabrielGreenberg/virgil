@@ -195,7 +195,7 @@ export function useCutter(
       update((prev) => ({ cards: [...prev.cards, card] }));
       return card;
     },
-    [update, pristine],
+    [update, pristine, state.cuts.length],
   );
 
   const addSuggestion = useCallback(
