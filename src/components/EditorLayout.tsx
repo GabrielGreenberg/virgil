@@ -73,7 +73,9 @@ function usePanelColorSubscription(): number {
 const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   note: "note",
   revision: "revision",
-  cut: "cut",
+  // Both cutter card kinds share the panel marker palette ("cut" key).
+  "cutter-comment": "cut",
+  "cutter-suggestion": "cut",
 };
 import {
   removeLinkedAnchor,
@@ -447,18 +449,19 @@ export default function EditorLayout() {
     discardPristineNotes,
   } = useNotes(docIdForHooks, notePristine);
   const {
-    cuts,
-    goal: cutterGoal,
-    setGoal: setCutterGoal,
-    addCut,
-    updateCut,
-    updateCutTitle,
-    addCutParagraphId,
-    removeCutParagraphId,
-    deleteCut,
-    discardPristineCuts,
+    cards: cutterCards,
+    addComment: addCutterComment,
+    addSuggestion: addCutterSuggestion,
+    updateCommentContent: updateCutterCommentContent,
+    setCommentAiRequest: setCutterCommentAiRequest,
+    updateSuggestionField: updateCutterSuggestionField,
+    setSuggestionStatus: setCutterSuggestionStatus,
+    addCardParagraphId,
+    removeCardParagraphId,
+    deleteCard: deleteCutterCard,
+    discardPristineCards,
   } = useCutter(docIdForHooks, cutPristine);
-  const [selectedCutId, setSelectedCutId] = useState<string | null>(null);
+  const [selectedCutterCardId, setSelectedCutterCardId] = useState<string | null>(null);
   const {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
@@ -1424,7 +1427,7 @@ export default function EditorLayout() {
   // Effective anchor = hovered ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [hoveredAnchorId, setHoveredAnchorId] = useState<string | null>(null);
-  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cut" | null>(null);
+  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
 
   // CSS-based coupled highlight: the `.linked-anchor` span for the
   // active/hovered link gets `data-link-highlight`, and the editor root
@@ -1463,7 +1466,7 @@ export default function EditorLayout() {
       case "citations": setSelectedCitationId(itemId); break;
       case "todo": setSelectedTodoId(itemId); break;
       case "archive": setSelectedArchiveId(itemId); break;
-      case "cutter": setSelectedCutId(itemId); break;
+      case "cutter": setSelectedCutterCardId(itemId); break;
       case "quotations": setSelectedQuotationGroupId(itemId); break;
       case "revisions": setSelectedCommentId(itemId); break;
       case "bibliography": setSelectedBibKey(itemId); break;
@@ -2028,13 +2031,13 @@ export default function EditorLayout() {
     selectedNoteId,
     selectedFootnoteId,
     selectedCitationId,
-    selectedCutId,
+    selectedCutterCardId,
     selectedCommentId,
     selectedTodoId,
     selectedArchiveId,
     selectedQuotationGroupId,
     notes,
-    cuts,
+    cutterCards,
     archiveSnippets,
     quotationGroups,
     todos: todoItems,
@@ -2493,12 +2496,12 @@ export default function EditorLayout() {
   } = useSelectionToCardActions({
     editorRef,
     addNote,
-    addCut,
+    addCutterComment,
     addQuotationGroup,
     actOnSuggestion,
     currentSuggestion,
     setSelectedNoteId,
-    setSelectedCutId,
+    setSelectedCutterCardId,
     setSelectedQuotationGroupId,
     setSelectedFootnoteId,
     prefs,
@@ -2549,12 +2552,17 @@ export default function EditorLayout() {
     setActiveAnchorKind,
     skipSelectors: ['[data-selection-chip]', '[data-add-note-button]'],
   });
+  // Cutter shares one selection across both card kinds. Anchor sync
+  // happens for both — the kind reported to setActiveAnchorKind is
+  // derived per-card by markers.ts when the user clicks a gutter icon;
+  // for selection-driven sync, both kinds resolve to "cutter-comment"
+  // since the only currently auto-anchored kind is the comment.
   useSelectedAnchorSync({
-    selectedId: selectedCutId,
-    entities: cuts,
-    kind: "cut",
-    dataAttrName: "cut-entry",
-    setSelectedId: setSelectedCutId,
+    selectedId: selectedCutterCardId,
+    entities: cutterCards,
+    kind: "cutter-comment",
+    dataAttrName: "cutter-comment-entry",
+    setSelectedId: setSelectedCutterCardId,
     setActiveAnchorId,
     setActiveAnchorKind,
     skipSelectors: ['[data-selection-chip]', '[data-cut-selection-button]'],
@@ -2620,9 +2628,9 @@ export default function EditorLayout() {
     notes,
     selectedNoteId,
     setSelectedNoteId,
-    cuts,
-    selectedCutId,
-    setSelectedCutId,
+    cutterCards,
+    selectedCutterCardId,
+    setSelectedCutterCardId,
     selectedTodoId,
     setSelectedTodoId,
     setSelectedQuotationGroupId,
@@ -2638,9 +2646,9 @@ export default function EditorLayout() {
   } = useDropActions({
     editorRef,
     addNote,
-    addCut,
+    addCutterComment,
     setSelectedNoteId,
-    setSelectedCutId,
+    setSelectedCutterCardId,
   });
 
 
@@ -2695,8 +2703,8 @@ export default function EditorLayout() {
     setSelectedTodoId,
     addNoteParagraphId,
     setSelectedNoteId,
-    addCutParagraphId,
-    setSelectedCutId,
+    addCardParagraphId,
+    setSelectedCutterCardId,
   });
 
   useAnchorRebindBridge({
@@ -2704,7 +2712,7 @@ export default function EditorLayout() {
     addTodoParagraphId, removeTodoParagraphId,
     addNoteParagraphId, removeNoteParagraphId,
     addArchiveParagraphId, removeArchiveParagraphId,
-    addCutParagraphId, removeCutParagraphId,
+    addCardParagraphId, removeCardParagraphId,
   });
 
   // Highlight the active \ref node with yellow while the popover is open
@@ -2913,14 +2921,15 @@ export default function EditorLayout() {
   const cardCreation = useCardCreation({
     editorRef,
     addNote,
-    addCut,
+    addCutterComment,
+    addCutterSuggestion,
     addTodo,
     updateTodo,
     addTodoParagraphId,
     addQuotationGroup,
     addCitation,
     setSelectedNoteId,
-    setSelectedCutId,
+    setSelectedCutterCardId,
     setSelectedTodoId,
     setSelectedFootnoteId,
     setSelectedQuotationGroupId,
@@ -2936,7 +2945,7 @@ export default function EditorLayout() {
   // the pristine manager sees a pointerdown outside a pristine card, it
   // calls the kind's registered discard callback to remove the card.
   useEffect(() => notePristine.registerDiscard((id) => deleteNote(id)), [notePristine, deleteNote]);
-  useEffect(() => cutPristine.registerDiscard((id) => deleteCut(id)), [cutPristine, deleteCut]);
+  useEffect(() => cutPristine.registerDiscard((id) => deleteCutterCard(id)), [cutPristine, deleteCutterCard]);
   useEffect(() => todoPristine.registerDiscard((id) => deleteTodo(id)), [todoPristine, deleteTodo]);
   useEffect(
     () => quotationPristine.registerDiscard((id) => deleteQuotationGroup(id)),
@@ -3008,12 +3017,14 @@ export default function EditorLayout() {
     let paragraphId: string | null = null;
     if (sel) {
       paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      const record = createLinkedAnchor(sel.ed, "cut");
+      const record = createLinkedAnchor(sel.ed, "cutter-comment");
       if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
     }
-    const cut = cardCreation.createCut({ paragraphId, anchor, anchorRect });
+    // Toolbar Cutter button defaults to creating a comment from selection.
+    // Use the +-dropdown in the panel to create a suggestion explicitly.
+    const card = cardCreation.createCutterComment({ paragraphId, anchor, anchorRect });
     if (sel && anchor) {
-      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "cut", cut.id);
+      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "cutter-comment", card.id);
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
   }, [readSelection, cardCreation]);
@@ -3347,7 +3358,7 @@ export default function EditorLayout() {
       selectedCitationId, setSelectedCitationId,
       selectedTodoId, setSelectedTodoId,
       selectedArchiveId, setSelectedArchiveId,
-      selectedCutId, setSelectedCutId,
+      selectedCutterCardId, setSelectedCutterCardId,
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
@@ -3359,7 +3370,7 @@ export default function EditorLayout() {
       selectedCitationId, setSelectedCitationId,
       selectedTodoId, setSelectedTodoId,
       selectedArchiveId, setSelectedArchiveId,
-      selectedCutId, setSelectedCutId,
+      selectedCutterCardId, setSelectedCutterCardId,
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,
@@ -3620,35 +3631,43 @@ export default function EditorLayout() {
       }
     }
 
-    // Cut markers — one per paragraphId
-    for (const c of cuts) {
+    // Cutter markers — one per paragraphId. Both card kinds share the
+    // "cut" gutter marker; the kind discriminates only the active-anchor
+    // hint passed to setActiveAnchorKind.
+    for (const c of cutterCards) {
       const pids = getLinkedParagraphIds(c);
       if (pids.length === 0) continue;
-      const cutAnchor = getTextAnchor(c);
+      const cardAnchor = getTextAnchor(c);
+      const anchorKind: "cutter-comment" | "cutter-suggestion" =
+        c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+      const title =
+        c.kind === "suggestion"
+          ? c.explanation || "Suggestion"
+          : c.text || "Comment";
       for (const pid of pids) {
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
           type: "cut",
           paragraphId: pid,
-          selected: selectedCutId === c.id,
-          title: c.title || "Cut",
+          selected: selectedCutterCardId === c.id,
+          title,
           onClick: () => handleCutMarkerClick(c.id),
           onDelete: () => {
-            // Drop the text anchor first (mirrors the Notes flow): the orphan
-            // guard fires `virgil-anchor-orphaned`, useCutter clears the
-            // cut's text-anchor link, and the selection-sync hook then
-            // releases `activeAnchorId` — so the highlight goes away.
+            // Drop the text anchor first: the orphan guard fires
+            // `virgil-anchor-orphaned`, useCutter clears the card's
+            // text-anchor link, and the selection-sync hook then releases
+            // `activeAnchorId` — so the highlight goes away.
             const ed = editorRef.current?.getEditor();
-            if (ed && cutAnchor) removeLinkedAnchor(ed, cutAnchor.anchorId);
-            removeCutParagraphId(c.id, pid);
+            if (ed && cardAnchor) removeLinkedAnchor(ed, cardAnchor.anchorId);
+            removeCardParagraphId(c.id, pid);
           },
-          anchorId: cutAnchor?.anchorId,
-          onHover: cutAnchor
+          anchorId: cardAnchor?.anchorId,
+          onHover: cardAnchor
             ? (hovering: boolean) => {
                 if (hovering) {
-                  setHoveredAnchorId(cutAnchor.anchorId);
-                  setActiveAnchorKind("cut");
+                  setHoveredAnchorId(cardAnchor.anchorId);
+                  setActiveAnchorKind(anchorKind);
                 } else {
                   setHoveredAnchorId(null);
                 }
@@ -3734,9 +3753,9 @@ export default function EditorLayout() {
     selectedCommentId,
     setActiveLeft,
     setActiveRight,
-    cuts,
-    selectedCutId,
-    removeCutParagraphId,
+    cutterCards,
+    selectedCutterCardId,
+    removeCardParagraphId,
     handleCutMarkerClick,
     allLatexErrors,
     dismissedErrorIds,
@@ -3753,7 +3772,15 @@ export default function EditorLayout() {
   const effectiveAnchorId = hoveredAnchorId ?? activeAnchorId;
   const effectiveAnchorColor = (() => {
     if (!activeAnchorKind) return null;
-    const meta = MARKER_META[activeAnchorKind];
+    // LinkedAnchorKind → MarkerType. Both cutter card kinds share the
+    // single "cut" marker entry; revisions panel uses the "revision"
+    // marker.
+    const markerType =
+      activeAnchorKind === "cutter-comment" ||
+      activeAnchorKind === "cutter-suggestion"
+        ? "cut"
+        : activeAnchorKind;
+    const meta = MARKER_META[markerType];
     const key = MARKER_KIND_TO_THEME_KEY[activeAnchorKind];
     if (key && isPanelColorOverridden(key)) {
       return deriveMarkerPalette(getPanelColor(key)).selectedBg;
@@ -3771,7 +3798,7 @@ export default function EditorLayout() {
     if (!editorInstance || !editorRef.current || !docIdForHooks) return;
     if (anchorsAppliedDocRef.current === docIdForHooks) return;
     anchorsAppliedDocRef.current = docIdForHooks;
-    const records: Array<{ anchorId: string; kind: "note" | "revision" | "cut"; text: string }> = [];
+    const records: Array<{ anchorId: string; kind: "note" | "revision" | "cutter-comment" | "cutter-suggestion"; text: string }> = [];
     for (const n of notes) {
       const ta = getTextAnchor(n);
       if (ta && ta.anchorText) {
@@ -3784,10 +3811,14 @@ export default function EditorLayout() {
         records.push({ anchorId: ta.anchorId, kind: "revision", text: ta.anchorText || (c.selectedText ?? "") });
       }
     }
-    for (const c of cuts) {
+    for (const c of cutterCards) {
       const ta = getTextAnchor(c);
       if (ta && ta.anchorText) {
-        records.push({ anchorId: ta.anchorId, kind: "cut", text: ta.anchorText });
+        records.push({
+          anchorId: ta.anchorId,
+          kind: c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
+          text: ta.anchorText,
+        });
       }
     }
     if (records.length > 0) {
@@ -3802,7 +3833,7 @@ export default function EditorLayout() {
       const rec = reanchorByText(editorInstance, "revision", c.selectedText);
       if (rec) setCommentAnchor(c.id, rec.anchorId);
     }
-  }, [editorInstance, docIdForHooks, notes, comments, cuts, setCommentAnchor]);
+  }, [editorInstance, docIdForHooks, notes, comments, cutterCards, setCommentAnchor]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {
@@ -4160,7 +4191,7 @@ export default function EditorLayout() {
           allEditorCitations={allEditorCitations}
           todoItems={todoItems}
           archiveSnippets={archiveSnippets}
-          cuts={cuts}
+          cutterCards={cutterCards}
           quotationGroups={quotationGroups}
           comments={comments}
           bibEntries={bibEntries}
@@ -4248,15 +4279,14 @@ export default function EditorLayout() {
         <CutterHost
           side={side}
           panelSide={cutterPanelSide}
-          cuts={cuts}
-          goal={cutterGoal}
-          setGoal={setCutterGoal}
-          addCut={addCut}
-          updateCut={updateCut}
-          updateCutTitle={updateCutTitle}
-          deleteCut={deleteCut}
-          discardPristine={discardPristineCuts}
-          onHoverCut={handleHoverCut}
+          cards={cutterCards}
+          updateCommentContent={updateCutterCommentContent}
+          setCommentAiRequest={setCutterCommentAiRequest}
+          updateSuggestionField={updateCutterSuggestionField}
+          setSuggestionStatus={setCutterSuggestionStatus}
+          deleteCard={deleteCutterCard}
+          discardPristine={discardPristineCards}
+          onHoverCard={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
           onDropParagraph={handleDropParagraphOnCutter}
         />
@@ -4408,15 +4438,15 @@ export default function EditorLayout() {
   // Popped-out card rendering lives in ./editor-layout/floating-cards.tsx —
   // the deps bundle below is the contract for what a popped card needs.
   const poppedCardDeps = {
-    notes, footnotes, archiveSnippets, cuts, todoItems, bibEntries,
+    notes, footnotes, archiveSnippets, cutterCards, todoItems, bibEntries,
     citations, citationPositionMap, allEditorCitations,
     comments,
     quotationGroups, aiRequests, anchoredIds,
-    selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutId,
+    selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutterCardId,
     selectedTodoId, selectedBibKey, selectedCitationId, selectedCommentId,
     selectedQuotationGroupId,
     setSelectedNoteId, setSelectedFootnoteId, setSelectedArchiveId,
-    setSelectedCutId, setSelectedTodoId, setSelectedBibKey,
+    setSelectedCutterCardId, setSelectedTodoId, setSelectedBibKey,
     setSelectedCitationId, setSelectedCommentId, setSelectedQuotationGroupId,
     editorRef,
     setOverrideEditor, getCitationDisplayText, handleCitationCreated,
@@ -4424,7 +4454,8 @@ export default function EditorLayout() {
     updateNote, updateNoteTitle, deleteNote,
     handleEditFootnote, handleDeleteFootnote, handleEditFootnoteTitle,
     updateArchiveSnippet, updateArchiveSnippetTitle, handleDeleteArchive,
-    updateCut, updateCutTitle, deleteCut,
+    updateCutterCommentContent, setCutterCommentAiRequest,
+    updateCutterSuggestionField, setCutterSuggestionStatus, deleteCutterCard,
     toggleTodo, updateTodo, updateTodoNotes, deleteTodo, setTodoAiRequest,
     getFormattedBib, getAnnotation, setAnnotation,
     requestBibReview, cancelBibReview, getBibReviewStatus,
@@ -4452,7 +4483,7 @@ export default function EditorLayout() {
       selectedCitationId, setSelectedCitationId,
       selectedTodoId, setSelectedTodoId,
       selectedArchiveId, setSelectedArchiveId,
-      selectedCutId, setSelectedCutId,
+      selectedCutterCardId, setSelectedCutterCardId,
       selectedQuotationGroupId, setSelectedQuotationGroupId,
       selectedCommentId, setSelectedCommentId,
       selectedBibKey, setSelectedBibKey,

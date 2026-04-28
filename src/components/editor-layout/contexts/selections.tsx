@@ -22,8 +22,8 @@ export interface SelectionsContextValue {
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   selectedArchiveId: string | null;
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
-  selectedCutId: string | null;
-  setSelectedCutId: Dispatch<SetStateAction<string | null>>;
+  selectedCutterCardId: string | null;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
   selectedQuotationGroupId: string | null;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   selectedCommentId: string | null;

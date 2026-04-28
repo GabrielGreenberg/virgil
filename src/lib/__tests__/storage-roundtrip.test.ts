@@ -64,13 +64,13 @@ describe("sidecar roundtrip (canonical shape)", () => {
       content: { type: "doc", content: [] },
       paragraphIds: ["p-1"],
     };
-    const firstLinks = migrateCardLinks("cut", legacy);
+    const firstLinks = migrateCardLinks("cutter-comment",legacy);
     expect(firstLinks).toHaveLength(1);
 
     // After migration, persist the new shape (links[] canonical, legacy
     // field dropped) — second pass should not change anything.
     const upgraded = { id: legacy.id, content: legacy.content, links: firstLinks };
-    const secondLinks = migrateCardLinks("cut", upgraded);
+    const secondLinks = migrateCardLinks("cutter-comment",upgraded);
     expect(secondLinks).toBe(firstLinks);
   });
 });

@@ -1870,12 +1870,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
-        // --- Cut drop (from CutterPanel) ---
+        // --- Cutter card drop (from CutterPanel — comment or suggestion) ---
         const cutData = event.dataTransfer?.getData(MIME_CUT);
         if (cutData) {
           try {
-            const { cutId } = JSON.parse(cutData);
-            if (!cutId) return true;
+            const parsed = JSON.parse(cutData);
+            // Payload shape evolved from { cutId } to { cardId, kind }.
+            // Accept both for forward compat.
+            const cardId: string | undefined = parsed.cardId ?? parsed.cutId;
+            if (!cardId) return true;
             const coords = { left: event.clientX, top: event.clientY };
             const posResult = view.posAtCoords(coords);
             if (!posResult) return true; // no preventDefault → Marginalia handles
@@ -1884,7 +1887,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             if (paragraphId) {
               window.dispatchEvent(
                 new CustomEvent("virgil-cut-drop", {
-                  detail: { cutId, paragraphId },
+                  detail: { cardId, paragraphId },
                 })
               );
             }

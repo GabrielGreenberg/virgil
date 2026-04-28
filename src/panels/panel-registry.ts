@@ -140,7 +140,11 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "cutter",
     label: "Cutter",
     folder: "src/panels/Cutter",
-    card: { kind: "cut", keyPrefix: "cut", themeKey: "cut" },
+    // Polymorphic — hosts both `cutter-comment` and `cutter-suggestion`
+    // card kinds. The shared marker/theme/typography for the panel still
+    // live under the legacy "cut" keys (see CARD_KEY_PREFIXES below,
+    // MARKER_META["cut"], CARD_THEMES.cut, panel-typography "cut").
+    card: null,
     defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
@@ -210,7 +214,8 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   citation: "citation",
   comment: "revision",
   suggestion: "suggestion",
-  cut: "cut",
+  "cutter-comment": "cutter-comment",
+  "cutter-suggestion": "cutter-suggestion",
   quotation: "quotation",
   example: "example",
   ai: "ai",
@@ -234,10 +239,20 @@ export function cardPopKey(cardKind: CardKind, id: string): string {
   return `${CARD_KEY_PREFIXES[cardKind]}:${id}`;
 }
 
+/** Cards that don't sit on a single-kind panel (Cutter hosts two kinds,
+ *  registered with `card: null`). Mapped explicitly so link-resolution
+ *  helpers can find the owning panel for these polymorphic kinds. */
+const POLYMORPHIC_CARD_PANEL: Partial<Record<CardKind, PanelKind>> = {
+  "cutter-comment": "cutter",
+  "cutter-suggestion": "cutter",
+};
+
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {
   for (const entry of Object.values(PANEL_REGISTRY)) {
     if (entry.card?.kind === cardKind) return entry;
   }
+  const fallback = POLYMORPHIC_CARD_PANEL[cardKind];
+  if (fallback) return PANEL_REGISTRY[fallback];
   return null;
 }
 

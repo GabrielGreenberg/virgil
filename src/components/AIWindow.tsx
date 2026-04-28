@@ -58,7 +58,8 @@ export type AIRequestKind =
   | "panel-note"
   | "panel-citation"
   | "panel-quotation"
-  | "panel-todo";
+  | "panel-todo"
+  | "panel-suggestion";
 
 type AIRequestStatus = "open" | "responded" | "resolved";
 
@@ -149,6 +150,12 @@ const KIND_META: Record<
     chipBg: "#f0fdf4",
     chipFg: "#15803d",
     description: "AI request for a task",
+  },
+  "panel-suggestion": {
+    label: "Suggestion",
+    chipBg: "#f3edfb",
+    chipFg: "#7c3aed",
+    description: "Apply an accepted Cutter suggestion to the document",
   },
 };
 
@@ -274,6 +281,7 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
     citation: "panel-citation",
     quotation: "panel-quotation",
     todo: "panel-todo",
+    suggestion: "panel-suggestion",
   };
 
   for (const r of args.panelAiRequests) {

@@ -1,53 +1,124 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import CutterPanel from "@/panels/Cutter";
-import type { CutItem } from "@/lib/types";
+import type {
+  CutterCard,
+  CutterCommentCard,
+  CutterSuggestionCard,
+} from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
+import { useAiRequestsContext } from "../contexts/ai-requests";
 
 export interface CutterHostProps {
   side: Side;
   panelSide: Side | null;
-  cuts: CutItem[];
-  goal: number | null;
-  setGoal: (goal: number | null) => void;
-  addCut: (paragraphId: string | null) => CutItem;
-  updateCut: (id: string, content: JSONContent) => void;
-  updateCutTitle: (id: string, title: string) => void;
-  deleteCut: (id: string) => void;
+  cards: CutterCard[];
+  updateCommentContent: (id: string, content: JSONContent) => void;
+  setCommentAiRequest: (id: string, value: boolean) => void;
+  updateSuggestionField: (
+    id: string,
+    field: "original_text" | "suggested_text" | "explanation",
+    value: string,
+  ) => void;
+  setSuggestionStatus: (
+    id: string,
+    status: CutterSuggestionCard["status"],
+  ) => void;
+  deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
-  onHoverCut: (id: string | null) => void;
-  onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
+  onHoverCard: (id: string | null) => void;
+  onDropSelection: (payload: {
+    from: number;
+    to: number;
+    selectedText: string;
+  }) => void;
   onDropParagraph: (paragraphId: string) => void;
+}
+
+function buildSuggestionPrompt(s: CutterSuggestionCard): string {
+  const anchorBits: string[] = [];
+  if (s.selectedText) anchorBits.push(`captured text: "${s.selectedText}"`);
+  if (s.links.length > 0) {
+    const pids = new Set<string>();
+    for (const l of s.links) {
+      if (l.anchor.type === "anchor") {
+        for (const p of l.anchor.paragraphIds) pids.add(p);
+      }
+    }
+    if (pids.size > 0) anchorBits.push(`paragraphs: ${[...pids].join(", ")}`);
+  }
+  const anchor = anchorBits.length > 0 ? anchorBits.join("; ") : "(none)";
+  return [
+    "Apply this suggestion in the document:",
+    `ORIGINAL: ${s.original_text}`,
+    `REPLACEMENT: ${s.suggested_text}`,
+    `EXPLANATION: ${s.explanation || "(none)"}`,
+    `ANCHOR: ${anchor}`,
+  ].join("\n");
 }
 
 export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
-  const { selectedCutId, setSelectedCutId } = useSelectionsContext();
-  const { createCut } = useCardCreationContext();
+  const { selectedCutterCardId, setSelectedCutterCardId } =
+    useSelectionsContext();
+  const { createCutterComment, createCutterSuggestion } =
+    useCardCreationContext();
+  const { addAiRequest } = useAiRequestsContext();
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
+
+  const onAddComment = useCallback(
+    (): CutterCommentCard => createCutterComment({}),
+    [createCutterComment],
+  );
+  const onAddSuggestion = useCallback(
+    (): CutterSuggestionCard => createCutterSuggestion({}),
+    [createCutterSuggestion],
+  );
+
+  const onAcceptSuggestion = useCallback(
+    (id: string) => {
+      const s = p.cards.find(
+        (c): c is CutterSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      p.setSuggestionStatus(id, "accepted");
+      addAiRequest("suggestion", buildSuggestionPrompt(s));
+    },
+    [p, addAiRequest],
+  );
+
+  const onRejectSuggestion = useCallback(
+    (id: string) => {
+      p.setSuggestionStatus(id, "rejected");
+    },
+    [p],
+  );
+
   return (
     <CutterPanel
-      cuts={p.cuts}
-      goal={p.goal}
-      onSetGoal={p.setGoal}
-      onAdd={() => createCut({})}
-      onUpdate={p.updateCut}
-      onUpdateTitle={p.updateCutTitle}
-      onDelete={p.deleteCut}
-      onSelect={setSelectedCutId}
-      selectedId={selectedCutId}
-      onJumpToCard={(cut) => editorRef.current?.jumpToCard(cut)}
-      onHoverCut={p.onHoverCut}
+      cards={p.cards}
+      onAddComment={onAddComment}
+      onAddSuggestion={onAddSuggestion}
+      onUpdateCommentContent={p.updateCommentContent}
+      onSetCommentAiRequest={p.setCommentAiRequest}
+      onUpdateSuggestionField={p.updateSuggestionField}
+      onAcceptSuggestion={onAcceptSuggestion}
+      onRejectSuggestion={onRejectSuggestion}
+      onDelete={p.deleteCard}
+      onSelect={setSelectedCutterCardId}
+      selectedId={selectedCutterCardId}
+      onJumpToCard={(card) => editorRef.current?.jumpToCard(card)}
+      onHoverCard={p.onHoverCard}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
       editor={editorInstance}

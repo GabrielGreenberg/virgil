@@ -152,7 +152,8 @@ export type AiRequestKind =
   | "note"
   | "quotation"
   | "citation"
-  | "todo";
+  | "todo"
+  | "suggestion";
 
 export interface AiRequest {
   id: string;
@@ -262,22 +263,60 @@ export interface NotesState {
 }
 
 // --- Cutter ---
+//
+// The Cutter panel hosts two polymorphic card kinds: comments and
+// suggestions. Anchored cards may be paragraph-only (Mode A) or carry a
+// text-range linkedAnchor mark (Mode B). Suggestion cards expose an
+// Accept action that flips status and enqueues an AiRequest so Claude
+// can apply the textual replacement out-of-band; the editor never
+// mutates the document on accept.
 
-export interface CutItem {
+export interface CutterCommentCard {
+  kind: "comment";
   id: string;
-  title: string;
-  /** Tiptap JSONContent — the cut text body (editable once on the card). */
-  content: unknown;
   createdAt: string;
+  /** Plain-text mirror of `content`, kept in sync on every write. */
+  text: string;
+  /** Tiptap JSONContent — canonical editable body. */
+  content: unknown;
+  /** Mirror of TodoItem.aiRequest — flags this comment as something the
+   *  user wants Claude to act on. */
+  aiRequest: boolean;
+  /** Mode B captured text (undefined for paragraph-only / unanchored). */
+  selectedText?: string;
   links: Link[];
 }
 
+export interface CutterSuggestionCard {
+  kind: "suggestion";
+  id: string;
+  createdAt: string;
+  /** Target text reproduced (captured at creation; user-editable). */
+  original_text: string;
+  /** Suggested replacement (user-editable). */
+  suggested_text: string;
+  /** Comment / explanation of the cut/replacement. */
+  explanation: string;
+  status: "pending" | "accepted" | "rejected";
+  /** Reserved for future AI-authored suggestions. */
+  source: "author";
+  selectedText?: string;
+  links: Link[];
+}
+
+export type CutterCard = CutterCommentCard | CutterSuggestionCard;
+
 export interface CutterState {
-  cuts: CutItem[];
-  /** Optional word-count cutting goal. Set via the panel header's "+Goal"
-   *  button; cleared with the inline ✕. When unset (null/undefined), the
-   *  progress bar is hidden — only the live document word count shows. */
-  goal?: number | null;
+  cards: CutterCard[];
+}
+
+/** Legacy shape — kept only for the migration path in useCutter.ts. */
+export interface CutItemLegacy {
+  id: string;
+  title: string;
+  content: unknown;
+  createdAt: string;
+  links: Link[];
 }
 
 // --- Annotations ---

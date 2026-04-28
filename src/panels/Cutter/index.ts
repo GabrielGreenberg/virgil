@@ -1,2 +1,3 @@
 export { default } from "./CutterPanel";
-export { CutCard } from "./CutCard";
+export { CutterCommentCard } from "./CutterCommentCard";
+export { CutterSuggestionCard } from "./CutterSuggestionCard";

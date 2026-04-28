@@ -48,7 +48,9 @@ export {
 // ---------------------------------------------------------------------------
 
 /** Legacy `linkedAnchor.kind` values map to CardKinds. Revisions use the
- *  `comment` card kind in the panel registry. */
+ *  `comment` card kind in the panel registry. The legacy `"cut"` value
+ *  (pre-Cutter-rebuild) maps to `"cutter-comment"` since cuts migrate
+ *  to comments. */
 function legacyAnchorKindToCardKind(
   kind: string | undefined,
 ): CardKind | null {
@@ -56,7 +58,10 @@ function legacyAnchorKindToCardKind(
     case "note":
       return "note";
     case "cut":
-      return "cut";
+    case "cutter-comment":
+      return "cutter-comment";
+    case "cutter-suggestion":
+      return "cutter-suggestion";
     case "revision":
       return "comment";
     default:
@@ -355,8 +360,10 @@ function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
   switch (cardKind) {
     case "note":
       return "note";
-    case "cut":
-      return "cut";
+    case "cutter-comment":
+      return "cutter-comment";
+    case "cutter-suggestion":
+      return "cutter-suggestion";
     case "comment":
       return "revision";
     default:
@@ -607,7 +614,11 @@ function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
 // `resolveLink`, `deleteLink`.
 // ---------------------------------------------------------------------------
 
-export type LinkedAnchorKind = "note" | "revision" | "cut";
+export type LinkedAnchorKind =
+  | "note"
+  | "revision"
+  | "cutter-comment"
+  | "cutter-suggestion";
 
 export interface LinkedAnchorRecord {
   anchorId: string;
@@ -620,8 +631,10 @@ function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
   switch (kind) {
     case "note":
       return "note";
-    case "cut":
-      return "cut";
+    case "cutter-comment":
+      return "cutter-comment";
+    case "cutter-suggestion":
+      return "cutter-suggestion";
     case "revision":
       return "comment";
   }

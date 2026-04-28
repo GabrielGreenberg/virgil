@@ -28,7 +28,7 @@ import type { Editor } from "@tiptap/react";
 import type {
   ArchivedSnippet,
   Comment,
-  CutItem,
+  CutterCard,
   QuotationGroup,
   TodoItem,
   UserNote,
@@ -62,7 +62,7 @@ export interface UseCardSelectionHighlightArgs {
   selectedNoteId: string | null;
   selectedFootnoteId: string | null;
   selectedCitationId: string | null;
-  selectedCutId: string | null;
+  selectedCutterCardId: string | null;
   selectedCommentId: string | null;
   selectedTodoId: string | null;
   selectedArchiveId: string | null;
@@ -70,7 +70,7 @@ export interface UseCardSelectionHighlightArgs {
 
   // Lookups — needed to find a card's `links[]` from its id.
   notes: UserNote[];
-  cuts: CutItem[];
+  cutterCards: CutterCard[];
   archiveSnippets: ArchivedSnippet[];
   quotationGroups: QuotationGroup[];
   todos: TodoItem[];
@@ -82,13 +82,13 @@ export function useCardSelectionHighlight({
   selectedNoteId,
   selectedFootnoteId,
   selectedCitationId,
-  selectedCutId,
+  selectedCutterCardId,
   selectedCommentId,
   selectedTodoId,
   selectedArchiveId,
   selectedQuotationGroupId,
   notes,
-  cuts,
+  cutterCards,
   archiveSnippets,
   quotationGroups,
   todos,
@@ -118,8 +118,8 @@ export function useCardSelectionHighlight({
     if (selectedNoteId) {
       pushCardLinks(notes.find((n) => n.id === selectedNoteId));
     }
-    if (selectedCutId) {
-      pushCardLinks(cuts.find((c) => c.id === selectedCutId));
+    if (selectedCutterCardId) {
+      pushCardLinks(cutterCards.find((c) => c.id === selectedCutterCardId));
     }
     if (selectedArchiveId) {
       pushCardLinks(archiveSnippets.find((a) => a.id === selectedArchiveId));
@@ -167,13 +167,13 @@ export function useCardSelectionHighlight({
     selectedNoteId,
     selectedFootnoteId,
     selectedCitationId,
-    selectedCutId,
+    selectedCutterCardId,
     selectedCommentId,
     selectedTodoId,
     selectedArchiveId,
     selectedQuotationGroupId,
     notes,
-    cuts,
+    cutterCards,
     archiveSnippets,
     quotationGroups,
     todos,

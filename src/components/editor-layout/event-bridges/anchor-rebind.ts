@@ -22,15 +22,15 @@ export function useAnchorRebindBridge(deps: {
   removeNoteParagraphId: AddRemove["remove"];
   addArchiveParagraphId: AddRemove["add"];
   removeArchiveParagraphId: AddRemove["remove"];
-  addCutParagraphId: AddRemove["add"];
-  removeCutParagraphId: AddRemove["remove"];
+  addCardParagraphId: AddRemove["add"];
+  removeCardParagraphId: AddRemove["remove"];
 }) {
   const {
     addQuotationParagraphId, removeQuotationParagraphId,
     addTodoParagraphId, removeTodoParagraphId,
     addNoteParagraphId, removeNoteParagraphId,
     addArchiveParagraphId, removeArchiveParagraphId,
-    addCutParagraphId, removeCutParagraphId,
+    addCardParagraphId, removeCardParagraphId,
   } = deps;
 
   useEffect(() => {
@@ -39,7 +39,7 @@ export function useAnchorRebindBridge(deps: {
       todo: { remove: removeTodoParagraphId, add: addTodoParagraphId },
       note: { remove: removeNoteParagraphId, add: addNoteParagraphId },
       archive: { remove: removeArchiveParagraphId, add: addArchiveParagraphId },
-      cut: { remove: removeCutParagraphId, add: addCutParagraphId },
+      cut: { remove: removeCardParagraphId, add: addCardParagraphId },
     };
     const handler = (e: Event) => {
       const { type, entityId, oldParagraphId, newParagraphId } = (e as CustomEvent).detail;
@@ -51,5 +51,5 @@ export function useAnchorRebindBridge(deps: {
     };
     window.addEventListener("virgil-marginalia-reanchor", handler);
     return () => window.removeEventListener("virgil-marginalia-reanchor", handler);
-  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId, addCutParagraphId, removeCutParagraphId]);
+  }, [addQuotationParagraphId, removeQuotationParagraphId, addNoteParagraphId, removeNoteParagraphId, addTodoParagraphId, removeTodoParagraphId, addArchiveParagraphId, removeArchiveParagraphId, addCardParagraphId, removeCardParagraphId]);
 }

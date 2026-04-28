@@ -27,6 +27,9 @@ export interface PanelProps {
   /** Optional count badge in the header. */
   count?: number;
   onAdd?: () => void;
+  /** When provided, the "+" button opens a dropdown of choices. Used by
+   *  panels hosting more than one card kind. Overrides `onAdd`. */
+  onAddOptions?: { label: string; onClick: () => void }[];
   onAiRequest?: () => void;
   /** Far-left header content (e.g. options menu). */
   headerLeading?: ReactNode;
@@ -68,6 +71,7 @@ export function Panel({
   title,
   count,
   onAdd,
+  onAddOptions,
   onAiRequest,
   headerLeading,
   headerTitleAfter,
@@ -110,6 +114,7 @@ export function Panel({
           title={resolvedTitle}
           count={count}
           onAdd={onAdd}
+          onAddOptions={onAddOptions}
           onAiRequest={onAiRequest}
           leading={headerLeading}
           titleAfter={headerTitleAfter}
