@@ -5,7 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: FootnotesState = { footnotes: [] };
@@ -46,7 +46,7 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
 
   const addFootnote = useCallback((content: JSONContent | string, existingId?: string): FootnoteRef => {
     const ref: FootnoteRef = {
-      id: existingId || generateEntityId(),
+      id: existingId || generateShortId(),
       content: normalizeRichContent(content),
       createdAt: new Date().toISOString(),
     };

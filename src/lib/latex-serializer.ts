@@ -1,7 +1,7 @@
 import { JSONContent } from "@tiptap/react";
 import type { VirgilSidecar } from "@/lib/types";
 import { ANCHORABLE_NODES } from "@/lib/marginalia";
-import { generateNodeUuid } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { richJsonToLatex, richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { CLASSIC_PREAMBLE } from "@/lib/document-styles";
 
@@ -520,7 +520,7 @@ export function assignUuids(doc: JSONContent): void {
 
   function ensureUuid(node: JSONContent) {
     if (!node.attrs) node.attrs = {};
-    node.attrs.uuid = generateNodeUuid(existing);
+    node.attrs.uuid = generateShortId(existing);
     existing.add(node.attrs.uuid as string);
   }
 

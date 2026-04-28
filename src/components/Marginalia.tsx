@@ -20,7 +20,7 @@ import {
   type MarginaliaMarker,
   type PositionedMarker,
 } from "@/lib/marginalia";
-import { generateNodeUuid } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
@@ -245,7 +245,7 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
                 if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
               });
               const nodePos = d === 0 ? 0 : $p.before(d);
-              const newUuid = generateNodeUuid(existing);
+              const newUuid = generateShortId(existing);
               const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
                 ...node.attrs,
                 uuid: newUuid,

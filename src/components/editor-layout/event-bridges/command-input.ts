@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch, type MutableRefObject, type RefObject, type SetStateAction } from "react";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { EditorHandle } from "../../Editor";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 
 type CitationMode = "anchored" | "unanchored";
 
@@ -78,7 +78,14 @@ export function useCommandInputBridges(deps: {
     const handler = () => {
       const editor = editorRef.current?.getEditor();
       if (!editor) return;
-      const footnoteId = generateEntityId();
+      const existing = new Set<string>();
+      editor.state.doc.descendants((n) => {
+        if (n.type.name === "footnote" && n.attrs.footnoteId) {
+          existing.add(n.attrs.footnoteId as string);
+        }
+        return true;
+      });
+      const footnoteId = generateShortId(existing);
       const content = { type: "doc", content: [{ type: "paragraph" }] };
       editor
         .chain()

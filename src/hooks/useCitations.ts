@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 import { readBib, writeBib } from "@/lib/storage";
 import { isUnanchored } from "@/links/links";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
@@ -90,7 +90,7 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     (command: string, existingId?: string, markUnanchored?: boolean): CitationRef => {
       const parsed = parseCiteCommand(command);
       const ref: CitationRef = {
-        id: existingId || generateEntityId(),
+        id: existingId || generateShortId(),
         command,
         keys: parsed?.keys || [],
         createdAt: new Date().toISOString(),

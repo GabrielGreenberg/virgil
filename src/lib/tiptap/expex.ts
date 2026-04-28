@@ -1,7 +1,18 @@
 import { Node, Extension, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { TextSelection } from "@tiptap/pm/state";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
+
+function collectExampleIds(doc: import("@tiptap/pm/model").Node): Set<string> {
+  const out = new Set<string>();
+  doc.descendants((node) => {
+    if (node.type.name === "exampleBlock" && node.attrs.uuid) {
+      out.add(node.attrs.uuid as string);
+    }
+    return true;
+  });
+  return out;
+}
 
 // Seven nodes implement the expex package:
 //
@@ -212,7 +223,7 @@ export const ExampleBlock = Node.create({
 
         const newBlock = blockType.create(
           {
-            uuid: generateEntityId(),
+            uuid: generateShortId(collectExampleIds(state.doc)),
             kind: "single",
             tag: "",
             label: "",
@@ -859,7 +870,7 @@ export const ExampleItem = Node.create({
           : "single";
         const newBlock = blockType.create(
           {
-            uuid: generateEntityId(),
+            uuid: generateShortId(collectExampleIds(state.doc)),
             kind: newKind,
             tag: "",
             label: "",

@@ -1,7 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -87,11 +87,18 @@ export const Citation = Node.create({
               if (match) {
                 const command = match[0];
                 const start = from + text.length - command.length;
+                const existing = new Set<string>();
+                state.doc.descendants((node) => {
+                  if (node.type.name === "citation" && node.attrs.citationId) {
+                    existing.add(node.attrs.citationId as string);
+                  }
+                  return true;
+                });
                 const tr = state.tr.replaceWith(
                   start,
                   from + text.length,
                   nodeType.create({
-                    citationId: generateEntityId(),
+                    citationId: generateShortId(existing),
                     command,
                     displayText: "",
                   })

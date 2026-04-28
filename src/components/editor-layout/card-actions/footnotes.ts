@@ -2,7 +2,7 @@ import { useCallback, type Dispatch, type MutableRefObject, type RefObject, type
 import type { JSONContent } from "@tiptap/react";
 import type { OrphanedFootnote } from "@/lib/types";
 import type { EditorHandle } from "../../Editor";
-import { generateEntityId } from "@/lib/uuid";
+import { generateShortId } from "@/lib/uuid";
 
 /**
  * Footnote action handlers that operate on the footnote's editor marker.
@@ -50,7 +50,7 @@ export function useFootnoteActions(deps: {
   );
 
   const handleAddFootnote = useCallback((): string => {
-    const id = generateEntityId();
+    const id = generateShortId();
     setOrphanedFootnotes((prev) => [
       ...prev,
       {
