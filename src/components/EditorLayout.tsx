@@ -1221,6 +1221,10 @@ export default function EditorLayout() {
     rightMargin: zenRightMargin,
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
+    topGutter: zenTopGutter,
+    setTopGutter: setZenTopGutter,
+    bottomGutter: zenBottomGutter,
+    setBottomGutter: setZenBottomGutter,
   } = useZenMode();
 
   // Snap all panel/margin prefs to their current rendered widths. Called
@@ -1260,10 +1264,22 @@ export default function EditorLayout() {
     rows.forEach(row => {
       const side = row.getAttribute('data-flex-row');
       const rendered = row.getBoundingClientRect().height;
-      if (side === 'top' && Math.abs(rendered - topGutterPref) > 0.5) setTopGutterPref(rendered);
-      if (side === 'bottom' && Math.abs(rendered - bottomGutterPref) > 0.5) setBottomGutterPref(rendered);
+      if (side === 'top') {
+        if (zenModeOn) {
+          if (Math.abs(rendered - zenTopGutter) > 0.5) setZenTopGutter(rendered);
+        } else {
+          if (Math.abs(rendered - topGutterPref) > 0.5) setTopGutterPref(rendered);
+        }
+      }
+      if (side === 'bottom') {
+        if (zenModeOn) {
+          if (Math.abs(rendered - zenBottomGutter) > 0.5) setZenBottomGutter(rendered);
+        } else {
+          if (Math.abs(rendered - bottomGutterPref) > 0.5) setBottomGutterPref(rendered);
+        }
+      }
     });
-  }, [topGutterPref, bottomGutterPref]);
+  }, [topGutterPref, bottomGutterPref, zenModeOn, zenTopGutter, setZenTopGutter, zenBottomGutter, setZenBottomGutter]);
 
   // Recompute the editor's flex-basis whenever the panel layout
   // changes — drag, panel toggle, zen mode. The basis captures the
@@ -1307,7 +1323,7 @@ export default function EditorLayout() {
     const available = col.clientHeight - reserved;
     const next = Math.max(400, available);
     setPageHeightBasis(prev => prev !== next ? next : prev);
-  }, [topGutterPref, bottomGutterPref, mainAreaMounted, currentDocId, docLoading, editorSplit]);
+  }, [topGutterPref, bottomGutterPref, zenModeOn, zenTopGutter, zenBottomGutter, mainAreaMounted, currentDocId, docLoading, editorSplit]);
 
   // Gutter drag state + handlers.
   const gutterStartY = useRef(0);
@@ -1335,13 +1351,23 @@ export default function EditorLayout() {
 
   const onTopGutterMove = useCallback((e: MouseEvent) => {
     const delta = e.clientY - gutterStartY.current;
-    setTopGutterPref(clampGutter(gutterStartVal.current + delta, 'top'));
-  }, [clampGutter]);
+    const next = clampGutter(gutterStartVal.current + delta, 'top');
+    if (zenModeOn) {
+      setZenTopGutter(next);
+    } else {
+      setTopGutterPref(next);
+    }
+  }, [clampGutter, zenModeOn, setZenTopGutter, setTopGutterPref]);
 
   const onBottomGutterMove = useCallback((e: MouseEvent) => {
     const delta = gutterStartY.current - e.clientY;
-    setBottomGutterPref(clampGutter(gutterStartVal.current + delta, 'bottom'));
-  }, [clampGutter]);
+    const next = clampGutter(gutterStartVal.current + delta, 'bottom');
+    if (zenModeOn) {
+      setZenBottomGutter(next);
+    } else {
+      setBottomGutterPref(next);
+    }
+  }, [clampGutter, zenModeOn, setZenBottomGutter, setBottomGutterPref]);
 
   const topGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onTopGutterMove, deadzone: 3 });
   const bottomGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onBottomGutterMove, deadzone: 3 });
@@ -1351,7 +1377,8 @@ export default function EditorLayout() {
     syncGutterPrefsToRendered();
     const col = editorColRef.current;
     const top = col?.querySelector<HTMLElement>('[data-flex-row="top"]');
-    gutterStartVal.current = top ? top.getBoundingClientRect().height : topGutterPref;
+    const fallback = zenModeOn ? zenTopGutter : topGutterPref;
+    gutterStartVal.current = top ? top.getBoundingClientRect().height : fallback;
     setIsResizingGutters(true);
     const onUp = () => {
       setIsResizingGutters(false);
@@ -1359,14 +1386,15 @@ export default function EditorLayout() {
     };
     window.addEventListener('mouseup', onUp);
     topGutterDrag.onMouseDown(e);
-  }, [syncGutterPrefsToRendered, topGutterDrag, topGutterPref]);
+  }, [syncGutterPrefsToRendered, topGutterDrag, topGutterPref, zenModeOn, zenTopGutter]);
 
   const onBottomGutterDown = useCallback((e: React.MouseEvent) => {
     gutterStartY.current = e.clientY;
     syncGutterPrefsToRendered();
     const col = editorColRef.current;
     const bottom = col?.querySelector<HTMLElement>('[data-flex-row="bottom"]');
-    gutterStartVal.current = bottom ? bottom.getBoundingClientRect().height : bottomGutterPref;
+    const fallback = zenModeOn ? zenBottomGutter : bottomGutterPref;
+    gutterStartVal.current = bottom ? bottom.getBoundingClientRect().height : fallback;
     setIsResizingGutters(true);
     const onUp = () => {
       setIsResizingGutters(false);
@@ -1374,7 +1402,7 @@ export default function EditorLayout() {
     };
     window.addEventListener('mouseup', onUp);
     bottomGutterDrag.onMouseDown(e);
-  }, [syncGutterPrefsToRendered, bottomGutterDrag, bottomGutterPref]);
+  }, [syncGutterPrefsToRendered, bottomGutterDrag, bottomGutterPref, zenModeOn, zenBottomGutter]);
 
   // MenuBar is always home-docked in the Virgil top bar, centered
   // between the tabs (left) and Zen/Prefs cluster (right). No free
@@ -4526,11 +4554,17 @@ export default function EditorLayout() {
         // min-height gives the docked MenuBar breathing room inside the
         // bar without pushing the tabs taller (tabs are items-end anchored
         // at the bottom edge, so the extra space accumulates above them).
+        // In zen mode the bar collapses to 0 height with a transparent
+        // background — the only visible chrome is the floating Zen toggle
+        // (fixed top-3 right-3 z-50), which renders independent of its
+        // parent's size.
         data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-        className="virgil-bar flex items-center relative min-h-[34px]"
+        className={`virgil-bar flex items-center relative ${zenModeOn ? '' : 'min-h-[34px]'}`}
         style={{
           color: "var(--virgil-bar-text)",
-          background: "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
+          background: zenModeOn
+            ? "transparent"
+            : "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
           boxShadow: zenModeOn ? "none" : "inset 0 -2px 4px -1px rgba(0,0,0,0.10)",
         }}
       >
@@ -5040,7 +5074,11 @@ export default function EditorLayout() {
           // SVG glyphs (not the hover-button outlines) sit 8px below the
           // column edge — matches the strip pod's icon top.
           paddingTop: 4,
-          paddingBottom: 'var(--pod-gap)',
+          // In zen mode, match the top chrome (4 px column padding +
+          // 4 px drag gap = 8 px) at the bottom too — so the lowest
+          // possible point of the page lines up symmetrically with
+          // its highest possible point.
+          paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
           paddingLeft: 4,
           paddingRight: 4,
         }}>
@@ -5173,8 +5211,9 @@ export default function EditorLayout() {
           ))}
           {/* Docked MenuBar — sits at the very top of the editor
               column, centered over the text window so it tracks the
-              column as panels open and close. */}
-          {(overrideEditor ?? editorInstance) && (
+              column as panels open and close. Hidden in zen mode so
+              the page can extend to the top of the window. */}
+          {!zenModeOn && (overrideEditor ?? editorInstance) && (
             <div className="flex justify-center shrink-0">
               <MenuBar
                 editor={overrideEditor ?? editorInstance}
@@ -5223,11 +5262,16 @@ export default function EditorLayout() {
             </div>
           )}
           {/* Top gutter — flex-shrink 100 so window-downsize eats it first
-              before touching the page height. */}
+              before touching the page height. In zen mode the gutter has
+              its own pref (zenTopGutter, default 0) so the page extends
+              to the top of the window by default while still being
+              draggable down by hand. */}
           <div
             data-flex-row="top"
             style={{
-              flex: isResizingGutters ? `0 0 ${topGutterPref}px` : `1 100 ${topGutterPref}px`,
+              flex: isResizingGutters
+                ? `0 0 ${zenModeOn ? zenTopGutter : topGutterPref}px`
+                : `1 100 ${zenModeOn ? zenTopGutter : topGutterPref}px`,
               minHeight: 0,
             }}
           />
@@ -5408,19 +5452,25 @@ export default function EditorLayout() {
             </div>
           )}
           </div>
-          {/* Bottom drag gap — grab bar below the page */}
+          {/* Bottom drag gap — grab bar below the page. Matches the top
+              drag gap's 4px height in zen mode so the lowest possible
+              point for the page is symmetric with the topmost. */}
           <div
             data-gutter-gap="bottom"
             ref={bottomGutterDrag.gapRef}
             className="drag-gap drag-gap-h shrink-0"
-            style={{ height: 'var(--pod-gap)' }}
+            style={{ height: zenModeOn ? 4 : 'var(--pod-gap)' }}
             onMouseDown={onBottomGutterDown}
           />
-          {/* Bottom gutter */}
+          {/* Bottom gutter — in zen mode the page extends to the bottom
+              edge of the window by default (zenBottomGutter = 0); the
+              user can drag it taller from the bottom drag handle. */}
           <div
             data-flex-row="bottom"
             style={{
-              flex: isResizingGutters ? `0 0 ${bottomGutterPref}px` : `1 100 ${bottomGutterPref}px`,
+              flex: isResizingGutters
+                ? `0 0 ${zenModeOn ? zenBottomGutter : bottomGutterPref}px`
+                : `1 100 ${zenModeOn ? zenBottomGutter : bottomGutterPref}px`,
               minHeight: 0,
             }}
           />
