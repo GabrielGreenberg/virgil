@@ -60,12 +60,46 @@ export async function searchGeneralBib(
       entry.fields.author || "",
       entry.fields.title || "",
       entry.fields.year || "",
+      entry.fields.journal || "",
+      entry.fields.booktitle || "",
     ]
       .join(" ")
       .toLowerCase();
     if (haystack.includes(q)) results.push(entry);
   }
   return { results };
+}
+
+/**
+ * Search a list of already-loaded BibEntry objects (the local paper bib)
+ * for entries whose key, author, title, year, journal, or booktitle
+ * contains the query string.
+ *
+ * Synchronous — operates on the in-memory list passed by the caller.
+ */
+export function searchLocalBib(
+  entries: BibEntry[],
+  query: string,
+  limit = Infinity,
+): BibEntry[] {
+  if (!query || !query.trim()) return entries;
+  const q = query.toLowerCase().trim();
+  const out: BibEntry[] = [];
+  for (const entry of entries) {
+    if (out.length >= limit) break;
+    const haystack = [
+      entry.key,
+      entry.fields.author || "",
+      entry.fields.title || "",
+      entry.fields.year || "",
+      entry.fields.journal || "",
+      entry.fields.booktitle || "",
+    ]
+      .join(" ")
+      .toLowerCase();
+    if (haystack.includes(q)) out.push(entry);
+  }
+  return out;
 }
 
 /** Drop the cache entry for a doc. Called when the user picks a new file. */

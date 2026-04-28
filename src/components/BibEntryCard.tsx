@@ -43,6 +43,13 @@ export interface BibEntryCardProps {
    *  processing / no PDF) without this component needing to know about
    *  the Library feature. */
   libraryChip?: React.ReactNode;
+  /** Optional Add-to-local affordance for global search results. When set,
+   *  renders a small "Add" / "Added" pill in the card header. */
+  addAction?: { onAdd: () => void; alreadyAdded: boolean };
+  /** When false, disables HTML5 drag of this card (e.g. for Global preview
+   *  cards that aren't yet in the local bib — dragging would yield a
+   *  broken \cite). Defaults to true. */
+  draggable?: boolean;
 }
 
 /* ── Pulsing dot for pending request ──────────────────────────────── */
@@ -138,7 +145,7 @@ export default function BibEntryCard({
   entry, isSelected, onClick, getFormattedBib, getAnnotation, setAnnotation,
   onRequestReview, onCancelReview, getReviewStatus, onUpdateBibEntry, onUpdateBibKeyAndType,
   occurrenceInfo, compact, bibPackage, bibEntries, isCited = true, onJump,
-  onTogglePopout, isPoppedOut, libraryChip,
+  onTogglePopout, isPoppedOut, libraryChip, addAction, draggable = true,
 }: BibEntryCardProps) {
   const popped = usePoppedCards();
   const popKey = buildPopKey("bibliography", entry.key);
@@ -434,9 +441,9 @@ export default function BibEntryCard({
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
-      extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing${!isCited ? " opacity-60" : ""}`}
-      draggable
-      onDragStart={handleDragStart}
+      extraCardClass={`cursor-pointer${draggable ? " cursor-grab active:cursor-grabbing" : ""}${!isCited ? " opacity-60" : ""}`}
+      draggable={draggable}
+      onDragStart={draggable ? handleDragStart : undefined}
       onClick={onClick}
     >
       {/* Header — pr-14 reserves space for the absolute top-right control
@@ -466,6 +473,25 @@ export default function BibEntryCard({
           {(author || year) && title && <span className="text-ink-muted mx-1.5">&middot;</span>}
           {title && <span className="italic">{title}</span>}
         </div>
+        {addAction ? (
+          <div
+            className="shrink-0"
+            onClick={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          >
+            {addAction.alreadyAdded ? (
+              <span className="text-[10px] text-ink-muted py-0.5">Added</span>
+            ) : (
+              <button
+                onClick={addAction.onAdd}
+                className="text-[10px] text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 px-1.5 py-0.5 rounded"
+              >
+                Add
+              </button>
+            )}
+          </div>
+        ) : null}
         {libraryChip ? (
           <div
             className="shrink-0"
