@@ -2439,3 +2439,80 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   border-bottom-left-radius: inherit;
   border-bottom-right-radius: inherit;
 }
+
+/* ── PrintAppendices: hidden in live UI, revealed in print media ──── */
+.print-only { display: none; }
+
+@media print {
+  /* Isolate the editor page using the visibility trick — the wrapper is
+     deeply nested, so a body-direct-child selector won't work. */
+  body { visibility: hidden; }
+  [data-editor-page], [data-editor-page] * { visibility: visible; }
+  [data-editor-page] {
+    position: fixed; top: 0; left: 0; right: 0;
+    background: white; box-shadow: none; border: 0;
+  }
+
+  /* Pull through our chosen font size only inside the print media so we
+     don't disturb the live editor's pref-driven size. */
+  .tiptap { --editor-font-size: var(--print-font-size, 1.05rem); padding: 0; }
+  [data-editor-page] {
+    font-size: var(--print-font-size, 1.05rem);
+  }
+
+  /* Page-break hygiene — defaults split mid-block. */
+  .expex-block, .display-math, .latex-comment, blockquote,
+  [data-print-appendix] > article,
+  [data-print-appendix] [data-card-id] {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  h1, h2, h3, h4 { break-after: avoid; }
+  .tiptap p { orphans: 3; widows: 3; }
+
+  /* Always-hidden chrome / portals. visibility:hidden on body already
+     hides them visually; display:none also reclaims the layout box so
+     pagination works cleanly. */
+  .virgil-bar, [data-strip-side], [data-floating-panel],
+  [data-floating-card], [data-pristine-card-id] { display: none !important; }
+
+  /* Element toggles — keyed off data-print-e-* on the html element. */
+  html[data-print-e-title="false"] .par-title-wrapper,
+  html[data-print-e-title="false"] .maketitle-marker { display: none; }
+  html[data-print-e-section-numbers="false"] [data-section-number]::before { content: none; }
+  html[data-print-e-latex-comments="false"] .latex-comment { display: none; }
+  html[data-print-e-footnote-markers="false"] .footnote-marker { display: none; }
+  html[data-print-e-citations="false"] .citation-node { display: none; }
+  html[data-print-e-examples="false"] .expex-block { display: none; }
+  html[data-print-e-display-math="false"] .display-math { display: none; }
+  html[data-print-e-marginalia="false"] [data-marginalia-gutter] { display: none; }
+  html[data-print-e-linked-anchor-underlines="false"] .linked-anchor {
+    text-decoration: none; background: transparent; color: inherit;
+  }
+
+  /* Panel appendices: hidden by default; each shown only when its
+     panel toggle is on. break-before: page so each appendix starts a
+     fresh page. */
+  [data-print-appendix] { display: none; break-before: page; padding-top: 1rem; }
+  html[data-print-p-notes="true"]        [data-print-appendix="notes"],
+  html[data-print-p-footnotes="true"]    [data-print-appendix="footnotes"],
+  html[data-print-p-citations="true"]    [data-print-appendix="citations"],
+  html[data-print-p-bibliography="true"] [data-print-appendix="bibliography"],
+  html[data-print-p-quotations="true"]   [data-print-appendix="quotations"],
+  html[data-print-p-examples="true"]     [data-print-appendix="examples"],
+  html[data-print-p-todo="true"]         [data-print-appendix="todo"],
+  html[data-print-p-archive="true"]      [data-print-appendix="archive"],
+  html[data-print-p-revisions="true"]    [data-print-appendix="revisions"],
+  html[data-print-p-cutter="true"]       [data-print-appendix="cutter"],
+  html[data-print-p-errors="true"]       [data-print-appendix="errors"] {
+    display: block;
+  }
+
+  /* Reveal the appendix container itself when printing. */
+  .print-only { display: block; }
+
+  /* Strip panel chrome inside appendices — close/popout buttons and
+     view-mode toggles aren't meaningful in print. */
+  [data-print-appendix] [data-pop-button],
+  [data-print-appendix] [data-close-button],
+  [data-print-appendix] .panel-header-controls { display: none; }
+}

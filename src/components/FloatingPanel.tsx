@@ -110,6 +110,7 @@ export default function FloatingPanel({
   return createPortal(
     <div
       ref={rootRef}
+      data-floating-panel="true"
       className="fixed flex flex-col overflow-hidden"
       style={{
         left: pos.x,
