@@ -42,13 +42,26 @@ export const LinkedAnchor = Mark.create({
       (mark.attrs.linkId as string) ||
       (mark.attrs.anchorId as string) ||
       "";
+    // Prefer the explicit linkCard attr; fall back to a prefix derived
+    // from the legacy `kind` attr so older anchors still get a per-kind
+    // CSS color and the per-kind highlight toggle reaches them.
+    let linkCard = (mark.attrs.linkCard as string) || "";
+    if (!linkCard) {
+      const legacyKind = (mark.attrs.kind as string) || "";
+      const cardKind =
+        legacyKind === "revision" ? "comment"
+          : legacyKind === "note" ? "note"
+          : legacyKind === "cut" ? "cut"
+          : "";
+      if (cardKind) linkCard = `${cardKind}:`;
+    }
     return [
       "span",
       mergeAttributes(HTMLAttributes, {
         class: "linked-anchor",
         "data-link-id": anchorId,
         "data-link-kind": "anchor",
-        "data-link-card": (mark.attrs.linkCard as string) || "",
+        "data-link-card": linkCard,
       }),
       0,
     ];

@@ -1092,7 +1092,7 @@ body {
 /* Linked-anchor spans (Mode B anchor links).
  * Default: invisible — the mark is semantic-only, activated by hover
  * or selection via `data-link-highlight`, or made subtly-visible
- * globally via `data-always-show-links` on the editor root.
+ * per kind via `data-show-hl-<kind>` on the editor root.
  *
  * The highlight color is per-target-card-kind, read via attribute-prefix
  * matching on `data-link-card="<cardKind>:<id>"`. Each card kind's color
@@ -1111,7 +1111,12 @@ body {
 .linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
 
-[data-always-show-links="true"] .linked-anchor {
+[data-show-hl-quotation="true"] .linked-anchor[data-link-card^="quotation:"],
+[data-show-hl-note="true"]      .linked-anchor[data-link-card^="note:"],
+[data-show-hl-todo="true"]      .linked-anchor[data-link-card^="todo:"],
+[data-show-hl-comment="true"]   .linked-anchor[data-link-card^="comment:"],
+[data-show-hl-cut="true"]       .linked-anchor[data-link-card^="cut:"],
+[data-show-hl-archive="true"]   .linked-anchor[data-link-card^="archive:"] {
   background: color-mix(in oklab, var(--link-anchor-color) 18%, transparent);
 }
 .linked-anchor[data-link-highlight="hover"] {

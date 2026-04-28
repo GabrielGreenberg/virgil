@@ -3,20 +3,16 @@
 /**
  * DOM-attribute sync for the coupled margin-icon / text-range highlight
  * on `anchor`-kind links. Given the current active/hovered link id and
- * the `alwaysShowLinkedText` preference, this hook:
+ * the per-kind visibility set, this hook:
  *
  *   - Sets `data-link-highlight="active" | "hover"` on the matching
  *     `.linked-anchor[data-link-id=<id>]` span(s) in the editor.
- *   - Sets `data-always-show-links="true"` on the editor scroll root
- *     when the preference is on — CSS turns subtle persistent
- *     backgrounds on globally.
+ *   - Sets `data-show-hl-<kind>="true"` on the editor scroll root for
+ *     each kind whose persistent highlight is enabled — CSS scopes the
+ *     subtle background per-kind by matching `data-link-card^="<kind>:"`.
  *
  * The margin-icon side of the coupling reads the same state via its
  * own `selected` prop; no DOM plumbing is needed there.
- *
- * This is the CSS-driven replacement for the Tiptap Highlight-mark
- * approach in `Editor.tsx:2188-2204`, which remains in place for one
- * release as belt-and-suspenders.
  */
 
 import { useEffect } from "react";
@@ -24,7 +20,18 @@ import type { Editor } from "@tiptap/react";
 import { DATA_LINK_ID } from "../link-registry";
 
 const DATA_HIGHLIGHT = "data-link-highlight";
-const DATA_ALWAYS_SHOW = "data-always-show-links";
+
+const ALL_KINDS = [
+  "quotation",
+  "note",
+  "todo",
+  "comment",
+  "cut",
+  "archive",
+] as const;
+type LinkAnchorKind = (typeof ALL_KINDS)[number];
+
+const dataAttrFor = (kind: LinkAnchorKind) => `data-show-hl-${kind}`;
 
 export interface UseLinkHighlightArgs {
   editor: Editor | null;
@@ -33,16 +40,16 @@ export interface UseLinkHighlightArgs {
   /** Link id of the currently-hovered link, or null. Hover takes
    *  precedence over active for visuals. */
   hoveredLinkId: string | null;
-  /** When true, CSS applies a subtle persistent background to every
-   *  Mode B text range in the doc. */
-  alwaysShowLinkedText: boolean;
+  /** Card kinds whose persistent linked-anchor highlight is currently
+   *  enabled. Empty set hides all. */
+  visibleHighlightKinds: ReadonlySet<LinkAnchorKind>;
 }
 
 export function useLinkHighlight({
   editor,
   activeLinkId,
   hoveredLinkId,
-  alwaysShowLinkedText,
+  visibleHighlightKinds,
 }: UseLinkHighlightArgs): void {
   // Highlight sync — the span for the effective link id gets the
   // data-link-highlight attr; everyone else gets it cleared.
@@ -64,15 +71,21 @@ export function useLinkHighlight({
     for (const el of fresh) el.setAttribute(DATA_HIGHLIGHT, state);
   }, [editor, activeLinkId, hoveredLinkId]);
 
-  // Preference sync — on the editor scroll root so :has() in CSS is cheap.
+  // Preference sync — set/clear a per-kind attr on the editor scroll
+  // root. CSS scopes the persistent tint per kind by combining the
+  // root attr with `data-link-card^="<kind>:"` on the span.
   useEffect(() => {
     if (!editor) return;
     const root = editor.view.dom;
-    if (alwaysShowLinkedText) {
-      root.setAttribute(DATA_ALWAYS_SHOW, "true");
-    } else {
-      root.removeAttribute(DATA_ALWAYS_SHOW);
+    for (const kind of ALL_KINDS) {
+      if (visibleHighlightKinds.has(kind)) {
+        root.setAttribute(dataAttrFor(kind), "true");
+      } else {
+        root.removeAttribute(dataAttrFor(kind));
+      }
     }
-    return () => root.removeAttribute(DATA_ALWAYS_SHOW);
-  }, [editor, alwaysShowLinkedText]);
+    return () => {
+      for (const kind of ALL_KINDS) root.removeAttribute(dataAttrFor(kind));
+    };
+  }, [editor, visibleHighlightKinds]);
 }
