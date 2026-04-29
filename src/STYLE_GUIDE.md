@@ -308,6 +308,10 @@ status, user menu. Hovers use `hover-on-dark`. The active-project tab
 joins the canvas via the locked `--main-tab-bg` = `--background`
 alias.
 
+Icons in the Virgil bar are **16px tall**. Buttons are 24px
+(`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
+author 14px or 20px topbar icons.
+
 ## Suggestion vocabulary
 
 Three keys for binary acceptance: **Y** accept, **N** reject, **S**

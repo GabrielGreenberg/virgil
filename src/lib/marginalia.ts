@@ -127,6 +127,8 @@ export interface MarginaliaMarker {
   side?: "left" | "right";
   /** Whether this marker is currently selected/highlighted */
   selected?: boolean;
+  /** Whether this marker is hovered (from any linked element: text, card, or another marker) */
+  hovered?: boolean;
   /** Click handler — typically opens the panel and selects the item.
    *  `clickY` is the viewport Y of the clicked gutter marker, used by
    *  the panel host to align the opened card next to the source. */

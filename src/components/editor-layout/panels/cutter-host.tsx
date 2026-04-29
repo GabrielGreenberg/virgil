@@ -44,7 +44,6 @@ export interface CutterHostProps {
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
-  onHoverCard: (id: string | null) => void;
   onDropSelection: (payload: {
     from: number;
     to: number;
@@ -134,7 +133,6 @@ export function CutterHost(p: CutterHostProps) {
       onSelect={setSelectedCutterCardId}
       selectedId={selectedCutterCardId}
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
-      onHoverCard={p.onHoverCard}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
       editor={editorInstance}

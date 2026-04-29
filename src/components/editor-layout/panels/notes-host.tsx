@@ -24,7 +24,6 @@ export interface NotesHostProps {
   deleteNote: NotesHook["deleteNote"];
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
-  onHoverNote: (noteId: string | null) => void;
   onDropSelection: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph: (paragraphId: string) => void;
 }
@@ -57,7 +56,6 @@ export function NotesHost(p: NotesHostProps) {
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       onEditorFocus={setOverrideEditor}
-      onHoverNote={p.onHoverNote}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
       editor={editorInstance}

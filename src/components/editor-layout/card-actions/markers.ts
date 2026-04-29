@@ -8,22 +8,16 @@ import { openForCard } from "../event-bridges/open-for-card";
 type AnchorKind = "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
 
 /**
- * Gutter-marker click + hover handlers for the four panel kinds that
- * anchor into the text (notes, cuts, todos, quotations).
+ * Gutter-marker click handlers for the four panel kinds that anchor into
+ * the text (notes, cuts, todos, quotations).
  *
- * Click semantics (Omni-first):
- *  - Toggle selection (second click deselects). Selecting drives the
- *    linked-anchor highlight (for notes/cuts that carry a text anchor).
- *  - Route to panels the same way as main-text atoms do: prefer Omni,
- *    fall back to the native panel if Omni can't host the kind. See
- *    `openForCard` for details.
+ * Click semantics (Omni-first): toggle selection (second click deselects).
+ * Selecting drives the linked-anchor highlight (for kinds that carry a
+ * Mode B anchor). Routing always goes through `openForCard`, which decides
+ * Omni vs. native panel and aligns the card to `clickY`.
  *
- * Hover semantics: drive the transient `hoveredAnchorId` highlight.
- * Quotations don't expose per-marker hover because groups aren't
- * anchored by a single span.
- *
- * Cutter isn't omni-eligible, so its marker click keeps the old
- * "always open native cutter panel" behavior.
+ * Hover is **not** wired here — it's centralized through the
+ * `setHoveredEntity` callback used by every marker's generic `onHover`.
  */
 export function useMarkerActions(deps: {
   prefsRef: MutableRefObject<ViewPrefs>;
@@ -33,7 +27,6 @@ export function useMarkerActions(deps: {
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
   setActiveAnchorId: Dispatch<SetStateAction<string | null>>;
-  setHoveredAnchorId: Dispatch<SetStateAction<string | null>>;
   setActiveAnchorKind: Dispatch<SetStateAction<AnchorKind>>;
   notes: UserNote[];
   selectedNoteId: string | null;
@@ -54,7 +47,6 @@ export function useMarkerActions(deps: {
     tryScrollOmniEntry,
     getOmniEnabled,
     setActiveAnchorId,
-    setHoveredAnchorId,
     setActiveAnchorKind,
     notes,
     selectedNoteId,
@@ -128,24 +120,8 @@ export function useMarkerActions(deps: {
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind],
   );
 
-  const handleHoverNote = useCallback(
-    (noteId: string | null) => {
-      if (!noteId) {
-        setHoveredAnchorId(null);
-        return;
-      }
-      const note = notes.find((n) => n.id === noteId);
-      const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
-      if (anchorId) {
-        setHoveredAnchorId(anchorId);
-        setActiveAnchorKind("note");
-      }
-    },
-    [notes, setHoveredAnchorId, setActiveAnchorKind],
-  );
-
   const handleCutMarkerClick = useCallback(
-    (cardId: string) => {
+    (cardId: string, clickY?: number) => {
       const nextSelected = selectedCutterCardId === cardId ? null : cardId;
       setSelectedCutterCardId(nextSelected);
       const card = cutterCards.find((c) => c.id === cardId);
@@ -161,30 +137,28 @@ export function useMarkerActions(deps: {
           setActiveAnchorKind(null);
         }
       }
-      const p = prefsRef.current;
-      const placement = p.placements.find((pl) => pl.id === "cutter");
-      if (placement?.side === "left") {
-        if (p.activeLeft !== "cutter") setActiveLeft("cutter");
-      } else {
-        if (p.activeRight !== "cutter") setActiveRight("cutter");
-      }
+      if (!nextSelected) return;
+      // Cutter isn't omni-eligible, so openForCard falls through to the
+      // native panel. clickY still flows through for vertical alignment.
+      openForCard(
+        {
+          omniKey: `${kind}:${cardId}`,
+          entrySelector: `[data-card-key="${kind}:${cardId}"]`,
+          panelId: "cutter",
+          cardKind: kind,
+          targetY: clickY,
+        },
+        {
+          prefs: prefsRef.current,
+          setActiveLeft,
+          setActiveRight,
+          setActiveHalf,
+          tryScrollOmniEntry,
+          getOmniEnabled,
+        },
+      );
     },
-    [prefsRef, cutterCards, selectedCutterCardId, setSelectedCutterCardId, setActiveLeft, setActiveRight, setActiveAnchorId, setActiveAnchorKind],
-  );
-
-  const handleHoverCut = useCallback(
-    (cardId: string | null) => {
-      if (!cardId) { setHoveredAnchorId(null); return; }
-      const card = cutterCards.find((c) => c.id === cardId);
-      const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
-      if (anchorId) {
-        setHoveredAnchorId(anchorId);
-        setActiveAnchorKind(
-          card?.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
-        );
-      }
-    },
-    [cutterCards, setHoveredAnchorId, setActiveAnchorKind],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, cutterCards, selectedCutterCardId, setSelectedCutterCardId, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind],
   );
 
   const handleTodoMarkerClick = useCallback(
@@ -216,9 +190,7 @@ export function useMarkerActions(deps: {
   return {
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
-    handleHoverNote,
     handleCutMarkerClick,
-    handleHoverCut,
     handleTodoMarkerClick,
   };
 }

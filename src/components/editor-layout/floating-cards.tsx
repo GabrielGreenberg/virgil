@@ -83,8 +83,6 @@ export interface PoppedCardDeps {
   setOverrideEditor: (editor: Editor | null) => void;
   getCitationDisplayText: (command: string) => string;
   handleCitationCreated: (command: string) => { id: string; displayText: string };
-  handleHoverNote: (noteId: string | null) => void;
-  handleHoverCut: (cutId: string | null) => void;
   bibPackage: string;
 
   // Notes
@@ -211,7 +209,6 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
-          onHoverChange={(hovering) => d.handleHoverNote(hovering ? note.id : null)}
           isPoppedOut
         />
       );
@@ -279,7 +276,6 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onDelete={d.deleteCutterCard}
           onSelect={d.setSelectedCutterCardId}
           onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(card, sourceEl) : undefined}
-          onHoverChange={(hovering) => d.handleHoverCut(hovering ? card.id : null)}
           isPoppedOut
         />
       );

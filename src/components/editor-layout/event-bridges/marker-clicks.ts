@@ -1,7 +1,36 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { OmniCategory } from "@/panels/Omni";
+import type { CardKind } from "@/panels/_shared/types";
+import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard } from "./open-for-card";
+
+/** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
+ *  text-range clicks fall into one of these three; inline atoms (footnote,
+ *  citation) and one-shot kinds (archive) use their own dedicated events. */
+const ANCHOR_CLICK_ROUTES: Record<
+  Extract<EntityKind, "note" | "cut" | "revision">,
+  { panelId: PanelId; cardKind: CardKind; omniPrefix: string; entrySelectorBase: string }
+> = {
+  note: {
+    panelId: "notes",
+    cardKind: "note",
+    omniPrefix: "note",
+    entrySelectorBase: "data-note-entry",
+  },
+  cut: {
+    panelId: "cutter",
+    cardKind: "cutter-comment",
+    omniPrefix: "cutter-comment",
+    entrySelectorBase: "data-card-key",
+  },
+  revision: {
+    panelId: "revisions",
+    cardKind: "comment",
+    omniPrefix: "revision",
+    entrySelectorBase: "data-card-key",
+  },
+};
 
 /**
  * Editor-side → panel-side click routing for the four link-node kinds
@@ -29,6 +58,9 @@ export function useMarkerClickBridges(deps: {
   setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
+  setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
@@ -43,6 +75,9 @@ export function useMarkerClickBridges(deps: {
     setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
+    setSelectedNoteId,
+    setSelectedCutterCardId,
+    setSelectedCommentId,
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
@@ -159,4 +194,62 @@ export function useMarkerClickBridges(deps: {
     window.addEventListener("virgil-label-ref-click", handler);
     return () => window.removeEventListener("virgil-label-ref-click", handler);
   }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
+
+  // Generic linked-anchor click bridge — `useTextHoverBridge` dispatches
+  // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span
+  // is clicked. We select the corresponding card and route through
+  // `openForCard` so the click behaves identically to clicking the
+  // matching margin icon (Omni-first, vertical alignment, etc.).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { entityId: string; kind: EntityKind; clickY?: number }
+        | undefined;
+      if (!detail?.entityId || !detail.kind) return;
+      const route = ANCHOR_CLICK_ROUTES[detail.kind as keyof typeof ANCHOR_CLICK_ROUTES];
+      if (!route) return;
+
+      const id = detail.entityId;
+      switch (detail.kind) {
+        case "note": setSelectedNoteId(id); break;
+        case "cut": setSelectedCutterCardId(id); break;
+        case "revision": setSelectedCommentId(id); break;
+      }
+
+      const entrySelector =
+        route.entrySelectorBase === "data-card-key"
+          ? `[data-card-key="${route.omniPrefix}:${id}"]`
+          : `[${route.entrySelectorBase}="${id}"]`;
+
+      openForCard(
+        {
+          omniKey: `${route.omniPrefix}:${id}`,
+          entrySelector,
+          panelId: route.panelId,
+          cardKind: route.cardKind,
+          targetY: typeof detail.clickY === "number" ? detail.clickY : undefined,
+        },
+        {
+          prefs: prefsRef.current,
+          setActiveLeft,
+          setActiveRight,
+          setActiveHalf,
+          tryScrollOmniEntry,
+          getOmniEnabled,
+        },
+      );
+    };
+    window.addEventListener("virgil-linked-anchor-click", handler);
+    return () => window.removeEventListener("virgil-linked-anchor-click", handler);
+  }, [
+    prefsRef,
+    setActiveLeft,
+    setActiveRight,
+    setActiveHalf,
+    tryScrollOmniEntry,
+    getOmniEnabled,
+    setSelectedNoteId,
+    setSelectedCutterCardId,
+    setSelectedCommentId,
+  ]);
 }

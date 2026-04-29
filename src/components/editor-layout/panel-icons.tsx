@@ -62,7 +62,7 @@ export function IconFolder() {
 
 export function IconPlus() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
       <path d="M12 5v14M5 12h14" />
     </svg>
   );
@@ -70,7 +70,7 @@ export function IconPlus() {
 
 export function IconX() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <path d="M18 6L6 18M6 6l12 12" />
     </svg>
   );
@@ -143,7 +143,7 @@ export function IconBibliography({ active }: { active?: boolean }) {
 // color at a different opacity so they read as distinct spines.
 export function IconLibrary() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24">
+    <svg width="16" height="16" viewBox="0 0 24 24">
       {/* Book 1 — upright */}
       <rect x="3" y="5" width="4" height="15" rx="0.6" fill="currentColor" fillOpacity="0.6" />
       {/* Book 2 — upright, taller */}

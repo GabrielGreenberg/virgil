@@ -434,6 +434,15 @@ function Gutter({
               color: palette.color,
               background: m.selected ? palette.selectedBg : palette.bg,
               border: `1.5px solid ${palette.border}`,
+              // Hover ring — shown when the marker's entity is hovered
+              // from any source (this marker, its linked text, or its
+              // panel card). Selection (data-card-selected) wins when
+              // both are active. The ring uses the palette border for a
+              // tinted, kind-aware look.
+              boxShadow:
+                m.hovered && !m.selected
+                  ? `0 0 0 2px ${palette.border}`
+                  : undefined,
               opacity: m.muted ? 0.4 : undefined,
               cursor: "grab",
               padding: 0,

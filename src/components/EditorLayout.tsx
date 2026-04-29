@@ -108,6 +108,14 @@ import {
 import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
+import { useCardHoverHighlight } from "@/links/_shared/useCardHoverHighlight";
+import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
+import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
+import {
+  entityToAnchorId,
+  entityKindToAnchorKind,
+  type EntityKind,
+} from "@/links/_shared/entity-hover";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import {
@@ -131,6 +139,7 @@ import {
   IconSplit,
   IconLibrary,
 } from "./editor-layout/panel-icons";
+import { DocumentFolderTab } from "./editor-layout/DocumentFolderTab";
 import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
 import {
   computeSnapGrid,
@@ -153,6 +162,7 @@ import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useMarkerActions } from "./editor-layout/card-actions/markers";
+import { openForCard } from "./editor-layout/event-bridges/open-for-card";
 import { useDropActions } from "./editor-layout/card-actions/drops";
 import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
@@ -573,12 +583,22 @@ export default function EditorLayout() {
     void collab.disableCollab();
   }, [collab]);
 
-  const collabPill = (
+  const collabIconBtn = (
     <CollabStatusPill
       collab={collab}
       onEnableRequest={() => void handleEnableCollab()}
       onEditIdentity={() => void handleEditIdentity()}
       onDisable={handleDisableCollab}
+      variant="icon"
+    />
+  );
+  const collabBadge = (
+    <CollabStatusPill
+      collab={collab}
+      onEnableRequest={() => void handleEnableCollab()}
+      onEditIdentity={() => void handleEditIdentity()}
+      onDisable={handleDisableCollab}
+      variant="badge"
     />
   );
 
@@ -1554,14 +1574,26 @@ export default function EditorLayout() {
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
-  // Linked-anchor activation (shared by Notes / Revisions / Cutter).
-  //   activeAnchorId  — sticky, set on click of gutter icon or panel card
-  //   hoveredAnchorId — transient, set on hover
-  //   activeAnchorKind — drives the highlight color via MARKER_META
-  // Effective anchor = hovered ?? active.
+  // Linked-entity hover/activation. One pair drives all three linked
+  // surfaces (text passages, margin icons, panel cards). Per-kind
+  // selected*Id slots remain for backwards compatibility, but hover is
+  // entirely centralized — no per-kind hover handlers anywhere.
+  //   activeAnchorId / activeAnchorKind — sticky, set on click of icon
+  //     or card (for Mode B kinds: note / revision / cutter)
+  //   hoveredEntityId / hoveredEntityKind — transient, set on hover
+  //     of any of the three surfaces, generic across all card kinds
+  // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
-  const [hoveredAnchorId, setHoveredAnchorId] = useState<string | null>(null);
   const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
+  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
+  const [hoveredEntityKind, setHoveredEntityKind] = useState<EntityKind | null>(null);
+  const setHoveredEntity = useCallback(
+    (id: string | null, kind: EntityKind | null) => {
+      setHoveredEntityId(id);
+      setHoveredEntityKind(kind);
+    },
+    [],
+  );
 
   // CSS-based coupled highlight: the `.linked-anchor` span for the
   // active/hovered link gets `data-link-highlight`, and the editor root
@@ -1583,6 +1615,16 @@ export default function EditorLayout() {
     out.add("archive");
     return out;
   }, [prefs.showHighlights, hiddenHighlightTypes]);
+  // Derive Mode B text-range anchor id from the central hovered-entity
+  // state. Generic — works for note / revision / cut without per-kind code.
+  const hoveredAnchorId = useMemo(() => {
+    if (!hoveredEntityId || !hoveredEntityKind) return null;
+    return entityToAnchorId(
+      { id: hoveredEntityId, kind: hoveredEntityKind },
+      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups },
+    );
+  }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups]);
+
   useLinkHighlight({
     editor: editorInstance,
     activeLinkId: activeAnchorId,
@@ -2211,6 +2253,34 @@ export default function EditorLayout() {
     comments,
   });
 
+  // Hover counterpart of useCardSelectionHighlight — paints
+  // `data-card-hovered` on anchor elements *and* on the matching panel
+  // card. Single source of truth for all hover visuals across the three
+  // linked surfaces.
+  useCardHoverHighlight({
+    editor: editorInstance,
+    hoveredEntityId,
+    hoveredEntityKind,
+    notes,
+    cutterCards,
+    archiveSnippets,
+    quotationGroups,
+    todos: todoItems,
+    comments,
+  });
+
+  // Delegated listeners — turn text-element mouse events and
+  // panel-card mouse events into entity-level hover/click. No per-kind
+  // wiring; one listener per surface handles every kind.
+  useTextHoverBridge({
+    editor: editorInstance,
+    notes,
+    cutterCards,
+    comments,
+    setHoveredEntity,
+  });
+  usePanelCardHoverBridge(setHoveredEntity);
+
   // Clear the toolbar-override editor when the main editor regains focus,
   // so the MenuBar switches back to controlling the document editor.
   useEffect(() => {
@@ -2778,9 +2848,7 @@ export default function EditorLayout() {
   const {
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
-    handleHoverNote,
     handleCutMarkerClick,
-    handleHoverCut,
     handleTodoMarkerClick,
   } = useMarkerActions({
     prefsRef,
@@ -2790,7 +2858,6 @@ export default function EditorLayout() {
     tryScrollOmniEntry,
     getOmniEnabled,
     setActiveAnchorId,
-    setHoveredAnchorId,
     setActiveAnchorKind,
     notes,
     selectedNoteId,
@@ -2817,19 +2884,6 @@ export default function EditorLayout() {
     setSelectedNoteId,
     setSelectedCutterCardId,
   });
-
-  const handleHoverRevisionCard = useCallback(
-    (cardId: string | null) => {
-      if (!cardId) { setHoveredAnchorId(null); return; }
-      const card = revisionCards.find((c) => c.id === cardId);
-      const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
-      if (anchorId) {
-        setHoveredAnchorId(anchorId);
-        setActiveAnchorKind("revision");
-      }
-    },
-    [revisionCards, setHoveredAnchorId, setActiveAnchorKind],
-  );
 
   const handleDropSelectionOnRevisions = useCallback(
     (payload: { from: number; to: number; selectedText: string }) => {
@@ -2893,6 +2947,9 @@ export default function EditorLayout() {
     setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
+    setSelectedNoteId,
+    setSelectedCutterCardId,
+    setSelectedCommentId,
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
@@ -3705,6 +3762,15 @@ export default function EditorLayout() {
     void editorDocVersion;
     const result: MarginaliaMarker[] = [];
 
+    // Generic hover props for any marker — single source of truth for the
+    // "hover one → hover all" linkage. Every marker, regardless of type,
+    // writes/reads the same `(hoveredEntityId, hoveredEntityKind)` pair.
+    const hoverPropsFor = (entityId: string, kind: EntityKind) => ({
+      hovered: hoveredEntityId === entityId && hoveredEntityKind === kind,
+      onHover: (hovering: boolean) =>
+        setHoveredEntity(hovering ? entityId : null, hovering ? kind : null),
+    });
+
     // Quotation markers — one marker per paragraphId
     for (const g of quotationGroups) {
       const pids = getLinkedParagraphIds(g);
@@ -3719,6 +3785,7 @@ export default function EditorLayout() {
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
           onDelete: () => removeQuotationParagraphId(g.id, pid),
+          ...hoverPropsFor(g.id, "quotation"),
         });
       }
     }
@@ -3747,21 +3814,13 @@ export default function EditorLayout() {
             removeNoteParagraphId(n.id, pid);
           },
           anchorId: noteAnchor?.anchorId,
-          onHover: noteAnchor
-            ? (hovering: boolean) => {
-                if (hovering) {
-                  setHoveredAnchorId(noteAnchor.anchorId);
-                  setActiveAnchorKind("note");
-                } else {
-                  setHoveredAnchorId(null);
-                }
-              }
-            : undefined,
+          ...hoverPropsFor(n.id, "note"),
         });
       }
     }
 
-    // Archive markers — one marker per paragraphId
+    // Archive markers — one marker per paragraphId. Routes through
+    // `openForCard` so the card aligns to the click Y like other kinds.
     for (const snippet of archiveSnippets) {
       const pids = getLinkedParagraphIds(snippet);
       if (pids.length === 0) continue;
@@ -3773,11 +3832,28 @@ export default function EditorLayout() {
           paragraphId: pid,
           selected: selectedArchiveId === snippet.id,
           title: "Archived snippet",
-          onClick: () => {
+          onClick: (clickY?: number) => {
             setSelectedArchiveId(snippet.id);
-            editorRef.current?.scrollToParagraphId(pid);
+            openForCard(
+              {
+                omniKey: `archive:${snippet.id}`,
+                entrySelector: `[data-archive-entry="${snippet.id}"]`,
+                panelId: "archive",
+                cardKind: "archive",
+                targetY: clickY,
+              },
+              {
+                prefs: prefsRef.current,
+                setActiveLeft,
+                setActiveRight,
+                setActiveHalf,
+                tryScrollOmniEntry,
+                getOmniEnabled,
+              },
+            );
           },
           onDelete: () => removeArchiveParagraphId(snippet.id, pid),
+          ...hoverPropsFor(snippet.id, "archive"),
         });
       }
     }
@@ -3821,7 +3897,7 @@ export default function EditorLayout() {
           selected: selectedCommentId === r.id,
           title: r.selectedText || "Revision",
           anchorId,
-          onClick: () => {
+          onClick: (clickY?: number) => {
             const nextSelected = selectedCommentId === r.id ? null : r.id;
             setSelectedCommentId(nextSelected);
             if (nextSelected) {
@@ -3830,36 +3906,40 @@ export default function EditorLayout() {
             } else {
               setActiveAnchorId(null);
               setActiveAnchorKind(null);
+              return;
             }
-            const p = prefsRef.current;
-            const placement = p.placements.find((pl) => pl.id === "revisions");
-            if (placement?.side === "left") {
-              if (p.activeLeft !== "revisions") setActiveLeft("revisions");
-            } else {
-              if (p.activeRight !== "revisions") setActiveRight("revisions");
-            }
+            // Route through `openForCard` so the card aligns to clickY
+            // and lands on the correct side / split. Revisions aren't
+            // omni-eligible, so this falls through to the native panel.
+            openForCard(
+              {
+                omniKey: `revision:${r.id}`,
+                entrySelector: `[data-card-key="revision:${r.id}"]`,
+                panelId: "revisions",
+                cardKind: "comment",
+                targetY: clickY,
+              },
+              {
+                prefs: prefsRef.current,
+                setActiveLeft,
+                setActiveRight,
+                setActiveHalf,
+                tryScrollOmniEntry,
+                getOmniEnabled,
+              },
+            );
           },
-          onHover: (hovering: boolean) => {
-            if (hovering) {
-              setHoveredAnchorId(anchorId);
-              setActiveAnchorKind("revision");
-            } else {
-              setHoveredAnchorId(null);
-            }
-          },
+          ...hoverPropsFor(r.id, "revision"),
         });
       }
     }
 
     // Cutter markers — one per paragraphId. Both card kinds share the
-    // "cut" gutter marker; the kind discriminates only the active-anchor
-    // hint passed to setActiveAnchorKind.
+    // "cut" gutter marker.
     for (const c of cutterCards) {
       const pids = getLinkedParagraphIds(c);
       if (pids.length === 0) continue;
       const cardAnchor = getTextAnchor(c);
-      const anchorKind: "cutter-comment" | "cutter-suggestion" =
-        c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
       const title =
         c.kind === "suggestion"
           ? c.explanation || "Suggestion"
@@ -3872,7 +3952,7 @@ export default function EditorLayout() {
           paragraphId: pid,
           selected: selectedCutterCardId === c.id,
           title,
-          onClick: () => handleCutMarkerClick(c.id),
+          onClick: (clickY?: number) => handleCutMarkerClick(c.id, clickY),
           onDelete: () => {
             // Drop the text anchor first: the orphan guard fires
             // `virgil-anchor-orphaned`, useCutter clears the card's
@@ -3883,16 +3963,7 @@ export default function EditorLayout() {
             removeCardParagraphId(c.id, pid);
           },
           anchorId: cardAnchor?.anchorId,
-          onHover: cardAnchor
-            ? (hovering: boolean) => {
-                if (hovering) {
-                  setHoveredAnchorId(cardAnchor.anchorId);
-                  setActiveAnchorKind(anchorKind);
-                } else {
-                  setHoveredAnchorId(null);
-                }
-              }
-            : undefined,
+          ...hoverPropsFor(c.id, "cut"),
         });
       }
     }
@@ -3912,6 +3983,7 @@ export default function EditorLayout() {
           muted: item.done,
           onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
           onDelete: () => removeTodoParagraphId(item.id, pid),
+          ...hoverPropsFor(item.id, "todo"),
         });
       }
     }
@@ -3973,6 +4045,9 @@ export default function EditorLayout() {
     selectedCommentId,
     setActiveLeft,
     setActiveRight,
+    setActiveHalf,
+    tryScrollOmniEntry,
+    getOmniEnabled,
     cutterCards,
     selectedCutterCardId,
     removeCardParagraphId,
@@ -3982,15 +4057,34 @@ export default function EditorLayout() {
     paragraphByErrorId,
     selectedErrorId,
     dismissError,
-    setActiveLeft,
-    setActiveRight,
+    hoveredEntityId,
+    hoveredEntityKind,
+    setHoveredEntity,
+    setSelectedArchiveId,
+    setSelectedCommentId,
+    setActiveAnchorId,
+    setActiveAnchorKind,
   ]);
 
   // Subscribe to panel-color changes so linked-anchor highlight updates live.
   usePanelColorSubscription();
   // Effective linked-anchor activation: hovered takes priority over sticky-active.
   const effectiveAnchorId = hoveredAnchorId ?? activeAnchorId;
+  // When hovering, derive the anchor kind from the hovered entity so the
+  // color matches the hover target (not whatever was previously selected).
+  const hoveredAnchorKind = useMemo(
+    () =>
+      entityKindToAnchorKind(
+        hoveredEntityId && hoveredEntityKind
+          ? { id: hoveredEntityId, kind: hoveredEntityKind }
+          : null,
+        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups },
+      ),
+    [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups],
+  );
+  const effectiveAnchorKind = hoveredAnchorKind ?? activeAnchorKind;
   const effectiveAnchorColor = (() => {
+    const activeAnchorKind = effectiveAnchorKind;
     if (!activeAnchorKind) return null;
     // LinkedAnchorKind → MarkerType. Both cutter card kinds share the
     // single "cut" marker entry; revisions panel uses the "revision"
@@ -4223,7 +4317,6 @@ export default function EditorLayout() {
           updateNoteTitle={updateNoteTitle}
           deleteNote={deleteNote}
           discardPristine={discardPristineNotes}
-          onHoverNote={handleHoverNote}
           onDropSelection={handleDropSelectionOnNotes}
           onDropParagraph={handleDropParagraphOnNotes}
         />
@@ -4245,7 +4338,6 @@ export default function EditorLayout() {
           setSuggestionStatus={setRevisionSuggestionStatus}
           deleteCard={deleteRevisionCard}
           discardPristine={discardRevisionPristineCards}
-          onHoverCard={handleHoverRevisionCard}
           onDropSelection={handleDropSelectionOnRevisions}
           onDropParagraph={handleDropParagraphOnRevisions}
         />
@@ -4504,7 +4596,6 @@ export default function EditorLayout() {
           setSuggestionStatus={setCutterSuggestionStatus}
           deleteCard={deleteCutterCard}
           discardPristine={discardPristineCards}
-          onHoverCard={handleHoverCut}
           onDropSelection={handleDropSelectionOnCutter}
           onDropParagraph={handleDropParagraphOnCutter}
         />
@@ -4683,7 +4774,7 @@ export default function EditorLayout() {
     setSelectedExampleId,
     editorRef,
     setOverrideEditor, getCitationDisplayText, handleCitationCreated,
-    handleHoverNote, handleHoverCut, bibPackage,
+    bibPackage,
     updateNote, updateNoteTitle, deleteNote,
     handleEditFootnote, handleDeleteFootnote, handleEditFootnoteTitle,
     updateArchiveSnippet, updateArchiveSnippetTitle, handleDeleteArchive,
@@ -4739,18 +4830,17 @@ export default function EditorLayout() {
         // min-height gives the docked MenuBar breathing room inside the
         // bar without pushing the tabs taller (tabs are items-end anchored
         // at the bottom edge, so the extra space accumulates above them).
-        // In zen mode the bar collapses to 0 height with a transparent
-        // background — the only visible chrome is the floating Zen toggle
-        // (fixed top-3 right-3 z-50), which renders independent of its
-        // parent's size.
+        // In zen mode the bar's background and bottom border drop out so
+        // it visually melts into the canvas, but the height stays so the
+        // Zen toggle (last child of the right cluster) keeps the same Y
+        // position in both modes.
         data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-        className={`virgil-bar flex items-center relative ${zenModeOn ? '' : 'min-h-[34px]'}`}
+        className={`virgil-bar flex items-center relative min-h-[36px] ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
         style={{
           color: "var(--virgil-bar-text)",
           background: zenModeOn
             ? "transparent"
             : "linear-gradient(to bottom, var(--topbar-bg), var(--topbar-bg-bottom))",
-          boxShadow: zenModeOn ? "none" : "inset 0 -2px 4px -1px rgba(0,0,0,0.10)",
         }}
       >
         {/* Logo + file buttons + tabs — all bottom-aligned. The MenuBar's
@@ -4763,7 +4853,7 @@ export default function EditorLayout() {
         {zenModeOn ? (
           <div className="flex-1" />
         ) : (
-        <div className="flex items-end flex-1 min-w-0 overflow-clip gap-0.5 px-2 self-end" style={{ overflowClipMargin: '0px 0px 1px 0px' }}>
+        <div className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-end">
           {/* VIRGIL logo as first "tab-like" item */}
           <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
             <h1
@@ -4776,25 +4866,21 @@ export default function EditorLayout() {
           {openTabs.map((doc) => {
             const isCurrentDoc = doc.id === currentDocId;
             const isDocPaneActive = isCurrentDoc && activePane === "doc";
+            const isLibraryPaneActive = isCurrentDoc && activePane === "library";
             return (
-              <div key={doc.id} className="flex items-end shrink-0" style={{ filter: "var(--shadow-ambient-filter)" }}>
-                {/* Doc tab */}
-                <div
-                  data-prefs={isDocPaneActive ? "backgroundColor,topbarBorder" : "tabBg,topbarBorder"}
-                  className={`group flex items-center gap-1.5 pl-3.5 pr-2 pt-[1px] pb-0 text-sm cursor-default shrink-0 transition-all rounded-t-[10px] relative z-[1] ${
-                    isDocPaneActive
-                      ? "browser-tab-swoop bg-[var(--main-tab-bg)] text-ink-strong -mb-px z-10 border-t border-l border-r border-[var(--topbar-border,#d5d3ce)]"
-                      : "bg-[var(--tab-bg)] text-ink-subtle border border-[var(--topbar-border,#d5d3ce)] hover:brightness-[0.97] hover:text-ink-body"
-                  }`}
-                  onClick={() => {
-                    if (!isDocPaneActive) activateDocPane(doc.id);
-                  }}
+              <div key={doc.id} className="flex items-end shrink-0 -space-x-3">
+                <DocumentFolderTab
+                  active={isDocPaneActive}
+                  fill="var(--main-tab-bg)"
+                  dataPrefs="backgroundColor,topbarBorder"
+                  title={doc.folderName}
+                  onClick={() => { if (!isDocPaneActive) activateDocPane(doc.id); }}
                 >
                   <div className="flex flex-col min-w-0">
-                    <span className="text-[13px] leading-4 truncate" title={doc.folderName}>
+                    <span className="text-[13px] leading-4 truncate">
                       {doc.folderName}
                     </span>
-                    <span className="text-[10px] leading-[13px] text-ink-muted truncate" title={doc.texFilename}>
+                    <span className="text-[10px] leading-[13px] text-ink-muted truncate">
                       {doc.texFilename}
                     </span>
                   </div>
@@ -4806,8 +4892,17 @@ export default function EditorLayout() {
                   >
                     <IconX />
                   </button>
-                </div>
-                {/* Library shadow tab suppressed for now. */}
+                </DocumentFolderTab>
+                <DocumentFolderTab
+                  active={isLibraryPaneActive}
+                  fill="var(--library-bg)"
+                  dataPrefs="libraryBg,topbarBorder"
+                  title="Library"
+                  onClick={() => { if (!isLibraryPaneActive) activateLibraryPane(doc.id); }}
+                >
+                  <IconLibrary />
+                  <span className="text-[13px] leading-4">Library</span>
+                </DocumentFolderTab>
               </div>
             );
           })}
@@ -4829,52 +4924,53 @@ export default function EditorLayout() {
         )}
 
         <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2">
-          {!zenModeOn && focusMode.state.active && (
-            <button
-              onClick={focusMode.deactivate}
-              className="topbarbtn"
-              aria-pressed="true"
-              title="Exit focus view"
-              data-helper="Focus view"
-            >
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="2.25" />
-                <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
-              </svg>
-              Focus view
-            </button>
+          {/* ── Modes / views section ──────────────────────────────────
+              Left of the divider. Shows the *active state* of system-wide
+              modes (focus view, helper mode, collaborator mode). Each
+              entry is a passive indicator + its primary action; clicking
+              an exit/action affordance leaves the mode or moves the
+              workflow forward. Stays empty when nothing is active. */}
+          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
+            <div className="flex items-center gap-2 mr-3">
+              {focusMode.state.active && (
+                <button
+                  onClick={focusMode.deactivate}
+                  className="topbarbtn"
+                  aria-pressed="true"
+                  title="Exit focus view"
+                  data-helper="Focus view"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="8" cy="8" r="2.25" />
+                    <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
+                  </svg>
+                  Focus view
+                </button>
+              )}
+              {helperMode.on && (
+                <button
+                  onClick={helperMode.toggle}
+                  className="topbarbtn"
+                  aria-pressed="true"
+                  title="Exit helper mode"
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="8" cy="8" r="6" />
+                    <path d="M5.8 6.2a2.2 2.2 0 0 1 4.08.8c0 1.2-1.68 1.6-1.68 1.6" />
+                    <circle cx="8" cy="11.5" r="0.3" fill="currentColor" stroke="none" />
+                  </svg>
+                  Helper mode
+                </button>
+              )}
+              {collab.enabled && collabBadge}
+            </div>
           )}
-          {!zenModeOn && helperMode.on && (
-            <button
-              onClick={helperMode.toggle}
-              className="topbarbtn"
-              aria-pressed="true"
-              title="Exit helper mode"
-            >
-              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="8" cy="8" r="6" />
-                <path d="M5.8 6.2a2.2 2.2 0 0 1 4.08.8c0 1.2-1.68 1.6-1.68 1.6" />
-                <circle cx="8" cy="11.5" r="0.3" fill="currentColor" stroke="none" />
-              </svg>
-              Helper mode
-            </button>
+          {/* Divider — visible only when at least one mode/view is active.
+              Gives the modes section its own gravity well, separated from
+              the menu-icon cluster on the right. */}
+          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
+            <span className="self-center h-5 w-px bg-edge-subtle mr-3" aria-hidden />
           )}
-          {/* ── Zen mode toggle ────────────────────────────────────────
-              Render-gates editor chrome (icon strips, panel columns,
-              floating MenuBar, marginalia, popped-out panels/cards) so
-              the document area stands alone. Top bar stays visible so
-              this button is always reachable. State is render-only —
-              layout prefs are untouched, so toggling off restores the
-              exact prior layout. */}
-          <button
-            onClick={handleToggleZen}
-            className={zenModeOn ? "topbarbtn fixed top-3 right-3 z-50" : "topbarbtn"}
-            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
-            aria-pressed={zenModeOn}
-            data-helper="Zen mode"
-          >
-            Zen
-          </button>
           {!zenModeOn && (<>
           {/* ── Preference Mode toggle ─────────────────────────────────
               Flips the global preference-mode state. When on, every DOM
@@ -4893,7 +4989,7 @@ export default function EditorLayout() {
               To move / restyle this button without changing its behaviour,
               edit this JSX only. Don't hardcode the on/off logic anywhere
               else — always drive it through usePreferenceMode(). */}
-          {collabPill}
+          {collabIconBtn}
           <button
             onClick={() => setPreferencesOpen(true)}
             className="topbarbtn topbarbtn-icon"
@@ -4903,7 +4999,7 @@ export default function EditorLayout() {
             {/* Painter's palette icon — solid silhouette with the classic
                 thumb-hole cutout on the right and four color wells punched
                 through via fill-rule="evenodd". */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
               <path fillRule="evenodd" clipRule="evenodd" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10c1.1 0 2-.9 2-2 0-.52-.2-.97-.54-1.32-.34-.36-.54-.82-.54-1.33 0-1.1.9-2 2-2h2.35C19.93 15.35 22 13.24 22 10.65 22 5.88 17.52 2 12 2zM6.5 12a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm3 4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
             </svg>
           </button>
@@ -4914,7 +5010,7 @@ export default function EditorLayout() {
               title={`Virgil v${APP_VERSION}`}
               data-helper="Version info"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
                 <line x1="12" y1="16" x2="12" y2="12" />
                 <line x1="12" y1="8" x2="12.01" y2="8" />
@@ -4973,10 +5069,10 @@ export default function EditorLayout() {
               title="Help"
               data-helper="Help"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
-                <path d="M9 9a3 3 0 0 1 5.12 1.5c0 1.5-2.12 2-2.12 2" />
-                <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none" />
+                <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
+                <path d="M12 17h.01" />
               </svg>
             </button>
             {helperMenuOpen && (
@@ -5006,7 +5102,7 @@ export default function EditorLayout() {
             title="Print…"
             data-helper="Print"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 6 2 18 2 18 9" />
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
               <rect x="6" y="14" width="12" height="8" />
@@ -5058,7 +5154,7 @@ export default function EditorLayout() {
           >
             {codeView ? (
               <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
@@ -5066,7 +5162,7 @@ export default function EditorLayout() {
               </>
             ) : (
               <>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="16 18 22 12 16 6" />
                   <polyline points="8 6 2 12 8 18" />
                   <line x1="14.5" y1="4" x2="9.5" y2="20" />
@@ -5086,17 +5182,36 @@ export default function EditorLayout() {
             data-helper="Compile"
           >
             {isCompiling ? (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
             ) : (
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <polygon points="6 4 20 12 6 20 6 4" />
               </svg>
             )}
             Compile
           </button>
           </>)}
+          {/* ── Zen mode toggle ────────────────────────────────────────
+              Render-gates editor chrome (icon strips, panel columns,
+              floating MenuBar, marginalia, popped-out panels/cards) so
+              the document area stands alone. Top bar stays visible so
+              this button is always reachable. State is render-only —
+              layout prefs are untouched, so toggling off restores the
+              exact prior layout. Pinned to the far right of the right
+              cluster so its screen position is identical in both
+              modes — when zen is on, the !zenModeOn block above
+              collapses and Zen is the only non-pill button left. */}
+          <button
+            onClick={handleToggleZen}
+            className="topbarbtn"
+            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
+            aria-pressed={zenModeOn}
+            data-helper="Zen mode"
+          >
+            Zen
+          </button>
         </div>
       </div>
 
@@ -5117,7 +5232,7 @@ export default function EditorLayout() {
 
       {/* Main area */}
       {currentDoc && docPermState !== "granted" ? null : activePane === "library" && currentDocId ? (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 overflow-hidden bg-[var(--library-bg)]">
           <LibraryTabView />
         </div>
       ) : codeView && currentDocId ? (
