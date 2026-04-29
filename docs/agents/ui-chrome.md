@@ -1,4 +1,4 @@
-<!-- last-verified: 159e41d 2026-04-28 -->
+<!-- last-verified: d1cfdf5 2026-04-29 -->
 
 # UI Chrome
 
@@ -179,6 +179,12 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 [src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions.)
 
+**Topbar icon size: 16px** (`.topbarbtn` is 24px, leaving 4px of padding). Don't ship 14px or 20px topbar icons — see `STYLE_GUIDE.md`.
+
+## Document folder tabs
+
+[src/components/editor-layout/DocumentFolderTab.tsx](../../src/components/editor-layout/DocumentFolderTab.tsx) renders the manila-folder-style document tabs in the topbar — each tab is one self-contained SVG path with rounded top corners and convex swoop hooks at the bottom. Path geometry in [src/components/editor-layout/folder-path.ts](../../src/components/editor-layout/folder-path.ts) (`buildActiveTabStrokePath`, `buildTabFillPath`). Active and inactive tabs share the same path; the active variant omits the bottom edge so the canvas's top border draws the seam.
+
 ## Floating panels & cards
 
 - [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) — `FloatingPanel` low-level draggable + resizable window via portal. Min 240×200, max 900×window-40. Drag on header, resize via bottom-right grip.
@@ -205,7 +211,10 @@ See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for annotation guidelines (la
 
 ## Collaborator mode UI
 
-When collab is enabled, a **CollabStatusPill** ([src/components/CollabStatusPill.tsx](../../src/components/CollabStatusPill.tsx)) appears in the docked MenuBar. It shows the current pen state with a colored dot and surfaces the next-natural action (Take / Pass / Request / Take over). A popover on the pill offers the disable-collab option. When collab is off, the pill collapses into a "Co" toggle.
+**CollabStatusPill** ([src/components/CollabStatusPill.tsx](../../src/components/CollabStatusPill.tsx)) renders in two variants, both in the topbar:
+
+- `variant="icon"` — always-visible two-person silhouette button in the menu-icon cluster. Click toggles collab on/off (via menu when on).
+- `variant="badge"` — pen-state pill (dot + label) and next-natural action (Take / Pass / Request / Take over) in the modes/views section. Hidden when collab is off.
 
 Supporting UI:
 - **CollabPresenceDots** ([src/components/CollabPresenceDots.tsx](../../src/components/CollabPresenceDots.tsx)) — partner's cursor-paragraph dot shown in the margin.

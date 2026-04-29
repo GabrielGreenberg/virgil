@@ -1,4 +1,4 @@
-<!-- last-verified: 159e41d 2026-04-28 -->
+<!-- last-verified: d1cfdf5 2026-04-29 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -107,7 +107,16 @@ Panel cards carry `data-link-card="<cardKind>:<cardId>"`; multi-anchor cards als
 
 ### Highlight coupling
 
-Mode B text ranges and their margin icons share highlight state via CSS `data-link-highlight` attribute, managed by `useLinkHighlight` in [src/links/_shared/useLinkHighlight.ts](../../src/links/_shared/useLinkHighlight.ts).
+Hover and selection are unified across the three linked surfaces (text, margin icon, panel card) via a single `(hoveredEntityId, hoveredEntityKind)` state pair in `EditorLayout.tsx`. Hover any one and all three light up; click a card or margin icon and selection propagates. No per-card-kind hover handlers anywhere.
+
+- [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) — `EntityKind` union (`note`/`cut`/`revision`/`todo`/`archive`/`quotation`/`footnote`/`citation`) and generic resolvers (`findEntity`, `cardKeyForEntity`, `entityToAnchorId`).
+- [src/links/_shared/useLinkHighlight.ts](../../src/links/_shared/useLinkHighlight.ts) — paints `data-link-highlight="hover" | "active"` on `.linked-anchor` spans (Mode B text ranges).
+- [src/links/_shared/useCardHoverHighlight.ts](../../src/links/_shared/useCardHoverHighlight.ts) — paints `data-card-hovered` on resolved anchor elements *and* on matching panel cards (via `data-card-key`).
+- [src/links/_shared/useCardSelectionHighlight.ts](../../src/links/_shared/useCardSelectionHighlight.ts) — selection counterpart, paints `data-card-selected`.
+- [src/links/_shared/useTextHoverBridge.ts](../../src/links/_shared/useTextHoverBridge.ts) — single delegated `mouseover`/`mouseout`/`click` listener on `editor.view.dom`. Resolves linkedAnchor spans, citation atoms (`[data-citation-id]`), footnote atoms (`[data-footnote-id]`); on Mode B click, dispatches `virgil-linked-anchor-click` for the bridge in `event-bridges/marker-clicks.ts` to route via `openForCard`.
+- [src/links/_shared/usePanelCardHoverBridge.ts](../../src/links/_shared/usePanelCardHoverBridge.ts) — single document-level listener that reads `data-card-key` to translate panel card hovers into entity hovers.
+
+Margin markers carry a generic `hovered` prop (boxShadow ring) and `onHover` callback applied uniformly across every kind in `EditorLayout.tsx`'s `marginaliaMarkers` useMemo.
 
 ## Marginalia
 

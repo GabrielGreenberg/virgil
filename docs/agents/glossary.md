@@ -1,4 +1,4 @@
-<!-- last-verified: 159e41d 2026-04-28 -->
+<!-- last-verified: d1cfdf5 2026-04-29 -->
 
 # Glossary
 
@@ -22,6 +22,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
 | **Current section pod** / **section lozenge** (floating section-path pill at top of editor, shows on scroll, fades after idle) | `SectionLozenge` | [src/components/editor-layout/section-lozenge.tsx](../../src/components/editor-layout/section-lozenge.tsx); `SectionPathEntry` type + main/mirror path builders in `EditorLayout.tsx` ~1943 / ~2065 |
 | **Navigation strip** | No dedicated component — paragraph-nav chevrons live inside `MenuBar` | `MenuBar.tsx` around line 1205 |
+| **Document folder tab** / **manila tab** (the document tabs in the topbar with rounded top + swoop hooks at the bottom) | `DocumentFolderTab` (one self-contained SVG path per tab); path geometry in `folder-path.ts` (`buildActiveTabStrokePath`, `buildTabFillPath`) | [src/components/editor-layout/DocumentFolderTab.tsx](../../src/components/editor-layout/DocumentFolderTab.tsx); [src/components/editor-layout/folder-path.ts](../../src/components/editor-layout/folder-path.ts) |
 
 ## Toolbars inside the Virgil bar
 
@@ -135,6 +136,8 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Mode A** | Paragraph-only anchor (no text range) | `isModeB(link) === false`; see `src/links/links.ts` |
 | **Mode B** | Paragraph + text-range anchor (linkedAnchor mark) | `isModeB(link) === true` |
 | **DOM contract** | `data-link-id`, `data-link-kind`, `data-link-card` attrs on in-editor markers; `data-link-card` on cards | [src/links/link-registry.ts](../../src/links/link-registry.ts) |
+| **Linked surfaces** / **three-surface hover** (text passage + margin icon + panel card all light up together; click-to-select propagates) | Centralized via `(hoveredEntityId, hoveredEntityKind)` in `EditorLayout.tsx`; consumers `useLinkHighlight`, `useCardHoverHighlight`, `useCardSelectionHighlight`; sources `useTextHoverBridge`, `usePanelCardHoverBridge`, generic margin `onHover` | [src/links/_shared/](../../src/links/_shared/); see `main-text.md` → Highlight coupling |
+| **EntityKind** | Linking-vocabulary subset of `CardKind`: `note \| cut \| revision \| todo \| archive \| quotation \| footnote \| citation`. Used by hover/selection plumbing | [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) |
 | **Label candidate list** (ref popover) | `LabelInfo { label, kind, typeLabel, title }`; `kind ∈ {heading, equation, figure, table, label, example}` | [src/lib/labels.ts](../../src/lib/labels.ts) + [src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx) |
 
 ## Persistence & sidecars

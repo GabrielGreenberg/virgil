@@ -1,4 +1,4 @@
-<!-- last-verified: 159e41d 2026-04-28 -->
+<!-- last-verified: d1cfdf5 2026-04-29 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -35,7 +35,7 @@ All in `src/hooks/`. Full list (42 files) is large; these are the ones most ofte
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
-| `useLinkHighlight` | Hover/selection highlight coupling between text and margin icons |
+| `useLinkHighlight` / `useCardHoverHighlight` / `useCardSelectionHighlight` | Three-surface hover/selection coupling (text, margin icon, panel card). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners |
 | `useViewPrefs` | Panel visibility, layout state, placements, all user-layout prefs |
 | `usePersistentState` | IndexedDB persistence abstraction |
 | `useInTextPositions` | Omni-view positioning |
