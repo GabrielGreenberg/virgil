@@ -1,4 +1,4 @@
-<!-- last-verified: 71f140d 2026-04-27 -->
+<!-- last-verified: 159e41d 2026-04-28 -->
 
 # Glossary
 
@@ -61,7 +61,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `examples` | Examples | `example` | left | (default) |
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
-| `revisions` | Revisions | `comment` (key prefix `revision`) and `suggestion` | right | stone (suggestion progress bar in panel header) |
+| `revisions` | Revisions | `comment` (key prefix `revision`) + `revision-suggestion` (polymorphic — `card.kind` is `comment` in registry; `revision-suggestion` registered in `CARD_KEY_PREFIXES`) | right | stone |
 | `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry) | right | red |
 | `errors` | Errors | `error` | right | light red |
 
@@ -143,8 +143,10 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 |---|---|---|
 | **Sidecar** | JSON file alongside `.tex` in `virgil/` folder | Types in [src/lib/types.ts](../../src/lib/types.ts) (`VirgilSidecar`) |
 | **Suggestions** | AI line-edit proposals (review cards in the Revisions panel; progress bar in panel header) | `suggestions.json`; [src/hooks/useSuggestions.ts](../../src/hooks/useSuggestions.ts) |
-| **Comments** (was: Revisions) | AI/user comment threads, anchored or paper-wide. Live alongside suggestion cards in the Revisions panel | `revisions.json`; [src/hooks/useRevisions.ts](../../src/hooks/useRevisions.ts) |
-| **Cutter goal** | Per-document word-count cutting target | Stored on `CutterState.goal` in `cutter.json`; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
+| **Revisions** (comments + suggestions) | Polymorphic `RevisionCommentCard` + `RevisionSuggestionCard` cards, anchored or paper-wide. Shares the same comment/suggestion card structure as Cutter | `revisions.json`; [src/hooks/useRevisions.ts](../../src/hooks/useRevisions.ts); types `RevisionCard` in [src/lib/types.ts](../../src/lib/types.ts) |
+| **Revisions tracker** | Optional per-document target for accepted revisions (analogous to CutterGoal for word count) | `RevisionsTracker` on `RevisionsState.tracker` in `revisions.json`; UI in [src/panels/Revisions/RevisionsTracker.tsx](../../src/panels/Revisions/RevisionsTracker.tsx) |
+| **Cutter goal** | Per-document word-count cutting target | Stored on `CutterState.goal` in `cutter.json`; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts); UI in [src/panels/Cutter/CutterGoalStrip.tsx](../../src/panels/Cutter/CutterGoalStrip.tsx) |
+| **Collab** / **collaborator mode** | Turn-taking collaboration via sidecar; no co-editing — single-pen coordination for `.tex`, per-card focus claims for sidecars | `collab.json`; [src/lib/collab.ts](../../src/lib/collab.ts); [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts) |
 | **AI requests** | Queued requests for an agent to resolve | `ai-requests.json` |
 | **Bib review requests** | Per-entry bibliography field/notes reviews | `bib-review-requests.json` |
 | **FSA** (File System Access API) | Disk boundary — only place disk is touched | [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) |

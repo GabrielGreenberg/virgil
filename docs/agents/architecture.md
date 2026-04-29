@@ -1,4 +1,4 @@
-<!-- last-verified: 71f140d 2026-04-27 -->
+<!-- last-verified: 159e41d 2026-04-28 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -43,6 +43,8 @@ All in `src/hooks/`. Full list (42 files) is large; these are the ones most ofte
 | `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
 | `useZenMode` | Zen-mode pref + chrome-hide orchestration. Hides Virgil bar / strips / panels and extends the editor to window edges; restores on exit |
 | `useHelperMode` | Helper-mode toggle — sets `data-helper-mode="on"` on `<body>`, enabling CSS hover callouts on all `[data-helper]` elements |
+| `useCollab` | Turn-taking collaboration state machine: pen ownership, heartbeat, polling of `collab.json` sidecar, per-card focus claims, cursor-paragraph presence broadcast |
+| `useRecentlyAddedTracker` | One-slot-per-kind tracker for just-created cards so panels can sort them to the top; auto-cleared when selection moves away |
 
 ## Persistence layers
 
@@ -71,6 +73,8 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo) |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
 | `editor-state.json` | Cursor position, selection, misc editor state | Restored on reopen |
+| `cutter.json` | Cutter cards (comments + suggestions) and optional word-count goal | Cutter panel; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
+| `collab.json` | Turn-taking collab state: pen holder, heartbeat timestamps, per-user presence entries (cursor paragraph, card focus claims) | [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts); types/constants in [src/lib/collab.ts](../../src/lib/collab.ts) |
 | `doc-settings.json` | Per-document settings (currently: `style` id for the preamble preset) | `useDocumentStyle` reads/writes; schema in [src/lib/document-settings.ts](../../src/lib/document-settings.ts) |
 
 Agents never touch this app — they read the same `.tex`/`.bib` and write these sidecars. Virgil polls/watches and surfaces changes.
@@ -88,7 +92,7 @@ Cards inside a `CardListPanel`:
 3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
-`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
+`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
 **Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
 

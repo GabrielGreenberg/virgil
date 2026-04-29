@@ -1,4 +1,4 @@
-<!-- last-verified: 71f140d 2026-04-27 -->
+<!-- last-verified: 159e41d 2026-04-28 -->
 
 # UI Chrome
 
@@ -103,7 +103,7 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 ### Panel list
 
-See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). Revisions hosts both `comment` cards and `suggestion` cards (suggestions panel was folded into Revisions in 2073376). **Cutter is now polymorphic too** — it hosts both `cutter-comment` and `cutter-suggestion` card kinds (the rebuild lives at commit 51c7889 onwards); `card: null` in registry, kind-specific renderers in `CutterPanel`. The panel marker/theme/typography still live under the legacy `cut` keys.
+See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Both Revisions and Cutter are polymorphic** — each hosts comment + suggestion card kinds. Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null` in registry; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive.
 
@@ -202,6 +202,18 @@ Positioning is zone-based — below by default, right for left-strip buttons, le
 State: `useHelperMode()` in [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts) — module-scoped `useSyncExternalStore` pattern (same as `usePreferenceMode`). Exports `{ on, toggle, set }`. Persists to localStorage key `virgil-helper-mode`.
 
 See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for annotation guidelines (label length, positioning rules, CSS structure).
+
+## Collaborator mode UI
+
+When collab is enabled, a **CollabStatusPill** ([src/components/CollabStatusPill.tsx](../../src/components/CollabStatusPill.tsx)) appears in the docked MenuBar. It shows the current pen state with a colored dot and surfaces the next-natural action (Take / Pass / Request / Take over). A popover on the pill offers the disable-collab option. When collab is off, the pill collapses into a "Co" toggle.
+
+Supporting UI:
+- **CollabPresenceDots** ([src/components/CollabPresenceDots.tsx](../../src/components/CollabPresenceDots.tsx)) — partner's cursor-paragraph dot shown in the margin.
+- **CollabClaimPill** ([src/components/CollabClaimPill.tsx](../../src/components/CollabClaimPill.tsx)) — per-card focus-claim indicator.
+- **CollaboratorIdentityDialog** ([src/components/CollaboratorIdentityDialog.tsx](../../src/components/CollaboratorIdentityDialog.tsx)) — prompts for display name + color on first enable.
+- Editor read-only gating: when the partner holds the pen, the TipTap editor is set non-editable.
+
+State: `useCollab()` in [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts). Types/constants in [src/lib/collab.ts](../../src/lib/collab.ts). Sidecar: `collab.json`.
 
 ## Buttons convention
 
