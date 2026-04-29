@@ -139,6 +139,8 @@ function ArchivePanel({
                 <TargetIcon
                   onClick={() => onJumpToCard(s)}
                   title="Jump to archive marker"
+                  data-helper="Jump"
+                  data-helper-pos="above"
                 />
               </div>
             )}

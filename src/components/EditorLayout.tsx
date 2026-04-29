@@ -14,6 +14,9 @@ import { useDragGap } from "@/hooks/useDragGap";
 import { useFiles } from "@/hooks/useFiles";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
+import { useCollab, CollabProvider } from "@/hooks/useCollab";
+import CollabStatusPill from "./CollabStatusPill";
+import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import { useLatexCompile } from "@/hooks/useLatexCompile";
 import { useLatexLint } from "@/hooks/useLatexLint";
 import type { LatexError } from "@/lib/latex-errors";
@@ -165,8 +168,11 @@ import { CitationDisplayProvider } from "./editor-layout/contexts/citation-displ
 import { PanelViewModeProvider } from "./editor-layout/contexts/panel-view-mode";
 import { SelectionsProvider } from "./editor-layout/contexts/selections";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
+import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
+import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
+import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { renderPoppedCard } from "./editor-layout/floating-cards";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
@@ -187,6 +193,7 @@ import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
 import { usePreferenceMode } from "@/hooks/usePreferenceMode";
+import { useHelperMode } from "@/hooks/useHelperMode";
 import { useZenMode } from "@/hooks/useZenMode";
 import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
@@ -263,6 +270,7 @@ function DocStyleDropdown({ docId }: { docId: string | null }) {
         onClick={handleToggle}
         className="topbarbtn ml-1"
         title="Document style"
+        data-helper="Document style"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -420,20 +428,31 @@ export default function EditorLayout() {
     clearSuggestions,
   } = useSuggestions(docIdForHooks);
   const {
-    users: revisionUsers,
-    comments,
-    addComment,
-    updateCommentContent,
-    setCommentAuthor,
-    setCommentAnchor,
-    deleteComment,
-    refresh: refreshRevisions,
+    cards: revisionCards,
+    tracker: revisionsTracker,
+    addComment: addRevisionComment,
+    addSuggestion: addRevisionSuggestion,
+    updateCommentContent: updateRevisionCommentContent,
+    updateCommentText: updateRevisionCommentText,
+    setCommentAiRequest: setRevisionCommentAiRequest,
+    updateSuggestionField: updateRevisionSuggestionField,
+    setSuggestionStatus: setRevisionSuggestionStatus,
+    setTrackerTarget: setRevisionsTrackerTarget,
+    addCardParagraphId: addRevisionCardParagraphId,
+    removeCardParagraphId: removeRevisionCardParagraphId,
+    deleteCard: deleteRevisionCard,
+    discardPristineCards: discardRevisionPristineCards,
   } = useRevisions(docIdForHooks);
-  const activeRevisionsCount = comments.filter((c) => !c.resolved).length;
+  const comments = revisionCards;
+  const activeRevisionsCount = revisionCards.length;
+  const refreshRevisions = useCallback(() => {}, []);
+  void addRevisionCardParagraphId;
+  void removeRevisionCardParagraphId;
   // Unified pristine-card manager — tracks blank-on-create cards across all
   // kinds and discards them via a global click-away listener once the user
   // clicks outside the card's DOM. Each per-kind hook gets its slice here.
   const pristineManager = usePristineCardManager();
+  const recentlyAdded = useRecentlyAddedTracker();
   const notePristine = useMemo(() => pristineManager.forKind("note"), [pristineManager]);
   const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
@@ -453,12 +472,16 @@ export default function EditorLayout() {
   } = useNotes(docIdForHooks, notePristine);
   const {
     cards: cutterCards,
+    goal: cutterGoal,
     addComment: addCutterComment,
     addSuggestion: addCutterSuggestion,
     updateCommentContent: updateCutterCommentContent,
+    updateCommentText: updateCutterCommentText,
     setCommentAiRequest: setCutterCommentAiRequest,
     updateSuggestionField: updateCutterSuggestionField,
     setSuggestionStatus: setCutterSuggestionStatus,
+    setGoal: setCutterGoal,
+    clearGoal: clearCutterGoal,
     addCardParagraphId,
     removeCardParagraphId,
     deleteCard: deleteCutterCard,
@@ -530,6 +553,34 @@ export default function EditorLayout() {
     getFormattedBib,
     syncFromEditor: syncCitationsFromEditor,
   } = useCitations(docIdForHooks, citationPristine);
+
+  const collab = useCollab(docIdForHooks);
+  const { ensureIdentity, dialog: identityDialog } = useCollaboratorIdentity();
+
+  const handleEnableCollab = useCallback(async () => {
+    const id = await ensureIdentity();
+    if (!id) return;
+    collab.setIdentity(id);
+    await collab.enableCollab();
+  }, [ensureIdentity, collab]);
+
+  const handleEditIdentity = useCallback(async () => {
+    const id = await ensureIdentity({ force: true });
+    if (id) collab.setIdentity(id);
+  }, [ensureIdentity, collab]);
+
+  const handleDisableCollab = useCallback(() => {
+    void collab.disableCollab();
+  }, [collab]);
+
+  const collabPill = (
+    <CollabStatusPill
+      collab={collab}
+      onEnableRequest={() => void handleEnableCollab()}
+      onEditIdentity={() => void handleEditIdentity()}
+      onDisable={handleDisableCollab}
+    />
+  );
 
   const { getAnnotation, setAnnotation } = useAnnotations(docIdForHooks);
   const {
@@ -1107,6 +1158,30 @@ export default function EditorLayout() {
   // When a panel mini-editor (e.g. footnote RichTextField) is focused,
   // the main toolbar should route commands to it instead of the main editor.
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
+
+  // ── Collab pen → TipTap read-only gate.
+  // When collab is enabled and the partner holds the pen, the editor is
+  // locked. When collab is off or we hold the pen, full editing.
+  useEffect(() => {
+    if (!editorInstance) return;
+    const want = collab.canEditMainText;
+    if (editorInstance.isEditable !== want) {
+      editorInstance.setEditable(want);
+    }
+  }, [editorInstance, collab.canEditMainText]);
+
+  // ── Activity tracker — bump pen activity on real input while we hold it.
+  // Throttled inside useCollab.bumpActivity.
+  useEffect(() => {
+    if (!editorInstance || !collab.iHavePen) return;
+    const onTr = ({ transaction }: { transaction: { docChanged: boolean } }) => {
+      if (transaction.docChanged) collab.bumpActivity();
+    };
+    editorInstance.on("transaction", onTr);
+    return () => {
+      editorInstance.off("transaction", onTr);
+    };
+  }, [editorInstance, collab.iHavePen, collab.bumpActivity]);
   const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
   const focusMode = useFocusMode();
   const { config: focusWcConfig } = useWordCountConfig();
@@ -1188,6 +1263,7 @@ export default function EditorLayout() {
   const [versionOpen, setVersionOpen] = useState(false);
   const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [helperMenuOpen, setHelperMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!versionOpen) return;
@@ -1198,6 +1274,16 @@ export default function EditorLayout() {
       window.removeEventListener("click", close);
     };
   }, [versionOpen]);
+
+  useEffect(() => {
+    if (!helperMenuOpen) return;
+    const close = () => setHelperMenuOpen(false);
+    const id = window.setTimeout(() => window.addEventListener("click", close), 0);
+    return () => {
+      window.clearTimeout(id);
+      window.removeEventListener("click", close);
+    };
+  }, [helperMenuOpen]);
 
   const insertVirgilCommand = useCallback((name: string) => {
     const editor = editorRef.current?.getEditor();
@@ -1216,6 +1302,7 @@ export default function EditorLayout() {
   // Preference mode toggle. `on` drives the top-bar button styling and gates
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
   const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
+  const helperMode = useHelperMode();
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
   // marginalia, popouts) so the document area appears alone. Top bar
   // stays so the button is always reachable. See useZenMode.ts.
@@ -1952,6 +2039,9 @@ export default function EditorLayout() {
       }
       if (!paraId || paraId === currentParaRef.current) return;
       currentParaRef.current = paraId;
+      // Soft-presence: broadcast cursor paragraph for the partner. The
+      // hook de-dupes if unchanged, so safe to call every tick.
+      collab.updateCursorParagraph(paraId);
       const h = paraHistoryRef.current;
       h.stack = h.stack.slice(0, h.idx + 1);
       h.stack.push(paraId);
@@ -2638,7 +2728,7 @@ export default function EditorLayout() {
     selectedId: selectedCutterCardId,
     entities: cutterCards,
     kind: "cutter-comment",
-    dataAttrName: "cutter-comment-entry",
+    dataAttrName: ["cutter-comment-entry", "cutter-suggestion-entry"],
     setSelectedId: setSelectedCutterCardId,
     setActiveAnchorId,
     setActiveAnchorKind,
@@ -2648,7 +2738,7 @@ export default function EditorLayout() {
     selectedId: selectedCommentId,
     entities: comments,
     kind: "revision",
-    dataAttrName: "revision-entry",
+    dataAttrName: ["revision-comment-entry", "revision-suggestion-entry"],
     setSelectedId: setSelectedCommentId,
     setActiveAnchorId,
     setActiveAnchorKind,
@@ -2727,6 +2817,43 @@ export default function EditorLayout() {
     setSelectedNoteId,
     setSelectedCutterCardId,
   });
+
+  const handleHoverRevisionCard = useCallback(
+    (cardId: string | null) => {
+      if (!cardId) { setHoveredAnchorId(null); return; }
+      const card = revisionCards.find((c) => c.id === cardId);
+      const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
+      if (anchorId) {
+        setHoveredAnchorId(anchorId);
+        setActiveAnchorKind("revision");
+      }
+    },
+    [revisionCards, setHoveredAnchorId, setActiveAnchorKind],
+  );
+
+  const handleDropSelectionOnRevisions = useCallback(
+    (payload: { from: number; to: number; selectedText: string }) => {
+      const ed = editorRef.current?.getEditor();
+      if (!ed) return;
+      const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
+      if (!record) return;
+      const created = addRevisionComment(null, undefined, {
+        anchorId: record.anchorId,
+        anchorText: payload.selectedText || record.text,
+      });
+      updateLinkedAnchorCard(ed, record.anchorId, "comment", created.id);
+      setSelectedCommentId(created.id);
+    },
+    [addRevisionComment, editorRef, setSelectedCommentId],
+  );
+
+  const handleDropParagraphOnRevisions = useCallback(
+    (paragraphId: string) => {
+      const created = addRevisionComment(paragraphId);
+      setSelectedCommentId(created.id);
+    },
+    [addRevisionComment, setSelectedCommentId],
+  );
 
 
 
@@ -3001,6 +3128,8 @@ export default function EditorLayout() {
     addNote,
     addCutterComment,
     addCutterSuggestion,
+    addRevisionComment,
+    addRevisionSuggestion,
     addTodo,
     updateTodo,
     addTodoParagraphId,
@@ -3008,6 +3137,7 @@ export default function EditorLayout() {
     addCitation,
     setSelectedNoteId,
     setSelectedCutterCardId,
+    setSelectedCommentId,
     setSelectedTodoId,
     setSelectedFootnoteId,
     setSelectedQuotationGroupId,
@@ -3019,6 +3149,7 @@ export default function EditorLayout() {
     markFootnotePristine,
     getFootnoteCount: () =>
       (editorRef.current?.getFootnotes().length ?? 0) + orphanedFootnotes.length,
+    recentlyAdded,
   });
 
   // Register per-kind discard callbacks. When the click-away watcher in
@@ -3054,17 +3185,16 @@ export default function EditorLayout() {
       anchorId = record?.anchorId ?? null;
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
-    const created = addComment({
-      text: sel?.text ?? "",
-      selectedText: sel?.text || undefined,
-      anchorId,
-    });
+    const anchor = anchorId && sel?.text
+      ? { anchorId, anchorText: sel.text }
+      : undefined;
+    const created = addRevisionComment(null, undefined, anchor);
     if (anchorId) {
       const ed = editorRef.current?.getEditor();
       if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", created.id);
     }
     popCardAtAnchor("revision", created.id, anchorRect);
-  }, [readSelection, addComment, popCardAtAnchor]);
+  }, [readSelection, addRevisionComment, popCardAtAnchor, editorRef]);
 
   const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
@@ -3137,6 +3267,13 @@ export default function EditorLayout() {
     cardCreation.createCitation({ anchorRect });
   }, [cardCreation]);
 
+  const handleToolbarCreateBibEntry = useCallback((_anchorRect: DOMRect | null) => {
+    const placement = prefs.placements.find((p) => p.id === "bibliography");
+    const side = placement?.side ?? "left";
+    if (side === "left") setActiveLeft("bibliography");
+    else setActiveRight("bibliography");
+  }, [prefs.placements, setActiveLeft, setActiveRight]);
+
   const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
     cardCreation.createQuotation({
@@ -3159,6 +3296,7 @@ export default function EditorLayout() {
     onArchive: handleToolbarArchive,
     onCreateFootnote: handleToolbarCreateFootnote,
     onInsertCitation: handleToolbarInsertCitation,
+    onCreateBibEntry: handleToolbarCreateBibEntry,
     onQuoteSelection: handleToolbarQuoteSelection,
   }), [
     handleToolbarAddComment,
@@ -3168,6 +3306,7 @@ export default function EditorLayout() {
     handleToolbarArchive,
     handleToolbarCreateFootnote,
     handleToolbarInsertCitation,
+    handleToolbarCreateBibEntry,
     handleToolbarQuoteSelection,
   ]);
 
@@ -3434,6 +3573,31 @@ export default function EditorLayout() {
     ],
   );
 
+  // ── Soft presence: broadcast our card selections to the partner.
+  // Mapping uses the same `panelKind` strings as per-card claims so the
+  // partner-color dot lines up with the card chrome.
+  useEffect(() => {
+    if (!collab.enabled) return;
+    const cards: { panelKind: string; cardId: string }[] = [];
+    if (selectedNoteId) cards.push({ panelKind: "note", cardId: selectedNoteId });
+    if (selectedFootnoteId) cards.push({ panelKind: "footnote", cardId: selectedFootnoteId });
+    if (selectedCitationId) cards.push({ panelKind: "citation", cardId: selectedCitationId });
+    if (selectedTodoId) cards.push({ panelKind: "todo", cardId: selectedTodoId });
+    if (selectedArchiveId) cards.push({ panelKind: "archive", cardId: selectedArchiveId });
+    if (selectedCutterCardId) cards.push({ panelKind: "cut", cardId: selectedCutterCardId });
+    if (selectedQuotationGroupId) cards.push({ panelKind: "quote", cardId: selectedQuotationGroupId });
+    if (selectedCommentId) cards.push({ panelKind: "comment", cardId: selectedCommentId });
+    if (selectedBibKey) cards.push({ panelKind: "bib", cardId: selectedBibKey });
+    if (selectedExampleId) cards.push({ panelKind: "example", cardId: selectedExampleId });
+    collab.updateSelection(cards);
+  }, [
+    collab.enabled,
+    collab.updateSelection,
+    selectedNoteId, selectedFootnoteId, selectedCitationId, selectedTodoId,
+    selectedArchiveId, selectedCutterCardId, selectedQuotationGroupId,
+    selectedCommentId, selectedBibKey, selectedExampleId,
+  ]);
+
   const { handleStripClick, handleMove } = useStripHandlers({
     prefs,
     focusedHalfLeft,
@@ -3624,7 +3788,7 @@ export default function EditorLayout() {
     const ed = editorRef.current?.getEditor();
     if (ed) {
       for (const r of comments) {
-        if (r.resolved) continue;
+        if (r.kind === "suggestion" && r.status !== "pending") continue;
         const revAnchor = getTextAnchor(r);
         if (!revAnchor) continue;
         const anchorId = revAnchor.anchorId;
@@ -3881,15 +4045,10 @@ export default function EditorLayout() {
       editorRef.current.applyLinkedAnchors(records);
     }
 
-    // Legacy anchored comments: no text-anchor link yet, only `selectedText`.
-    // Try to reanchor by searching for that text; on success, persist the
-    // new id onto the comment.
-    for (const c of comments) {
-      if (getTextAnchor(c) || !c.selectedText) continue;
-      const rec = reanchorByText(editorInstance, "revision", c.selectedText);
-      if (rec) setCommentAnchor(c.id, rec.anchorId);
-    }
-  }, [editorInstance, docIdForHooks, notes, comments, cutterCards, setCommentAnchor]);
+    // Legacy anchored comments path retired with the revisions cutter rewrite.
+    // Mode B (selection) anchors now persist via the unified link helpers,
+    // so there's nothing to reanchor here.
+  }, [editorInstance, docIdForHooks, notes, comments, cutterCards]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {
@@ -4076,22 +4235,19 @@ export default function EditorLayout() {
         <RevisionsHost
           side={side}
           panelSide={revisionsPanelSide}
-          comments={comments}
-          addComment={addComment}
-          updateCommentContent={updateCommentContent}
-          setCommentAuthor={setCommentAuthor}
-          deleteComment={deleteComment}
-          suggestions={suggestionsState.suggestions}
-          currentSuggestionIndex={suggestionsState.currentIndex}
-          actOnSuggestion={handleAct}
-          updateSuggestionField={updateSuggestionField}
-          jumpToSuggestion={jumpToSuggestion}
-          pendingCommentText={pendingCommentText}
-          setPendingCommentText={setPendingCommentText}
-          pendingRevisionAnchorIdRef={pendingRevisionAnchorIdRef}
-          setCommentHighlight={setCommentHighlight}
-          setHoveredAnchorId={setHoveredAnchorId}
-          setActiveAnchorKind={setActiveAnchorKind}
+          cards={revisionCards}
+          tracker={revisionsTracker}
+          setTrackerTarget={setRevisionsTrackerTarget}
+          updateCommentContent={updateRevisionCommentContent}
+          updateCommentText={updateRevisionCommentText}
+          setCommentAiRequest={setRevisionCommentAiRequest}
+          updateSuggestionField={updateRevisionSuggestionField}
+          setSuggestionStatus={setRevisionSuggestionStatus}
+          deleteCard={deleteRevisionCard}
+          discardPristine={discardRevisionPristineCards}
+          onHoverCard={handleHoverRevisionCard}
+          onDropSelection={handleDropSelectionOnRevisions}
+          onDropParagraph={handleDropParagraphOnRevisions}
         />
       );
     }
@@ -4338,7 +4494,11 @@ export default function EditorLayout() {
           side={side}
           panelSide={cutterPanelSide}
           cards={cutterCards}
+          goal={cutterGoal}
+          setGoal={setCutterGoal}
+          clearGoal={clearCutterGoal}
           updateCommentContent={updateCutterCommentContent}
+          updateCommentText={updateCutterCommentText}
           setCommentAiRequest={setCutterCommentAiRequest}
           updateSuggestionField={updateCutterSuggestionField}
           setSuggestionStatus={setCutterSuggestionStatus}
@@ -4527,14 +4687,16 @@ export default function EditorLayout() {
     updateNote, updateNoteTitle, deleteNote,
     handleEditFootnote, handleDeleteFootnote, handleEditFootnoteTitle,
     updateArchiveSnippet, updateArchiveSnippetTitle, handleDeleteArchive,
-    updateCutterCommentContent, setCutterCommentAiRequest,
+    updateCutterCommentContent, updateCutterCommentText, setCutterCommentAiRequest,
     updateCutterSuggestionField, setCutterSuggestionStatus, deleteCutterCard,
     toggleTodo, updateTodo, updateTodoNotes, deleteTodo, setTodoAiRequest,
     getFormattedBib, getAnnotation, setAnnotation,
     requestBibReview, cancelBibReview, getBibReviewStatus,
     updateBibEntry, updateBibKeyAndType,
     updateCitation,
-    updateCommentContent, setCommentAuthor, deleteComment,
+    updateRevisionCommentContent, updateRevisionCommentText,
+    setRevisionCommentAiRequest, updateRevisionSuggestionField,
+    setRevisionSuggestionStatus, deleteRevisionCard,
     deleteQuotationGroup, updateQuotationGroupTitle,
     addQuotationReference, deleteQuotationReference, updateQuotationReferenceCiteKey,
     addQuotationQuote, updateQuotationQuote, deleteQuotationQuote, updateQuotationNotes,
@@ -4563,7 +4725,10 @@ export default function EditorLayout() {
       selectedExampleId, setSelectedExampleId,
     }}>
     <PristineCardsProvider value={pristineManager}>
+    <RecentlyAddedProvider value={recentlyAdded}>
+    <RecentlyAddedAutoClear />
     <CardCreationProvider value={cardCreation}>
+    <CollabProvider value={collab}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Top bar: logo + tabs */}
@@ -4637,6 +4802,7 @@ export default function EditorLayout() {
                     onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
                     className="topbarbtn topbarbtn-icon"
                     title="Close tab"
+                    data-helper="Close tab"
                   >
                     <IconX />
                   </button>
@@ -4649,6 +4815,7 @@ export default function EditorLayout() {
             onClick={handleNativeOpen}
             className="topbarbtn topbarbtn-icon self-center"
             title="Open folder"
+            data-helper="Open folder"
           >
             <IconPlus />
           </button>
@@ -4668,12 +4835,28 @@ export default function EditorLayout() {
               className="topbarbtn"
               aria-pressed="true"
               title="Exit focus view"
+              data-helper="Focus view"
             >
               <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="8" cy="8" r="2.25" />
                 <path d="M8 2.5v1.5M8 12v1.5M2.5 8H4M12 8h1.5" />
               </svg>
               Focus view
+            </button>
+          )}
+          {!zenModeOn && helperMode.on && (
+            <button
+              onClick={helperMode.toggle}
+              className="topbarbtn"
+              aria-pressed="true"
+              title="Exit helper mode"
+            >
+              <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="8" cy="8" r="6" />
+                <path d="M5.8 6.2a2.2 2.2 0 0 1 4.08.8c0 1.2-1.68 1.6-1.68 1.6" />
+                <circle cx="8" cy="11.5" r="0.3" fill="currentColor" stroke="none" />
+              </svg>
+              Helper mode
             </button>
           )}
           {/* ── Zen mode toggle ────────────────────────────────────────
@@ -4688,6 +4871,7 @@ export default function EditorLayout() {
             className={zenModeOn ? "topbarbtn fixed top-3 right-3 z-50" : "topbarbtn"}
             title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
             aria-pressed={zenModeOn}
+            data-helper="Zen mode"
           >
             Zen
           </button>
@@ -4709,10 +4893,12 @@ export default function EditorLayout() {
               To move / restyle this button without changing its behaviour,
               edit this JSX only. Don't hardcode the on/off logic anywhere
               else — always drive it through usePreferenceMode(). */}
+          {collabPill}
           <button
             onClick={() => setPreferencesOpen(true)}
             className="topbarbtn topbarbtn-icon"
             title="Preferences"
+            data-helper="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
                 thumb-hole cutout on the right and four color wells punched
@@ -4726,6 +4912,7 @@ export default function EditorLayout() {
               onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
               className="topbarbtn topbarbtn-icon"
               title={`Virgil v${APP_VERSION}`}
+              data-helper="Version info"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
@@ -4779,6 +4966,52 @@ export default function EditorLayout() {
               </div>
             )}
           </div>
+          <div className="relative">
+            <button
+              onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
+              className="topbarbtn topbarbtn-icon"
+              title="Help"
+              data-helper="Help"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9 9a3 3 0 0 1 5.12 1.5c0 1.5-2.12 2-2.12 2" />
+                <circle cx="12" cy="17" r="0.5" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            {helperMenuOpen && (
+              <div
+                className="absolute right-0 top-full mt-1 z-20 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  onClick={() => { helperMode.toggle(); setHelperMenuOpen(false); }}
+                  className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
+                >
+                  <span>Helper mode</span>
+                  <span className="text-[var(--accent)]">{helperMode.on ? "✓" : ""}</span>
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Print — opens a dialog with toggles for which document
+              elements and panel appendices to include, then hands off
+              to the browser's native print sheet. Cmd/Ctrl+P routes to
+              the same dialog. Disabled in code view (CodeMirror's
+              virtualized rendering doesn't paginate cleanly). */}
+          <button
+            onClick={() => setPrintOpen(true)}
+            disabled={!currentDocId || codeView}
+            className="topbarbtn topbarbtn-icon"
+            title="Print…"
+            data-helper="Print"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+          </button>
           {/* AI request — sun-star: eight equal-length rays meeting
               at the center. Cardinal lines span 20 units (2→22);
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
@@ -4787,6 +5020,7 @@ export default function EditorLayout() {
             className="topbarbtn topbarbtn-icon relative"
             aria-pressed={aiWindowOpen}
             title="AI requests"
+            data-helper="AI requests"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <g transform="rotate(15 12 12)">
@@ -4820,6 +5054,7 @@ export default function EditorLayout() {
             onClick={codeView ? switchToVisualView : switchToCodeView}
             className="topbarbtn ml-1"
             title={codeView ? "Visual Editor" : "Code Editor"}
+            data-helper={codeView ? "Visual editor" : "Code editor"}
           >
             {codeView ? (
               <>
@@ -4848,6 +5083,7 @@ export default function EditorLayout() {
             disabled={!currentDocId || isCompiling}
             className="topbarbtn ml-1"
             title={isCompiling ? "Compiling…" : "Compile to PDF"}
+            data-helper="Compile"
           >
             {isCompiling ? (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
@@ -4859,24 +5095,6 @@ export default function EditorLayout() {
               </svg>
             )}
             Compile
-          </button>
-          {/* Print — opens a dialog with toggles for which document
-              elements and panel appendices to include, then hands off
-              to the browser's native print sheet. Cmd/Ctrl+P routes to
-              the same dialog. Disabled in code view (CodeMirror's
-              virtualized rendering doesn't paginate cleanly). */}
-          <button
-            onClick={() => setPrintOpen(true)}
-            disabled={!currentDocId || codeView}
-            className="topbarbtn ml-1"
-            title="Print…"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            Print
           </button>
           </>)}
         </div>
@@ -5015,7 +5233,7 @@ export default function EditorLayout() {
 
         {/* Left icon strip — hidden in Zen mode */}
         {!zenModeOn && (
-        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
+        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
@@ -5024,6 +5242,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={!!activeLeft}
               title={activeLeft ? "Collapse panel" : "Expand panel"}
+              data-helper="Toggle sidebar"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="1.5" />
@@ -5038,6 +5257,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={activeLeft === "blank"}
               title={activeLeft === "blank" ? "Show omni-view" : "Hide omni-view"}
+              data-helper="Omni view"
             >
               <IconBlank active={activeLeft === "blank"} />
             </button>
@@ -5047,6 +5267,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={prefs.activeLeftBottom != null}
               title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+              data-helper="Split panel"
             >
               <IconSplit
                 active={prefs.activeLeftBottom != null}
@@ -5062,7 +5283,6 @@ export default function EditorLayout() {
               onClick={() => handleStripClick(p.id, "left")}
               onMove={handleMove}
               side="left"
-              badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
               iconDropMimes={iconDropMimesByPanel[p.id]}
               onIconDrop={(dt) => handleIconDrop(p.id, dt)}
@@ -5534,7 +5754,7 @@ export default function EditorLayout() {
 
         {/* Right icon strip — hidden in Zen mode */}
         {!zenModeOn && (
-        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-1.5">
+        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
           {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
@@ -5543,6 +5763,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={!!activeRight}
               title={activeRight ? "Collapse panel" : "Expand panel"}
+              data-helper="Toggle sidebar"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="1.5" />
@@ -5557,6 +5778,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={activeRight === "blank"}
               title={activeRight === "blank" ? "Show omni-view" : "Hide omni-view"}
+              data-helper="Omni view"
             >
               <IconBlank active={activeRight === "blank"} />
             </button>
@@ -5566,6 +5788,7 @@ export default function EditorLayout() {
               className="iconbtn-md iconbtn-toggle"
               aria-pressed={prefs.activeRightBottom != null}
               title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
+              data-helper="Split panel"
             >
               <IconSplit
                 active={prefs.activeRightBottom != null}
@@ -5581,7 +5804,6 @@ export default function EditorLayout() {
               onClick={() => handleStripClick(p.id, "right")}
               onMove={handleMove}
               side="right"
-              badge={p.id === "revisions" && activeRevisionsCount > 0}
               stripRef={null as any}
               iconDropMimes={iconDropMimesByPanel[p.id]}
               onIconDrop={(dt) => handleIconDrop(p.id, dt)}
@@ -5628,7 +5850,6 @@ export default function EditorLayout() {
         bibReviewRequests={bibReviewRequests}
         bibEntryRequests={entryRequests}
         comments={comments}
-        users={revisionUsers}
         bibEntries={bibEntries}
         panelAiRequests={aiRequests}
         addPanelAiRequest={addAiRequest}
@@ -5637,7 +5858,7 @@ export default function EditorLayout() {
         cancelBibReview={cancelBibReview}
         addEntryRequest={addEntryRequest}
         removeEntryRequest={removeEntryRequest}
-        addComment={addComment}
+        addComment={(opts) => addRevisionComment(null, opts.text ? undefined : undefined)}
         refreshAll={() => {
           refreshBibReview();
           refreshBibSettings();
@@ -5645,6 +5866,7 @@ export default function EditorLayout() {
         }}
       />
       {confirmDialog}
+      {identityDialog}
       {docClassDialog}
       {activeRefLabel != null && activeRefRect && (
         <LabelRefPopover
@@ -5739,7 +5961,9 @@ export default function EditorLayout() {
       })}
     </div>
     </PoppedCardsContext.Provider>
+    </CollabProvider>
     </CardCreationProvider>
+    </RecentlyAddedProvider>
     </PristineCardsProvider>
     </SelectionsProvider>
     </PanelViewModeProvider>

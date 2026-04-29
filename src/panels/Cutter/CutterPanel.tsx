@@ -5,10 +5,12 @@ import type { Editor, JSONContent } from "@tiptap/react";
 import type {
   CutterCard,
   CutterCommentCard as CutterCommentCardData,
+  CutterGoal,
   CutterSuggestionCard as CutterSuggestionCardData,
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { useWordCount } from "@/hooks/useWordCount";
 import { getLinkedParagraphIds, getTextAnchor } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
@@ -20,8 +22,10 @@ import { resolveAnchorRange } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CutterCommentCard } from "./CutterCommentCard";
 import { CutterSuggestionCard } from "./CutterSuggestionCard";
+import { CutterGoalStrip } from "./CutterGoalStrip";
 
 type Item =
   | { kind: "comment"; id: string; createdAt: string; data: CutterCommentCardData }
@@ -29,9 +33,13 @@ type Item =
 
 export default function CutterPanel({
   cards,
+  goal,
+  onSetGoal,
+  onClearGoal,
   onAddComment,
   onAddSuggestion,
   onUpdateCommentContent,
+  onUpdateCommentText,
   onSetCommentAiRequest,
   onUpdateSuggestionField,
   onAcceptSuggestion,
@@ -47,15 +55,25 @@ export default function CutterPanel({
   panelSide = "right",
   viewMode = "list",
   onViewModeChange,
+  recentlyAddedId,
 }: {
   cards: CutterCard[];
+  goal: CutterGoal | null;
+  onSetGoal: (target: number, initialWords: number) => void;
+  onClearGoal: () => void;
   onAddComment: () => CutterCommentCardData;
   onAddSuggestion: () => CutterSuggestionCardData;
   onUpdateCommentContent: (id: string, content: JSONContent) => void;
+  onUpdateCommentText: (id: string, text: string) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
     id: string,
-    field: "original_text" | "suggested_text" | "explanation",
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
     value: string,
   ) => void;
   onAcceptSuggestion: (id: string) => void;
@@ -75,8 +93,10 @@ export default function CutterPanel({
   panelSide?: "left" | "right";
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
+  recentlyAddedId?: string | null;
 }) {
   const cutterTheme = useCardTheme("cut");
+  const { counts } = useWordCount(editor ?? null);
 
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>
@@ -85,8 +105,8 @@ export default function CutterPanel({
         : { kind: "comment", id: c.id, createdAt: c.createdAt, data: c },
     );
     out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    return out;
-  }, [cards]);
+    return withRecentlyAddedFirst(out, recentlyAddedId, (i) => i.id);
+  }, [cards, recentlyAddedId]);
 
   const inTextItems = useMemo<PositionItem[]>(() => {
     if (!editor) return [];
@@ -197,6 +217,14 @@ export default function CutterPanel({
           </div>
         </ItemMenu>
       }
+      panelExtras={
+        <CutterGoalStrip
+          goal={goal}
+          currentWords={counts.total}
+          onSetGoal={onSetGoal}
+          onClearGoal={onClearGoal}
+        />
+      }
       items={items}
       getId={(it) => it.id}
       selectedId={selectedId}
@@ -238,7 +266,8 @@ export default function CutterPanel({
           <CutterCommentCard
             card={it.data}
             selected={selected}
-            onUpdate={onUpdateCommentContent}
+            editor={editor}
+            onUpdateText={onUpdateCommentText}
             onSetAiRequest={onSetCommentAiRequest}
             onDelete={onDelete}
             onSelect={onSelect}
@@ -287,7 +316,7 @@ export default function CutterPanel({
                 className="text-xs text-emerald-800 line-clamp-2 pr-6"
                 style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
               >
-                {s.suggested_text || (
+                {s.user_text || s.suggested_text || (
                   <span className="italic text-ink-muted">No replacement</span>
                 )}
               </p>

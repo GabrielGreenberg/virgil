@@ -10,6 +10,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 export interface FootnotesHostProps {
   side: Side;
@@ -30,6 +31,7 @@ export function FootnotesHost(p: FootnotesHostProps) {
   const { selectedFootnoteId, setSelectedFootnoteId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
+  const recentlyAddedId = useRecentlyAddedId("footnote");
   return (
     <FootnotePanel
       footnotes={p.footnotes}
@@ -55,6 +57,7 @@ export function FootnotesHost(p: FootnotesHostProps) {
       onDeleteAiRequest={deleteAiRequest}
       onEditTitle={p.onEditTitle}
       onEditorFocus={setOverrideEditor}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

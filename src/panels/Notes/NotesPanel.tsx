@@ -21,6 +21,7 @@ import { richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { NoteCard, startNoteDrag } from "./NoteCard";
 
 interface NotesPanelProps {
@@ -46,6 +47,7 @@ interface NotesPanelProps {
   panelSide?: "left" | "right";
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
+  recentlyAddedId?: string | null;
 }
 
 export default function NotesPanel({
@@ -71,14 +73,17 @@ export default function NotesPanel({
   panelSide = "right",
   viewMode = "list",
   onViewModeChange,
+  recentlyAddedId,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
-    () =>
-      [...notes].sort(
+    () => {
+      const out = [...notes].sort(
         (a, b) =>
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
-      ),
-    [notes],
+      );
+      return withRecentlyAddedFirst(out, recentlyAddedId, (n) => n.id);
+    },
+    [notes, recentlyAddedId],
   );
 
   const myAiRequests = useMemo(

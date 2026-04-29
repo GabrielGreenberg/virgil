@@ -112,6 +112,8 @@ export function TodoRow({
           onClick={(e) => e.stopPropagation()}
           className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
           title="Drag to anchor in text"
+          data-helper="Drag to anchor"
+          data-helper-pos="above"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="3" cy="2" r="1.2" />
@@ -130,6 +132,8 @@ export function TodoRow({
           }}
           className="shrink-0"
           title={item.done ? "Mark as not done" : "Mark as done"}
+          data-helper={item.done ? "Undo done" : "Mark done"}
+          data-helper-pos="above"
         >
           {item.done ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
@@ -162,6 +166,8 @@ export function TodoRow({
             onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
           }}
           title={isAnchored ? "Jump to in text" : "Not anchored in document"}
+          data-helper={isAnchored ? "Jump to" : "Not anchored"}
+          data-helper-pos="above"
         />
       </div>
 
@@ -182,7 +188,7 @@ export function TodoRow({
           placeholder="Notes..."
           data-panel-kind="todo"
           style={todoBodyStyle}
-          className={`w-full bg-transparent text-xs text-ink-body placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed${isPoppedOut ? " flex-1 min-h-0" : ""}`}
+          className={`w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed${isPoppedOut ? " flex-1 min-h-0" : ""}`}
           rows={isPoppedOut ? undefined : 2}
         />
         <button

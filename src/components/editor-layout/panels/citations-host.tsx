@@ -12,6 +12,7 @@ import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
@@ -54,6 +55,7 @@ export function CitationsHost(p: CitationsHostProps) {
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
   const { createCitation } = useCardCreationContext();
+  const recentlyAddedId = useRecentlyAddedId("citation");
   return (
     <CitationsPanel
       citations={p.citations}
@@ -104,6 +106,7 @@ export function CitationsHost(p: CitationsHostProps) {
       onAddAiRequest={() => addAiRequest("citation")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

@@ -2,39 +2,84 @@
 
 import { useMemo, useState } from "react";
 import type { Editor, JSONContent } from "@tiptap/react";
-import type { Comment, Suggestion } from "@/lib/types";
-import { PANEL, ItemMenu } from "@/components/panel-primitives";
+import type {
+  RevisionCard,
+  RevisionCommentCard as RevisionCommentCardData,
+  RevisionsTracker,
+  RevisionSuggestionCard as RevisionSuggestionCardData,
+} from "@/lib/types";
+import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
+import { getLinkedParagraphIds, getTextAnchor } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import ViewToggle from "@/components/ViewToggle";
 import {
   useInTextPositions,
   type PositionItem,
 } from "@/hooks/useInTextPositions";
-import { resolveAnchorRange, getTextAnchor } from "@/links/links";
+import { resolveAnchorRange } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
-import { CommentCard } from "./CommentCard";
-import { SuggestionCard } from "./SuggestionCard";
-import { RevisionsHeaderBar } from "./RevisionsHeaderBar";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
+import { RevisionCommentCard } from "./RevisionCommentCard";
+import { RevisionSuggestionCard } from "./RevisionSuggestionCard";
+import { RevisionsTrackerStrip } from "./RevisionsTracker";
 
-interface RevisionsPanelProps {
-  comments: Comment[];
-  suggestions: Suggestion[];
-  currentSuggestionIndex: number;
-  onAddEmptyComment: () => Comment | null;
-  onUpdateContent: (id: string, content: JSONContent) => void;
-  onSetAuthor: (id: string, authorId: string) => void;
+type Item =
+  | { kind: "comment"; id: string; createdAt: string; data: RevisionCommentCardData }
+  | { kind: "suggestion"; id: string; createdAt: string; data: RevisionSuggestionCardData };
+
+export default function RevisionsPanel({
+  cards,
+  tracker,
+  onSetTrackerTarget,
+  onAddComment,
+  onAddSuggestion,
+  onUpdateCommentContent,
+  onUpdateCommentText,
+  onSetCommentAiRequest,
+  onUpdateSuggestionField,
+  onAcceptSuggestion,
+  onRejectSuggestion,
+  onDelete,
+  onSelect,
+  selectedId,
+  onJumpToCard,
+  onHoverCard,
+  onDropSelection,
+  onDropParagraph,
+  editor,
+  panelSide = "right",
+  viewMode = "list",
+  onViewModeChange,
+  recentlyAddedId,
+}: {
+  cards: RevisionCard[];
+  tracker: RevisionsTracker | null;
+  onSetTrackerTarget: (target: number | null) => void;
+  onAddComment: () => RevisionCommentCardData;
+  onAddSuggestion: () => RevisionSuggestionCardData;
+  onUpdateCommentContent: (id: string, content: JSONContent) => void;
+  onUpdateCommentText: (id: string, text: string) => void;
+  onSetCommentAiRequest: (id: string, value: boolean) => void;
+  onUpdateSuggestionField: (
+    id: string,
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
+    value: string,
+  ) => void;
+  onAcceptSuggestion: (id: string) => void;
+  onRejectSuggestion: (id: string) => void;
   onDelete: (id: string) => void;
-  onActOnSuggestion: (id: string, action: "accepted" | "rejected" | "skipped") => void;
-  onUpdateSuggestionField: (id: string, field: "revision" | "note", value: string) => void;
-  onJumpSuggestion: (index: number) => void;
-  visible: boolean;
-  selectedCommentId: string | null;
-  onSelectComment: (id: string | null) => void;
-  onHighlight: (text: string | null) => void;
-  onHoverComment?: (id: string | null) => void;
+  onSelect: (id: string | null) => void;
+  selectedId: string | null;
+  onJumpToCard?: (card: RevisionCard, sourceEl?: HTMLElement | null) => void;
+  onHoverCard?: (id: string | null) => void;
   onDropSelection?: (payload: {
     from: number;
     to: number;
@@ -45,71 +90,48 @@ interface RevisionsPanelProps {
   panelSide?: "left" | "right";
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
-}
+  recentlyAddedId?: string | null;
+}) {
+  const revisionTheme = useCardTheme("revision");
 
-type Item =
-  | { kind: "comment"; id: string; createdAt: string; data: Comment }
-  | { kind: "suggestion"; id: string; createdAt: string; data: Suggestion };
-
-export default function RevisionsPanel({
-  comments,
-  suggestions,
-  currentSuggestionIndex,
-  onAddEmptyComment,
-  onUpdateContent,
-  onSetAuthor,
-  onDelete,
-  onActOnSuggestion,
-  onUpdateSuggestionField,
-  onJumpSuggestion,
-  visible,
-  selectedCommentId,
-  onSelectComment,
-  onHighlight,
-  onHoverComment,
-  onDropSelection,
-  onDropParagraph,
-  editor,
-  panelSide = "right",
-  viewMode = "list",
-  onViewModeChange,
-}: RevisionsPanelProps) {
-  const commentTheme = useCardTheme("revision");
-
-  // Suggestions don't carry createdAt, so they sort by their array order
-  // (the order Claude emitted them) interleaved at the front of the list.
   const items = useMemo<Item[]>(() => {
-    const out: Item[] = [];
-    suggestions.forEach((s, i) => {
-      out.push({
-        kind: "suggestion",
-        id: `suggestion:${s.id}`,
-        // Suggestions appear at the top in emit order — synthesize a
-        // pre-epoch timestamp keyed by index so they sort before comments.
-        createdAt: `0000-${String(i).padStart(10, "0")}`,
-        data: s,
-      });
-    });
-    for (const c of comments) {
-      out.push({ kind: "comment", id: c.id, createdAt: c.createdAt, data: c });
-    }
+    const out: Item[] = cards.map((c) =>
+      c.kind === "suggestion"
+        ? { kind: "suggestion", id: c.id, createdAt: c.createdAt, data: c }
+        : { kind: "comment", id: c.id, createdAt: c.createdAt, data: c },
+    );
     out.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    return out;
-  }, [comments, suggestions]);
+    return withRecentlyAddedFirst(out, recentlyAddedId, (i) => i.id);
+  }, [cards, recentlyAddedId]);
 
-  const totalCount = comments.length + suggestions.length;
+  const acceptedCount = useMemo(
+    () =>
+      cards.filter((c) => c.kind === "suggestion" && c.status === "accepted").length,
+    [cards],
+  );
+  const suggestionCount = useMemo(
+    () => cards.filter((c) => c.kind === "suggestion").length,
+    [cards],
+  );
 
   const inTextItems = useMemo<PositionItem[]>(() => {
     if (!editor) return [];
     const out: PositionItem[] = [];
-    for (const c of comments) {
+    for (const c of cards) {
       const ta = getTextAnchor(c);
-      if (!ta) continue;
-      const range = resolveAnchorRange(editor, ta.anchorId);
-      if (range) out.push({ id: c.id, pos: range.from });
+      if (ta) {
+        const range = resolveAnchorRange(editor, ta.anchorId);
+        if (range) {
+          out.push({ id: c.id, pos: range.from });
+          continue;
+        }
+      }
+      const pids = getLinkedParagraphIds(c);
+      if (pids.length === 0) continue;
+      out.push({ id: c.id, pos: 0 });
     }
     return out;
-  }, [editor, comments]);
+  }, [editor, cards]);
   const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
     editor ?? null,
     inTextItems,
@@ -174,65 +196,47 @@ export default function RevisionsPanel({
       }
     : undefined;
 
-  if (!visible) return null;
-
-  const headerLeading = (
-    <ItemMenu align="left">
-      <div className="px-3 py-1.5 flex items-center justify-end gap-2">
-        <PanelThemePicker panelKey="revision" label="Revision color" />
-        {onViewModeChange && (
-          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-        )}
-      </div>
-    </ItemMenu>
+  const onAddOptions = useMemo(
+    () => [
+      { label: "Comment", onClick: () => onAddComment() },
+      { label: "Suggestion", onClick: () => onAddSuggestion() },
+    ],
+    [onAddComment, onAddSuggestion],
   );
-
-  const handleAdd = () => {
-    const created = onAddEmptyComment();
-    if (created) onSelectComment(created.id);
-  };
-
-  // Suggestion-list selection id is the synthesized id (`suggestion:${id}`)
-  // so the panel can distinguish suggestion vs comment selection without
-  // overloading selectedCommentId, which is owned by the comment lookups.
-  const handleSelect = (id: string | null) => {
-    if (id == null) {
-      onSelectComment(null);
-      return;
-    }
-    if (id.startsWith("suggestion:")) {
-      // Selection of suggestion cards stays inside the panel — we mirror
-      // it as the list's selected id but don't surface it to the cross-cutting
-      // comment-selection hook (which deals with anchored cards).
-      onSelectComment(id);
-      return;
-    }
-    onSelectComment(id);
-  };
-
-  const handleJumpSuggestion = (index: number) => {
-    onJumpSuggestion(index);
-    const s = suggestions[index];
-    if (s) onSelectComment(`suggestion:${s.id}`);
-  };
 
   return (
     <CardListPanel<Item>
       kind="revisions"
-      count={totalCount}
-      onAdd={handleAdd}
-      headerLeading={headerLeading}
+      count={cards.length}
+      onAddOptions={onAddOptions}
+      headerLeading={
+        <ItemMenu align="left">
+          <div className="px-3 py-1.5 flex items-center justify-end gap-2">
+            <PanelThemePicker panelKey="revision" label="Revisions color" />
+            {onViewModeChange && (
+              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
+            )}
+          </div>
+        </ItemMenu>
+      }
       panelExtras={
-        <RevisionsHeaderBar
-          suggestions={suggestions}
-          currentIndex={currentSuggestionIndex}
-          onJump={handleJumpSuggestion}
+        <RevisionsTrackerStrip
+          tracker={tracker}
+          acceptedCount={acceptedCount}
+          totalCount={suggestionCount}
+          onSetTarget={onSetTrackerTarget}
         />
       }
       items={items}
       getId={(it) => it.id}
-      selectedId={selectedCommentId}
-      onSelect={handleSelect}
+      selectedId={selectedId}
+      onSelect={onSelect}
+      emptyState={
+        <div className={PANEL.empty}>
+          No comments or suggestions yet. Click + to add one, or drop a
+          paragraph or selection here.
+        </div>
+      }
       viewMode={viewMode}
       inTextPositions={positions}
       inTextScrollHeight={editorScrollHeight}
@@ -241,85 +245,105 @@ export default function RevisionsPanel({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       showDropPlaceholder={isDragOver}
-      emptyState={
-        <div className={PANEL.empty}>
-          No comments or suggestions yet. Click + to add a comment, or drop
-          a paragraph or selection here.
-        </div>
-      }
       renderCard={(it, { selected }) => {
         if (it.kind === "suggestion") {
           return (
-            <SuggestionCard
-              suggestion={it.data}
+            <RevisionSuggestionCard
+              card={it.data}
               selected={selected}
-              onSelect={(nextId) => handleSelect(nextId == null ? null : it.id)}
-              onAct={onActOnSuggestion}
               onUpdateField={onUpdateSuggestionField}
+              onAccept={onAcceptSuggestion}
+              onReject={onRejectSuggestion}
+              onDelete={onDelete}
+              onSelect={onSelect}
+              onJump={
+                onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+                  ? (sourceEl) => onJumpToCard(it.data, sourceEl)
+                  : undefined
+              }
             />
           );
         }
-        const c = it.data;
         return (
-          <CommentCard
-            comment={c}
+          <RevisionCommentCard
+            card={it.data}
             selected={selected}
-            onSelect={(nextId) => {
-              if (c.selectedText) onHighlight(null);
-              onSelectComment(nextId);
-            }}
-            onJump={
-              c.selectedText
-                ? () => {
-                    onHighlight(null);
-                    queueMicrotask(() => onHighlight(c.selectedText ?? null));
-                  }
-                : undefined
-            }
-            onUpdateContent={onUpdateContent}
-            onSetAuthor={onSetAuthor}
+            editor={editor}
+            onUpdateText={onUpdateCommentText}
+            onSetAiRequest={onSetCommentAiRequest}
             onDelete={onDelete}
-            onHoverChange={
-              onHoverComment
-                ? (hovering) => onHoverComment(hovering ? c.id : null)
+            onSelect={onSelect}
+            onJump={
+              onJumpToCard && getLinkedParagraphIds(it.data).length > 0
+                ? (sourceEl) => onJumpToCard(it.data, sourceEl)
                 : undefined
             }
-            extraDataAttrs={
-              c.selectedText ? { "data-revision-entry": c.id } : undefined
+            onHoverChange={
+              onHoverCard
+                ? (hovering) => onHoverCard(hovering ? it.data.id : null)
+                : undefined
             }
           />
         );
       }}
       inTextRenderItem={(it, { selected }) => {
-        // In-text mode only shows anchored items — suggestions have no
-        // anchor (yet), so they stay in list view.
-        if (it.kind !== "comment") return null;
+        const borderColor = revisionTheme.borderSelected;
+        const selectedBg = revisionTheme.headerSelected;
+        if (it.kind === "suggestion") {
+          const s = it.data;
+          return (
+            <div
+              data-revision-suggestion-entry={s.id}
+              className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
+              style={
+                selected
+                  ? {
+                      borderLeftColor: borderColor,
+                      backgroundColor: selectedBg ?? "rgba(124, 58, 237, 0.08)",
+                    }
+                  : undefined
+              }
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(selected ? null : s.id);
+              }}
+            >
+              {s.original_text && (
+                <p className="text-[11px] line-through text-red-700 truncate">
+                  {s.original_text}
+                </p>
+              )}
+              <p
+                className="text-xs text-emerald-800 line-clamp-2 pr-6"
+                style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
+              >
+                {s.user_text || s.suggested_text || (
+                  <span className="italic text-ink-muted">No replacement</span>
+                )}
+              </p>
+            </div>
+          );
+        }
         const c = it.data;
-        if (!c.selectedText) return null;
-        const borderColor = commentTheme.borderSelected;
-        const selectedBg = commentTheme.headerSelected;
+        const preview = c.text || "";
         return (
           <div
-            data-revision-entry={c.id}
+            data-revision-comment-entry={c.id}
             className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
             style={
               selected
                 ? {
                     borderLeftColor: borderColor,
-                    backgroundColor: selectedBg,
+                    backgroundColor: selectedBg ?? "rgba(180, 87, 87, 0.08)",
                   }
                 : undefined
             }
             onClick={(e) => {
               e.stopPropagation();
-              onSelectComment(selected ? null : c.id);
+              onSelect(selected ? null : c.id);
             }}
-            onMouseEnter={
-              onHoverComment ? () => onHoverComment(c.id) : undefined
-            }
-            onMouseLeave={
-              onHoverComment ? () => onHoverComment(null) : undefined
-            }
+            onMouseEnter={onHoverCard ? () => onHoverCard(c.id) : undefined}
+            onMouseLeave={onHoverCard ? () => onHoverCard(null) : undefined}
           >
             {c.selectedText && (
               <div className="text-[10px] italic text-ink-muted truncate mb-0.5">
@@ -330,7 +354,7 @@ export default function RevisionsPanel({
               className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
               style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
             >
-              {c.text || (
+              {preview || (
                 <span className="italic text-ink-muted">Empty comment</span>
               )}
             </p>

@@ -177,6 +177,8 @@ export function ErrorCard({
           onClick={(e) => e.stopPropagation()}
           className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
           title="Drag error text"
+          data-helper="Drag"
+          data-helper-pos="above"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="3" cy="2" r="1.2" />

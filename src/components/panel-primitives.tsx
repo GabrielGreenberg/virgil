@@ -36,6 +36,26 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
+import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
+import CollabClaimPill from "./CollabClaimPill";
+import CollabPresenceDots from "./CollabPresenceDots";
+
+/* ── Per-card claim context ─────────────────────────────────────────
+ *  EditableCard publishes its (panelKind, cardId) here so deeply-nested
+ *  inputs (e.g. CardTitleInput rendered as `headerContent`) can attach
+ *  their own focus/blur to the same claim without prop-drilling.
+ */
+export interface CardClaimSlot {
+  panelKind: string | undefined;
+  cardId: string | undefined;
+  /** True when the partner has this card claimed. Title inputs go
+   *  read-only / pointer-events:none when set. */
+  partnerClaimed: boolean;
+}
+const CardClaimContext = createContext<CardClaimSlot | null>(null);
+function useCardClaimSlot(): CardClaimSlot | null {
+  return useContext(CardClaimContext);
+}
 
 /* ── Class-string constants ───────────────────────────────────────── */
 
@@ -144,11 +164,9 @@ export const CARD_THEMES = {
   // tint error cards.
   aiRequest: themeFromAccent("#0ea5e9"),  // sky
   error:     themeFromAccent("#b45757"),  // rust (same family as footnote, decoupled)
-  // Cutter panel hosts two card kinds. Comments share the panel accent
-  // (rust); suggestions get a distinct fixed accent so the kind reads at
-  // a glance regardless of the user's panel-color override.
+  // Cutter panel hosts both comments and suggestions; both kinds share
+  // the panel's cut accent so the panel reads as a single themed surface.
   cut:              themeFromAccent(DEFAULT_PANEL_COLORS.cut),
-  cutterSuggestion: themeFromAccent("#7c3aed"),  // violet
   example:          themeFromAccent(DEFAULT_PANEL_COLORS.example),
 } satisfies Record<string, CardTheme>;
 
@@ -161,6 +179,29 @@ export function BadgeLabel({ label, theme }: { label: string | number; theme: Ca
   return (
     <span className={BADGE_BASE} style={{ background: theme.badgeBg, color: theme.badgeColor, border: `1.5px solid ${theme.badgeBorder}` }}>
       {label}
+    </span>
+  );
+}
+
+/** Tiny header label for an anchored card: "selection · 14 words" or
+ *  "paragraph · 47 words". Returns null when the summary is null so callers
+ *  can drop it inline without conditionals. */
+export function AnchorBadge({
+  summary,
+}: {
+  summary:
+    | { kind: "selection"; words: number }
+    | { kind: "paragraph"; words: number }
+    | null;
+}) {
+  if (!summary) return null;
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] text-[var(--muted)] tabular-nums shrink-0">
+      <span>{summary.kind}</span>
+      <span aria-hidden="true">·</span>
+      <span>
+        {summary.words} {summary.words === 1 ? "word" : "words"}
+      </span>
     </span>
   );
 }
@@ -212,6 +253,11 @@ export function CardTitleInput({
     ? { ...TITLE_STYLE, color: theme.titleColor, ...style }
     : style ? { ...TITLE_STYLE, ...style } : TITLE_STYLE;
   const inputRef = useRef<HTMLInputElement>(null);
+  // If rendered inside an EditableCard, hook into that card's claim slot
+  // so title edits also assert ownership and the input goes read-only
+  // when the partner has the card claimed.
+  const slot = useCardClaimSlot();
+  const { claim, release } = useCardClaim(slot?.panelKind, slot?.cardId);
   useEffect(() => {
     if (!inputRef.current) return;
     return autoSizeInput(inputRef.current);
@@ -222,14 +268,23 @@ export function CardTitleInput({
         ref={inputRef}
         type="text"
         defaultValue={defaultValue ?? ""}
-        onBlur={onChange ? (e) => onChange(e.target.value) : undefined}
+        onFocus={() => claim()}
+        onBlur={(e) => {
+          release();
+          if (onChange) onChange(e.target.value);
+        }}
         onClick={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         draggable={false}
+        readOnly={!!slot?.partnerClaimed}
         onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
         placeholder={placeholder}
         className={TITLE_CLASS}
-        style={merged}
+        style={
+          slot?.partnerClaimed
+            ? { ...merged, opacity: 0.55, pointerEvents: "none" }
+            : merged
+        }
       />
     </div>
   );
@@ -348,6 +403,17 @@ export function EditableCard({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // Collab focus claim: when the partner has this card focused, dim it
+  // and surface a "Sam · 12s" pill in the header. When we focus, write
+  // our own claim; on blur, release.
+  const { partnerClaim, claim: claimCard, release: releaseClaim } = useCardClaim(panelKey, id);
+  // Soft presence: which partners have this card selected (informational
+  // dot in the chrome, no locking).
+  const collabCtx = useCollabContext();
+  const partnerSelections = panelKey
+    ? collabCtx.getCardSelections(panelKey, id)
+    : [];
+
   /** Check whether the value has any visible text content. */
   const hasContent = useCallback(() => {
     if (!value) return false;
@@ -384,11 +450,14 @@ export function EditableCard({
     (focused: boolean, editor?: any) => {
       setIsFocused(focused);
       if (focused) {
+        claimCard();
         onBodyFocus?.();
         if (editor) onEditorFocus?.(editor);
+      } else {
+        releaseClaim();
       }
     },
-    [onBodyFocus, onEditorFocus],
+    [onBodyFocus, onEditorFocus, claimCard, releaseClaim],
   );
 
   // When grabHandle is active, only the grip is draggable — not the whole card.
@@ -408,6 +477,9 @@ export function EditableCard({
   const showHeaderMenu = !inlineDelete;
 
   return (
+    <CardClaimContext.Provider
+      value={{ panelKind: panelKey, cardId: id, partnerClaimed: !!partnerClaim }}
+    >
     <PanelCard
       ref={cardRef}
       {...dataAttrs}
@@ -454,6 +526,8 @@ export function EditableCard({
             onClick={(e) => e.stopPropagation()}
             className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
             title="Drag to reorder"
+            data-helper="Drag to reorder"
+            data-helper-pos="above"
           >
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
               <circle cx="3" cy="2" r="1.2" />
@@ -472,6 +546,11 @@ export function EditableCard({
         )}
         {!headerContent && !hideToolbar && <div className="flex-1" />}
         {headerTrailing}
+        {partnerClaim ? (
+          <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
+        ) : (
+          <CollabPresenceDots presences={partnerSelections} />
+        )}
         {showHeaderMenu && (
           <div
             draggable={false}
@@ -490,8 +569,17 @@ export function EditableCard({
         style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
-      {/* Body */}
-      <div className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+      {/* Body. When the partner has claimed this card, dim it and gate
+          pointer events so the user can't accidentally focus into it. */}
+      <div
+        className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
+        style={
+          partnerClaim
+            ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
+            : undefined
+        }
+        title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
+      >
         {/* Optional text-drag handle — drags only text content for inline insertion */}
         {onTextDragStart && (
           <div
@@ -500,6 +588,8 @@ export function EditableCard({
             onClick={(e) => e.stopPropagation()}
             className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
             title="Drag text into document"
+            data-helper="Drag text"
+            data-helper-pos="above"
           >
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
               <circle cx="3" cy="2" r="1.2" />
@@ -546,6 +636,7 @@ export function EditableCard({
         />
       )}
     </PanelCard>
+    </CardClaimContext.Provider>
   );
 }
 
@@ -770,6 +861,7 @@ export function PopoutButton({
       className={className ?? POPOUT_BUTTON_CLASS}
       title={title}
       aria-label={title}
+      data-helper={isPoppedOut ? "Dock" : "Pop out"}
       dangerouslySetInnerHTML={{
         __html: popoutSvgOuter(popoutSvgInner(isPoppedOut, variant)),
       }}
@@ -800,6 +892,7 @@ export function createPopoutButtonEl(opts: {
     : POPOUT_BUTTON_CLASS;
   btn.title = title;
   btn.setAttribute("aria-label", title);
+  btn.setAttribute("data-helper", opts.isPoppedOut ? "Dock" : "Pop out");
   btn.innerHTML = popoutSvgOuter(popoutSvgInner(opts.isPoppedOut, variant));
   // Fire on mousedown (with preventDefault) so the action runs BEFORE the
   // host's focus-driven selection logic — otherwise an unselected card eats
@@ -855,6 +948,7 @@ export function PanelClose() {
       className="iconbtn-sm -mr-1"
       title="Close panel"
       aria-label="Close panel"
+      data-helper="Close panel"
     >
       <svg
         width="14"
@@ -919,6 +1013,8 @@ export function CardTrashButton({
       className="iconbtn-sm iconbtn-danger absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity"
       title={title}
       aria-label={title}
+      data-helper="Delete"
+      data-helper-pos="above"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="3 6 5 6 21 6" />
@@ -1082,6 +1178,7 @@ export function PanelHeader({
           onClick={onAdd}
           className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
           title="Add"
+          data-helper="Add"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14M5 12h14" />
@@ -1093,6 +1190,7 @@ export function PanelHeader({
           onClick={onAiRequest}
           className={`w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-sky-600 hover:bg-sky-50 transition-colors${onAdd ? " -ml-1" : ""}`}
           title="New AI request"
+          data-helper="AI request"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             <g transform="rotate(15 12 12)">
@@ -1172,6 +1270,7 @@ function HeaderAddDropdown({
         onClick={handleToggle}
         className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
         title="Add"
+        data-helper="Add"
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -1351,6 +1450,8 @@ export function AiRequestCard({
           onMouseDown={(e) => e.stopPropagation()}
           className="text-ink-muted hover:text-ink-body shrink-0 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Delete request"
+          data-helper="Delete request"
+          data-helper-pos="above"
         >
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18" />
@@ -1545,6 +1646,7 @@ export function ItemMenu({
             : "iconbtn-md"
         }
         title="Options"
+        data-helper="Options"
       >
         <svg width={isPanelHeader ? 14 : 16} height={isPanelHeader ? 14 : 16} viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <circle cx="12" cy="5" r="2" />
@@ -1672,6 +1774,8 @@ export function TargetFileIcon({
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
+      data-helper="Jump to text"
+      data-helper-pos="above"
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Page outline (shifted right so arrow stem is visible) */}
@@ -1703,6 +1807,8 @@ export function TargetIcon({
       onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
       className={`iconbtn-md iconbtn-on-dark ${className ?? ""}`}
       title={title}
+      data-helper="Jump to text"
+      data-helper-pos="above"
     >
       <svg width="16" height="16" viewBox="-2 0 26 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         {/* Rounded pod/card outline (same bounding box as the file icon) */}

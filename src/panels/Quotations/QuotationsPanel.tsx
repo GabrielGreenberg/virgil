@@ -21,6 +21,7 @@ import {
   getParagraphAnchorPositions,
 } from "@/hooks/useInTextPositions";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { getLinkedParagraphIds } from "@/links/links";
 import { QuotationGroupCard } from "./QuotationGroupCard";
 
@@ -55,6 +56,7 @@ export interface QuotationsPanelProps {
   onViewModeChange: (mode: "list" | "in-text") => void;
   editor: Editor | null;
   panelSide: "left" | "right";
+  recentlyAddedId?: string | null;
 }
 
 export default function QuotationsPanel({
@@ -82,6 +84,7 @@ export default function QuotationsPanel({
   onViewModeChange,
   editor,
   panelSide,
+  recentlyAddedId,
 }: QuotationsPanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "quotation"),
@@ -215,7 +218,11 @@ export default function QuotationsPanel({
           label=""
         />
       }
-      items={viewMode === "in-text" ? anchoredGroups : groups}
+      items={
+        viewMode === "in-text"
+          ? anchoredGroups
+          : withRecentlyAddedFirst(groups, recentlyAddedId, (g) => g.id)
+      }
       getId={(g) => g.id}
       selectedId={selectedGroupId}
       onSelect={setSelectedGroupId}

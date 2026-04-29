@@ -8,6 +8,7 @@ import type {
   CutterCard,
   CutterCommentCard,
   CutterSuggestionCard,
+  CutterGoal,
 } from "@/lib/types";
 import {
   normalizeRichContent,
@@ -27,7 +28,21 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
 
-const EMPTY_STATE: CutterState = { cards: [] };
+const EMPTY_STATE: CutterState = { cards: [], goal: null };
+
+function migrateGoal(raw: unknown): CutterGoal | null {
+  if (!raw || typeof raw !== "object") return null;
+  const g = raw as Partial<CutterGoal>;
+  if (
+    typeof g.target !== "number" ||
+    typeof g.initialWords !== "number" ||
+    typeof g.setAt !== "string"
+  )
+    return null;
+  if (!Number.isFinite(g.target) || g.target < 0) return null;
+  if (!Number.isFinite(g.initialWords) || g.initialWords < 0) return null;
+  return { target: g.target, initialWords: g.initialWords, setAt: g.setAt };
+}
 
 function rewriteLinkTargetKind(
   links: unknown[],
@@ -81,11 +96,13 @@ function migrateSuggestion(raw: unknown): CutterSuggestionCard | null {
     kind: "suggestion",
     id: r.id,
     createdAt: r.createdAt,
+    author: r.author === "ai" ? "ai" : "human",
     original_text: typeof r.original_text === "string" ? r.original_text : "",
     suggested_text: typeof r.suggested_text === "string" ? r.suggested_text : "",
     explanation: typeof r.explanation === "string" ? r.explanation : "",
+    user_text: typeof r.user_text === "string" ? r.user_text : "",
+    instructions: typeof r.instructions === "string" ? r.instructions : "",
     status,
-    source: "author",
     selectedText:
       r.selectedText ??
       (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
@@ -100,14 +117,16 @@ function migrateCard(raw: unknown): CutterCard | null {
 }
 
 function migrateCutter(raw: unknown): CutterState {
-  if (!raw || typeof raw !== "object") return { cards: [] };
-  const r = raw as { cards?: unknown; cuts?: unknown };
+  if (!raw || typeof raw !== "object") return { cards: [], goal: null };
+  const r = raw as { cards?: unknown; cuts?: unknown; goal?: unknown };
+  const goal = migrateGoal(r.goal);
 
   if (Array.isArray(r.cards)) {
     return {
       cards: r.cards
         .map(migrateCard)
         .filter((c): c is CutterCard => c !== null),
+      goal,
     };
   }
 
@@ -147,10 +166,10 @@ function migrateCutter(raw: unknown): CutterState {
         links,
       });
     }
-    return { cards };
+    return { cards, goal };
   }
 
-  return { cards: [] };
+  return { cards: [], goal };
 }
 
 export function useCutter(
@@ -192,7 +211,7 @@ export function useCutter(
         );
       // Only blank-on-creation cards are pristine.
       if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
-      update((prev) => ({ cards: [...prev.cards, card] }));
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
     [update, pristine, state.cards.length],
@@ -208,11 +227,13 @@ export function useCutter(
         kind: "suggestion",
         id: generateEntityId(),
         createdAt: new Date().toISOString(),
+        author: "human",
         original_text: originalText ?? anchor?.anchorText ?? "",
         suggested_text: "",
         explanation: "",
+        user_text: "",
+        instructions: "",
         status: "pending",
-        source: "author",
         selectedText: anchor?.anchorText,
         links: [],
       };
@@ -227,7 +248,7 @@ export function useCutter(
         );
       // A suggestion with no seed text/anchor/paragraph is pristine.
       if (!originalText && !anchor && !paragraphId) pristine.markNew(card.id);
-      update((prev) => ({ cards: [...prev.cards, card] }));
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
       return card;
     },
     [update, pristine],
@@ -238,6 +259,7 @@ export function useCutter(
       pristine.markDirty(id);
       const text = richJsonToPlainText(content) || "";
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "comment"
             ? { ...c, content, text }
@@ -248,10 +270,27 @@ export function useCutter(
     [update, pristine],
   );
 
+  const updateCommentText = useCallback(
+    (id: string, text: string) => {
+      pristine.markDirty(id);
+      const content: JSONContent = text
+        ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] }
+        : emptyRichContent();
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "comment" ? { ...c, content, text } : c,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
   const setCommentAiRequest = useCallback(
     (id: string, value: boolean) => {
       pristine.markDirty(id);
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
@@ -263,11 +302,17 @@ export function useCutter(
   const updateSuggestionField = useCallback(
     (
       id: string,
-      field: "original_text" | "suggested_text" | "explanation",
+      field:
+        | "original_text"
+        | "suggested_text"
+        | "explanation"
+        | "user_text"
+        | "instructions",
       value: string,
     ) => {
       pristine.markDirty(id);
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "suggestion" ? { ...c, [field]: value } : c,
         ),
@@ -280,6 +325,7 @@ export function useCutter(
     (id: string, status: CutterSuggestionCard["status"]) => {
       pristine.markDirty(id);
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "suggestion" ? { ...c, status } : c,
         ),
@@ -288,9 +334,28 @@ export function useCutter(
     [update, pristine],
   );
 
+  const setGoal = useCallback(
+    (target: number, initialWords: number) => {
+      if (!Number.isFinite(target) || target < 0) return;
+      if (!Number.isFinite(initialWords) || initialWords < 0) return;
+      const goal: CutterGoal = {
+        target: Math.round(target),
+        initialWords: Math.round(initialWords),
+        setAt: new Date().toISOString(),
+      };
+      update((prev) => ({ ...prev, goal }));
+    },
+    [update],
+  );
+
+  const clearGoal = useCallback(() => {
+    update((prev) => ({ ...prev, goal: null }));
+  }, [update]);
+
   const addCardParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id
             ? addParagraphLink(
@@ -308,6 +373,7 @@ export function useCutter(
   const removeCardParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
+        ...prev,
         cards: prev.cards.map((c) =>
           c.id === id ? removeParagraphLink(c, paragraphId) : c,
         ),
@@ -319,7 +385,7 @@ export function useCutter(
   const deleteCard = useCallback(
     (id: string) => {
       pristine.markDirty(id);
-      update((prev) => ({ cards: prev.cards.filter((c) => c.id !== id) }));
+      update((prev) => ({ ...prev, cards: prev.cards.filter((c) => c.id !== id) }));
     },
     [update, pristine],
   );
@@ -332,7 +398,7 @@ export function useCutter(
     const ids = localPristine.takePristine();
     if (ids.length === 0) return;
     const idSet = new Set(ids);
-    update((prev) => ({ cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
+    update((prev) => ({ ...prev, cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
   }, [update, externalPristine, localPristine]);
 
   const clearCardAnchor = useCallback(
@@ -344,6 +410,7 @@ export function useCutter(
           return prev;
         }
         return {
+          ...prev,
           cards: prev.cards.map((c) =>
             getTextAnchor(c)?.anchorId === anchorId
               ? clearTextAnchorLink(
@@ -382,12 +449,16 @@ export function useCutter(
 
   return {
     cards: state.cards,
+    goal: state.goal ?? null,
     addComment,
     addSuggestion,
     updateCommentContent,
+    updateCommentText,
     setCommentAiRequest,
     updateSuggestionField,
     setSuggestionStatus,
+    setGoal,
+    clearGoal,
     addCardParagraphId,
     removeCardParagraphId,
     deleteCard,

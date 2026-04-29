@@ -10,6 +10,7 @@ import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 import { useCardCreationContext } from "../contexts/card-creation";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 type NotesHook = ReturnType<typeof useNotes>;
 
@@ -35,6 +36,7 @@ export function NotesHost(p: NotesHostProps) {
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const { createNote } = useCardCreationContext();
+  const recentlyAddedId = useRecentlyAddedId("note");
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
@@ -62,6 +64,7 @@ export function NotesHost(p: NotesHostProps) {
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("notes")}
       onViewModeChange={(m) => setPanelViewMode("notes", m)}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

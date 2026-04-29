@@ -1,2 +1,3 @@
 export { default } from "./RevisionsPanel";
-export { CommentCard } from "./CommentCard";
+export { RevisionCommentCard } from "./RevisionCommentCard";
+export { RevisionSuggestionCard } from "./RevisionSuggestionCard";

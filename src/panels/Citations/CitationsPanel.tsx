@@ -15,6 +15,7 @@ import {
 import PanelThemePicker from "@/components/PanelThemePicker";
 import CitationBuilder from "@/components/CitationBuilder";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CitationCard } from "./CitationCard";
 
 interface CitationsPanelProps {
@@ -62,6 +63,7 @@ interface CitationsPanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
+  recentlyAddedId?: string | null;
 }
 
 const STYLES = [
@@ -111,6 +113,7 @@ function CitationsPanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
+  recentlyAddedId,
 }: CitationsPanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "citation"),
@@ -130,16 +133,18 @@ function CitationsPanel({
     viewMode === "in-text",
   );
   const orderedCitations = useMemo(
-    () =>
-      [...citations].sort((a, b) => {
+    () => {
+      const out = [...citations].sort((a, b) => {
         const ai = citationOrder.indexOf(a.id);
         const bi = citationOrder.indexOf(b.id);
         if (ai === -1 && bi === -1) return 0;
         if (ai === -1) return 1;
         if (bi === -1) return -1;
         return ai - bi;
-      }),
-    [citations, citationOrder],
+      });
+      return withRecentlyAddedFirst(out, recentlyAddedId, (c) => c.id);
+    },
+    [citations, citationOrder, recentlyAddedId],
   );
 
   const handleBuilderCreate = (command: string) => {

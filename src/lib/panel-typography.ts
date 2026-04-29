@@ -27,27 +27,29 @@ export interface PanelTypography {
   color: string;     // hex
 }
 
-/** Defaults here reproduce the existing visual for each card type so the
- *  per-panel text-size stepper's "default" position (where the override is
- *  cleared) matches what the user actually sees with no override applied.
+/** Defaults are the source of truth for each panel's body typography.
+ *  `usePanelBodyStyle` returns the effective (default ⊕ override) value,
+ *  which RichTextField and the bespoke card textareas write inline onto
+ *  their root elements. That inline style overrides the generic
+ *  `.tiptap p { font-size: 1.05rem }` rule in globals.css whenever a
+ *  panelKey is set, so the rendered size matches the registry value
+ *  step-for-step and the per-panel size stepper stays monotonic.
  *
- *  RichTextField-based panels (footnote, note, archive, cut, revision,
- *  quote) inherit the `.tiptap p { font-size: 1.05rem }` rule from
- *  globals.css, which renders body paragraphs at 16.8px ≈ 17px. Picking
- *  any value smaller than 17 used to look BIGGER than nearby values,
- *  because the slider would clear the override at 14 and the cards would
- *  jump back to 16.8px. Aligning the default with the actual rendered
- *  size keeps the stepper monotonic. */
+ *  Two visual tiers:
+ *  - 12px Inter (sans, compact) — Notes, Todos, Revisions, Cuts.
+ *    Modeled on Cut Comments, which historically used `text-xs` directly.
+ *  - 15px Source Serif 4 — Footnotes, Quotations, Archive. Same family
+ *    as main text (17px) but one size smaller for visual hierarchy. */
 export const DEFAULT_PANEL_TYPOGRAPHY: Record<PanelBodyKey, PanelTypography> = {
-  footnote: { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
-  note:     { fontFamily: "Inter",          fontSize: 17, color: "#44403c" },
-  archive:  { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
-  cut:      { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
-  revision: { fontFamily: "Inter",          fontSize: 17, color: "#44403c" },
+  footnote: { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
+  note:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
+  archive:  { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
+  cut:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
+  revision: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   citation: { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   bib:      { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
-  quote:    { fontFamily: "Source Serif 4", fontSize: 17, color: "#44403c" },
-  todo:     { fontFamily: "Inter",          fontSize: 14, color: "#44403c" },
+  quote:    { fontFamily: "Source Serif 4", fontSize: 15, color: "#44403c" },
+  todo:     { fontFamily: "Inter",          fontSize: 12, color: "#44403c" },
   example:  { fontFamily: "Source Serif 4", fontSize: 12, color: "#44403c" },
 };
 

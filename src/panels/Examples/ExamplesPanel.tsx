@@ -154,6 +154,8 @@ function ExamplesPanel({
             <TargetIcon
               onClick={(e) => onJump(ex.exampleId, (e.currentTarget as HTMLElement).closest('[data-card], [data-link-card]') as HTMLElement | null)}
               title="Jump to example"
+              data-helper="Jump"
+              data-helper-pos="above"
             />
           </div>
           <div className="flex items-start gap-2">

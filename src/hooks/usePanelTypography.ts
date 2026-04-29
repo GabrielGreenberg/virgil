@@ -4,7 +4,6 @@ import { useEffect, useSyncExternalStore } from "react";
 import {
   DEFAULT_PANEL_TYPOGRAPHY,
   getPanelTypography,
-  getPanelTypographyOverrides,
   getPanelTypographyVersion,
   isPanelTypographyFieldOverridden,
   loadPanelTypography,
@@ -35,18 +34,26 @@ export function usePanelTypography(key: PanelBodyKey | undefined): PanelTypograp
   return getPanelTypography(key);
 }
 
-/** Only the user-overridden fields. Cards use this to apply inline styles
- *  that don't disturb their default (theme-driven) styling when the user
- *  hasn't explicitly set anything. Ready-to-spread React.CSSProperties. */
+/** Quote space-containing font family names so the browser accepts them
+ *  via inline `style.fontFamily =`. Browsers silently drop unquoted
+ *  multi-word values when they're set programmatically. */
+function quoteFontFamily(name: string): string {
+  return /\s/.test(name) && !/^["']/.test(name) ? `"${name}"` : name;
+}
+
+/** Effective body style (default ⊕ override) as a ready-to-spread
+ *  React.CSSProperties. Always populated when `key` is given, so cards
+ *  can apply this inline and the registry default actually shows up
+ *  (instead of being masked by upstream CSS rules like `.tiptap p`). */
 export function usePanelBodyStyle(key: PanelBodyKey | undefined): React.CSSProperties {
   useTypoVersion();
   if (!key) return {};
-  const o = getPanelTypographyOverrides(key);
-  const style: React.CSSProperties = {};
-  if (o.fontFamily) style.fontFamily = o.fontFamily;
-  if (o.fontSize)   style.fontSize   = `${o.fontSize}px`;
-  if (o.color)      style.color      = o.color;
-  return style;
+  const t = getPanelTypography(key);
+  return {
+    fontFamily: quoteFontFamily(t.fontFamily),
+    fontSize: `${t.fontSize}px`,
+    color: t.color,
+  };
 }
 
 export function useIsPanelTypoFieldOverridden<F extends keyof PanelTypography>(

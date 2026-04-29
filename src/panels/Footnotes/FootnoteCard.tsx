@@ -122,6 +122,8 @@ export function FootnoteCard({
           selected={isSelected}
           onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
           title="Jump to footnote marker"
+          data-helper="Jump"
+          data-helper-pos="above"
         />
       }
       onClick={onSelect}

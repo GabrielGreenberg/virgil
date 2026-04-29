@@ -216,6 +216,8 @@ function InlineLabel({
         className="text-[11px] text-blue-500 leading-tight mt-0.5 truncate cursor-text hover:underline"
         onClick={(e) => { e.stopPropagation(); setEditing(true); }}
         title="Click to edit label"
+        data-helper="Edit label"
+        data-helper-pos="above"
       >
         {label}
       </div>
@@ -228,6 +230,8 @@ function InlineLabel({
       className="text-[11px] text-blue-400 leading-tight mt-0.5 pl-[1px] opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer select-none"
       onClick={(e) => { e.stopPropagation(); setEditing(true); }}
       title="Add label"
+      data-helper="Add label"
+      data-helper-pos="above"
     >
       +
     </span>
@@ -927,6 +931,8 @@ function EditablePod({
             onMouseDown={(e) => e.stopPropagation()}
             className="p-0.5 rounded text-[var(--muted)] hover:text-ink-body transition-colors shrink-0"
             title={isCollapsed ? "Expand" : "Collapse"}
+            data-helper={isCollapsed ? "Expand" : "Collapse"}
+            data-helper-pos="above"
           >
             <svg
               width="10"
@@ -1508,6 +1514,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
         onClick={() => setMenuOpen(!menuOpen)}
         className="p-0.5 text-ink-muted hover:text-ink-body transition-colors"
         title="View options"
+        data-helper="View options"
       >
         <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
           <circle cx="8" cy="3" r="1.5" />
@@ -1570,6 +1577,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 : "text-[var(--muted)] hover:text-ink-body hover-on-light"
           }`}
           title={focusState?.active ? "Exit Focus to use Edit" : undefined}
+          data-helper="Edit mode"
         >
           Edit
         </button>
@@ -1592,6 +1600,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 : "text-[var(--muted)] hover:text-ink-body hover-on-light"
           }`}
           title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
+          data-helper="Focus mode"
         >
           Focus
         </button>
@@ -1605,6 +1614,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               : "text-[var(--muted)] hover:text-ink-body"
           }`}
           title={focusState.locked ? "Unlock focus (adjust selection)" : "Lock focus (hide other content)"}
+          data-helper={focusState.locked ? "Unlock focus" : "Lock focus"}
         >
           {focusState.locked ? (
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1636,6 +1646,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onClick={expandAll}
             className="text-[var(--muted)] hover:text-ink-body transition-colors"
             title="Expand all"
+            data-helper="Expand all"
           >
             <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 1 L7 4.5 L12 1" />
@@ -1646,6 +1657,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
             onClick={collapseAll}
             className="text-[var(--muted)] hover:text-ink-body transition-colors"
             title="Collapse all"
+            data-helper="Collapse all"
           >
             <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M2 4.5 L7 1 L12 4.5" />

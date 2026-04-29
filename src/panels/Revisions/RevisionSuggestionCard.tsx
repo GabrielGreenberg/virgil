@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/types";
+import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
   BadgeLabel,
   Button,
@@ -14,9 +14,13 @@ import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { FloatCard } from "@/components/FloatingCards";
-import { cardPopKey } from "@/panels/panel-registry";
-import { MIME_CUT } from "@/lib/marginalia";
+import { popKey } from "@/panels/panel-registry";
+import { MIME_REVISION } from "./mime";
 import { countWords } from "@/hooks/useWordCount";
+import {
+  CopyButton,
+  FieldTitleRow,
+} from "@/panels/Cutter/CutterSuggestionCard";
 
 type SuggestionField =
   | "original_text"
@@ -25,13 +29,13 @@ type SuggestionField =
   | "user_text"
   | "instructions";
 
-const STATUS_DOT: Record<CutterSuggestionCardData["status"], string> = {
+const STATUS_DOT: Record<RevisionSuggestionCardData["status"], string> = {
   pending: "bg-blue-400",
   accepted: "bg-emerald-500",
   rejected: "bg-red-400",
 };
 
-const STATUS_LABEL: Record<CutterSuggestionCardData["status"], string> = {
+const STATUS_LABEL: Record<RevisionSuggestionCardData["status"], string> = {
   pending: "Pending",
   accepted: "Accepted",
   rejected: "Rejected",
@@ -66,15 +70,6 @@ const FIELD_TEXTAREA_CLASS: Record<SuggestionField, string> = {
     "w-full bg-surface-muted border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[36px]",
 };
 
-/** Fields whose className already provides a deliberate color cue
- *  (red for original, green for suggested). At those textareas we
- *  apply only the registry's font family + size, not its color, so
- *  the visual cue is preserved. */
-const FIELDS_WITH_COLOR_CUE: Set<SuggestionField> = new Set([
-  "original_text",
-  "suggested_text",
-]);
-
 const FIELD_ORDER: SuggestionField[] = [
   "original_text",
   "suggested_text",
@@ -82,8 +77,6 @@ const FIELD_ORDER: SuggestionField[] = [
   "user_text",
 ];
 
-// Per the design rule: substantive fields show a word count + copy
-// button next to the section title. Explanation is meta and skips both.
 const FIELDS_WITH_WORD_COUNT: Set<SuggestionField> = new Set([
   "original_text",
   "suggested_text",
@@ -91,15 +84,23 @@ const FIELDS_WITH_WORD_COUNT: Set<SuggestionField> = new Set([
   "instructions",
 ]);
 
-export function startCutterSuggestionDrag(e: React.DragEvent, cardId: string) {
+/** Fields whose className already provides a deliberate color cue
+ *  (red for original, green for suggested). At those textareas we
+ *  apply only the registry's font family + size, not its color. */
+const FIELDS_WITH_COLOR_CUE: Set<SuggestionField> = new Set([
+  "original_text",
+  "suggested_text",
+]);
+
+export function startRevisionSuggestionDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
-    MIME_CUT,
+    MIME_REVISION,
     JSON.stringify({ cardId, kind: "suggestion" }),
   );
   e.dataTransfer.effectAllowed = "copy";
 }
 
-function AuthorChip({ author }: { author: CutterSuggestionCardData["author"] }) {
+function AuthorChip({ author }: { author: RevisionSuggestionCardData["author"] }) {
   const isAi = author === "ai";
   return (
     <span
@@ -112,107 +113,6 @@ function AuthorChip({ author }: { author: CutterSuggestionCardData["author"] }) 
     >
       {isAi ? "AI" : "Human"}
     </span>
-  );
-}
-
-export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const handle = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!text) return;
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1200);
-      })
-      .catch(() => {});
-  };
-  return (
-    <button
-      type="button"
-      onClick={handle}
-      onMouseDown={(e) => e.stopPropagation()}
-      disabled={!text}
-      title={copied ? "Copied" : "Copy to clipboard"}
-      data-helper="Copy"
-      data-helper-pos="above"
-      aria-label="Copy"
-      className="text-[var(--muted-light)] hover:text-ink-strong cursor-pointer disabled:opacity-40 disabled:cursor-default"
-    >
-      {copied ? (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      ) : (
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
-export function FieldTitleRow({
-  label,
-  kindHint,
-  text,
-  showCopy,
-  showWordCount,
-  folded,
-  onToggleFold,
-}: {
-  label: string;
-  kindHint?: string | null;
-  text: string;
-  showCopy: boolean;
-  showWordCount: boolean;
-  folded?: boolean;
-  onToggleFold?: () => void;
-}) {
-  const words = countWords(text);
-  return (
-    <div className="flex items-center justify-between gap-2 mb-1">
-      <div className="flex items-center gap-1.5 min-w-0">
-        {onToggleFold && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleFold();
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="text-[var(--muted)] hover:text-ink-strong cursor-pointer flex items-center"
-            title={folded ? "Expand" : "Collapse"}
-            data-helper="Toggle fold"
-            data-helper-pos="above"
-            aria-label={folded ? "Expand" : "Collapse"}
-            aria-expanded={!folded}
-          >
-            <Chevron expanded={!folded} />
-          </button>
-        )}
-        <span className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium">
-          {label}
-        </span>
-        {kindHint && (
-          <span className="text-[10px] text-[var(--muted-light)] lowercase">
-            {kindHint}
-          </span>
-        )}
-      </div>
-      {(showWordCount || showCopy) && (
-        <div className="flex items-center gap-2 shrink-0">
-          {showWordCount && (
-            <span className="text-[10px] text-[var(--muted-light)] tabular-nums">
-              {words} {words === 1 ? "word" : "words"}
-            </span>
-          )}
-          {showCopy && <CopyButton text={text} />}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -229,14 +129,12 @@ function FieldBlock({
   onChange: (v: string) => void;
   readOnly?: boolean;
   kindHint?: string | null;
-  /** When set and the value is empty, render a "+ <label>" button instead
-   *  of the full field. Clicking the button expands the field for editing. */
   collapsedAffordance?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const [expanded, setExpanded] = useState(!collapsedAffordance || !!value);
   const [folded, setFolded] = useState(false);
-  const bodyStyle = usePanelBodyStyle("cut");
+  const bodyStyle = usePanelBodyStyle("revision");
   const textareaStyle: React.CSSProperties = FIELDS_WITH_COLOR_CUE.has(field)
     ? { fontFamily: bodyStyle.fontFamily, fontSize: bodyStyle.fontSize }
     : bodyStyle;
@@ -290,7 +188,14 @@ function FieldBlock({
   );
 }
 
-export function CutterSuggestionCard({
+// Silence unused-import warnings — Chevron, CopyButton, countWords are
+// referenced indirectly through FieldTitleRow / FieldBlock elsewhere when
+// we reuse helper components but TypeScript still wants them imported.
+void Chevron;
+void CopyButton;
+void countWords;
+
+export function RevisionSuggestionCard({
   card,
   selected,
   onUpdateField,
@@ -302,7 +207,7 @@ export function CutterSuggestionCard({
   onTogglePopout,
   isPoppedOut,
 }: {
-  card: CutterSuggestionCardData;
+  card: RevisionSuggestionCardData;
   selected: boolean;
   onUpdateField: (
     id: string,
@@ -317,7 +222,7 @@ export function CutterSuggestionCard({
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
 }) {
-  const theme = useCardTheme("cut");
+  const theme = useCardTheme("revision");
   const cardRef = useRef<HTMLDivElement>(null);
   const isPending = card.status === "pending";
   const isAnchored =
@@ -328,7 +233,7 @@ export function CutterSuggestionCard({
       ? "paragraph"
       : null;
   const popped = usePoppedCards();
-  const cardKey = cardPopKey("cutter-suggestion", card.id);
+  const cardKey = popKey("revisions", `s:${card.id}`);
   const onToggleFromCtx =
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
@@ -343,7 +248,7 @@ export function CutterSuggestionCard({
   const cardEl = (
     <PanelCard
       ref={cardRef}
-      data-cutter-suggestion-entry={card.id}
+      data-revision-suggestion-entry={card.id}
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
       theme={theme}
@@ -352,7 +257,7 @@ export function CutterSuggestionCard({
       onTogglePopout={onToggleFromCtx}
       onTrashClick={() => onDelete(card.id)}
       draggable={!selected}
-      onDragStart={(e) => startCutterSuggestionDrag(e, card.id)}
+      onDragStart={(e) => startRevisionSuggestionDrag(e, card.id)}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();

@@ -17,6 +17,7 @@ import {
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { richJsonToPlainText } from "@/lib/footnote-content";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import {
   FootnoteCard,
   OrphanedFootnoteCard,
@@ -51,6 +52,7 @@ interface FootnotePanelProps {
   onDeleteAiRequest?: (id: string) => void;
   onEditTitle?: (id: string, title: string) => void;
   onEditorFocus?: (editor: any) => void;
+  recentlyAddedId?: string | null;
 }
 
 function FootnotePanel({
@@ -77,6 +79,7 @@ function FootnotePanel({
   onDeleteAiRequest,
   onEditTitle,
   onEditorFocus,
+  recentlyAddedId,
 }: FootnotePanelProps) {
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "footnote"),
@@ -132,15 +135,20 @@ function FootnotePanel({
   );
 
   const items = useMemo<FootnoteItem[]>(
-    () => [
-      ...orphanedFootnotes.map(
-        (o): FootnoteItem => ({ kind: "orphan", data: o }),
-      ),
-      ...footnotes.map(
-        (f): FootnoteItem => ({ kind: "anchored", data: f }),
-      ),
-    ],
-    [orphanedFootnotes, footnotes],
+    () => {
+      const out: FootnoteItem[] = [
+        ...orphanedFootnotes.map(
+          (o): FootnoteItem => ({ kind: "orphan", data: o }),
+        ),
+        ...footnotes.map(
+          (f): FootnoteItem => ({ kind: "anchored", data: f }),
+        ),
+      ];
+      return withRecentlyAddedFirst(out, recentlyAddedId, (item) =>
+        item.kind === "orphan" ? item.data.footnoteId : item.data.footnoteId,
+      );
+    },
+    [orphanedFootnotes, footnotes, recentlyAddedId],
   );
 
   const inTextOrphansTrailing =
@@ -315,6 +323,8 @@ function FootnotePanel({
               <TargetIcon
                 onClick={(e) => onScrollToMarker(fn.footnoteId, (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
                 title="Jump to footnote marker"
+                data-helper="Jump"
+                data-helper-pos="above"
               />
             </div>
             <div className="flex items-start gap-2">

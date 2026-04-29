@@ -1,161 +1,147 @@
 "use client";
 
-import { useEffect, useRef, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import type { JSONContent } from "@tiptap/react";
 import RevisionsPanel from "@/panels/Revisions";
-import type { useRevisions } from "@/hooks/useRevisions";
+import type {
+  RevisionCard,
+  RevisionCommentCard,
+  RevisionsTracker,
+  RevisionSuggestionCard,
+} from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
-import type { Suggestion } from "@/lib/types";
-import { createLinkedAnchor, getTextAnchor, updateLinkedAnchorCard } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
-
-type RevisionsHook = ReturnType<typeof useRevisions>;
-type AnchorKind = "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
+import { useCardCreationContext } from "../contexts/card-creation";
+import { useAiRequestsContext } from "../contexts/ai-requests";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 export interface RevisionsHostProps {
   side: Side;
   panelSide: Side | null;
-  comments: RevisionsHook["comments"];
-  addComment: RevisionsHook["addComment"];
-  updateCommentContent: RevisionsHook["updateCommentContent"];
-  setCommentAuthor: RevisionsHook["setCommentAuthor"];
-  deleteComment: RevisionsHook["deleteComment"];
-  // Suggestions live alongside comments in the merged panel — passed
-  // through from EditorLayout's useSuggestions.
-  suggestions: Suggestion[];
-  currentSuggestionIndex: number;
-  actOnSuggestion: (id: string, action: "accepted" | "rejected" | "skipped") => void;
-  updateSuggestionField: (id: string, field: "revision" | "note", value: string) => void;
-  jumpToSuggestion: (index: number) => void;
-  pendingCommentText: string | null;
-  setPendingCommentText: Dispatch<SetStateAction<string | null>>;
-  pendingRevisionAnchorIdRef: MutableRefObject<string | null>;
-  setCommentHighlight: Dispatch<SetStateAction<string | null>>;
-  setHoveredAnchorId: Dispatch<SetStateAction<string | null>>;
-  setActiveAnchorKind: Dispatch<SetStateAction<AnchorKind>>;
+  cards: RevisionCard[];
+  tracker: RevisionsTracker | null;
+  setTrackerTarget: (target: number | null) => void;
+  updateCommentContent: (id: string, content: JSONContent) => void;
+  updateCommentText: (id: string, text: string) => void;
+  setCommentAiRequest: (id: string, value: boolean) => void;
+  updateSuggestionField: (
+    id: string,
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
+    value: string,
+  ) => void;
+  setSuggestionStatus: (
+    id: string,
+    status: RevisionSuggestionCard["status"],
+  ) => void;
+  deleteCard: (id: string) => void;
+  /** Called on host unmount to drop cards created via "+" but never edited. */
+  discardPristine: () => void;
+  onHoverCard: (id: string | null) => void;
+  onDropSelection: (payload: {
+    from: number;
+    to: number;
+    selectedText: string;
+  }) => void;
+  onDropParagraph: (paragraphId: string) => void;
+}
+
+function buildSuggestionPrompt(s: RevisionSuggestionCard): string {
+  const anchorBits: string[] = [];
+  if (s.selectedText) anchorBits.push(`captured text: "${s.selectedText}"`);
+  if (s.links.length > 0) {
+    const pids = new Set<string>();
+    for (const l of s.links) {
+      if (l.anchor.type === "anchor") {
+        for (const p of l.anchor.paragraphIds) pids.add(p);
+      }
+    }
+    if (pids.size > 0) anchorBits.push(`paragraphs: ${[...pids].join(", ")}`);
+  }
+  const anchor = anchorBits.length > 0 ? anchorBits.join("; ") : "(none)";
+  return [
+    "Apply this revision suggestion in the document:",
+    `ORIGINAL: ${s.original_text}`,
+    `REPLACEMENT: ${s.user_text || s.suggested_text}`,
+    `EXPLANATION: ${s.explanation || "(none)"}`,
+    s.instructions ? `INSTRUCTIONS: ${s.instructions}` : null,
+    `ANCHOR: ${anchor}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function RevisionsHost(p: RevisionsHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
   const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedCommentId, setSelectedCommentId } = useSelectionsContext();
-  const {
-    pendingRevisionAnchorIdRef,
-    setPendingCommentText,
-    setHoveredAnchorId,
-    setActiveAnchorKind,
-    pendingCommentText,
-    addComment,
-  } = p;
+  const { createRevisionComment, createRevisionSuggestion } =
+    useCardCreationContext();
+  const { addAiRequest } = useAiRequestsContext();
+  const recentlyAddedId = useRecentlyAddedId("revision");
+  const discardRef = useRef(p.discardPristine);
+  discardRef.current = p.discardPristine;
+  useEffect(() => () => discardRef.current(), []);
 
-  // When the editor flow signals a pending text selection (via
-  // handleAddComment or a drop), create an empty anchored comment
-  // immediately and select it — the user edits in place with auto-save,
-  // so there's no form step. The ref guards against StrictMode double-fire.
-  const consumedPendingTextRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!pendingCommentText) return;
-    if (consumedPendingTextRef.current === pendingCommentText) return;
-    consumedPendingTextRef.current = pendingCommentText;
-    const anchorId = pendingRevisionAnchorIdRef.current;
-    const created = addComment({
-      selectedText: pendingCommentText,
-      anchorId,
-      text: "",
-    });
-    if (anchorId) {
-      const ed = editorRef.current?.getEditor();
-      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", created.id);
-    }
-    setSelectedCommentId(created.id);
-    pendingRevisionAnchorIdRef.current = null;
-    setPendingCommentText(null);
-  }, [
-    pendingCommentText,
-    addComment,
-    editorRef,
-    pendingRevisionAnchorIdRef,
-    setPendingCommentText,
-    setSelectedCommentId,
-  ]);
+  const onAddComment = useCallback(
+    (): RevisionCommentCard => createRevisionComment({}),
+    [createRevisionComment],
+  );
+  const onAddSuggestion = useCallback(
+    (): RevisionSuggestionCard => createRevisionSuggestion({}),
+    [createRevisionSuggestion],
+  );
 
-  // Auto-advance: when the active suggestion index changes (after an
-  // accept/reject/skip), select the matching suggestion card so its
-  // expanded review UI is visible and keyboard shortcuts apply.
-  useEffect(() => {
-    if (p.suggestions.length === 0) return;
-    const i = p.currentSuggestionIndex;
-    if (i < 0 || i >= p.suggestions.length) return;
-    const suggestionListId = `suggestion:${p.suggestions[i].id}`;
-    if (selectedCommentId !== suggestionListId) {
-      setSelectedCommentId(suggestionListId);
-    }
-    // Only react to index changes — selection clears (e.g. user clicks a
-    // comment) shouldn't pull focus back to the suggestion.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [p.currentSuggestionIndex, p.suggestions.length]);
+  const onAcceptSuggestion = useCallback(
+    (id: string) => {
+      const s = p.cards.find(
+        (c): c is RevisionSuggestionCard => c.id === id && c.kind === "suggestion",
+      );
+      if (!s) return;
+      p.setSuggestionStatus(id, "accepted");
+      addAiRequest("suggestion", buildSuggestionPrompt(s));
+    },
+    [p, addAiRequest],
+  );
+
+  const onRejectSuggestion = useCallback(
+    (id: string) => {
+      p.setSuggestionStatus(id, "rejected");
+    },
+    [p],
+  );
 
   return (
     <RevisionsPanel
-      comments={p.comments}
-      suggestions={p.suggestions}
-      currentSuggestionIndex={p.currentSuggestionIndex}
-      onAddEmptyComment={() => p.addComment({})}
-      onUpdateContent={p.updateCommentContent}
-      onSetAuthor={p.setCommentAuthor}
-      onDelete={p.deleteComment}
-      onActOnSuggestion={p.actOnSuggestion}
+      cards={p.cards}
+      tracker={p.tracker}
+      onSetTrackerTarget={p.setTrackerTarget}
+      onAddComment={onAddComment}
+      onAddSuggestion={onAddSuggestion}
+      onUpdateCommentContent={p.updateCommentContent}
+      onUpdateCommentText={p.updateCommentText}
+      onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
-      onJumpSuggestion={p.jumpToSuggestion}
-      visible={true}
-      selectedCommentId={selectedCommentId}
-      onSelectComment={setSelectedCommentId}
-      onHighlight={p.setCommentHighlight}
-      onHoverComment={(id) => {
-        if (!id) { setHoveredAnchorId(null); return; }
-        const c = p.comments.find((x) => x.id === id);
-        const anchorId = c ? getTextAnchor(c)?.anchorId : undefined;
-        if (anchorId) {
-          setHoveredAnchorId(anchorId);
-          setActiveAnchorKind("revision");
-        }
-      }}
-      onDropSelection={(payload) => {
-        const ed = editorRef.current?.getEditor();
-        if (!ed || !editorRef.current) return;
-        const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
-        if (!record) return;
-        pendingRevisionAnchorIdRef.current = record.anchorId;
-        setPendingCommentText(payload.selectedText || record.text);
-      }}
-      onDropParagraph={(paragraphId) => {
-        // Dragging a paragraph into Revisions: anchor a new comment over
-        // the whole paragraph's text range, then let the auto-create
-        // effect spin up an empty editable card anchored to that range.
-        const ed = editorRef.current?.getEditor();
-        if (!ed) return;
-        let from: number | null = null;
-        let to: number | null = null;
-        ed.state.doc.descendants((node, pos) => {
-          if (from !== null) return false;
-          if (node.attrs?.uuid === paragraphId) {
-            from = pos + 1;
-            to = pos + node.nodeSize - 1;
-            return false;
-          }
-          return true;
-        });
-        if (from === null || to === null || from >= to) return;
-        const record = createLinkedAnchor(ed, "revision", { from, to });
-        if (!record) return;
-        pendingRevisionAnchorIdRef.current = record.anchorId;
-        setPendingCommentText(record.text);
-      }}
+      onAcceptSuggestion={onAcceptSuggestion}
+      onRejectSuggestion={onRejectSuggestion}
+      onDelete={p.deleteCard}
+      onSelect={setSelectedCommentId}
+      selectedId={selectedCommentId}
+      onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
+      onHoverCard={p.onHoverCard}
+      onDropSelection={p.onDropSelection}
+      onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("revisions")}
       onViewModeChange={(m) => setPanelViewMode("revisions", m)}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

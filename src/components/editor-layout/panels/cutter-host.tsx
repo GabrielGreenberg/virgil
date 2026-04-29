@@ -6,6 +6,7 @@ import CutterPanel from "@/panels/Cutter";
 import type {
   CutterCard,
   CutterCommentCard,
+  CutterGoal,
   CutterSuggestionCard,
 } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
@@ -14,16 +15,26 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 export interface CutterHostProps {
   side: Side;
   panelSide: Side | null;
   cards: CutterCard[];
+  goal: CutterGoal | null;
+  setGoal: (target: number, initialWords: number) => void;
+  clearGoal: () => void;
   updateCommentContent: (id: string, content: JSONContent) => void;
+  updateCommentText: (id: string, text: string) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
     id: string,
-    field: "original_text" | "suggested_text" | "explanation",
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
     value: string,
   ) => void;
   setSuggestionStatus: (
@@ -72,6 +83,7 @@ export function CutterHost(p: CutterHostProps) {
   const { createCutterComment, createCutterSuggestion } =
     useCardCreationContext();
   const { addAiRequest } = useAiRequestsContext();
+  const recentlyAddedId = useRecentlyAddedId("cutter");
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
@@ -107,9 +119,13 @@ export function CutterHost(p: CutterHostProps) {
   return (
     <CutterPanel
       cards={p.cards}
+      goal={p.goal}
+      onSetGoal={p.setGoal}
+      onClearGoal={p.clearGoal}
       onAddComment={onAddComment}
       onAddSuggestion={onAddSuggestion}
       onUpdateCommentContent={p.updateCommentContent}
+      onUpdateCommentText={p.updateCommentText}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
       onAcceptSuggestion={onAcceptSuggestion}
@@ -125,6 +141,7 @@ export function CutterHost(p: CutterHostProps) {
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("cutter")}
       onViewModeChange={(m) => setPanelViewMode("cutter", m)}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

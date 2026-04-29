@@ -109,7 +109,6 @@ export function StripButton({
   onClick,
   onMove,
   side,
-  badge,
   stripRef,
   iconDropMimes,
   onIconDrop,
@@ -119,7 +118,6 @@ export function StripButton({
   onClick: () => void;
   onMove: (draggedId: PanelId, toSide: Side, toIndex?: number) => void;
   side: Side;
-  badge?: boolean;
   stripRef: React.RefObject<HTMLDivElement | null>;
   /** MIME types this icon accepts as drop targets. Empty/undefined means
    *  no icon-level drops (only click-to-open). */
@@ -364,11 +362,9 @@ export function StripButton({
       className={`iconbtn-md iconbtn-toggle relative select-none${iconDropOver ? " panel-icon-drop-active" : ""}`}
       aria-pressed={active}
       title={label}
+      data-helper={label}
     >
       {renderIcon(active)}
-      {badge && (
-        <div className="absolute top-1 right-1 w-1.5 h-1.5 bg-[var(--accent)] rounded-full" />
-      )}
     </button>
   );
 }

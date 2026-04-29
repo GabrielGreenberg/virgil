@@ -27,9 +27,9 @@ import { useEffect } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
   ArchivedSnippet,
-  Comment,
   CutterCard,
   QuotationGroup,
+  RevisionCard,
   TodoItem,
   UserNote,
 } from "@/lib/types";
@@ -74,7 +74,7 @@ export interface UseCardSelectionHighlightArgs {
   archiveSnippets: ArchivedSnippet[];
   quotationGroups: QuotationGroup[];
   todos: TodoItem[];
-  comments: Comment[];
+  comments: RevisionCard[];
 }
 
 export function useCardSelectionHighlight({

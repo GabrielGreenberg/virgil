@@ -18,6 +18,7 @@
 import type { Editor } from "@tiptap/react";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { CardKind } from "@/panels/_shared/types";
+import { countWords } from "@/hooks/useWordCount";
 import type { Link, LinkResolution } from "./_shared/types";
 import { generateEntityId } from "@/lib/uuid";
 import {
@@ -890,6 +891,48 @@ export function getTextAnchor(
 
 export function hasTextAnchor(card: CardWithLinks): boolean {
   return getTextAnchor(card) !== null;
+}
+
+export type AnchorSummary =
+  | { kind: "selection"; words: number }
+  | { kind: "paragraph"; words: number }
+  | null;
+
+/** A short structural description of where this card is anchored, plus
+ *  the word count of the anchored region. Used by card UIs to render a
+ *  "selection · 14 words" / "paragraph · 47 words" badge. Mode B
+ *  (text-range) wins over Mode A (paragraph). Returns null for cards
+ *  with no anchor at all. */
+export function getAnchorSummary(
+  card: CardWithLinks & { selectedText?: string },
+  editor: Editor | null,
+): AnchorSummary {
+  const ta = getTextAnchor(card);
+  if (ta) {
+    return { kind: "selection", words: countWords(ta.anchorText) };
+  }
+  const pids = getLinkedParagraphIds(card);
+  if (pids.length === 0) return null;
+  if (editor) {
+    let words = 0;
+    const wanted = new Set(pids);
+    editor.state.doc.descendants((node) => {
+      if (wanted.size === 0) return false;
+      const uuid = (node.attrs as { uuid?: string } | null)?.uuid;
+      if (uuid && wanted.has(uuid)) {
+        words += countWords(node.textContent);
+        wanted.delete(uuid);
+        return false;
+      }
+      return true;
+    });
+    return { kind: "paragraph", words };
+  }
+  // No editor — fall back to selectedText snapshot if present.
+  return {
+    kind: "paragraph",
+    words: card.selectedText ? countWords(card.selectedText) : 0,
+  };
 }
 
 /**

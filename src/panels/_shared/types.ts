@@ -42,6 +42,7 @@ export type CardKind =
   | "suggestion"
   | "cutter-comment"
   | "cutter-suggestion"
+  | "revision-suggestion"
   | "quotation"
   | "example"
   | "ai"

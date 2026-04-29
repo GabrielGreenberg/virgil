@@ -38,8 +38,12 @@ interface Options<T extends Entity> {
   selectedId: string | null;
   entities: T[];
   kind: LinkedAnchorKind;
-  /** Attribute suffix after `data-` — e.g. "note-entry" for `data-note-entry`. */
-  dataAttrName: string;
+  /** Attribute suffix after `data-` — e.g. "note-entry" for `data-note-entry`.
+   *  Pass an array when one selection state spans multiple card kinds (e.g.
+   *  the cutter shares one selectedId across `cutter-comment-entry` and
+   *  `cutter-suggestion-entry`); a click landing inside either matched card
+   *  counts as "inside" and should not trigger click-away. */
+  dataAttrName: string | string[];
   setSelectedId: (id: string | null) => void;
   setActiveAnchorId: React.Dispatch<React.SetStateAction<string | null>>;
   setActiveAnchorKind: React.Dispatch<React.SetStateAction<LinkedAnchorKind | null>>;
@@ -93,7 +97,10 @@ export function useSelectedAnchorSync<T extends Entity>({
             ? (rawTarget.parentElement ?? null)
             : null;
       if (!target) return;
-      if (target.closest(`[data-${dataAttrName}="${selectedId}"]`)) return;
+      const attrNames = Array.isArray(dataAttrName) ? dataAttrName : [dataAttrName];
+      for (const name of attrNames) {
+        if (target.closest(`[data-${name}="${selectedId}"]`)) return;
+      }
       const entity = entities.find((x) => x.id === selectedId);
       const anchorId = entity ? getTextAnchor(entity)?.anchorId : undefined;
       if (anchorId && target.closest(`[data-link-id="${anchorId}"]`)) return;

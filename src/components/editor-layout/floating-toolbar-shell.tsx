@@ -140,6 +140,7 @@ export function FloatingToolbarShell({
           <button
             onClick={onToggleOrientation}
             title={isVert ? "Rotate toolbar to horizontal" : "Rotate toolbar to vertical"}
+            data-helper="Rotate"
             data-toolbar-knob=""
             className="group/knob flex items-center justify-center"
             style={{ background: "transparent", border: "none", padding: 0, width: 14, height: 14 }}
@@ -172,6 +173,7 @@ export function TabEndCloseButton({
     <button
       onClick={onClick}
       title={title}
+      data-helper="Close toolbar"
       className="flex items-center justify-center text-[var(--muted-light)] hover:text-[var(--foreground)] transition-colors"
       style={{ background: "transparent", border: "none", padding: 0, flex: "1 1 auto", paddingLeft: isVert ? 0 : 2 }}
     >
@@ -207,6 +209,7 @@ export function PodGrabHandle({
     <div
       onMouseDown={onMouseDown}
       title={title}
+      data-helper="Drag"
       className={`group/grab cursor-grab active:cursor-grabbing flex items-center justify-center ${
         isVert ? "-mt-0.5 px-1 pt-0 pb-0" : "-ml-0.5 py-1 pl-0 pr-1"
       }`}
@@ -333,6 +336,7 @@ export function DetachedToolbar({
             <button
               onClick={() => { captureKnobCenter(); setCollapsed(false); }}
               title={expandTitle}
+              data-helper="Expand"
               className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
             >
               {collapsedGlyph.icon}
@@ -346,6 +350,7 @@ export function DetachedToolbar({
               <button
                 onClick={() => { captureKnobCenter(); setCollapsed(true); }}
                 title={collapseTitle}
+                data-helper="Collapse"
                 className="p-1 rounded transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body"
               >
                 <CollapseChevronIcon orientation={orientation} />

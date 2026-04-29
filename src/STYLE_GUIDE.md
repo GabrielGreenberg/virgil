@@ -199,6 +199,48 @@ Don't reuse this style.
 Toggle: 22×14 pill, off `bg-edge-hover`, on `bg-accent`.
 Checkbox: 16×16 box, off `border-edge-strong`, on `bg-accent`.
 
+## Helper mode
+
+Toggle via the "?" button on the Virgil bar → dropdown → "Helper mode".
+When active, `document.body` gets `data-helper-mode="on"` and hovering any
+element with a `data-helper` attribute shows a black callout with white text.
+
+### Annotating a button
+
+Add `data-helper="Label"` to the interactive element. Keep labels 1–3 words,
+≤25 characters. Don't duplicate keyboard shortcuts (those belong in `title`).
+
+```html
+<button title="Bold (Cmd+B)" data-helper="Bold">…</button>
+```
+
+### Positioning
+
+The callout appears **below center** by default. Override with zone selectors
+or an explicit attribute:
+
+| Zone | Callout position | Mechanism |
+|---|---|---|
+| Virgil bar / MenuBar / panel header | Below | Default |
+| Left icon strip | Right of button | `[data-strip-side="left"]` ancestor |
+| Right icon strip | Left of button | `[data-strip-side="right"]` ancestor |
+| Card-level buttons (inside scroll) | Above | `data-helper-pos="above"` on element |
+
+Card-level buttons (`CardTrashButton`, `TargetIcon`, drag handles) should use
+`data-helper-pos="above"` to avoid clipping by the panel's scroll boundary.
+
+### CSS rules
+
+All rules live in `globals.css` under the "Helper mode" comment block. They
+use `body[data-helper-mode="on"]` as the gate and `:hover` as the trigger,
+so only one callout is visible at a time.
+
+### State hook
+
+`useHelperMode()` in `src/hooks/useHelperMode.ts` — same module-scoped
+`useSyncExternalStore` pattern as `usePreferenceMode`. Exports `{ on, toggle, set }`.
+Persists to `localStorage` key `virgil-helper-mode`.
+
 ## Modals
 
 `<SystemDialog size>` — three sizes: `sm` 360, `md` 480, `lg` 640. No

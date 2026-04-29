@@ -324,6 +324,8 @@ export function CitationCard({
           <TargetIcon
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to citation"
+            data-helper="Jump"
+            data-helper-pos="above"
           />
         </div>
       </div>
@@ -388,6 +390,8 @@ export function CitationCard({
                           : "Show BibTeX entry"
                         : "Entry not found in .bib"
                     }
+                    data-helper={entry ? (isActive ? "Hide bib" : "Show bib") : "Not found"}
+                    data-helper-pos="above"
                   >
                     Bib
                   </button>
@@ -449,6 +453,8 @@ export function CitationCard({
           }}
           className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
           title={isEditing ? "Finish editing" : "Edit citation"}
+          data-helper={isEditing ? "Done" : "Edit"}
+          data-helper-pos="above"
         >
           {isEditing ? "Done" : "Edit"}
         </button>

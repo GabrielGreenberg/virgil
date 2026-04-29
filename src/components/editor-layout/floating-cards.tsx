@@ -6,7 +6,7 @@ import { ArchiveCard } from "@/panels/Archive";
 import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
 import { TodoRow } from "@/panels/Todo";
 import { CitationCard } from "@/panels/Citations";
-import { CommentCard } from "@/panels/Revisions";
+import { RevisionCommentCard, RevisionSuggestionCard } from "@/panels/Revisions";
 import { QuotationGroupCard } from "@/panels/Quotations";
 import { ExampleCard } from "@/panels/Examples/ExampleCard";
 import BibEntryCard from "../BibEntryCard";
@@ -18,9 +18,10 @@ import { getLinkedParagraphIds } from "@/links/links";
 import type {
   UserNote,
   ArchivedSnippet,
-  Comment,
   CutterCard,
   CutterSuggestionCard as CutterSuggestionCardData,
+  RevisionCard,
+  RevisionSuggestionCard as RevisionSuggestionCardData,
   TodoItem,
   BibEntry,
   CitationRef,
@@ -47,7 +48,7 @@ export interface PoppedCardDeps {
   citations: CitationRef[];
   citationPositionMap: Map<string, number>;
   allEditorCitations: Array<{ citationId: string; command: string; keys: string[]; pos: number }>;
-  comments: Comment[];
+  comments: RevisionCard[];
   quotationGroups: QuotationGroup[];
   aiRequests: AiRequest[];
   examples: ExampleInfo[];
@@ -103,10 +104,16 @@ export interface PoppedCardDeps {
 
   // Cutter
   updateCutterCommentContent: (id: string, content: JSONContent) => void;
+  updateCutterCommentText: (id: string, text: string) => void;
   setCutterCommentAiRequest: (id: string, value: boolean) => void;
   updateCutterSuggestionField: (
     id: string,
-    field: "original_text" | "suggested_text" | "explanation",
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
     value: string,
   ) => void;
   setCutterSuggestionStatus: (
@@ -135,10 +142,25 @@ export interface PoppedCardDeps {
   // Citations
   updateCitation: (id: string, command: string) => void;
 
-  // Comments (revisions panel)
-  updateCommentContent: (id: string, content: JSONContent) => void;
-  setCommentAuthor: (id: string, authorId: string) => void;
-  deleteComment: (id: string) => void;
+  // Revisions panel (mirrors Cutter)
+  updateRevisionCommentContent: (id: string, content: JSONContent) => void;
+  updateRevisionCommentText: (id: string, text: string) => void;
+  setRevisionCommentAiRequest: (id: string, value: boolean) => void;
+  updateRevisionSuggestionField: (
+    id: string,
+    field:
+      | "original_text"
+      | "suggested_text"
+      | "explanation"
+      | "user_text"
+      | "instructions",
+    value: string,
+  ) => void;
+  setRevisionSuggestionStatus: (
+    id: string,
+    status: RevisionSuggestionCardData["status"],
+  ) => void;
+  deleteRevisionCard: (id: string) => void;
 
   // Quotations
   deleteQuotationGroup: (id: string) => void;
@@ -252,7 +274,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           key={key}
           card={card}
           selected={d.selectedCutterCardId === card.id}
-          onUpdate={d.updateCutterCommentContent}
+          onUpdateText={d.updateCutterCommentText}
           onSetAiRequest={d.setCutterCommentAiRequest}
           onDelete={d.deleteCutterCard}
           onSelect={d.setSelectedCutterCardId}
@@ -366,17 +388,32 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
       );
     }
     case "revision": {
-      const comment = d.comments.find((c) => c.id === id);
-      if (!comment) return null;
+      const card = d.comments.find((c) => c.id === id);
+      if (!card) return null;
+      if (card.kind === "suggestion") {
+        return (
+          <RevisionSuggestionCard
+            key={key}
+            card={card}
+            selected={d.selectedCommentId === card.id}
+            onUpdateField={d.updateRevisionSuggestionField}
+            onAccept={(cid) => d.setRevisionSuggestionStatus(cid, "accepted")}
+            onReject={(cid) => d.setRevisionSuggestionStatus(cid, "rejected")}
+            onDelete={d.deleteRevisionCard}
+            onSelect={d.setSelectedCommentId}
+            isPoppedOut
+          />
+        );
+      }
       return (
-        <CommentCard
+        <RevisionCommentCard
           key={key}
-          comment={comment}
-          selected={d.selectedCommentId === comment.id}
-          onSelect={(nextId) => d.setSelectedCommentId(nextId)}
-          onUpdateContent={d.updateCommentContent}
-          onSetAuthor={d.setCommentAuthor}
-          onDelete={d.deleteComment}
+          card={card}
+          selected={d.selectedCommentId === card.id}
+          onUpdateText={d.updateRevisionCommentText}
+          onSetAiRequest={d.setRevisionCommentAiRequest}
+          onDelete={d.deleteRevisionCard}
+          onSelect={d.setSelectedCommentId}
           isPoppedOut
         />
       );

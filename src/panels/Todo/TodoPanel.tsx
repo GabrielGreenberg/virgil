@@ -15,6 +15,7 @@ import {
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
+import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { TodoRow } from "./TodoRow";
 
 interface TodoPanelProps {
@@ -38,6 +39,7 @@ interface TodoPanelProps {
   panelSide?: "left" | "right";
   viewMode?: "list" | "in-text";
   onViewModeChange?: (mode: "list" | "in-text") => void;
+  recentlyAddedId?: string | null;
 }
 
 export default function TodoPanel({
@@ -61,11 +63,16 @@ export default function TodoPanel({
   panelSide = "right",
   viewMode = "list",
   onViewModeChange,
+  recentlyAddedId,
 }: TodoPanelProps) {
   const todoTheme = useCardTheme("todo");
 
-  const pending = items.filter((i) => !i.done);
-  const done = items.filter((i) => i.done);
+  const orderedItems = useMemo(
+    () => withRecentlyAddedFirst(items, recentlyAddedId, (i) => i.id),
+    [items, recentlyAddedId],
+  );
+  const pending = orderedItems.filter((i) => !i.done);
+  const done = orderedItems.filter((i) => i.done);
 
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "todo"),
@@ -156,7 +163,7 @@ export default function TodoPanel({
           </div>
         </ItemMenu>
       }
-      items={items}
+      items={orderedItems}
       getId={(t) => t.id}
       selectedId={selectedTodoId}
       onSelect={onSelectTodo}

@@ -41,8 +41,7 @@ import type {
   BibEntry,
   BibEntryRequest,
   BibReviewRequest,
-  Comment,
-  RevisionUser,
+  RevisionCard,
 } from "@/lib/types";
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
@@ -195,8 +194,7 @@ function relTime(iso: string): string {
 interface BuildArgs {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  comments: Comment[];
-  users: RevisionUser[];
+  comments: RevisionCard[];
   panelAiRequests: AiRequest[];
   cancelBibReview: (bibKey: string, type: "fields" | "notes") => void;
   removeEntryRequest: (id: string) => void;
@@ -245,31 +243,20 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
     });
   }
 
-  const userById = new Map(args.users.map((u) => [u.id, u]));
-  const claudeIds = new Set(
-    args.users.filter((u) => u.id === "claude" || /claude/i.test(u.name)).map((u) => u.id),
-  );
-  const hasClaudeReply = (turns: { authorId: string }[]): boolean =>
-    turns.some((t) => claudeIds.has(t.authorId));
-
   for (const c of args.comments) {
-    const author = userById.get(c.authorId);
-    const status: AIRequestStatus = c.resolved
-      ? "resolved"
-      : hasClaudeReply(c.turns.slice(1))
-        ? "responded"
-        : "open";
+    if (c.kind !== "comment") continue;
+    if (!c.aiRequest) continue;
     const isAnchored = !!c.selectedText;
     out.push({
       id: `${isAnchored ? "txtrev" : "genrev"}:${c.id}`,
       kind: isAnchored ? "revision-text" : "revision-general",
-      status,
-      label: author?.name || "Me",
+      status: "open",
+      label: "Me",
       snippet: isAnchored
         ? (c.selectedText ? `"${truncate(c.selectedText, 60)}" — ` : "") +
           c.text
         : c.text,
-      turnCount: c.turns.length,
+      turnCount: 0,
       createdAt: c.createdAt,
       hasUserText: !!c.text.trim(),
     });
@@ -316,42 +303,32 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
 export function aiRequestDotStatus(args: {
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  comments: Comment[];
+  comments: RevisionCard[];
   panelAiRequests: AiRequest[];
 }): "red" | "green" | "yellow" | null {
   const { bibReviewRequests, bibEntryRequests, comments, panelAiRequests } = args;
 
   let hasOpen = false;
-  let hasResponded = false;
 
-  // Bib reviews: pending → open, complete → resolved
   for (const r of bibReviewRequests) {
     if (r.status === "pending") { hasOpen = true; break; }
   }
-
-  // Bib entry requests: pending → open, complete → resolved
   if (!hasOpen) {
     for (const r of bibEntryRequests) {
       if (r.status === "pending") { hasOpen = true; break; }
     }
   }
-
-  // Panel AI requests: draft/submitted → open, complete → resolved
   if (!hasOpen) {
     for (const r of panelAiRequests) {
       if (r.status !== "complete") { hasOpen = true; break; }
     }
   }
-
-  // Comments: !resolved + no AI turns → open, !resolved + AI turns → responded
-  for (const c of comments) {
-    if (c.resolved) continue;
-    const hasAiTurn = c.turns.length > 0 && c.turns.some((t) => t.authorId === "claude");
-    if (hasAiTurn) hasResponded = true;
-    else hasOpen = true;
+  if (!hasOpen) {
+    for (const c of comments) {
+      if (c.kind === "comment" && c.aiRequest) { hasOpen = true; break; }
+    }
   }
 
-  if (hasResponded) return "green";
   if (hasOpen) return "yellow";
   return null;
 }
@@ -365,8 +342,7 @@ export interface AIWindowProps {
   // Live state — flow straight from the hooks in EditorLayout.
   bibReviewRequests: BibReviewRequest[];
   bibEntryRequests: BibEntryRequest[];
-  comments: Comment[];
-  users: RevisionUser[];
+  comments: RevisionCard[];
   bibEntries: BibEntry[];
 
   // Panel AI requests (useAiRequests unified store).
@@ -403,7 +379,6 @@ export default function AIWindow({
   bibReviewRequests,
   bibEntryRequests,
   comments,
-  users,
   bibEntries,
   panelAiRequests,
   addPanelAiRequest,
@@ -435,7 +410,6 @@ export default function AIWindow({
         bibReviewRequests,
         bibEntryRequests,
         comments,
-        users,
         panelAiRequests,
         cancelBibReview,
         removeEntryRequest,
@@ -445,7 +419,6 @@ export default function AIWindow({
       bibReviewRequests,
       bibEntryRequests,
       comments,
-      users,
       panelAiRequests,
       cancelBibReview,
       removeEntryRequest,
@@ -539,6 +512,7 @@ export default function AIWindow({
               onClick={() => refreshAll()}
               className="iconbtn-md"
               title="Refresh"
+              data-helper="Refresh"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 4 23 10 17 10" />
@@ -551,6 +525,7 @@ export default function AIWindow({
             onClick={onClose}
             className="iconbtn-md"
             title="Close (Esc)"
+            data-helper="Close"
           >
             <svg width="16" height="16" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M3 3l8 8M11 3l-8 8" />
@@ -693,6 +668,7 @@ export default function AIWindow({
                               (!composerNeedsBibKey && !composerText.trim())
                             }
                             title="Submit (⌘↵)"
+                            data-helper="Submit"
                           >
                             Submit
                           </Button>
@@ -824,6 +800,7 @@ function RequestCard({ req }: { req: AIRequestVM }) {
           onClick={handleCancel}
           className="shrink-0 text-[10px] text-ink-muted hover:text-[#b45757] transition-colors px-1"
           title="Cancel this request"
+          data-helper="Cancel"
         >
           ×
         </button>
@@ -862,6 +839,7 @@ function ConnectWithClaude() {
               disabled
               className="px-3 py-1.5 text-xs font-medium rounded-md border border-edge-subtle text-ink-muted bg-surface-muted cursor-not-allowed"
               title="Coming soon"
+              data-helper="Coming soon"
             >
               Sign in
             </button>

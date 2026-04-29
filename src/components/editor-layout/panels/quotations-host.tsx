@@ -9,6 +9,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCardCreationContext } from "../contexts/card-creation";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 type QuotationsHook = ReturnType<typeof useQuotations>;
 type CitationsHook = ReturnType<typeof useCitations>;
@@ -37,6 +38,7 @@ export function QuotationsHost(p: QuotationsHostProps) {
   const { selectedQuotationGroupId, setSelectedQuotationGroupId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createQuotation } = useCardCreationContext();
+  const recentlyAddedId = useRecentlyAddedId("quotation");
   return (
     <QuotationsPanel
       groups={p.quotationGroups}
@@ -64,6 +66,7 @@ export function QuotationsHost(p: QuotationsHostProps) {
       panelSide={p.side}
       viewMode={getPanelViewMode("quotations")}
       onViewModeChange={(m) => setPanelViewMode("quotations", m)}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

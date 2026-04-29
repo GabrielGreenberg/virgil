@@ -106,6 +106,8 @@ export function NoteCard({
             selected={selected}
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to note anchor"
+            data-helper="Jump"
+            data-helper-pos="above"
           />
         ) : (
           <CardTargetIcon selected={false} disabled onClick={() => {}} />

@@ -25,7 +25,7 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { formatMinimalCitation as fmtMinCite } from "@/lib/bib-parser";
+import { formatMediumCitationParts } from "@/lib/bib-parser";
 import { MIME_QUOTE, MIME_QUOTATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 
@@ -62,6 +62,8 @@ function DeleteXButton({
         }}
         className="opacity-0 group-hover/card:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-faint hover:text-danger hover:bg-danger-soft"
         title="Delete"
+        data-helper="Delete"
+        data-helper-pos="above"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="18" y1="6" x2="6" y2="18" />
@@ -347,11 +349,12 @@ const QuoteEntry = memo(function QuoteEntry({
   );
 
   const podRef = useRef<HTMLDivElement>(null);
+  const [askingDelete, setAskingDelete] = useState(false);
 
   return (
     <div
       ref={podRef}
-      className={`group/card ${PANEL.subpodWhite} p-3`}
+      className={`group/card relative ${PANEL.subpodWhite} p-3`}
       title="Drag handle to insert quote with citation"
     >
       <div className="flex items-start gap-2">
@@ -366,6 +369,8 @@ const QuoteEntry = memo(function QuoteEntry({
           onClick={(e) => e.stopPropagation()}
           className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover/card:text-ink-subtle transition-colors shrink-0"
           title="Drag quote into document"
+          data-helper="Drag quote"
+          data-helper-pos="above"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="3" cy="2" r="1.2" />
@@ -387,12 +392,6 @@ const QuoteEntry = memo(function QuoteEntry({
             style={quoteBodyStyle}
           />
         </div>
-        {canDelete && (
-          <DeleteXButton
-            onConfirm={() => onDelete(groupId, referenceId, quote.id)}
-            label="Delete this quote?"
-          />
-        )}
       </div>
       <div className="flex items-center mt-1.5 pt-1.5 border-t border-edge-subtle">
         <div className="flex items-center gap-1">
@@ -406,6 +405,43 @@ const QuoteEntry = memo(function QuoteEntry({
           />
         </div>
       </div>
+      {canDelete && (
+        <>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setAskingDelete(true);
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+            draggable={false}
+            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+            className="absolute bottom-1.5 right-1.5 opacity-0 group-hover/card:opacity-70 hover:!opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded text-ink-faint hover:text-danger hover:bg-danger-soft"
+            title="Delete quote"
+            aria-label="Delete quote"
+            data-helper="Delete"
+            data-helper-pos="above"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6" />
+              <path d="M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+          </button>
+          <ConfirmDialog
+            open={askingDelete}
+            message="Delete this quote?"
+            confirmLabel="Delete"
+            tone="danger"
+            onConfirm={() => {
+              setAskingDelete(false);
+              onDelete(groupId, referenceId, quote.id);
+            }}
+            onCancel={() => setAskingDelete(false)}
+          />
+        </>
+      )}
     </div>
   );
 });
@@ -416,9 +452,9 @@ const ReferenceBlock = memo(function ReferenceBlock({
   bibEntries,
   bibPackage,
   canDelete,
+  notesSlot,
   onUpdateCiteKey,
   onDeleteReference,
-  onAddQuote,
   onUpdateQuote,
   onDeleteQuote,
 }: {
@@ -427,9 +463,9 @@ const ReferenceBlock = memo(function ReferenceBlock({
   bibEntries: BibEntry[];
   bibPackage: string;
   canDelete: boolean;
+  notesSlot?: React.ReactNode;
   onUpdateCiteKey: (groupId: string, referenceId: string, key: string) => void;
   onDeleteReference: (groupId: string, referenceId: string) => void;
-  onAddQuote: (groupId: string, referenceId: string) => string;
   onUpdateQuote: (
     groupId: string,
     referenceId: string,
@@ -441,10 +477,11 @@ const ReferenceBlock = memo(function ReferenceBlock({
   const matchedEntry = bibEntries.find((e) => e.key === reference.citeKey);
   const [editingCiteKey, setEditingCiteKey] = useState(false);
 
-  const cleanTitle = useMemo(() => {
-    if (!matchedEntry?.fields.title) return null;
-    return matchedEntry.fields.title.replace(/[{}]/g, "");
-  }, [matchedEntry]);
+  const citParts = useMemo(() => {
+    if (!matchedEntry) return null;
+    const parts = formatMediumCitationParts(reference.citeKey, bibEntries);
+    return { ...parts, title: parts.title.replace(/[{}]/g, "") };
+  }, [matchedEntry, reference.citeKey, bibEntries]);
 
   const handleCiteKeyChange = useCallback(
     (key: string) => {
@@ -454,39 +491,45 @@ const ReferenceBlock = memo(function ReferenceBlock({
     [onUpdateCiteKey, groupId, reference.id],
   );
 
-  const chipLabel = matchedEntry
-    ? fmtMinCite(reference.citeKey, bibEntries)
-    : reference.citeKey || "No key";
-
   return (
-    <div className="group/card space-y-2">
+    <div className="group/ref space-y-2">
       <div className="flex items-start gap-2">
         <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap gap-1.5 mb-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="flex-1 min-w-0 text-xs leading-snug">
+              {citParts ? (
+                <>
+                  <span className="font-medium">{citParts.author}</span>
+                  <span className="text-ink-subtle"> ({citParts.year})</span>
+                  {citParts.title && (
+                    <span className="text-ink-subtle">
+                      {" — "}
+                      <span className="italic">{citParts.title}</span>
+                    </span>
+                  )}
+                </>
+              ) : reference.citeKey ? (
+                <span className="font-mono text-danger">{reference.citeKey}</span>
+              ) : (
+                <span className="text-ink-muted italic">No reference selected</span>
+              )}
+            </div>
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setEditingCiteKey((v) => !v);
               }}
-              className={`inline-block rounded-[3px] border px-1.5 py-0.5 text-xs cursor-pointer transition-colors ${
-                !matchedEntry
-                  ? "border-dashed border-red-300 text-danger bg-danger-soft/50"
-                  : editingCiteKey
-                    ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
-                    : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
-              }`}
+              className="shrink-0 opacity-0 group-hover/ref:opacity-100 focus:opacity-100 transition-opacity text-ink-muted hover:text-ink-body p-0.5 rounded"
+              title="Edit cite key"
+              data-helper="Edit key"
+              data-helper-pos="above"
             >
-              {chipLabel}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                <path d="m15 5 4 4" />
+              </svg>
             </button>
           </div>
-          {matchedEntry && cleanTitle && (
-            <p className="text-[11px] text-ink-subtle leading-snug">
-              {cleanTitle}
-            </p>
-          )}
-          {!matchedEntry && !reference.citeKey && (
-            <p className="text-xs text-ink-muted italic">No reference selected</p>
-          )}
         </div>
         {canDelete && (
           <DeleteXButton
@@ -504,23 +547,7 @@ const ReferenceBlock = memo(function ReferenceBlock({
         />
       )}
 
-      {!editingCiteKey && reference.citeKey && (
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="text-xs font-mono text-ink-muted truncate flex-1 min-w-0">
-            {reference.citeKey}
-          </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setEditingCiteKey(true);
-            }}
-            className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
-            title="Edit cite key"
-          >
-            Edit
-          </button>
-        </div>
-      )}
+      {notesSlot}
 
       <div className="space-y-1.5">
         {reference.quotes.map((q) => (
@@ -537,13 +564,6 @@ const ReferenceBlock = memo(function ReferenceBlock({
           />
         ))}
       </div>
-
-      <button
-        onClick={() => onAddQuote(groupId, reference.id)}
-        className="text-[11px] text-amber-600 hover:text-amber-700 transition-colors"
-      >
-        + Add quote
-      </button>
     </div>
   );
 });
@@ -555,7 +575,7 @@ function CollapsibleNotes({
   notes: string;
   onChange: (v: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => Boolean(notes));
   const [localNotes, setLocalNotes] = useState(notes);
   const debouncedSave = useDebouncedCallback(onChange, 400);
 
@@ -746,6 +766,8 @@ export function QuotationGroupCard({
           onClick={(e) => e.stopPropagation()}
           className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
           title="Drag to anchor to paragraph"
+          data-helper="Drag to anchor"
+          data-helper-pos="above"
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="3" cy="2" r="1.2" />
@@ -793,6 +815,8 @@ export function QuotationGroupCard({
           <TargetIcon
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to quotation in text"
+            data-helper="Jump"
+            data-helper-pos="above"
           />
         )}
       </div>
@@ -808,7 +832,7 @@ export function QuotationGroupCard({
           className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"
           onClick={(e) => e.stopPropagation()}
         >
-          {group.references.map((r) => (
+          {group.references.map((r, idx) => (
             <ReferenceBlock
               key={r.id}
               reference={r}
@@ -816,30 +840,65 @@ export function QuotationGroupCard({
               bibEntries={bibEntries}
               bibPackage={bibPackage}
               canDelete={group.references.length > 1}
+              notesSlot={
+                idx === 0 ? (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <CollapsibleNotes
+                      notes={group.notes}
+                      onChange={(notes) => onUpdateNotes(group.id, notes)}
+                    />
+                  </div>
+                ) : undefined
+              }
               onUpdateCiteKey={onUpdateReferenceCiteKey}
               onDeleteReference={onDeleteReference}
-              onAddQuote={onAddQuote}
               onUpdateQuote={onUpdateQuote}
               onDeleteQuote={onDeleteQuote}
             />
           ))}
         </div>
 
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddReference(group.id);
-          }}
-          className="mt-2 text-xs text-amber-600 hover:text-amber-700 transition-colors"
-        >
-          + Add reference
-        </button>
-
-        <div onClick={(e) => e.stopPropagation()}>
-          <CollapsibleNotes
-            notes={group.notes}
-            onChange={(notes) => onUpdateNotes(group.id, notes)}
-          />
+        <div className="mt-2 flex items-center gap-2">
+          {group.references.length > 0 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const lastRef = group.references[group.references.length - 1];
+                onAddQuote(group.id, lastRef.id);
+              }}
+              className="inline-flex items-center gap-1 text-amber-600 border border-transparent hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 active:bg-amber-100 transition-colors px-1.5 py-1 rounded"
+              title="Add quote"
+              aria-label="Add quote"
+              data-helper="Add quote"
+              data-helper-pos="above"
+            >
+              <span className="text-sm leading-none">+</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="2" y="2" width="20" height="20" rx="3" />
+                <path d="M8 9.5C8 11.5 9 13 10.5 13.5L9.5 15C8 14.5 6.5 12.8 6.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1S10.5 11.2 9.2 11.2c-.4 0-.8-.1-1.2-.3v-1.4z" fill="currentColor" stroke="none" />
+                <path d="M15 9.5C15 11.5 16 13 17.5 13.5L16.5 15C15 14.5 13.5 12.8 13.5 10.2c0-2 1.2-3.2 2.8-3.2 1.3 0 2.2.9 2.2 2.1s-1 2.1-2.3 2.1c-.4 0-.8-.1-1.2-.3v-1.4z" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+          )}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddReference(group.id);
+            }}
+            className="inline-flex items-center gap-1 text-amber-600 border border-transparent hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 active:bg-amber-100 transition-colors px-1.5 py-1 rounded"
+            title="Add reference"
+            aria-label="Add reference"
+            data-helper="Add reference"
+            data-helper-pos="above"
+          >
+            <span className="text-sm leading-none">+</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              <path d="M8 7h8" />
+              <path d="M8 12h6" />
+            </svg>
+          </button>
         </div>
       </div>
     </PanelCard>

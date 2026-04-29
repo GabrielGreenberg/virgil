@@ -36,7 +36,7 @@ import type {
   ArchivedSnippet,
   BibEntry,
   CitationRef,
-  Comment,
+  RevisionCard,
   CutterCard,
   OrphanedFootnote,
   QuotationGroup,
@@ -83,7 +83,7 @@ interface SearchPanelProps {
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterCard[];
   quotationGroups: QuotationGroup[];
-  comments: Comment[];
+  comments: RevisionCard[];
   bibEntries: BibEntry[];
   onOpenItem: (panel: PanelId, itemId: string) => void;
   state: SearchPanelState;
@@ -478,6 +478,7 @@ function SearchPanel({
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
           title="Match case"
+          data-helper="Match case"
         >
           Aa
         </button>
@@ -489,6 +490,7 @@ function SearchPanel({
               : "border-edge-hover text-ink-muted hover:text-ink-body"
           }`}
           title="Whole word"
+          data-helper="Whole word"
         >
           W
         </button>
@@ -594,6 +596,7 @@ function MoreScopesDropdown({
             : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
         }`}
         title="More search scopes"
+        data-helper="More scopes"
       >
         <span>More</span>
         {active && (
@@ -680,6 +683,7 @@ function ScopeChip({
           : "border-edge-subtle bg-transparent text-ink-muted hover:text-ink-subtle"
       }`}
       title={`${enabled ? "Hide" : "Show"} ${SCOPE_LABEL[scope]}`}
+      data-helper={`${enabled ? "Hide" : "Show"} scope`}
     >
       <span
         aria-hidden

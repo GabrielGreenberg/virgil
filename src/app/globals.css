@@ -155,7 +155,7 @@
 
   /* Text scale */
   --ink-faint: #d6d3d1;     /* disabled, resting drag handles (≈ stone-300) */
-  --ink-muted: #a8a29e;     /* placeholders, default icons, timestamps (≈ stone-400) */
+  --ink-muted: #78716c;     /* placeholders, default icons, timestamps (≈ stone-500) */
   --ink-subtle: #78716c;    /* subtitles (≈ stone-500) */
   --ink-body: #44403c;      /* section titles, strong readable text (≈ stone-700) */
   --ink-strong: #292524;    /* modal titles, primary bold text (≈ stone-800) */
@@ -2341,6 +2341,71 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   border-radius: 2px;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Helper mode — hover callouts for every interactive button
+   ──────────────────────────────────────────────────────────────────────
+   Activated by `data-helper-mode="on"` on <body> (set by useHelperMode).
+   Every element with `data-helper="<label>"` shows a small black callout
+   with white text on hover. Position varies by zone:
+     - Default: below the element
+     - [data-strip-side="left"] children: to the right
+     - [data-strip-side="right"] children: to the left
+     - [data-helper-pos="above"]: above the element
+   ══════════════════════════════════════════════════════════════════════ */
+
+body[data-helper-mode="on"] [data-helper]:hover {
+  position: relative;
+}
+
+body[data-helper-mode="on"] [data-helper]:hover::after {
+  content: attr(data-helper);
+  position: absolute;
+  z-index: 9999;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  background: var(--ink-strong, #292524);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--font-sans), system-ui, sans-serif;
+  line-height: 1.2;
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+/* Left strip: callouts to the right */
+body[data-helper-mode="on"] [data-strip-side="left"] [data-helper]:hover::after {
+  top: 50%;
+  left: 100%;
+  right: auto;
+  transform: translateY(-50%);
+  margin-top: 0;
+  margin-left: 4px;
+}
+
+/* Right strip: callouts to the left */
+body[data-helper-mode="on"] [data-strip-side="right"] [data-helper]:hover::after {
+  top: 50%;
+  left: auto;
+  right: 100%;
+  transform: translateY(-50%);
+  margin-top: 0;
+  margin-right: 4px;
+}
+
+/* Explicit above positioning (card-level buttons) */
+body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
 /* ── Drag gap — invisible split handle with blue hover highlight ── */
 .drag-gap {
   background: transparent;
@@ -2444,13 +2509,47 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
 .print-only { display: none; }
 
 @media print {
-  /* Isolate the editor page using the visibility trick — the wrapper is
-     deeply nested, so a body-direct-child selector won't work. */
-  body { visibility: hidden; }
-  [data-editor-page], [data-editor-page] * { visibility: visible; }
+  /* Isolate the editor page by hiding non-chain siblings and releasing
+     layout constraints on the chain itself. Tagging is applied at print
+     start by applyPrintAttrs in src/lib/print.ts. The previous trick
+     (body{visibility:hidden} + [data-editor-page]{position:fixed})
+     pinned the page to the viewport and broke pagination, so only the
+     first page printed. */
+  [data-print-hide] { display: none !important; }
+
+  [data-print-ancestor],
   [data-editor-page] {
-    position: fixed; top: 0; left: 0; right: 0;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    flex: none !important;
+    position: static !important;
+    display: block !important;
+  }
+
+  /* The editor's own scroll container — without this, content is
+     clipped to viewport height. */
+  [data-editor-page] .overflow-y-auto {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    flex: none !important;
+  }
+
+  [data-editor-page] {
     background: white; box-shadow: none; border: 0;
+  }
+
+  /* The editor pod (a descendant of [data-editor-page]) uses
+     var(--pod-border) and var(--pod-shadow) inline. Override the
+     custom properties at the document root so the pod chrome
+     disappears in print without us having to target the inline-styled
+     element directly. */
+  :root {
+    --pod-border: 0 !important;
+    --pod-shadow: none !important;
+    --pod-radius: 0 !important;
   }
 
   /* Pull through our chosen font size only inside the print media so we
@@ -2469,11 +2568,24 @@ body[data-pref-mode="on"] [data-panel-theme]:hover {
   h1, h2, h3, h4 { break-after: avoid; }
   .tiptap p { orphans: 3; widows: 3; }
 
-  /* Always-hidden chrome / portals. visibility:hidden on body already
-     hides them visually; display:none also reclaims the layout box so
-     pagination works cleanly. */
+  /* Always-hidden chrome / portals. */
   .virgil-bar, [data-strip-side], [data-floating-panel],
   [data-floating-card], [data-pristine-card-id] { display: none !important; }
+
+  /* Drop editor-only decorations: chip-style metadata labels above
+     title/author/date and section-heading annotations are field-type
+     hints, not document content. Inline citation/label-ref tokens
+     keep their text but lose the chip border and tinted background so
+     they read as plain prose. */
+  .title-field-annotation,
+  .heading-annotation { display: none !important; }
+  .citation-node,
+  .label-ref-node {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 !important;
+    color: inherit !important;
+  }
 
   /* Element toggles — keyed off data-print-e-* on the html element. */
   html[data-print-e-title="false"] .par-title-wrapper,

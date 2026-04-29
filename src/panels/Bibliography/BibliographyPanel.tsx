@@ -499,6 +499,7 @@ function BibliographyPanel({
         }`}
         onClick={citedKeys.size > 0 ? handleExportCited : undefined}
         title={citedKeys.size > 0 ? undefined : "No cited entries to export"}
+        data-helper="Export cited"
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -551,6 +552,7 @@ function BibliographyPanel({
             : "text-ink-muted hover:text-ink-body hover-on-light"
         }`}
         title={showSearch ? "Close search" : "Search bibliography"}
+        data-helper={showSearch ? "Close search" : "Search"}
         aria-pressed={showSearch}
       >
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -570,6 +572,7 @@ function BibliographyPanel({
                 }`}
                 onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
                 title={generalBibPath ? undefined : "Set general bibliography first"}
+                data-helper="Search general"
               >
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <circle cx="11" cy="11" r="8" />
@@ -639,6 +642,7 @@ function BibliographyPanel({
                     : "text-ink-muted hover:text-ink-body"
                 }`}
                 title="Search this paper's bibliography"
+                data-helper="Search local"
               >
                 Local
               </button>
@@ -660,6 +664,7 @@ function BibliographyPanel({
                     ? "Search the user-wide general bibliography"
                     : "Set a general bibliography first…"
                 }
+                data-helper="Search global"
               >
                 Global
               </button>
@@ -668,6 +673,7 @@ function BibliographyPanel({
               onClick={closeSearch}
               className="text-ink-muted hover:text-ink-body p-0.5 shrink-0"
               title="Close search"
+              data-helper="Close search"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -707,6 +713,7 @@ function BibliographyPanel({
               }}
               className="ml-auto text-ink-muted hover:text-ink-body p-0.5"
               title="Cancel"
+              data-helper="Cancel"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <line x1="18" y1="6" x2="6" y2="18" />
@@ -772,6 +779,8 @@ function BibliographyPanel({
                 onClick={() => onRemoveEntryRequest(req.id)}
                 className="text-ink-muted hover:text-ink-body shrink-0 p-0.5"
                 title="Dismiss"
+                data-helper="Dismiss"
+                data-helper-pos="above"
               >
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" />

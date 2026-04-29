@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useState, useRef, useEffect, useCallback, Fragment } from "react";
+import { memo, useState, useRef, useEffect, useCallback, Fragment, type ReactNode } from "react";
 import { Editor } from "@tiptap/react";
 import {
   IconNotes,
@@ -10,6 +10,7 @@ import {
   IconArchive,
   IconFootnote,
   IconCitation,
+  IconBibliography,
   IconQuotations,
   IconExample,
 } from "./editor-layout/panel-icons";
@@ -308,6 +309,7 @@ export interface ActionToolbarCallbacks {
   onArchive?: ActionToolbarCallback;
   onCreateFootnote?: ActionToolbarCallback;
   onInsertCitation?: ActionToolbarCallback;
+  onCreateBibEntry?: ActionToolbarCallback;
   onQuoteSelection?: ActionToolbarCallback;
 }
 
@@ -363,6 +365,10 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   /** Fired when the user clicks the dock-up button (only rendered when
    *  !atHome) to return the toolbar to its Virgil-bar home. */
   onDockUp?: () => void;
+  /** Optional collaborator-mode status pill, rendered at the start of
+   *  the bar. Owned by the host (EditorLayout) so it can plug in
+   *  per-doc collab state. */
+  collabStatus?: ReactNode;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -386,6 +392,7 @@ function IconBtn({
       onClick={onClick}
       disabled={disabled}
       title={title}
+      data-helper={title.replace(/\s*\(.*\)$/, "")}
       className={`p-1 rounded transition-colors disabled:opacity-25 disabled:cursor-default ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -415,6 +422,7 @@ function TextBtn({
     <button
       onClick={onClick}
       title={title}
+      data-helper={title.replace(/\s*\(.*\)$/, "")}
       className={`px-1.5 py-0.5 rounded text-sm transition-colors ${
         active
           ? "bg-[var(--accent-light)] text-[var(--accent)] font-medium"
@@ -479,6 +487,7 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Block type"
+        data-helper="Block type"
         className="px-1.5 py-0.5 rounded text-sm transition-colors text-[var(--muted)] hover:bg-edge-subtle hover:text-ink-body flex items-center gap-1"
       >
         <span style={{ fontSize: "15px", lineHeight: 1 }}>&#182;</span>
@@ -568,6 +577,7 @@ function ExampleDropdown({ editor }: { editor: Editor }) {
       <button
         onClick={handleToggle}
         title="Insert expex example"
+        data-helper="Example"
         className={`px-1 py-0.5 rounded transition-colors flex items-center gap-0.5 ${
           active
             ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -701,6 +711,7 @@ function AttachedPopover({
       <button
         onClick={toggle}
         title={title}
+        data-helper={title}
         className={`p-1 rounded transition-colors ${
           open || active
             ? "bg-[var(--accent-light)] text-[var(--accent)]"
@@ -768,6 +779,7 @@ export function ActionButton({
         onClick(pod?.getBoundingClientRect() ?? null);
       }}
       title={title}
+      data-helper={title}
       className="p-1 rounded transition-colors"
       style={{ color }}
       onMouseEnter={(e) => {
@@ -792,7 +804,7 @@ export function ActionButton({
  *  existing test/e2e hooks that some callers rely on. */
 export interface ActionButtonDef {
   callbackKey: keyof ActionToolbarCallbacks;
-  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "quotations" | "examples";
+  panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "bibliography" | "quotations" | "examples";
   title: string;
   color: string;
   hoverBg: string;
@@ -809,6 +821,7 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onArchive", panelId: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
   { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote /> },
   { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation />, dataAttr: "data-insert-citation-button" },
+  { callbackKey: "onCreateBibEntry", panelId: "bibliography", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography /> },
   { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
 ];
 
@@ -1028,6 +1041,7 @@ function ViewMenu({
   onSetDividerWidth,
   orientation,
   onSetOrientation,
+  onCloseAllPanels,
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
   | "showLatexComments" | "onToggleLatexComments"
@@ -1040,6 +1054,7 @@ function ViewMenu({
   | "availableDividerLevels" | "dividerLevels" | "onToggleDividerLevel"
   | "dividerWidth" | "onSetDividerWidth"
   | "orientation" | "onSetOrientation"
+  | "onCloseAllPanels"
 >) {
   const [open, setOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
@@ -1081,6 +1096,7 @@ function ViewMenu({
         onClick={() => setOpen(!open)}
         className={`p-1 rounded transition-colors ${open ? "bg-[var(--accent-light)] text-[var(--accent)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
         title="View options"
+        data-helper="View options"
       >
         <svg
           width="3.69"
@@ -1231,6 +1247,17 @@ function ViewMenu({
               )}
             </>
           )}
+          {onCloseAllPanels && (
+            <>
+              <div className="my-1 border-t border-edge-subtle" />
+              <button
+                onClick={() => { onCloseAllPanels(); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
+              >
+                <span>Close all panels</span>
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1239,7 +1266,7 @@ function ViewMenu({
 
 /** Shared button row used by both the at-home MenuBar and the
  *  detached floating copies. Renders View menu + Format popover +
- *  Actions popover + paragraph nav + split + close-all. Orientation
+ *  Actions popover + paragraph nav + split. Orientation
  *  drives only the nav-button pair stacking; the popovers and single
  *  buttons are layout-agnostic. */
 function MenuBarContent({
@@ -1262,6 +1289,7 @@ function MenuBarContent({
   onActionsDetach, onFormatDetach,
   onSetOrientation,
   kebabAtEnd = false,
+  collabStatus,
 }: {
   editor: Editor;
   orientation: ToolbarOrientation;
@@ -1295,11 +1323,16 @@ function MenuBarContent({
       onSetDividerWidth={onSetDividerWidth}
       orientation={orientation}
       onSetOrientation={onSetOrientation}
+      onCloseAllPanels={onCloseAllPanels}
     />
   );
   return (
     <>
       {!kebabAtEnd && viewMenu}
+
+      {/* Collaborator-mode status pill — rendered before Format/Actions
+          so the indicator stays visible at the bar's leading edge. */}
+      {collabStatus}
 
       {/* Format popup — each grab spawns a detached Formatting toolbar. */}
       <AttachedPopover
@@ -1339,6 +1372,7 @@ function MenuBarContent({
               onClick={onParaNavBack}
               disabled={paraNavBackDisabled}
               title="Go back"
+              data-helper="Go back"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
             >
@@ -1352,6 +1386,7 @@ function MenuBarContent({
               onClick={onParaNavForward}
               disabled={paraNavForwardDisabled}
               title="Go forward"
+              data-helper="Go forward"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
               style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
             >
@@ -1369,6 +1404,7 @@ function MenuBarContent({
           onClick={onToggleEditorSplit}
           className={`p-1 rounded transition-colors ${editorSplit ? "text-[var(--accent)] bg-[var(--accent-light)]" : "text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"}`}
           title={editorSplit ? "Close split editor" : "Split editor"}
+          data-helper="Split editor"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
             {editorSplit && activeSplitPane === "top" && (
@@ -1381,20 +1417,6 @@ function MenuBarContent({
             <line x1="4" y1="12" x2="20" y2="12" />
           </svg>
         </button>
-      )}
-
-      {/* Blank — close every panel/window */}
-      {onCloseAllPanels && (
-        <IconBtn
-          onClick={onCloseAllPanels}
-          title="Close all panels and windows"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="4" y="4" width="16" height="16" rx="1.5" />
-            <line x1="9" y1="9" x2="15" y2="15" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-          </svg>
-        </IconBtn>
       )}
 
       {kebabAtEnd && viewMenu}

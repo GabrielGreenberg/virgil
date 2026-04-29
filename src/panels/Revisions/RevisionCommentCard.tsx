@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
-import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
+import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types";
 import {
   BadgeLabel,
   BadgeOrphaned,
@@ -18,22 +18,19 @@ import {
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { FloatCard } from "@/components/FloatingCards";
-import { cardPopKey } from "@/panels/panel-registry";
-import { MIME_CUT } from "@/lib/marginalia";
-import { FieldTitleRow } from "./CutterSuggestionCard";
-import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
-import CollabClaimPill from "@/components/CollabClaimPill";
-import CollabPresenceDots from "@/components/CollabPresenceDots";
+import { popKey } from "@/panels/panel-registry";
+import { MIME_REVISION } from "./mime";
+import { FieldTitleRow } from "@/panels/Cutter/CutterSuggestionCard";
 
-export function startCutterCommentDrag(e: React.DragEvent, cardId: string) {
+export function startRevisionCommentDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
-    MIME_CUT,
+    MIME_REVISION,
     JSON.stringify({ cardId, kind: "comment" }),
   );
   e.dataTransfer.effectAllowed = "copy";
 }
 
-export function CutterCommentCard({
+export function RevisionCommentCard({
   card,
   selected,
   onUpdateText,
@@ -46,7 +43,7 @@ export function CutterCommentCard({
   isPoppedOut,
   editor,
 }: {
-  card: CutterCommentCardData;
+  card: RevisionCommentCardData;
   selected: boolean;
   onUpdateText: (id: string, text: string) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
@@ -58,15 +55,15 @@ export function CutterCommentCard({
   isPoppedOut?: boolean;
   editor?: Editor | null;
 }) {
-  const theme = useCardTheme("cut");
-  const cutBodyStyle = usePanelBodyStyle("cut");
+  const theme = useCardTheme("revision");
+  const revisionBodyStyle = usePanelBodyStyle("revision");
   const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
     getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
   const anchorSummary = getAnchorSummary(card, editor ?? null);
   const popped = usePoppedCards();
-  const cardKey = cardPopKey("cutter-comment", card.id);
+  const cardKey = popKey("revisions", card.id);
   const onToggleFromCtx =
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
@@ -75,9 +72,6 @@ export function CutterCommentCard({
   const [commentExpanded, setCommentExpanded] = useState(!!card.text);
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
-  const { partnerClaim, claim, release } = useCardClaim("cut", card.id);
-  const collabCtx = useCollabContext();
-  const partnerSelections = collabCtx.getCardSelections("cut", card.id);
   useEffect(() => {
     if (selected && commentExpanded && !card.text) taRef.current?.focus();
   }, [selected, commentExpanded, card.text]);
@@ -85,7 +79,7 @@ export function CutterCommentCard({
   const cardEl = (
     <PanelCard
       ref={cardRef}
-      data-cutter-comment-entry={card.id}
+      data-revision-comment-entry={card.id}
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
       theme={theme}
@@ -94,7 +88,7 @@ export function CutterCommentCard({
       onTogglePopout={onToggleFromCtx}
       onTrashClick={() => onDelete(card.id)}
       draggable={!selected}
-      onDragStart={(e) => startCutterCommentDrag(e, card.id)}
+      onDragStart={(e) => startRevisionCommentDrag(e, card.id)}
       tabIndex={selected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
@@ -143,11 +137,6 @@ export function CutterCommentCard({
             }
           />
         )}
-        {partnerClaim ? (
-          <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-        ) : (
-          <CollabPresenceDots presences={partnerSelections} />
-        )}
       </div>
 
       <div
@@ -158,12 +147,6 @@ export function CutterCommentCard({
       <div
         className={`px-3 pt-2 pb-2 space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
         onClick={(e) => e.stopPropagation()}
-        style={
-          partnerClaim
-            ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
-            : undefined
-        }
-        title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
         {card.selectedText && (
           <div>
@@ -210,12 +193,10 @@ export function CutterCommentCard({
                 ref={taRef}
                 value={card.text}
                 onChange={(e) => onUpdateText(card.id, e.target.value)}
-                onFocus={() => claim()}
-                onBlur={() => release()}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
                 placeholder="Comment text…"
-                style={cutBodyStyle}
+                style={revisionBodyStyle}
                 className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
                 rows={3}
               />

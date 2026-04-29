@@ -3,313 +3,386 @@
 import { useCallback, useEffect } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
-import { readSidecar, writeSidecar } from "@/lib/storage";
 import type {
-  Comment,
-  CommentsState,
-  RevisionTurn,
-  RevisionUser,
   RevisionsState,
+  RevisionsTracker,
+  RevisionCard,
+  RevisionCommentCard,
+  RevisionSuggestionCard,
 } from "@/lib/types";
 import {
-  clearTextAnchorLink,
-  derivedLinksForCard,
-  getTextAnchor,
-  setTextAnchorLink,
-} from "@/links/links";
-import {
-  emptyRichContent,
   normalizeRichContent,
+  emptyRichContent,
   richJsonToPlainText,
 } from "@/lib/footnote-content";
+import {
+  addParagraphLink,
+  clearTextAnchorLink,
+  getTextAnchor,
+  removeParagraphLink,
+  setTextAnchorLink,
+} from "@/links/links";
+import { migrateCardLinks } from "@/links/migrate-card";
 import { usePersistentState } from "./usePersistentState";
+import { usePristineTracker } from "./usePristineTracker";
+import type { PristineKindApi } from "./usePristineCardManager";
 
-/** Build a JSONContent doc from whatever shape the record has today.
- *  Prefer existing `content`; fall back to the legacy `text` plaintext. */
-function deriveContent(raw: { content?: unknown; text?: string }): JSONContent {
-  if (raw.content) return normalizeRichContent(raw.content);
-  if (typeof raw.text === "string" && raw.text.length > 0) {
-    return normalizeRichContent(raw.text);
-  }
-  return emptyRichContent();
+const EMPTY_STATE: RevisionsState = { cards: [], tracker: null };
+
+function migrateTracker(raw: unknown): RevisionsTracker | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Partial<RevisionsTracker>;
+  const target = typeof t.target === "number" && Number.isFinite(t.target) && t.target >= 0
+    ? Math.round(t.target)
+    : null;
+  const setAt = typeof t.setAt === "string" ? t.setAt : null;
+  if (target == null && setAt == null) return null;
+  return { target, setAt };
 }
 
-const DEFAULT_USERS: RevisionUser[] = [
-  { id: "claude", name: "Claude", color: "#a855f7", isDefault: true },
-  { id: "me", name: "Me", color: "#3b82f6", isDefault: true },
-];
-
-const EMPTY_STATE: RevisionsState = {
-  users: [...DEFAULT_USERS],
-  comments: [],
-  activeUserId: "me",
-};
-
-function migrateComment(raw: Partial<Comment> & { anchorPos?: number; anchorId?: string }): Comment {
-  const content = deriveContent(raw);
-  const base: Comment = {
-    id: raw.id!,
-    authorId: raw.authorId ?? "me",
-    createdAt: raw.createdAt ?? new Date().toISOString(),
-    resolved: raw.resolved ?? false,
-    text: raw.text ?? richJsonToPlainText(content),
-    content,
-    turns: raw.turns ?? [],
-    links: Array.isArray(raw.links) ? raw.links : [],
+function migrateCommentRecord(raw: unknown): RevisionCommentCard | null {
+  const r = (raw ?? {}) as Partial<RevisionCommentCard> & {
+    authorId?: string;
+    resolved?: boolean;
+    turns?: Array<{ text?: string }>;
   };
-  if (typeof raw.selectedText === "string" && raw.selectedText.length > 0) {
-    base.selectedText = raw.selectedText;
-  }
-  // Legacy TextRevision records carried anchorId/anchorPos at top-level
-  // before the unified links[] migration. Fold them in now.
-  if (base.links.length === 0 && (raw.anchorId || base.selectedText)) {
-    base.links = derivedLinksForCard("comment", {
-      id: base.id,
-      anchorId: raw.anchorId,
-      anchorText: base.selectedText,
-    });
-  }
-  return base;
+  if (!r.id || !r.createdAt) return null;
+  const content = normalizeRichContent(r.content);
+  const text =
+    typeof r.text === "string" && r.text.length > 0
+      ? r.text
+      : richJsonToPlainText(content) || "";
+  const links = migrateCardLinks("comment", raw);
+  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  return {
+    kind: "comment",
+    id: r.id,
+    createdAt: r.createdAt,
+    text,
+    content,
+    aiRequest: !!r.aiRequest,
+    selectedText:
+      r.selectedText ??
+      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+    links,
+  };
 }
 
-interface LegacyRevisionsState {
-  users?: RevisionUser[];
-  generalRevisions?: Array<Partial<Comment>>;
-  textRevisions?: Array<Partial<Comment> & { anchorPos?: number; anchorId?: string }>;
-  comments?: Array<Partial<Comment>>;
-  activeUserId?: string;
+function migrateSuggestionRecord(raw: unknown): RevisionSuggestionCard | null {
+  const r = (raw ?? {}) as Partial<RevisionSuggestionCard>;
+  if (!r.id || !r.createdAt) return null;
+  const links = migrateCardLinks("revision-suggestion", raw);
+  const ta = links.find((l) => l.anchor.type === "anchor" && l.anchor.textRange);
+  const status: RevisionSuggestionCard["status"] =
+    r.status === "accepted" || r.status === "rejected" ? r.status : "pending";
+  return {
+    kind: "suggestion",
+    id: r.id,
+    createdAt: r.createdAt,
+    author: r.author === "ai" ? "ai" : "human",
+    original_text: typeof r.original_text === "string" ? r.original_text : "",
+    suggested_text: typeof r.suggested_text === "string" ? r.suggested_text : "",
+    explanation: typeof r.explanation === "string" ? r.explanation : "",
+    user_text: typeof r.user_text === "string" ? r.user_text : "",
+    instructions: typeof r.instructions === "string" ? r.instructions : "",
+    status,
+    selectedText:
+      r.selectedText ??
+      (ta?.anchor.type === "anchor" ? ta.anchor.textRange?.textSnapshot : undefined),
+    links,
+  };
+}
+
+function migrateCard(raw: unknown): RevisionCard | null {
+  const r = (raw ?? {}) as { kind?: string };
+  if (r.kind === "suggestion") return migrateSuggestionRecord(raw);
+  return migrateCommentRecord(raw);
 }
 
 function migrateRevisions(raw: unknown): RevisionsState {
-  const s = raw as LegacyRevisionsState | null;
-  if (!s || (!s.users && !s.comments && !s.generalRevisions && !s.textRevisions)) {
-    return EMPTY_STATE;
-  }
-  const fromComments = (s.comments ?? []).map((r) => migrateComment(r));
-  // Legacy general/text arrays — fold them into the unified comments list.
-  const fromGeneral = (s.generalRevisions ?? []).map((r) => migrateComment(r));
-  const fromText = (s.textRevisions ?? []).map((r) =>
-    migrateComment(r as Partial<Comment> & { anchorPos?: number; anchorId?: string }),
-  );
-  const merged = [...fromComments, ...fromGeneral, ...fromText];
-  // De-dup by id (in case the same id appeared in both legacy + new shape).
-  const seen = new Set<string>();
-  const comments: Comment[] = [];
-  for (const c of merged) {
-    if (seen.has(c.id)) continue;
-    seen.add(c.id);
-    comments.push(c);
-  }
-  // Preserve creation order across the merged sources.
-  comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-  return {
-    users: s.users?.length ? s.users : [...DEFAULT_USERS],
-    comments,
-    activeUserId: s.activeUserId ?? "me",
+  if (!raw || typeof raw !== "object") return { cards: [], tracker: null };
+  const r = raw as {
+    cards?: unknown;
+    comments?: unknown;
+    generalRevisions?: unknown;
+    textRevisions?: unknown;
+    tracker?: unknown;
   };
+  const tracker = migrateTracker(r.tracker);
+
+  if (Array.isArray(r.cards)) {
+    return {
+      cards: r.cards
+        .map(migrateCard)
+        .filter((c): c is RevisionCard => c !== null),
+      tracker,
+    };
+  }
+
+  // Legacy shapes — `comments[]` (recent) plus `generalRevisions[]` /
+  // `textRevisions[]` (older). Every legacy entry becomes a comment card,
+  // dropping the multi-turn dialogue model and the resolved/author plumbing.
+  const sources: unknown[] = [];
+  if (Array.isArray(r.comments)) sources.push(...r.comments);
+  if (Array.isArray(r.generalRevisions)) sources.push(...r.generalRevisions);
+  if (Array.isArray(r.textRevisions)) sources.push(...r.textRevisions);
+  if (sources.length > 0) {
+    const seen = new Set<string>();
+    const cards: RevisionCard[] = [];
+    for (const raw of sources) {
+      const c = migrateCommentRecord(raw);
+      if (!c || seen.has(c.id)) continue;
+      seen.add(c.id);
+      cards.push(c);
+    }
+    cards.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return { cards, tracker };
+  }
+
+  return { cards: [], tracker };
 }
 
-/** One-shot fallback: if revisions.json didn't exist, try comments.json. */
-function migrateFromComments(comments: CommentsState | null): RevisionsState | null {
-  if (!comments?.comments?.length) return null;
-  const out: Comment[] = comments.comments.map((c) => ({
-    id: c.id,
-    authorId: "claude",
-    createdAt: c.createdAt,
-    resolved: c.resolved,
-    selectedText: c.selectedText,
-    text: c.comment,
-    content: normalizeRichContent(c.comment),
-    turns: [
-      {
-        id: generateEntityId(),
-        authorId: "claude",
-        createdAt: c.createdAt,
-        text: c.comment,
-      },
-    ],
-    links: [],
-  }));
-  return {
-    users: [...DEFAULT_USERS],
-    comments: out,
-    activeUserId: "me",
-  };
-}
-
-export function useRevisions(docId: string | null) {
-  const { state, setState, update, persist, stateRef } = usePersistentState<RevisionsState>(
+export function useRevisions(
+  docId: string | null,
+  externalPristine?: PristineKindApi | null,
+) {
+  const { state, update } = usePersistentState<RevisionsState>(
     docId,
     "revisions.json",
     EMPTY_STATE,
     { migrate: migrateRevisions, errorLabel: "revisions" },
   );
-
-  // One-shot fallback: if revisions.json was empty but comments.json has
-  // data, migrate and persist so this path only runs once per document.
-  useEffect(() => {
-    if (!docId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const existing = await readSidecar<RevisionsState | null>(docId, "revisions.json", null);
-        if (cancelled || existing) return;
-        const legacy = await readSidecar<CommentsState | null>(docId, "comments.json", null);
-        const migrated = migrateFromComments(legacy);
-        if (cancelled || !migrated) return;
-        setState(migrated);
-        await writeSidecar(docId, "revisions.json", migrated);
-      } catch (err) {
-        console.error("Failed to migrate comments:", err);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [docId, setState]);
-
-  /** Re-read the sidecar (used by window-focus refresh). */
-  const reload = useCallback(() => {
-    if (!docId) return;
-    readSidecar<RevisionsState | null>(docId, "revisions.json", null)
-      .then((data) => { if (data) setState(migrateRevisions(data)); })
-      .catch(() => {});
-  }, [docId, setState]);
-
-  // Refresh on window focus so Claude-authored turns show up after the
-  // agent writes them directly to revisions.json.
-  useEffect(() => {
-    const onFocus = () => reload();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [reload]);
-
-  const setActiveUser = useCallback(
-    (userId: string) => {
-      update((prev) => ({ ...prev, activeUserId: userId }));
-    },
-    [update],
-  );
-
-  const addUser = useCallback(
-    (name: string, color: string): RevisionUser => {
-      const u: RevisionUser = { id: generateEntityId(), name: name.trim(), color };
-      update((prev) => ({ ...prev, users: [...prev.users, u], activeUserId: u.id }));
-      return u;
-    },
-    [update],
-  );
+  const localPristine = usePristineTracker();
+  const pristine = externalPristine ?? localPristine;
 
   const addComment = useCallback(
     (
-      opts: {
-        text?: string;
-        selectedText?: string;
-        anchorId?: string | null;
-        authorId?: string;
-      } = {},
-    ): Comment => {
-      const now = new Date().toISOString();
-      const body = (opts.text ?? "").trim();
-      const content = body ? normalizeRichContent(body) : emptyRichContent();
-      const authorId =
-        opts.authorId ?? stateRef.current.activeUserId ?? "me";
-      const turns: RevisionTurn[] = body
-        ? [{ id: generateEntityId(), authorId, createdAt: now, text: body }]
-        : [];
-      let comment: Comment = {
+      paragraphId: string | null,
+      content?: JSONContent,
+      anchor?: { anchorId: string; anchorText: string },
+    ) => {
+      let card: RevisionCommentCard = {
+        kind: "comment",
         id: generateEntityId(),
-        authorId,
-        createdAt: now,
-        text: body,
-        content,
-        turns,
-        resolved: false,
+        createdAt: new Date().toISOString(),
+        text: content ? richJsonToPlainText(content) || "" : "",
+        content: content ?? emptyRichContent(),
+        aiRequest: false,
+        selectedText: anchor?.anchorText,
         links: [],
       };
-      if (opts.selectedText) comment.selectedText = opts.selectedText;
-      if (opts.anchorId) {
-        comment = setTextAnchorLink(
-          comment,
+      if (paragraphId) card = addParagraphLink(card, "comment", paragraphId);
+      if (anchor)
+        card = setTextAnchorLink(
+          card,
           "comment",
-          opts.anchorId,
-          opts.selectedText ?? "",
+          anchor.anchorId,
+          anchor.anchorText,
         );
-      }
-      update((prev) => ({ ...prev, comments: [...prev.comments, comment] }));
-      return comment;
+      if (!content && !anchor && !paragraphId) pristine.markNew(card.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      return card;
     },
-    [update, stateRef],
+    [update, pristine],
+  );
+
+  const addSuggestion = useCallback(
+    (
+      paragraphId: string | null,
+      originalText?: string,
+      anchor?: { anchorId: string; anchorText: string },
+    ) => {
+      let card: RevisionSuggestionCard = {
+        kind: "suggestion",
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        author: "human",
+        original_text: originalText ?? anchor?.anchorText ?? "",
+        suggested_text: "",
+        explanation: "",
+        user_text: "",
+        instructions: "",
+        status: "pending",
+        selectedText: anchor?.anchorText,
+        links: [],
+      };
+      if (paragraphId)
+        card = addParagraphLink(card, "revision-suggestion", paragraphId);
+      if (anchor)
+        card = setTextAnchorLink(
+          card,
+          "revision-suggestion",
+          anchor.anchorId,
+          anchor.anchorText,
+        );
+      if (!originalText && !anchor && !paragraphId) pristine.markNew(card.id);
+      update((prev) => ({ ...prev, cards: [...prev.cards, card] }));
+      return card;
+    },
+    [update, pristine],
   );
 
   const updateCommentContent = useCallback(
     (id: string, content: JSONContent) => {
-      const normalized = normalizeRichContent(content);
-      const text = richJsonToPlainText(normalized);
+      pristine.markDirty(id);
+      const text = richJsonToPlainText(content) || "";
       update((prev) => ({
         ...prev,
-        comments: prev.comments.map((c) =>
-          c.id === id ? { ...c, content: normalized, text } : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const setCommentAuthor = useCallback(
-    (id: string, authorId: string) => {
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.map((c) =>
-          c.id === id ? { ...c, authorId } : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const setCommentAnchor = useCallback(
-    (id: string, anchorId: string | null) => {
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.map((c) => {
-          if (c.id !== id) return c;
-          if (anchorId == null) return clearTextAnchorLink(c, "comment");
-          return setTextAnchorLink(c, "comment", anchorId, c.selectedText ?? "");
-        }),
-      }));
-    },
-    [update],
-  );
-
-  // Orphan listener — clear the dead anchor id on the matching comment.
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { anchorId, kind } = (e as CustomEvent).detail || {};
-      if (kind !== "revision" || !anchorId) return;
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.map((c) =>
-          getTextAnchor(c)?.anchorId === anchorId
-            ? clearTextAnchorLink(c, "comment")
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "comment"
+            ? { ...c, content, text }
             : c,
         ),
       }));
-    };
-    window.addEventListener("virgil-anchor-orphaned", handler);
-    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
-  }, [update]);
+    },
+    [update, pristine],
+  );
 
-  const addTurn = useCallback(
+  const updateCommentText = useCallback(
     (id: string, text: string) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      const now = new Date().toISOString();
+      pristine.markDirty(id);
+      const content: JSONContent = text
+        ? { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] }
+        : emptyRichContent();
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "comment" ? { ...c, content, text } : c,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
+  const setCommentAiRequest = useCallback(
+    (id: string, value: boolean) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
+  const updateSuggestionField = useCallback(
+    (
+      id: string,
+      field:
+        | "original_text"
+        | "suggested_text"
+        | "explanation"
+        | "user_text"
+        | "instructions",
+      value: string,
+    ) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "suggestion" ? { ...c, [field]: value } : c,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
+  const setSuggestionStatus = useCallback(
+    (id: string, status: RevisionSuggestionCard["status"]) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "suggestion" ? { ...c, status } : c,
+        ),
+      }));
+    },
+    [update, pristine],
+  );
+
+  const setTrackerTarget = useCallback(
+    (target: number | null) => {
+      const valid =
+        typeof target === "number" && Number.isFinite(target) && target >= 0
+          ? Math.round(target)
+          : null;
+      const tracker: RevisionsTracker | null =
+        valid == null
+          ? null
+          : { target: valid, setAt: new Date().toISOString() };
+      update((prev) => ({ ...prev, tracker }));
+    },
+    [update],
+  );
+
+  const addCardParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id
+            ? addParagraphLink(
+                c,
+                c.kind === "suggestion" ? "revision-suggestion" : "comment",
+                paragraphId,
+              )
+            : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
+  const removeCardParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) =>
+          c.id === id ? removeParagraphLink(c, paragraphId) : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
+  const deleteCard = useCallback(
+    (id: string) => {
+      pristine.markDirty(id);
+      update((prev) => ({ ...prev, cards: prev.cards.filter((c) => c.id !== id) }));
+    },
+    [update, pristine],
+  );
+
+  const discardPristineCards = useCallback(() => {
+    if (externalPristine) {
+      externalPristine.discardAll();
+      return;
+    }
+    const ids = localPristine.takePristine();
+    if (ids.length === 0) return;
+    const idSet = new Set(ids);
+    update((prev) => ({ ...prev, cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
+  }, [update, externalPristine, localPristine]);
+
+  const clearCardAnchor = useCallback(
+    (anchorId: string) => {
       update((prev) => {
-        const authorId = prev.activeUserId ?? "me";
-        const turn: RevisionTurn = { id: generateEntityId(), authorId, createdAt: now, text: trimmed };
+        if (
+          !prev.cards.some((c) => getTextAnchor(c)?.anchorId === anchorId)
+        ) {
+          return prev;
+        }
         return {
           ...prev,
-          comments: prev.comments.map((c) =>
-            c.id === id ? { ...c, turns: [...c.turns, turn] } : c,
+          cards: prev.cards.map((c) =>
+            getTextAnchor(c)?.anchorId === anchorId
+              ? clearTextAnchorLink(
+                  c,
+                  c.kind === "suggestion" ? "revision-suggestion" : "comment",
+                )
+              : c,
           ),
         };
       });
@@ -317,59 +390,38 @@ export function useRevisions(docId: string | null) {
     [update],
   );
 
-  const resolveComment = useCallback(
-    (id: string) => {
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.map((c) =>
-          c.id === id ? { ...c, resolved: true } : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const reopenComment = useCallback(
-    (id: string) => {
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.map((c) =>
-          c.id === id ? { ...c, resolved: false } : c,
-        ),
-      }));
-    },
-    [update],
-  );
-
-  const deleteComment = useCallback(
-    (id: string) => {
-      update((prev) => ({
-        ...prev,
-        comments: prev.comments.filter((c) => c.id !== id),
-      }));
-    },
-    [update],
-  );
-
-  // `persist` is exposed for callers that need imperative writes — currently
-  // unused, but matches the shape of the other migrated hooks.
-  void persist;
+  // Orphan listener — clears dead anchorId on the matching revision card.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { anchorId, kind } = (e as CustomEvent).detail || {};
+      if (!anchorId) return;
+      if (
+        kind !== "revision" &&
+        kind !== "comment" &&
+        kind !== "revision-suggestion"
+      )
+        return;
+      clearCardAnchor(anchorId);
+    };
+    window.addEventListener("virgil-anchor-orphaned", handler);
+    return () => window.removeEventListener("virgil-anchor-orphaned", handler);
+  }, [clearCardAnchor]);
 
   return {
-    state,
-    users: state.users,
-    activeUserId: state.activeUserId ?? "me",
-    comments: state.comments,
-    setActiveUser,
-    addUser,
+    cards: state.cards,
+    tracker: state.tracker ?? null,
     addComment,
+    addSuggestion,
     updateCommentContent,
-    setCommentAuthor,
-    setCommentAnchor,
-    addTurn,
-    resolveComment,
-    reopenComment,
-    deleteComment,
-    refresh: reload,
+    updateCommentText,
+    setCommentAiRequest,
+    updateSuggestionField,
+    setSuggestionStatus,
+    setTrackerTarget,
+    addCardParagraphId,
+    removeCardParagraphId,
+    deleteCard,
+    clearCardAnchor,
+    discardPristineCards,
   };
 }

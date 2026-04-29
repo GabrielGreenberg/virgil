@@ -9,6 +9,7 @@ import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCardCreationContext } from "../contexts/card-creation";
+import { useRecentlyAddedId } from "../contexts/recently-added";
 
 export interface TodoHostProps {
   side: Side;
@@ -33,6 +34,7 @@ export function TodoHost(p: TodoHostProps) {
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
   const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createTodo } = useCardCreationContext();
+  const recentlyAddedId = useRecentlyAddedId("todo");
   const discardRef = useRef(p.discardPristine);
   discardRef.current = p.discardPristine;
   useEffect(() => () => discardRef.current(), []);
@@ -58,6 +60,7 @@ export function TodoHost(p: TodoHostProps) {
       panelSide={p.panelSide ?? p.side}
       viewMode={getPanelViewMode("todo")}
       onViewModeChange={(m) => setPanelViewMode("todo", m)}
+      recentlyAddedId={recentlyAddedId}
     />
   );
 }

@@ -65,53 +65,56 @@ export interface CommentsState {
   comments: UserComment[];
 }
 
-// --- Revisions (Claude-cowork dialogue) ---
+// --- Revisions ---
+//
+// The Revisions panel hosts two polymorphic card kinds — comments and
+// suggestions — sharing the structure of the Cutter cards. The two panels
+// hold distinct sets of cards (different sidecar files). The Revisions
+// panel additionally tracks a per-document "revisions accepted" counter
+// (see RevisionsTracker), in lieu of Cutter's word-count goal.
 
-export interface RevisionUser {
+export interface RevisionCommentCard {
+  kind: "comment";
   id: string;
-  name: string;
-  color: string; // hex
-  isDefault?: boolean; // locked / built-in
-}
-
-export interface RevisionTurn {
-  id: string;
-  authorId: string;
   createdAt: string;
+  /** Plain-text mirror of `content`, kept in sync on every write. */
   text: string;
-}
-
-/**
- * Unified comment record. Lives in the Revisions panel alongside
- * AI-suggestion cards. A comment may be free-floating (no `selectedText`,
- * `links: []`) or anchored to a specific text selection (`selectedText`
- * present + Mode B text-anchor link in `links`).
- */
-export interface Comment {
-  id: string;
-  authorId: string;
-  createdAt: string;
-  /** Plain-text mirror of `content`, maintained on every write so agents
-   *  and legacy readers that only understand strings keep working. */
-  text: string;
-  /** Tiptap JSONContent — canonical editable body. Legacy records that only
-   *  have `text` are migrated on read. */
+  /** Tiptap JSONContent — canonical editable body. */
   content: unknown;
-  turns: RevisionTurn[];
-  resolved: boolean;
-  /** When the comment is anchored to a text selection, the captured text
-   *  for display. Undefined for free-floating comments. */
+  /** Flags this comment as something the user wants Claude to act on. */
+  aiRequest: boolean;
+  /** Mode B captured text (undefined for paragraph-only / unanchored). */
   selectedText?: string;
-  /** All connections this comment makes to the editor: Mode B text-range
-   *  anchor, paragraph anchors, etc. Empty for free-floating comments.
-   *  See src/links/links.ts. */
   links: Link[];
 }
 
+export interface RevisionSuggestionCard {
+  kind: "suggestion";
+  id: string;
+  createdAt: string;
+  author: "human" | "ai";
+  original_text: string;
+  suggested_text: string;
+  explanation: string;
+  user_text: string;
+  instructions: string;
+  status: "pending" | "accepted" | "rejected";
+  selectedText?: string;
+  links: Link[];
+}
+
+export type RevisionCard = RevisionCommentCard | RevisionSuggestionCard;
+
+export interface RevisionsTracker {
+  /** Optional target number of accepted revisions to aim for. */
+  target?: number | null;
+  /** ISO timestamp the target was set. */
+  setAt?: string | null;
+}
+
 export interface RevisionsState {
-  users: RevisionUser[];
-  comments: Comment[];
-  activeUserId?: string;
+  cards: RevisionCard[];
+  tracker?: RevisionsTracker | null;
 }
 
 export interface ArchivedSnippet {
@@ -291,23 +294,44 @@ export interface CutterSuggestionCard {
   kind: "suggestion";
   id: string;
   createdAt: string;
+  /** Who composed this suggestion. Human-authored cards default to filling
+   *  any of the fields directly; AI-authored cards typically arrive with
+   *  the first three fields populated and `user_text` empty for the human
+   *  to refine before accepting. */
+  author: "human" | "ai";
   /** Target text reproduced (captured at creation; user-editable). */
   original_text: string;
   /** Suggested replacement (user-editable). */
   suggested_text: string;
   /** Comment / explanation of the cut/replacement. */
   explanation: string;
+  /** Human's revised version of `suggested_text`. Empty until the user
+   *  copies + edits the AI suggestion (or types their own). */
+  user_text: string;
+  /** Optional free-form instructions for the AI on AI-authored cards
+   *  (e.g. "make it punchier", "preserve the citation"). Hidden behind
+   *  a collapsed affordance on human-authored cards — empty in practice. */
+  instructions: string;
   status: "pending" | "accepted" | "rejected";
-  /** Reserved for future AI-authored suggestions. */
-  source: "author";
   selectedText?: string;
   links: Link[];
 }
 
 export type CutterCard = CutterCommentCard | CutterSuggestionCard;
 
+export interface CutterGoal {
+  /** Desired final word count for the document. */
+  target: number;
+  /** Live word count snapshotted at the moment the goal was set, used to
+   *  compute progress without replaying cut history. */
+  initialWords: number;
+  /** ISO timestamp the goal was set. */
+  setAt: string;
+}
+
 export interface CutterState {
   cards: CutterCard[];
+  goal?: CutterGoal | null;
 }
 
 /** Legacy shape — kept only for the migration path in useCutter.ts. */

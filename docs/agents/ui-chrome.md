@@ -191,6 +191,18 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1364, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
 
+## Helper mode overlay
+
+Toggled from the "?" button on the Virgil bar (circle-question-mark icon, next to the info "i" button). When active, `document.body` gets `data-helper-mode="on"` and a "Helper mode" indicator appears in the Virgil bar (styled like the Focus View indicator — clicking it deactivates the mode).
+
+Every interactive button carrying a `data-helper="Label"` attribute shows a black callout with white text **on hover** via a CSS `::after` pseudo-element reading `content: attr(data-helper)`. Only one callout is visible at a time (whichever element the cursor is over). The callout has `pointer-events: none` so it doesn't interfere with clicks.
+
+Positioning is zone-based — below by default, right for left-strip buttons, left for right-strip buttons, above for card-level buttons (`data-helper-pos="above"`). All CSS rules are in `globals.css` under the "Helper mode" comment block.
+
+State: `useHelperMode()` in [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts) — module-scoped `useSyncExternalStore` pattern (same as `usePreferenceMode`). Exports `{ on, toggle, set }`. Persists to localStorage key `virgil-helper-mode`.
+
+See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for annotation guidelines (label length, positioning rules, CSS structure).
+
 ## Buttons convention
 
 See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for canonical button styles. Key rules:

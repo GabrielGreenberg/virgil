@@ -31,7 +31,7 @@ export interface SearchHostProps {
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterHook["cards"];
   quotationGroups: QuotationsHook["groups"];
-  comments: RevisionsHook["comments"];
+  comments: RevisionsHook["cards"];
   bibEntries: CitationsHook["bibEntries"];
   openItemInPanel: (panel: PanelId, itemId: string) => void;
   searchState: SearchPanelState;

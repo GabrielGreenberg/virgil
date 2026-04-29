@@ -4,6 +4,8 @@ import type {
   UserNote,
   CutterCommentCard,
   CutterSuggestionCard,
+  RevisionCommentCard,
+  RevisionSuggestionCard,
   TodoItem,
   QuotationGroup,
   CitationRef,
@@ -11,6 +13,10 @@ import type {
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { nextCardTitle } from "@/panels/panel-registry";
 import type { EditorHandle } from "../../Editor";
+import type {
+  RecentlyAddedKind,
+  RecentlyAddedTracker,
+} from "@/hooks/useRecentlyAddedTracker";
 
 /**
  * Centralized card creation — every "+" / toolbar / drop / selection path
@@ -47,6 +53,16 @@ export interface CardCreationDeps {
     originalText?: string,
     anchor?: AnchorRef,
   ) => CutterSuggestionCard;
+  addRevisionComment: (
+    paragraphId: string | null,
+    content?: JSONContent,
+    anchor?: AnchorRef,
+  ) => RevisionCommentCard;
+  addRevisionSuggestion: (
+    paragraphId: string | null,
+    originalText?: string,
+    anchor?: AnchorRef,
+  ) => RevisionSuggestionCard;
   addTodo: () => TodoItem;
   updateTodo: (id: string, text: string) => void;
   addTodoParagraphId: (id: string, paragraphId: string) => void;
@@ -54,6 +70,7 @@ export interface CardCreationDeps {
   addCitation: (command: string, existingId?: string, unanchored?: boolean) => CitationRef;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
+  setSelectedCommentId: Dispatch<SetStateAction<string | null>>;
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
@@ -66,6 +83,9 @@ export interface CardCreationDeps {
   /** Total footnote count (anchored + orphans) the panel currently
    *  shows. Used to seed the auto-title of newly created footnotes. */
   getFootnoteCount: () => number;
+  /** Optional tracker that pins the just-added card to the top of its
+   *  panel until the user moves selection elsewhere. */
+  recentlyAdded?: RecentlyAddedTracker | null;
 }
 
 export interface CardCreationApi {
@@ -87,6 +107,18 @@ export interface CardCreationApi {
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
   }) => CutterSuggestionCard;
+  createRevisionComment: (opts: {
+    paragraphId?: string | null;
+    content?: JSONContent;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+  }) => RevisionCommentCard;
+  createRevisionSuggestion: (opts: {
+    paragraphId?: string | null;
+    originalText?: string;
+    anchor?: AnchorRef;
+    anchorRect?: DOMRect | null;
+  }) => RevisionSuggestionCard;
   createTodo: (opts: {
     text?: string;
     paragraphId?: string | null;
@@ -114,6 +146,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addNote,
     addCutterComment,
     addCutterSuggestion,
+    addRevisionComment,
+    addRevisionSuggestion,
     addTodo,
     updateTodo,
     addTodoParagraphId,
@@ -121,6 +155,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     addCitation,
     setSelectedNoteId,
     setSelectedCutterCardId,
+    setSelectedCommentId,
     setSelectedTodoId,
     setSelectedFootnoteId,
     setSelectedQuotationGroupId,
@@ -131,7 +166,15 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     popCardAtAnchor,
     markFootnotePristine,
     getFootnoteCount,
+    recentlyAdded,
   } = deps;
+
+  const pin = useCallback(
+    (kind: RecentlyAddedKind, id: string) => {
+      recentlyAdded?.markAdded(kind, id);
+    },
+    [recentlyAdded],
+  );
 
   const ensurePanelActive = useCallback(
     (id: PanelId) => {
@@ -158,11 +201,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     (opts) => {
       const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor);
       setSelectedNoteId(note.id);
+      pin("note", note.id);
       if (fromToolbar(opts)) popCardAtAnchor("note", note.id, opts.anchorRect!);
       else ensurePanelActive("notes");
       return note;
     },
-    [addNote, setSelectedNoteId, ensurePanelActive, popCardAtAnchor],
+    [addNote, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   const createCutterComment = useCallback<CardCreationApi["createCutterComment"]>(
@@ -173,6 +217,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
       );
       setSelectedCutterCardId(card.id);
+      pin("cutter", card.id);
       if (fromToolbar(opts))
         popCardAtAnchor("cutter-comment", card.id, opts.anchorRect!);
       else ensurePanelActive("cutter");
@@ -181,6 +226,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [
       addCutterComment,
       setSelectedCutterCardId,
+      pin,
       ensurePanelActive,
       popCardAtAnchor,
     ],
@@ -196,6 +242,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
         opts.anchor,
       );
       setSelectedCutterCardId(card.id);
+      pin("cutter", card.id);
       if (fromToolbar(opts))
         popCardAtAnchor("cutter-suggestion", card.id, opts.anchorRect!);
       else ensurePanelActive("cutter");
@@ -204,6 +251,57 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     [
       addCutterSuggestion,
       setSelectedCutterCardId,
+      pin,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
+  );
+
+  const createRevisionComment = useCallback<
+    CardCreationApi["createRevisionComment"]
+  >(
+    (opts) => {
+      const card = addRevisionComment(
+        opts.paragraphId ?? null,
+        opts.content,
+        opts.anchor,
+      );
+      setSelectedCommentId(card.id);
+      pin("revision", card.id);
+      if (fromToolbar(opts))
+        popCardAtAnchor("revision", card.id, opts.anchorRect!);
+      else ensurePanelActive("revisions");
+      return card;
+    },
+    [
+      addRevisionComment,
+      setSelectedCommentId,
+      pin,
+      ensurePanelActive,
+      popCardAtAnchor,
+    ],
+  );
+
+  const createRevisionSuggestion = useCallback<
+    CardCreationApi["createRevisionSuggestion"]
+  >(
+    (opts) => {
+      const card = addRevisionSuggestion(
+        opts.paragraphId ?? null,
+        opts.originalText,
+        opts.anchor,
+      );
+      setSelectedCommentId(card.id);
+      pin("revision", card.id);
+      if (fromToolbar(opts))
+        popCardAtAnchor("revision-suggestion", card.id, opts.anchorRect!);
+      else ensurePanelActive("revisions");
+      return card;
+    },
+    [
+      addRevisionSuggestion,
+      setSelectedCommentId,
+      pin,
       ensurePanelActive,
       popCardAtAnchor,
     ],
@@ -215,11 +313,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (opts.text) updateTodo(todo.id, opts.text);
       if (opts.paragraphId) addTodoParagraphId(todo.id, opts.paragraphId);
       setSelectedTodoId(todo.id);
+      pin("todo", todo.id);
       if (fromToolbar(opts)) popCardAtAnchor("todo", todo.id, opts.anchorRect!);
       else ensurePanelActive("todo");
       return todo;
     },
-    [addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, ensurePanelActive, popCardAtAnchor],
+    [addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   const createFootnote = useCallback<CardCreationApi["createFootnote"]>(
@@ -234,11 +333,12 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       handle.renumberFootnotes();
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
       setSelectedFootnoteId(result.footnoteId);
+      pin("footnote", result.footnoteId);
       if (fromToolbar(opts)) popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect!);
       else ensurePanelActive("footnotes");
       return result;
     },
-    [editorRef, markFootnotePristine, setSelectedFootnoteId, ensurePanelActive, popCardAtAnchor, getFootnoteCount],
+    [editorRef, markFootnotePristine, setSelectedFootnoteId, pin, ensurePanelActive, popCardAtAnchor, getFootnoteCount],
   );
 
   const createQuotation = useCallback<CardCreationApi["createQuotation"]>(
@@ -248,22 +348,24 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
           ? addQuotationGroup({ text: opts.text, paragraphId: opts.paragraphId })
           : addQuotationGroup();
       setSelectedQuotationGroupId(group.id);
+      pin("quotation", group.id);
       if (fromToolbar(opts)) popCardAtAnchor("quotation", group.id, opts.anchorRect!);
       else ensurePanelActive("quotations");
       return group;
     },
-    [addQuotationGroup, setSelectedQuotationGroupId, ensurePanelActive, popCardAtAnchor],
+    [addQuotationGroup, setSelectedQuotationGroupId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   const createCitation = useCallback<CardCreationApi["createCitation"]>(
     (opts) => {
       const ref = addCitation(opts.command ?? "\\cite{}", undefined, opts.unanchored ?? true);
       setSelectedCitationId(ref.id);
+      pin("citation", ref.id);
       if (fromToolbar(opts)) popCardAtAnchor("citation", ref.id, opts.anchorRect!);
       else ensurePanelActive("citations");
       return ref;
     },
-    [addCitation, setSelectedCitationId, ensurePanelActive, popCardAtAnchor],
+    [addCitation, setSelectedCitationId, pin, ensurePanelActive, popCardAtAnchor],
   );
 
   return useMemo<CardCreationApi>(
@@ -271,6 +373,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createNote,
       createCutterComment,
       createCutterSuggestion,
+      createRevisionComment,
+      createRevisionSuggestion,
       createTodo,
       createFootnote,
       createQuotation,
@@ -280,6 +384,8 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       createNote,
       createCutterComment,
       createCutterSuggestion,
+      createRevisionComment,
+      createRevisionSuggestion,
       createTodo,
       createFootnote,
       createQuotation,

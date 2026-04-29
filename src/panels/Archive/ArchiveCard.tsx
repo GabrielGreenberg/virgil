@@ -96,6 +96,8 @@ export function ArchiveCard({
             selected={selected}
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to archive marker"
+            data-helper="Jump"
+            data-helper-pos="above"
           />
         ) : orphaned ? (
           <CardTargetIcon selected={false} disabled onClick={() => {}} />

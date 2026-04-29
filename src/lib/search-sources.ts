@@ -14,7 +14,7 @@ import type { Link } from "@/links/_shared/types";
 import type {
   ArchivedSnippet,
   CitationRef,
-  Comment,
+  RevisionCard,
   CutterCard,
   OrphanedFootnote,
   QuotationGroup,
@@ -449,22 +449,34 @@ export function searchQuotations(
 /* ── Comments ────────────────────────────────────────────────────────── */
 
 export function searchComments(
-  comments: Comment[],
+  cards: RevisionCard[],
   editor: Editor,
   re: RegExp,
 ): SearchHit[] {
   const out: SearchHit[] = [];
-  for (const c of comments) {
+  for (const c of cards) {
     const ta = getTextAnchor(c);
     const range = ta ? resolveAnchorRange(editor, ta.anchorId) : null;
     const pos = range?.from ?? null;
-    for (const m of scanText(c.text, re)) {
-      out.push(hitFromMatch("revisions", c.id, pos, "body", m));
-    }
-    for (const t of c.turns) {
-      for (const m of scanText(t.text, re)) {
-        out.push(hitFromMatch("revisions", c.id, pos, "text", m));
+    if (c.kind === "comment") {
+      for (const m of scanText(c.text, re)) {
+        out.push(hitFromMatch("revisions", c.id, pos, "body", m));
       }
+    } else {
+      const fields: Array<keyof RevisionCard & string> = [];
+      const checks: Array<{ value: string }> = [
+        { value: c.original_text },
+        { value: c.suggested_text },
+        { value: c.explanation },
+        { value: c.user_text },
+        { value: c.instructions },
+      ];
+      for (const { value } of checks) {
+        for (const m of scanText(value || "", re)) {
+          out.push(hitFromMatch("revisions", c.id, pos, "body", m));
+        }
+      }
+      void fields;
     }
   }
   return out;

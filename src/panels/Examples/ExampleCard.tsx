@@ -88,6 +88,8 @@ export function ExampleCard({
             onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
           }}
           title="Jump to example"
+          data-helper="Jump"
+          data-helper-pos="above"
         />
       </div>
       <div

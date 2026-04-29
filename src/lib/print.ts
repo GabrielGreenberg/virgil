@@ -80,6 +80,28 @@ function applyPrintAttrs(options: PrintOptions): () => void {
   }
   html.style.setProperty("--print-font-size", `${options.fontSizeRem}rem`);
 
+  // Walk from the editor page up to <body>, tagging each ancestor as
+  // a layout-release target and each non-chain sibling as hidden. The
+  // matching @media print rules live in globals.css.
+  const ancestors: HTMLElement[] = [];
+  const hidden: HTMLElement[] = [];
+  const editorPage = document.querySelector<HTMLElement>('[data-editor-page]');
+  if (editorPage) {
+    let el: HTMLElement = editorPage;
+    while (el.parentElement && el !== document.body) {
+      const parent = el.parentElement;
+      parent.dataset.printAncestor = "true";
+      ancestors.push(parent);
+      for (const child of Array.from(parent.children)) {
+        if (child !== el && child instanceof HTMLElement) {
+          child.dataset.printHide = "true";
+          hidden.push(child);
+        }
+      }
+      el = parent;
+    }
+  }
+
   return () => {
     delete html.dataset.printing;
     for (const k of Object.keys(options.elements)) {
@@ -89,6 +111,8 @@ function applyPrintAttrs(options: PrintOptions): () => void {
       html.removeAttribute(`data-print-p-${kebab(k)}`);
     }
     html.style.removeProperty("--print-font-size");
+    for (const a of ancestors) delete a.dataset.printAncestor;
+    for (const h of hidden) delete h.dataset.printHide;
   };
 }
 
