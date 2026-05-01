@@ -120,6 +120,12 @@ export async function GET(
     }
 
     try {
+      if (filePath.endsWith(".pdf")) {
+        const buf = fs.readFileSync(filePath);
+        return new NextResponse(buf, {
+          headers: { "Content-Type": "application/pdf" },
+        });
+      }
       const content = fs.readFileSync(filePath, "utf-8");
       if (filePath.endsWith(".json")) {
         return NextResponse.json(JSON.parse(content));
@@ -275,8 +281,14 @@ export async function PUT(
 
     // Ensure parent dirs exist
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const body = await req.text();
-    fs.writeFileSync(filePath, body, "utf-8");
+    const contentType = req.headers.get("content-type") ?? "";
+    if (contentType.includes("octet-stream")) {
+      const buf = Buffer.from(await req.arrayBuffer());
+      fs.writeFileSync(filePath, buf);
+    } else {
+      const body = await req.text();
+      fs.writeFileSync(filePath, body, "utf-8");
+    }
     return NextResponse.json({ ok: true });
   }
 

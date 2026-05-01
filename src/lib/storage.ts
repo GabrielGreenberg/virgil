@@ -45,6 +45,10 @@ export const flushDoc = backend.flushDoc;
 export const detectBibPackage = backend.detectBibPackage;
 export const readPaperFolder = backend.readPaperFolder;
 export const getTexFilename = backend.getTexFilename;
+export const writePdf = backend.writePdf;
+export const readPdf = backend.readPdf;
+export const getPdfFilename = backend.getPdfFilename;
+export const pdfFilenameFromTex = backend.pdfFilenameFromTex;
 
 // Re-export types (these are the same in both backends).
 export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult, PaperFile } from "@/lib/storage-fsa";

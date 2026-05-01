@@ -271,6 +271,41 @@ export async function writeBib(docId: string, bibText: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Compiled PDF
+// ---------------------------------------------------------------------------
+
+export function pdfFilenameFromTex(texFilename: string): string {
+  return texFilename.replace(/\.tex$/i, "") + ".pdf";
+}
+
+export async function getPdfFilename(docId: string): Promise<string> {
+  const docs = await getDevIndex();
+  const entry = findEntry(docs, docId);
+  const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
+  return pdfFilenameFromTex(texFilename);
+}
+
+export async function writePdf(docId: string, pdfBytes: Uint8Array): Promise<void> {
+  const filename = await getPdfFilename(docId);
+  await fetch(`${API}/doc/${docId}/${filename}`, {
+    method: "PUT",
+    body: pdfBytes.buffer as ArrayBuffer,
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+}
+
+export async function readPdf(docId: string): Promise<Uint8Array | null> {
+  try {
+    const filename = await getPdfFilename(docId);
+    const resp = await fetch(`${API}/doc/${docId}/${filename}`);
+    if (!resp.ok) return null;
+    return new Uint8Array(await resp.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // General bibliography — no-op in dev mode (requires picker)
 // ---------------------------------------------------------------------------
 

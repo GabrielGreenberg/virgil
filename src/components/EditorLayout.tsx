@@ -7,6 +7,7 @@ import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
+import { readPdf } from "@/lib/storage";
 import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMenuToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
@@ -417,6 +418,25 @@ export default function EditorLayout() {
   // `\documentclass` doesn't define one of the sectioning commands used
   // (e.g. `\chapter` inside `article`). Mount `docClassDialog` near the
   // other root-level dialogs so it overlays everything.
+  const [pdfView, setPdfView] = useState(false);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [lastCompileTime, setLastCompileTime] = useState<number | null>(null);
+  const [lastEditTime, setLastEditTime] = useState<number | null>(null);
+  const pdfStale = lastEditTime != null && lastCompileTime != null && lastEditTime > lastCompileTime;
+  const latestPdfBytes = useRef<Uint8Array | null>(null);
+
+  useEffect(() => {
+    setPdfView(false);
+    setLastCompileTime(null);
+    setLastEditTime(null);
+    latestPdfBytes.current = null;
+    return () => {
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDocId]);
+
   const { prompt: promptDocClassMismatch, dialog: docClassDialog } =
     useDocumentClassMismatchDialog();
   const {
@@ -427,6 +447,16 @@ export default function EditorLayout() {
     compileErrors,
   } = useLatexCompile(docIdForHooks, {
     onDocumentClassMismatch: promptDocClassMismatch,
+    onCompileSuccess: useCallback((pdfBytes: Uint8Array) => {
+      latestPdfBytes.current = pdfBytes;
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
+      setPdfBlobUrl(URL.createObjectURL(blob));
+      setLastCompileTime(Date.now());
+      if (docIdForHooks) activateDocPane(docIdForHooks);
+      setCodeView(false);
+      setPdfView(true);
+    }, [pdfBlobUrl, activateDocPane, docIdForHooks]),
   });
   const {
     state: suggestionsState,
@@ -1778,19 +1808,23 @@ export default function EditorLayout() {
     const onKey = (e: KeyboardEvent) => {
       const isPrint = (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "p";
       if (!isPrint) return;
-      if (!currentDocId || codeView) return;
+      if (!currentDocId || codeView || pdfView) return;
       e.preventDefault();
       setPrintOpen(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [currentDocId, codeView]);
+  }, [currentDocId, codeView, pdfView]);
 
   // Mirrored LaTeX text from the CodeEditor — fed to the live lint hook
   // and to the Errors panel for snippet/paragraph derivation. Persists
   // across view switches so the Errors panel stays populated when the
   // user returns to rich-text view.
   const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
+  const handleCodeEditorTextChange = useCallback((text: string) => {
+    setCodeEditorText(text);
+    setLastEditTime(Date.now());
+  }, []);
   const knownBibKeys = useMemo(
     () => bibEntries.map((e) => e.key),
     [bibEntries],
@@ -1929,13 +1963,12 @@ export default function EditorLayout() {
   const jumpToError = useCallback(
     (err: LatexError) => {
       setSelectedErrorId(err.id);
-      if (codeView) {
+      if (codeView || pdfView) {
         pendingParagraphId.current = paragraphByErrorId.get(err.id) ?? null;
         pendingScrollText.current = null;
         codeEditorHandleRef.current = null;
         setCodeView(false);
-        // Range is computed once the editor mounts, via the selection-
-        // sync effect below. Scroll is handled by the mount effect.
+        setPdfView(false);
         return;
       }
       const range = computeErrorHighlightRange(err);
@@ -1949,7 +1982,7 @@ export default function EditorLayout() {
         }
       }
     },
-    [codeView, paragraphByErrorId, computeErrorHighlightRange],
+    [codeView, pdfView, paragraphByErrorId, computeErrorHighlightRange],
   );
 
   // Keep the error-highlight range in sync with the current selection.
@@ -3581,6 +3614,7 @@ export default function EditorLayout() {
     }
     setCodeViewLine(line);
     setEditorInstance(null);
+    setPdfView(false);
     setCodeView(true);
   }, [content]);
 
@@ -3600,8 +3634,33 @@ export default function EditorLayout() {
     }
     codeEditorHandleRef.current = null;
     setCodeView(false);
+    setPdfView(false);
     refetchDoc();
   }, [refetchDoc]);
+
+  const switchToPdfView = useCallback(async () => {
+    if (latestPdfBytes.current) {
+      const blob = new Blob([latestPdfBytes.current.buffer as ArrayBuffer], { type: "application/pdf" });
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(URL.createObjectURL(blob));
+    } else if (currentDocId) {
+      const bytes = await readPdf(currentDocId);
+      if (bytes) {
+        const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
+        if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(URL.createObjectURL(blob));
+      } else {
+        setPdfBlobUrl(null);
+      }
+    }
+    if (currentDocId) activateDocPane(currentDocId);
+    setCodeView(false);
+    setPdfView(true);
+  }, [currentDocId, pdfBlobUrl, activateDocPane]);
+
+  const switchFromPdfView = useCallback(() => {
+    setPdfView(false);
+  }, []);
 
   const selectionsForStrip = useMemo(
     () => ({
@@ -3731,7 +3790,10 @@ export default function EditorLayout() {
   const [editorDocVersion, setEditorDocVersion] = useState(0);
   useEffect(() => {
     if (!editorInstance) return;
-    const bump = () => setEditorDocVersion((v) => v + 1);
+    const bump = () => {
+      setEditorDocVersion((v) => v + 1);
+      setLastEditTime(Date.now());
+    };
     editorInstance.on("update", bump);
     return () => {
       editorInstance.off("update", bump);
@@ -5097,7 +5159,7 @@ export default function EditorLayout() {
               virtualized rendering doesn't paginate cleanly). */}
           <button
             onClick={() => setPrintOpen(true)}
-            disabled={!currentDocId || codeView}
+            disabled={!currentDocId || codeView || pdfView}
             className="topbarbtn topbarbtn-icon"
             title="Print…"
             data-helper="Print"
@@ -5171,8 +5233,24 @@ export default function EditorLayout() {
               </>
             )}
           </button>
+          <button
+            onClick={pdfView ? switchFromPdfView : switchToPdfView}
+            disabled={!currentDocId}
+            className="topbarbtn ml-1"
+            title={pdfView ? "Back to editor" : "View PDF"}
+            data-helper={pdfView ? "Back to editor" : "View PDF"}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            PDF
+            {pdfStale && pdfView && (
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" title="PDF is out of date" />
+            )}
+          </button>
           {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder and
-              opens the resulting PDF in a new window. Disabled while a
+              saves the resulting PDF to the paper folder. Disabled while a
               compile is in flight; spinner replaces the play-triangle. */}
           <button
             onClick={compilePdf}
@@ -5236,13 +5314,30 @@ export default function EditorLayout() {
           <LibraryTabView />
         </div>
       ) : codeView && currentDocId ? (
-        <div className="flex flex-1 overflow-hidden">
+        <div
+          className="flex flex-1 overflow-hidden"
+          style={{
+            paddingTop: 4,
+            paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
+            paddingLeft: 4,
+            paddingRight: 4,
+          }}
+        >
+        <div
+          className="flex flex-1 min-h-0 overflow-hidden"
+          style={{
+            background: 'var(--pod-editor)',
+            borderRadius: 'var(--pod-radius)',
+            border: 'var(--pod-border)',
+            boxShadow: 'var(--pod-shadow)',
+          }}
+        >
           <CodeEditor
             docId={currentDocId!}
             initialLine={codeViewLine}
             initialParagraphId={codeViewParagraphId}
             onReady={(handle) => { codeEditorHandleRef.current = handle; }}
-            onTextChange={setCodeEditorText}
+            onTextChange={handleCodeEditorTextChange}
             compileLog={compileLog}
             compileStatus={compileStatus}
             isCompiling={isCompiling}
@@ -5288,6 +5383,49 @@ export default function EditorLayout() {
               )}
             </button>
           )}
+        </div>
+        </div>
+      ) : pdfView && currentDocId ? (
+        <div
+          className="flex flex-1 overflow-hidden"
+          style={{
+            paddingTop: 4,
+            paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
+            paddingLeft: 4,
+            paddingRight: 4,
+          }}
+        >
+          <div
+            className="flex-1 flex flex-col min-h-0 overflow-hidden relative"
+            style={{
+              background: '#525659',
+              borderRadius: 'var(--pod-radius)',
+              border: 'var(--pod-border)',
+              boxShadow: 'var(--pod-shadow)',
+            }}
+          >
+            {pdfBlobUrl ? (
+              <iframe
+                src={pdfBlobUrl}
+                className="w-full h-full border-none"
+                style={{ borderRadius: 'var(--pod-radius)' }}
+                title="Compiled PDF"
+              />
+            ) : (
+              <div className="flex flex-1 items-center justify-center">
+                <div className="text-center text-white/70 p-8">
+                  <p className="text-lg mb-2">No compiled PDF</p>
+                  <p className="text-sm">Click Compile to generate a PDF.</p>
+                </div>
+              </div>
+            )}
+            {pdfStale && pdfBlobUrl && (
+              <div className="absolute top-3 right-3 bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded shadow flex items-center gap-1.5 z-10">
+                <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 inline-block" />
+                PDF is out of date
+              </div>
+            )}
+          </div>
         </div>
       ) : (
       <div ref={mainAreaRefCb} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>

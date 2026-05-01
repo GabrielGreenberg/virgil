@@ -388,6 +388,44 @@ export async function writeBib(docId: string, bibText: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Compiled PDF
+// ---------------------------------------------------------------------------
+
+export function pdfFilenameFromTex(texFilename: string): string {
+  return texFilename.replace(/\.tex$/i, "") + ".pdf";
+}
+
+export async function getPdfFilename(docId: string): Promise<string> {
+  const meta = await getDocMetaOrThrow(docId);
+  return pdfFilenameFromTex(meta.texFilename);
+}
+
+export async function writePdf(docId: string, pdfBytes: Uint8Array): Promise<void> {
+  const key = `${docId}/pdf`;
+  return enqueueWrite(key, async () => {
+    const docHandle = await requireDocHandle(docId);
+    const filename = await getPdfFilename(docId);
+    const fh = await docHandle.getFileHandle(filename, { create: true });
+    const writable = await fh.createWritable();
+    await writable.write(pdfBytes.buffer as ArrayBuffer);
+    await writable.close();
+  });
+}
+
+export async function readPdf(docId: string): Promise<Uint8Array | null> {
+  try {
+    const docHandle = await requireDocHandle(docId);
+    const filename = await getPdfFilename(docId);
+    const fh = await docHandle.getFileHandle(filename);
+    const file = await fh.getFile();
+    return new Uint8Array(await file.arrayBuffer());
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // General bibliography (a separate .bib file the user picked for searching)
 // ---------------------------------------------------------------------------
 
@@ -768,6 +806,7 @@ export async function flushDoc(docId: string): Promise<void> {
   await Promise.all([
     flushWrites(`${docId}/bundle`),
     flushWrites(`${docId}/tex`),
+    flushWrites(`${docId}/pdf`),
   ]);
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { flushDoc, getTexFilename, readPaperFolder, writeTex } from "@/lib/storage";
+import { flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf, pdfFilenameFromTex } from "@/lib/storage";
 import { getPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
 import {
   detectDocumentClassMismatch,
@@ -64,9 +64,13 @@ export interface UseLatexCompileResult {
 
 export function useLatexCompile(
   docId: string | null,
-  opts?: { onDocumentClassMismatch?: DocumentClassMismatchHandler },
+  opts?: {
+    onDocumentClassMismatch?: DocumentClassMismatchHandler;
+    onCompileSuccess?: (pdfBytes: Uint8Array) => void;
+  },
 ): UseLatexCompileResult {
   const onDocumentClassMismatch = opts?.onDocumentClassMismatch;
+  const onCompileSuccess = opts?.onCompileSuccess;
   const systemDialog = useSystemDialog();
   const [isCompiling, setIsCompiling] = useState(false);
   const [lastLog, setLastLog] = useState<string | null>(null);
@@ -162,7 +166,9 @@ export function useLatexCompile(
         }
       }
 
+      const pdfFilename = pdfFilenameFromTex(texFilename);
       for (const f of files) {
+        if (f.path === pdfFilename) continue;
         const text = decoded.get(f.path);
         const data = text !== undefined ? text : f.bytes;
         writeEngineFile(engine, f.path, data, createdDirs);
@@ -181,13 +187,9 @@ export function useLatexCompile(
 
       if (result.status === 0 && result.pdf) {
         setCompileErrors([]);
-        const blob = new Blob([new Uint8Array(result.pdf)], {
-          type: "application/pdf",
-        });
-        const url = URL.createObjectURL(blob);
-        window.open(url, "_blank");
-        // Revoke later so the new window has time to load the blob.
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        const pdfBytes = new Uint8Array(result.pdf);
+        await writePdf(docId, pdfBytes);
+        onCompileSuccess?.(pdfBytes);
       } else {
         const parsed = parseTexLog(result.log ?? "");
         setCompileErrors(parsed);
@@ -210,7 +212,7 @@ export function useLatexCompile(
     } finally {
       setIsCompiling(false);
     }
-  }, [docId, isCompiling, onDocumentClassMismatch, systemDialog]);
+  }, [docId, isCompiling, onDocumentClassMismatch, onCompileSuccess, systemDialog]);
 
   return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
 }
