@@ -1214,8 +1214,18 @@ body {
   border-radius: 2px;
 }
 
-/* Panel card — outline ring, kept inset so it doesn't shift layout. */
-[data-card-key][data-card-hovered="true"] {
+/* Panel card — outline ring, kept inset so it doesn't shift layout.
+ * CSS :hover gives immediate, reliable feedback on the card itself;
+ * data-card-hovered handles the reverse direction (text→card).
+ *
+ * The outline-color is pre-set on every card so when :hover toggles
+ * outline-style on, Tailwind's transition-colors (which includes
+ * outline-color) doesn't flash from its default near-black to amber. */
+[data-card-key] {
+  outline-color: color-mix(in oklab, var(--ring-drag-target) 45%, transparent);
+}
+[data-card-key][data-card-hovered="true"],
+[data-card-key]:hover {
   outline: 1.5px solid color-mix(in oklab, var(--ring-drag-target) 45%, transparent);
   outline-offset: -1.5px;
   border-radius: 4px;

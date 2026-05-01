@@ -43,15 +43,16 @@ export function usePanelCardHoverBridge(
             ? target.parentElement
             : null;
       if (!el) return null;
-      // Only fire when the cursor is over a card in a *panel* — exclude
-      // cards rendered inline in the editor (e.g. footnote anchors with
-      // data-card-key would otherwise double-fire). Panel cards live
-      // inside elements with `data-card` or under panel scroll roots and
-      // never inside `.ProseMirror`.
-      if (el.closest(".ProseMirror")) return null;
 
       const cardEl = el.closest<HTMLElement>("[data-card-key]");
       if (!cardEl) return null;
+      // Only fire when the cursor is over a card in a *panel* — exclude
+      // cards rendered inline in the main editor (e.g. footnote anchors
+      // with data-card-key would otherwise double-fire). Test the card
+      // root itself, not the hovered element: card bodies often contain
+      // their own embedded ProseMirror (notes, todos, comments…) and
+      // checking the hovered element would falsely bail on body hover.
+      if (cardEl.closest(".ProseMirror")) return null;
       const key = cardEl.getAttribute("data-card-key") || "";
       const idx = key.indexOf(":");
       if (idx <= 0) return null;

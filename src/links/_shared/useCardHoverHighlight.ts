@@ -21,7 +21,7 @@
  * single consumer that paints the resulting visuals.
  */
 
-import { useEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
@@ -66,24 +66,23 @@ export function useCardHoverHighlight(args: UseCardHoverHighlightArgs): void {
     comments,
   } = args;
 
-  useEffect(() => {
-    // Always start by clearing any stale attributes everywhere — both in
-    // the editor's view DOM (anchor elements) and in the document at
-    // large (panel cards live outside the editor root).
-    const editorRoot = editor?.view.dom ?? null;
+  // Collections are only needed for entity resolution — they shouldn't
+  // trigger re-runs of the paint effect. Stash them in a ref so the
+  // effect only re-fires when the hovered entity actually changes.
+  const collectionsRef = useRef<EntityCollections>({
+    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups,
+  });
+  collectionsRef.current = {
+    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups,
+  };
+
+  useLayoutEffect(() => {
     const stale = document.querySelectorAll<HTMLElement>(`[${DATA_CARD_HOVERED}]`);
     for (const el of stale) el.removeAttribute(DATA_CARD_HOVERED);
 
     if (!hoveredEntityId || !hoveredEntityKind) return;
     const ref = { id: hoveredEntityId, kind: hoveredEntityKind };
-    const collections: EntityCollections = {
-      notes,
-      cutterCards,
-      comments,
-      todos,
-      archiveSnippets,
-      quotationGroups,
-    };
+    const collections = collectionsRef.current;
 
     // 1) Anchor elements in the editor (paragraph / text-range / atom).
     const links: Link[] = [];
@@ -94,6 +93,7 @@ export function useCardHoverHighlight(args: UseCardHoverHighlightArgs): void {
       if (entity?.links) for (const l of entity.links) links.push(l);
     }
 
+    const editorRoot = editor?.view.dom ?? null;
     if (editor && editorRoot) {
       for (const link of links) {
         const resolved = resolveLink(editor, link);
@@ -119,15 +119,5 @@ export function useCardHoverHighlight(args: UseCardHoverHighlightArgs): void {
       );
       for (const el of live) el.removeAttribute(DATA_CARD_HOVERED);
     };
-  }, [
-    editor,
-    hoveredEntityId,
-    hoveredEntityKind,
-    notes,
-    cutterCards,
-    archiveSnippets,
-    quotationGroups,
-    todos,
-    comments,
-  ]);
+  }, [editor, hoveredEntityId, hoveredEntityKind]);
 }
