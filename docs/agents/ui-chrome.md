@@ -1,4 +1,4 @@
-<!-- last-verified: d1cfdf5 2026-04-29 -->
+<!-- last-verified: 1873311 2026-05-01 -->
 
 # UI Chrome
 
@@ -8,7 +8,7 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5750 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~6155 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
 - Mounts the home `MenuBar` **inline** at the top of the editor column (no portal — change c40d8d2). Detached `DetachedActionsToolbar` / `DetachedFormattingToolbar` / `DetachedMenuToolbar` copies still mount via portals to `document.body`
@@ -23,28 +23,28 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:5018
+├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:4800
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:5410
 │   ├─ View control pod: collapse, omni-view, split
 │   ├─ StripButton × N (per left-sidebar panel, drag-to-reorder)
-│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)
-├─ PanelColumn side="left"                            — ~line 5080
+│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)        — ~line 5467
+├─ PanelColumn side="left"                            — rendered by `renderPanelColumn("left")`
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar — docked inline at top of editor column — ~line 5250
+│   ├─ MenuBar — docked inline at top of editor column — ~line 5651
 │   ├─ DetachedActionsToolbar (portal × N)
 │   ├─ DetachedFormattingToolbar (portal × N)
 │   ├─ DetachedMenuToolbar (portal × N)
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
-│   ├─ FloatingPanel portals (popped-out panels)         — ~line 5726
-│   ├─ FloatCard portals (popped-out cards)
+│   ├─ FloatCard portals (popped-out cards)               — ~line 6105
+│   ├─ FloatingPanel portals (popped-out panels)         — ~line 6129
 │   └─ ParagraphFloat / HeadingFloat / example-block portals (popped-out blocks)
-├─ PanelColumn side="right"                           — ~line 5510
-│   └─ Active panel(s)
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:5537
+├─ PanelColumn side="right"                           — rendered by `renderPanelColumn("right")` ~line 5932
+└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:5937
     ├─ View control pod: collapse, omni-view, split
     ├─ StripButton × N
-    └─ OmniFilterMenu (kebab pinned to bottom)
+    └─ OmniFilterMenu (kebab pinned to bottom)        — ~line 5994
 ```
 
 ## Tool strips (left & right)
@@ -85,7 +85,7 @@ Panels render via `renderPanelWithChrome(panelId, side)` inside EditorLayout. Sa
 All panels share the wrapper system in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) and [src/panels/_shared/](../../src/panels/_shared/). Two wrapper shapes:
 
 - **`Panel`** — universal outer. Flex column with header, scroll body, absolute popout + close buttons. Used by panels with custom bodies (Outline, Search, WordCount).
-- **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section + supports list/in-text view-mode toggle. Used by card panels.
+- **`CardListPanel<T>`** — wraps `Panel` + iterates items as cards + adds AI-requests section. Used by card panels. (The historical list/in-text view-mode toggle and `panel-view-mode` context were removed; cards now always render in list form.)
 
 **Header** is `PanelHeader` — fixed 34px (`--header-h`), title + count + optional `onAdd` (+ icon) and `onAiRequest` (8-ray star).
 
@@ -95,7 +95,6 @@ All panels share the wrapper system in [src/components/panel-primitives.tsx](../
 - `label` (display name)
 - `folder` (path to its source)
 - `card` (optional: card kind, key prefix, theme key)
-- `defaultViewMode` (null | "list" | "in-text")
 - `omniEligible` + `omniSide`
 - `defaultStripSide`
 
@@ -121,7 +120,7 @@ Detached copies still spawn from the Format and Actions popovers' grab bars — 
 
 Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
 
-A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 211) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
+A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 243) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
 
 A **Print** button (printer icon) lives in the same right cluster. It opens `PrintDialog` ([src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx)) — a show/hide controls modal for marginalia, footnotes, citations, comments, paragraph titles, etc. — then triggers `window.print()`. Print orchestration + appendix collection in [src/lib/print.ts](../../src/lib/print.ts) and [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx).
 
@@ -131,7 +130,7 @@ The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedP
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` (at `MenuBar.tsx:484`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:410`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
+`ActionButtonsRow` (at `MenuBar.tsx:846`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:760`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
 
 | Button | Color | Opens/creates |
 |---|---|---|
@@ -148,7 +147,7 @@ Colors are coordinated with each panel's `CARD_THEME`.
 
 ## DetachedActionsToolbar
 
-`DetachedActionsToolbar` at `MenuBar.tsx:538`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
+`DetachedActionsToolbar` at `MenuBar.tsx:968`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
 
 State in EditorLayout: `detachedActions[]` (array of `{ id, pos }`, keyed on monotonic id). The close (X) button filters the entry out of the array; dragging routes through `beginActionsDrag(id, …)` which looks up the wrapper by `data-actions-id` and runs snap-grid math ([src/components/editor-layout/snap-grid.ts](../../src/components/editor-layout/snap-grid.ts)) against editor-column and panel-column edges.
 
@@ -159,11 +158,11 @@ Modes (per instance):
 
 ## Formatting popup
 
-Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx:1058`. Flips above/left when near viewport edges. Escape or outside-click closes.
+Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx` ~line 1348 (inside `MenuBarContent`). Flips above/left when near viewport edges. Escape or outside-click closes.
 
 ## Shared popover primitive
 
-`AttachedPopover` at `MenuBar.tsx:262`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
+`AttachedPopover` at `MenuBar.tsx:641`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
 
 Behavior: click anchor toggles; fixed-positioned below-right by default; flips as needed; Escape + outside-click close.
 
@@ -195,7 +194,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## Per-panel text-size stepper
 
-Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1364, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
+Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1577, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
 
 ## Helper mode overlay
 

@@ -1,4 +1,4 @@
-<!-- last-verified: d1cfdf5 2026-04-29 -->
+<!-- last-verified: 1873311 2026-05-01 -->
 
 # Virgil Overview
 
@@ -26,14 +26,18 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 
 ## Top-level `src/` map
 
-- `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5750 lines, orchestrator), `Editor.tsx` (~3085 lines, TipTap wrapper), `panel-primitives.tsx` (~1715 lines, card/panel design system), `MenuBar.tsx` (~1460 lines, floating toolbar)
-- `src/hooks/` — React hooks for state management (42 files)
-- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (39 files)
+- `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~6155 lines, orchestrator), `Editor.tsx` (~3188 lines, TipTap wrapper), `panel-primitives.tsx` (~1812 lines, card/panel design system), `MenuBar.tsx` (~1494 lines, floating toolbar)
+- `src/hooks/` — React hooks for state management (46 files)
+- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (46 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
 - `src/panels/` — Sidebar panel implementations, one folder per panel + `_shared/` + `panel-registry.ts`
 - `src/types/` — Shared type definitions
 - `src/STYLE_GUIDE.md` — Design tokens, panel architecture, UI conventions
+
+## Sibling subsystem: `library/`
+
+The Library tab is its own self-contained tree at the repo root, sibling to `src/`. It has its own components, hooks, lib (parser/serializer/store), TipTap extensions for paper rendering (parallel to `src/lib/tiptap/`, used inside the Library panes for read-only paper renders), Python skill scripts, and `library/styles/library.css`. Cross-tree imports go through the `@library/*` path alias (see `tsconfig.json`, `vitest.config.ts`). Detailed map in [library/AGENTS.md](../../library/AGENTS.md). The static dev sample lives in `library-data/`.
 
 ## Core user-facing concepts
 
@@ -45,6 +49,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 - **Links** — unified model connecting editor content to panel cards (three kinds: footnote, citation, anchor)
 - **AI exchange** — sidecar JSON files (`suggestions.json`, `revisions.json`, `ai-requests.json`, `bib-review-requests.json`) in `virgil/` folder drive structured UI affordances
 - **Citations & bibliography** — natbib + biblatex command families; formatted via citation-js
+- **Library tab** — sibling pane to each open document. Outer tabs (DocTab + LibraryTab pair) live in the Virgil bar; inside the library pane there's a second layer of tabs (Central catalog + curated libraries). Self-contained code under `library/`
 
 ## Where to look next
 

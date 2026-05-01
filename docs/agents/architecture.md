@@ -1,4 +1,4 @@
-<!-- last-verified: d1cfdf5 2026-04-29 -->
+<!-- last-verified: 1873311 2026-05-01 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -19,7 +19,7 @@ Before adding a new panel, link kind, or theme, extend the registry instead of c
 
 ## Key hooks
 
-All in `src/hooks/`. Full list (42 files) is large; these are the ones most often touched:
+All in `src/hooks/`. Full list (46 files) is large; these are the ones most often touched:
 
 | Hook | What it owns |
 |---|---|
@@ -45,6 +45,7 @@ All in `src/hooks/`. Full list (42 files) is large; these are the ones most ofte
 | `useHelperMode` | Helper-mode toggle — sets `data-helper-mode="on"` on `<body>`, enabling CSS hover callouts on all `[data-helper]` elements |
 | `useCollab` | Turn-taking collaboration state machine: pen ownership, heartbeat, polling of `collab.json` sidecar, per-card focus claims, cursor-paragraph presence broadcast |
 | `useRecentlyAddedTracker` | One-slot-per-kind tracker for just-created cards so panels can sort them to the top; auto-cleared when selection moves away |
+| `useLatexCompile` | SwiftLaTeX pdfTeX compile + parsed-error extraction. On success, persists the resulting PDF next to the `.tex` (`pdfFilenameFromTex`) so the in-app PDF view (`library/components/PdfView.tsx`) can re-render without recompiling |
 
 ## Persistence layers
 
@@ -83,8 +84,8 @@ Agents never touch this app — they read the same `.tex`/`.bib` and write these
 
 Entry points for rendering a panel instance:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 3962).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 5726).
+1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 4254).
+2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 6129).
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.
@@ -144,5 +145,6 @@ From the existing memory: the File System Access folder picker doesn't work insi
 - UI structure → `ui-chrome.md`
 - Editor content → `main-text.md`
 - User vocabulary → `glossary.md`
+- Library subsystem → [library/AGENTS.md](../../library/AGENTS.md) (sibling tree under `library/`, with its own components/hooks/lib/tiptap/scripts/skills)
 - Project README → [README.md](../../README.md)
 - Style guide → [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md)

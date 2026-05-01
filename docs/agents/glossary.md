@@ -1,4 +1,4 @@
-<!-- last-verified: d1cfdf5 2026-04-29 -->
+<!-- last-verified: 1873311 2026-05-01 -->
 
 # Glossary
 
@@ -12,12 +12,12 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4290; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
-| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** at the top of the editor column in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 4995 (the home MenuBar no longer tears off — drop happened in c40d8d2). Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]`. `prefs.menuLocation` is now effectively home-only |
+| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4800; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
+| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** at the top of the editor column in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 5651 (the home MenuBar no longer tears off — drop happened in c40d8d2). Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]`. `prefs.menuLocation` is now effectively home-only |
 | **Menu toolbar** | Same as Menu pod above | Same |
-| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:4703` |
-| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:5184` |
-| **Filter menu** / **kebab at the bottom of the strip** (horizontal 3-dot menu pinned to the bottom of each L/R icon strip; toggles which omni categories show, plus a "Default view" reset) | `OmniFilterMenu` | [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); mounted at the bottom of each strip in `EditorLayout.tsx` around lines 4753 and 5234 |
+| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:5410` |
+| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:5937` |
+| **Filter menu** / **kebab at the bottom of the strip** (horizontal 3-dot menu pinned to the bottom of each L/R icon strip; toggles which omni categories show, plus a "Default view" reset) | `OmniFilterMenu` | [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); mounted at the bottom of each strip in `EditorLayout.tsx` around lines 5467 and 5994 |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
 | **Current section pod** / **section lozenge** (floating section-path pill at top of editor, shows on scroll, fades after idle) | `SectionLozenge` | [src/components/editor-layout/section-lozenge.tsx](../../src/components/editor-layout/section-lozenge.tsx); `SectionPathEntry` type + main/mirror path builders in `EditorLayout.tsx` ~1943 / ~2065 |
@@ -28,21 +28,21 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1058 |
-| **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:484` |
-| **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` — multi-instance; each tear-off spawns a new copy stored in `detachedActions[]` with its own id | `MenuBar.tsx:538`; mounted via portal in `EditorLayout.tsx` ~line 4613 |
+| **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1348 (inside `MenuBarContent`) |
+| **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:846` |
+| **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` — multi-instance; each tear-off spawns a new copy stored in `detachedActions[]` with its own id | `MenuBar.tsx:968`; mounted via portal in `EditorLayout.tsx` |
 | **Margin action toolbar** (per-column, shown when Omni-view is docked in a side) | `MarginActionToolbar` — rendered as `topOverlay` on `PanelColumn` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) |
-| **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:735` |
-| **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:176` |
-| **Style dropdown** / **document style** (preamble preset selector on the Virgil bar) | `DocStyleDropdown` (inline component); presets in `DOCUMENT_STYLES`; per-doc state in `useDocumentStyle` | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 211; [src/lib/document-styles.ts](../../src/lib/document-styles.ts); [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) |
+| **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:1031` |
+| **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:445` |
+| **Style dropdown** / **document style** (preamble preset selector on the Virgil bar) | `DocStyleDropdown` (inline component); presets in `DOCUMENT_STYLES`; per-doc state in `useDocumentStyle` | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 243; [src/lib/document-styles.ts](../../src/lib/document-styles.ts); [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) |
 | **Print button** / **print dialog** (printer icon on the Virgil bar; opens a dialog with show/hide toggles for paragraph titles, marginalia, footnotes, citations, comments, etc., then triggers `window.print()`) | `PrintDialog` + `PrintAppendices`; print orchestration in `lib/print.ts`; pref state via `useViewPrefs` | [src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx); [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx); [src/lib/print.ts](../../src/lib/print.ts) |
 | **Help button** / **"?" button** (circle-question-mark icon on the Virgil bar; opens a dropdown with Helper mode toggle) | Inline in `EditorLayout.tsx`, next to the info ("i") button | `EditorLayout.tsx` |
 | **Helper mode** / **helper mode indicator** (when active, hovering any button shows a black callout describing it; indicator in Virgil bar styled like Focus View) | `useHelperMode` hook; CSS pseudo-element callouts via `data-helper` attrs; body attr `data-helper-mode="on"` | [src/hooks/useHelperMode.ts](../../src/hooks/useHelperMode.ts); CSS in [src/app/globals.css](../../src/app/globals.css) |
 | **Highlights menu** / **per-kind highlight toggles** (sub-menu in the View menu that hides linked-anchor highlights for individual card kinds) | `HighlightType` union (`quotation`, `note`, `todo`, `comment`, `cut`); `hiddenHighlightTypes` pref in `useViewPrefs`; toggles rendered inside `ViewMenu` | [src/hooks/useViewPrefs.ts](../../src/hooks/useViewPrefs.ts); `MenuBar.tsx` ViewMenu section |
-| **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx` ~line 1205 |
+| **Back / forward buttons** (paragraph nav) | Chevron pair, inline in MenuBar | `MenuBar.tsx`, inline in `MenuBarContent` (~line 1282) |
 | **Split screen toggle** | Inline button in MenuBar | `MenuBar.tsx` |
 | **Close all panels** (X button) | Inline button in MenuBar | `MenuBar.tsx` |
-| **Grab handle** (pill on Virgil bar for dragging) | `PodGrabHandle` | `MenuBar.tsx:371` |
+| **Grab handle** (pill on Virgil bar for dragging) | `PodGrabHandle` (re-exported from `floating-toolbar-shell.tsx`) | `MenuBar.tsx:23` import; usage ~line 741 |
 | **Rotation knob** (toggles horizontal/vertical) | Inline SVG on the pod corner | `MenuBar.tsx` |
 | **Dock-up button** (re-pins a dragged-out Virgil bar back to its home) | Inline button in MenuBar, rendered only when `!atHome` | `MenuBar.tsx` |
 
@@ -104,7 +104,6 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Card theme** | `CARD_THEMES` dict (11 themes: footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error) | Same file |
 | **AI request card** | `AiRequestCard` | Same file |
 | **Orphaned card** (no anchor in document) | `BadgeOrphaned` + disabled `CardTargetIcon` | Same file |
-| **In-text view** / **list view** (panel view modes) | `viewMode: "list" \| "in-text"` prop on `CardListPanel` | [src/panels/_shared/CardListPanel.tsx](../../src/panels/_shared/CardListPanel.tsx) |
 | **Popped-out card** / **floating card** | `FloatCard` wrapping `FloatingPanel` | [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx), [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
 | **Floating panel** | `FloatingPanel` (portal, drag + resize) | [src/components/FloatingPanel.tsx](../../src/components/FloatingPanel.tsx) |
 | **Quick card** (compact bib-entry card with chip, target icon, popout button in header) | `BibEntryCard` | [src/components/BibEntryCard.tsx](../../src/components/BibEntryCard.tsx) |
@@ -139,6 +138,27 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Linked surfaces** / **three-surface hover** (text passage + margin icon + panel card all light up together; click-to-select propagates) | Centralized via `(hoveredEntityId, hoveredEntityKind)` in `EditorLayout.tsx`; consumers `useLinkHighlight`, `useCardHoverHighlight`, `useCardSelectionHighlight`; sources `useTextHoverBridge`, `usePanelCardHoverBridge`, generic margin `onHover` | [src/links/_shared/](../../src/links/_shared/); see `main-text.md` → Highlight coupling |
 | **EntityKind** | Linking-vocabulary subset of `CardKind`: `note \| cut \| revision \| todo \| archive \| quotation \| footnote \| citation`. Used by hover/selection plumbing | [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) |
 | **Label candidate list** (ref popover) | `LabelInfo { label, kind, typeLabel, title }`; `kind ∈ {heading, equation, figure, table, label, example}` | [src/lib/labels.ts](../../src/lib/labels.ts) + [src/components/LabelRefPopover.tsx](../../src/components/LabelRefPopover.tsx) |
+
+## Library tab
+
+Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGENTS.md](../../library/AGENTS.md) for the full map.
+
+| User term | Code name(s) | Where |
+|---|---|---|
+| **Library tab** / **manila tab** (the "shadow" tab paired with each DocTab in the Virgil bar, in `--library-bg` warm tan) | Rendered alongside `DocumentFolderTab` per open doc — see double-tab pattern in [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) "Library tab" section | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) tab strip; library pane body in [library/components/LibraryApp.tsx](../../library/components/LibraryApp.tsx) |
+| **Library pane** (body of the Library tab once activated) | `LibraryApp` → `LibraryView` | [library/components/LibraryApp.tsx](../../library/components/LibraryApp.tsx); [library/components/LibraryView.tsx](../../library/components/LibraryView.tsx) |
+| **Inner library tabs** / **Central + curated libraries** (the second layer of tabs inside the library pane: Central catalog plus user-spawned curated slices) | `TabbedLibraryPanel` + `useLibraryTabs` | [library/components/TabbedLibraryPanel.tsx](../../library/components/TabbedLibraryPanel.tsx); [library/hooks/useLibraryTabs.ts](../../library/hooks/useLibraryTabs.ts) |
+| **Catalog** (master `catalog.json` on disk + `master.bib`) | `CatalogStore` + `useCatalog` + `useMasterBib` | [library/lib/catalog-store.ts](../../library/lib/catalog-store.ts); [library/hooks/useCatalog.ts](../../library/hooks/useCatalog.ts) |
+| **Bib card** (single-entry bib display in the right detail pane) | `BibCard` | [library/components/BibCard.tsx](../../library/components/BibCard.tsx) |
+| **Bib edit modal** (full-form edit dialog for a `.bib` entry) | `BibEditModal` | [library/components/BibEditModal.tsx](../../library/components/BibEditModal.tsx) |
+| **Paper render** (read-only LaTeX paper view inside the library) | `PaperRender` (uses `library/tiptap/` extensions, parallel to `src/lib/tiptap/`) | [library/components/PaperRender.tsx](../../library/components/PaperRender.tsx) |
+| **PDF view** (in-app PDF panel for a paper's compiled output) | `PdfView` | [library/components/PdfView.tsx](../../library/components/PdfView.tsx) |
+| **Pgmark** (`\pgmark{}` LaTeX command anchoring text to a source-page number) | `pgmark` TipTap node + Python pipeline | [library/tiptap/pgmark.ts](../../library/tiptap/pgmark.ts); [library/scripts/pgmark.py](../../library/scripts/pgmark.py) |
+| **Skill bundle** (the agent skills synced into the user's library folder) | Built by `library/build/build-skill-bundle.mjs` from `library/skills/` + `library/scripts/`; written to `public/skill-bundle/` then copied into the user's library on demand | [library/lib/skill-sync.ts](../../library/lib/skill-sync.ts); built at `predev`/`prebuild` |
+| **Drop zone** (drag-PDF-here area for triage) | `DropZone` | [library/components/DropZone.tsx](../../library/components/DropZone.tsx) |
+| **Recent papers list** (recently-opened papers shown on the home view) | `RecentPapersList` | [src/components/RecentPapersList.tsx](../../src/components/RecentPapersList.tsx) |
+| **Tab plus menu** ("+" menu on the Virgil bar tab strip for adding new tabs / opening papers) | `TabPlusMenu` | [src/components/TabPlusMenu.tsx](../../src/components/TabPlusMenu.tsx) |
+| **Install prompt** (PWA install affordance shown when the browser exposes `beforeinstallprompt`) | `InstallPwaPrompt` | [src/components/InstallPwaPrompt.tsx](../../src/components/InstallPwaPrompt.tsx) |
 
 ## Persistence & sidecars
 
