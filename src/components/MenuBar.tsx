@@ -772,6 +772,11 @@ export function ActionButton({
   hoverColor: string;
   icon: React.ReactNode;
 }) {
+  const restore = (el: HTMLButtonElement, hovered: boolean) => {
+    el.style.backgroundColor = hovered ? hoverBg : "";
+    el.style.color = hovered ? hoverColor : color;
+    el.style.transform = "";
+  };
   return (
     <button
       onClick={(e) => {
@@ -786,10 +791,15 @@ export function ActionButton({
         e.currentTarget.style.backgroundColor = hoverBg;
         e.currentTarget.style.color = hoverColor;
       }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.backgroundColor = "";
-        e.currentTarget.style.color = color;
+      onMouseLeave={(e) => restore(e.currentTarget, false)}
+      onMouseDown={(e) => {
+        // Vivid press state: full panel color background + white icon,
+        // plus the iconbtn-style 0.5px nudge for tactile feedback.
+        e.currentTarget.style.backgroundColor = color;
+        e.currentTarget.style.color = "#ffffff";
+        e.currentTarget.style.transform = "translateY(0.5px)";
       }}
+      onMouseUp={(e) => restore(e.currentTarget, true)}
     >
       {icon}
     </button>
@@ -819,9 +829,9 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onAddTodo", panelId: "todo", title: "Add todo", color: "#44403c", hoverBg: "#f5f4f1", hoverColor: "#1c1917", icon: <IconTodo size={16} />, dataAttr: "data-add-todo-button" },
   { callbackKey: "onCutSelection", panelId: "cutter", title: "Add cut", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconCutter size={16} />, dataAttr: "data-cut-selection-button" },
   { callbackKey: "onArchive", panelId: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
-  { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote /> },
-  { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation />, dataAttr: "data-insert-citation-button" },
-  { callbackKey: "onCreateBibEntry", panelId: "bibliography", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography /> },
+  { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote size={16} /> },
+  { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation size={16} />, dataAttr: "data-insert-citation-button" },
+  { callbackKey: "onCreateBibEntry", panelId: "bibliography", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography size={16} /> },
   { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
 ];
 

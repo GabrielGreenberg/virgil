@@ -5,7 +5,6 @@ import NotesPanel from "@/panels/Notes";
 import type { useNotes } from "@/hooks/useNotes";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
@@ -29,8 +28,7 @@ export interface NotesHostProps {
 }
 
 export function NotesHost(p: NotesHostProps) {
-  const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
+  const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
@@ -58,10 +56,6 @@ export function NotesHost(p: NotesHostProps) {
       onEditorFocus={setOverrideEditor}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
-      editor={editorInstance}
-      panelSide={p.panelSide ?? p.side}
-      viewMode={getPanelViewMode("notes")}
-      onViewModeChange={(m) => setPanelViewMode("notes", m)}
       recentlyAddedId={recentlyAddedId}
     />
   );

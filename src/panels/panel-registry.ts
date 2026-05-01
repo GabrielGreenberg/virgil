@@ -34,9 +34,6 @@ export interface PanelRegistryEntry {
    *  navigate directly to a panel's source. */
   folder: string;
   card: CardLink | null;
-  /** Default view-mode for panels that support a list/in-text toggle.
-   *  null means the panel has no view-mode toggle. */
-  defaultViewMode: "list" | "in-text" | null;
   /** Whether this panel's items appear in the Omni view. */
   omniEligible: boolean;
   /** Which omni column this panel's items default to. */
@@ -51,7 +48,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Notes",
     folder: "src/panels/Notes",
     card: { kind: "note", keyPrefix: "note", themeKey: "note" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",
@@ -61,7 +57,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Footnotes",
     folder: "src/panels/Footnotes",
     card: { kind: "footnote", keyPrefix: "footnote", themeKey: "footnote" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "left",
     defaultStripSide: "left",
@@ -71,7 +66,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Citations",
     folder: "src/panels/Citations",
     card: { kind: "citation", keyPrefix: "citation", themeKey: "citation" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "left",
     defaultStripSide: "left",
@@ -81,7 +75,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Bibliography",
     folder: "src/panels/Bibliography",
     card: { kind: "bib", keyPrefix: "bib", themeKey: "bib" },
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "left",
@@ -91,7 +84,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Quotations",
     folder: "src/panels/Quotations",
     card: { kind: "quotation", keyPrefix: "quotation", themeKey: null },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "left",
     defaultStripSide: "left",
@@ -101,7 +93,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Examples",
     folder: "src/panels/Examples",
     card: { kind: "example", keyPrefix: "example", themeKey: "example" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "left",
     defaultStripSide: "left",
@@ -111,7 +102,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Todo List",
     folder: "src/panels/Todo",
     card: { kind: "todo", keyPrefix: "todo", themeKey: "todo" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",
@@ -121,7 +111,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Archived Text",
     folder: "src/panels/Archive",
     card: { kind: "archive", keyPrefix: "archive", themeKey: "archive" },
-    defaultViewMode: "list",
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",
@@ -131,7 +120,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Revisions",
     folder: "src/panels/Revisions",
     card: { kind: "comment", keyPrefix: "revision", themeKey: "comment" },
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "right",
@@ -145,7 +133,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     // live under the legacy "cut" keys (see CARD_KEY_PREFIXES below,
     // MARKER_META["cut"], CARD_THEMES.cut, panel-typography "cut").
     card: null,
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "right",
@@ -155,7 +142,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Outline",
     folder: "src/panels/Outline",
     card: null,
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "left",
@@ -165,7 +151,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Search",
     folder: "src/panels/Search",
     card: null,
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "left",
@@ -175,7 +160,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Word Count",
     folder: "src/panels/WordCount",
     card: null,
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "right",
@@ -185,7 +169,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Errors",
     folder: "src/panels/Errors",
     card: { kind: "error", keyPrefix: "error", themeKey: "error" },
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: "right",
@@ -195,7 +178,6 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Omni-view",
     folder: "src/panels/Omni",
     card: null,
-    defaultViewMode: null,
     omniEligible: false,
     omniSide: null,
     defaultStripSide: null,

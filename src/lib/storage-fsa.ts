@@ -561,6 +561,7 @@ export async function createDocFromPicker(
     folderName,
     createdAt: now,
     lastModifiedAt: now,
+    lastAccessedAt: now,
   };
 
   await setDocHandle(meta.id, docHandle);
@@ -606,6 +607,7 @@ export async function createDocInFolder(
     folderName: handle.name,
     createdAt: now,
     lastModifiedAt: now,
+    lastAccessedAt: now,
   };
 
   await setDocHandle(meta.id, handle);
@@ -675,6 +677,7 @@ export async function registerDocInFolder(
     folderName: handle.name,
     createdAt: now,
     lastModifiedAt: now,
+    lastAccessedAt: now,
   };
 
   await setDocHandle(meta.id, handle);

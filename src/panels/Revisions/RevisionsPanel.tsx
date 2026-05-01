@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Editor, JSONContent } from "@tiptap/react";
+import type { Editor } from "@tiptap/react";
 import type {
   RevisionCard,
   RevisionCommentCard as RevisionCommentCardData,
@@ -9,15 +9,8 @@ import type {
   RevisionSuggestionCard as RevisionSuggestionCardData,
 } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { useCardTheme } from "@/hooks/usePanelTheme";
-import { getLinkedParagraphIds, getTextAnchor } from "@/links/links";
+import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import ViewToggle from "@/components/ViewToggle";
-import {
-  useInTextPositions,
-  type PositionItem,
-} from "@/hooks/useInTextPositions";
-import { resolveAnchorRange } from "@/links/links";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -36,7 +29,6 @@ export default function RevisionsPanel({
   onSetTrackerTarget,
   onAddComment,
   onAddSuggestion,
-  onUpdateCommentContent,
   onUpdateCommentText,
   onSetCommentAiRequest,
   onUpdateSuggestionField,
@@ -50,9 +42,6 @@ export default function RevisionsPanel({
   onDropSelection,
   onDropParagraph,
   editor,
-  panelSide = "right",
-  viewMode = "list",
-  onViewModeChange,
   recentlyAddedId,
 }: {
   cards: RevisionCard[];
@@ -60,7 +49,6 @@ export default function RevisionsPanel({
   onSetTrackerTarget: (target: number | null) => void;
   onAddComment: () => RevisionCommentCardData;
   onAddSuggestion: () => RevisionSuggestionCardData;
-  onUpdateCommentContent: (id: string, content: JSONContent) => void;
   onUpdateCommentText: (id: string, text: string) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
@@ -87,13 +75,8 @@ export default function RevisionsPanel({
   }) => void;
   onDropParagraph?: (paragraphId: string) => void;
   editor?: Editor | null;
-  panelSide?: "left" | "right";
-  viewMode?: "list" | "in-text";
-  onViewModeChange?: (mode: "list" | "in-text") => void;
   recentlyAddedId?: string | null;
 }) {
-  const revisionTheme = useCardTheme("revision");
-
   const items = useMemo<Item[]>(() => {
     const out: Item[] = cards.map((c) =>
       c.kind === "suggestion"
@@ -112,30 +95,6 @@ export default function RevisionsPanel({
   const suggestionCount = useMemo(
     () => cards.filter((c) => c.kind === "suggestion").length,
     [cards],
-  );
-
-  const inTextItems = useMemo<PositionItem[]>(() => {
-    if (!editor) return [];
-    const out: PositionItem[] = [];
-    for (const c of cards) {
-      const ta = getTextAnchor(c);
-      if (ta) {
-        const range = resolveAnchorRange(editor, ta.anchorId);
-        if (range) {
-          out.push({ id: c.id, pos: range.from });
-          continue;
-        }
-      }
-      const pids = getLinkedParagraphIds(c);
-      if (pids.length === 0) continue;
-      out.push({ id: c.id, pos: 0 });
-    }
-    return out;
-  }, [editor, cards]);
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor ?? null,
-    inTextItems,
-    viewMode === "in-text",
   );
 
   const dropEnabled = onDropSelection || onDropParagraph;
@@ -213,9 +172,6 @@ export default function RevisionsPanel({
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="revision" label="Revisions color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
           </div>
         </ItemMenu>
       }
@@ -237,10 +193,6 @@ export default function RevisionsPanel({
           paragraph or selection here.
         </div>
       }
-      viewMode={viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
-      scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -284,81 +236,6 @@ export default function RevisionsPanel({
                 : undefined
             }
           />
-        );
-      }}
-      inTextRenderItem={(it, { selected }) => {
-        const borderColor = revisionTheme.borderSelected;
-        const selectedBg = revisionTheme.headerSelected;
-        if (it.kind === "suggestion") {
-          const s = it.data;
-          return (
-            <div
-              data-revision-suggestion-entry={s.id}
-              className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
-              style={
-                selected
-                  ? {
-                      borderLeftColor: borderColor,
-                      backgroundColor: selectedBg ?? "rgba(124, 58, 237, 0.08)",
-                    }
-                  : undefined
-              }
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(selected ? null : s.id);
-              }}
-            >
-              {s.original_text && (
-                <p className="text-[11px] line-through text-red-700 truncate">
-                  {s.original_text}
-                </p>
-              )}
-              <p
-                className="text-xs text-emerald-800 line-clamp-2 pr-6"
-                style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-              >
-                {s.user_text || s.suggested_text || (
-                  <span className="italic text-ink-muted">No replacement</span>
-                )}
-              </p>
-            </div>
-          );
-        }
-        const c = it.data;
-        const preview = c.text || "";
-        return (
-          <div
-            data-revision-comment-entry={c.id}
-            className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
-            style={
-              selected
-                ? {
-                    borderLeftColor: borderColor,
-                    backgroundColor: selectedBg ?? "rgba(180, 87, 87, 0.08)",
-                  }
-                : undefined
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelect(selected ? null : c.id);
-            }}
-            onMouseEnter={onHoverCard ? () => onHoverCard(c.id) : undefined}
-            onMouseLeave={onHoverCard ? () => onHoverCard(null) : undefined}
-          >
-            {c.selectedText && (
-              <div className="text-[10px] italic text-ink-muted truncate mb-0.5">
-                &ldquo;{c.selectedText}&rdquo;
-              </div>
-            )}
-            <p
-              className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
-              style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-            >
-              {preview || (
-                <span className="italic text-ink-muted">Empty comment</span>
-              )}
-            </p>
-          </div>
         );
       }}
     />

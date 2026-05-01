@@ -44,6 +44,8 @@ import {
 } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { generateShortId } from "@/lib/uuid";
+import { parseLatex } from "@/lib/latex-parser";
+import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import type { JSONContent as TipJSON } from "@tiptap/react";
@@ -195,6 +197,17 @@ export interface FootnoteInfo {
   title?: string;
 }
 
+export interface ExampleSubItem {
+  /** "a" / "b" / "i" / etc. as assigned by the numbering plugin. */
+  subLabel: string;
+  /** `\label{…}` on the item, if any. */
+  label: string;
+  /** Angle-bracket `\a<tag>` tag, if any. */
+  tag: string;
+  /** Flattened plain text of the item body. */
+  text: string;
+}
+
 export interface ExampleInfo {
   /** exampleBlock uuid (same value serialized as `\vexid{…}`). */
   exampleId: string;
@@ -212,6 +225,12 @@ export interface ExampleInfo {
   preview: string;
   /** Sub-label range for multi-part examples (e.g. "a–c"), empty for single. */
   subLabelRange: string;
+  /** Plain text from top-level paragraphs (`\ex` body before any `\a` items). */
+  bodyText: string;
+  /** Top-level sub-items (one entry per `\a`). Empty for `\ex` with no items. */
+  items: ExampleSubItem[];
+  /** Round-trippable LaTeX source for the entire `\ex…\xe` block. */
+  latex: string;
 }
 
 export interface EditorHandle {
@@ -236,6 +255,11 @@ export interface EditorHandle {
   getExamples: () => ExampleInfo[];
   scrollToExample: (exampleId: string, sourceEl?: HTMLElement | null) => void;
   insertExample: (kind: "single" | "multi") => { exampleId: string } | null;
+  /** Replace an existing example block with the parsed result of `latex`.
+   *  Returns false when the source can't be parsed into an exampleBlock or
+   *  the target id no longer exists. The new block keeps the original uuid
+   *  so links/references stay intact. */
+  replaceExampleLatex: (exampleId: string, latex: string) => boolean;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
   updateCitationDisplay: (citationId: string, displayText: string) => void;
@@ -2497,17 +2521,46 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           }
           return true;
         });
-        const subs: string[] = [];
-        node.descendants((child) => {
-          if (child.type.name === "exampleItem") {
-            const s = (child.attrs.subLabel as string) || "";
-            if (s) subs.push(s);
-            return false;
+        // Top-level body text: paragraphs that are direct children of the
+        // exampleBlock (i.e. not nested inside an exampleItemList). For
+        // `\ex` examples this captures the whole body; for `\pex` it
+        // captures any preamble paragraphs before the items.
+        const bodyParagraphs: string[] = [];
+        node.forEach((child) => {
+          if (child.type.name === "paragraph") {
+            bodyParagraphs.push(child.textContent);
           }
-          return true;
         });
+        const bodyText = bodyParagraphs.join("\n").trim();
+        // Top-level sub-items: walk the first exampleItemList only, so
+        // nested xlists don't get inlined into the flat list (they
+        // remain accessible via the .tex source editor).
+        const items: ExampleSubItem[] = [];
+        node.forEach((child) => {
+          if (child.type.name === "exampleItemList" && items.length === 0) {
+            child.forEach((it) => {
+              if (it.type.name !== "exampleItem") return;
+              items.push({
+                subLabel: (it.attrs.subLabel as string) || "",
+                label: (it.attrs.label as string) || "",
+                tag: (it.attrs.tag as string) || "",
+                text: it.textContent.trim(),
+              });
+            });
+          }
+        });
+        const subs = items.map((it) => it.subLabel).filter(Boolean);
         const subLabelRange =
           subs.length > 1 ? `${subs[0]}–${subs[subs.length - 1]}` : subs[0] || "";
+        let latex = "";
+        try {
+          latex = serializeBodyOnly({
+            type: "doc",
+            content: [node.toJSON() as JSONContent],
+          });
+        } catch {
+          latex = "";
+        }
         out.push({
           exampleId: id,
           pos,
@@ -2517,10 +2570,59 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           label: (node.attrs.label as string) || "",
           preview: (preview.trim() || "(empty example)").slice(0, 120),
           subLabelRange,
+          bodyText,
+          items,
+          latex,
         });
         return false;
       });
       return out;
+    },
+
+    replaceExampleLatex(exampleId: string, latex: string): boolean {
+      if (!editor) return false;
+      let parsed: JSONContent;
+      try {
+        parsed = parseLatex(latex);
+      } catch {
+        return false;
+      }
+      // Find the first exampleBlock in the parsed result. The user's input
+      // may include surrounding whitespace or stray paragraphs — we ignore
+      // those and only adopt the first \ex…\xe block we encounter.
+      let newJson: JSONContent | null = null;
+      const walk = (n: JSONContent): boolean => {
+        if (n.type === "exampleBlock") { newJson = n; return true; }
+        if (n.content) for (const c of n.content) if (walk(c)) return true;
+        return false;
+      };
+      walk(parsed);
+      if (!newJson) return false;
+      // Force the uuid to match the original so any links/references that
+      // point at this example remain valid across the edit.
+      const existingAttrs = (newJson as JSONContent).attrs ?? {};
+      (newJson as JSONContent).attrs = { ...existingAttrs, uuid: exampleId };
+      // Locate target in the editor's doc.
+      let target = -1;
+      let oldNodeSize = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "exampleBlock" && node.attrs.uuid === exampleId) {
+          target = pos;
+          oldNodeSize = node.nodeSize;
+          return false;
+        }
+        return true;
+      });
+      if (target < 0) return false;
+      let newNode;
+      try {
+        newNode = editor.schema.nodeFromJSON(newJson);
+      } catch {
+        return false;
+      }
+      const tr = editor.state.tr.replaceWith(target, target + oldNodeSize, newNode);
+      editor.view.dispatch(tr);
+      return true;
     },
 
     scrollToExample(exampleId: string, sourceEl?: HTMLElement | null): void {
@@ -3076,7 +3178,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   return (
     <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0 hide-scrollbar">
+      <div data-virgil-editor-scroll className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0 hide-scrollbar">
         <EditorContent editor={editor} />
       </div>
     </div>

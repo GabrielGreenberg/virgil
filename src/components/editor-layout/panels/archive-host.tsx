@@ -4,7 +4,6 @@ import ArchivePanel from "@/panels/Archive";
 import type { ArchivedSnippet } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
 
@@ -23,7 +22,6 @@ export interface ArchiveHostProps {
 
 export function ArchiveHost(p: ArchiveHostProps) {
   const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedArchiveId, setSelectedArchiveId } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   return (
@@ -40,8 +38,6 @@ export function ArchiveHost(p: ArchiveHostProps) {
       anchoredIds={p.anchoredIds}
       editor={editorInstance}
       panelSide={p.side}
-      viewMode={getPanelViewMode("archive")}
-      onViewModeChange={(m) => setPanelViewMode("archive", m)}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       onEditorFocus={setOverrideEditor}

@@ -1,17 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Editor } from "@tiptap/react";
 import type { TodoItem, AiRequest } from "@/lib/types";
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
-import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import ViewToggle from "@/components/ViewToggle";
-import {
-  useInTextPositions,
-  getParagraphAnchorPositions,
-} from "@/hooks/useInTextPositions";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
@@ -35,10 +28,6 @@ interface TodoPanelProps {
   onDeleteAiRequest?: (id: string) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph?: (paragraphId: string) => void;
-  editor?: Editor | null;
-  panelSide?: "left" | "right";
-  viewMode?: "list" | "in-text";
-  onViewModeChange?: (mode: "list" | "in-text") => void;
   recentlyAddedId?: string | null;
 }
 
@@ -59,14 +48,8 @@ export default function TodoPanel({
   onDeleteAiRequest,
   onDropSelection,
   onDropParagraph,
-  editor,
-  panelSide = "right",
-  viewMode = "list",
-  onViewModeChange,
   recentlyAddedId,
 }: TodoPanelProps) {
-  const todoTheme = useCardTheme("todo");
-
   const orderedItems = useMemo(
     () => withRecentlyAddedFirst(items, recentlyAddedId, (i) => i.id),
     [items, recentlyAddedId],
@@ -77,17 +60,6 @@ export default function TodoPanel({
   const myAiRequests = useMemo(
     () => (aiRequests ?? []).filter((r) => r.kind === "todo"),
     [aiRequests],
-  );
-
-  const inTextItems = useMemo(
-    () => getParagraphAnchorPositions(editor ?? null, items),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, items],
-  );
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor ?? null,
-    inTextItems,
-    viewMode === "in-text",
   );
 
   const dropEnabled = onDropSelection || onDropParagraph;
@@ -157,9 +129,6 @@ export default function TodoPanel({
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="todo" label="Todo color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
           </div>
         </ItemMenu>
       }
@@ -175,10 +144,6 @@ export default function TodoPanel({
       aiRequests={myAiRequests}
       onUpdateAiRequestText={onUpdateAiRequestText}
       onDeleteAiRequest={onDeleteAiRequest}
-      viewMode={viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
-      scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -201,48 +166,6 @@ export default function TodoPanel({
           }
         />
       )}
-      inTextRenderItem={(item, { selected, top }) => {
-        const borderColor =
-          todoTheme.borderSelected;
-        const selectedBg = todoTheme.headerSelected;
-        return (
-          <div
-            data-todo-entry={item.id}
-            className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"} ${item.done ? "opacity-60" : ""}`}
-            style={
-              selected
-                ? {
-                    borderLeftColor: borderColor,
-                    backgroundColor:
-                      selectedBg ?? "rgba(120, 113, 108, 0.08)",
-                  }
-                : undefined
-            }
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectTodo(selected ? null : item.id);
-            }}
-          >
-            <div className="flex items-start gap-2">
-              <input
-                type="checkbox"
-                checked={item.done}
-                onChange={() => onToggle(item.id)}
-                onClick={(e) => e.stopPropagation()}
-                className="mt-0.5 shrink-0"
-              />
-              <p
-                className={`text-xs leading-snug line-clamp-2 pr-6 ${item.done ? "line-through text-ink-muted" : "text-ink-body"}`}
-                style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-              >
-                {item.text || (
-                  <span className="italic text-ink-muted">Empty task</span>
-                )}
-              </p>
-            </div>
-          </div>
-        );
-      }}
       footer={
         done.length > 0 ? (
           <div className="px-4 py-2.5 border-t border-[var(--border)] flex items-center justify-between bg-surface-muted/50">

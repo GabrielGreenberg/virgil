@@ -263,6 +263,11 @@ export function OmniHost(p: OmniHostProps) {
     (id: string, sourceEl?: HTMLElement | null) => editorRef.current?.scrollToExample(id, sourceEl),
     [editorRef],
   );
+  const replaceExampleLatex = useCallback(
+    (id: string, latex: string) =>
+      editorRef.current?.replaceExampleLatex(id, latex) ?? false,
+    [editorRef],
+  );
   const setExampleInOmni = useCallback(
     (id: string | null) => {
       setSelectedExampleId(id);
@@ -389,6 +394,7 @@ export function OmniHost(p: OmniHostProps) {
       selectedExampleId,
       setSelectedExampleId: setExampleInOmni,
       onJump: scrollToExample,
+      onUpdateLatex: replaceExampleLatex,
     }),
   ], [
     // Data arrays
@@ -405,7 +411,7 @@ export function OmniHost(p: OmniHostProps) {
     // Stable callbacks from this component
     setFootnoteInOmni, setCitationInOmni, setQuotationGroupInOmni,
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
-    scrollToFootnote, scrollToCitation, scrollToExample, jumpToCard, findParagraphPos,
+    scrollToFootnote, scrollToCitation, scrollToExample, replaceExampleLatex, jumpToCard, findParagraphPos,
     // Contexts
     setOverrideEditor, getCitationDisplayText, onCitationCreated,
     // Footnote handlers

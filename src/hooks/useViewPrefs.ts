@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
+import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-position";
+import { PANEL_REGISTRY } from "@/panels/panel-registry";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 
@@ -199,7 +201,28 @@ function loadPrefs(): ViewPrefs {
         ...(parsed.printOptions?.panels ?? {}),
       },
     };
-    return { ...DEFAULT_PREFS, ...parsed, placements: merged, printOptions };
+    // Always-float model: force the legacy dock-state fields to their
+    // "no panel docked" values regardless of what's in localStorage.
+    // Reading code (omni-side detection, marginalia connectors) still
+    // expects activeLeft/Right === "omni" to mean "omni is showing on
+    // this side", which is now permanently true. Splits are gone, so
+    // bottom slots are null. Per-panel column widths are stale (they
+    // used to size a docked panel; now they only size the omni column,
+    // which is the float-spawn rect — drop them so users get a usable
+    // default).
+    return {
+      ...DEFAULT_PREFS,
+      ...parsed,
+      placements: merged,
+      printOptions,
+      activeLeft: "omni",
+      activeRight: "omni",
+      activeLeftBottom: null,
+      activeRightBottom: null,
+      _stashedLeft: null,
+      _stashedRight: null,
+      panelWidths: {},
+    };
   } catch {
     return DEFAULT_PREFS;
   }
@@ -228,13 +251,43 @@ export function useViewPrefs() {
     });
   }, [persist]);
 
-  const setActiveLeft = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeLeft: p.activeLeft === id ? "omni" : id }));
+  /**
+   * Open a panel as a float at the column rect for `side` (or the panel's
+   * registered default side if not specified). Idempotent: if the panel is
+   * already a float, no-op. This is the single open-as-float entry point;
+   * strip clicks, marker clicks, and programmatic opens all route through
+   * here so the spawn rect is computed in one place.
+   */
+  const openPanelFloat = useCallback((id: PanelId, side?: Side) => {
+    if (id === "omni" || id === "blank") return;
+    update((p) => {
+      if (p.poppedOutPanels.includes(id)) return p;
+      const placement = p.placements.find((pl) => pl.id === id);
+      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
+      const targetSide: Side = side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const rect = computeColumnSpawnRect(targetSide);
+      return {
+        ...p,
+        poppedOutPanels: [...p.poppedOutPanels, id],
+        floatPositions: { ...p.floatPositions, [id]: rect },
+      };
+    });
   }, [update]);
 
+  // Legacy dock setters — kept as shims that route through openPanelFloat
+  // so existing callers (marker clicks, search jump, command-input bridges,
+  // etc.) get the new float-open behavior without per-call refactors.
+  // Passing "omni"/"blank"/null is a no-op (those used to be valid dock
+  // states; in the always-float model the column always shows omni).
+  const setActiveLeft = useCallback((id: PanelId | null) => {
+    if (!id || id === "omni" || id === "blank") return;
+    openPanelFloat(id, "left");
+  }, [openPanelFloat]);
+
   const setActiveRight = useCallback((id: PanelId | null) => {
-    update((p) => ({ ...p, activeRight: p.activeRight === id ? "omni" : id }));
-  }, [update]);
+    if (!id || id === "omni" || id === "blank") return;
+    openPanelFloat(id, "right");
+  }, [openPanelFloat]);
 
   const collapseLeft = useCallback(() => {
     update((p) => ({
@@ -306,28 +359,30 @@ export function useViewPrefs() {
     });
   }, [update]);
 
+  // Toggle a strip panel: open as float if closed, close it if open.
+  // Replaces the old "swap into the dock slot" semantics — strip clicks
+  // are the canonical open/close gesture in the always-float model.
   const togglePanel = useCallback((id: PanelId) => {
+    if (id === "omni" || id === "blank") return;
     update((p) => {
-      const placement = p.placements.find((pl) => pl.id === id);
-      if (!placement) return p;
-      // Opening any strip panel auto-clears the blank-suppression on the
-      // OTHER side (the side we're toggling naturally has its "blank"
-      // replaced by the panel id below).
-      const otherLeft = placement.side === "right" && p.activeLeft === "blank" ? "omni" : p.activeLeft;
-      const otherRight = placement.side === "left" && p.activeRight === "blank" ? "omni" : p.activeRight;
-      if (placement.side === "left") {
+      const isPopped = p.poppedOutPanels.includes(id);
+      if (isPopped) {
+        const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
         return {
           ...p,
-          activeLeft: p.activeLeft === id ? "omni" : id,
-          activeRight: otherRight,
-        };
-      } else {
-        return {
-          ...p,
-          activeRight: p.activeRight === id ? "omni" : id,
-          activeLeft: otherLeft,
+          poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
+          floatPositions: remainingPositions,
         };
       }
+      const placement = p.placements.find((pl) => pl.id === id);
+      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
+      const targetSide: Side = placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const rect = computeColumnSpawnRect(targetSide);
+      return {
+        ...p,
+        poppedOutPanels: [...p.poppedOutPanels, id],
+        floatPositions: { ...p.floatPositions, [id]: rect },
+      };
     });
   }, [update]);
 
@@ -370,21 +425,17 @@ export function useViewPrefs() {
     return prefs.panelWidths[side] || 320;
   }, [prefs.panelWidths]);
 
-  /** Set the panel id for a specific half of a side. */
+  /**
+   * Legacy split setter — kept as a shim. Splits no longer exist in the
+   * always-float model, so this just opens `id` as a float on `side`.
+   * `half` is ignored. "omni"/"blank"/null are no-ops.
+   */
   const setActiveHalf = useCallback(
-    (side: Side, half: Half, id: PanelId | null) => {
-      update((p) => {
-        if (side === "left") {
-          return half === "top"
-            ? { ...p, activeLeft: id }
-            : { ...p, activeLeftBottom: id };
-        }
-        return half === "top"
-          ? { ...p, activeRight: id }
-          : { ...p, activeRightBottom: id };
-      });
+    (side: Side, _half: Half, id: PanelId | null) => {
+      if (!id || id === "omni" || id === "blank") return;
+      openPanelFloat(id, side);
     },
-    [update],
+    [openPanelFloat],
   );
 
   /**
@@ -478,61 +529,30 @@ export function useViewPrefs() {
     });
   }, [update]);
 
+  /**
+   * Toggle a panel's float state. Symmetric: not-open → open as float;
+   * open → close (forgetting the saved position so the next open re-uses
+   * the column rect rather than the last drag location).
+   */
   const togglePopout = useCallback((id: PanelId) => {
     update((p) => {
       const isPopped = p.poppedOutPanels.includes(id);
       if (isPopped) {
-        const { [id]: origin, ...remainingOrigins } = p.poppedOutOrigins;
-        // Re-dock branch: forget the dragged float position so the next
-        // popout spawns fresh from its trigger.
         const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
-        const next = {
+        return {
           ...p,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-          poppedOutOrigins: remainingOrigins,
           floatPositions: remainingPositions,
         };
-        // If the panel's side column is currently open, re-dock the panel
-        // to the same half (top/bottom) it was popped from. Fall back to
-        // top when the column is no longer split. If the side is
-        // collapsed entirely, just close the floating panel.
-        const placement = p.placements.find((pl) => pl.id === id);
-        if (placement?.side === "left" && p.activeLeft != null) {
-          if (origin === "bottom" && p.activeLeftBottom != null) {
-            next.activeLeftBottom = id;
-          } else {
-            next.activeLeft = id;
-          }
-        } else if (placement?.side === "right" && p.activeRight != null) {
-          if (origin === "bottom" && p.activeRightBottom != null) {
-            next.activeRightBottom = id;
-          } else {
-            next.activeRight = id;
-          }
-        }
-        return next;
       }
-      // Popping out: capture origin half, then clear the panel's slot so
-      // it "closes as a panel" in the sidebar.
-      let activeLeft = p.activeLeft;
-      let activeRight = p.activeRight;
-      let activeLeftBottom = p.activeLeftBottom;
-      let activeRightBottom = p.activeRightBottom;
-      let origin: Half | undefined;
-      if (activeLeft === id) { activeLeft = "omni"; origin = "top"; }
-      if (activeRight === id) { activeRight = "omni"; origin = "top"; }
-      if (activeLeftBottom === id) { activeLeftBottom = "omni"; origin = "bottom"; }
-      if (activeRightBottom === id) { activeRightBottom = "omni"; origin = "bottom"; }
+      const placement = p.placements.find((pl) => pl.id === id);
+      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
+      const targetSide: Side = placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const rect = computeColumnSpawnRect(targetSide);
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
-        poppedOutOrigins: origin
-          ? { ...p.poppedOutOrigins, [id]: origin }
-          : p.poppedOutOrigins,
-        activeLeft,
-        activeRight,
-        activeLeftBottom,
-        activeRightBottom,
+        floatPositions: { ...p.floatPositions, [id]: rect },
       };
     });
   }, [update]);
@@ -641,6 +661,7 @@ export function useViewPrefs() {
     setMenuLocation,
     togglePopout,
     closePopout,
+    openPanelFloat,
     setFloatPosition,
     toggleCardPopout,
     closeCardPopout,

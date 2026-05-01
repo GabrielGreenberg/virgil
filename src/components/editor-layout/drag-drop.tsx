@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
+import { PanelId, Side, ViewPrefs } from "@/hooks/useViewPrefs";
 import { PANEL_ICONS, panelLabel } from "./panel-icons";
 import { scrollEntryIntoView } from "./layout-scroll";
 import type { SelectionsContextValue } from "./contexts/selections";
@@ -8,32 +8,18 @@ import { getPanelSelection } from "./panel-selection";
 /**
  * Strip-icon click + move handlers.
  *
- * - `handleStripClick` routes a click to the focused half when the side
- *   is split, otherwise behaves like togglePanel.
- * - `handleMove` forwards a drag reorder to movePanel.
- *
- * Takes deps explicitly rather than reading from EditorLayoutCtx so it
- * can be called from the shell (the shell is the provider, so it can't
- * consume the context it supplies).
+ * Always-float model: clicking a strip icon opens the panel as a
+ * floating window at the column rect, or closes it if it's already open.
+ * The dock-toggle / split-aware branches are gone.
  */
 export function useStripHandlers(deps: {
   prefs: ViewPrefs;
-  focusedHalfLeft: Half;
-  focusedHalfRight: Half;
-  togglePanel: (id: PanelId) => void;
+  openPanelFloat: (id: PanelId, side?: Side) => void;
+  closePopout: (id: PanelId) => void;
   movePanel: (id: PanelId, side: Side, index?: number) => void;
-  setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   selections: SelectionsContextValue;
 }) {
-  const {
-    prefs,
-    focusedHalfLeft,
-    focusedHalfRight,
-    togglePanel,
-    movePanel,
-    setActiveHalf,
-    selections,
-  } = deps;
+  const { prefs, openPanelFloat, closePopout, movePanel, selections } = deps;
 
   const handleMove = useCallback(
     (draggedId: PanelId, toSide: Side, toIndex?: number) => {
@@ -44,37 +30,15 @@ export function useStripHandlers(deps: {
 
   const handleStripClick = useCallback(
     (id: PanelId, side: Side) => {
-      const split =
-        side === "left" ? prefs.activeLeftBottom != null : prefs.activeRightBottom != null;
-
-      // Predict whether this click will OPEN the panel vs close it.
-      // Non-split: togglePanel closes to "blank" when the panel is already
-      // active on its side. Split: setActiveHalf closes the focused half to
-      // "blank" when the focused half already holds this panel.
-      let willOpen: boolean;
-      if (!split) {
-        const active = side === "left" ? prefs.activeLeft : prefs.activeRight;
-        willOpen = active !== id;
-        togglePanel(id);
-      } else {
-        const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
-        const currentInFocus =
-          side === "left"
-            ? focused === "top"
-              ? prefs.activeLeft
-              : prefs.activeLeftBottom
-            : focused === "top"
-              ? prefs.activeRight
-              : prefs.activeRightBottom;
-        willOpen = currentInFocus !== id;
-        const next: PanelId = willOpen ? id : "blank";
-        setActiveHalf(side, focused, next);
+      const isOpen = prefs.poppedOutPanels.includes(id);
+      if (isOpen) {
+        closePopout(id);
+        return;
       }
+      openPanelFloat(id, side);
 
-      // If the panel just opened AND has a selected card, scroll to it.
-      // Runs in a rAF so the panel has mounted its list by the time we
-      // query the DOM.
-      if (!willOpen) return;
+      // If the panel has a selected card, scroll to it once the float
+      // mounts. Two rAFs so the list has time to render.
       const sel = getPanelSelection(id, selections);
       if (!sel) return;
       requestAnimationFrame(() => {
@@ -84,17 +48,7 @@ export function useStripHandlers(deps: {
         });
       });
     },
-    [
-      togglePanel,
-      setActiveHalf,
-      prefs.activeLeft,
-      prefs.activeRight,
-      prefs.activeLeftBottom,
-      prefs.activeRightBottom,
-      focusedHalfLeft,
-      focusedHalfRight,
-      selections,
-    ],
+    [openPanelFloat, closePopout, prefs.poppedOutPanels, selections],
   );
 
   return { handleStripClick, handleMove };

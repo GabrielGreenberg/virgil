@@ -10,6 +10,12 @@
  *
  * Convention in this codebase: use `queryRW()` from anywhere, and only
  * call `requestRW()` / `ensureRW()` from within a click handler.
+ *
+ * Note on persistence: in installed PWAs on Chromium 122+, the browser
+ * may offer the user an option to remember the grant. When that happens,
+ * `queryRW()` on a subsequent page load returns "granted" directly and
+ * the gate UI never appears. This is purely a browser behavior change;
+ * the API surface is the same.
  */
 
 type PermState = "granted" | "denied" | "prompt";

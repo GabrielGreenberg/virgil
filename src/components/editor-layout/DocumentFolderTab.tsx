@@ -5,7 +5,7 @@ import { buildActiveTabStrokePath, buildTabFillPath } from "./folder-path";
 
 const R = 10;
 const S = 12;
-const TAB_H = 32;
+const TAB_H = 30;
 const STROKE = "var(--topbar-border, #d5d3ce)";
 
 type Props = {

@@ -7,7 +7,6 @@ import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCitationDisplayContext } from "../contexts/citation-display";
@@ -49,8 +48,7 @@ export interface CitationsHostProps {
 }
 
 export function CitationsHost(p: CitationsHostProps) {
-  const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
+  const { editorRef } = useEditorRefContext();
   const { selectedCitationId, setSelectedCitationId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
@@ -89,11 +87,6 @@ export function CitationsHost(p: CitationsHostProps) {
         p.setPendingCitationMode("unanchored");
         p.setPendingCitationCreate("\\cite");
       }}
-      editor={editorInstance}
-      panelSide={p.side}
-      citationPositions={p.citationPositionMap}
-      viewMode={getPanelViewMode("citations")}
-      onViewModeChange={(m) => setPanelViewMode("citations", m)}
       getFormattedBib={p.getFormattedBib}
       getAnnotation={p.getAnnotation}
       setAnnotation={p.setAnnotation}

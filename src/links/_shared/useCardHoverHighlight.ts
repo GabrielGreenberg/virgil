@@ -93,8 +93,7 @@ export function useCardHoverHighlight(args: UseCardHoverHighlightArgs): void {
       if (entity?.links) for (const l of entity.links) links.push(l);
     }
 
-    const editorRoot = editor?.view.dom ?? null;
-    if (editor && editorRoot) {
+    if (editor && !editor.isDestroyed && editor.isInitialized) {
       for (const link of links) {
         const resolved = resolveLink(editor, link);
         if (!resolved?.domEl) continue;

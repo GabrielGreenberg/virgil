@@ -36,22 +36,24 @@ export function MarginActionToolbar({ side, actions, placements }: Props) {
     <div
       data-action-pod
       data-margin-toolbar-side={side}
-      className="flex items-center gap-0.5 px-1 py-0.5 rounded-md bg-surface/95 backdrop-blur-sm border border-edge-hover shadow-sm"
+      className="flex items-center px-5"
     >
-      {defs.map((def) => {
-        const cb = actions[def.callbackKey]!;
-        return (
-          <ActionButton
-            key={def.callbackKey}
-            onClick={(rect) => cb(rect)}
-            title={def.title}
-            color={def.color}
-            hoverBg={def.hoverBg}
-            hoverColor={def.hoverColor}
-            icon={def.icon}
-          />
-        );
-      })}
+      <div className="flex items-center gap-0.5">
+        {defs.map((def) => {
+          const cb = actions[def.callbackKey]!;
+          return (
+            <ActionButton
+              key={def.callbackKey}
+              onClick={(rect) => cb(rect)}
+              title={def.title}
+              color={def.color}
+              hoverBg={def.hoverBg}
+              hoverColor={def.hoverColor}
+              icon={def.icon}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "generatedAt": "2026-04-18T12:00:00.000Z",
+  "entries": [
+    {
+      "citekey": "bringhurst1992",
+      "title": "The Elements of Typographic Style",
+      "authors": ["Robert Bringhurst"],
+      "year": 1992,
+      "doi": null,
+      "addedAt": "2026-04-10T09:00:00.000Z",
+      "updatedAt": "2026-04-18T12:00:00.000Z",
+      "pdf": {
+        "present": true,
+        "filename": "bringhurst1992.pdf",
+        "pageCount": 12,
+        "format": "pdf"
+      },
+      "indexed": {
+        "state": "richIndexed",
+        "lastIndexedAt": "2026-04-18T12:00:00.000Z",
+        "extractor": "marker",
+        "pgmarkCount": 8,
+        "pgmarkPosition": "footer",
+        "footnoteCount": 3
+      },
+      "bib": {
+        "state": "authenticated",
+        "authenticatedAt": "2026-04-12T10:30:00.000Z",
+        "doiVerified": false,
+        "sources": ["openalex"]
+      }
+    },
+    {
+      "citekey": "genette1997",
+      "title": "Paratexts: Thresholds of Interpretation",
+      "authors": ["Gérard Genette"],
+      "year": 1997,
+      "doi": "10.1017/CBO9780511549373",
+      "addedAt": "2026-04-15T14:20:00.000Z",
+      "updatedAt": "2026-04-15T16:45:00.000Z",
+      "pdf": {
+        "present": true,
+        "filename": "genette1997.pdf",
+        "pageCount": 4,
+        "format": "pdf"
+      },
+      "indexed": {
+        "state": "indexed",
+        "lastIndexedAt": "2026-04-15T16:45:00.000Z",
+        "extractor": "pymupdf",
+        "pgmarkCount": 4,
+        "pgmarkPosition": "header"
+      },
+      "bib": {
+        "state": "unverified",
+        "sources": ["crossref"]
+      }
+    },
+    {
+      "citekey": "grafton2020",
+      "title": "The Footnote: A Curious History",
+      "authors": ["Anthony Grafton"],
+      "year": 2020,
+      "doi": null,
+      "addedAt": "2026-04-22T11:00:00.000Z",
+      "updatedAt": "2026-04-22T11:00:00.000Z",
+      "pdf": {
+        "present": false
+      },
+      "indexed": {
+        "state": "none"
+      },
+      "bib": {
+        "state": "manuscript"
+      }
+    }
+  ]
+}

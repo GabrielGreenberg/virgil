@@ -738,13 +738,12 @@ export function Chevron({ expanded }: { expanded: boolean }) {
  * state for that panel's id.
  */
 export interface PanelChromeValue {
+  /** True when this panel is rendered as a floating window. In the
+   *  always-float model this is always true for non-omni panels. */
   isPoppedOut: boolean;
-  /** Toggle popped-out state. Receives the docked container's bounding rect
-   *  when invoked from the popout button so the float can spawn near it. */
-  onTogglePopout: (anchor?: DOMRect | null) => void;
   /** Side this panel is docked to (or floats from). Drives chevron direction. */
   side: "left" | "right";
-  /** Close this panel: collapses the side, removes a split half, or closes the floater. */
+  /** Close this panel: removes it from the floating panel list. */
   onClose: () => void;
 }
 
@@ -914,22 +913,13 @@ export function createPopoutButtonEl(opts: {
 }
 
 /**
- * Pop-out button bound to the surrounding PanelChromeProvider. Renders a
- * rounded square with an arrow inside: up when docked (pops out) and down
- * when popped (re-docks to its origin). Renders nothing when there is no
- * chrome (e.g. panel not popped-out aware).
+ * Pop-out button bound to the panel chrome — retained as a no-op so
+ * existing render trees continue to compile. In the always-float model
+ * panels are always floating, so the button has nothing to do; leaving
+ * it as `null` keeps the header layout stable.
  */
 export function PanelPopout() {
-  const chrome = useContext(PanelChromeContext);
-  if (!chrome) return null;
-  return (
-    <PopoutButton
-      isPoppedOut={chrome.isPoppedOut}
-      onClick={(anchor) => chrome.onTogglePopout(anchor)}
-      variant="arrow"
-      labelNoun="panel"
-    />
-  );
+  return null;
 }
 
 /**

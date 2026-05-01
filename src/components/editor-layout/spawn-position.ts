@@ -8,6 +8,7 @@
 // fall back to a centered placement.
 
 import { FLOATING_PANEL_VIEWPORT_MARGIN } from "./constants";
+import type { Side } from "@/hooks/useViewPrefs";
 
 export interface SpawnSize {
   width: number;
@@ -74,4 +75,47 @@ export function computeSpawnPosition(
   y = Math.max(margin, Math.min(y, maxY));
 
   return { x, y, width: size.width, height: size.height };
+}
+
+/**
+ * Spawn rect for "open panel as float at the column rect": the float
+ * appears exactly where the docked column would have rendered. Measures
+ * the live column wrapper (it's still mounted as the omni backdrop). If
+ * the wrapper isn't in the DOM yet, falls back to a strip-adjacent rect.
+ */
+const FALLBACK_COLUMN_WIDTH = 320;
+const FALLBACK_TOP_OFFSET = 56;
+const FALLBACK_STRIP_OFFSET = 48;
+const MIN_COLUMN_FLOAT_WIDTH = 280;
+
+export function computeColumnSpawnRect(side: Side): SpawnRect {
+  if (typeof document !== "undefined") {
+    const col = document.querySelector(
+      `[data-panel-column-side="${side}"]`,
+    ) as HTMLElement | null;
+    if (col) {
+      const r = col.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) {
+        // The column may have been shrunk below a usable panel width
+        // (e.g. legacy dock prefs). Bump to a minimum, growing inward
+        // toward the editor so the float doesn't push past the strip.
+        if (r.width >= MIN_COLUMN_FLOAT_WIDTH) {
+          return { x: r.left, y: r.top, width: r.width, height: r.height };
+        }
+        const width = MIN_COLUMN_FLOAT_WIDTH;
+        const x = side === "left" ? r.left : r.right - width;
+        return { x, y: r.top, width, height: r.height };
+      }
+    }
+  }
+  const vw = typeof window !== "undefined" ? window.innerWidth : 1200;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 800;
+  const width = FALLBACK_COLUMN_WIDTH;
+  const top = FALLBACK_TOP_OFFSET;
+  const height = Math.max(200, vh - top - 8);
+  const x =
+    side === "left"
+      ? FALLBACK_STRIP_OFFSET
+      : vw - width - FALLBACK_STRIP_OFFSET;
+  return { x, y: top, width, height };
 }

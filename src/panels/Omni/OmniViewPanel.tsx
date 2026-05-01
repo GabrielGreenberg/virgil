@@ -242,36 +242,14 @@ function OmniViewPanel({
     [anchored],
   );
 
-  const unanchoredRef = useRef<HTMLDivElement>(null);
-  const topOffsetRef = useRef(0);
-  useEffect(() => {
-    if (unanchored.length === 0) {
-      topOffsetRef.current = 0;
-      return;
-    }
-    const el = unanchoredRef.current;
-    if (!el) { topOffsetRef.current = 0; return; }
-    const measure = () => { topOffsetRef.current = el.offsetHeight; };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [unanchored.length]);
-
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor,
-    inTextItems,
-    true,
-    "data-omni-entry-wrapper",
-    topOffsetRef,
-  );
+  const { positions, editorScrollHeight, panelScrollRef, transformTargetRef } =
+    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper");
 
   return (
     <div className="relative w-full h-full">
       <div
         ref={panelScrollRef}
-        className="w-full h-full overflow-y-auto hide-scrollbar"
+        className="w-full h-full overflow-hidden hide-scrollbar"
         style={{
           maskImage:
             "linear-gradient(to bottom, transparent 0, black 16px, black calc(100% - 16px), transparent 100%)",
@@ -291,34 +269,42 @@ function OmniViewPanel({
             No item types selected — use the filter menu at the bottom of the strip.
           </div>
         )}
-        {unanchored.length > 0 && (
-          <div ref={unanchoredRef} className="px-2 pt-2 pb-2 space-y-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1">
-              Unanchored
-            </div>
-            {unanchored.map((item) => (
-              <div key={item.id}>{item.content}</div>
-            ))}
-          </div>
-        )}
+        {/* The transform target. Both unanchored and anchored regions live
+            inside this element so they translate together each frame in
+            lockstep with the editor's scroll. */}
         <div
-          className="relative"
-          style={{ height: editorScrollHeight || "100%" }}
+          ref={transformTargetRef}
+          data-virgil-in-text-transform
         >
-          {anchored.map((item) => {
-            const top = positions.get(item.id);
-            if (top === undefined) return null;
-            return (
-              <div
-                key={item.id}
-                data-omni-entry-wrapper={item.id}
-                className="absolute left-2 right-2"
-                style={{ top }}
-              >
-                {item.content}
+          {unanchored.length > 0 && (
+            <div className="px-2 pt-2 pb-2 space-y-2">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1">
+                Unanchored
               </div>
-            );
-          })}
+              {unanchored.map((item) => (
+                <div key={item.id}>{item.content}</div>
+              ))}
+            </div>
+          )}
+          <div
+            className="relative"
+            style={{ height: editorScrollHeight || "100%" }}
+          >
+            {anchored.map((item) => {
+              const top = positions.get(item.id);
+              if (top === undefined) return null;
+              return (
+                <div
+                  key={item.id}
+                  data-omni-entry-wrapper={item.id}
+                  className="absolute left-2 right-2"
+                  style={{ top }}
+                >
+                  {item.content}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

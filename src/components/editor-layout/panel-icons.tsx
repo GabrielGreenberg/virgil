@@ -101,20 +101,20 @@ export function IconArchive({ active, size = 18 }: { active?: boolean; size?: nu
 }
 
 // Footnote icon: "fn" in regular weight, larger
-export function IconFootnote({ active }: { active?: boolean }) {
+export function IconFootnote({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill={c}>
+    <svg width={size} height={size} viewBox="0 0 20 20" fill={c}>
       <text x="2" y="15.5" fontSize="15" fontWeight="600" fontFamily="system-ui, sans-serif">fn</text>
     </svg>
   );
 }
 
 // Citation icon: open book with bookmark ribbon
-export function IconCitation({ active }: { active?: boolean }) {
+export function IconCitation({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       {/* Page body */}
       <path d="M9 6h9l3 3v11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
       {/* Page fold */}
@@ -127,9 +127,9 @@ export function IconCitation({ active }: { active?: boolean }) {
   );
 }
 
-export function IconBibliography({ active }: { active?: boolean }) {
+export function IconBibliography({ active, size = 18 }: { active?: boolean; size?: number }) {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "currentColor"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
       <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
       <path d="M8 7h8" />

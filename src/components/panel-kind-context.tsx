@@ -45,10 +45,10 @@ export function useEnclosingPanelBodyKey(): PanelBodyKey | null {
 
 /** Returns inline CSS variables (`--panel-body-fontsize`, etc.) for the
  *  given panel's body typography. Used by `CardListPanel` to scope a
- *  font-size override to its in-text scroll container so per-panel
- *  `inTextRenderItem` callbacks don't each have to consume the typography
- *  hook themselves. The matching CSS rules in `globals.css` apply the
- *  variable to descendant text body elements within `.panel-body-typo`. */
+ *  font-size override per panel kind so per-panel cards don't each have
+ *  to consume the typography hook themselves. The matching CSS rules in
+ *  `globals.css` apply the variable to descendant text body elements
+ *  within `.panel-body-typo`. */
 export function usePanelBodyVarsForKind(kind: PanelKind | null | undefined): CSSProperties | undefined {
   const key = bodyKeyForKind(kind);
   const style = usePanelBodyStyle(key ?? undefined);

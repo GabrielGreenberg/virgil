@@ -47,8 +47,8 @@ function CollaboratorsIcon() {
       {/* Background figure (offset up-right, slightly smaller). Sized so
           the combined silhouette fills y=2 → y=22, matching the optical
           height of stroke-based 24-viewBox icons in the same row. */}
-      <circle cx="18" cy="5" r="3" />
-      <path d="M12 14c0-3.2 2.7-5.7 6-5.7s6 2.5 6 5.7V15H12z" />
+      <circle cx="19.5" cy="5" r="2.7" />
+      <path d="M15 14c0-3.4 2.5-6 4.5-6s4.5 2.6 4.5 6V15H15z" />
       {/* Foreground figure */}
       <circle cx="8.5" cy="8.5" r="3.9" />
       <path d="M1.5 19.5c0-3.9 3.3-6.8 7.5-6.8s7.5 3 7.5 6.8V22H1.5z" />

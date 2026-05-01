@@ -48,6 +48,9 @@ export interface FsaDocMeta {
   folderName: string;
   createdAt: string;
   lastModifiedAt: string;
+  /** ISO timestamp of the last user-driven activation of this paper.
+   *  Bumped by `openFile`/`activateDoc`, NOT by hydration on page load. */
+  lastAccessedAt: string;
 }
 
 export interface FsaDocIndex {
@@ -80,11 +83,26 @@ const EMPTY_TABS: TabsState = {
 
 export async function readIndex(): Promise<FsaDocIndex> {
   const idx = await get<FsaDocIndex>(INDEX_KEY, store);
-  return idx ?? EMPTY_INDEX;
+  if (!idx) return EMPTY_INDEX;
+  // Backfill lastAccessedAt for entries created before the field existed,
+  // defaulting to lastModifiedAt so old papers still sort sensibly.
+  for (const doc of idx.docs) {
+    if (!doc.lastAccessedAt) doc.lastAccessedAt = doc.lastModifiedAt;
+  }
+  return idx;
 }
 
 export async function writeIndex(idx: FsaDocIndex): Promise<void> {
   await set(INDEX_KEY, idx, store);
+}
+
+/** Bump `lastAccessedAt` to now for the given doc, if it exists in the index. */
+export async function touchDocAccessed(id: string): Promise<void> {
+  const idx = await readIndex();
+  const doc = idx.docs.find((d) => d.id === id);
+  if (!doc) return;
+  doc.lastAccessedAt = new Date().toISOString();
+  await writeIndex(idx);
 }
 
 // --- Tabs ----------------------------------------------------------------

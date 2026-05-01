@@ -1,10 +1,7 @@
 "use client";
 
-import { useMemo, useEffect, useCallback, memo } from "react";
-import type { Editor } from "@tiptap/react";
+import { useMemo, useEffect, useCallback, memo, useRef } from "react";
 import type { BibEntry, CitationRef, AiRequest } from "@/lib/types";
-import ViewToggle from "@/components/ViewToggle";
-import { useInTextPositions } from "@/hooks/useInTextPositions";
 import {
   ItemMenu,
   PANEL,
@@ -39,11 +36,6 @@ interface CitationsPanelProps {
   onInsertCitation: (command: string, citationId: string, displayText: string) => void;
   onClearPendingCreate: () => void;
   onStartCreate: () => void;
-  editor: Editor | null;
-  panelSide: "left" | "right";
-  citationPositions: Map<string, number>;
-  viewMode: "list" | "in-text";
-  onViewModeChange: (mode: "list" | "in-text") => void;
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
@@ -96,11 +88,6 @@ function CitationsPanel({
   onInsertCitation,
   onClearPendingCreate,
   onStartCreate,
-  editor,
-  panelSide,
-  citationPositions,
-  viewMode,
-  onViewModeChange,
   getFormattedBib,
   getAnnotation,
   setAnnotation,
@@ -119,19 +106,7 @@ function CitationsPanel({
     () => (aiRequests ?? []).filter((r) => r.kind === "citation"),
     [aiRequests],
   );
-  const inTextItems = useMemo(
-    () =>
-      citations.map((c) => ({
-        id: c.id,
-        pos: citationPositions.get(c.id) ?? 0,
-      })),
-    [citations, citationPositions],
-  );
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor,
-    inTextItems,
-    viewMode === "in-text",
-  );
+  const panelScrollRef = useRef<HTMLDivElement>(null);
   const orderedCitations = useMemo(
     () => {
       const out = [...citations].sort((a, b) => {
@@ -236,7 +211,6 @@ function CitationsPanel({
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="citation" label="Citation color" />
-            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
           </div>
           <div className="my-1 border-t border-edge-subtle" />
           <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
@@ -319,9 +293,6 @@ function CitationsPanel({
       aiRequests={myAiRequests}
       onUpdateAiRequestText={onUpdateAiRequestText}
       onDeleteAiRequest={onDeleteAiRequest}
-      viewMode={viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
       scrollRef={panelScrollRef}
       onKeyDown={handleNavKeys}
       scrollTabIndex={0}
@@ -335,20 +306,6 @@ function CitationsPanel({
             panelScrollRef.current?.focus();
           }}
           onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
-          {...sharedCardProps}
-        />
-      )}
-      inTextRenderItem={(cit, { selected }) => (
-        <CitationCard
-          citation={cit}
-          isSelected={selected}
-          isAnchored={anchoredIds.has(cit.id)}
-          onSelect={() => {
-            onSelect(selected ? null : cit.id);
-            panelScrollRef.current?.focus();
-          }}
-          onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
-          wrapperClassName={`in-text-connector in-text-connector-${panelSide}`}
           {...sharedCardProps}
         />
       )}

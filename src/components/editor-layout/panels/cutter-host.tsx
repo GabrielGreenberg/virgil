@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { JSONContent } from "@tiptap/react";
 import CutterPanel from "@/panels/Cutter";
 import type {
   CutterCard,
@@ -11,7 +10,6 @@ import type {
 } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
@@ -24,7 +22,6 @@ export interface CutterHostProps {
   goal: CutterGoal | null;
   setGoal: (target: number, initialWords: number) => void;
   clearGoal: () => void;
-  updateCommentContent: (id: string, content: JSONContent) => void;
   updateCommentText: (id: string, text: string) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
@@ -76,7 +73,6 @@ function buildSuggestionPrompt(s: CutterSuggestionCard): string {
 
 export function CutterHost(p: CutterHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedCutterCardId, setSelectedCutterCardId } =
     useSelectionsContext();
   const { createCutterComment, createCutterSuggestion } =
@@ -123,7 +119,6 @@ export function CutterHost(p: CutterHostProps) {
       onClearGoal={p.clearGoal}
       onAddComment={onAddComment}
       onAddSuggestion={onAddSuggestion}
-      onUpdateCommentContent={p.updateCommentContent}
       onUpdateCommentText={p.updateCommentText}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
@@ -136,9 +131,6 @@ export function CutterHost(p: CutterHostProps) {
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
-      panelSide={p.panelSide ?? p.side}
-      viewMode={getPanelViewMode("cutter")}
-      onViewModeChange={(m) => setPanelViewMode("cutter", m)}
       recentlyAddedId={recentlyAddedId}
     />
   );

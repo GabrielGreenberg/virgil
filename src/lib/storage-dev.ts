@@ -387,6 +387,7 @@ export async function listDocs(): Promise<FsaDocMeta[]> {
       folderName: folderNameFromPath(d.sourcePath),
       createdAt: d.createdAt,
       lastModifiedAt: d.lastModifiedAt,
+      lastAccessedAt: d.lastModifiedAt,
     }));
 }
 

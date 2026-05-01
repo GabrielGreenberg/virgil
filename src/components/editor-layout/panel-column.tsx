@@ -1,16 +1,13 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import { useDragGap } from "@/hooks/useDragGap";
 import { PanelId } from "@/hooks/useViewPrefs";
 import { HSplit } from "../panel-primitives";
-import ViewToggle from "../ViewToggle";
 
-export function PlaceholderPanel({ title, hasViewToggle }: { title: string; hasViewToggle?: boolean }) {
-  const [viewMode, setViewMode] = useState<import("../ViewToggle").ViewMode>("list");
+export function PlaceholderPanel({ title }: { title: string }) {
   return (
     <div className="w-full bg-transparent flex flex-col overflow-hidden h-full">
       <div className="px-4 border-b border-[var(--border)] h-[var(--header-h)] shrink-0 flex items-center justify-between bg-[var(--header-bg)]">
         <h3 className="text-sm font-semibold text-ink-body">{title}</h3>
-        {hasViewToggle && <ViewToggle mode={viewMode} onChange={setViewMode} />}
       </div>
       <div className="flex-1 flex items-center justify-center p-6">
         <p className="text-sm text-[var(--muted)] text-center">
@@ -184,7 +181,7 @@ export function PanelColumn({
   );
 
   return (
-    <div data-flex-col={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${panelPref}px` : `1 100 ${panelPref}px`, minWidth: isResizing ? 0 : 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
+    <div data-flex-col={side} data-panel-column-side={side} className="relative flex" style={{ flex: isResizing ? `0 0 ${panelPref}px` : `1 100 ${panelPref}px`, minWidth: isResizing ? 0 : 'var(--panel-min)', paddingTop: 'var(--pod-gap)', paddingBottom: 'var(--pod-gap)', paddingLeft: 4, paddingRight: 4 }}>
       {/* Panel pod — partial rounding (flat against icon strip, rounded toward editor) */}
       {collapsed ? (
         /* Collapsed: empty placeholder preserving layout space */
@@ -248,7 +245,7 @@ export function PanelColumn({
       />
       {topOverlay && (
         <div
-          className="absolute top-[14px] left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
+          className="absolute top-[4px] left-1/2 -translate-x-1/2 z-10 pointer-events-auto"
         >
           {topOverlay}
         </div>

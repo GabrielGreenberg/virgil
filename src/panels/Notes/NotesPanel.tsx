@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useMemo, useState } from "react";
-import type { Editor, JSONContent } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/react";
 import type { UserNote, AiRequest } from "@/lib/types";
 import {
   ItemMenu,
@@ -9,20 +9,13 @@ import {
   PrevNextCounter,
   useCycle,
 } from "@/components/panel-primitives";
-import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import ViewToggle from "@/components/ViewToggle";
-import {
-  useInTextPositions,
-  getParagraphAnchorPositions,
-} from "@/hooks/useInTextPositions";
-import { richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
-import { NoteCard, startNoteDrag } from "./NoteCard";
+import { NoteCard } from "./NoteCard";
 
 interface NotesPanelProps {
   notes: UserNote[];
@@ -43,10 +36,6 @@ interface NotesPanelProps {
   onHoverNote?: (id: string | null) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph?: (paragraphId: string) => void;
-  editor?: Editor | null;
-  panelSide?: "left" | "right";
-  viewMode?: "list" | "in-text";
-  onViewModeChange?: (mode: "list" | "in-text") => void;
   recentlyAddedId?: string | null;
 }
 
@@ -69,10 +58,6 @@ export default function NotesPanel({
   onHoverNote,
   onDropSelection,
   onDropParagraph,
-  editor,
-  panelSide = "right",
-  viewMode = "list",
-  onViewModeChange,
   recentlyAddedId,
 }: NotesPanelProps) {
   const sortedNotes = useMemo(
@@ -90,18 +75,6 @@ export default function NotesPanel({
     () => (aiRequests ?? []).filter((r) => r.kind === "note"),
     [aiRequests],
   );
-
-  const inTextItems = useMemo(
-    () => getParagraphAnchorPositions(editor ?? null, sortedNotes),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, sortedNotes],
-  );
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor ?? null,
-    inTextItems,
-    viewMode === "in-text",
-  );
-  const noteTheme = useCardTheme("note");
 
   const onActivateNote = useCallback(
     (note: UserNote) => {
@@ -188,9 +161,6 @@ export default function NotesPanel({
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="note" label="Note color" />
-            {onViewModeChange && (
-              <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-            )}
           </div>
         </ItemMenu>
       }
@@ -214,10 +184,6 @@ export default function NotesPanel({
       aiRequests={myAiRequests}
       onUpdateAiRequestText={onUpdateAiRequestText}
       onDeleteAiRequest={onDeleteAiRequest}
-      viewMode={viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
-      scrollRef={viewMode === "in-text" ? panelScrollRef : undefined}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -245,49 +211,6 @@ export default function NotesPanel({
           }
         />
       )}
-      inTextRenderItem={(note, { selected, top: _top }) => {
-        const preview = richJsonToPlainText(note.content) || "";
-        const borderColor =
-          noteTheme.borderSelected;
-        const selectedBg = noteTheme.headerSelected;
-        return (
-          <div
-            data-note-entry={note.id}
-            draggable
-            onDragStart={(e) => startNoteDrag(e, note.id)}
-            className={`px-2 pr-4 py-2 border-b cursor-grab active:cursor-grabbing in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
-            style={
-              selected
-                ? {
-                    borderLeftColor: borderColor,
-                    backgroundColor:
-                      selectedBg ?? "rgba(16, 185, 129, 0.08)",
-                  }
-                : undefined
-            }
-            onClick={() => onSelectNote(selected ? null : note.id)}
-            onMouseEnter={onHoverNote ? () => onHoverNote(note.id) : undefined}
-            onMouseLeave={onHoverNote ? () => onHoverNote(null) : undefined}
-          >
-            {note.title && (
-              <div
-                className="text-[11px] font-medium truncate mb-0.5"
-                style={{ color: noteTheme.titleColor }}
-              >
-                {note.title}
-              </div>
-            )}
-            <p
-              className="text-xs text-ink-body leading-snug line-clamp-2 pr-6"
-              style={{ fontFamily: "var(--font-serif), Georgia, serif" }}
-            >
-              {preview || (
-                <span className="italic text-ink-muted">Empty note</span>
-              )}
-            </p>
-          </div>
-        );
-      }}
     />
   );
 }

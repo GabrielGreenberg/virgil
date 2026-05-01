@@ -312,6 +312,23 @@ Icons in the Virgil bar are **16px tall**. Buttons are 24px
 (`.topbarbtn`) so the icon sits with 4px of vertical padding. Don't
 author 14px or 20px topbar icons.
 
+## Library tab — double-tab pattern
+
+Each open document renders a paired DocTab + LibraryTab in the Virgil
+bar (the LibraryTab is the manila "shadow" tab in `--library-bg`). When
+the user activates the Library pane, the tab body itself contains a
+**second** layer of tabs — Central (the full catalog) plus any
+spawned curated libraries — across left and right panels. Two layers of
+tabs is intentional: outer = "what document am I in," inner = "which
+slice of the library am I looking at."
+
+All Library-specific UI lives under `library/` (sibling of `src/`).
+Style tokens unique to the Library tab body — pill colors, paper-render
+rules, `\pgmark{}` chip styling — live in `library/styles/library.css`,
+imported once from `src/app/globals.css`. Avoid pulling those rules
+into the global stylesheet; keeping them isolated is what lets the
+Library subsystem be edited without churn elsewhere in Virgil.
+
 ## Suggestion vocabulary
 
 Three keys for binary acceptance: **Y** accept, **N** reject, **S**

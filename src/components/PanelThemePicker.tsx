@@ -15,7 +15,7 @@ import { usePanelColor, useIsPanelColorOverridden } from "@/hooks/usePanelTheme"
  * reflects the current theme color; clicking opens a popover with preset
  * swatches + a "reset to default" action.
  *
- * Designed to sit next to the ViewToggle inside a panel's header menu.
+ * Designed to sit inside a panel's header three-dot menu.
  */
 export default function PanelThemePicker({
   panelKey,

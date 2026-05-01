@@ -95,7 +95,7 @@ export function useCardSelectionHighlight({
   comments,
 }: UseCardSelectionHighlightArgs): void {
   useEffect(() => {
-    if (!editor) return;
+    if (!editor || editor.isDestroyed || !editor.isInitialized) return;
     const root = editor.view.dom;
 
     // Collect every link that should be highlighted right now. A single

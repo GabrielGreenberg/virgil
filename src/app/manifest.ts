@@ -11,6 +11,10 @@ export const dynamic = "force-static";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
+    // Stable identity, decoupled from start_url. Required for Chrome's
+    // persisted FSA permissions to associate grants with the installed
+    // app across deploy URL / basePath changes.
+    id: `${basePath}/`,
     name: "Virgil",
     short_name: "Virgil",
     description: "WYSIWYG LaTeX editor",

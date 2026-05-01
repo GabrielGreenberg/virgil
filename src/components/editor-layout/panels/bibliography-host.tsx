@@ -8,7 +8,6 @@ import type { useBibReview } from "@/hooks/useBibReview";
 import type { useBibSettings } from "@/hooks/useBibSettings";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 
 type CitationsHook = ReturnType<typeof useCitations>;
@@ -43,8 +42,7 @@ export interface BibliographyHostProps {
 }
 
 export function BibliographyHost(p: BibliographyHostProps) {
-  const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
+  const { editorRef } = useEditorRefContext();
   const { selectedBibKey, setSelectedBibKey } = useSelectionsContext();
   return (
     <BibliographyPanel
@@ -71,11 +69,6 @@ export function BibliographyHost(p: BibliographyHostProps) {
       entryRequests={p.entryRequests}
       onAddEntryRequest={p.addEntryRequest}
       onRemoveEntryRequest={p.removeEntryRequest}
-      editor={editorInstance}
-      citationPositions={p.citationPositionMap}
-      panelSide={p.panelSide ?? p.side}
-      viewMode={getPanelViewMode("bibliography")}
-      onViewModeChange={(m) => setPanelViewMode("bibliography", m)}
     />
   );
 }

@@ -176,7 +176,6 @@ import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
-import { PanelViewModeProvider } from "./editor-layout/contexts/panel-view-mode";
 import { SelectionsProvider } from "./editor-layout/contexts/selections";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
@@ -230,6 +229,9 @@ import { queryRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
 import { UnsupportedBrowserNotice } from "./UnsupportedBrowserNotice";
 import { DocPermissionGate } from "./DocPermissionGate";
+import { RecentPapersList } from "./RecentPapersList";
+import { InstallPwaPrompt } from "./InstallPwaPrompt";
+import { TabPlusMenu } from "./TabPlusMenu";
 import { LibraryTabView } from "./library/LibraryTabView";
 
 /**
@@ -677,6 +679,7 @@ export default function EditorLayout() {
     toggleHighlightType,
     togglePopout,
     closePopout,
+    openPanelFloat,
     setFloatPosition,
     toggleCardPopout,
     closeCardPopout,
@@ -1310,24 +1313,13 @@ export default function EditorLayout() {
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
-  const [versionOpen, setVersionOpen] = useState(false);
   const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
   const [helperMenuOpen, setHelperMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!versionOpen) return;
-    const close = () => { setVersionOpen(false); setCommandsPopoutOpen(false); };
-    const id = window.setTimeout(() => window.addEventListener("click", close), 0);
-    return () => {
-      window.clearTimeout(id);
-      window.removeEventListener("click", close);
-    };
-  }, [versionOpen]);
-
-  useEffect(() => {
     if (!helperMenuOpen) return;
-    const close = () => setHelperMenuOpen(false);
+    const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
     const id = window.setTimeout(() => window.addEventListener("click", close), 0);
     return () => {
       window.clearTimeout(id);
@@ -1339,7 +1331,7 @@ export default function EditorLayout() {
     const editor = editorRef.current?.getEditor();
     if (!editor) return;
     editor.chain().focus().insertContent(`\\${name}`).run();
-    setVersionOpen(false);
+    setHelperMenuOpen(false);
     setCommandsPopoutOpen(false);
   }, []);
   const aiDot = useMemo(() => aiRequestDotStatus({
@@ -1705,23 +1697,6 @@ export default function EditorLayout() {
       setActiveHalf(targetSide, "top", panel);
     }
   }, [setActiveHalf]);
-
-  // Lifted view modes — persist across panel re-mounts and across sessions
-  const [panelViewModes, setPanelViewModes] = useState<Record<string, "list" | "in-text">>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const raw = localStorage.getItem("virgil-panel-view-modes");
-      return raw ? JSON.parse(raw) : {};
-    } catch { return {}; }
-  });
-  const getPanelViewMode = useCallback((panelId: string) => panelViewModes[panelId] || "list", [panelViewModes]);
-  const setPanelViewMode = useCallback((panelId: string, mode: "list" | "in-text") => {
-    setPanelViewModes((prev) => {
-      const next = { ...prev, [panelId]: mode };
-      try { localStorage.setItem("virgil-panel-view-modes", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
 
   // Persisted omni-view category preferences per side. Older builds
   // stored 2-char prefixes (fn/ci/qu/nt/ar/td); migrateOmniCategories
@@ -2664,7 +2639,10 @@ export default function EditorLayout() {
   }, [suggestionsState.suggestions.length, hasSuggestions, setActiveRight]);
 
   useEffect(() => {
-    if (editingTabId) nameInputRef.current?.focus();
+    if (editingTabId) {
+      nameInputRef.current?.focus();
+      nameInputRef.current?.select();
+    }
   }, [editingTabId]);
 
   // Whenever the active doc changes, look up its handle in idb and
@@ -3716,11 +3694,9 @@ export default function EditorLayout() {
 
   const { handleStripClick, handleMove } = useStripHandlers({
     prefs,
-    focusedHalfLeft,
-    focusedHalfRight,
-    togglePanel,
+    openPanelFloat,
+    closePopout,
     movePanel,
-    setActiveHalf,
     selections: selectionsForStrip,
   });
 
@@ -4271,40 +4247,19 @@ export default function EditorLayout() {
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
   // Wrap a rendered panel in the PanelChrome context so its PanelHeader
-  // can render the pop-out and close buttons bound to this panel id.
-  // `half` is provided when the panel is rendered inside a split column;
-  // omitted for single-column and floating panels.
-  const renderPanelWithChrome = (panelId: PanelId, side: Side, half?: "top" | "bottom"): React.ReactNode => {
+  // can render the close button bound to this panel id. In the always-
+  // float model panels are never docked, so close always means "close
+  // the float". (Pop-out button is gone — panels open as floats from
+  // strip clicks already.)
+  const renderPanelWithChrome = (panelId: PanelId, side: Side, _half?: "top" | "bottom"): React.ReactNode => {
     const inner = renderPanelInner(panelId, side);
     if (panelId === "blank" || panelId === "omni") return inner;
-    const isPoppedOut = prefs.poppedOutPanels.includes(panelId);
-    const onClose = () => {
-      if (isPoppedOut) {
-        closePopout(panelId);
-      } else {
-        setActiveHalf(side, half ?? "top", "omni");
-      }
-    };
-    const onTogglePopout = (anchor?: DOMRect | null) => {
-      // Going docked → popped: seed a quadrant-aware spawn position so the
-      // float appears near the docked panel (forget-on-close in
-      // togglePopout/closePopout means this seed is fresh every time).
-      if (!prefsRef.current.poppedOutPanels.includes(panelId)) {
-        const pos = computeSpawnPosition(anchor ?? null, {
-          width: FLOATING_PANEL_WIDTH,
-          height: FLOATING_PANEL_HEIGHT,
-        });
-        setFloatPosition(panelId, pos);
-      }
-      togglePopout(panelId);
-    };
     return (
       <PanelChromeProvider
         value={{
-          isPoppedOut,
-          onTogglePopout,
+          isPoppedOut: true,
           side,
-          onClose,
+          onClose: () => closePopout(panelId),
         }}
       >
         {inner}
@@ -4393,7 +4348,6 @@ export default function EditorLayout() {
           cards={revisionCards}
           tracker={revisionsTracker}
           setTrackerTarget={setRevisionsTrackerTarget}
-          updateCommentContent={updateRevisionCommentContent}
           updateCommentText={updateRevisionCommentText}
           setCommentAiRequest={setRevisionCommentAiRequest}
           updateSuggestionField={updateRevisionSuggestionField}
@@ -4529,22 +4483,19 @@ export default function EditorLayout() {
     }
 
     if (panelId === "examples") {
-      const examplesPanelSide: "left" | "right" =
-        prefs.placements.find((p) => p.id === "examples")?.side ?? "left";
       return (
         <ExamplesPanel
           examples={examples}
           selectedId={selectedExampleId}
           onSelect={setSelectedExampleId}
           onJump={(id, sourceEl) => editorRef.current?.scrollToExample(id, sourceEl)}
-          editor={editorRef.current?.getEditor() ?? null}
-          panelSide={examplesPanelSide}
-          viewMode={getPanelViewMode("examples")}
-          onViewModeChange={(m) => setPanelViewMode("examples", m)}
           onAdd={() => {
             const res = editorRef.current?.insertExample("single");
             if (res) setSelectedExampleId(res.exampleId);
           }}
+          onUpdateLatex={(id, latex) =>
+            editorRef.current?.replaceExampleLatex(id, latex) ?? false
+          }
         />
       );
     }
@@ -4651,7 +4602,6 @@ export default function EditorLayout() {
           goal={cutterGoal}
           setGoal={setCutterGoal}
           clearGoal={clearCutterGoal}
-          updateCommentContent={updateCutterCommentContent}
           updateCommentText={updateCutterCommentText}
           setCommentAiRequest={setCutterCommentAiRequest}
           updateSuggestionField={updateCutterSuggestionField}
@@ -4664,7 +4614,7 @@ export default function EditorLayout() {
       );
     }
 
-    return <PlaceholderPanel title={panelLabel(panelId)} hasViewToggle={false} />;
+    return <PlaceholderPanel title={panelLabel(panelId)} />;
   }
 
   // Render a side's panel column, or null when the side is collapsed so
@@ -4675,78 +4625,28 @@ export default function EditorLayout() {
   // closing a specific panel just drops its overlay and reveals the
   // already-live omni — no re-render flash.
   function renderPanelColumn(side: Side): React.ReactNode {
-    const top = side === "left" ? activeLeft : activeRight;
-    const bottom = side === "left" ? prefs.activeLeftBottom : prefs.activeRightBottom;
-    const ratio = side === "left" ? prefs.splitLeftRatio : prefs.splitRightRatio;
-    const focused = side === "left" ? focusedHalfLeft : focusedHalfRight;
-    const setFocused = side === "left" ? setFocusedHalfLeft : setFocusedHalfRight;
-
-    if (!top && !bottom) return null;
-
-    const omniActive = top === "omni" || bottom === "omni";
-    const toolbarOverlay = omniActive ? (
+    // Always-float model: the column is permanently the omni backdrop.
+    // Specific panels open as floats on top via prefs.poppedOutPanels.
+    // No split, no docked overlay, no per-panel width plumbing.
+    const toolbarOverlay = (
       <MarginActionToolbar
         side={side}
         actions={marginToolbarActions}
         placements={prefs.placements}
       />
-    ) : undefined;
-
-    // The omni layer is always mounted per slot. `renderPanelInner("omni",
-    // side)` returns an <OmniHost /> element — two separate instances for
-    // the top and bottom slots so they remain independent React subtrees.
-    const slotOmni = () => renderPanelInner("omni", side);
-    const slotOverlay = (active: PanelId | null | undefined, half?: "top" | "bottom"): React.ReactNode | null => {
-      // When a half's active id is null (e.g. the top half is collapsed
-      // in split mode), treat it as "blank" so the half still occludes
-      // the always-mounted omni layer below, matching the pre-refactor
-      // blank-placeholder behavior.
-      const effective: PanelId = active ?? "blank";
-      if (effective === "omni") return null;
-      return renderPanelWithChrome(effective, side, half);
-    };
-
-    if (bottom != null) {
-      // Split mode
-      return (
-        <PanelColumn
-          side={side}
-          panelPref={getPanelWidth(side, top ?? "blank")}
-          onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)}
-          isResizing={isResizingPanels}
-          onResizingChange={setIsResizingPanels}
-          onSyncBeforeDrag={syncPanelPrefsToRendered}
-          split
-          focusedHalf={focused}
-          onFocusHalf={setFocused}
-          topPanelId={top ?? "blank"}
-          bottomPanelId={bottom}
-          topOverlay={toolbarOverlay}
-        >
-          {{
-            top: { omni: slotOmni(), overlay: slotOverlay(top, "top") },
-            bottom: { omni: slotOmni(), overlay: slotOverlay(bottom, "bottom") },
-            ratio,
-            onRatioChange: (r: number) => setSplitRatio(side, r),
-          }}
-        </PanelColumn>
-      );
-    }
-
-    // Single mode. Omni-view renders chromeless — no pod background/border —
-    // so its cards float directly on the blank canvas behind the panels.
+    );
     return (
       <PanelColumn
         side={side}
-        panelPref={getPanelWidth(side, top ?? "blank")}
-        onPanelPrefChange={(w) => setPanelWidth(side, top ?? "blank", w)}
+        panelPref={getPanelWidth(side, "omni")}
+        onPanelPrefChange={(w) => setPanelWidth(side, "omni", w)}
         isResizing={isResizingPanels}
         onResizingChange={setIsResizingPanels}
         onSyncBeforeDrag={syncPanelPrefsToRendered}
-        topPanelId={top ?? undefined}
+        topPanelId="omni"
         topOverlay={toolbarOverlay}
       >
-        {{ omni: slotOmni(), overlay: slotOverlay(top) }}
+        {{ omni: renderPanelInner("omni", side), overlay: null }}
       </PanelColumn>
     );
   }
@@ -4864,7 +4764,6 @@ export default function EditorLayout() {
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
     <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
     <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated }}>
-    <PanelViewModeProvider value={{ getPanelViewMode, setPanelViewMode }}>
     <SelectionsProvider value={{
       selectedNoteId, setSelectedNoteId,
       selectedFootnoteId, setSelectedFootnoteId,
@@ -4897,7 +4796,8 @@ export default function EditorLayout() {
         // Zen toggle (last child of the right cluster) keeps the same Y
         // position in both modes.
         data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
-        className={`virgil-bar flex items-center relative min-h-[36px] ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
+        data-bar-h="32"
+        className={`virgil-bar flex items-center relative min-h-[32px] ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
         style={{
           color: "var(--virgil-bar-text)",
           background: zenModeOn
@@ -4917,7 +4817,7 @@ export default function EditorLayout() {
         ) : (
         <div className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-end">
           {/* VIRGIL logo as first "tab-like" item */}
-          <div className="flex items-center gap-1.5 px-3 pt-1 pb-1 shrink-0">
+          <div className="flex items-center gap-1.5 px-3 shrink-0">
             <h1
               className="text-base font-semibold tracking-widest"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
@@ -4931,30 +4831,71 @@ export default function EditorLayout() {
             const isLibraryPaneActive = isCurrentDoc && activePane === "library";
             return (
               <div key={doc.id} className="flex items-end shrink-0 -space-x-3">
-                <DocumentFolderTab
-                  active={isDocPaneActive}
-                  fill="var(--main-tab-bg)"
-                  dataPrefs="backgroundColor,topbarBorder"
-                  title={doc.folderName}
-                  onClick={() => { if (!isDocPaneActive) activateDocPane(doc.id); }}
-                >
-                  <div className="flex flex-col min-w-0">
-                    <span className="text-[13px] leading-4 truncate">
-                      {doc.folderName}
-                    </span>
-                    <span className="text-[10px] leading-[13px] text-ink-muted truncate">
-                      {doc.texFilename}
-                    </span>
-                  </div>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
-                    className="topbarbtn topbarbtn-icon"
-                    title="Close tab"
-                    data-helper="Close tab"
-                  >
-                    <IconX />
-                  </button>
-                </DocumentFolderTab>
+                {(() => {
+                  const composedDefault = `${doc.folderName}: ${doc.texFilename}`;
+                  const displayName =
+                    doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
+                  const isEditing = editingTabId === doc.id;
+                  const commit = () => {
+                    const next = nameInput.trim();
+                    if (next && next !== displayName) renameFile(doc.id, next);
+                    setEditingTabId(null);
+                  };
+                  return (
+                    <DocumentFolderTab
+                      active={isDocPaneActive}
+                      fill="var(--main-tab-bg)"
+                      dataPrefs="backgroundColor,topbarBorder"
+                      title={displayName}
+                      onClick={() => {
+                        if (isEditing) return;
+                        if (!isDocPaneActive) activateDocPane(doc.id);
+                      }}
+                    >
+                      {isEditing ? (
+                        <input
+                          ref={nameInputRef}
+                          type="text"
+                          value={nameInput}
+                          size={Math.max(nameInput.length + 1, 8)}
+                          onChange={(e) => setNameInput(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commit();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              setEditingTabId(null);
+                            }
+                          }}
+                          onBlur={commit}
+                          className="text-[13px] leading-4 bg-transparent outline-none border-b border-ink-muted min-w-0 px-0"
+                        />
+                      ) : (
+                        <span
+                          className="text-[13px] leading-4 truncate min-w-0"
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setNameInput(displayName);
+                            setEditingTabId(doc.id);
+                          }}
+                        >
+                          {displayName}
+                        </span>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); closeTab(doc.id); }}
+                        className="topbarbtn topbarbtn-icon"
+                        title="Close tab"
+                        data-helper="Close tab"
+                      >
+                        <IconX />
+                      </button>
+                    </DocumentFolderTab>
+                  );
+                })()}
                 <DocumentFolderTab
                   active={isLibraryPaneActive}
                   fill="var(--library-bg)"
@@ -4968,14 +4909,14 @@ export default function EditorLayout() {
               </div>
             );
           })}
-          <button
-            onClick={handleNativeOpen}
-            className="topbarbtn topbarbtn-icon self-center"
-            title="Open folder"
-            data-helper="Open folder"
-          >
-            <IconPlus />
-          </button>
+          <TabPlusMenu
+            docs={docs}
+            openTabIds={openTabs.map((t) => t.id)}
+            onOpenRecent={openFile}
+            onOpenFolder={handleNativeOpen}
+            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
+            devStorage={devStorage}
+          />
           {/* Zero-width sentinel marking the end of the top-bar's left
               content (tabs + logo + "+" button). The floating MenuBar's
               home position uses this x-coordinate as its left clamp —
@@ -5067,18 +5008,18 @@ export default function EditorLayout() {
           </button>
           <div className="relative">
             <button
-              onClick={(e) => { e.stopPropagation(); setVersionOpen((v) => !v); }}
+              onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
               className="topbarbtn topbarbtn-icon"
-              title={`Virgil v${APP_VERSION}`}
-              data-helper="Version info"
+              title="Help"
+              data-helper="Help"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="16" x2="12" y2="12" />
-                <line x1="12" y1="8" x2="12.01" y2="8" />
+                <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
+                <path d="M12 17h.01" />
               </svg>
             </button>
-            {versionOpen && (
+            {helperMenuOpen && (
               <div
                 className="absolute right-0 top-full mt-1 z-20 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
                 onClick={(e) => e.stopPropagation()}
@@ -5099,7 +5040,7 @@ export default function EditorLayout() {
                   </svg>
                   {commandsPopoutOpen && (
                     <div
-                      className="absolute right-full top-0 mr-1 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body py-1 min-w-[160px]"
+                      className="absolute left-full top-0 ml-1 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body py-1 min-w-[160px]"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {VIRGIL_COMMAND_NAMES.map((name) => (
@@ -5121,27 +5062,7 @@ export default function EditorLayout() {
                     </div>
                   )}
                 </div>
-              </div>
-            )}
-          </div>
-          <div className="relative">
-            <button
-              onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
-              className="topbarbtn topbarbtn-icon"
-              title="Help"
-              data-helper="Help"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M9.5 9a2.75 2.75 0 0 1 5.25 1.1c0 1.6-2.25 2.4-2.75 3.4" />
-                <path d="M12 17h.01" />
-              </svg>
-            </button>
-            {helperMenuOpen && (
-              <div
-                className="absolute right-0 top-full mt-1 z-20 bg-surface border border-edge-subtle rounded shadow-md text-xs text-ink-body whitespace-nowrap text-left min-w-[160px]"
-                onClick={(e) => e.stopPropagation()}
-              >
+                <div className="border-t border-edge-subtle" />
                 <button
                   onClick={() => { helperMode.toggle(); setHelperMenuOpen(false); }}
                   className="w-full text-left px-3 py-2 hover-on-light flex items-center justify-between gap-3"
@@ -5487,7 +5408,9 @@ export default function EditorLayout() {
         {/* Left icon strip — hidden in Zen mode */}
         {!zenModeOn && (
         <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
-          {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
+          {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
+              is being reworked in the always-float model — buttons remain here
+              as placeholders for the next iteration of behavior. */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
             <button
@@ -5503,8 +5426,7 @@ export default function EditorLayout() {
                 <line x1="9" y1="4" x2="9" y2="20" />
               </svg>
             </button>
-            {/* Blank — suppresses the default omni-view on this side. Auto-clears
-                when a strip panel is opened or a new card is created. */}
+            {/* Blank — placeholder; will be redefined */}
             <button
               onClick={() => { activeLeft === "blank" ? setActiveLeft("omni") : setBlank("left"); }}
               className="iconbtn-md iconbtn-toggle"
@@ -5514,7 +5436,7 @@ export default function EditorLayout() {
             >
               <IconBlank active={activeLeft === "blank"} />
             </button>
-            {/* Split panel toggle — shaded half reflects which pane is focused */}
+            {/* Split panel toggle — placeholder; will be redefined */}
             <button
               onClick={() => toggleSplit("left")}
               className="iconbtn-md iconbtn-toggle"
@@ -5532,7 +5454,7 @@ export default function EditorLayout() {
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={activeLeft === p.id || prefs.activeLeftBottom === p.id}
+              active={prefs.poppedOutPanels.includes(p.id)}
               onClick={() => handleStripClick(p.id, "left")}
               onMove={handleMove}
               side="left"
@@ -5930,8 +5852,12 @@ export default function EditorLayout() {
                 {docLoading ? (
                   <div className="text-[var(--muted)] text-sm">Loading...</div>
                 ) : (
-                  <div className="flex flex-col items-center gap-3 px-6 py-8">
-                    <div className="text-ink-subtle text-sm">No document open</div>
+                  <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
+                    {docs.length > 0 ? (
+                      <RecentPapersList docs={docs} onOpen={openFile} />
+                    ) : (
+                      <div className="text-ink-subtle text-sm">No document open</div>
+                    )}
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
@@ -5957,6 +5883,7 @@ export default function EditorLayout() {
                         </button>
                       )}
                     </div>
+                    <InstallPwaPrompt />
                   </div>
                 )}
               </div>
@@ -6008,7 +5935,9 @@ export default function EditorLayout() {
         {/* Right icon strip — hidden in Zen mode */}
         {!zenModeOn && (
         <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
-          {/* Presentation-tools pod: collapse/expand, blank, split — grouped as view controls */}
+          {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
+              is being reworked in the always-float model — buttons remain here
+              as placeholders for the next iteration of behavior. */}
           <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
             {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
             <button
@@ -6024,8 +5953,7 @@ export default function EditorLayout() {
                 <line x1="15" y1="4" x2="15" y2="20" />
               </svg>
             </button>
-            {/* Blank — suppresses the default omni-view on this side. Auto-clears
-                when a strip panel is opened or a new card is created. */}
+            {/* Blank — placeholder; will be redefined */}
             <button
               onClick={() => { activeRight === "blank" ? setActiveRight("omni") : setBlank("right"); }}
               className="iconbtn-md iconbtn-toggle"
@@ -6035,7 +5963,7 @@ export default function EditorLayout() {
             >
               <IconBlank active={activeRight === "blank"} />
             </button>
-            {/* Split panel toggle — shaded half reflects which pane is focused */}
+            {/* Split panel toggle — placeholder; will be redefined */}
             <button
               onClick={() => toggleSplit("right")}
               className="iconbtn-md iconbtn-toggle"
@@ -6053,7 +5981,7 @@ export default function EditorLayout() {
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={activeRight === p.id || prefs.activeRightBottom === p.id}
+              active={prefs.poppedOutPanels.includes(p.id)}
               onClick={() => handleStripClick(p.id, "right")}
               onMove={handleMove}
               side="right"
@@ -6219,7 +6147,6 @@ export default function EditorLayout() {
     </RecentlyAddedProvider>
     </PristineCardsProvider>
     </SelectionsProvider>
-    </PanelViewModeProvider>
     </CitationDisplayProvider>
     </AiRequestsProvider>
     </EditorRefProvider>

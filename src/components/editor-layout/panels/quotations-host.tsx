@@ -5,7 +5,6 @@ import type { useQuotations } from "@/hooks/useQuotations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCardCreationContext } from "../contexts/card-creation";
@@ -33,8 +32,7 @@ export interface QuotationsHostProps {
 }
 
 export function QuotationsHost(p: QuotationsHostProps) {
-  const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
+  const { editorRef } = useEditorRefContext();
   const { selectedQuotationGroupId, setSelectedQuotationGroupId } = useSelectionsContext();
   const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createQuotation } = useCardCreationContext();
@@ -62,10 +60,6 @@ export function QuotationsHost(p: QuotationsHostProps) {
       onAddAiRequest={() => addAiRequest("quotation")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
-      editor={editorInstance}
-      panelSide={p.side}
-      viewMode={getPanelViewMode("quotations")}
-      onViewModeChange={(m) => setPanelViewMode("quotations", m)}
       recentlyAddedId={recentlyAddedId}
     />
   );

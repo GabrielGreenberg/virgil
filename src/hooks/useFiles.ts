@@ -13,6 +13,7 @@ import {
 } from "@/lib/storage";
 import {
   readTabs,
+  touchDocAccessed,
   writeTabs,
   type ActivePaneKind,
   type FsaDocMeta,
@@ -75,13 +76,25 @@ export function useFiles() {
     }).catch(() => {});
   }, [openTabIds, currentDocId, libraryOpenFor, activePane]);
 
-  const openFile = useCallback((id: string) => {
-    setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
-    setCurrentDocId(id);
-    setActivePaneState("doc");
-    // Auto-pair the library tab on first open of this doc.
-    setLibraryOpenFor((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  const bumpAccessed = useCallback((id: string) => {
+    const now = new Date().toISOString();
+    setDocs((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, lastAccessedAt: now } : d)),
+    );
+    touchDocAccessed(id).catch(() => {});
   }, []);
+
+  const openFile = useCallback(
+    (id: string) => {
+      setOpenTabIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      setCurrentDocId(id);
+      setActivePaneState("doc");
+      // Auto-pair the library tab on first open of this doc.
+      setLibraryOpenFor((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      bumpAccessed(id);
+    },
+    [bumpAccessed],
+  );
 
   const closeTab = useCallback(
     (id: string) => {
@@ -167,19 +180,23 @@ export function useFiles() {
   );
 
   /** Helper: register a doc and activate its tab. */
-  const activateDoc = useCallback((meta: FsaDocMeta) => {
-    setDocs((prev) =>
-      prev.some((d) => d.id === meta.id) ? prev : [...prev, meta],
-    );
-    setOpenTabIds((prev) =>
-      prev.includes(meta.id) ? prev : [...prev, meta.id],
-    );
-    setCurrentDocId(meta.id);
-    setActivePaneState("doc");
-    setLibraryOpenFor((prev) =>
-      prev.includes(meta.id) ? prev : [...prev, meta.id],
-    );
-  }, []);
+  const activateDoc = useCallback(
+    (meta: FsaDocMeta) => {
+      setDocs((prev) =>
+        prev.some((d) => d.id === meta.id) ? prev : [...prev, meta],
+      );
+      setOpenTabIds((prev) =>
+        prev.includes(meta.id) ? prev : [...prev, meta.id],
+      );
+      setCurrentDocId(meta.id);
+      setActivePaneState("doc");
+      setLibraryOpenFor((prev) =>
+        prev.includes(meta.id) ? prev : [...prev, meta.id],
+      );
+      bumpAccessed(meta.id);
+    },
+    [bumpAccessed],
+  );
 
   /**
    * Open an existing paper folder. Must be called from a user gesture.

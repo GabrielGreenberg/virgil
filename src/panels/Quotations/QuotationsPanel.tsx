@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import type { Editor } from "@tiptap/react";
 import type {
   QuotationGroup,
   Quote,
@@ -15,11 +14,6 @@ import {
   useCycle,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import ViewToggle from "@/components/ViewToggle";
-import {
-  useInTextPositions,
-  getParagraphAnchorPositions,
-} from "@/hooks/useInTextPositions";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { getLinkedParagraphIds } from "@/links/links";
@@ -52,10 +46,6 @@ export interface QuotationsPanelProps {
   onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
-  viewMode: "list" | "in-text";
-  onViewModeChange: (mode: "list" | "in-text") => void;
-  editor: Editor | null;
-  panelSide: "left" | "right";
   recentlyAddedId?: string | null;
 }
 
@@ -80,10 +70,6 @@ export default function QuotationsPanel({
   onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
-  viewMode,
-  onViewModeChange,
-  editor,
-  panelSide,
   recentlyAddedId,
 }: QuotationsPanelProps) {
   const myAiRequests = useMemo(
@@ -122,18 +108,6 @@ export default function QuotationsPanel({
   const anchoredGroups = useMemo(
     () => groups.filter((g) => getLinkedParagraphIds(g).length > 0),
     [groups],
-  );
-
-  const inTextItems = useMemo(
-    () => getParagraphAnchorPositions(editor, anchoredGroups),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editor, anchoredGroups],
-  );
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor,
-    inTextItems,
-    viewMode === "in-text",
-    "data-quotation-group-id",
   );
 
   const onActivateGroup = useCallback(
@@ -207,7 +181,6 @@ export default function QuotationsPanel({
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="quote" label="Quotation color" />
-            <ViewToggle mode={viewMode} onChange={onViewModeChange} />
           </div>
         </ItemMenu>
       }
@@ -218,11 +191,7 @@ export default function QuotationsPanel({
           label=""
         />
       }
-      items={
-        viewMode === "in-text"
-          ? anchoredGroups
-          : withRecentlyAddedFirst(groups, recentlyAddedId, (g) => g.id)
-      }
+      items={withRecentlyAddedFirst(groups, recentlyAddedId, (g) => g.id)}
       getId={(g) => g.id}
       selectedId={selectedGroupId}
       onSelect={setSelectedGroupId}
@@ -234,16 +203,8 @@ export default function QuotationsPanel({
       aiRequests={myAiRequests}
       onUpdateAiRequestText={onUpdateAiRequestText}
       onDeleteAiRequest={onDeleteAiRequest}
-      viewMode={viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
-      scrollRef={viewMode === "in-text" ? panelScrollRef : listRef}
+      scrollRef={listRef}
       renderCard={(group, { selected }) => renderGroupCard(group, selected)}
-      inTextRenderItem={(group, { selected }) => (
-        <div className={`in-text-connector in-text-connector-${panelSide}`}>
-          {renderGroupCard(group, selected)}
-        </div>
-      )}
     />
   );
 }

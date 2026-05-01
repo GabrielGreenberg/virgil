@@ -1,21 +1,12 @@
 "use client";
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
-import type { Editor } from "@tiptap/react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { ItemMenu, PANEL, PrevNextCounter, clearStaleHover } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import ViewToggle from "@/components/ViewToggle";
-import { useCardTheme } from "@/hooks/usePanelTheme";
-import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import {
-  useInTextPositions,
-  type PositionItem,
-} from "@/hooks/useInTextPositions";
 import { searchGeneralBib, searchLocalBib } from "@/lib/bib-search";
 import { pickGeneralBib } from "@/lib/storage";
-import { formatMinimalCitation } from "@/lib/bib-parser";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useLibraryItems } from "@/hooks/useLibrary";
 import {
@@ -38,7 +29,6 @@ interface BibliographyPanelProps {
   onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
   getReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   allEditorCitations?: Array<{ citationId: string; command: string; keys: string[] }>;
-  citationPositions?: Map<string, number>;
   onScrollToCitation?: (citationId: string, sourceEl?: HTMLElement | null) => void;
   onActiveCitationChange?: (citationId: string | null) => void;
   bibPackage?: string;
@@ -49,10 +39,6 @@ interface BibliographyPanelProps {
   entryRequests: BibEntryRequest[];
   onAddEntryRequest: (description: string) => void;
   onRemoveEntryRequest: (id: string) => void;
-  editor?: Editor | null;
-  panelSide?: "left" | "right";
-  viewMode?: "list" | "in-text";
-  onViewModeChange?: (mode: "list" | "in-text") => void;
 }
 
 function BibliographyPanel({
@@ -69,7 +55,6 @@ function BibliographyPanel({
   onCancelReview,
   getReviewStatus,
   allEditorCitations = [],
-  citationPositions,
   onScrollToCitation,
   onActiveCitationChange,
   bibPackage,
@@ -80,13 +65,7 @@ function BibliographyPanel({
   entryRequests,
   onAddEntryRequest,
   onRemoveEntryRequest,
-  editor,
-  panelSide = "left",
-  viewMode = "list",
-  onViewModeChange,
 }: BibliographyPanelProps) {
-  const bibTheme = useCardTheme("bib");
-  const bibBodyStyle = usePanelBodyStyle("bib");
   const [keyOccurrenceIdx, setKeyOccurrenceIdx] = useState<Record<string, number>>({});
   const [filter, setFilter] = useState<"cited" | "all">("cited");
 
@@ -287,29 +266,6 @@ function BibliographyPanel({
     [libraryByCitekey],
   );
 
-  const inTextItems = useMemo<PositionItem[]>(() => {
-    if (!citationPositions || citationPositions.size === 0) return [];
-    const firstCitationByKey = new Map<string, number>();
-    for (const cit of allEditorCitations) {
-      const pos = citationPositions.get(cit.citationId);
-      if (pos === undefined) continue;
-      for (const k of cit.keys) {
-        if (!firstCitationByKey.has(k)) firstCitationByKey.set(k, pos);
-      }
-    }
-    const out: PositionItem[] = [];
-    for (const e of displayedEntries) {
-      const pos = firstCitationByKey.get(e.key);
-      if (pos !== undefined) out.push({ id: e.key, pos });
-    }
-    return out;
-  }, [allEditorCitations, citationPositions, displayedEntries]);
-  const { positions, editorScrollHeight, panelScrollRef } = useInTextPositions(
-    editor ?? null,
-    inTextItems,
-    viewMode === "in-text",
-  );
-
   const selectedIdx = useMemo(() => {
     if (!selectedBibKey) return -1;
     return displayedEntries.findIndex((e) => e.key === selectedBibKey);
@@ -464,9 +420,6 @@ function BibliographyPanel({
     <ItemMenu align="left">
       <div className="px-3 py-1.5 flex items-center justify-end gap-2">
         <PanelThemePicker panelKey="bib" label="Bibliography color" />
-        {onViewModeChange && !(showSearch && searchScope === "global") && (
-          <ViewToggle mode={viewMode} onChange={onViewModeChange} />
-        )}
       </div>
       <div className="my-1 border-t border-edge-subtle" />
       <div className="px-3 pt-1 pb-0.5 text-[10px] font-medium text-ink-muted uppercase tracking-wide">
@@ -827,10 +780,7 @@ function BibliographyPanel({
                   : "No entries found in the .bib file."}
         </div>
       }
-      viewMode={searchScope === "global" && showSearch ? "list" : viewMode}
-      inTextPositions={positions}
-      inTextScrollHeight={editorScrollHeight}
-      scrollRef={viewMode === "in-text" ? panelScrollRef : listRef}
+      scrollRef={listRef}
       onKeyDown={handleNavKeys}
       scrollTabIndex={0}
       listTrailing={listTrailing}
@@ -883,52 +833,6 @@ function BibliographyPanel({
                 : undefined
             }
           />
-        );
-      }}
-      inTextRenderItem={(entry, { selected }) => {
-        const author =
-          (entry.fields.author || "").split(/\s+and\s+/)[0]?.split(",")[0] || "";
-        const year = entry.fields.year || "";
-        const title = entry.fields.title || "";
-        const borderColor =
-          bibTheme.borderSelected;
-        const selectedBg = bibTheme.headerSelected;
-        return (
-          <div
-            data-bib-entry={entry.key}
-            className={`px-2 pr-4 py-2 border-b cursor-pointer in-text-connector in-text-connector-${panelSide} ${selected ? "border-l-2 border-b-edge-hover" : "border-b-edge-hover hover-on-light"}`}
-            style={
-              selected
-                ? {
-                    borderLeftColor: borderColor,
-                    backgroundColor:
-                      selectedBg ?? "rgba(184, 169, 104, 0.1)",
-                  }
-                : undefined
-            }
-            onClick={() => handleSelectBibKey(selected ? null : entry.key)}
-          >
-            <div
-              data-panel-kind="bib"
-              className="text-xs text-ink-strong leading-snug truncate pr-6"
-              title={`${author} ${year} — ${title}`}
-              style={bibBodyStyle}
-            >
-              {author && <span className="font-semibold">{author}</span>}
-              {author && year && <span className="text-ink-muted mx-1.5">&middot;</span>}
-              {year && <span className="font-semibold">{year}</span>}
-              {(author || year) && title && (
-                <span className="text-ink-muted mx-1.5">&middot;</span>
-              )}
-              {title && <span className="italic text-ink-body">{title}</span>}
-            </div>
-            <div
-              className="text-[10px] font-mono text-ink-muted truncate mt-0.5"
-              style={{ color: bibTheme.titleColor }}
-            >
-              {formatMinimalCitation(entry.key, bibEntries)}
-            </div>
-          </div>
         );
       }}
     />

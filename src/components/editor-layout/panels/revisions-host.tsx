@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
-import type { JSONContent } from "@tiptap/react";
 import RevisionsPanel from "@/panels/Revisions";
 import type {
   RevisionCard,
@@ -11,7 +10,6 @@ import type {
 } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCardCreationContext } from "../contexts/card-creation";
 import { useAiRequestsContext } from "../contexts/ai-requests";
@@ -23,7 +21,6 @@ export interface RevisionsHostProps {
   cards: RevisionCard[];
   tracker: RevisionsTracker | null;
   setTrackerTarget: (target: number | null) => void;
-  updateCommentContent: (id: string, content: JSONContent) => void;
   updateCommentText: (id: string, text: string) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
@@ -78,7 +75,6 @@ function buildSuggestionPrompt(s: RevisionSuggestionCard): string {
 
 export function RevisionsHost(p: RevisionsHostProps) {
   const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
   const { selectedCommentId, setSelectedCommentId } = useSelectionsContext();
   const { createRevisionComment, createRevisionSuggestion } =
     useCardCreationContext();
@@ -123,7 +119,6 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onSetTrackerTarget={p.setTrackerTarget}
       onAddComment={onAddComment}
       onAddSuggestion={onAddSuggestion}
-      onUpdateCommentContent={p.updateCommentContent}
       onUpdateCommentText={p.updateCommentText}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
@@ -136,9 +131,6 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
-      panelSide={p.panelSide ?? p.side}
-      viewMode={getPanelViewMode("revisions")}
-      onViewModeChange={(m) => setPanelViewMode("revisions", m)}
       recentlyAddedId={recentlyAddedId}
     />
   );

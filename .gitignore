@@ -45,3 +45,20 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# library — generated skill bundle + python bytecode
+/public/skill-bundle/
+/library/scripts/__pycache__/
+*.pyc
+
+# library-data — keep the static dev sample (catalog/master.bib/papers/),
+# but ignore the runtime artifacts the live app writes back into the folder
+# during a dev session (skill-bundle sync output, queue intent files, logs).
+/library-data/.skill-bundle-version.json
+/library-data/.claude/
+/library-data/scripts/
+/library-data/CLAUDE.md
+/library-data/queue/*.json
+/library-data/queue/*.lock
+/library-data/queue/*.done
+/library-data/logs/

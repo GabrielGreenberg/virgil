@@ -2,7 +2,20 @@
 // The cache fills as the user browses online; on fetch failure we serve
 // from cache, and reloads of a never-cached navigation fall back to the
 // scope root (the SPA shell), letting client-side routing take over.
-const CACHE_NAME = "virgil-v2";
+//
+// skill-bundle/* files are intentionally cached too so the Library tab
+// can re-sync skills to the user's library folder when offline.
+//
+// Bump CACHE_NAME whenever you ship a change the SW could otherwise serve
+// stale. The activate handler purges every cache whose name doesn't match.
+const CACHE_NAME = "virgil-v3";
+
+// Localhost dev mode: never cache. Stops the SW from pinning stale
+// Turbopack chunks across iterations.
+const IS_DEV =
+  self.location.hostname === "localhost" ||
+  self.location.hostname === "127.0.0.1" ||
+  self.location.hostname.startsWith("192.168.");
 
 // Scope root, e.g. "/" or "/tools/virgil/" depending on basePath. This
 // is also the manifest start_url, so it's guaranteed to be cached once
@@ -30,6 +43,10 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+
+  // In dev, pass through every request directly to the network so HMR
+  // and rebuilt chunks are never served stale.
+  if (IS_DEV) return;
 
   event.respondWith(handle(request));
 });

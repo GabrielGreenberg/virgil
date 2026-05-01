@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../library/styles/library.css";
 
 :root {
   /* Canvas & Layout */
@@ -2511,6 +2512,13 @@ body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
     height: auto !important;
     max-height: none !important;
     flex: none !important;
+  }
+
+  /* Neutralize the OmniView's translate3d sync. With editor scroll set
+     to 0 in print and content overflowing visibly, leaving the transform
+     would lock the omni layer at a stale negative offset. */
+  [data-virgil-in-text-transform] {
+    transform: none !important;
   }
 
   [data-editor-page] {

@@ -57,9 +57,9 @@ export function DocPermissionGate({ docName, handle, onGranted }: Props) {
         <h2 className="text-base font-semibold">Reconnect to your paper</h2>
         <p className="text-sm leading-relaxed">
           Virgil needs your permission to read and write files in{" "}
-          <span className="font-medium">{docName}</span>. Browsers reset this
-          permission every time you reopen the page, so you&apos;ll see one
-          prompt per paper per session.
+          <span className="font-medium">{docName}</span>. If you&apos;re using
+          the installed app, your browser may offer to remember this grant so
+          you only see this prompt once.
         </p>
         <Button
           variant="primary"

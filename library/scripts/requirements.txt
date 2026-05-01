@@ -1,0 +1,17 @@
+# Required for the indexing pipeline.
+PyMuPDF>=1.24
+requests>=2.31
+rapidfuzz>=3.5
+python-docx>=1.1
+
+# Optional, larger downloads. The pipeline gracefully degrades if these
+# aren't installed:
+#   marker-pdf    — best-in-class academic-paper layout extraction. ~1GB
+#                   model download on first use; CPU-only ~30-90s/paper.
+#   ocrmypdf      — wraps Tesseract; only needed for scanned PDFs.
+#                   ocrmypdf itself also needs the `tesseract` system
+#                   binary (brew install tesseract).
+#
+# Install with:
+#   pip install marker-pdf
+#   pip install ocrmypdf  # also `brew install tesseract`

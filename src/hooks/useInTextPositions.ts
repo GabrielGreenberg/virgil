@@ -80,14 +80,32 @@ const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
 
 /**
  * Computes scroll-relative Y positions for panel items so they align
- * with their corresponding positions in the TipTap editor.
+ * with their corresponding positions in the TipTap editor, and visually
+ * tracks the editor's scroll via a single GPU transform.
  *
- * Returns a Map<id, topPx> where topPx is relative to the editor's
- * scroll height (for use with position: absolute inside a container
- * that matches the editor's scrollHeight).
+ * The panel container (the element whose ref is `panelScrollRef`) is
+ * meant to be `overflow: hidden` — it does NOT scroll natively. Wheel
+ * events that hit it are forwarded to the editor's scroll container so
+ * the editor remains the single source of truth for vertical position.
  *
- * Also returns the editor's scrollHeight for sizing the container,
- * and a ref to attach to the panel's scroll container for scroll sync.
+ * The element whose ref is `transformTargetRef` receives a per-frame
+ * `transform: translate3d(0, -editorScrollTop, 0)`, applied imperatively
+ * inside a single RAF loop. Because the editor's compositor scroll and
+ * our transform write land in the same frame, the editor's content and
+ * the panel's transformed wrapper paint together — there is no
+ * opportunity for desync.
+ *
+ * Returns:
+ *   - `positions`: Map<id, topPx>, in editor-relative coordinates (use
+ *     with `position: absolute; top: ${px}` inside a relative container
+ *     of height `editorScrollHeight`).
+ *   - `editorScrollHeight`: the editor's scrollHeight, used to size the
+ *     positioned region.
+ *   - `panelScrollRef`: ref for the panel wrapper (overflow: hidden;
+ *     wheel-forwarding listener is attached here).
+ *   - `transformTargetRef`: ref for the inner element that gets
+ *     translated each frame. Wrap both unanchored content and the
+ *     positioned region inside this element.
  */
 export function useInTextPositions(
   editor: Editor | null,
@@ -107,23 +125,12 @@ export function useInTextPositions(
    * per the Link Architecture DOM contract).
    */
   entry: string | ((id: string) => string) = DEFAULT_ENTRY,
-  /** Ref whose `.current` holds the pixel height of content above the
-   *  positioned container (e.g. an unanchored section). The scroll sync
-   *  offsets by this amount so the panel can scroll above the document. */
-  topOffsetRef?: { current: number },
 ) {
   const [positions, setPositions] = useState<Map<string, number>>(new Map());
   const [editorScrollHeight, setEditorScrollHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
-  const rafRef = useRef(0);
-  // Expected scrollTop values written programmatically. When the panel's
-  // scroll event fires with a value matching `expectedPanelTop`, we know
-  // it's the echo of our own programmatic write and skip reverse-sync.
-  // This replaces the RAF-based flag, which races with the async scroll
-  // event dispatch and causes the editor to be yanked back during
-  // user-driven editor scrolling.
-  const expectedPanelTopRef = useRef<number | null>(null);
-  const expectedEditorTopRef = useRef<number | null>(null);
+  const transformTargetRef = useRef<HTMLDivElement>(null);
+  const computeRafRef = useRef(0);
 
   // Delay activation to avoid state updates during initial mount
   const [ready, setReady] = useState(false);
@@ -207,8 +214,7 @@ export function useInTextPositions(
   // Recompute on editor changes and viewport resize. Scroll alone does not
   // change positions (the formula `coords.top - viewTop + scrollTop` is
   // scroll-invariant), so we intentionally don't listen for scroll here —
-  // recomputing on every scroll tick would block the main thread and
-  // delay the synchronous scrollTop sync below.
+  // the per-frame transform sync below handles visual tracking.
   useEffect(() => {
     if (!enabled) {
       setPositions(new Map());
@@ -220,15 +226,15 @@ export function useInTextPositions(
     if (!editor) return;
 
     const onUpdate = () => {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(compute);
+      cancelAnimationFrame(computeRafRef.current);
+      computeRafRef.current = requestAnimationFrame(compute);
     };
 
     editor.on("update", onUpdate);
     window.addEventListener("resize", onUpdate);
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
+      cancelAnimationFrame(computeRafRef.current);
       editor.off("update", onUpdate);
       window.removeEventListener("resize", onUpdate);
     };
@@ -243,8 +249,8 @@ export function useInTextPositions(
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof ResizeObserver === "undefined") return;
     const onResize = () => {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = requestAnimationFrame(compute);
+      cancelAnimationFrame(computeRafRef.current);
+      computeRafRef.current = requestAnimationFrame(compute);
     };
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : "data-link-card";
@@ -252,13 +258,20 @@ export function useInTextPositions(
     return () => obs.disconnect();
   }, [positions, enabled, entry, compute]);
 
-  // Bidirectional scroll sync
+  // Per-frame visual sync: read editor scrollTop and translate the
+  // transform target. The browser commits the editor's compositor scroll
+  // before RAF callbacks run, so reading `scrollTop` here returns the
+  // value about to be painted; writing `transform` lands in the same
+  // frame. Editor and panel paint together — no compositor-vs-main-thread
+  // race that the previous `scrollTop`-write approach suffered from.
+  //
+  // Wheel forwarding: the panel wrapper is `overflow: hidden`, so wheel
+  // events on it don't scroll anything natively. We capture them and
+  // increment editor scrollTop directly so the editor remains the single
+  // scroll source.
   useEffect(() => {
     if (!enabled || !editor || editor.isDestroyed) return;
 
-    // editor.view throws if the ProseMirror view hasn't mounted yet; the
-    // optional chaining doesn't help because the throw happens inside the
-    // getter. Bail out if so — a re-render once the view mounts will retry.
     let editorScrollEl: HTMLElement | null = null;
     try {
       editorScrollEl = (editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null) ?? null;
@@ -267,76 +280,53 @@ export function useInTextPositions(
     }
     if (!editorScrollEl) return;
 
-    let cleanupFns: (() => void)[] = [];
+    const panelEl = panelScrollRef.current;
+    const targetEl = transformTargetRef.current;
+    if (!panelEl || !targetEl) return;
 
-    const setup = () => {
-      const panelEl = panelScrollRef.current;
-      if (!panelEl) return false;
+    // Initial sync: before the first RAF runs, set transform to match
+    // current scrollTop so we don't paint a frame at scroll = 0.
+    targetEl.style.willChange = "transform";
+    targetEl.style.transform = `translate3d(0, ${-editorScrollEl.scrollTop}px, 0)`;
 
-      const syncEditorToPanel = () => {
-        // If this scroll event matches what we just wrote to the editor,
-        // it's our own echo from a reverse sync — don't ping-pong.
-        if (expectedEditorTopRef.current === editorScrollEl.scrollTop) {
-          expectedEditorTopRef.current = null;
-          return;
-        }
-        const offset = topOffsetRef?.current ?? 0;
-        panelEl.scrollTop = editorScrollEl.scrollTop + offset;
-        // Record the clamped value the browser actually settled on, so
-        // the panel's echoing scroll event can be recognised and skipped.
-        expectedPanelTopRef.current = panelEl.scrollTop;
-      };
-
-      const syncPanelToEditor = () => {
-        // Skip when an external caller (e.g. click-to-align on a panel card)
-        // has flagged this scroll as programmatic. Without this, aligning a
-        // card in the panel would drag the editor's main text along with it.
-        if (panelEl.dataset.virgilSuppressReverseSync === "1") return;
-        // Echo of our own editor→panel sync? Ignore.
-        if (expectedPanelTopRef.current === panelEl.scrollTop) {
-          expectedPanelTopRef.current = null;
-          return;
-        }
-        const offset = topOffsetRef?.current ?? 0;
-        // When the panel is in the "above document" zone, pin editor to top
-        const nextEditorTop = Math.max(0, panelEl.scrollTop - offset);
-        editorScrollEl.scrollTop = nextEditorTop;
-        expectedEditorTopRef.current = editorScrollEl.scrollTop;
-      };
-
-      editorScrollEl.addEventListener("scroll", syncEditorToPanel, { passive: true });
-      panelEl.addEventListener("scroll", syncPanelToEditor, { passive: true });
-
-      // Initial sync — retry a few times to handle late DOM layout
-      const doSync = () => {
-        const offset = topOffsetRef?.current ?? 0;
-        panelEl.scrollTop = editorScrollEl.scrollTop + offset;
-        expectedPanelTopRef.current = panelEl.scrollTop;
-      };
-      doSync();
-      const t1 = setTimeout(doSync, 100);
-      const t2 = setTimeout(doSync, 300);
-
-      cleanupFns.push(() => { clearTimeout(t1); clearTimeout(t2); });
-      cleanupFns.push(() => {
-        editorScrollEl.removeEventListener("scroll", syncEditorToPanel);
-        panelEl.removeEventListener("scroll", syncPanelToEditor);
-      });
-      return true;
+    let lastTy = -editorScrollEl.scrollTop;
+    let raf = 0;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      // editorScrollEl is non-null inside the closure (early returned above)
+      const ty = -editorScrollEl!.scrollTop;
+      if (ty !== lastTy) {
+        lastTy = ty;
+        targetEl.style.transform = `translate3d(0, ${ty}px, 0)`;
+      }
     };
+    raf = requestAnimationFrame(tick);
 
-    // Try immediately, then retry until panel ref is attached
-    if (!setup()) {
-      let attempts = 0;
-      const interval = setInterval(() => {
-        attempts++;
-        if (setup() || attempts > 20) clearInterval(interval);
-      }, 50);
-      cleanupFns.push(() => clearInterval(interval));
-    }
+    // Wheel forwarding. passive: false so we can preventDefault and own
+    // the gesture. Cmd/Ctrl-wheel passes through (browser pinch-zoom).
+    // Horizontal wheel/Shift+wheel is dropped — editor doesn't scroll
+    // horizontally, so forwarding sideways nudges would feel wrong.
+    const lineHeight =
+      parseFloat(getComputedStyle(editor.view.dom).lineHeight) || 16;
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= lineHeight;
+      else if (e.deltaMode === 2) dy *= editorScrollEl!.clientHeight;
+      editorScrollEl!.scrollTop += dy;
+    };
+    panelEl.addEventListener("wheel", onWheel, { passive: false });
 
-    return () => { cleanupFns.forEach((fn) => fn()); };
-  }, [editor, enabled]);
+    return () => {
+      cancelAnimationFrame(raf);
+      panelEl.removeEventListener("wheel", onWheel);
+      if (targetEl) {
+        targetEl.style.transform = "";
+        targetEl.style.willChange = "";
+      }
+    };
+  }, [editor, enabled, ready]);
 
-  return { positions, editorScrollHeight, panelScrollRef };
+  return { positions, editorScrollHeight, panelScrollRef, transformTargetRef };
 }

@@ -5,7 +5,6 @@ import TodoPanel from "@/panels/Todo";
 import type { TodoItem } from "@/lib/types";
 import type { Side } from "@/hooks/useViewPrefs";
 import { useEditorRefContext } from "../contexts/editor-ref";
-import { usePanelViewModeContext } from "../contexts/panel-view-mode";
 import { useSelectionsContext } from "../contexts/selections";
 import { useAiRequestsContext } from "../contexts/ai-requests";
 import { useCardCreationContext } from "../contexts/card-creation";
@@ -29,8 +28,7 @@ export interface TodoHostProps {
 }
 
 export function TodoHost(p: TodoHostProps) {
-  const { editorInstance, editorRef } = useEditorRefContext();
-  const { getPanelViewMode, setPanelViewMode } = usePanelViewModeContext();
+  const { editorRef } = useEditorRefContext();
   const { selectedTodoId, setSelectedTodoId } = useSelectionsContext();
   const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createTodo } = useCardCreationContext();
@@ -56,10 +54,6 @@ export function TodoHost(p: TodoHostProps) {
       onDeleteAiRequest={deleteAiRequest}
       onDropSelection={p.onDropSelection}
       onDropParagraph={p.onDropParagraph}
-      editor={editorInstance}
-      panelSide={p.panelSide ?? p.side}
-      viewMode={getPanelViewMode("todo")}
-      onViewModeChange={(m) => setPanelViewMode("todo", m)}
       recentlyAddedId={recentlyAddedId}
     />
   );

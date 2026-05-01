@@ -1,9 +1,9 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { ExampleInfo } from "@/components/Editor";
 import {
   PanelCard,
-  BadgeLabel,
   CardTargetIcon,
 } from "@/components/panel-primitives";
 import { FloatCard } from "@/components/FloatingCards";
@@ -19,11 +19,20 @@ export interface ExampleCardProps {
   onJump: (sourceEl: HTMLElement | null) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
+  /** Replace the example's source. Returns false on parse failure so the
+   *  card can keep the editor open and surface an error. */
+  onUpdateLatex?: (latex: string) => boolean;
+  /** Extra `data-*` attributes forwarded onto the card root. Omni-view
+   *  uses this to attach `data-omni-entry` directly on the card so the
+   *  global `[data-omni-entry] > :first-child { border-radius: inherit }`
+   *  rule inherits from the card's own `rounded-lg` (rather than from
+   *  an outer wrapper with no radius, which would zero out the corners). */
+  extraDataAttrs?: Record<string, string>;
 }
 
-/** Panel card for a single `\ex` / `\pex` block. Examples live in the
- *  main editor — this card is a catalog entry that shows the number, tag,
- *  label, and a preview, with a jump-to-target icon. */
+/** Panel card for a single `\ex` / `\pex` block. The body recreates the
+ *  example's structure (number, body text, sub-items, label) and a footer
+ *  exposes an Edit toggle (LaTeX source editor) and a "?" help popover. */
 export function ExampleCard({
   example,
   isSelected,
@@ -31,16 +40,58 @@ export function ExampleCard({
   onJump,
   onTogglePopout,
   isPoppedOut,
+  onUpdateLatex,
+  extraDataAttrs,
 }: ExampleCardProps) {
   const theme = useCardTheme("example");
   const bodyStyle = usePanelBodyStyle("example");
-  const kindLabel = example.kind === "multi" ? "\\pex" : "\\ex";
   const popped = usePoppedCards();
   const cardKey = popKey("examples", example.exampleId);
   const onToggleFromCtx = onTogglePopout
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [latexDraft, setLatexDraft] = useState(example.latex);
+  const [editError, setEditError] = useState<string | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Re-sync the draft when the underlying source changes (e.g. another
+  // edit channel touches the example) — but only while the editor is
+  // closed, so we don't blow away in-progress edits.
+  useEffect(() => {
+    if (!isEditing) setLatexDraft(example.latex);
+  }, [example.latex, isEditing]);
+
+  useEffect(() => {
+    if (isEditing) textareaRef.current?.focus();
+  }, [isEditing]);
+
+  const openEditor = () => {
+    setLatexDraft(example.latex);
+    setEditError(null);
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditError(null);
+    setLatexDraft(example.latex);
+  };
+  const applyEdit = () => {
+    if (!onUpdateLatex) {
+      setIsEditing(false);
+      return;
+    }
+    const ok = onUpdateLatex(latexDraft);
+    if (ok) {
+      setIsEditing(false);
+      setEditError(null);
+    } else {
+      setEditError("Couldn't parse — check the \\ex … \\xe block and try again.");
+    }
+  };
 
   const card = (
     <PanelCard
@@ -50,37 +101,25 @@ export function ExampleCard({
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       data-link-card={`example:${example.exampleId}`}
+      {...(extraDataAttrs ?? {})}
     >
+      {/* ── Header ────────────────────────────────────────────────── */}
       <div
-        className="flex items-center gap-2 px-3 py-1.5 border-b border-[var(--border-light)]"
+        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
-        <BadgeLabel
-          label={example.number || "?"}
-          theme={theme}
-        />
-        <div className="flex flex-col min-w-0 flex-1">
-          <div
-            className="text-[10px] tracking-wide uppercase font-mono"
-            style={{ color: theme.titleColor }}
-          >
-            {kindLabel}
-            {example.subLabelRange ? ` · ${example.subLabelRange}` : ""}
-          </div>
-          {(example.tag || example.label) && (
-            <div
-              className="text-[11px] truncate font-mono"
-              style={{ color: theme.titleColor }}
-              title={[example.tag && `<${example.tag}>`, example.label && `\\label{${example.label}}`]
-                .filter(Boolean)
-                .join(" ")}
-            >
-              {example.tag && <span>&lt;{example.tag}&gt;</span>}
-              {example.tag && example.label ? " " : ""}
-              {example.label && <span>\label{"{" + example.label + "}"}</span>}
-            </div>
-          )}
-        </div>
+        <span
+          className="flex-1 min-w-0 truncate"
+          style={{
+            fontSize: "var(--par-title-size, 0.78rem)",
+            color: theme.titleColor,
+            fontWeight: 500,
+            fontFamily: "var(--font-sans), Inter, sans-serif",
+            letterSpacing: "0.02em",
+          }}
+        >
+          Example
+        </span>
         <CardTargetIcon
           selected={isSelected}
           onClick={(e) => {
@@ -92,14 +131,205 @@ export function ExampleCard({
           data-helper-pos="above"
         />
       </div>
+
       <div
-        className="px-3 py-2 text-xs text-ink-body leading-snug line-clamp-3"
+        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
+      />
+
+      {/* ── Body — recreate the example structure ────────────────── */}
+      <div
+        className="px-3 py-2 text-xs text-ink-body"
         style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}
       >
-        {example.preview || (
-          <span className="italic text-ink-muted">Empty</span>
-        )}
+        <div className="flex gap-2">
+          <span
+            className="font-mono shrink-0"
+            style={{ color: theme.titleColor }}
+          >
+            ({example.number || "?"})
+          </span>
+          <div className="min-w-0 flex-1">
+            {example.bodyText && (
+              <div className="leading-snug whitespace-pre-wrap break-words">
+                {example.bodyText}
+              </div>
+            )}
+            {example.items.length > 0 && (
+              <ol className="list-none m-0 p-0 mt-1 flex flex-col gap-0.5">
+                {example.items.map((it, idx) => (
+                  <li key={idx} className="flex gap-2">
+                    <span
+                      className="shrink-0"
+                      style={{ minWidth: "1.25rem", color: theme.titleColor }}
+                    >
+                      {it.subLabel || (idx + 1)}.
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="leading-snug whitespace-pre-wrap break-words">
+                        {it.text || (
+                          <span className="italic text-ink-muted">empty</span>
+                        )}
+                      </span>
+                      {it.label && (
+                        <span className="heading-annotation ml-2 align-middle">
+                          ex.<span className="opacity-70">{"  ·  label: "}</span>
+                          <span className="heading-label-text">{it.label}</span>
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {example.label && (
+              <div className="mt-1.5">
+                <span className="heading-annotation">
+                  ex.<span className="opacity-70">{"  ·  label: "}</span>
+                  <span className="heading-label-text">{example.label}</span>
+                </span>
+              </div>
+            )}
+            {!example.bodyText && example.items.length === 0 && (
+              <span className="italic text-ink-muted">Empty example</span>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* ── Footer: Edit + Help ──────────────────────────────────── */}
+      <div
+        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
+      />
+      <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-muted/30">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isEditing) cancelEdit();
+            else openEditor();
+          }}
+          className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
+          title={isEditing ? "Close source editor" : "Edit example source"}
+          data-helper={isEditing ? "Close" : "Edit"}
+          data-helper-pos="above"
+          disabled={!onUpdateLatex && !isEditing}
+        >
+          {isEditing ? "Close" : "Edit"}
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowHelp((v) => !v);
+          }}
+          className="text-[10px] px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0 font-semibold"
+          title="What is \\expex?"
+          data-helper={showHelp ? "Hide help" : "Help"}
+          data-helper-pos="above"
+        >
+          ?
+        </button>
+        <div className="flex-1" />
+      </div>
+
+      {/* ── Edit panel: LaTeX source editor ──────────────────────── */}
+      {isEditing && (
+        <>
+          <div
+            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
+          />
+          <div
+            className="px-3 py-2 bg-surface"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <textarea
+              ref={textareaRef}
+              value={latexDraft}
+              onChange={(e) => {
+                setLatexDraft(e.target.value);
+                if (editError) setEditError(null);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelEdit();
+                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  applyEdit();
+                }
+              }}
+              spellCheck={false}
+              rows={Math.max(4, Math.min(latexDraft.split("\n").length + 1, 16))}
+              className="w-full text-[11px] font-mono text-ink-body bg-transparent border border-edge-subtle rounded p-1.5 outline-none focus:ring-1 focus:ring-edge-hover resize-y"
+            />
+            {editError && (
+              <div className="text-[11px] text-danger mt-1">{editError}</div>
+            )}
+            <div className="flex items-center justify-end gap-1.5 mt-1.5">
+              <button
+                onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
+                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); applyEdit(); }}
+                className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-strong text-ink-body hover-on-light hover:border-edge-hover"
+                title="Apply (⌘⏎)"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ── Help panel: brief expex explainer ────────────────────── */}
+      {showHelp && (
+        <>
+          <div
+            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
+          />
+          <div
+            className="px-3 py-2 text-[11px] leading-snug text-ink-body bg-amber-50/40"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="mb-1">
+              <span className="font-mono">\expex</span> renders numbered linguistic examples.
+            </p>
+            <ul className="list-none m-0 p-0 flex flex-col gap-0.5">
+              <li>
+                <span className="font-mono">\ex … \xe</span> — a single numbered example.
+              </li>
+              <li>
+                <span className="font-mono">\pex … \xe</span> — a multi-part example;
+                use <span className="font-mono">\a</span> to introduce each sub-item
+                (auto-labeled <span className="font-mono">a, b, c…</span>).
+              </li>
+              <li>
+                <span className="font-mono">\label{"{"}name{"}"}</span> on either the
+                top block or a <span className="font-mono">\a</span> item makes it
+                referenceable with <span className="font-mono">\ref{"{"}name{"}"}</span>.
+              </li>
+              <li>
+                <span className="font-mono">{"<tag>"}</span> right after
+                <span className="font-mono"> \ex</span> /
+                <span className="font-mono"> \a</span> sets a custom display tag
+                (e.g. <span className="font-mono">\ex{"<*>"}</span> for an
+                ungrammatical example).
+              </li>
+              <li>
+                <span className="font-mono">\begingl … \endgl</span> with
+                <span className="font-mono"> \gla / \glb / \glc</span> rows and a
+                <span className="font-mono"> \glft</span> free-translation row
+                produces an interlinear gloss.
+              </li>
+            </ul>
+          </div>
+        </>
+      )}
     </PanelCard>
   );
   // When popped: wrap in FloatCard (portals to body, draggable/resizable).
