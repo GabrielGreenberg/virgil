@@ -5865,6 +5865,8 @@ export default function EditorLayout() {
                   onToggleParTitles: () => setShowParTitles((p) => !p),
                   showLatexComments,
                   onToggleLatexComments: () => setShowLatexComments((p) => !p),
+                  showHeadingLabels,
+                  onToggleHeadingLabels: toggleHeadingLabels,
                   showSectionIndicator,
                   onToggleSectionIndicator: toggleSectionIndicator,
                   onOpenPreferences: () => setPreferencesOpen(true),
