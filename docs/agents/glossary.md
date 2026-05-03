@@ -1,4 +1,4 @@
-<!-- last-verified: 1873311 2026-05-01 -->
+<!-- last-verified: d3a2616 2026-05-02 -->
 
 # Glossary
 
@@ -12,12 +12,15 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4800; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
-| **Menu pod** / **menu bar** / **main toolbar** / **floating toolbar** (the smaller pod inside the Virgil bar, holding File/Edit/etc.) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** at the top of the editor column in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) around line 5651 (the home MenuBar no longer tears off — drop happened in c40d8d2). Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]`. `prefs.menuLocation` is now effectively home-only |
-| **Menu toolbar** | Same as Menu pod above | Same |
-| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:5410` |
-| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:5937` |
-| **Filter menu** / **kebab at the bottom of the strip** (horizontal 3-dot menu pinned to the bottom of each L/R icon strip; toggles which omni categories show, plus a "Default view" reset) | `OmniFilterMenu` | [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); mounted at the bottom of each strip in `EditorLayout.tsx` around lines 5467 and 5994 |
+| **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 5066; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
+| **Upper tool strip** (the continuous opaque manilla band directly under the Virgil bar; one rectangle running edge-to-edge across the row, containing — left to right — left action buttons, text tool bar, right action buttons, plus the icon strips at the outer edges; pinned at viewport top so document content scrolls under it) | Three sticky segments that share `background: var(--background)`: `[data-tool-strip="left-action"]`, `[data-tool-strip="text"]`, `[data-tool-strip="right-action"]` | `panel-column.tsx` (left/right segments ~line 246); `EditorLayout.tsx` ~line 5918 (text segment) |
+| **Text tool bar** (center segment of the upper tool strip, sitting above the editor; holds File/Edit/format/split-screen/etc. action buttons) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** as the sticky `[data-tool-strip="text"]` in [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 5918. Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]`. `prefs.menuLocation` is now effectively home-only |
+| **Left action buttons** / **right action buttons** (per-column segments of the upper tool strip, sitting above each side panel; small icon row for "Add footnote", "Add citation", etc.) | `MarginActionToolbar` — rendered as the sticky `[data-tool-strip="left-action"]` / `[data-tool-strip="right-action"]` inside `PanelColumn` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx); mounted via `topOverlay` prop on `PanelColumn` in `EditorLayout.tsx` ~line 4887 |
+| **Menu pod** / **menu bar** / **main toolbar** / **menu toolbar** / **floating toolbar** | Same as **Text tool bar** above | Same |
+| **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | `EditorLayout.tsx:5676` |
+| **Right tool strip** / **right icon strip** / **sidebar navigation** (right) | Inline `<div data-strip-side="right">` | `EditorLayout.tsx:6302` |
+| **Filter menu** / **kebab at the bottom of the strip** (horizontal 3-dot menu pinned to the bottom of each L/R icon strip; toggles which omni categories show, plus a "Default view" reset) | `OmniFilterMenu` | [src/panels/Omni/OmniViewPanel.tsx](../../src/panels/Omni/OmniViewPanel.tsx); mounted at the bottom of each strip in `EditorLayout.tsx` ~line 5733 (left) and ~line 6358 (right) |
+| **Dock outline** / **drop outline** (thin clear-blue outline with static glow that marks the active dock target during a panel drag; persists at the originally captured rect even after the panel undocks) | `DockOutline` (body-portaled, fixed positioning) consuming the module-level `useDockDragTarget` signal in `dock-drag.ts` (`setDockDragTarget` / `getDockDragTarget`) | [src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx); [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts); mounted in `EditorLayout.tsx` ~line 6550 |
 | **Panel button** / **strip button** (individual icon in a strip) | `StripButton` | [src/components/editor-layout/drag-drop.tsx](../../src/components/editor-layout/drag-drop.tsx) |
 | **Panel column** / **sidebar column** (the resizable column on either side) | `PanelColumn` | [src/components/editor-layout/panel-column.tsx](../../src/components/editor-layout/panel-column.tsx) |
 | **Current section pod** / **section lozenge** (floating section-path pill at top of editor, shows on scroll, fades after idle) | `SectionLozenge` | [src/components/editor-layout/section-lozenge.tsx](../../src/components/editor-layout/section-lozenge.tsx); `SectionPathEntry` type + main/mirror path builders in `EditorLayout.tsx` ~1943 / ~2065 |
@@ -31,7 +34,7 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1348 (inside `MenuBarContent`) |
 | **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:846` |
 | **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` — multi-instance; each tear-off spawns a new copy stored in `detachedActions[]` with its own id | `MenuBar.tsx:968`; mounted via portal in `EditorLayout.tsx` |
-| **Margin action toolbar** (per-column, shown when Omni-view is docked in a side) | `MarginActionToolbar` — rendered as `topOverlay` on `PanelColumn` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) |
+| **Margin action toolbar** | Same as **Left action buttons** / **Right action buttons** above | Same |
 | **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:1031` |
 | **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx:445` |
 | **Style dropdown** / **document style** (preamble preset selector on the Virgil bar) | `DocStyleDropdown` (inline component); presets in `DOCUMENT_STYLES`; per-doc state in `useDocumentStyle` | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) ~line 243; [src/lib/document-styles.ts](../../src/lib/document-styles.ts); [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) |
@@ -62,9 +65,9 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 | `examples` | Examples | `example` | left | (default) |
 | `todo` | Todo List | `todo` | right | stone |
 | `archive` | Archived Text | `archive` | right | amber/blue-grey |
-| `revisions` | Revisions | `comment` (key prefix `revision`) + `revision-suggestion` (polymorphic — `card.kind` is `comment` in registry; `revision-suggestion` registered in `CARD_KEY_PREFIXES`) | right | stone |
-| `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry) | right | red |
-| `errors` | Errors | `error` | right | light red |
+| `revisions` | Revisions | `comment` (key prefix `revision`) + `revision-suggestion` (polymorphic — `card.kind` is `comment` in registry; `revision-suggestion` registered in `CARD_KEY_PREFIXES`) | right (omni-eligible) | stone |
+| `cutter` | Cutter | `cutter-comment` + `cutter-suggestion` (polymorphic — `card: null` in registry) | right (omni-eligible) | red |
+| `errors` | Errors | `error` | right (omni-eligible) | light red |
 
 ### Non-card panels
 
@@ -184,6 +187,7 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 | **New document modal** | `NewDocumentModal` — uses `SystemDialog` | [src/components/NewDocumentModal.tsx](../../src/components/NewDocumentModal.tsx) |
 | **Tex file picker** | `TexFilePickerModal` — uses `SystemDialog` | [src/components/TexFilePickerModal.tsx](../../src/components/TexFilePickerModal.tsx) |
 | **Document class mismatch dialog** | `DocumentClassMismatchDialog` — uses `SystemDialog` | [src/components/DocumentClassMismatchDialog.tsx](../../src/components/DocumentClassMismatchDialog.tsx) |
+| **Fonts dialog** / **font picker** (per-category font + size dialog launched from the View menu's "Fonts…" item; one card per font category — body, headings, footnotes, marginalia, etc. — each with a `FontPicker` and `SizeStepper`) | `FontsDialog` (uses `FloatingPanel`); `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS`); `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`) | [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx); [src/components/FontPicker.tsx](../../src/components/FontPicker.tsx); [src/components/SizeStepper.tsx](../../src/components/SizeStepper.tsx); font catalog in [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts) (`MAIN_TEXT_FONTS`); opened from `MenuBar` ViewMenu (`onOpenFontsDialog`); mounted in `EditorLayout.tsx` ~line 6380 |
 
 ## Card creation / pristine cards
 

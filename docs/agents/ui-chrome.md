@@ -1,4 +1,4 @@
-<!-- last-verified: 1873311 2026-05-01 -->
+<!-- last-verified: d3a2616 2026-05-02 -->
 
 # UI Chrome
 
@@ -23,28 +23,30 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:4800
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:5410
+├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:5066
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:5676
 │   ├─ View control pod: collapse, omni-view, split
 │   ├─ StripButton × N (per left-sidebar panel, drag-to-reorder)
-│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)        — ~line 5467
+│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)        — ~line 5733
 ├─ PanelColumn side="left"                            — rendered by `renderPanelColumn("left")`
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar — docked inline at top of editor column — ~line 5651
+│   ├─ MenuBar — docked inline at the sticky [data-tool-strip="text"] — ~line 5918
 │   ├─ DetachedActionsToolbar (portal × N)
 │   ├─ DetachedFormattingToolbar (portal × N)
 │   ├─ DetachedMenuToolbar (portal × N)
 │   ├─ VirgilEditor (the editor itself)
 │   ├─ Marginalia gutters (left + right of text)
-│   ├─ FloatCard portals (popped-out cards)               — ~line 6105
-│   ├─ FloatingPanel portals (popped-out panels)         — ~line 6129
-│   └─ ParagraphFloat / HeadingFloat / example-block portals (popped-out blocks)
-├─ PanelColumn side="right"                           — rendered by `renderPanelColumn("right")` ~line 5932
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:5937
+│   ├─ FloatCard portals (popped-out cards)
+│   ├─ FloatingPanel portals (popped-out panels)
+│   ├─ ParagraphFloat / HeadingFloat / example-block portals (popped-out blocks)
+│   ├─ FontsDialog (FloatingPanel-based per-category font + size dialog) — ~line 6380
+│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — ~line 6550
+├─ PanelColumn side="right"                           — rendered by `renderPanelColumn("right")`
+└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:6302
     ├─ View control pod: collapse, omni-view, split
     ├─ StripButton × N
-    └─ OmniFilterMenu (kebab pinned to bottom)        — ~line 5994
+    └─ OmniFilterMenu (kebab pinned to bottom)
 ```
 
 ## Tool strips (left & right)
@@ -104,7 +106,9 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Both Revisions and Cutter are polymorphic** — each hosts comment + suggestion card kinds. Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null` in registry; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
 
-Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive.
+Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
+
+Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx)) exporting a `buildXOmniItems(args): OmniItem[]` builder. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. New omni-eligible panels add their builder there.
 
 ## MenuBar (the menu pod inside the editor column)
 
@@ -195,6 +199,14 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 ## Per-panel text-size stepper
 
 Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1577, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
+
+## Fonts dialog
+
+The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout owns the `fontsOpen` state and mounts the dialog (~line 6380).
+
+## Dock-target outline
+
+[src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorLayout's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorLayout.tsx` ~line 6550, suppressed in zen mode.
 
 ## Helper mode overlay
 

@@ -1,4 +1,4 @@
-<!-- last-verified: 1873311 2026-05-01 -->
+<!-- last-verified: d3a2616 2026-05-02 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -96,6 +96,10 @@ Popout key prefixes for cards (DO NOT rename without migration — they're persi
 `note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
 **Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
+
+**Per-panel omni-item builders.** Each omni-eligible panel owns an `omni.tsx` next to its panel folder (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx), and the older builders for notes/footnotes/citations/etc.) exporting a `buildXOmniItems(args): OmniItem[]` function. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. When adding a new omni-eligible panel: flip `omniEligible: true` + set `omniSide` in `panel-registry.ts`, write `<panel>/omni.tsx` exporting the builder, re-export it from `<panel>/index.ts`, and import + invoke from `omni-host.tsx`.
+
+**Dock-drag signal.** [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) exposes a module-level (not React Context) `{slotKey, rect}` store via `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Producer (panel shell, on mousedown) writes the captured slot rect; consumers — the body-portaled [DockOutline](../../src/components/editor-layout/DockOutline.tsx) and EditorLayout's redock-on-mouseup handler — read it. Module-level scope is required because the producer and consumers sit in different parts of the React tree.
 
 **Jump-to alignment.** All `onJump` callbacks accept an optional `sourceEl: HTMLElement | null` argument — typically the clicked card element (use `(e.currentTarget as HTMLElement).closest('[data-card]')`). When passed, `jumpToCard` aligns the in-text marker's vertical position to the card so the page doesn't lurch.
 
