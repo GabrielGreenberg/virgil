@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { type SectionPathEntry } from "@/panels/Outline";
+import { findRowScroll } from "./layout-scroll";
 
 /**
  * Floating section-path lozenge that appears at the top of an editor pane
- * on scroll, then fades out after a short idle period.
+ * on scroll, then fades out after a short idle period. The pill itself is
+ * `relative` so it can be placed inside an externally-positioned sticky
+ * wrapper (see EditorLayout, where it's pinned right under the pod cap).
  */
 export function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[] }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -11,7 +14,11 @@ export function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
-    const scrollEl = ref.current?.parentElement?.querySelector(".overflow-y-auto") as HTMLElement | null;
+    // Mirror lozenge: use mirror's own scroll. Canonical lozenge: use row.
+    const mirrorScroll = ref.current?.parentElement?.querySelector(
+      "[data-virgil-mirror-scroll]",
+    ) as HTMLElement | null;
+    const scrollEl = mirrorScroll ?? findRowScroll();
     if (!scrollEl) return;
 
     const onScroll = () => {
@@ -32,7 +39,7 @@ export function SectionLozenge({ sectionPath }: { sectionPath: SectionPathEntry[
   return (
     <div
       ref={ref}
-      className="absolute top-1 left-1/2 -translate-x-1/2 z-20 pointer-events-none transition-opacity duration-300"
+      className="pointer-events-none transition-opacity duration-300"
       style={{ opacity: show ? 1 : 0 }}
     >
       <div className="px-3 py-0.5 rounded-full text-[11px] font-medium backdrop-blur-sm shadow-sm whitespace-nowrap max-w-[320px] truncate" style={{ background: 'rgba(255, 255, 255, 0.7)', color: '#44403c', border: '1px solid var(--heading-annotation-border)' }}>

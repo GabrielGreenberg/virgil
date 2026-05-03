@@ -91,6 +91,17 @@ export interface EditorPreferences {
   fontDisplay: string;
   fontLogo: string;
   fontMono: string;
+
+  // Fonts… dialog (per-element overrides for the main text)
+  // null family = "pin to body family"
+  fontMaketitleFamily: string | null;
+  fontMaketitleTitleSize: number;   // rem
+  fontMaketitleMetaSize: number;    // rem (author/date)
+  fontHeadersFamily: string | null;
+  fontHeadersH1Size: number;        // rem
+  fontHeadersH2Size: number;        // rem
+  fontHeadersH3Size: number;        // rem
+  fontParTitleFamily: string | null;
 }
 
 export const DEFAULT_PREFS: EditorPreferences = {
@@ -176,6 +187,16 @@ export const DEFAULT_PREFS: EditorPreferences = {
   fontDisplay: "Playfair Display",
   fontLogo: "Cinzel",
   fontMono: "Geist Mono",
+
+  // Fonts… dialog
+  fontMaketitleFamily: null,
+  fontMaketitleTitleSize: 1.75,
+  fontMaketitleMetaSize: 1.05,
+  fontHeadersFamily: null,
+  fontHeadersH1Size: 1.75,
+  fontHeadersH2Size: 1.35,
+  fontHeadersH3Size: 1.15,
+  fontParTitleFamily: null,
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────

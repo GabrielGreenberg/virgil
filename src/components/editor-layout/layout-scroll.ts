@@ -1,19 +1,14 @@
 /**
  * Scroll helpers extracted from EditorLayout.
  *
- * Two flavors of "scroll an entry into alignment":
+ * Under the unified row scroll (A.1+A.2), the row containing all three
+ * columns is the only `overflow-y-auto`. The editor pane has no inner
+ * scroll. The mirror pane (split editor) keeps its own scroll because
+ * the two panes scroll independently — it's marked with
+ * `data-virgil-mirror-scroll`.
  *
- *  - For entries inside a transform-driven panel (OmniView), the panel
- *    itself doesn't scroll — the editor does. We compute the editor
- *    scrollTop that lands the entry at `targetY` on screen.
- *
- *  - For entries inside a list-mode panel (its own `overflow-y-auto`),
- *    we scroll that panel directly, like before.
- *
- * `findScrollParent` resolves the entry's nearest scrollable ancestor.
- * For transform-panel entries, we route through the editor scroll
- * container instead, which is found by the `data-virgil-in-text-transform`
- * ancestor combined with the page's `.overflow-y-auto` editor element.
+ * `findScrollParent` resolves the entry's nearest scrollable ancestor
+ * (still used for entries inside list-mode panel scrolls).
  */
 
 export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -26,69 +21,45 @@ export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-/** Resolve the main editor's scroll container, marked by Editor.tsx
- *  with `data-virgil-editor-scroll`. In split mode the canonical pane
- *  is the first occurrence; the mirror pane has its own scroll element
- *  but isn't the OmniView source of truth. */
-function findEditorScroll(): HTMLElement | null {
-  return document.querySelector("[data-virgil-editor-scroll]") as HTMLElement | null;
+/** The unified row scroll container. */
+export function findRowScroll(): HTMLElement | null {
+  return document.querySelector("[data-virgil-row-scroll]") as HTMLElement | null;
 }
 
-/** True when the entry is rendered inside a transform-driven panel
- *  (currently only OmniView). */
-function isInTransformPanel(entry: HTMLElement): boolean {
-  return entry.closest("[data-virgil-in-text-transform]") !== null;
+/** The scroll container relevant to a given ProseMirror view. Mirror
+ *  panes have their own `overflow-y-auto` (marked `data-virgil-mirror-scroll`);
+ *  the canonical view's scroll source is the row. */
+export function findEditorScrollFor(viewDom: HTMLElement | null | undefined): HTMLElement | null {
+  if (!viewDom) return findRowScroll();
+  const ownScroll = viewDom.closest("[data-virgil-mirror-scroll]") as HTMLElement | null;
+  if (ownScroll) return ownScroll;
+  return findRowScroll();
 }
 
 /** Scroll so `entry` lines up with viewport-Y `targetY`. */
 export function alignEntryToY(entry: HTMLElement, targetY: number) {
-  const scrollEl = isInTransformPanel(entry)
-    ? findEditorScroll()
-    : findScrollParent(entry);
+  // List-mode entries continue to scroll their own panel ancestor.
+  // Editor-anchored entries route through the row scroll.
+  const own = findScrollParent(entry);
+  const row = findRowScroll();
+  const isListPanelScroll = !!own && own !== row;
+  const scrollEl = isListPanelScroll ? own : row;
   if (!scrollEl) {
-    entry.scrollIntoView({ behavior: "instant", block: "nearest" });
+    entry.scrollIntoView({ block: "nearest" });
     return;
   }
-
-  // entry.getBoundingClientRect() reflects the post-transform screen
-  // position, so the same formula works for both the transform-panel and
-  // list-mode cases.
   const cardY = entry.getBoundingClientRect().top;
   const desired = scrollEl.scrollTop + (cardY - targetY);
   const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
   scrollEl.scrollTop = Math.max(0, Math.min(maxScroll, desired));
 }
 
-/** Bring `entry` into view. Routes through the editor's scroll for
- *  transform-panel entries; falls back to native `scrollIntoView`
- *  otherwise. */
+/** Bring `entry` into view. Native scrollIntoView walks up to find any
+ *  scrollable ancestor — works for both row-scrolled entries and
+ *  list-panel internal scrolls. */
 export function scrollEntryIntoView(
   entry: HTMLElement,
   opts?: ScrollIntoViewOptions,
 ) {
-  if (isInTransformPanel(entry)) {
-    const editorScrollEl = findEditorScroll();
-    if (editorScrollEl) {
-      // Approximate native scrollIntoView's `block: "nearest"` semantics
-      // by aligning the entry's top to the editor's top when above the
-      // viewport, or its bottom to the editor's bottom when below.
-      const editorRect = editorScrollEl.getBoundingClientRect();
-      const cardRect = entry.getBoundingClientRect();
-      let delta = 0;
-      if (cardRect.top < editorRect.top) {
-        delta = cardRect.top - editorRect.top;
-      } else if (cardRect.bottom > editorRect.bottom) {
-        delta = cardRect.bottom - editorRect.bottom;
-      }
-      if (delta !== 0) {
-        const maxScroll = editorScrollEl.scrollHeight - editorScrollEl.clientHeight;
-        editorScrollEl.scrollTop = Math.max(
-          0,
-          Math.min(maxScroll, editorScrollEl.scrollTop + delta),
-        );
-      }
-      return;
-    }
-  }
   entry.scrollIntoView(opts ?? { behavior: "instant", block: "nearest" });
 }

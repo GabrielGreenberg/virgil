@@ -7,6 +7,7 @@ import {
   isAnchorableAtom,
   type AnchorNodeMetrics,
 } from "@/lib/marginalia";
+import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 
 /**
  * Hook that tracks the screen position and line metrics of every UUID-bearing
@@ -27,16 +28,20 @@ export function useMarginalia(editor: Editor | null) {
       setPositions((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
-    let scrollEl: HTMLElement | null = null;
+    // Marginalia is positioned relative to the editor pod (the white pod
+    // marked `data-marginalia-host`). Both the host and the editor's
+    // paragraph DOM share the row's scroll, so `rect.top - hostRect.top`
+    // is scroll-invariant.
+    let hostEl: HTMLElement | null = null;
     try {
-      scrollEl = editor.view?.dom?.closest(
-        ".overflow-y-auto"
+      hostEl = editor.view?.dom?.closest(
+        "[data-marginalia-host]",
       ) as HTMLElement | null;
     } catch {
       return;
     }
-    if (!scrollEl) return;
-    const scrollRect = scrollEl.getBoundingClientRect();
+    if (!hostEl) return;
+    const hostRect = hostEl.getBoundingClientRect();
 
     const next = new Map<string, AnchorNodeMetrics>();
     editor.state.doc.descendants((node, pos) => {
@@ -49,7 +54,7 @@ export function useMarginalia(editor: Editor | null) {
           if (!dom) return true;
 
           const domRect = dom.getBoundingClientRect();
-          const domTop = domRect.top - scrollRect.top + scrollEl!.scrollTop;
+          const domTop = domRect.top - hostRect.top;
           const height = domRect.height;
 
           // Find the actual text element (not wrapper divs or nested title
@@ -81,10 +86,10 @@ export function useMarginalia(editor: Editor | null) {
             // Use the resolved text element's rect so title annotations inside
             // wrappers or blockquotes don't shift the anchor upward.
             const measureRect = measureEl.getBoundingClientRect();
-            top = measureRect.top - scrollRect.top + scrollEl!.scrollTop;
+            top = measureRect.top - hostRect.top;
           } else {
             const coords = editor.view.coordsAtPos(pos + 1);
-            top = coords.top - scrollRect.top + scrollEl!.scrollTop;
+            top = coords.top - hostRect.top;
           }
 
           let lineHeight: number;
@@ -168,15 +173,18 @@ export function useMarginalia(editor: Editor | null) {
     editor.on("update", onDocUpdate);
     editor.on("selectionUpdate", onLayoutChange);
 
-    const scrollEl = dom.closest(".overflow-y-auto");
-    scrollEl?.addEventListener("scroll", onLayoutChange, { passive: true });
+    // Marginalia metrics are scroll-invariant under unified row scroll
+    // (host pod and paragraph DOM move together). We still listen on the
+    // row scroll to trigger a re-render in case of layout shifts.
+    const rowScroll = findRowScroll();
+    rowScroll?.addEventListener("scroll", onLayoutChange, { passive: true });
     window.addEventListener("resize", onLayoutChange);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       editor.off("update", onDocUpdate);
       editor.off("selectionUpdate", onLayoutChange);
-      scrollEl?.removeEventListener("scroll", onLayoutChange);
+      rowScroll?.removeEventListener("scroll", onLayoutChange);
       window.removeEventListener("resize", onLayoutChange);
     };
   }, [editor, compute]);

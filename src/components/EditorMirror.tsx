@@ -96,6 +96,7 @@ export default function EditorMirror({ editor, onClose, onFocus, onViewReady }: 
     <div className="relative flex flex-col flex-1 min-w-0 min-h-0">
       <div
         ref={hostRef}
+        data-virgil-mirror-scroll
         className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0 editor-mirror"
       />
     </div>

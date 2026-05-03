@@ -143,7 +143,7 @@ export const Citation = Node.create({
         el.textContent = text;
       }
     };
-    return ({ node }) => {
+    return ({ node, getPos }) => {
       const dom = document.createElement("span");
       dom.className = "citation-node";
       dom.dataset.type = "citation";
@@ -158,6 +158,7 @@ export const Citation = Node.create({
         const panelAncestor = dom.closest(
           "[data-panel-side]",
         ) as HTMLElement | null;
+        const clickedPos = typeof getPos === "function" ? getPos() : undefined;
         window.dispatchEvent(
           new CustomEvent("virgil-citation-click", {
             detail: {
@@ -166,6 +167,11 @@ export const Citation = Node.create({
               // panel to align the corresponding card vertically with the
               // click target.
               clickY: rect.top,
+              // Doc position of THIS citation instance — used to override
+              // the card's anchor when a later/repeated citation is clicked
+              // so the card moves to align with the click rather than the
+              // (often-distant) first citation.
+              clickedPos,
               sourceSide: panelAncestor?.dataset.panelSide,
               sourcePanelId: panelAncestor?.dataset.panelId,
               sourceHalf: panelAncestor?.dataset.panelHalf,

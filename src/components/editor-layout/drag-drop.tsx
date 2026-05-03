@@ -14,12 +14,14 @@ import { getPanelSelection } from "./panel-selection";
  */
 export function useStripHandlers(deps: {
   prefs: ViewPrefs;
-  openPanelFloat: (id: PanelId, side?: Side) => void;
+  /** Strip clicks force-dock the panel — opens it in the gutter dock
+   *  slot regardless of the panel's last-used mode. */
+  openPanelDocked: (id: PanelId, side?: Side) => void;
   closePopout: (id: PanelId) => void;
   movePanel: (id: PanelId, side: Side, index?: number) => void;
   selections: SelectionsContextValue;
 }) {
-  const { prefs, openPanelFloat, closePopout, movePanel, selections } = deps;
+  const { prefs, openPanelDocked, closePopout, movePanel, selections } = deps;
 
   const handleMove = useCallback(
     (draggedId: PanelId, toSide: Side, toIndex?: number) => {
@@ -30,14 +32,19 @@ export function useStripHandlers(deps: {
 
   const handleStripClick = useCallback(
     (id: PanelId, side: Side) => {
-      const isOpen = prefs.poppedOutPanels.includes(id);
-      if (isOpen) {
+      // "Open" = in any open form: docked into a slot, or floating.
+      const isDocked = Object.values(prefs.dockSlots).includes(id);
+      const isFloating = prefs.poppedOutPanels.includes(id);
+      if (isDocked || isFloating) {
         closePopout(id);
         return;
       }
-      openPanelFloat(id, side);
+      // Strip clicks always open the panel in its gutter dock slot —
+      // even if the user previously undocked it. This also resets the
+      // panel's mode preference to "docked".
+      openPanelDocked(id, side);
 
-      // If the panel has a selected card, scroll to it once the float
+      // If the panel has a selected card, scroll to it once the panel
       // mounts. Two rAFs so the list has time to render.
       const sel = getPanelSelection(id, selections);
       if (!sel) return;
@@ -48,7 +55,7 @@ export function useStripHandlers(deps: {
         });
       });
     },
-    [openPanelFloat, closePopout, prefs.poppedOutPanels, selections],
+    [openPanelDocked, closePopout, prefs.poppedOutPanels, prefs.dockSlots, selections],
   );
 
   return { handleStripClick, handleMove };

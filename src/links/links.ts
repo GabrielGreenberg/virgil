@@ -497,6 +497,21 @@ export function jumpToLink(
     if (resolved?.domEl) {
       if (sourceY != null) {
         alignEntryToY(resolved.domEl, sourceY);
+        // If sourceEl is inside an omni-entry wrapper (citations / footnotes
+        // shown in OmniView), keep the card visually fixed at sourceY by
+        // bumping the omni cards offset to cancel the natural shift caused
+        // by the scroll. Mirrors the jumpToCard path. EditorLayout listens.
+        const omniWrapper = sourceEl?.closest(
+          "[data-omni-entry-wrapper]",
+        ) as HTMLElement | null;
+        const omniKey = omniWrapper?.dataset.omniEntryWrapper;
+        if (omniKey) {
+          window.dispatchEvent(
+            new CustomEvent("virgil-card-jumped", {
+              detail: { omniKey, clickY: sourceY },
+            }),
+          );
+        }
       } else {
         resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
       }
@@ -526,7 +541,13 @@ export function jumpToLink(
  *  When `sourceEl` is provided (the clicked card's wrapper), the in-text
  *  marker is aligned to that card's vertical position — the inverse of
  *  the marker→card alignment via `alignEntryToY`. Without `sourceEl`, the
- *  marker is centered in the viewport (legacy behavior). */
+ *  marker is centered in the viewport (legacy behavior).
+ *
+ *  When `sourceEl` is an omni-entry wrapper (`data-omni-entry-wrapper`),
+ *  fires a `virgil-card-jumped` event so EditorLayout can compensate the
+ *  omni cards offset and keep the card visually fixed during the scroll.
+ *  Without that compensation the card's natural Y would shift along with
+ *  the text and slide away from the click point. */
 export function jumpToCard(
   editor: Editor,
   card: CardWithLinks,
@@ -537,7 +558,23 @@ export function jumpToCard(
     const resolved = resolveLink(editor, link);
     if (resolved?.domEl) {
       if (sourceEl) {
-        alignEntryToY(resolved.domEl, sourceEl.getBoundingClientRect().top);
+        const preY = sourceEl.getBoundingClientRect().top;
+        alignEntryToY(resolved.domEl, preY);
+        // sourceEl is the [data-card] element; the omni wrapper (if any)
+        // is an ancestor. Native-panel cards have no omni wrapper and skip
+        // the compensation — their cards live in the panel's own scroll
+        // container so the editor scroll doesn't drag them off the click.
+        const omniWrapper = sourceEl.closest(
+          "[data-omni-entry-wrapper]",
+        ) as HTMLElement | null;
+        const omniKey = omniWrapper?.dataset.omniEntryWrapper;
+        if (omniKey) {
+          window.dispatchEvent(
+            new CustomEvent("virgil-card-jumped", {
+              detail: { omniKey, clickY: preY },
+            }),
+          );
+        }
       } else {
         resolved.domEl.scrollIntoView({ behavior: "instant", block: "center" });
       }

@@ -38,6 +38,11 @@ export function useMarkerActions(deps: {
   setSelectedTodoId: Dispatch<SetStateAction<string | null>>;
   setSelectedQuotationGroupId: Dispatch<SetStateAction<string | null>>;
   quotationGroups: QuotationGroup[];
+  /** Pulls the omni card to align with the click instead of scrolling
+   *  the document. The marker → omni-key prefixes differ for some kinds
+   *  (quote → quotation, cut → cutter-comment); each handler resolves the
+   *  marker DOM via `[data-marginalia-marker="${markerKind}:${id}"]`. */
+  alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
 }) {
   const {
     prefsRef,
@@ -57,6 +62,7 @@ export function useMarkerActions(deps: {
     selectedTodoId,
     setSelectedTodoId,
     setSelectedQuotationGroupId,
+    alignOmniCardWithClick,
   } = deps;
 
   const handleQuotationMarkerClick = useCallback(
@@ -68,7 +74,7 @@ export function useMarkerActions(deps: {
           entrySelector: `[data-quotation-group-id="${groupId}"]`,
           panelId: "quotations",
           cardKind: "quotation",
-          targetY: clickY,
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -79,8 +85,17 @@ export function useMarkerActions(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        // Marker DOM id is composite (`type:entityId:paragraphId`); match by prefix.
+        const sourceEl = document.querySelector(
+          `[data-marginalia-marker^="quote:${groupId}:"]`,
+        ) as HTMLElement | null;
+        requestAnimationFrame(() => {
+          alignOmniCardWithClick(`quotation:${groupId}`, clickY, sourceEl);
+        });
+      }
     },
-    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedQuotationGroupId],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedQuotationGroupId, alignOmniCardWithClick],
   );
 
   const handleNoteMarkerClick = useCallback(
@@ -105,7 +120,7 @@ export function useMarkerActions(deps: {
           entrySelector: `[data-note-entry="${noteId}"]`,
           panelId: "notes",
           cardKind: "note",
-          targetY: clickY,
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -116,8 +131,16 @@ export function useMarkerActions(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `[data-marginalia-marker^="note:${noteId}:"]`,
+        ) as HTMLElement | null;
+        requestAnimationFrame(() => {
+          alignOmniCardWithClick(`note:${noteId}`, clickY, sourceEl);
+        });
+      }
     },
-    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
   );
 
   const handleCutMarkerClick = useCallback(
@@ -139,14 +162,15 @@ export function useMarkerActions(deps: {
       }
       if (!nextSelected) return;
       // Cutter isn't omni-eligible, so openForCard falls through to the
-      // native panel. clickY still flows through for vertical alignment.
+      // native panel. alignOmniCardWithClick no-ops if the omni wrapper
+      // doesn't exist, so the native panel handles its own scrolling.
       openForCard(
         {
           omniKey: `${kind}:${cardId}`,
           entrySelector: `[data-card-key="${kind}:${cardId}"]`,
           panelId: "cutter",
           cardKind: kind,
-          targetY: clickY,
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -157,8 +181,16 @@ export function useMarkerActions(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `[data-marginalia-marker^="cut:${cardId}:"]`,
+        ) as HTMLElement | null;
+        requestAnimationFrame(() => {
+          alignOmniCardWithClick(`${kind}:${cardId}`, clickY, sourceEl);
+        });
+      }
     },
-    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, cutterCards, selectedCutterCardId, setSelectedCutterCardId, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, cutterCards, selectedCutterCardId, setSelectedCutterCardId, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
   );
 
   const handleTodoMarkerClick = useCallback(
@@ -172,7 +204,7 @@ export function useMarkerActions(deps: {
           entrySelector: `[data-todo-entry="${todoId}"]`,
           panelId: "todo",
           cardKind: "todo",
-          targetY: clickY,
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -183,8 +215,16 @@ export function useMarkerActions(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `[data-marginalia-marker^="todo:${todoId}:"]`,
+        ) as HTMLElement | null;
+        requestAnimationFrame(() => {
+          alignOmniCardWithClick(`todo:${todoId}`, clickY, sourceEl);
+        });
+      }
     },
-    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry, getOmniEnabled],
+    [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry, getOmniEnabled, alignOmniCardWithClick],
   );
 
   return {

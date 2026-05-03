@@ -10,14 +10,25 @@ import { buildNoteOmniItems } from "@/panels/Notes";
 import { buildArchiveOmniItems } from "@/panels/Archive";
 import { buildTodoOmniItems } from "@/panels/Todo";
 import { buildExampleOmniItems } from "@/panels/Examples";
+import { buildRevisionOmniItems } from "@/panels/Revisions";
+import { buildErrorOmniItems } from "@/panels/Errors";
+import { buildCutterOmniItems } from "@/panels/Cutter";
 import type { useNotes } from "@/hooks/useNotes";
 import type { useTodos } from "@/hooks/useTodos";
 import type { useQuotations } from "@/hooks/useQuotations";
 import type { useCitations } from "@/hooks/useCitations";
 import type { useAnnotations } from "@/hooks/useAnnotations";
 import type { useBibReview } from "@/hooks/useBibReview";
+import type { useRevisions } from "@/hooks/useRevisions";
+import type { useCutter } from "@/hooks/useCutter";
 import type { JSONContent } from "@tiptap/react";
-import type { ArchivedSnippet, OrphanedFootnote } from "@/lib/types";
+import type {
+  ArchivedSnippet,
+  OrphanedFootnote,
+  RevisionCard,
+  CutterCard,
+} from "@/lib/types";
+import type { LatexError } from "@/lib/latex-errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
 import { useEditorRefContext } from "../contexts/editor-ref";
@@ -30,6 +41,8 @@ type QuotationsHook = ReturnType<typeof useQuotations>;
 type CitationsHook = ReturnType<typeof useCitations>;
 type AnnotationsHook = ReturnType<typeof useAnnotations>;
 type BibReviewHook = ReturnType<typeof useBibReview>;
+type RevisionsHook = ReturnType<typeof useRevisions>;
+type CutterHook = ReturnType<typeof useCutter>;
 
 export interface OmniHostProps {
   side: Side;
@@ -87,8 +100,38 @@ export interface OmniHostProps {
   deleteTodo: TodosHook["deleteItem"];
   // Examples
   examples: ExampleInfo[];
+  // Revisions
+  revisionCards: RevisionCard[];
+  updateRevisionCommentText: RevisionsHook["updateCommentText"];
+  setRevisionCommentAiRequest: RevisionsHook["setCommentAiRequest"];
+  updateRevisionSuggestionField: RevisionsHook["updateSuggestionField"];
+  setRevisionSuggestionStatus: RevisionsHook["setSuggestionStatus"];
+  deleteRevisionCard: RevisionsHook["deleteCard"];
+  // Errors
+  latexErrors: LatexError[];
+  paragraphByErrorId: Map<string, string>;
+  errorSnippets: Map<string, string>;
+  dismissedErrorIds: Set<string>;
+  dismissError: (id: string) => void;
+  jumpToError: (err: LatexError) => void;
+  selectedErrorId: string | null;
+  setSelectedErrorId: (id: string | null) => void;
+  // Cutter
+  cutterCards: CutterCard[];
+  updateCutterCommentText: CutterHook["updateCommentText"];
+  setCutterCommentAiRequest: CutterHook["setCommentAiRequest"];
+  updateCutterSuggestionField: CutterHook["updateSuggestionField"];
+  setCutterSuggestionStatus: CutterHook["setSuggestionStatus"];
+  deleteCutterCard: CutterHook["deleteCard"];
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
+  getOmniHideAll: (side: Side) => boolean;
+  /** Vertical offset applied to the cards group so the recently-clicked
+   *  card aligns with the click in the main text. */
+  cardsOffset?: number;
+  /** When true, the next cardsOffset change is applied without the 150ms
+   *  transition. Used by jump-to so the card stays visually stable. */
+  cardsSilent?: boolean;
 }
 
 export function OmniHost(p: OmniHostProps) {
@@ -101,6 +144,8 @@ export function OmniHost(p: OmniHostProps) {
     selectedArchiveId, setSelectedArchiveId,
     selectedTodoId, setSelectedTodoId,
     selectedExampleId, setSelectedExampleId,
+    selectedCommentId, setSelectedCommentId,
+    selectedCutterCardId, setSelectedCutterCardId,
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
@@ -291,6 +336,36 @@ export function OmniHost(p: OmniHostProps) {
     ],
   );
 
+  // Revision/Cutter/Error selections live alongside the rest of the omni
+  // selections. Selecting one clears the others so the omni surface stays
+  // single-selection.
+  const setRevisionInOmni = useCallback((id: string | null) => {
+    setSelectedCommentId(id);
+  }, [setSelectedCommentId]);
+  const setCutterInOmni = useCallback((id: string | null) => {
+    setSelectedCutterCardId(id);
+  }, [setSelectedCutterCardId]);
+
+  // Suggestion accept/reject — call setSuggestionStatus directly. The
+  // native panel hosts also fire follow-up AI requests on accept; keeping
+  // omni's accept lean keeps this builder side-effect-free.
+  const acceptRevisionInOmni = useCallback(
+    (id: string) => p.setRevisionSuggestionStatus(id, "accepted"),
+    [p.setRevisionSuggestionStatus],
+  );
+  const rejectRevisionInOmni = useCallback(
+    (id: string) => p.setRevisionSuggestionStatus(id, "rejected"),
+    [p.setRevisionSuggestionStatus],
+  );
+  const acceptCutterInOmni = useCallback(
+    (id: string) => p.setCutterSuggestionStatus(id, "accepted"),
+    [p.setCutterSuggestionStatus],
+  );
+  const rejectCutterInOmni = useCallback(
+    (id: string) => p.setCutterSuggestionStatus(id, "rejected"),
+    [p.setCutterSuggestionStatus],
+  );
+
   // Memoize the `items` array so its identity is stable across re-renders
   // unless the underlying data (or a selection id) actually changed. This
   // lets OmniViewPanel's memoized children (visibleItems, anchored,
@@ -396,6 +471,46 @@ export function OmniHost(p: OmniHostProps) {
       onJump: scrollToExample,
       onUpdateLatex: replaceExampleLatex,
     }),
+    ...buildRevisionOmniItems({
+      cards: p.revisionCards,
+      selectedId: selectedCommentId,
+      setSelectedId: setRevisionInOmni,
+      jumpToCard,
+      findParagraphPos,
+      editor: editorInstance,
+      updateCommentText: p.updateRevisionCommentText,
+      setCommentAiRequest: p.setRevisionCommentAiRequest,
+      updateSuggestionField: p.updateRevisionSuggestionField,
+      acceptSuggestion: acceptRevisionInOmni,
+      rejectSuggestion: rejectRevisionInOmni,
+      deleteCard: p.deleteRevisionCard,
+    }),
+    ...buildErrorOmniItems({
+      errors: p.latexErrors,
+      selectedId: p.selectedErrorId,
+      setSelectedId: p.setSelectedErrorId,
+      paragraphByErrorId: p.paragraphByErrorId,
+      snippets: p.errorSnippets,
+      anchoredIds: new Set(p.paragraphByErrorId.keys()),
+      dismissedIds: p.dismissedErrorIds,
+      onDismiss: p.dismissError,
+      onJump: p.jumpToError,
+      findParagraphPos,
+    }),
+    ...buildCutterOmniItems({
+      cards: p.cutterCards,
+      selectedId: selectedCutterCardId,
+      setSelectedId: setCutterInOmni,
+      jumpToCard,
+      findParagraphPos,
+      editor: editorInstance,
+      updateCommentText: p.updateCutterCommentText,
+      setCommentAiRequest: p.setCutterCommentAiRequest,
+      updateSuggestionField: p.updateCutterSuggestionField,
+      acceptSuggestion: acceptCutterInOmni,
+      rejectSuggestion: rejectCutterInOmni,
+      deleteCard: p.deleteCutterCard,
+    }),
   ], [
     // Data arrays
     p.footnotes, p.orphanedFootnotes,
@@ -405,13 +520,20 @@ export function OmniHost(p: OmniHostProps) {
     p.sortedArchiveSnippets, p.anchoredIds,
     p.todoItems,
     p.examples,
+    p.revisionCards,
+    p.latexErrors, p.paragraphByErrorId, p.errorSnippets, p.dismissedErrorIds,
+    p.cutterCards,
     // Selection ids
     selectedFootnoteId, selectedCitationId, selectedQuotationGroupId,
     selectedNoteId, selectedArchiveId, selectedTodoId, selectedExampleId,
+    selectedCommentId, selectedCutterCardId, p.selectedErrorId,
     // Stable callbacks from this component
     setFootnoteInOmni, setCitationInOmni, setQuotationGroupInOmni,
     setNoteInOmni, setArchiveInOmni, setTodoInOmni, setExampleInOmni,
+    setRevisionInOmni, setCutterInOmni, p.setSelectedErrorId,
+    acceptRevisionInOmni, rejectRevisionInOmni, acceptCutterInOmni, rejectCutterInOmni,
     scrollToFootnote, scrollToCitation, scrollToExample, replaceExampleLatex, jumpToCard, findParagraphPos,
+    editorInstance,
     // Contexts
     setOverrideEditor, getCitationDisplayText, onCitationCreated,
     // Footnote handlers
@@ -432,6 +554,14 @@ export function OmniHost(p: OmniHostProps) {
     p.updateArchiveSnippet, p.updateArchiveSnippetTitle, p.handleDeleteArchive,
     // Todo handlers
     p.toggleTodo, p.updateTodo, p.updateTodoNotes, p.setTodoAiRequest, p.deleteTodo,
+    // Revision handlers
+    p.updateRevisionCommentText, p.setRevisionCommentAiRequest,
+    p.updateRevisionSuggestionField, p.deleteRevisionCard,
+    // Error handlers
+    p.dismissError, p.jumpToError,
+    // Cutter handlers
+    p.updateCutterCommentText, p.setCutterCommentAiRequest,
+    p.updateCutterSuggestionField, p.deleteCutterCard,
   ]);
 
   return (
@@ -440,7 +570,10 @@ export function OmniHost(p: OmniHostProps) {
       items={items}
       editor={editorInstance}
       enabledCategories={p.getOmniEnabled(p.side)}
+      hideAllCards={p.getOmniHideAll(p.side)}
       onBackgroundClick={clearAllOmniSelections}
+      cardsOffset={p.cardsOffset}
+      cardsSilent={p.cardsSilent}
     />
   );
 }

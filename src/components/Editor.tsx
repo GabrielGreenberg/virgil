@@ -25,7 +25,7 @@ import {
   type LinkedAnchorKind,
 } from "@/links/links";
 import type { Link as VirgilLink, CardWithLinks } from "@/links/links";
-import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
+import { alignEntryToY, findEditorScrollFor } from "@/components/editor-layout/layout-scroll";
 import {
   isAnchorableNode,
   isAnchorableAtom,
@@ -635,6 +635,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         function enterEditMode() {
           // Show annotation area and place input over it
           wrapper.classList.add("has-add-btn");
+          wrapper.classList.add("is-editing-title");
           titleAnnot.style.display = "block";
           titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
 
@@ -658,6 +659,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           let committed = false;
           const cleanup = () => {
             cleanupSizer();
+            wrapper.classList.remove("is-editing-title");
             if (document.body.contains(input)) document.body.removeChild(input);
           };
           const commit = () => {
@@ -824,6 +826,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       function enterEditMode() {
         // Show annotation area and place input over it
         wrapper.classList.add("has-add-btn");
+        wrapper.classList.add("is-editing-title");
         titleAnnot.style.display = "block";
         titleAnnot.textContent = "\u00A0"; // nbsp placeholder for height
 
@@ -853,6 +856,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           if (committed) return;
           committed = true;
           cleanupSizer();
+          wrapper.classList.remove("is-editing-title");
           const val = input.value.trim();
           setTitle(val || null);
           if (document.body.contains(input)) input.remove();
@@ -860,7 +864,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         }
         input.addEventListener("keydown", (e) => {
           if (e.key === "Enter") { e.preventDefault(); commit(); }
-          if (e.key === "Escape") { e.preventDefault(); committed = true; cleanupSizer(); if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
+          if (e.key === "Escape") { e.preventDefault(); committed = true; cleanupSizer(); wrapper.classList.remove("is-editing-title"); if (document.body.contains(input)) input.remove(); if (document.body.contains(overlay)) overlay.remove(); renderAnnot(); }
         });
         input.addEventListener("blur", commit);
         overlay.addEventListener("mousedown", (e) => { e.preventDefault(); commit(); });
@@ -2274,7 +2278,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       // Sentinel -1 means "scroll to the very top of the document"
       if (blockIndex === -1) {
         editor.commands.setTextSelection(1);
-        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        const scrollEl = findEditorScrollFor(editor.view.dom);
         if (scrollEl) scrollEl.scrollTop = 0;
         return;
       }
@@ -2827,7 +2831,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     getActiveParagraphId(): string | null {
       if (!editor) return null;
-      const scrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+      const scrollEl = findEditorScrollFor(editor.view.dom) as HTMLElement | null;
       if (!scrollEl) return null;
       const viewTop = scrollEl.scrollTop;
       const viewBottom = viewTop + scrollEl.clientHeight;
@@ -2944,7 +2948,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       try {
         editor.commands.setTextSelection(targetPos);
         const coords = editor.view.coordsAtPos(targetPos);
-        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        const scrollEl = findEditorScrollFor(editor.view.dom);
         if (scrollEl && coords) {
           const scrollRect = scrollEl.getBoundingClientRect();
           const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
@@ -2987,7 +2991,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const view = editor.view;
       let scrollEl: HTMLElement | null = null;
       try {
-        scrollEl = view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+        scrollEl = findEditorScrollFor(view.dom);
       } catch {
         return [];
       }
@@ -3023,7 +3027,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       try {
         editor.commands.setTextSelection(clamped);
         const coords = editor.view.coordsAtPos(clamped);
-        const scrollEl = editor.view.dom.closest(".overflow-y-auto");
+        const scrollEl = findEditorScrollFor(editor.view.dom);
         if (scrollEl && coords) {
           const scrollRect = scrollEl.getBoundingClientRect();
           const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 100;
@@ -3177,10 +3181,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 min-h-0">
-      <div data-virgil-editor-scroll className="flex-1 overflow-y-auto overflow-x-hidden bg-transparent min-h-0 hide-scrollbar">
-        <EditorContent editor={editor} />
-      </div>
+    <div className="flex flex-col flex-1 min-w-0">
+      <EditorContent editor={editor} />
     </div>
   );
 });

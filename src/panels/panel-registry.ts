@@ -120,8 +120,8 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Revisions",
     folder: "src/panels/Revisions",
     card: { kind: "comment", keyPrefix: "revision", themeKey: "comment" },
-    omniEligible: false,
-    omniSide: null,
+    omniEligible: true,
+    omniSide: "right",
     defaultStripSide: "right",
   },
   cutter: {
@@ -133,8 +133,8 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     // live under the legacy "cut" keys (see CARD_KEY_PREFIXES below,
     // MARKER_META["cut"], CARD_THEMES.cut, panel-typography "cut").
     card: null,
-    omniEligible: false,
-    omniSide: null,
+    omniEligible: true,
+    omniSide: "right",
     defaultStripSide: "right",
   },
   outline: {
@@ -169,8 +169,8 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     label: "Errors",
     folder: "src/panels/Errors",
     card: { kind: "error", keyPrefix: "error", themeKey: "error" },
-    omniEligible: false,
-    omniSide: null,
+    omniEligible: true,
+    omniSide: "right",
     defaultStripSide: "right",
   },
   omni: {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
+import { findRowScroll, findEditorScrollFor } from "./editor-layout/layout-scroll";
 
 interface Connector {
   id: string;
@@ -31,13 +32,14 @@ export default function ArchiveConnectors({
 
     const cr = main.getBoundingClientRect();
 
-    // Find editor scroll container to determine margin lane position
-    const editorScrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
-    if (!editorScrollEl) {
+    // Margin lane position is computed from the editor's DOM rect under
+    // unified row scroll — there's no inner editor scroll to query.
+    const editorDom = editor.view?.dom as HTMLElement | undefined;
+    if (!editorDom) {
       setConnectors([]);
       return;
     }
-    const edRect = editorScrollEl.getBoundingClientRect();
+    const edRect = editorDom.getBoundingClientRect();
 
     // Margin lane X: in the editor padding area near the panel side
     const marginLaneX =
@@ -148,8 +150,12 @@ export default function ArchiveConnectors({
   useEffect(() => {
     compute();
 
+    // Under unified row scroll the row IS the scroll source. Scroll events
+    // don't bubble, so we listen directly on the row (and on any list-panel
+    // internal scrolls via the main-element capture phase as before).
     const main = mainRef.current;
-    // Capture scroll events from both editor and panel scroll containers
+    const rowScroll = findRowScroll();
+    rowScroll?.addEventListener("scroll", scheduleCompute, { passive: true });
     main?.addEventListener("scroll", scheduleCompute, {
       passive: true,
       capture: true,
@@ -158,6 +164,7 @@ export default function ArchiveConnectors({
 
     return () => {
       cancelAnimationFrame(rafRef.current);
+      rowScroll?.removeEventListener("scroll", scheduleCompute);
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
       window.removeEventListener("resize", scheduleCompute);
     };

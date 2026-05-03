@@ -32,6 +32,21 @@ export interface PanelPlacement {
 
 export type Half = "top" | "bottom";
 
+/** A panel can sit in the gutter dock (default) or as a free-floating
+ *  window. The mode is per-panel and persists across reloads. */
+export type PanelMode = "docked" | "floating";
+
+/** One dock slot per side per half. When the side's split is off, the
+ *  single slot is keyed `${side}-full`; when split, halves are
+ *  `${side}-top` and `${side}-bottom`. */
+export type DockSlotKey =
+  | "left-full" | "left-top" | "left-bottom"
+  | "right-full" | "right-top" | "right-bottom";
+
+export function dockSlotKey(side: Side, half: Half | "full"): DockSlotKey {
+  return `${side}-${half}` as DockSlotKey;
+}
+
 /** Where the floating MenuBar sits. "home" = docked in the Virgil top bar,
  *  centered over the document (the default). "free" = free-floating at a
  *  specific viewport coordinate (after the user dragged the toolbar out
@@ -65,8 +80,19 @@ export interface ViewPrefs {
    *  restores it to the same slot instead of always the top. Entries
    *  are removed when a panel is un-popped. */
   poppedOutOrigins: Partial<Record<PanelId, Half>>;
-  /** Saved position/size of each floating panel, keyed by panel id. */
+  /** Saved position/size of each floating panel, keyed by panel id.
+   *  Persisted: a panel re-opens at its last floating rect even after a
+   *  reload. Cleared only when the panel is moved back to docked mode
+   *  via an explicit re-dock gesture (kept across plain close so the
+   *  user's pinned size sticks). */
   floatPositions: Record<string, { x: number; y: number; width: number; height: number }>;
+  /** Per-panel preferred mode. Persisted. New panels default to
+   *  "docked"; switches to "floating" the first time the user undocks. */
+  panelModes: Partial<Record<PanelId, PanelMode>>;
+  /** Currently-occupied dock slots: which panel id (if any) is sitting
+   *  in each slot. Session-only (cleared on reload — opening is a
+   *  session gesture, not a saved layout). */
+  dockSlots: Partial<Record<DockSlotKey, PanelId>>;
   /** Cards currently displayed as floating windows — keys shaped `${kind}:${id}`. */
   poppedOutCards: string[];
   /** Saved position/size of each floating card, keyed by card key. */
@@ -132,6 +158,8 @@ const DEFAULT_PREFS: ViewPrefs = {
   poppedOutPanels: [],
   poppedOutOrigins: {},
   floatPositions: {},
+  panelModes: {},
+  dockSlots: {},
   poppedOutCards: [],
   cardFloatPositions: {},
   showHighlights: true,
@@ -201,15 +229,17 @@ function loadPrefs(): ViewPrefs {
         ...(parsed.printOptions?.panels ?? {}),
       },
     };
-    // Always-float model: force the legacy dock-state fields to their
-    // "no panel docked" values regardless of what's in localStorage.
-    // Reading code (omni-side detection, marginalia connectors) still
-    // expects activeLeft/Right === "omni" to mean "omni is showing on
-    // this side", which is now permanently true. Splits are gone, so
-    // bottom slots are null. Per-panel column widths are stale (they
-    // used to size a docked panel; now they only size the omni column,
-    // which is the float-spawn rect — drop them so users get a usable
-    // default).
+    // Legacy dock-state fields kept clamped to "omni in slot": the
+    // omni-side detection and marginalia connectors still read
+    // activeLeft/Right to identify the omni column. Splits are off by
+    // default; the new dock model can re-enable them via toggleSplit.
+    // panelWidths cleared because old values referenced docked-panel
+    // sizes that no longer apply.
+    //
+    // Open state (poppedOutPanels, dockSlots) is session-only: a reload
+    // starts with no panels open. Mode prefs (panelModes) and saved
+    // float rects (floatPositions) DO persist so reopening a panel
+    // restores its last mode + rect.
     return {
       ...DEFAULT_PREFS,
       ...parsed,
@@ -222,6 +252,11 @@ function loadPrefs(): ViewPrefs {
       _stashedLeft: null,
       _stashedRight: null,
       panelWidths: {},
+      poppedOutPanels: [],
+      poppedOutOrigins: {},
+      dockSlots: {},
+      panelModes: parsed.panelModes ?? {},
+      floatPositions: parsed.floatPositions ?? {},
     };
   } catch {
     return DEFAULT_PREFS;
@@ -251,25 +286,123 @@ export function useViewPrefs() {
     });
   }, [persist]);
 
+  /** Return a free dock slot on `side`, or null if none. Prefers `top`
+   *  in split mode, falls back to `bottom`. Single-slot mode uses
+   *  `${side}-full`. */
+  function findOpenDockSlot(p: ViewPrefs, side: Side): DockSlotKey | null {
+    const isSplit =
+      side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
+    const candidates: DockSlotKey[] = isSplit
+      ? [dockSlotKey(side, "top"), dockSlotKey(side, "bottom")]
+      : [dockSlotKey(side, "full")];
+    for (const k of candidates) {
+      if (!p.dockSlots[k]) return k;
+    }
+    return null;
+  }
+
+  /** True when `id` is currently open in any form (docked or floating). */
+  function isPanelOpen(p: ViewPrefs, id: PanelId): boolean {
+    if (p.poppedOutPanels.includes(id)) return true;
+    return Object.values(p.dockSlots).includes(id);
+  }
+
+  /** Find the dock slot currently holding `id`, if any. */
+  function findDockSlotForPanel(
+    p: ViewPrefs,
+    id: PanelId,
+  ): DockSlotKey | null {
+    for (const k of Object.keys(p.dockSlots) as DockSlotKey[]) {
+      if (p.dockSlots[k] === id) return k;
+    }
+    return null;
+  }
+
   /**
-   * Open a panel as a float at the column rect for `side` (or the panel's
-   * registered default side if not specified). Idempotent: if the panel is
-   * already a float, no-op. This is the single open-as-float entry point;
-   * strip clicks, marker clicks, and programmatic opens all route through
-   * here so the spawn rect is computed in one place.
+   * Open a panel in its preferred mode (docked default, or floating if
+   * the user has previously undocked it). Routes strip clicks, marker
+   * clicks, and programmatic opens through one entry point.
+   *
+   * Docked: assigns the panel to a free dock slot on `side` (top first
+   * in split mode). If no slot is free, falls back to floating.
+   * Floating: appends to poppedOutPanels at the saved float rect (or a
+   * fresh column-spawn rect if no rect saved).
    */
-  const openPanelFloat = useCallback((id: PanelId, side?: Side) => {
+  const openPanel = useCallback((id: PanelId, side?: Side) => {
     if (id === "omni" || id === "blank") return;
     update((p) => {
-      if (p.poppedOutPanels.includes(id)) return p;
+      if (isPanelOpen(p, id)) return p;
       const placement = p.placements.find((pl) => pl.id === id);
       const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side = side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const rect = computeColumnSpawnRect(targetSide);
+      const targetSide: Side =
+        side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const mode: PanelMode = p.panelModes[id] ?? "docked";
+
+      if (mode === "docked") {
+        const slot = findOpenDockSlot(p, targetSide);
+        if (slot) {
+          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        }
+        // No free slot — fall through to floating fallback below.
+      }
+      const savedRect = p.floatPositions[id];
+      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
         floatPositions: { ...p.floatPositions, [id]: rect },
+      };
+    });
+  }, [update]);
+
+  // Back-compat alias: existing call sites using `openPanelFloat` keep
+  // working but now respect the panel's preferred mode (which defaults
+  // to docked for never-undocked panels).
+  const openPanelFloat = openPanel;
+
+  /**
+   * Force-open a panel into a dock slot, ignoring its `panelModes`
+   * preference. Used by L/R strip-icon clicks: a strip click is an
+   * intentional "give me this panel docked" gesture and resets the
+   * panel's mode to "docked" so subsequent opens stay docked too.
+   *
+   * If every dock slot on the target side is occupied, the existing
+   * occupant of the canonical slot (`${side}-full` when not split,
+   * `${side}-top` when split) is displaced to floating so the new
+   * panel can take the slot. This matches the user expectation that
+   * strip clicks always land in the dock.
+   */
+  const openPanelDocked = useCallback((id: PanelId, side?: Side) => {
+    if (id === "omni" || id === "blank") return;
+    update((p) => {
+      if (isPanelOpen(p, id)) return p;
+      const placement = p.placements.find((pl) => pl.id === id);
+      const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
+      const targetSide: Side =
+        side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const isSplit =
+        targetSide === "left"
+          ? p.activeLeftBottom != null
+          : p.activeRightBottom != null;
+      // Pick the target slot: free first, else the canonical slot.
+      let slot = findOpenDockSlot(p, targetSide);
+      if (!slot) slot = isSplit ? dockSlotKey(targetSide, "top") : dockSlotKey(targetSide, "full");
+      const occupant = p.dockSlots[slot];
+      let next: ViewPrefs = {
+        ...p,
+        panelModes: { ...p.panelModes, [id]: "docked" },
+      };
+      // Replace, don't displace: if the slot is occupied, the previous
+      // occupant just closes (kept out of poppedOutPanels). The user's
+      // intent with a strip click is "swap this into the dock", not
+      // "kick the other panel out as a floater".
+      return {
+        ...next,
+        dockSlots: { ...next.dockSlots, [slot]: id },
+        poppedOutPanels:
+          occupant && occupant !== id
+            ? next.poppedOutPanels.filter((x) => x !== occupant)
+            : next.poppedOutPanels,
       };
     });
   }, [update]);
@@ -329,6 +462,7 @@ export function useViewPrefs() {
       poppedOutPanels: [],
       poppedOutOrigins: {},
       poppedOutCards: [],
+      dockSlots: {},
     }));
   }, [update]);
 
@@ -359,25 +493,39 @@ export function useViewPrefs() {
     });
   }, [update]);
 
-  // Toggle a strip panel: open as float if closed, close it if open.
-  // Replaces the old "swap into the dock slot" semantics — strip clicks
-  // are the canonical open/close gesture in the always-float model.
+  // Strip-click toggle: open if closed, close if open. "Open" means
+  // either docked or floating — closing removes the panel from its
+  // current home (clears dockSlot or removes from poppedOutPanels).
+  // The saved float rect persists so re-opening floating restores size.
   const togglePanel = useCallback((id: PanelId) => {
     if (id === "omni" || id === "blank") return;
     update((p) => {
-      const isPopped = p.poppedOutPanels.includes(id);
-      if (isPopped) {
-        const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
+      // Closing path
+      if (isPanelOpen(p, id)) {
+        const dockSlot = findDockSlotForPanel(p, id);
+        const nextDockSlots = { ...p.dockSlots };
+        if (dockSlot) delete nextDockSlots[dockSlot];
         return {
           ...p,
+          dockSlots: nextDockSlots,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-          floatPositions: remainingPositions,
         };
       }
+      // Opening path — defer to openPanel logic via state mutation
       const placement = p.placements.find((pl) => pl.id === id);
       const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side = placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const rect = computeColumnSpawnRect(targetSide);
+      const targetSide: Side =
+        placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const mode: PanelMode = p.panelModes[id] ?? "docked";
+
+      if (mode === "docked") {
+        const slot = findOpenDockSlot(p, targetSide);
+        if (slot) {
+          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        }
+      }
+      const savedRect = p.floatPositions[id];
+      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
@@ -448,27 +596,50 @@ export function useViewPrefs() {
     update((p) => {
       const isSplit =
         side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-      if (side === "left") {
-        if (isSplit) {
-          return { ...p, activeLeftBottom: null };
+      // Migrate dock slots so panels don't disappear across split toggles.
+      // off → on: move ${side}-full's occupant to ${side}-top.
+      // on → off: keep ${side}-top's occupant in ${side}-full; displace
+      //          ${side}-bottom's occupant to floating.
+      const fullKey = dockSlotKey(side, "full");
+      const topKey = dockSlotKey(side, "top");
+      const bottomKey = dockSlotKey(side, "bottom");
+      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
+      let nextPopped = p.poppedOutPanels;
+      let nextModes = p.panelModes;
+      if (!isSplit) {
+        // Splitting on
+        if (nextDockSlots[fullKey]) {
+          nextDockSlots[topKey] = nextDockSlots[fullKey];
+          delete nextDockSlots[fullKey];
         }
-        // Splitting: ensure top is something visible; bottom defaults to omni
-        const top = p.activeLeft ?? "omni";
-        return {
-          ...p,
-          activeLeft: top,
-          activeLeftBottom: "omni",
-        };
       } else {
-        if (isSplit) {
-          return { ...p, activeRightBottom: null };
+        // Splitting off
+        const topOccupant = nextDockSlots[topKey];
+        const bottomOccupant = nextDockSlots[bottomKey];
+        delete nextDockSlots[topKey];
+        delete nextDockSlots[bottomKey];
+        if (topOccupant) nextDockSlots[fullKey] = topOccupant;
+        if (bottomOccupant) {
+          nextModes = { ...nextModes, [bottomOccupant]: "floating" };
+          if (!nextPopped.includes(bottomOccupant)) {
+            nextPopped = [...nextPopped, bottomOccupant];
+          }
         }
+      }
+      const baseUpdate = {
+        ...p,
+        dockSlots: nextDockSlots,
+        poppedOutPanels: nextPopped,
+        panelModes: nextModes,
+      };
+      if (side === "left") {
+        if (isSplit) return { ...baseUpdate, activeLeftBottom: null };
+        const top = p.activeLeft ?? "omni";
+        return { ...baseUpdate, activeLeft: top, activeLeftBottom: "omni" };
+      } else {
+        if (isSplit) return { ...baseUpdate, activeRightBottom: null };
         const top = p.activeRight ?? "omni";
-        return {
-          ...p,
-          activeRight: top,
-          activeRightBottom: "omni",
-        };
+        return { ...baseUpdate, activeRight: top, activeRightBottom: "omni" };
       }
     });
   }, [update]);
@@ -511,44 +682,57 @@ export function useViewPrefs() {
   }, [update]);
 
   /**
-   * Close a floating panel without re-docking it into the sidebar (unlike
-   * togglePopout, which re-docks if the side column is open).
+   * Close a panel — works for either a docked or a floating panel.
+   * Preserves panelModes[id] and floatPositions[id] so re-opening
+   * restores the saved size and mode preference. Reload-clear of
+   * dockSlots happens in loadPrefs, not here.
    */
   const closePopout = useCallback((id: PanelId) => {
     update((p) => {
-      const { [id]: _dropped, ...remainingOrigins } = p.poppedOutOrigins;
-      // Forget the dragged position on close — next pop spawns fresh from
-      // the trigger.
-      const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
+      const { [id]: _droppedOrigin, ...remainingOrigins } = p.poppedOutOrigins;
+      const dockSlot = findDockSlotForPanel(p, id);
+      const nextDockSlots = { ...p.dockSlots };
+      if (dockSlot) delete nextDockSlots[dockSlot];
       return {
         ...p,
         poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
         poppedOutOrigins: remainingOrigins,
-        floatPositions: remainingPositions,
+        dockSlots: nextDockSlots,
+        // floatPositions intentionally unchanged: the user's pinned size
+        // sticks across close/open cycles.
       };
     });
   }, [update]);
 
   /**
-   * Toggle a panel's float state. Symmetric: not-open → open as float;
-   * open → close (forgetting the saved position so the next open re-uses
-   * the column rect rather than the last drag location).
+   * Toggle a panel's open state. Mode-aware: opens via the panel's
+   * preferred mode (defaults to docked).
    */
   const togglePopout = useCallback((id: PanelId) => {
     update((p) => {
-      const isPopped = p.poppedOutPanels.includes(id);
-      if (isPopped) {
-        const { [id]: _droppedPos, ...remainingPositions } = p.floatPositions;
+      if (isPanelOpen(p, id)) {
+        const dockSlot = findDockSlotForPanel(p, id);
+        const nextDockSlots = { ...p.dockSlots };
+        if (dockSlot) delete nextDockSlots[dockSlot];
         return {
           ...p,
+          dockSlots: nextDockSlots,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
-          floatPositions: remainingPositions,
         };
       }
       const placement = p.placements.find((pl) => pl.id === id);
       const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
-      const targetSide: Side = placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const rect = computeColumnSpawnRect(targetSide);
+      const targetSide: Side =
+        placement?.side ?? registryEntry?.defaultStripSide ?? "left";
+      const mode: PanelMode = p.panelModes[id] ?? "docked";
+      if (mode === "docked") {
+        const slot = findOpenDockSlot(p, targetSide);
+        if (slot) {
+          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        }
+      }
+      const savedRect = p.floatPositions[id];
+      const rect = savedRect ?? computeColumnSpawnRect(targetSide);
       return {
         ...p,
         poppedOutPanels: [...p.poppedOutPanels, id],
@@ -556,6 +740,65 @@ export function useViewPrefs() {
       };
     });
   }, [update]);
+
+  /**
+   * Atomic flip from docked → floating. Called by the dock chrome's
+   * drag handler the moment the cursor moves past the dock socket.
+   * Updates panelModes so future opens default to floating, drops the
+   * panel from its dock slot, and seeds the floating rect.
+   */
+  const undockPanel = useCallback(
+    (id: PanelId, initialFloatRect: { x: number; y: number; width: number; height: number }) => {
+      update((p) => {
+        const dockSlot = findDockSlotForPanel(p, id);
+        const nextDockSlots = { ...p.dockSlots };
+        if (dockSlot) delete nextDockSlots[dockSlot];
+        return {
+          ...p,
+          dockSlots: nextDockSlots,
+          poppedOutPanels: p.poppedOutPanels.includes(id)
+            ? p.poppedOutPanels
+            : [...p.poppedOutPanels, id],
+          panelModes: { ...p.panelModes, [id]: "floating" },
+          floatPositions: { ...p.floatPositions, [id]: initialFloatRect },
+        };
+      });
+    },
+    [update],
+  );
+
+  /**
+   * Atomic flip from floating → docked. Called by drag-to-redock when
+   * a floating panel is released over a dock slot. Removes the panel
+   * from poppedOutPanels, places it in the slot, and updates
+   * panelModes so future opens default to docked.
+   */
+  const redockPanel = useCallback(
+    (id: PanelId, slotKey: DockSlotKey) => {
+      update((p) => {
+        // If the slot is occupied by a different panel, displace that
+        // panel to floating so we don't clobber it.
+        const occupant = p.dockSlots[slotKey];
+        let next: ViewPrefs = p;
+        if (occupant && occupant !== id) {
+          next = {
+            ...next,
+            panelModes: { ...next.panelModes, [occupant]: "floating" },
+            poppedOutPanels: next.poppedOutPanels.includes(occupant)
+              ? next.poppedOutPanels
+              : [...next.poppedOutPanels, occupant],
+          };
+        }
+        return {
+          ...next,
+          dockSlots: { ...next.dockSlots, [slotKey]: id },
+          poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id),
+          panelModes: { ...next.panelModes, [id]: "docked" },
+        };
+      });
+    },
+    [update],
+  );
 
   const setFloatPosition = useCallback(
     (id: PanelId, pos: { x: number; y: number; width: number; height: number }) => {
@@ -661,7 +904,11 @@ export function useViewPrefs() {
     setMenuLocation,
     togglePopout,
     closePopout,
+    openPanel,
     openPanelFloat,
+    openPanelDocked,
+    undockPanel,
+    redockPanel,
     setFloatPosition,
     toggleCardPopout,
     closeCardPopout,

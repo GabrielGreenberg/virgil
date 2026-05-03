@@ -25,6 +25,7 @@ import { findParagraphUuids, paragraphForLine } from "@/lib/latex-paragraph-map"
 import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
+import FontsDialog from "./FontsDialog";
 import PrintAppendices from "./PrintAppendices";
 import type { PrintPanelKey } from "@/lib/print";
 import { useSuggestions } from "@/hooks/useSuggestions";
@@ -106,7 +107,7 @@ import {
   deriveCategorySides,
   OmniFilterMenu,
 } from "@/panels/Omni";
-import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType } from "@/hooks/useViewPrefs";
+import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType, type DockSlotKey } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
 import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
 import { useCardHoverHighlight } from "@/links/_shared/useCardHoverHighlight";
@@ -119,6 +120,7 @@ import {
 } from "@/links/_shared/entity-hover";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
+import { DockOutline } from "./editor-layout/DockOutline";
 import {
   FLOATING_PANEL_WIDTH,
   FLOATING_PANEL_HEIGHT,
@@ -130,6 +132,8 @@ import { computeSpawnPosition } from "./editor-layout/spawn-position";
 import {
   alignEntryToY,
   scrollEntryIntoView,
+  findRowScroll,
+  findEditorScrollFor,
 } from "./editor-layout/layout-scroll";
 import {
   PANEL_ICONS,
@@ -312,6 +316,186 @@ function DocStyleDropdown({ docId }: { docId: string | null }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Custom thin scrollbar pinned to the editor column's right edge.
+ *
+ * The unified row scroll places the native scrollbar at the far right of
+ * the window. This component instead renders a custom thumb at the editor
+ * pod's right edge, so the scroll affordance sits next to the content it
+ * scrolls. The native vertical scrollbar is hidden via CSS in globals.css.
+ *
+ * Position is computed in viewport coords from the editor column's
+ * bounding rect, updated on row scroll, resize, and panel collapse/expand.
+ * Drag handlers translate thumb-Y deltas into row.scrollTop changes.
+ */
+function EditorScrollbar({
+  rowRef,
+  editorColRef,
+  topInset = 40,
+  bottomInset = 18,
+  width = 6,
+  outset = 2,
+}: {
+  rowRef: React.RefObject<HTMLElement | null>;
+  editorColRef: React.RefObject<HTMLElement | null>;
+  topInset?: number;
+  bottomInset?: number;
+  width?: number;
+  /** Pixels right of the editor column's right edge to start the track. */
+  outset?: number;
+}) {
+  const [layout, setLayout] = useState({ left: 0, top: 0, height: 0 });
+  const [scroll, setScroll] = useState({ top: 0, height: 1, client: 1 });
+  const [hover, setHover] = useState(false);
+  const dragging = useRef(false);
+
+  const refresh = useCallback(() => {
+    const ec = editorColRef.current;
+    const row = rowRef.current;
+    if (!ec || !row) return;
+    const ecr = ec.getBoundingClientRect();
+    const rowr = row.getBoundingClientRect();
+    setLayout({
+      left: ecr.right + outset,
+      top: rowr.top + topInset,
+      height: Math.max(0, rowr.height - topInset - bottomInset),
+    });
+    // Use editor-column scrollHeight (capped by row's), not row's, so the
+    // thumb maxes out when the editor's bottom comes into view rather than
+    // when the (possibly taller) panel columns do.
+    const effectiveHeight = Math.min(ec.scrollHeight, row.scrollHeight);
+    setScroll({
+      top: row.scrollTop,
+      height: effectiveHeight,
+      client: row.clientHeight,
+    });
+  }, [rowRef, editorColRef, topInset, bottomInset, outset]);
+
+  useEffect(() => {
+    refresh();
+    const row = rowRef.current;
+    const ec = editorColRef.current;
+    if (!row || !ec) return;
+    // Clamp the row's scrollTop to the editor's effective end. The panel
+    // columns can be taller than the editor (unanchored cards stack above
+    // the anchored ones) and would otherwise let the row scroll past the
+    // editor's bottom into empty space.
+    const onScrollClamp = () => {
+      const max = Math.max(0, ec.scrollHeight - row.clientHeight);
+      if (row.scrollTop > max) row.scrollTop = max;
+    };
+    row.addEventListener("scroll", onScrollClamp, { passive: true });
+    row.addEventListener("scroll", refresh, { passive: true });
+    window.addEventListener("resize", refresh);
+    const ro = new ResizeObserver(() => { onScrollClamp(); refresh(); });
+    ro.observe(row);
+    ro.observe(ec);
+    // The row's scrollHeight grows as document content is appended/laid
+    // out; ResizeObserver only fires on clientWidth/Height changes, not
+    // scrollHeight, so also observe the page-wrapper (the actual content
+    // host that grows) and use a MutationObserver as a backstop for
+    // text/node mutations the ResizeObserver misses.
+    const page = ec.querySelector("[data-editor-page]") as HTMLElement | null;
+    if (page) ro.observe(page);
+    const mo = new MutationObserver(() => { onScrollClamp(); refresh(); });
+    mo.observe(row, { childList: true, subtree: true, characterData: true });
+    return () => {
+      row.removeEventListener("scroll", onScrollClamp);
+      row.removeEventListener("scroll", refresh);
+      window.removeEventListener("resize", refresh);
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [rowRef, editorColRef, refresh]);
+
+  const scrollable = scroll.height > scroll.client + 1;
+  const thumbRatio = scrollable ? scroll.client / scroll.height : 1;
+  const thumbHeight = Math.max(24, layout.height * thumbRatio);
+  const maxThumbY = Math.max(0, layout.height - thumbHeight);
+  const progress = scrollable
+    ? Math.min(1, Math.max(0, scroll.top / (scroll.height - scroll.client)))
+    : 0;
+  const thumbY = progress * maxThumbY;
+
+  const onThumbMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const row = rowRef.current;
+      if (!row || !scrollable) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragging.current = true;
+      const startY = e.clientY;
+      const startScrollTop = row.scrollTop;
+      const dragRange = scroll.height - scroll.client;
+      const trackRange = Math.max(1, maxThumbY);
+      const onMove = (ev: MouseEvent) => {
+        if (!dragging.current) return;
+        const dy = ev.clientY - startY;
+        row.scrollTop = startScrollTop + (dy / trackRange) * dragRange;
+      };
+      const onUp = () => {
+        dragging.current = false;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [rowRef, scrollable, scroll.height, scroll.client, maxThumbY],
+  );
+
+  const onTrackMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      const row = rowRef.current;
+      if (!row || !scrollable) return;
+      const trackRect = e.currentTarget.getBoundingClientRect();
+      const clickY = e.clientY - trackRect.top;
+      const direction = clickY < thumbY ? -1 : 1;
+      row.scrollTop = row.scrollTop + direction * scroll.client * 0.9;
+    },
+    [rowRef, scrollable, thumbY, scroll.client],
+  );
+
+  if (!scrollable) return null;
+
+  return (
+    <div
+      data-editor-scrollbar
+      style={{
+        position: "fixed",
+        left: layout.left,
+        top: layout.top,
+        width,
+        height: layout.height,
+        zIndex: 25,
+        pointerEvents: "auto",
+        background: "transparent",
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onMouseDown={onTrackMouseDown}
+    >
+      <div
+        onMouseDown={onThumbMouseDown}
+        style={{
+          position: "absolute",
+          top: thumbY,
+          left: 0,
+          width,
+          height: thumbHeight,
+          background:
+            hover || dragging.current
+              ? "rgba(0,0,0,0.45)"
+              : "rgba(0,0,0,0.25)",
+          borderRadius: width / 2,
+          cursor: "grab",
+          transition: "background 120ms ease",
+        }}
+      />
     </div>
   );
 }
@@ -673,13 +857,14 @@ export default function EditorLayout() {
     setSplitRatio,
     setEditorSplit,
     setEditorSplitRatio,
-    setTopGutter,
-    setBottomGutter,
     setShowHighlights,
     toggleHighlightType,
     togglePopout,
     closePopout,
     openPanelFloat,
+    openPanelDocked,
+    undockPanel,
+    redockPanel,
     setFloatPosition,
     toggleCardPopout,
     closeCardPopout,
@@ -946,15 +1131,6 @@ export default function EditorLayout() {
   // eats the shortage before the editor's (1) contributes.
   const [editorBasis, setEditorBasis] = useState(880);
 
-  // Vertical gutters around the text page. Same design as horizontal
-  // panels: gutters absorb window-shrink first, page height is held.
-  // Persisted in view-prefs so heights survive reload.
-  const topGutterPref = prefs.topGutter;
-  const bottomGutterPref = prefs.bottomGutter;
-  const setTopGutterPref = setTopGutter;
-  const setBottomGutterPref = setBottomGutter;
-  const [pageHeightBasis, setPageHeightBasis] = useState(0);
-  const [isResizingGutters, setIsResizingGutters] = useState(false);
   const nextActionsIdRef = useRef(0);
   const nextFormattingIdRef = useRef(0);
   const nextMenuIdRef = useRef(0);
@@ -1280,6 +1456,18 @@ export default function EditorLayout() {
       return next;
     });
   }, []);
+  // Heading labels visibility — persisted
+  const [showHeadingLabels, setShowHeadingLabels] = useState(() => {
+    if (typeof window === "undefined") return true;
+    try { const v = localStorage.getItem("virgil-show-heading-labels"); return v !== "false"; } catch { return true; }
+  });
+  const toggleHeadingLabels = useCallback(() => {
+    setShowHeadingLabels((prev) => {
+      const next = !prev;
+      try { localStorage.setItem("virgil-show-heading-labels", String(next)); } catch {}
+      return next;
+    });
+  }, []);
 
   // Heading-divider visibility — persisted per level
   const [dividerLevels, setDividerLevels] = useState<Set<DividerLevel>>(() => {
@@ -1315,6 +1503,7 @@ export default function EditorLayout() {
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
   const [commandsPopoutOpen, setCommandsPopoutOpen] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  const [fontsOpen, setFontsOpen] = useState(false);
   const [helperMenuOpen, setHelperMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -1355,10 +1544,6 @@ export default function EditorLayout() {
     rightMargin: zenRightMargin,
     setLeftMargin: setZenLeftMargin,
     setRightMargin: setZenRightMargin,
-    topGutter: zenTopGutter,
-    setTopGutter: setZenTopGutter,
-    bottomGutter: zenBottomGutter,
-    setBottomGutter: setZenBottomGutter,
   } = useZenMode();
 
   // Snap all panel/margin prefs to their current rendered widths. Called
@@ -1390,31 +1575,6 @@ export default function EditorLayout() {
     });
   }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.activeLeft, prefs.activeRight, setPanelWidth, getPanelWidth]);
 
-  // Same pattern for vertical gutters (top/bottom of the text page).
-  const syncGutterPrefsToRendered = useCallback(() => {
-    const col = editorColRef.current;
-    if (!col) return;
-    const rows = col.querySelectorAll<HTMLElement>('[data-flex-row]');
-    rows.forEach(row => {
-      const side = row.getAttribute('data-flex-row');
-      const rendered = row.getBoundingClientRect().height;
-      if (side === 'top') {
-        if (zenModeOn) {
-          if (Math.abs(rendered - zenTopGutter) > 0.5) setZenTopGutter(rendered);
-        } else {
-          if (Math.abs(rendered - topGutterPref) > 0.5) setTopGutterPref(rendered);
-        }
-      }
-      if (side === 'bottom') {
-        if (zenModeOn) {
-          if (Math.abs(rendered - zenBottomGutter) > 0.5) setZenBottomGutter(rendered);
-        } else {
-          if (Math.abs(rendered - bottomGutterPref) > 0.5) setBottomGutterPref(rendered);
-        }
-      }
-    });
-  }, [topGutterPref, bottomGutterPref, zenModeOn, zenTopGutter, setZenTopGutter, zenBottomGutter, setZenBottomGutter]);
-
   // Recompute the editor's flex-basis whenever the panel layout
   // changes — drag, panel toggle, zen mode. The basis captures the
   // "intended" editor width given current panel prefs + window, so
@@ -1435,108 +1595,25 @@ export default function EditorLayout() {
     setEditorBasis(prev => prev !== next ? next : prev);
   }, [prefs.panelWidths, prefs.activeLeft, prefs.activeRight, prefs.activeLeftBottom, prefs.activeRightBottom, zenLeftMargin, zenRightMargin, zenModeOn, mainAreaMounted]);
 
-  // Page height basis: "intended" page height = editor column height
-  // minus padding, gutter prefs, and gap heights. Updated only when
-  // gutter prefs change; on window resize the basis holds and gutters
-  // shrink first.
-  useLayoutEffect(() => {
-    const col = editorColRef.current;
-    if (!col) return;
-    const cs = getComputedStyle(col);
-    let reserved = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    for (const child of col.children) {
-      const el = child as HTMLElement;
-      if (el.hasAttribute('data-editor-page')) continue;
-      if (el.hasAttribute('data-flex-row')) {
-        const basis = parseFloat(getComputedStyle(el).flexBasis);
-        reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().height;
-      } else if (el.classList.contains('drag-gap-h') && el.hasAttribute('data-gutter-gap')) {
-        reserved += el.getBoundingClientRect().height;
-      }
-    }
-    const available = col.clientHeight - reserved;
-    const next = Math.max(400, available);
-    setPageHeightBasis(prev => prev !== next ? next : prev);
-  }, [topGutterPref, bottomGutterPref, zenModeOn, zenTopGutter, zenBottomGutter, mainAreaMounted, currentDocId, docLoading, editorSplit]);
-
-  // Gutter drag state + handlers.
-  const gutterStartY = useRef(0);
-  const gutterStartVal = useRef(0);
-
-  const clampGutter = useCallback((requested: number, side: 'top' | 'bottom') => {
-    const col = editorColRef.current;
-    if (!col) return Math.max(0, requested);
-    // Reserve: column padding + page min + other gutter + both drag-gap heights.
-    const cs = getComputedStyle(col);
-    let reserved = 400 + (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const rows = col.querySelectorAll<HTMLElement>('[data-flex-row]');
-    rows.forEach(row => {
-      if (row.getAttribute('data-flex-row') !== side) {
-        const basis = parseFloat(getComputedStyle(row).flexBasis);
-        reserved += Number.isFinite(basis) ? basis : row.getBoundingClientRect().height;
-      }
-    });
-    col.querySelectorAll<HTMLElement>('[data-gutter-gap]').forEach(gap => {
-      reserved += gap.getBoundingClientRect().height;
-    });
-    const max = Math.max(0, col.clientHeight - reserved);
-    return Math.max(0, Math.min(requested, max));
-  }, []);
-
-  const onTopGutterMove = useCallback((e: MouseEvent) => {
-    const delta = e.clientY - gutterStartY.current;
-    const next = clampGutter(gutterStartVal.current + delta, 'top');
-    if (zenModeOn) {
-      setZenTopGutter(next);
-    } else {
-      setTopGutterPref(next);
-    }
-  }, [clampGutter, zenModeOn, setZenTopGutter, setTopGutterPref]);
-
-  const onBottomGutterMove = useCallback((e: MouseEvent) => {
-    const delta = gutterStartY.current - e.clientY;
-    const next = clampGutter(gutterStartVal.current + delta, 'bottom');
-    if (zenModeOn) {
-      setZenBottomGutter(next);
-    } else {
-      setBottomGutterPref(next);
-    }
-  }, [clampGutter, zenModeOn, setZenBottomGutter, setBottomGutterPref]);
-
-  const topGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onTopGutterMove, deadzone: 3 });
-  const bottomGutterDrag = useDragGap({ cursor: 'row-resize', onMove: onBottomGutterMove, deadzone: 3 });
-
-  const onTopGutterDown = useCallback((e: React.MouseEvent) => {
-    gutterStartY.current = e.clientY;
-    syncGutterPrefsToRendered();
-    const col = editorColRef.current;
-    const top = col?.querySelector<HTMLElement>('[data-flex-row="top"]');
-    const fallback = zenModeOn ? zenTopGutter : topGutterPref;
-    gutterStartVal.current = top ? top.getBoundingClientRect().height : fallback;
-    setIsResizingGutters(true);
-    const onUp = () => {
-      setIsResizingGutters(false);
-      window.removeEventListener('mouseup', onUp);
+  // Match panel columns' min-height to the editor column's natural height
+  // so sticky panel pods stay pinned through the entire document scroll.
+  // Without this, a panel column is only as tall as its content (short),
+  // and sticky un-pins once we scroll past the column's bottom.
+  useEffect(() => {
+    const main = mainAreaRef.current;
+    const editorCol = editorColRef.current;
+    if (!main || !editorCol) return;
+    const apply = () => {
+      const h = editorCol.getBoundingClientRect().height;
+      main.querySelectorAll<HTMLElement>('[data-flex-col]').forEach((p) => {
+        p.style.minHeight = `${h}px`;
+      });
     };
-    window.addEventListener('mouseup', onUp);
-    topGutterDrag.onMouseDown(e);
-  }, [syncGutterPrefsToRendered, topGutterDrag, topGutterPref, zenModeOn, zenTopGutter]);
-
-  const onBottomGutterDown = useCallback((e: React.MouseEvent) => {
-    gutterStartY.current = e.clientY;
-    syncGutterPrefsToRendered();
-    const col = editorColRef.current;
-    const bottom = col?.querySelector<HTMLElement>('[data-flex-row="bottom"]');
-    const fallback = zenModeOn ? zenBottomGutter : bottomGutterPref;
-    gutterStartVal.current = bottom ? bottom.getBoundingClientRect().height : fallback;
-    setIsResizingGutters(true);
-    const onUp = () => {
-      setIsResizingGutters(false);
-      window.removeEventListener('mouseup', onUp);
-    };
-    window.addEventListener('mouseup', onUp);
-    bottomGutterDrag.onMouseDown(e);
-  }, [syncGutterPrefsToRendered, bottomGutterDrag, bottomGutterPref, zenModeOn, zenBottomGutter]);
+    apply();
+    const obs = new ResizeObserver(apply);
+    obs.observe(editorCol);
+    return () => obs.disconnect();
+  }, [mainAreaMounted, currentDocId, docLoading, editorSplit, zenModeOn]);
 
   // MenuBar is always home-docked in the Virgil top bar, centered
   // between the tabs (left) and Zen/Prefs cluster (right). No free
@@ -1596,6 +1673,114 @@ export default function EditorLayout() {
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
+  // Per-side vertical offset applied to the omni cards as a group. Set by
+  // main-text marker clicks: clicking a citation/footnote/etc. shifts the
+  // gutter's cards so the clicked card visually aligns with the click,
+  // without scrolling the document. The card's natural Y comes from
+  // `useInTextPositions` (overlap-resolved), so even when overlap pushes
+  // a card down from its anchor, the offset re-aligns it with the click.
+  const [omniOffsets, setOmniOffsets] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
+  const omniOffsetsRef = useRef(omniOffsets);
+  omniOffsetsRef.current = omniOffsets;
+  // Per-side flag: when true, the cards-inner transform updates without the
+  // 150ms ease transition. Used for jump-to (card-fixed) so the card stays
+  // perfectly stable while the document scrolls underneath. The marker-click
+  // path (card pulls to click) leaves it false so the card animates.
+  const [omniSilent, setOmniSilent] = useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  // Track the click target element per side so we can clear the offset
+  // once the user has scrolled the click target out of view.
+  const omniAnchorElsRef = useRef<{ left: HTMLElement | null; right: HTMLElement | null }>({
+    left: null,
+    right: null,
+  });
+  // Caller provides the card id, clickY, and the source element (the
+  // clicked citation marker, etc.). We look up the card element here,
+  // find which side it's on, compute the additive delta, and update.
+  const alignOmniCardWithClick = useCallback(
+    (cardId: string, clickY: number, sourceEl: HTMLElement | null) => {
+      const wrapper = document.querySelector(
+        `[data-omni-entry-wrapper="${cardId}"]`,
+      ) as HTMLElement | null;
+      if (!wrapper) return;
+      const sideEl = wrapper.closest("[data-panel-column-side]") as HTMLElement | null;
+      const side = sideEl?.dataset.panelColumnSide;
+      if (side !== "left" && side !== "right") return;
+      const delta = clickY - wrapper.getBoundingClientRect().top;
+      omniAnchorElsRef.current[side] = sourceEl;
+      if (Math.abs(delta) < 0.5) return;
+      setOmniOffsets((prev) => ({ ...prev, [side]: prev[side] + delta }));
+    },
+    [],
+  );
+  // Inverse of marker → card alignment. The "Jump to" button on an omni
+  // card calls `alignEntryToY` to scroll the document so the linked text
+  // lands at the card's pre-jump Y. The scroll drags the card's natural
+  // position with it; we compensate here by bumping the cards offset.
+  // We also flip `omniSilent[side]` true for THIS update so the cards
+  // transform changes without the 150ms ease — otherwise the card slides
+  // visibly toward its compensated position instead of staying still.
+  // Reset the silent flag on the next animation frame so subsequent
+  // marker-clicks animate as usual.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { omniKey?: string; clickY?: number }
+        | undefined;
+      if (!detail?.omniKey || typeof detail.clickY !== "number") return;
+      const { omniKey, clickY } = detail;
+      const wrapper = document.querySelector(
+        `[data-omni-entry-wrapper="${omniKey}"]`,
+      ) as HTMLElement | null;
+      if (!wrapper) return;
+      const sideEl = wrapper.closest("[data-panel-column-side]") as HTMLElement | null;
+      const side = sideEl?.dataset.panelColumnSide;
+      if (side !== "left" && side !== "right") return;
+      const delta = clickY - wrapper.getBoundingClientRect().top;
+      if (Math.abs(delta) < 0.5) return;
+      omniAnchorElsRef.current[side] = wrapper;
+      setOmniSilent((prev) => ({ ...prev, [side]: true }));
+      setOmniOffsets((prev) => ({ ...prev, [side]: prev[side] + delta }));
+      requestAnimationFrame(() => {
+        setOmniSilent((prev) => ({ ...prev, [side]: false }));
+      });
+    };
+    window.addEventListener("virgil-card-jumped", handler);
+    return () => window.removeEventListener("virgil-card-jumped", handler);
+  }, []);
+  // Auto-clear-on-offscreen: keep the infrastructure here but disabled
+  // for now. Flip CLEAR_OFFSET_ON_OFFSCREEN to true to clear a side's
+  // offset once its anchor scrolls out of the visible row band. With it
+  // off, the offset persists until another click moves it.
+  const CLEAR_OFFSET_ON_OFFSCREEN = false;
+  useEffect(() => {
+    if (!CLEAR_OFFSET_ON_OFFSCREEN) return;
+    const row = mainAreaRef.current;
+    if (!row) return;
+    const onScroll = () => {
+      const rowRect = row.getBoundingClientRect();
+      let changed = false;
+      let next = omniOffsetsRef.current;
+      for (const side of ["left", "right"] as const) {
+        if (next[side] === 0) continue;
+        const el = omniAnchorElsRef.current[side];
+        const offscreen =
+          !el ||
+          !el.isConnected ||
+          (() => {
+            const r = el.getBoundingClientRect();
+            return r.bottom < rowRect.top || r.top > rowRect.bottom;
+          })();
+        if (offscreen) {
+          next = { ...next, [side]: 0 };
+          omniAnchorElsRef.current[side] = null;
+          changed = true;
+        }
+      }
+      if (changed) setOmniOffsets(next);
+    };
+    row.addEventListener("scroll", onScroll, { passive: true });
+    return () => row.removeEventListener("scroll", onScroll);
+  }, [mainAreaMounted]);
   // Linked-entity hover/activation. One pair drives all three linked
   // surfaces (text passages, margin icons, panel cards). Per-kind
   // selected*Id slots remain for backwards compatibility, but hover is
@@ -1737,6 +1922,32 @@ export default function EditorLayout() {
     });
   }, []);
 
+  // Per-side "hide all cards in omni-view" mode. Sticky toggle driven by
+  // the dashed-square button in each strip's presentation-tools pod.
+  const [omniHideAllCards, setOmniHideAllCards] = useState<Record<"left" | "right", boolean>>(() => {
+    if (typeof window === "undefined") return { left: false, right: false };
+    try {
+      const raw = localStorage.getItem("virgil-omni-hide-all-cards");
+      if (!raw) return { left: false, right: false };
+      const parsed = JSON.parse(raw);
+      return {
+        left: Boolean(parsed?.left),
+        right: Boolean(parsed?.right),
+      };
+    } catch { return { left: false, right: false }; }
+  });
+  const toggleOmniHideAllCards = useCallback((side: "left" | "right") => {
+    setOmniHideAllCards((prev) => {
+      const next = { ...prev, [side]: !prev[side] };
+      try { localStorage.setItem("virgil-omni-hide-all-cards", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+  const getOmniHideAll = useCallback(
+    (side: "left" | "right") => omniHideAllCards[side],
+    [omniHideAllCards],
+  );
+
   // Derive which strip side each category's native panel lives on
   const categorySides = useMemo(
     () => deriveCategorySides(prefs.placements),
@@ -1752,7 +1963,7 @@ export default function EditorLayout() {
       if (entry.isColor && typeof raw === "string") {
         value = applyTransforms(raw, editorTransforms);
       } else if (entry.transform) {
-        value = entry.transform(raw);
+        value = raw == null ? "" : entry.transform(raw);
       } else {
         value = String(raw);
       }
@@ -2059,7 +2270,7 @@ export default function EditorLayout() {
         try {
           editorInstance.commands.setTextSelection(pos);
           const coords = editorInstance.view.coordsAtPos(pos);
-          const scrollEl = editorInstance.view.dom.closest(".overflow-y-auto");
+          const scrollEl = findEditorScrollFor(editorInstance.view.dom);
           if (scrollEl && coords) {
             const scrollRect = scrollEl.getBoundingClientRect();
             const targetY = coords.top - scrollRect.top + scrollEl.scrollTop - 150;
@@ -2106,7 +2317,7 @@ export default function EditorLayout() {
     };
 
     if (!codeView && editorInstance) {
-      const scrollEl = editorInstance.view.dom.closest(".overflow-y-auto");
+      const scrollEl = findEditorScrollFor(editorInstance.view.dom);
       scrollEl?.addEventListener("scroll", debouncedCheck, { passive: true });
       const interval = setInterval(debouncedCheck, 2000);
       return () => {
@@ -2382,7 +2593,7 @@ export default function EditorLayout() {
   useEffect(() => {
     if (!editorInstance) return;
     const view = editorInstance.view;
-    const scrollEl = view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+    const scrollEl = findEditorScrollFor(view.dom);
     if (!scrollEl) return;
 
     const compute = () => {
@@ -2508,7 +2719,7 @@ export default function EditorLayout() {
       setMirrorParTitleIndex(null);
       return;
     }
-    const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
+    const scrollEl = findEditorScrollFor(mirrorView.dom);
     if (!scrollEl) return;
 
     const compute = () => {
@@ -2880,6 +3091,7 @@ export default function EditorLayout() {
     setSelectedTodoId,
     setSelectedQuotationGroupId,
     quotationGroups,
+    alignOmniCardWithClick,
   });
 
 
@@ -2964,6 +3176,7 @@ export default function EditorLayout() {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    alignOmniCardWithClick,
   });
 
   useFootnoteSyncBridges({ suppressOrphanRef, setOrphanedFootnotes, deleteSnippet });
@@ -3565,7 +3778,7 @@ export default function EditorLayout() {
       try {
         const editor = editorRef.current?.getEditor();
         if (editor && content) {
-          const scrollEl = editor.view.dom.closest(".overflow-y-auto") as HTMLElement | null;
+          const scrollEl = findEditorScrollFor(editor.view.dom);
           const topPos = editor.view.posAtCoords({
             left: editor.view.dom.getBoundingClientRect().left + 50,
             top: (scrollEl?.getBoundingClientRect().top ?? 0) + 20,
@@ -3694,7 +3907,7 @@ export default function EditorLayout() {
 
   const { handleStripClick, handleMove } = useStripHandlers({
     prefs,
-    openPanelFloat,
+    openPanelDocked,
     closePopout,
     movePanel,
     selections: selectionsForStrip,
@@ -3878,7 +4091,7 @@ export default function EditorLayout() {
                 entrySelector: `[data-archive-entry="${snippet.id}"]`,
                 panelId: "archive",
                 cardKind: "archive",
-                targetY: clickY,
+                skipScroll: true,
               },
               {
                 prefs: prefsRef.current,
@@ -3889,6 +4102,14 @@ export default function EditorLayout() {
                 getOmniEnabled,
               },
             );
+            if (typeof clickY === "number") {
+              const sourceEl = document.querySelector(
+                `[data-marginalia-marker^="archive:${snippet.id}:"]`,
+              ) as HTMLElement | null;
+              requestAnimationFrame(() => {
+                alignOmniCardWithClick(`archive:${snippet.id}`, clickY, sourceEl);
+              });
+            }
           },
           onDelete: () => removeArchiveParagraphId(snippet.id, pid),
           ...hoverPropsFor(snippet.id, "archive"),
@@ -3946,16 +4167,18 @@ export default function EditorLayout() {
               setActiveAnchorKind(null);
               return;
             }
-            // Route through `openForCard` so the card aligns to clickY
-            // and lands on the correct side / split. Revisions aren't
-            // omni-eligible, so this falls through to the native panel.
+            // Route through `openForCard` so the card lands on the
+            // correct side / split. Revisions aren't omni-eligible, so
+            // this falls through to the native panel; alignOmniCardWithClick
+            // no-ops when the omni wrapper isn't present, leaving the
+            // native panel's own scrolling intact.
             openForCard(
               {
                 omniKey: `revision:${r.id}`,
                 entrySelector: `[data-card-key="revision:${r.id}"]`,
                 panelId: "revisions",
                 cardKind: "comment",
-                targetY: clickY,
+                skipScroll: true,
               },
               {
                 prefs: prefsRef.current,
@@ -3966,6 +4189,14 @@ export default function EditorLayout() {
                 getOmniEnabled,
               },
             );
+            if (typeof clickY === "number") {
+              const sourceEl = document.querySelector(
+                `[data-marginalia-marker^="revision:${r.id}:"]`,
+              ) as HTMLElement | null;
+              requestAnimationFrame(() => {
+                alignOmniCardWithClick(`revision:${r.id}`, clickY, sourceEl);
+              });
+            }
           },
           ...hoverPropsFor(r.id, "revision"),
         });
@@ -4588,7 +4819,30 @@ export default function EditorLayout() {
           setTodoAiRequest={setTodoAiRequest}
           deleteTodo={deleteTodo}
           examples={examples}
+          revisionCards={revisionCards}
+          updateRevisionCommentText={updateRevisionCommentText}
+          setRevisionCommentAiRequest={setRevisionCommentAiRequest}
+          updateRevisionSuggestionField={updateRevisionSuggestionField}
+          setRevisionSuggestionStatus={setRevisionSuggestionStatus}
+          deleteRevisionCard={deleteRevisionCard}
+          latexErrors={allLatexErrors}
+          paragraphByErrorId={paragraphByErrorId}
+          errorSnippets={errorSnippets}
+          dismissedErrorIds={dismissedErrorIds}
+          dismissError={dismissError}
+          jumpToError={jumpToError}
+          selectedErrorId={selectedErrorId}
+          setSelectedErrorId={setSelectedErrorId}
+          cutterCards={cutterCards}
+          updateCutterCommentText={updateCutterCommentText}
+          setCutterCommentAiRequest={setCutterCommentAiRequest}
+          updateCutterSuggestionField={updateCutterSuggestionField}
+          setCutterSuggestionStatus={setCutterSuggestionStatus}
+          deleteCutterCard={deleteCutterCard}
           getOmniEnabled={getOmniEnabled}
+          getOmniHideAll={getOmniHideAll}
+          cardsOffset={omniOffsets[side]}
+          cardsSilent={omniSilent[side]}
         />
       );
     }
@@ -4625,9 +4879,10 @@ export default function EditorLayout() {
   // closing a specific panel just drops its overlay and reveals the
   // already-live omni — no re-render flash.
   function renderPanelColumn(side: Side): React.ReactNode {
-    // Always-float model: the column is permanently the omni backdrop.
-    // Specific panels open as floats on top via prefs.poppedOutPanels.
-    // No split, no docked overlay, no per-panel width plumbing.
+    // Each side's column hosts the Omni-view as the backdrop. Docked
+    // panels (per prefs.dockSlots) portal into the slot anchors via
+    // `<FloatingPanel mode="docked">`; floating panels portal to body.
+    // Slot anchors are sized/positioned by PanelColumn itself.
     const toolbarOverlay = (
       <MarginActionToolbar
         side={side}
@@ -4635,6 +4890,16 @@ export default function EditorLayout() {
         placements={prefs.placements}
       />
     );
+    const isSplit =
+      side === "left"
+        ? prefs.activeLeftBottom != null
+        : prefs.activeRightBottom != null;
+    const dockOccupancy = isSplit
+      ? {
+          top: prefs.dockSlots[`${side}-top`],
+          bottom: prefs.dockSlots[`${side}-bottom`],
+        }
+      : { full: prefs.dockSlots[`${side}-full`] };
     return (
       <PanelColumn
         side={side}
@@ -4645,6 +4910,7 @@ export default function EditorLayout() {
         onSyncBeforeDrag={syncPanelPrefsToRendered}
         topPanelId="omni"
         topOverlay={toolbarOverlay}
+        dockOccupancy={dockOccupancy}
       >
         {{ omni: renderPanelInner("omni", side), overlay: null }}
       </PanelColumn>
@@ -4797,7 +5063,7 @@ export default function EditorLayout() {
         // position in both modes.
         data-prefs="topbarBackground,topbarBackgroundBottom,virgilBarText"
         data-bar-h="32"
-        className={`virgil-bar flex items-center relative min-h-[32px] ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
+        className={`virgil-bar flex items-center min-h-[32px] sticky top-0 z-30 ${zenModeOn ? '' : 'border-b border-[var(--topbar-border,#d5d3ce)]'}`}
         style={{
           color: "var(--virgil-bar-text)",
           background: zenModeOn
@@ -5349,7 +5615,7 @@ export default function EditorLayout() {
           </div>
         </div>
       ) : (
-      <div ref={mainAreaRefCb} className="flex flex-1 overflow-x-auto overflow-y-hidden relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px` }}>
+      <div ref={mainAreaRefCb} data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto items-start relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px`, overscrollBehavior: 'none' }}>
         {/* ── Linking lines suppressed (may re-enable later) ──
         {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
           <ArchiveConnectors
@@ -5407,7 +5673,7 @@ export default function EditorLayout() {
 
         {/* Left icon strip — hidden in Zen mode */}
         {!zenModeOn && (
-        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
+        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-10" style={{ maxHeight: '100dvh' }}>
           {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
               is being reworked in the always-float model — buttons remain here
               as placeholders for the next iteration of behavior. */}
@@ -5426,15 +5692,15 @@ export default function EditorLayout() {
                 <line x1="9" y1="4" x2="9" y2="20" />
               </svg>
             </button>
-            {/* Blank — placeholder; will be redefined */}
+            {/* Blank — hide all cards in omni-view (mode toggle, per side) */}
             <button
-              onClick={() => { activeLeft === "blank" ? setActiveLeft("omni") : setBlank("left"); }}
+              onClick={() => toggleOmniHideAllCards("left")}
               className="iconbtn-md iconbtn-toggle"
-              aria-pressed={activeLeft === "blank"}
-              title={activeLeft === "blank" ? "Show omni-view" : "Hide omni-view"}
-              data-helper="Omni view"
+              aria-pressed={omniHideAllCards.left}
+              title={omniHideAllCards.left ? "Show cards in omni-view" : "Hide all cards in omni-view"}
+              data-helper="Hide cards"
             >
-              <IconBlank active={activeLeft === "blank"} />
+              <IconBlank active={omniHideAllCards.left} />
             </button>
             {/* Split panel toggle — placeholder; will be redefined */}
             <button
@@ -5454,7 +5720,7 @@ export default function EditorLayout() {
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={prefs.poppedOutPanels.includes(p.id)}
+              active={prefs.poppedOutPanels.includes(p.id) || Object.values(prefs.dockSlots).includes(p.id)}
               onClick={() => handleStripClick(p.id, "left")}
               onMove={handleMove}
               side="left"
@@ -5491,7 +5757,7 @@ export default function EditorLayout() {
             (the open panel absorbs past-max leftover);
             both collapsed → grows uncapped so the right strip stays
             flush to the window edge. */}
-        <div ref={editorColRefCb} data-editor-col="true" className={`flex flex-col min-h-0 overflow-x-hidden relative${showParTitles ? "" : " hide-par-titles"}${showLatexComments ? "" : " hide-latex-comments"}${dividerClassName ? " " + dividerClassName : ""} dividers-width-${dividerWidth}`} style={{
+        <div ref={editorColRefCb} data-editor-col="true" className={`flex flex-col min-h-0 relative ${showParTitles ? "" : "hide-par-titles "}${showLatexComments ? "" : "hide-latex-comments "}${showHeadingLabels ? "" : "hide-heading-labels "}${dividerClassName ? dividerClassName + " " : ""}dividers-width-${dividerWidth}`} style={{
           // Grow 1000 vs panel grow 1 → window-upsize feeds the text
           // area almost entirely until it hits page-max, then panels
           // absorb the leftover. Shrink 1 vs panel shrink 100 → window-
@@ -5503,10 +5769,10 @@ export default function EditorLayout() {
           flex: `1000 1 ${editorBasis}px`,
           minWidth: 400,
           maxWidth: (activeLeft != null || activeRight != null) ? 'var(--page-max)' : undefined,
-          // 8px target icon-top minus 4px MenuBar button padding so the
-          // SVG glyphs (not the hover-button outlines) sit 8px below the
-          // column edge — matches the strip pod's icon top.
-          paddingTop: 4,
+          // Top padding is provided by the sticky upper-tool-strip wrapper
+          // below; setting it here too would create a jump between resting
+          // and pinned states.
+          paddingTop: 0,
           // In zen mode, match the top chrome (4 px column padding +
           // 4 px drag gap = 8 px) at the bottom too — so the lowest
           // possible point of the page lines up symmetrically with
@@ -5623,6 +5889,7 @@ export default function EditorLayout() {
                   paraNavBackDisabled: paraHistoryRef.current.idx <= 0,
                   paraNavForwardDisabled: paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1,
                   onCloseAllPanels: closeAllPanels,
+                  onOpenFontsDialog: () => setFontsOpen(true),
                   onActionsDetach: handleActionsDetach,
                   onFormatDetach: handleFormatDetach,
                 }}
@@ -5647,7 +5914,26 @@ export default function EditorLayout() {
               column as panels open and close. Hidden in zen mode so
               the page can extend to the top of the window. */}
           {!zenModeOn && (overrideEditor ?? editorInstance) && (
-            <div className="flex justify-center shrink-0">
+            <div
+              data-tool-strip="text"
+              className="flex justify-center items-start shrink-0 sticky z-20"
+              style={{
+                // Solid manilla band sized to the MenuBar exactly. The
+                // pod-top cap rendered immediately below pins the editor
+                // pod's top border to the bottom of this strip.
+                background: 'var(--background)',
+                top: 0,
+                height: 32,
+                paddingTop: 4,
+                // Bleed past the editor column's 4px horizontal padding
+                // so the band butts against the panel columns' action-button
+                // strips on either side — no gap for content to scroll through.
+                marginLeft: -4,
+                marginRight: -4,
+                pointerEvents: 'none',
+              }}
+            >
+              <div className="pointer-events-auto">
               <MenuBar
                 editor={overrideEditor ?? editorInstance}
                 onAddComment={handleToolbarAddComment}
@@ -5664,6 +5950,8 @@ export default function EditorLayout() {
                 onToggleLatexComments={() => setShowLatexComments((p) => !p)}
                 showSectionIndicator={showSectionIndicator}
                 onToggleSectionIndicator={toggleSectionIndicator}
+                showHeadingLabels={showHeadingLabels}
+                onToggleHeadingLabels={toggleHeadingLabels}
                 onOpenPreferences={() => setPreferencesOpen(true)}
                 editorSplit={editorSplit}
                 onToggleEditorSplit={() => setEditorSplit((s) => !s)}
@@ -5686,48 +5974,115 @@ export default function EditorLayout() {
                 paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
                 paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
                 onCloseAllPanels={closeAllPanels}
+                onOpenFontsDialog={() => setFontsOpen(true)}
                 orientation="horizontal"
                 onSetOrientation={() => {}}
                 onActionsDetach={handleActionsDetach}
                 onFormatDetach={handleFormatDetach}
                 atHome
               />
+              </div>
             </div>
           )}
-          {/* Top gutter — flex-shrink 100 so window-downsize eats it first
-              before touching the page height. In zen mode the gutter has
-              its own pref (zenTopGutter, default 0) so the page extends
-              to the top of the window by default while still being
-              draggable down by hand. */}
-          <div
-            data-flex-row="top"
-            style={{
-              flex: isResizingGutters
-                ? `0 0 ${zenModeOn ? zenTopGutter : topGutterPref}px`
-                : `1 100 ${zenModeOn ? zenTopGutter : topGutterPref}px`,
-              minHeight: 0,
-            }}
-          />
-          {/* Top drag gap — grab bar above the page. Tightened to 4px
-              so the icon row above ends 8px above the pod (4px button
-              bottom-padding + 4px gap), matching the strip pod's
-              vertical rhythm. */}
-          <div
-            data-gutter-gap="top"
-            ref={topGutterDrag.gapRef}
-            className="drag-gap drag-gap-h shrink-0"
-            style={{ height: 4 }}
-            onMouseDown={onTopGutterDown}
-          />
-          {/* Page wrapper — holds the pref page height; panels/omni are
-              unaffected. Flex-grow 1000 so window-upsize feeds the page
-              first, shrink 1 so panels absorb window-downsize first. */}
+          {/* Sticky pod-top cap — paints the editor pod's top edge (white
+              surface, 1px border, rounded top corners) at top:32 always, so
+              the pod's top reads as pinned beneath the toolbar regardless of
+              scroll position. The outer wrapper bleeds past the editor
+              column's 4px padding and into the drag-gap on each side with a
+              manilla background, so the pod's lateral shadow and top-edge
+              border don't peek out beside the cap. The inner div is sized to
+              match the actual pod (column-content width) and renders the
+              white rounded top. height equals --pod-radius so the curve is
+              fully visible; marginBottom: -8 negates the cap's flow space so
+              the real pod below stays at its natural position and overlaps
+              the inner cap exactly at scrollTop=0. */}
+          {!zenModeOn && (overrideEditor ?? editorInstance) && (
+            <div
+              data-editor-pod-cap
+              className="sticky z-30 shrink-0 pointer-events-none flex"
+              style={{
+                top: 32,
+                height: 8,
+                marginBottom: -8,
+                marginLeft: 'calc(-4px - var(--pod-gap))',
+                marginRight: 'calc(-4px - var(--pod-gap))',
+                background: 'var(--background)',
+              }}
+            >
+              <div
+                style={{
+                  flex: 1,
+                  marginLeft: 'calc(4px + var(--pod-gap))',
+                  marginRight: 'calc(4px + var(--pod-gap))',
+                  background: 'var(--pod-editor)',
+                  borderTop: 'var(--pod-border)',
+                  borderLeft: 'var(--pod-border)',
+                  borderRight: 'var(--pod-border)',
+                  borderTopLeftRadius: 'var(--pod-radius)',
+                  borderTopRightRadius: 'var(--pod-radius)',
+                  // Ambient shadow on the cap's OUTER (top) edge, cast
+                  // upward onto the toolbar's manilla band. Matches the
+                  // pod's --pod-shadow (y-offset inverted) so it's the
+                  // same size as the lateral shadows.
+                  boxShadow: '0 -1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06)',
+                  clipPath: 'inset(-20px 0 0 0)',
+                }}
+              />
+            </div>
+          )}
+          {/* Sticky section-path lozenge — pinned right below the pod cap.
+              The wrapper has height: 0 so it takes no flow space; the pill
+              inside renders downward from the wrapper's top edge into the
+              first line or two of editor content with a translucent
+              backdrop-blur so body text reads through. */}
+          {!zenModeOn && showSectionIndicator && (overrideEditor ?? editorInstance) && (
+            <div
+              className="sticky z-20 shrink-0 flex justify-center pointer-events-none"
+              style={{ top: 40, height: 0 }}
+            >
+              <SectionLozenge sectionPath={currentSectionPath} />
+            </div>
+          )}
+          {/* Sticky expand-all / collapse-all controls — pinned right below
+              the pod cap, fade in on hover anywhere in the 24px band. The
+              wrapper takes no flow space (marginBottom: -24 negates its
+              height) so the editor content stays at its natural top. */}
+          {!zenModeOn && (overrideEditor ?? editorInstance) && (
+            <div
+              className="sticky z-20 shrink-0 group"
+              style={{ top: 40, height: 24, marginBottom: -24 }}
+            >
+              <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
+                <button
+                  onClick={() => editorRef.current?.expandAllSections()}
+                  className="text-[var(--muted)] hover:text-ink-body transition-colors"
+                  title="Expand all sections"
+                >
+                  <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 1 L7 4.5 L12 1" />
+                    <path d="M2 5.5 L7 9 L12 5.5" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => editorRef.current?.collapseAllSections()}
+                  className="text-[var(--muted)] hover:text-ink-body transition-colors"
+                  title="Collapse all sections"
+                >
+                  <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M2 4.5 L7 1 L12 4.5" />
+                    <path d="M2 9 L7 5.5 L12 9" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          {/* Page wrapper — naturally tall under unified row scroll.
+              min-height keeps an empty doc from collapsing the chrome. */}
           <div
             data-editor-page="true"
-            className="flex flex-col min-h-0 relative"
+            className="flex flex-col relative"
             style={{
-              flex: `1000 1 ${pageHeightBasis}px`,
-              minHeight: 400,
+              minHeight: 'calc(100svh - var(--topbar-h, 56px) - 2 * var(--pod-gap))',
             }}
           >
           {currentDocId && content && !docLoading ? (
@@ -5787,7 +6142,19 @@ export default function EditorLayout() {
                  doesn't set its own data-prefs — surfaces these controls. */
               <div
                 data-prefs="surfaceColor,editorTextColor,editorFontSize,editorLineHeight"
-                className="flex-1 flex flex-col min-h-0 overflow-hidden relative" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
+                data-marginalia-host
+                className="flex-1 flex flex-col relative" style={{
+                  background: 'var(--pod-editor)',
+                  borderRadius: 'var(--pod-radius)',
+                  border: 'var(--pod-border)',
+                  boxShadow: 'var(--pod-shadow)',
+                  // Clip the box-shadow at top and bottom so it doesn't
+                  // bleed into the upper tool strip's manilla band or past
+                  // the bottom cap into the column's padding region. The
+                  // top and bottom caps now carry their own ambient
+                  // shadows; the pod's shadow only extends laterally.
+                  clipPath: 'inset(0 -20px 0 -20px)',
+                }}>
                 <VirgilEditor
                   ref={editorRef}
                   initialContent={content}
@@ -5811,39 +6178,12 @@ export default function EditorLayout() {
                   exampleIsPoppedRef={exampleIsPoppedRef}
                 />
                 {!zenModeOn && (
-                  <div className="group absolute top-0 left-0 right-0 h-6 z-20">
-                    <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
-                      <button
-                        onClick={() => editorRef.current?.expandAllSections()}
-                        className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                        title="Expand all sections"
-                      >
-                        <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 1 L7 4.5 L12 1" />
-                          <path d="M2 5.5 L7 9 L12 5.5" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => editorRef.current?.collapseAllSections()}
-                        className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                        title="Collapse all sections"
-                      >
-                        <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M2 4.5 L7 1 L12 4.5" />
-                          <path d="M2 9 L7 5.5 L12 9" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {!zenModeOn && (
                   <Marginalia
                     editor={editorInstance}
                     markers={visibleMarginaliaMarkers}
                     panelSides={marginaliaPanelSides}
                   />
                 )}
-                {!zenModeOn && showSectionIndicator && <SectionLozenge sectionPath={currentSectionPath} />}
               </div>
             )
           ) : (
@@ -5899,28 +6239,53 @@ export default function EditorLayout() {
             }
           />
           </div>
-          {/* Bottom drag gap — grab bar below the page. Matches the top
-              drag gap's 4px height in zen mode so the lowest possible
-              point for the page is symmetric with the topmost. */}
-          <div
-            data-gutter-gap="bottom"
-            ref={bottomGutterDrag.gapRef}
-            className="drag-gap drag-gap-h shrink-0"
-            style={{ height: zenModeOn ? 4 : 'var(--pod-gap)' }}
-            onMouseDown={onBottomGutterDown}
-          />
-          {/* Bottom gutter — in zen mode the page extends to the bottom
-              edge of the window by default (zenBottomGutter = 0); the
-              user can drag it taller from the bottom drag handle. */}
-          <div
-            data-flex-row="bottom"
-            style={{
-              flex: isResizingGutters
-                ? `0 0 ${zenModeOn ? zenBottomGutter : bottomGutterPref}px`
-                : `1 100 ${zenModeOn ? zenBottomGutter : bottomGutterPref}px`,
-              minHeight: 0,
-            }}
-          />
+          {/* Sticky pod-bottom cap — mirror of the top cap. The outer is
+              flex-col with manilla bg; it pins to the very bottom of the
+              scroll container (sticky bottom: 0) and covers the pod-gap
+              region beneath the cap so editor content scrolling past the
+              cap's white edge can't bleed into the column's bottom padding.
+              Inner row holds the 8px white pod-bottom (rounded BOTTOM
+              corners + bottom/left/right borders) sitting above a 10px
+              manilla band — equivalent to how the top toolbar's solid
+              manilla sits above the top cap. marginTop: -(8 + pod-gap)
+              negates total flow space so the page-wrapper isn't pushed
+              up. */}
+          {!zenModeOn && (overrideEditor ?? editorInstance) && (
+            <div
+              data-editor-pod-cap-bottom
+              className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
+              style={{
+                bottom: 0,
+                height: 'calc(8px + var(--pod-gap))',
+                marginTop: 'calc(-8px - var(--pod-gap))',
+                marginLeft: 'calc(-4px - var(--pod-gap))',
+                marginRight: 'calc(-4px - var(--pod-gap))',
+                background: 'var(--background)',
+              }}
+            >
+              <div className="flex" style={{ flex: '0 0 8px' }}>
+                <div
+                  style={{
+                    flex: 1,
+                    marginLeft: 'calc(4px + var(--pod-gap))',
+                    marginRight: 'calc(4px + var(--pod-gap))',
+                    background: 'var(--pod-editor)',
+                    borderBottom: 'var(--pod-border)',
+                    borderLeft: 'var(--pod-border)',
+                    borderRight: 'var(--pod-border)',
+                    borderBottomLeftRadius: 'var(--pod-radius)',
+                    borderBottomRightRadius: 'var(--pod-radius)',
+                    // Ambient shadow on the cap's OUTER (bottom) edge,
+                    // cast downward onto the manilla canvas below. Uses
+                    // var(--pod-shadow) directly so it matches the pod's
+                    // lateral shadow size exactly.
+                    boxShadow: 'var(--pod-shadow)',
+                    clipPath: 'inset(0 0 -20px 0)',
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right panel column. In Zen mode this position becomes an empty
@@ -5934,7 +6299,7 @@ export default function EditorLayout() {
 
         {/* Right icon strip — hidden in Zen mode */}
         {!zenModeOn && (
-        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5">
+        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-10" style={{ maxHeight: '100dvh' }}>
           {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
               is being reworked in the always-float model — buttons remain here
               as placeholders for the next iteration of behavior. */}
@@ -5953,15 +6318,15 @@ export default function EditorLayout() {
                 <line x1="15" y1="4" x2="15" y2="20" />
               </svg>
             </button>
-            {/* Blank — placeholder; will be redefined */}
+            {/* Blank — hide all cards in omni-view (mode toggle, per side) */}
             <button
-              onClick={() => { activeRight === "blank" ? setActiveRight("omni") : setBlank("right"); }}
+              onClick={() => toggleOmniHideAllCards("right")}
               className="iconbtn-md iconbtn-toggle"
-              aria-pressed={activeRight === "blank"}
-              title={activeRight === "blank" ? "Show omni-view" : "Hide omni-view"}
-              data-helper="Omni view"
+              aria-pressed={omniHideAllCards.right}
+              title={omniHideAllCards.right ? "Show cards in omni-view" : "Hide all cards in omni-view"}
+              data-helper="Hide cards"
             >
-              <IconBlank active={activeRight === "blank"} />
+              <IconBlank active={omniHideAllCards.right} />
             </button>
             {/* Split panel toggle — placeholder; will be redefined */}
             <button
@@ -5981,7 +6346,7 @@ export default function EditorLayout() {
             <StripButton
               key={p.id}
               panelId={p.id}
-              active={prefs.poppedOutPanels.includes(p.id)}
+              active={prefs.poppedOutPanels.includes(p.id) || Object.values(prefs.dockSlots).includes(p.id)}
               onClick={() => handleStripClick(p.id, "right")}
               onMove={handleMove}
               side="right"
@@ -6002,6 +6367,7 @@ export default function EditorLayout() {
           </div>
         </div>
         )}
+        <EditorScrollbar rowRef={mainAreaRef} editorColRef={editorColRef} />
       </div>
       )}
       <PrintDialog
@@ -6010,6 +6376,12 @@ export default function EditorLayout() {
         options={prefs.printOptions}
         onOptionsChange={setPrintOptions}
         marginaliaLive={showMarginalia}
+      />
+      <FontsDialog
+        open={fontsOpen}
+        onClose={() => setFontsOpen(false)}
+        prefs={editorPrefs}
+        onUpdate={updatePref}
       />
       {preferencesOpen && (
         <PreferencesModal
@@ -6109,37 +6481,73 @@ export default function EditorLayout() {
           in-list renders prevents double-mounting when the source panel
           is also open. Hidden in Zen mode — prefs state is retained. */}
       {!zenModeOn && prefs.poppedOutCards.map((key) => renderPoppedCard(key, poppedCardDeps))}
-      {/* Floating (popped-out) panels — rendered via portal above everything.
-          Hidden in Zen mode. */}
-      {!zenModeOn && prefs.poppedOutPanels.map((pid, i) => {
-        const placement = prefs.placements.find((pl) => pl.id === pid);
-        const side: Side = placement?.side ?? "right";
-        const saved = prefs.floatPositions[pid];
-        const initialX = saved?.x ?? Math.max(
-          FLOATING_PANEL_VIEWPORT_MARGIN,
-          window.innerWidth / 2 - FLOATING_PANEL_WIDTH / 2 + i * FLOATING_PANEL_STACK_OFFSET,
-        );
-        const initialY = saved?.y ?? Math.max(
-          FLOATING_PANEL_VIEWPORT_MARGIN,
-          window.innerHeight / 2 - FLOATING_PANEL_HEIGHT / 2 + i * FLOATING_PANEL_STACK_OFFSET,
-        );
-        const initialWidth = saved?.width ?? FLOATING_PANEL_WIDTH;
-        const initialHeight = saved?.height ?? FLOATING_PANEL_HEIGHT;
-        return (
-          <FloatingPanel
-            key={pid}
-            initialX={initialX}
-            initialY={initialY}
-            initialWidth={initialWidth}
-            initialHeight={initialHeight}
-            zIndex={FLOATING_PANEL_Z_BASE + i}
-            onChange={(pos) => setFloatPosition(pid, pos)}
-            onFocus={() => focusFloating({ kind: "panel", id: pid })}
-          >
-            {renderPanelWithChrome(pid, side)}
-          </FloatingPanel>
-        );
-      })}
+      {/* Open panels — both docked and floating modes flow through the
+          same FloatingPanel shell. Docked panels portal into the dock-
+          slot anchor inside their gutter PanelColumn; floating panels
+          portal to document.body. The shell preserves its component
+          instance across mode flips so drag-to-undock is one continuous
+          gesture. Hidden in Zen mode. */}
+      {!zenModeOn && (() => {
+        // Build a unified list of "open" panels: anything in dockSlots
+        // OR poppedOutPanels. A panel can be in only one of these at a
+        // time; we de-dupe by id just in case state is in flux.
+        const open: Array<{ pid: PanelId; mode: "docked" | "floating"; slotKey: DockSlotKey | null }> = [];
+        const seen = new Set<PanelId>();
+        for (const slotKey of Object.keys(prefs.dockSlots) as DockSlotKey[]) {
+          const pid = prefs.dockSlots[slotKey];
+          if (!pid || seen.has(pid)) continue;
+          seen.add(pid);
+          open.push({ pid, mode: "docked", slotKey });
+        }
+        for (const pid of prefs.poppedOutPanels) {
+          if (seen.has(pid)) continue;
+          seen.add(pid);
+          open.push({ pid, mode: "floating", slotKey: null });
+        }
+        return open.map(({ pid, mode, slotKey }, i) => {
+          const placement = prefs.placements.find((pl) => pl.id === pid);
+          const side: Side = placement?.side ?? "right";
+          const saved = prefs.floatPositions[pid];
+          const initialX = saved?.x ?? Math.max(
+            FLOATING_PANEL_VIEWPORT_MARGIN,
+            window.innerWidth / 2 - FLOATING_PANEL_WIDTH / 2 + i * FLOATING_PANEL_STACK_OFFSET,
+          );
+          const initialY = saved?.y ?? Math.max(
+            FLOATING_PANEL_VIEWPORT_MARGIN,
+            window.innerHeight / 2 - FLOATING_PANEL_HEIGHT / 2 + i * FLOATING_PANEL_STACK_OFFSET,
+          );
+          const initialWidth = saved?.width ?? FLOATING_PANEL_WIDTH;
+          const initialHeight = saved?.height ?? FLOATING_PANEL_HEIGHT;
+          return (
+            <FloatingPanel
+              key={pid}
+              panelId={pid}
+              mode={mode}
+              slotKey={slotKey}
+              initialX={initialX}
+              initialY={initialY}
+              initialWidth={initialWidth}
+              initialHeight={initialHeight}
+              zIndex={FLOATING_PANEL_Z_BASE + i}
+              onChange={(pos) => setFloatPosition(pid, pos)}
+              onUndock={(rect) => undockPanel(pid, rect)}
+              getSplitState={() => ({
+                left: prefs.activeLeftBottom != null,
+                right: prefs.activeRightBottom != null,
+              })}
+              onMaybeRedock={(slotKey) => redockPanel(pid, slotKey)}
+              onFocus={() => focusFloating({ kind: "panel", id: pid })}
+            >
+              {renderPanelWithChrome(pid, side)}
+            </FloatingPanel>
+          );
+        });
+      })()}
+      {/* Body-portaled hard-black outline that marks the active dock
+          target during drag — both undock-from-dock and redock-from-
+          float gestures share it. Sits above floating panels so it's
+          never occluded. */}
+      {!zenModeOn && <DockOutline />}
     </div>
     </PoppedCardsContext.Provider>
     </CollabProvider>

@@ -82,6 +82,16 @@ const MONO_FONTS = ["Geist Mono", "JetBrains Mono", "Fira Code", "Source Code Pr
 const DISPLAY_FONTS = ["Playfair Display", "Cinzel", "Cormorant Garamond", "Libre Baskerville", "EB Garamond"];
 const LOGO_FONTS = ["Cinzel", "Playfair Display", "Cormorant Garamond", "Libre Baskerville"];
 
+/** Curated pool for the Fonts… dialog (main-text categories). Grouped
+ *  serif → sans → display so the dropdown can render section dividers. */
+export const MAIN_TEXT_FONTS: { group: string; fonts: string[] }[] = [
+  { group: "Serif", fonts: ["Source Serif 4", "Georgia", "Libre Baskerville", "Lora", "Merriweather", "EB Garamond", "Crimson Text"] },
+  { group: "Sans-serif", fonts: ["Inter", "system-ui", "Helvetica Neue", "Open Sans", "Lato", "Roboto", "IBM Plex Sans", "Source Sans 3"] },
+  { group: "Display", fonts: ["Playfair Display", "Cinzel", "Cormorant Garamond"] },
+];
+
+export const ALL_MAIN_TEXT_FONTS: string[] = MAIN_TEXT_FONTS.flatMap((g) => g.fonts);
+
 // ─── The Preference Tree ──────────────────────────────────────────────────────
 
 export const PREFERENCES_TREE: PrefNode[] = [
@@ -335,6 +345,16 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "fontDisplay", cssVar: "--font-display-override", isColor: false, transform: (v) => `"${v}"` },
   { key: "fontLogo", cssVar: "--font-logo-override", isColor: false, transform: (v) => `"${v}"` },
   { key: "fontMono", cssVar: "--font-mono-override", isColor: false, transform: (v) => `"${v}"` },
+
+  // Fonts… dialog — non-nullable size fields go straight through.
+  // Nullable family fields are handled in DERIVED_CSS below so they can
+  // resolve "pinned to body" → bodySerif rather than leaving the var empty
+  // (which would defeat the var() fallback chain).
+  { key: "fontMaketitleTitleSize", cssVar: "--font-maketitle-title-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontMaketitleMetaSize", cssVar: "--font-maketitle-meta-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH1Size", cssVar: "--font-headers-h1-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH2Size", cssVar: "--font-headers-h2-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH3Size", cssVar: "--font-headers-h3-size", isColor: false, transform: (v) => `${v}rem` },
 ];
 
 // Derived CSS variables computed from multiple preferences
@@ -352,4 +372,10 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
   { cssVar: "--note-bg", compute: (p) => deriveLight(p.noteColor, 0.06) },
   { cssVar: "--pod-border", compute: (p) => `1px solid ${p.borderLight}` },
+  // Per-category font families. When the user picks "Pin to body family"
+  // (stored as null) we resolve to the body family here so the rendered
+  // CSS var always carries a usable value.
+  { cssVar: "--font-maketitle-family", compute: (p) => `"${p.fontMaketitleFamily ?? p.fontSerif}"` },
+  { cssVar: "--font-headers-family", compute: (p) => `"${p.fontHeadersFamily ?? p.fontSerif}"` },
+  { cssVar: "--font-partitle-family", compute: (p) => `"${p.fontParTitleFamily ?? p.fontSans}"` },
 ];

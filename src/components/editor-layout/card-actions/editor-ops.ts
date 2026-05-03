@@ -2,6 +2,7 @@ import { useCallback, useRef, type RefObject } from "react";
 import type { JSONContent } from "@tiptap/react";
 import type { EditorView } from "prosemirror-view";
 import type { EditorHandle } from "../../Editor";
+import { findEditorScrollFor } from "../layout-scroll";
 
 /**
  * Editor-scope action handlers: update debouncing, scroll routing across
@@ -52,7 +53,7 @@ export function useEditorOps(deps: {
         if (!editor) return;
         if (blockIndex === -1) {
           editor.commands.setTextSelection(1);
-          const scrollEl = mirrorView.dom.closest(".overflow-y-auto") as HTMLElement | null;
+          const scrollEl = findEditorScrollFor(mirrorView.dom);
           if (scrollEl) scrollEl.scrollTop = 0;
           return;
         }

@@ -1,5 +1,5 @@
 import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
-import type { CardKind } from "@/panels/_shared/types";
+import type { CardKind, PanelKind } from "@/panels/_shared/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { alignEntryToY, scrollEntryIntoView } from "../layout-scroll";
@@ -49,6 +49,11 @@ export interface OpenForCardArgs {
   targetY?: number;
   /** Optional split-aware routing source (citations). */
   splitSource?: SplitSource;
+  /** When true, skip all scroll-into-view / align calls. Used by callers
+   *  that handle alignment some other way (e.g. citation clicks set an
+   *  anchor override that pulls the card to the click without scrolling
+   *  the document). */
+  skipScroll?: boolean;
 }
 
 function resolveHomeSide(prefs: ViewPrefs, panelId: PanelId, fallback: Side): Side {
@@ -65,7 +70,7 @@ function scrollAfterMount(selector: string, targetY?: number) {
 }
 
 export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void {
-  const { omniKey, entrySelector, panelId, cardKind, targetY, splitSource } = args;
+  const { omniKey, entrySelector, panelId, targetY, splitSource, skipScroll } = args;
   const {
     prefs,
     setActiveLeft,
@@ -75,8 +80,16 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
     getOmniEnabled,
   } = deps;
 
-  // Rule 1: Omni is already hosting the card somewhere → scroll there.
-  if (tryScrollOmniEntry(omniKey, targetY)) return;
+  // Rule 1: Omni is already hosting the card somewhere → scroll there
+  // (unless the caller is handling alignment itself).
+  if (skipScroll) {
+    const entry = document.querySelector(
+      `[data-omni-entry="${omniKey}"], [data-omni-entry^="${omniKey}@"]`,
+    );
+    if (entry) return;
+  } else if (tryScrollOmniEntry(omniKey, targetY)) {
+    return;
+  }
 
   const registry = PANEL_REGISTRY[panelId as keyof typeof PANEL_REGISTRY];
   const fallbackSide: Side = registry?.defaultStripSide ?? "left";
@@ -91,9 +104,10 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
   }
 
   // Rule 3: Open Omni on home side, or fall back to native if Omni
-  // can't host this card (not omni-eligible, or filtered out).
+  // can't host this card (not omni-eligible, or filtered out). Filter
+  // categories are PanelKinds, so we test by the home panel id.
   const omniWillShow =
-    !!registry?.omniEligible && getOmniEnabled(homeSide).has(cardKind);
+    !!registry?.omniEligible && getOmniEnabled(homeSide).has(panelId as PanelKind);
   const target: PanelId = omniWillShow ? "omni" : panelId;
 
   // Citation-style split-aware routing: when the click originates inside
@@ -125,7 +139,9 @@ export function openForCard(args: OpenForCardArgs, deps: OpenForCardDeps): void 
 
   // Scroll: prefer the Omni entry (if we just opened Omni), else the
   // native entry. We do both queries in the rAF because by then whichever
-  // one exists will be in the DOM.
+  // one exists will be in the DOM. Skipped when the caller handles
+  // alignment itself.
+  if (skipScroll) return;
   requestAnimationFrame(() => {
     const omniEntry =
       (target === "omni"

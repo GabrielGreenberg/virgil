@@ -321,6 +321,8 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   onToggleLatexComments: () => void;
   showSectionIndicator: boolean;
   onToggleSectionIndicator: () => void;
+  showHeadingLabels: boolean;
+  onToggleHeadingLabels: () => void;
   onOpenPreferences?: () => void;
   editorSplit?: boolean;
   onToggleEditorSplit?: () => void;
@@ -345,6 +347,7 @@ interface MenuBarProps extends ActionToolbarCallbacks {
   /* expand/collapse-all-sections intentionally absent: the Actions toolbar
      is reserved for "create new item" operations. */
   onCloseAllPanels?: () => void;
+  onOpenFontsDialog?: () => void;
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
@@ -1035,6 +1038,8 @@ function ViewMenu({
   onToggleLatexComments,
   showSectionIndicator,
   onToggleSectionIndicator,
+  showHeadingLabels,
+  onToggleHeadingLabels,
   onOpenPreferences,
   showMarginalia,
   onToggleMarginalia,
@@ -1052,10 +1057,12 @@ function ViewMenu({
   orientation,
   onSetOrientation,
   onCloseAllPanels,
+  onOpenFontsDialog,
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
   | "showLatexComments" | "onToggleLatexComments"
   | "showSectionIndicator" | "onToggleSectionIndicator"
+  | "showHeadingLabels" | "onToggleHeadingLabels"
   | "onOpenPreferences"
   | "showMarginalia" | "onToggleMarginalia"
   | "hiddenMarginaliaTypes" | "onToggleMarginaliaType"
@@ -1065,6 +1072,7 @@ function ViewMenu({
   | "dividerWidth" | "onSetDividerWidth"
   | "orientation" | "onSetOrientation"
   | "onCloseAllPanels"
+  | "onOpenFontsDialog"
 >) {
   const [open, setOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
@@ -1143,6 +1151,13 @@ function ViewMenu({
           >
             <span>Current section</span>
             <span className="text-[var(--accent)]">{showSectionIndicator ? "\u2713" : ""}</span>
+          </button>
+          <button
+            onClick={() => { onToggleHeadingLabels(); setOpen(false); }}
+            className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center justify-between gap-3"
+          >
+            <span>Labels</span>
+            <span className="text-[var(--accent)]">{showHeadingLabels ? "\u2713" : ""}</span>
           </button>
           <div className="my-1 border-t border-edge-subtle" />
           <button
@@ -1257,6 +1272,18 @@ function ViewMenu({
               )}
             </>
           )}
+          {/* Fonts dialog launcher — sits above the close-all action. */}
+          {onOpenFontsDialog ? (
+            <>
+              <div className="my-1 border-t border-edge-subtle" />
+              <button
+                onClick={() => { onOpenFontsDialog(); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
+              >
+                <span>Fonts&hellip;</span>
+              </button>
+            </>
+          ) : null}
           {onCloseAllPanels && (
             <>
               <div className="my-1 border-t border-edge-subtle" />
@@ -1286,6 +1313,7 @@ function MenuBarContent({
   showParTitles, onToggleParTitles,
   showLatexComments, onToggleLatexComments,
   showSectionIndicator, onToggleSectionIndicator,
+  showHeadingLabels, onToggleHeadingLabels,
   onOpenPreferences,
   editorSplit, onToggleEditorSplit, activeSplitPane,
   showMarginalia, onToggleMarginalia,
@@ -1298,6 +1326,7 @@ function MenuBarContent({
   onCloseAllPanels,
   onActionsDetach, onFormatDetach,
   onSetOrientation,
+  onOpenFontsDialog,
   kebabAtEnd = false,
   collabStatus,
 }: {
@@ -1317,6 +1346,8 @@ function MenuBarContent({
       onToggleLatexComments={onToggleLatexComments}
       showSectionIndicator={showSectionIndicator}
       onToggleSectionIndicator={onToggleSectionIndicator}
+      showHeadingLabels={showHeadingLabels}
+      onToggleHeadingLabels={onToggleHeadingLabels}
       onOpenPreferences={onOpenPreferences}
       showMarginalia={showMarginalia}
       onToggleMarginalia={onToggleMarginalia}
@@ -1334,6 +1365,7 @@ function MenuBarContent({
       orientation={orientation}
       onSetOrientation={onSetOrientation}
       onCloseAllPanels={onCloseAllPanels}
+      onOpenFontsDialog={onOpenFontsDialog}
     />
   );
   return (

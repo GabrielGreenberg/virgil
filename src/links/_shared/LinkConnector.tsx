@@ -10,6 +10,7 @@ import {
 } from "../link-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import type { LinkKind } from "./types";
+import { findRowScroll } from "@/components/editor-layout/layout-scroll";
 
 interface Connector {
   id: string;
@@ -231,20 +232,20 @@ export default function LinkConnector({
   useEffect(() => {
     compute();
     const main = mainRef.current;
+    const rowScroll = findRowScroll();
+    rowScroll?.addEventListener("scroll", scheduleCompute, { passive: true });
     main?.addEventListener("scroll", scheduleCompute, {
       passive: true,
       capture: true,
     });
     window.addEventListener("resize", scheduleCompute);
-    // The in-text variant's geometry depends on the absolute positions
-    // of panel entries, which shift as the user types. Subscribe to
-    // doc/selection changes to re-route the line.
     if (variant === "in-text" && editor) {
       editor.on("update", scheduleCompute);
       editor.on("selectionUpdate", scheduleCompute);
     }
     return () => {
       cancelAnimationFrame(rafRef.current);
+      rowScroll?.removeEventListener("scroll", scheduleCompute);
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
       window.removeEventListener("resize", scheduleCompute);
       if (variant === "in-text" && editor) {

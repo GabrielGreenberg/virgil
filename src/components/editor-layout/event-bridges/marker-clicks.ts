@@ -64,6 +64,11 @@ export function useMarkerClickBridges(deps: {
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
+  /** Pulls the omni card with the given id to align with `clickY` by
+   *  shifting the gutter's cards as a group. No document scroll. The
+   *  source element (the clicked citation marker, etc.) is tracked so
+   *  the offset can clear once it scrolls out of view. */
+  alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
 }) {
   const {
     prefsRef,
@@ -81,6 +86,7 @@ export function useMarkerClickBridges(deps: {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    alignOmniCardWithClick,
   } = deps;
 
   useEffect(() => {
@@ -142,7 +148,7 @@ export function useMarkerClickBridges(deps: {
       const detail = (e as CustomEvent).detail;
       if (!detail?.citationId) return;
       setSelectedCitationId(detail.citationId);
-      const targetY: number | undefined =
+      const clickY: number | undefined =
         typeof detail.clickY === "number" ? detail.clickY : undefined;
       const sourceSide = detail.sourceSide as Side | undefined;
       const sourcePanelId = detail.sourcePanelId as PanelId | undefined;
@@ -153,7 +159,9 @@ export function useMarkerClickBridges(deps: {
           entrySelector: `[data-link-card="citation:${detail.citationId}"]`,
           panelId: "citations",
           cardKind: "citation",
-          targetY,
+          // skipScroll: alignment is handled by shifting the omni cards
+          // group (alignOmniCardWithClick) so the document stays put.
+          skipScroll: true,
           splitSource:
             sourceSide && sourcePanelId
               ? { side: sourceSide, panelId: sourcePanelId, half: sourceHalf }
@@ -168,10 +176,21 @@ export function useMarkerClickBridges(deps: {
           getOmniEnabled,
         },
       );
+      // After openForCard mounts the omni column (or confirms it's already
+      // open), pull the card to align with the click. We rAF to let the
+      // panel render before we measure the card's current Y.
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `.citation-node[data-citation-id="${detail.citationId}"]`,
+        ) as HTMLElement | null;
+        requestAnimationFrame(() => {
+          alignOmniCardWithClick(`citation:${detail.citationId}`, clickY, sourceEl);
+        });
+      }
     };
     window.addEventListener("virgil-citation-click", handler);
     return () => window.removeEventListener("virgil-citation-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId]);
+  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedCitationId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {

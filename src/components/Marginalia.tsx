@@ -50,19 +50,17 @@ interface MarginaliaProps {
 }
 
 /**
- * Subscribe to the editor's scroll container element via useSyncExternalStore.
- * The subscription installs a tiptap "create"/"update" listener and re-resolves
- * the closest `.overflow-y-auto` ancestor each time, notifying React only when
- * the result actually changes.
+ * Subscribe to the editor's marginalia host (the white pod marked
+ * `data-marginalia-host`). Under unified row scroll the editor has no
+ * inner scroll, so marginalia is positioned relative to the host pod —
+ * which is `position: relative` and naturally tall.
  */
-function useScrollContainer(editor: Editor | null): HTMLElement | null {
+function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
   const subscribe = (notify: () => void) => {
     if (!editor) return () => {};
     const recheck = () => notify();
     editor.on("create", recheck);
     editor.on("update", recheck);
-    // First mount may resolve via the next animation frame if the view dom
-    // isn't ready yet — ask once.
     const id = requestAnimationFrame(recheck);
     return () => {
       cancelAnimationFrame(id);
@@ -74,7 +72,7 @@ function useScrollContainer(editor: Editor | null): HTMLElement | null {
     if (!editor) return null;
     try {
       return (
-        (editor.view?.dom?.closest(".overflow-y-auto") as HTMLElement | null) ??
+        (editor.view?.dom?.closest("[data-marginalia-host]") as HTMLElement | null) ??
         null
       );
     } catch {
@@ -92,19 +90,10 @@ function useScrollContainer(editor: Editor | null): HTMLElement | null {
  */
 export default function Marginalia({ editor, markers, panelSides }: MarginaliaProps) {
   const metrics = useMarginalia(editor);
-  const scrollEl = useScrollContainer(editor);
+  const scrollEl = useMarginaliaHost(editor);
 
-  // Make sure the scroll container is a positioned ancestor so absolutely
-  // positioned children land in the right coordinate system. This element is
-  // not React-managed (it's TipTap's), so we mutate it from an effect.
-  useEffect(() => {
-    if (!scrollEl) return;
-    const style = scrollEl.style;
-    const prev = style.position;
-    if (prev === "" || prev === "static") {
-      style.setProperty("position", "relative");
-    }
-  }, [scrollEl]);
+  // The host pod is already `position: relative` (set on the white pod
+  // wrapper in EditorLayout), so no need to mutate position here.
 
   // Compute line-aligned grid positions for all markers
   const positioned = useMemo(
