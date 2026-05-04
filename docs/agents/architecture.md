@@ -1,4 +1,4 @@
-<!-- last-verified: d3a2616 2026-05-02 -->
+<!-- last-verified: 0a7c5a1 2026-05-04 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -84,8 +84,8 @@ Agents never touch this app — they read the same `.tex`/`.bib` and write these
 
 Entry points for rendering a panel instance:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 4254).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 6129).
+1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 4746).
+2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 7201).
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.

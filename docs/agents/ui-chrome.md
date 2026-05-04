@@ -1,4 +1,4 @@
-<!-- last-verified: d3a2616 2026-05-02 -->
+<!-- last-verified: 0a7c5a1 2026-05-04 -->
 
 # UI Chrome
 
@@ -8,7 +8,7 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 ## The orchestrator
 
-**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~6155 lines) is THE orchestrator. It:
+**[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~7300 lines) is THE orchestrator. It:
 
 - Renders the left strip, right strip, left panel column, editor column, right panel column
 - Mounts the home `MenuBar` **inline** at the top of the editor column (no portal — change c40d8d2). Detached `DetachedActionsToolbar` / `DetachedFormattingToolbar` / `DetachedMenuToolbar` copies still mount via portals to `document.body`
@@ -23,15 +23,15 @@ When anything touches UI layout, chrome, or panel placement, EditorLayout is alm
 
 ```
 EditorLayout
-├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:5066
-├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:5676
+├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:5379
+├─ Left icon strip (data-strip-side="left")           — EditorLayout.tsx:6227
 │   ├─ View control pod: collapse, omni-view, split
 │   ├─ StripButton × N (per left-sidebar panel, drag-to-reorder)
-│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)        — ~line 5733
+│   └─ OmniFilterMenu (kebab pinned to bottom via mt-auto)        — ~line 6284
 ├─ PanelColumn side="left"                            — rendered by `renderPanelColumn("left")`
 │   └─ Active panel(s) — supports top/bottom split; optional MarginActionToolbar overlay
 ├─ Editor column
-│   ├─ MenuBar — docked inline at the sticky [data-tool-strip="text"] — ~line 5918
+│   ├─ MenuBar — docked inline at the sticky [data-tool-strip="text"] — ~line 6478
 │   ├─ DetachedActionsToolbar (portal × N)
 │   ├─ DetachedFormattingToolbar (portal × N)
 │   ├─ DetachedMenuToolbar (portal × N)
@@ -40,10 +40,10 @@ EditorLayout
 │   ├─ FloatCard portals (popped-out cards)
 │   ├─ FloatingPanel portals (popped-out panels)
 │   ├─ ParagraphFloat / HeadingFloat / example-block portals (popped-out blocks)
-│   ├─ FontsDialog (FloatingPanel-based per-category font + size dialog) — ~line 6380
-│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — ~line 6550
+│   ├─ FontsDialog (FloatingPanel-based per-category font + size dialog) — ~line 7059
+│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — ~line 7229
 ├─ PanelColumn side="right"                           — rendered by `renderPanelColumn("right")`
-└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:6302
+└─ Right icon strip (data-strip-side="right")         — EditorLayout.tsx:6981
     ├─ View control pod: collapse, omni-view, split
     ├─ StripButton × N
     └─ OmniFilterMenu (kebab pinned to bottom)
@@ -124,7 +124,7 @@ Detached copies still spawn from the Format and Actions popovers' grab bars — 
 
 Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
 
-A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 243) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
+A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 263) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
 
 A **Print** button (printer icon) lives in the same right cluster. It opens `PrintDialog` ([src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx)) — a show/hide controls modal for marginalia, footnotes, citations, comments, paragraph titles, etc. — then triggers `window.print()`. Print orchestration + appendix collection in [src/lib/print.ts](../../src/lib/print.ts) and [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx).
 
@@ -134,7 +134,7 @@ The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedP
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` (at `MenuBar.tsx:846`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:760`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
+`ActionButtonsRow` (at `MenuBar.tsx:852`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:766`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
 
 | Button | Color | Opens/creates |
 |---|---|---|
@@ -151,7 +151,7 @@ Colors are coordinated with each panel's `CARD_THEME`.
 
 ## DetachedActionsToolbar
 
-`DetachedActionsToolbar` at `MenuBar.tsx:968`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
+`DetachedActionsToolbar` at `MenuBar.tsx:974`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
 
 State in EditorLayout: `detachedActions[]` (array of `{ id, pos }`, keyed on monotonic id). The close (X) button filters the entry out of the array; dragging routes through `beginActionsDrag(id, …)` which looks up the wrapper by `data-actions-id` and runs snap-grid math ([src/components/editor-layout/snap-grid.ts](../../src/components/editor-layout/snap-grid.ts)) against editor-column and panel-column edges.
 
@@ -162,11 +162,11 @@ Modes (per instance):
 
 ## Formatting popup
 
-Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx` ~line 1348 (inside `MenuBarContent`). Flips above/left when near viewport edges. Escape or outside-click closes.
+Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx` ~line 1401 (inside `MenuBarContent`). Flips above/left when near viewport edges. Escape or outside-click closes.
 
 ## Shared popover primitive
 
-`AttachedPopover` at `MenuBar.tsx:641`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
+`AttachedPopover` at `MenuBar.tsx:647`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
 
 Behavior: click anchor toggles; fixed-positioned below-right by default; flips as needed; Escape + outside-click close.
 
@@ -198,15 +198,15 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## Per-panel text-size stepper
 
-Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1577, inside `ItemMenu`). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
+Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1771, inside `ItemMenu` at ~line 1740). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
 
 ## Fonts dialog
 
-The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout owns the `fontsOpen` state and mounts the dialog (~line 6380).
+The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout owns the `fontsOpen` state and mounts the dialog (~line 7059).
 
 ## Dock-target outline
 
-[src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorLayout's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorLayout.tsx` ~line 6550, suppressed in zen mode.
+[src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorLayout's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorLayout.tsx` ~line 7229, suppressed in zen mode.
 
 ## Helper mode overlay
 

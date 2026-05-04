@@ -1,4 +1,4 @@
-<!-- last-verified: d3a2616 2026-05-02 -->
+<!-- last-verified: 0a7c5a1 2026-05-04 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3188 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3176 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
 
 The Library tab carries a parallel set of TipTap extensions in `library/tiptap/` for read-only paper rendering — same node names, but tuned for `\pgmark{}`-anchored display rather than authoring. The main editor and the Library renderer don't share extension instances. When tweaking shared semantics (e.g. citation parsing), update both trees.
 

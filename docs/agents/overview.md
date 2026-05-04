@@ -1,4 +1,4 @@
-<!-- last-verified: d3a2616 2026-05-02 -->
+<!-- last-verified: 0a7c5a1 2026-05-04 -->
 
 # Virgil Overview
 
@@ -27,7 +27,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~6155 lines, orchestrator), `Editor.tsx` (~3188 lines, TipTap wrapper), `panel-primitives.tsx` (~1812 lines, card/panel design system), `MenuBar.tsx` (~1494 lines, floating toolbar)
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~7300 lines, orchestrator), `Editor.tsx` (~3176 lines, TipTap wrapper), `panel-primitives.tsx` (~1995 lines, card/panel design system), `MenuBar.tsx` (~1547 lines, floating toolbar)
 - `src/hooks/` — React hooks for state management (46 files)
 - `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (46 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
