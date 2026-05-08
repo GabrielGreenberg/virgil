@@ -1,4 +1,4 @@
-<!-- last-verified: 0a7c5a1 2026-05-04 -->
+<!-- last-verified: a293e60 2026-05-07 -->
 
 # Virgil Overview
 
@@ -27,7 +27,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~7300 lines, orchestrator), `Editor.tsx` (~3176 lines, TipTap wrapper), `panel-primitives.tsx` (~1995 lines, card/panel design system), `MenuBar.tsx` (~1547 lines, floating toolbar)
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5600 lines, shell wrapper after Path A 7.8), `EditorPane.tsx` (~4400 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~3257 lines, TipTap wrapper), `panel-primitives.tsx` (~2088 lines, card/panel design system), `MenuBar.tsx` (~1585 lines, floating toolbar). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
 - `src/hooks/` — React hooks for state management (46 files)
 - `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (46 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
@@ -37,7 +37,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 
 ## Sibling subsystem: `library/`
 
-The Library tab is its own self-contained tree at the repo root, sibling to `src/`. It has its own components, hooks, lib (parser/serializer/store), TipTap extensions for paper rendering (parallel to `src/lib/tiptap/`, used inside the Library panes for read-only paper renders), Python skill scripts, and `library/styles/library.css`. Cross-tree imports go through the `@library/*` path alias (see `tsconfig.json`, `vitest.config.ts`). Detailed map in [library/AGENTS.md](../../library/AGENTS.md). The static dev sample lives in `library-data/`.
+The Library tab is its own self-contained tree at the repo root, sibling to `src/`. It has its own components, hooks, lib (parser/serializer/store), Python skill scripts, and `library/styles/library.css`. Path A 7.8 deleted the parallel `library/tiptap/` extension set; the Library Reader now mounts the canonical `<EditorPane>` and shares Virgil's TipTap extensions (PgMarkChip moved to [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts)). Cross-tree imports go through the `@library/*` path alias (see `tsconfig.json`, `vitest.config.ts`). Detailed map in [library/AGENTS.md](../../library/AGENTS.md). The static dev sample lives in `library-data/`.
 
 ## Core user-facing concepts
 

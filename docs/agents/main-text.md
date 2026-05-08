@@ -1,4 +1,4 @@
-<!-- last-verified: 0a7c5a1 2026-05-04 -->
+<!-- last-verified: a293e60 2026-05-07 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,9 +6,9 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3176 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3257 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
 
-The Library tab carries a parallel set of TipTap extensions in `library/tiptap/` for read-only paper rendering — same node names, but tuned for `\pgmark{}`-anchored display rather than authoring. The main editor and the Library renderer don't share extension instances. When tweaking shared semantics (e.g. citation parsing), update both trees.
+After Path A 7.8, the Library Reader mounts the canonical `<EditorPane>` (which wraps `Editor.tsx`), so there is no longer a parallel `library/tiptap/` extension set. PgMarkChip — the only Library-only extension — has been folded into the unified set at [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts); it's harmless on docs without `\pgmark{N}`.
 
 Key props: `initialContent: JSONContent`, `onUpdate: (doc) => void`, `highlightText`, `highlightRange` (position-based highlight takes priority over text).
 
