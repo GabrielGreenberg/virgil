@@ -22,6 +22,7 @@ interface NotesPanelProps {
   onAdd: () => UserNote;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
+  onSetAiRequest: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelectNote: (id: string | null) => void;
   selectedNoteId: string | null;
@@ -29,7 +30,6 @@ interface NotesPanelProps {
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   onEditorFocus?: (editor: any) => void;
@@ -44,6 +44,7 @@ export default function NotesPanel({
   onAdd,
   onUpdate,
   onUpdateTitle,
+  onSetAiRequest,
   onDelete,
   onSelectNote,
   selectedNoteId,
@@ -51,7 +52,6 @@ export default function NotesPanel({
   getCitationDisplayText,
   onCitationCreated,
   aiRequests,
-  onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
   onEditorFocus,
@@ -156,7 +156,6 @@ export default function NotesPanel({
       kind="notes"
       count={notes.length}
       onAdd={() => onAdd()}
-      onAiRequest={onAddAiRequest}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -194,6 +193,7 @@ export default function NotesPanel({
           selected={selected}
           onUpdate={onUpdate}
           onUpdateTitle={onUpdateTitle}
+          onSetAiRequest={onSetAiRequest}
           onDelete={onDelete}
           onSelect={onSelectNote}
           onJump={

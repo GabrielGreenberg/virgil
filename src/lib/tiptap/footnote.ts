@@ -3,12 +3,26 @@ import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
 
-export const Footnote = Node.create({
+// Options accepted by the Footnote extension. `idGenerator` lets a host
+// (e.g. the Library Reader) substitute a different ID strategy for newly
+// created footnotes. Defaults to the 4-char hex generator with collision
+// avoidance against the existing footnote IDs in the document.
+export interface FootnoteOptions {
+  idGenerator: (existing: Set<string>) => string;
+}
+
+export const Footnote = Node.create<FootnoteOptions>({
   name: "footnote",
   group: "inline",
   inline: true,
   atom: true,
   draggable: true,
+
+  addOptions() {
+    return {
+      idGenerator: (existing: Set<string>) => generateShortId(existing),
+    };
+  },
 
   addAttributes() {
     return {
@@ -56,6 +70,7 @@ export const Footnote = Node.create({
 
   addProseMirrorPlugins() {
     const nodeType = this.type;
+    const idGenerator = this.options.idGenerator;
     return [
       new Plugin({
         key: new PluginKey("footnoteInput"),
@@ -80,7 +95,7 @@ export const Footnote = Node.create({
               }
               return true;
             });
-            const footnoteId = generateShortId(existing);
+            const footnoteId = idGenerator(existing);
             const start = from + 1 - match[0].length;
             const tr = state.tr.replaceWith(
               start,

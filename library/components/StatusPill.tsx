@@ -45,7 +45,7 @@ const indexedTone: Record<IndexedState, Tone> = {
   queued: "amber",
   running: "amber",
   indexed: "green",
-  richIndexed: "green",
+  deepIndexed: "green",
   failed: "red",
 };
 
@@ -54,7 +54,7 @@ const indexedLabel: Record<IndexedState, string> = {
   queued: "⋯ idx",
   running: "⋯ idx",
   indexed: "✓ idx",
-  richIndexed: "✓✓ idx",
+  deepIndexed: "✓✓ idx",
   failed: "! idx",
 };
 

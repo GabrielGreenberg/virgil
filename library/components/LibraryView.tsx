@@ -6,30 +6,33 @@ import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
 import { useNotificationStream } from "@library/hooks/useNotificationStream";
 import { useUnsortedPdfs } from "@library/hooks/useUnsortedPdfs";
-import { useLibraryTabs } from "@library/hooks/useLibraryTabs";
+import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
+import { docIdFromProjectLibraryId, isProjectDocId } from "@library/lib/library-store";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { SyncResult } from "@library/lib/skill-sync";
 import type { NotificationItem } from "@library/lib/queue";
-import RightDetail from "./RightDetail";
 import DropZone from "./DropZone";
 
 import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
-import { TAB_DT_TYPE } from "@library/lib/dnd-types";
 import { queueBibReview, queueDelete, queuePaperReview } from "@library/lib/bib-edit";
 
 interface Props {
   handle: FileSystemDirectoryHandle;
   onReset: () => void;
   lastSync: SyncResult | null;
+  /** Optional scope/seed for `useLibraryTabs`. The inline Library tab
+   *  passes nothing (default unscoped keys); each library outer tab
+   *  passes its own scope so its panel state is isolated. */
+  tabsOptions?: UseLibraryTabsOptions;
 }
 
 const LEFT_WIDTH_KEY = "virgil-library-left-width";
 const LEFT_MIN = 220;
 const LEFT_DEFAULT = 360;
 
-export default function LibraryView({ handle, onReset, lastSync }: Props) {
+export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: Props) {
   const { catalog, reload } = useCatalog(handle);
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
   const { files: unsortedFiles, reload: reloadUnsorted } = useUnsortedPdfs(handle);
@@ -108,78 +111,91 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
     [syncToasts, notifications],
   );
 
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const libraryTabs = useLibraryTabs();
+  // Selection drives row-highlighting only — opening a paper now spawns
+  // a paper-kind library file in the opposite panel rather than rendering
+  // into a dedicated detail pane.
+  //
+  // Multi-select model:
+  //   - `selectedKeys` is the full set of highlighted rows.
+  //   - `anchorKey` is the row that anchors a future shift-click range.
+  //     It's set on plain click and cmd/ctrl-click; left untouched on
+  //     shift-click so successive shift-clicks pivot around the same
+  //     anchor.
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [anchorKey, setAnchorKey] = useState<string | null>(null);
+  const libraryTabs = useLibraryTabs(tabsOptions);
 
   // Listen for `virgil-open-library` events dispatched by Bibliography
   // chips. The outer bridge (src/components/editor-layout/event-bridges/
-  // library.ts) handles the pane switch; we only need to scroll the
-  // matching row into view by setting it as the selected key.
+  // library.ts) handles the pane switch; we open the paper file from the
+  // left panel so it lands as a tab on the right.
   useEffect(() => {
     const onOpen = (e: Event) => {
       const detail = (e as CustomEvent<{ citekey?: string; itemId?: string }>).detail;
       const key = detail?.citekey ?? detail?.itemId;
-      if (key) setSelectedKey(key);
+      if (!key) return;
+      setSelectedKeys(new Set([key]));
+      setAnchorKey(key);
+      libraryTabs.openPaper(key, "left");
     };
     window.addEventListener("virgil-open-library", onOpen);
     return () => window.removeEventListener("virgil-open-library", onOpen);
-  }, []);
-  // Per-panel mode is derived: any tabs open on that side → tabs mode;
-  // empty → fall back to the doc viewer. Either panel can end up empty
-  // (built-ins are draggable like any other library), so both sides need
-  // the same swap.
-  const leftPanelMode: "detail" | "tabs" =
-    libraryTabs.leftTabs.openIds.length > 0 ? "tabs" : "detail";
-  const rightPanelMode: "detail" | "tabs" =
-    libraryTabs.rightTabs.openIds.length > 0 ? "tabs" : "detail";
+  }, [libraryTabs.openPaper]);
 
-  const [leftDetailDragOver, setLeftDetailDragOver] = useState(false);
-  const [rightDetailDragOver, setRightDetailDragOver] = useState(false);
-  const makeDetailDragOverHandler = (
-    setOver: (v: boolean) => void,
-  ) => (e: React.DragEvent<HTMLDivElement>) => {
-    const types = e.dataTransfer.types;
-    let hasTab = false;
-    for (let i = 0; i < types.length; i++) {
-      if (types[i] === TAB_DT_TYPE) {
-        hasTab = true;
-        break;
-      }
-    }
-    if (!hasTab) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setOver(true);
-  };
-  const makeDetailDragLeaveHandler = (
-    setOver: (v: boolean) => void,
-  ) => (e: React.DragEvent<HTMLDivElement>) => {
-    const next = e.relatedTarget as Node | null;
-    if (next && e.currentTarget.contains(next)) return;
-    setOver(false);
-  };
-  const makeDetailDropHandler = (
-    panel: "left" | "right",
-    setOver: (v: boolean) => void,
-  ) => (e: React.DragEvent<HTMLDivElement>) => {
-    const libId = e.dataTransfer.getData(TAB_DT_TYPE);
-    if (!libId) return;
-    e.preventDefault();
-    setOver(false);
-    libraryTabs.moveTab(libId, panel, 0);
-  };
-  const handleLeftDetailDragOver = makeDetailDragOverHandler(setLeftDetailDragOver);
-  const handleLeftDetailDragLeave = makeDetailDragLeaveHandler(setLeftDetailDragOver);
-  const handleLeftDetailDrop = makeDetailDropHandler("left", setLeftDetailDragOver);
-  const handleRightDetailDragOver = makeDetailDragOverHandler(setRightDetailDragOver);
-  const handleRightDetailDragLeave = makeDetailDragLeaveHandler(setRightDetailDragOver);
-  const handleRightDetailDrop = makeDetailDropHandler("right", setRightDetailDragOver);
+  // Tearout: when a paper inner tab is dropped on the Virgil bar, the
+  // outer-bar drop handler dispatches this event; we close the donor
+  // inner tab so the paper exists in only one place at a time.
+  useEffect(() => {
+    const onTearout = (e: Event) => {
+      const detail = (e as CustomEvent<{ citekey?: string }>).detail;
+      const key = detail?.citekey;
+      if (!key) return;
+      libraryTabs.closePaperByCitekey(key);
+    };
+    window.addEventListener("virgil-library-close-paper-tab", onTearout);
+    return () =>
+      window.removeEventListener("virgil-library-close-paper-tab", onTearout);
+  }, [libraryTabs.closePaperByCitekey]);
 
   const bibByKey = useMemo(() => {
     const m = new Map<string, BibEntry>();
     for (const e of bibEntries) m.set(e.key, e);
     return m;
   }, [bibEntries]);
+
+  // Wrap libraryTabs.addEntryToLibrary so drops onto a per-doc Project
+  // library tab dispatch a window event with the resolved bib entries —
+  // `LibraryTabView` listens and appends to the doc's references.bib in
+  // a single read-modify-write. Custom-library drops fall through to
+  // the registry mutation (functional setState — safe to call in a loop).
+  // Central / paper / unknown libIds are no-ops.
+  //
+  // The batched signature (string[] instead of string) is critical: a
+  // multi-row drop must not fan out into N parallel async writes, since
+  // each would read the same starting bib and overwrite the others.
+  const handleAddEntriesToLibrary = useCallback(
+    (libId: string, entryKeys: readonly string[]) => {
+      if (entryKeys.length === 0) return;
+      if (isProjectDocId(libId)) {
+        const docId = docIdFromProjectLibraryId(libId);
+        if (!docId) return;
+        const bibEntries = entryKeys
+          .map((k) => bibByKey.get(k))
+          .filter((e): e is NonNullable<typeof e> => Boolean(e));
+        if (bibEntries.length === 0) return;
+        window.dispatchEvent(
+          new CustomEvent("virgil-library-add-to-project-bib", {
+            detail: { docId, bibEntries },
+          }),
+        );
+        return;
+      }
+      for (const k of entryKeys) libraryTabs.addEntryToLibrary(libId, k);
+    },
+    [bibByKey, libraryTabs.addEntryToLibrary],
+  );
 
   // Synthesize catalog rows from two extra sources so the list reflects
   // everything visible on disk, even before the skills run:
@@ -230,16 +246,6 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
     return [...unsortedSynthetic, ...rows, ...bibOnlySynthetic];
   }, [catalog, bibEntries, unsortedFiles]);
 
-  const selectedEntry = useMemo<CatalogEntry | null>(() => {
-    if (!selectedKey) return null;
-    if (selectedKey.startsWith("__triage__")) {
-      return mergedEntries.find(
-        (e) => `__triage__${e.originalFilename}` === selectedKey,
-      ) ?? null;
-    }
-    return mergedEntries.find((e) => e.citekey === selectedKey) ?? null;
-  }, [selectedKey, mergedEntries]);
-
   const onFiles = useCallback(
     async (files: File[]) => {
       await dropPdf(files);
@@ -265,7 +271,25 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
       queuePaperReview: (citekey: string) => {
         void queuePaperReview(handle, citekey);
       },
-      removeFromLibrary: libraryTabs.removeEntryFromLibrary,
+      // Custom-library memberships are tracked in registry.libraries;
+      // project-library "memberships" are entries in the open doc's
+      // references.bib. The library subsystem can't import `@/lib/storage`,
+      // so project removals dispatch a window event picked up by
+      // `LibraryTabView` (mirrors the add path in `handleAddEntryToLibrary`).
+      removeFromLibrary: (libId: string, entryKey: string) => {
+        if (isProjectDocId(libId)) {
+          const docId = docIdFromProjectLibraryId(libId);
+          if (docId) {
+            window.dispatchEvent(
+              new CustomEvent("virgil-library-remove-from-project-bib", {
+                detail: { docId, citekey: entryKey },
+              }),
+            );
+          }
+          return;
+        }
+        libraryTabs.removeEntryFromLibrary(libId, entryKey);
+      },
     }),
     [handle, libraryTabs.removeEntryFromLibrary],
   );
@@ -330,6 +354,36 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
     };
   }, [onFiles]);
 
+  const renderPanel = (panel: "left" | "right") => (
+    <TabbedLibraryPanel
+      panel={panel}
+      registry={libraryTabs.registry}
+      tabs={panel === "left" ? libraryTabs.leftTabs : libraryTabs.rightTabs}
+      libraryById={libraryTabs.libraryById}
+      entries={mergedEntries}
+      bibByKey={bibByKey}
+      selectedKeys={selectedKeys}
+      anchorKey={anchorKey}
+      onSelectKeys={(keys, anchor) => {
+        setSelectedKeys(keys);
+        setAnchorKey(anchor);
+      }}
+      onOpenPaper={libraryTabs.openPaper}
+      onActivate={libraryTabs.activate}
+      onClose={libraryTabs.close}
+      onRename={libraryTabs.rename}
+      onCreate={libraryTabs.create}
+      onOpenRecent={libraryTabs.openRecent}
+      onMoveTab={libraryTabs.moveTab}
+      onAddEntriesToLibrary={handleAddEntriesToLibrary}
+      onTogglePinPaper={libraryTabs.togglePinPaper}
+      entryActions={entryActions}
+      handle={handle}
+      onBibChanged={reloadBib}
+      onChangeFolder={panel === "left" ? onReset : undefined}
+    />
+  );
+
   return (
     <div
       ref={containerRef}
@@ -369,80 +423,8 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
               position: "relative",
               background: "var(--background)",
             }}
-            onDragOver={
-              leftPanelMode === "detail" ? handleLeftDetailDragOver : undefined
-            }
-            onDragLeave={
-              leftPanelMode === "detail" ? handleLeftDetailDragLeave : undefined
-            }
-            onDrop={
-              leftPanelMode === "detail" ? handleLeftDetailDrop : undefined
-            }
           >
-            {leftPanelMode === "tabs" ? (
-              <TabbedLibraryPanel
-                panel="left"
-                registry={libraryTabs.registry}
-                tabs={libraryTabs.leftTabs}
-                libraryById={libraryTabs.libraryById}
-                entries={mergedEntries}
-                bibByKey={bibByKey}
-                selectedKey={selectedKey}
-                onSelect={setSelectedKey}
-                onActivate={libraryTabs.activate}
-                onClose={libraryTabs.close}
-                onRename={libraryTabs.rename}
-                onCreate={libraryTabs.create}
-                onOpenRecent={libraryTabs.openRecent}
-                onMoveTab={libraryTabs.moveTab}
-                onAddEntryToLibrary={libraryTabs.addEntryToLibrary}
-                entryActions={entryActions}
-                handle={handle}
-                onChangeFolder={onReset}
-              />
-            ) : (
-              <div
-                style={{
-                  height: "100%",
-                  padding: 6,
-                  background: "var(--library-bg)",
-                  boxSizing: "border-box",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    flex: 1,
-                    minHeight: 0,
-                    border: "1px solid var(--topbar-border)",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <RightDetail
-                    handle={handle}
-                    entry={selectedEntry}
-                    bib={selectedEntry?.citekey ? bibByKey.get(selectedEntry.citekey) : undefined}
-                    onBibChanged={reloadBib}
-                  />
-                </div>
-              </div>
-            )}
-            {leftPanelMode === "detail" && leftDetailDragOver && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(124, 94, 60, 0.08)",
-                  border: "2px dashed var(--accent)",
-                  pointerEvents: "none",
-                  zIndex: 30,
-                }}
-              />
-            )}
+            {renderPanel("left")}
           </div>
           <div
             role="separator"
@@ -470,79 +452,8 @@ export default function LibraryView({ handle, onReset, lastSync }: Props) {
               position: "relative",
               background: "var(--background)",
             }}
-            onDragOver={
-              rightPanelMode === "detail" ? handleRightDetailDragOver : undefined
-            }
-            onDragLeave={
-              rightPanelMode === "detail" ? handleRightDetailDragLeave : undefined
-            }
-            onDrop={
-              rightPanelMode === "detail" ? handleRightDetailDrop : undefined
-            }
           >
-            {rightPanelMode === "tabs" ? (
-              <TabbedLibraryPanel
-                panel="right"
-                registry={libraryTabs.registry}
-                tabs={libraryTabs.rightTabs}
-                libraryById={libraryTabs.libraryById}
-                entries={mergedEntries}
-                bibByKey={bibByKey}
-                selectedKey={selectedKey}
-                onSelect={setSelectedKey}
-                onActivate={libraryTabs.activate}
-                onClose={libraryTabs.close}
-                onRename={libraryTabs.rename}
-                onCreate={libraryTabs.create}
-                onOpenRecent={libraryTabs.openRecent}
-                onMoveTab={libraryTabs.moveTab}
-                onAddEntryToLibrary={libraryTabs.addEntryToLibrary}
-                entryActions={entryActions}
-                handle={handle}
-              />
-            ) : (
-              <div
-                style={{
-                  height: "100%",
-                  padding: 6,
-                  background: "var(--library-bg)",
-                  boxSizing: "border-box",
-                  display: "flex",
-                  flexDirection: "column",
-                }}
-              >
-                <div
-                  style={{
-                    flex: 1,
-                    minHeight: 0,
-                    border: "1px solid var(--topbar-border)",
-                    borderRadius: 10,
-                    overflow: "hidden",
-                    display: "flex",
-                    flexDirection: "column",
-                  }}
-                >
-                  <RightDetail
-                    handle={handle}
-                    entry={selectedEntry}
-                    bib={selectedEntry?.citekey ? bibByKey.get(selectedEntry.citekey) : undefined}
-                    onBibChanged={reloadBib}
-                  />
-                </div>
-              </div>
-            )}
-            {rightPanelMode === "detail" && rightDetailDragOver && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "rgba(124, 94, 60, 0.08)",
-                  border: "2px dashed var(--accent)",
-                  pointerEvents: "none",
-                  zIndex: 30,
-                }}
-              />
-            )}
+            {renderPanel("right")}
           </div>
         </div>
       </DropZone>

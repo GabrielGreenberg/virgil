@@ -96,12 +96,18 @@ export interface EditorPreferences {
   // null family = "pin to body family"
   fontMaketitleFamily: string | null;
   fontMaketitleTitleSize: number;   // rem
+  fontMaketitleTitleWeight: number; // 100-900
   fontMaketitleMetaSize: number;    // rem (author/date)
+  fontMaketitleMetaWeight: number;  // 100-900
   fontHeadersFamily: string | null;
   fontHeadersH1Size: number;        // rem
+  fontHeadersH1Weight: number;      // 100-900
   fontHeadersH2Size: number;        // rem
+  fontHeadersH2Weight: number;      // 100-900
   fontHeadersH3Size: number;        // rem
+  fontHeadersH3Weight: number;      // 100-900
   fontParTitleFamily: string | null;
+  fontParTitleWeight: number;       // 100-900
 }
 
 export const DEFAULT_PREFS: EditorPreferences = {
@@ -191,12 +197,18 @@ export const DEFAULT_PREFS: EditorPreferences = {
   // Fonts… dialog
   fontMaketitleFamily: null,
   fontMaketitleTitleSize: 1.75,
+  fontMaketitleTitleWeight: 700,
   fontMaketitleMetaSize: 1.05,
+  fontMaketitleMetaWeight: 400,
   fontHeadersFamily: null,
   fontHeadersH1Size: 1.75,
+  fontHeadersH1Weight: 700,
   fontHeadersH2Size: 1.35,
+  fontHeadersH2Weight: 600,
   fontHeadersH3Size: 1.15,
+  fontHeadersH3Weight: 600,
   fontParTitleFamily: null,
+  fontParTitleWeight: 500,
 };
 
 // ─── Presets ──────────────────────────────────────────────────────────────────

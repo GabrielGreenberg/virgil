@@ -9,8 +9,12 @@ export type IndexedState =
   | "queued"
   | "running"
   | "indexed"
-  | "richIndexed"
+  | "deepIndexed"
   | "failed";
+
+/** Legacy on-disk state from before the rich-index → deep-index rename.
+ *  Read paths normalize this to "deepIndexed"; new writes never use it. */
+export type LegacyIndexedState = "richIndexed";
 
 export type BibAuthState =
   | "none"
@@ -98,7 +102,19 @@ export async function readCatalog(
   if (!c || c.version !== 1) {
     return { version: 1, generatedAt: new Date().toISOString(), entries: [] };
   }
-  return c;
+  return { ...c, entries: c.entries.map(normalizeCatalogEntry) };
+}
+
+/** Normalize legacy field values on a freshly-read catalog entry. The
+ *  rich-index → deep-index rename leaves on-disk catalogs with
+ *  `indexed.state === "richIndexed"`; the rest of the codebase only
+ *  knows about "deepIndexed", so we translate here. Idempotent. */
+export function normalizeCatalogEntry(e: CatalogEntry): CatalogEntry {
+  const legacyState = (e.indexed?.state as string | undefined);
+  if (legacyState === "richIndexed") {
+    return { ...e, indexed: { ...e.indexed, state: "deepIndexed" } };
+  }
+  return e;
 }
 
 export async function readCatalogVersion(

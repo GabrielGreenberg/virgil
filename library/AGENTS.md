@@ -65,7 +65,7 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
   - `catalog.json`, `catalog-version.txt`, `master.bib`
   - `pdfs/<citekey>.{pdf,docx}`, `pdfs/unsorted/`
   - `papers/<citekey>/main.tex`, `references.bib`, `virgil/{virgil,notes,footnotes}.json`
-  - `queue/<citekey>.json`, `queue/<citekey>-bibedit.json`, `queue/<citekey>-richindex.json`, `queue/pending-reviews.json`
+  - `queue/<citekey>.json`, `queue/<citekey>-bibedit.json`, `queue/<citekey>-deepindex.json` (legacy `-richindex.json` accepted on read), `queue/pending-reviews.json`
   - `logs/<citekey>/*.log`, `notifications/inbox.json`
   - After first skill-bundle sync: `.claude/commands/*.md`, `scripts/*.py`, `CLAUDE.md`
 
@@ -79,7 +79,7 @@ Eight markdown skills, mirrored at build time from `library/skills/*.md` to `.cl
 - `/library/triage-pending [auto]` — batch triage `pdfs/unsorted/`
 - `/library/authenticate-bib <citekey>` — auth via Crossref / OpenAlex / Semantic Scholar / arXiv
 - `/library/apply-bib-edit <citekey>` — apply a queued manual bib edit
-- `/library/rich-index <citekey>` — structural cleanup (deterministic preprocess + AI pass)
+- `/library/deep-index <citekey>` — structural cleanup (deterministic preprocess + AI pass)
 - `/library/ai-requests` — drain user-authored AI review requests
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
@@ -94,17 +94,22 @@ Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (o
 - `marker-pdf` — better layout-aware extraction for academic PDFs (~1GB model on first use)
 - `ocrmypdf` + `tesseract` (`brew install tesseract`) — needed only for scanned PDFs
 
-## Rich indexing
+## Deep indexing
 
 Two tiers exist in the status model:
 - **`indexed`** — standard extraction (text + `\pgmark{}` anchors + bib). Single checkmark (`✓ idx`).
-- **`richIndexed`** — structural cleanup applied. Double checkmark (`✓✓ idx`). Produced by `/library/rich-index <citekey>`.
+- **`deepIndexed`** — structural cleanup applied. Double checkmark (`✓✓ idx`). Produced by `/library/deep-index <citekey>`.
 
 Pipeline:
-1. **Deterministic preprocessing** (`library/scripts/rich_preprocess.py`): strips repeating running headers/footers, removes leaked page numbers, rejoins hyphenated lines, joins broken paragraphs, unwraps hard-wrapped column text.
-2. **AI-driven structural improvements** (`/library/rich-index` skill): fixes `\maketitle` fields, corrects heading hierarchy, aligns `\pgmark{}` positions, reattaches orphan footnotes, processes user notes.
+1. **Deterministic preprocessing** (`library/scripts/deep_preprocess.py`): strips repeating running headers/footers, removes leaked page numbers, rejoins hyphenated lines, joins broken paragraphs, unwraps hard-wrapped column text.
+2. **AI-driven structural improvements** (`/library/deep-index` skill): fixes `\maketitle` fields, corrects heading hierarchy, aligns `\pgmark{}` positions, reattaches orphan footnotes, processes user notes.
 
-Queue kind: `"richIndex"`. Queue file: `queue/<citekey>-richindex.json`.
+Queue kind: `"deepIndex"`. Queue file: `queue/<citekey>-deepindex.json`.
+
+> **Rename note (one release).** This subsystem was previously called
+> *rich indexing*. Read paths still accept `richIndexed` catalog rows,
+> `richIndex` queue kind, and `<citekey>-richindex.json` queue
+> filenames; new writes use the `deep-` vocabulary throughout.
 
 ## Bib states
 
@@ -117,9 +122,18 @@ Every catalog entry's `bib.state` is one of four values, set by the auth pipelin
 
 The `manuscript` state distinguishes a properly-marked preprint from a `failed` lookup of a paper that genuinely should be in Crossref but isn't. Don't conflate them in summaries.
 
+## Reader inheritance from the main editor
+
+Library papers render through the **canonical `<EditorPane>`** (`@/components/EditorPane`) — the same component the main app's doc branch mounts. The entry point is `library/components/PaperRender.tsx`, which mounts `<EditorPane editable={false} chrome={READER_CHROME} />`. Every UX change to EditorPane — new TipTap extensions, paragraph/heading floats, popouts, marginalia, the panel rail — automatically flows through. Reader-specific suppressions live in `READER_CHROME` at `src/components/editor-layout/chrome-config.ts` (currently: `actionToolbarKinds=["note"]`, `showFormattingToolbar=false`, `showMenuBarEditItems=false`, `visiblePanelKinds=[outline, footnotes, examples, citations, bibliography, notes]`, `editableCardKinds=["note"]`).
+
+The previously parallel `library/tiptap/` extension set has been deleted. `PgMarkChip` (the only Library-only extension) lives at `src/lib/tiptap/pgmark.ts` and is part of the unified extension set; it's harmless on docs without `\pgmark{N}`.
+
+**Panel inheritance.** Path A 7.8 landed: the Reader inherits the panel rail (notes, footnotes, citations, bibliography, outline, examples) directly from `EditorPane`. Reader passes neither `viewPrefs` nor `menuBar` so the dock/float machinery and the docked MenuBar stay dormant — the rail surfaces only the icon strip + auto-active panel content for the 6 whitelisted kinds. The main app passes both bundles and gets the full chrome (15 panel kinds, detached toolbars, docked MenuBar, floating panels).
+
+**Popout inheritance.** Per-doc card popouts (paragraph / heading / example floats and individual card popouts for notes, footnotes, citations, etc.) also mount inside `EditorPane`, gated on `viewPrefs && !viewPrefs.zenMode`. Reader passes no `viewPrefs` → the mount is dormant. If/when the Reader needs popouts later, it's a single chrome flag flip away.
+
 ## Don't
 
 - Don't add a backend. The cowork pattern is load-bearing.
 - Don't write to `master.bib` or `catalog.json` from the frontend — those are skill outputs.
-- Don't import from `@/lib/tiptap` inside `library/` — it resolves to Virgil's editor extensions, which have a different ID-generation API and would silently break citation creation. Use `@library/tiptap`.
-- Don't reach into Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) — the Library is meant to stay self-contained behind the `<LibraryApp />` shim.
+- The Library may import from `@/lib/tiptap-extensions`, `@/components/Editor`, and `@/components/editor-layout/chrome-*` — those are sanctioned cross-silo bridges for Reader inheritance. Avoid reaching into other Virgil internals (`@/components/EditorLayout`, panel hooks, etc.) without a similar architectural justification.

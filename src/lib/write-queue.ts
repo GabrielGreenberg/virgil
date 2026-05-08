@@ -41,3 +41,18 @@ export async function flushWrites(key: string): Promise<void> {
     }
   }
 }
+
+/**
+ * Wait for every queue whose key is `prefix` or starts with `prefix + "/"`
+ * to drain. Used by the doc-switch barrier to make sure a doc's pending
+ * .tex / .bib / sidecar / pdf writes finish before the React tree tears
+ * down the pipeline that authored them.
+ */
+export async function flushPrefix(prefix: string): Promise<void> {
+  const matching: Promise<unknown>[] = [];
+  for (const [key, p] of queues.entries()) {
+    if (key === prefix || key.startsWith(prefix + "/")) matching.push(p);
+  }
+  if (matching.length === 0) return;
+  await Promise.allSettled(matching);
+}

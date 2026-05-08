@@ -25,12 +25,14 @@ A queue entry is an AI request when **any** of these is true:
    (`authenticate` entries **without** a note are vanilla auth requests
    and should be left for `/index-pending` / `/authenticate-bib` to
    handle on the regular path. Skip them here.)
-3. `kind == "richIndex"` and the entry has a non-empty `note` field
-   — produced by the rich-index checkbox with a user note.
-   File: `queue/<citekey>-richindex.json`.
-   Dispatch to `/rich-index <citekey>` (the skill reads the note from
-   the queue file). `richIndex` entries **without** a note are standard
-   rich-index requests — leave them for `/index-pending` to handle.
+3. `kind == "deepIndex"` (or legacy `"richIndex"`) and the entry has a
+   non-empty `note` field — produced by the deep-index button with a
+   user note.
+   File: `queue/<citekey>-deepindex.json` (legacy:
+   `queue/<citekey>-richindex.json`).
+   Dispatch to `/deep-index <citekey>` (the skill reads the note from
+   the queue file). `deepIndex` entries **without** a note are standard
+   deep-index requests — leave them for `/index-pending` to handle.
 
 ## Procedure
 

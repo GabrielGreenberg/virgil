@@ -26,8 +26,17 @@ import LeftListRow, {
 interface Props {
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
-  selectedKey: string | null;
-  onSelect: (key: string | null) => void;
+  /** Highlighted rows. A plain click replaces this with a single key; a
+   *  cmd/ctrl-click toggles one key; a shift-click adds the range from
+   *  `anchorKey` to the clicked row in the current sort/filter order. */
+  selectedKeys: ReadonlySet<string>;
+  /** Pivot for shift-click range selection — the most recently
+   *  single-clicked or cmd-clicked row. */
+  anchorKey: string | null;
+  /** Commit a new selection set + anchor. */
+  onSelectKeys: (keys: ReadonlySet<string>, anchor: string | null) => void;
+  /** Open the paper as a tabbed library file in the opposite panel. */
+  onOpenPaper: (citekey: string) => void;
   /** Per-row action callbacks for the three-dots menu. */
   rowActions: RowActions;
   /** Render an accent outline around the rows scroll area (below the search
@@ -45,8 +54,10 @@ interface Props {
 export default function LeftList({
   entries,
   bibByKey,
-  selectedKey,
-  onSelect,
+  selectedKeys,
+  anchorKey,
+  onSelectKeys,
+  onOpenPaper,
   rowActions,
   dropHighlight = false,
   dotToneFor,
@@ -93,6 +104,56 @@ export default function LeftList({
   }, [entries, bibByKey, query, sort]);
 
   const template = useMemo(() => gridTemplate(widths), [widths]);
+
+  // Stable per-row key (citekey for indexed rows, synthesized for triage).
+  // Memoized because LeftListRow's onClick closes over the visible ordering
+  // for shift-click range computation, and we don't want to recompute on
+  // every render.
+  const orderedKeys = useMemo(
+    () => filtered.map((e) => e.citekey ?? `__triage__${e.originalFilename}`),
+    [filtered],
+  );
+
+  const handleRowClick = useCallback(
+    (
+      key: string,
+      citekey: string | null | undefined,
+      e: React.MouseEvent | React.KeyboardEvent,
+    ) => {
+      const shift = e.shiftKey;
+      // ⌘ on macOS, Ctrl elsewhere — both standard for toggle-select.
+      const meta = e.metaKey || e.ctrlKey;
+
+      if (shift && anchorKey && orderedKeys.includes(anchorKey)) {
+        const a = orderedKeys.indexOf(anchorKey);
+        const b = orderedKeys.indexOf(key);
+        if (b < 0) return;
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        const next = new Set(selectedKeys);
+        for (let i = lo; i <= hi; i++) next.add(orderedKeys[i]);
+        // Anchor stays put so successive shift-clicks pivot around the
+        // same origin (matches Finder / VS Code behavior).
+        onSelectKeys(next, anchorKey);
+        return;
+      }
+
+      if (meta) {
+        const next = new Set(selectedKeys);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        // Move the anchor to the cmd-clicked row — the row the user
+        // most recently committed to as the new pivot.
+        onSelectKeys(next, key);
+        return;
+      }
+
+      // Plain click: replace selection with this row, open the paper.
+      onRowViewed(citekey);
+      onSelectKeys(new Set([key]), key);
+      if (citekey) onOpenPaper(citekey);
+    },
+    [anchorKey, orderedKeys, selectedKeys, onSelectKeys, onOpenPaper, onRowViewed],
+  );
 
   const handleSort = useCallback((col: SortColId) => {
     setSort((cur) => {
@@ -244,13 +305,11 @@ export default function LeftList({
                 key={key}
                 entry={entry}
                 bib={entry.citekey ? bibByKey.get(entry.citekey) : undefined}
-                selected={selectedKey === key}
+                selected={selectedKeys.has(key)}
                 gridTemplate={template}
                 entryKey={key}
-                onClick={() => {
-                  onRowViewed(entry.citekey);
-                  onSelect(selectedKey === key ? null : key);
-                }}
+                selectedKeys={selectedKeys}
+                onClick={(e) => handleRowClick(key, entry.citekey, e)}
                 actions={rowActions}
                 dotTone={dotToneFor(entry.citekey)}
               />

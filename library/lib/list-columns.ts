@@ -57,7 +57,7 @@ export function gridTemplate(widths: Record<ResizableColId, number>): string {
 // ── Sort ────────────────────────────────────────────────────────────────
 
 const INDEXED_RANK: Record<IndexedState, number> = {
-  richIndexed: 0,
+  deepIndexed: 0,
   indexed: 1,
   running: 2,
   queued: 3,

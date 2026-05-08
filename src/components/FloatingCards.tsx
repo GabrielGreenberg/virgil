@@ -1,8 +1,9 @@
 "use client";
 
-import { type ReactNode } from "react";
-import FloatingPanel from "./FloatingPanel";
+import { useEffect, useRef, type ReactNode } from "react";
+import FloatingPanel, { type FloatingPanelHandle } from "./FloatingPanel";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
+import { consumeCardLiftHandoff } from "./card-lift";
 
 const DEFAULT_W = 360;
 const DEFAULT_H = 280;
@@ -42,8 +43,21 @@ export function FloatCard({
   // wrapper (including its chrome) counts as "inside" the pristine card —
   // clicks on the drag handle or resize grip shouldn't trip auto-discard.
   const pristineId = cardKey.includes(":") ? cardKey.slice(cardKey.indexOf(":") + 1) : cardKey;
+  // Drag handoff: when this float was just spawned by a card lift-off
+  // gesture, the user's mouse is still down. Pick up that drag here so
+  // the gesture continues seamlessly until they release the mouse.
+  const panelHandleRef = useRef<FloatingPanelHandle>(null);
+  useEffect(() => {
+    const handoff = consumeCardLiftHandoff(cardKey);
+    if (!handoff) return;
+    panelHandleRef.current?.beginDragAt(handoff.clientX, handoff.clientY);
+    // Run once on mount only; subsequent re-renders never re-acquire a
+    // drag (consumeCardLiftHandoff already cleared the one-shot signal).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <FloatingPanel
+      ref={panelHandleRef}
       initialX={initialX}
       initialY={initialY}
       initialWidth={initialWidth}

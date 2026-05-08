@@ -22,6 +22,10 @@
 //   \pgmark[low]{N}   — low-confidence (extrapolated or fallback)
 // The low-confidence variant gets an extra `.pgmark-chip-low` class
 // for faded styling and a tooltip explaining the reason.
+//
+// This extension is harmless on documents without any \pgmark text —
+// the regex finds zero matches and no decorations are emitted. So it's
+// safe to include in the main editor's default extension list.
 
 import { Extension } from "@tiptap/react";
 import { Plugin, PluginKey } from "@tiptap/pm/state";

@@ -5,7 +5,9 @@ import type { CutterSuggestionCard as CutterSuggestionCardData } from "@/lib/typ
 import {
   BadgeLabel,
   Button,
+  CardDragHandle,
   CardTargetIcon,
+  CardTypeLabel,
   Chevron,
   PanelCard,
 } from "@/components/panel-primitives";
@@ -13,6 +15,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { MIME_CUT } from "@/lib/marginalia";
@@ -234,6 +237,7 @@ function FieldBlock({
   collapsedAffordance?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
   const [expanded, setExpanded] = useState(!collapsedAffordance || !!value);
   const [folded, setFolded] = useState(false);
   const bodyStyle = usePanelBodyStyle("cut");
@@ -280,6 +284,7 @@ function FieldBlock({
           onChange={readOnly ? undefined : (e) => onChange(e.target.value)}
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={readOnly ? undefined : onTextareaKeyDown}
           placeholder={readOnly ? "" : FIELD_PLACEHOLDER[field]}
           style={textareaStyle}
           className={`${FIELD_TEXTAREA_CLASS[field]}${readOnly ? " cursor-default" : ""}`}
@@ -332,6 +337,7 @@ export function CutterSuggestionCard({
   const onToggleFromCtx =
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
+  const compressed = !selected && !isPoppedOut;
 
   const dot = (
     <span
@@ -350,6 +356,8 @@ export function CutterSuggestionCard({
       selected={selected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
+      cardKey={cardKey}
+      isCollapsed={compressed}
       onTrashClick={() => onDelete(card.id)}
       draggable={!selected}
       onDragStart={(e) => startCutterSuggestionDrag(e, card.id)}
@@ -371,12 +379,11 @@ export function CutterSuggestionCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
       >
+        <CardDragHandle />
         <BadgeLabel label="S" theme={theme} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
           {dot}
-          <span className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium">
-            Suggestion
-          </span>
+          <CardTypeLabel kind="cutter-suggestion" />
           <AuthorChip author={card.author} />
           <span className="text-[10px] text-ink-muted">
             {STATUS_LABEL[card.status]}
@@ -405,6 +412,17 @@ export function CutterSuggestionCard({
         style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
+      {compressed ? (
+        <div className="px-3 pt-1 pb-1.5 text-xs truncate">
+          {card.suggested_text ? (
+            <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
+          ) : card.original_text ? (
+            <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
+          ) : (
+            <span className="text-ink-faint italic">empty suggestion</span>
+          )}
+        </div>
+      ) : (
       <div
         className={`px-3 pt-2 pb-2 space-y-2.5${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
         onClick={(e) => e.stopPropagation()}
@@ -457,6 +475,7 @@ export function CutterSuggestionCard({
           </div>
         )}
       </div>
+      )}
     </PanelCard>
   );
 

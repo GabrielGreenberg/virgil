@@ -15,6 +15,7 @@ interface BuildArgs {
   bibPackage: string;
   getCitationDisplayText: (command: string) => string;
   updateCitation: (id: string, command: string) => void;
+  deleteCitation: (id: string) => void;
   getFormattedBib: (entry: BibEntry) => string;
   getAnnotation: (key: string) => string;
   setAnnotation: (key: string, text: string) => void;
@@ -59,6 +60,7 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
             a.scrollToCitation(cit.id, sourceEl);
           }}
           onUpdateCitation={a.updateCitation}
+          onDelete={a.deleteCitation}
           getFormattedBib={a.getFormattedBib}
           getAnnotation={a.getAnnotation}
           setAnnotation={a.setAnnotation}

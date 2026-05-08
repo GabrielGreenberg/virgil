@@ -205,6 +205,37 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   error: "error",
 };
 
+/** Display label for a card type, shown as a small uppercase overline
+ *  in OmniView (and always shown for Comment / Suggestion families). The
+ *  pattern was first introduced on Comment cards in Revisions/Cutter; this
+ *  registry extends it to every card kind so multi-panel mixes in OmniView
+ *  are visually disambiguated.
+ *
+ *  Distinct from `CARD_TITLE_LABELS` (auto-titling prefix) — that map has
+ *  nulls for kinds that don't auto-title. Type labels are required for
+ *  every kind since they're rendered as a static overline. */
+export const CARD_TYPE_LABELS: Record<CardKind, string> = {
+  note: "Note",
+  footnote: "Footnote",
+  archive: "Archive",
+  todo: "Task",
+  bib: "Bibliography",
+  citation: "Citation",
+  comment: "Comment",
+  suggestion: "Suggestion",
+  "cutter-comment": "Comment",
+  "cutter-suggestion": "Suggestion",
+  "revision-suggestion": "Suggestion",
+  quotation: "Quotation",
+  example: "Example",
+  ai: "AI Request",
+  error: "Error",
+};
+
+export function cardTypeLabel(kind: CardKind): string {
+  return CARD_TYPE_LABELS[kind];
+}
+
 /** Singular display name for a card type, used as the auto-title prefix
  *  when a new card is created (e.g. "Note 3", "Footnote 1"). null = the
  *  kind opts out of auto-titling because it has no user-editable title

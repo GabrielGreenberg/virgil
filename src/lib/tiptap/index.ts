@@ -23,3 +23,6 @@ export {
 export { EmptyParagraphTitleCleaner, TitleField, MaketitleMarker } from "./title";
 export { AiRequestMarker } from "./ai-request";
 export { LinkedAnchor, LinkedAnchorGuard, MarginaliaAnchorGuard } from "./linked-anchor";
+export { PgMarkChip } from "./pgmark";
+export { SmartQuotes } from "./smart-quotes";
+export { TabIndent } from "./tab-indent";

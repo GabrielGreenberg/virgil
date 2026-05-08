@@ -23,6 +23,7 @@ import {
   InlineMath,
   Citation,
   LatexCommandMark,
+  TabIndent,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -68,6 +69,12 @@ interface RichTextFieldProps {
    *  typography overrides (font family, size, color) from
    *  `panel-typography.ts`. Omit when the field isn't inside a themed panel. */
   panelKey?: PanelBodyKey;
+  /** When false, the inner TipTap mounts read-only and ignores
+   *  drop / paste / keyboard input. Used by the chrome-driven
+   *  read-only-card mode (`chrome.editableCardKinds`) to suppress
+   *  in-card editing for kinds that aren't in the whitelist. Default
+   *  true. */
+  editable?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -169,6 +176,7 @@ function RichTextFieldImpl({
   toolbarPortalTarget,
   hideToolbar = false,
   panelKey,
+  editable = true,
 }: RichTextFieldProps) {
   const bodyStyle = usePanelBodyStyle(panelKey);
   const onChangeRef = useRef(onChange);
@@ -235,8 +243,10 @@ function RichTextFieldImpl({
       Citation,
       LatexCommandMark,
       Placeholder.configure({ placeholder }),
+      TabIndent,
     ],
     content: initialContent,
+    editable,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -394,6 +404,16 @@ function RichTextFieldImpl({
       editor.commands.setContent(desired, { emitUpdate: false });
     }
   }, [editor, value, refreshCitationDisplay]);
+
+  // Keep TipTap's `editable` flag in sync with the `editable` prop. The
+  // initial value is set inside `useEditor`; this effect handles
+  // changes (chrome flip, etc.). Mirrors the pattern in `Editor.tsx`.
+  useEffect(() => {
+    if (!editor) return;
+    if (editor.isEditable !== editable) {
+      editor.setEditable(editable);
+    }
+  }, [editor, editable]);
 
   // Sync per-panel body style (only overridden fields) onto the ProseMirror
   // DOM. Leaving a field unset lets the class-based defaults in globals.css

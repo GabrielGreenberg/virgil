@@ -15,6 +15,7 @@ interface BuildArgs {
   findParagraphPos: (uuid: string | null) => number | null;
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
+  setNoteAiRequest: (id: string, value: boolean) => void;
   deleteNote: (id: string) => void;
   setOverrideEditor: (editor: any) => void;
   getCitationDisplayText: (command: string) => string;
@@ -40,6 +41,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
             selected={isSelected}
             onUpdate={a.updateNote}
             onUpdateTitle={a.updateNoteTitle}
+            onSetAiRequest={a.setNoteAiRequest}
             onDelete={a.deleteNote}
             onSelect={a.setSelectedNoteId}
             onEditorFocus={a.setOverrideEditor}
@@ -65,6 +67,7 @@ export function buildNoteOmniItems(a: BuildArgs): OmniItem[] {
               selected={isSelected}
               onUpdate={a.updateNote}
               onUpdateTitle={a.updateNoteTitle}
+              onSetAiRequest={a.setNoteAiRequest}
               onDelete={a.deleteNote}
               onSelect={a.setSelectedNoteId}
               onJump={(sourceEl) => a.jumpToCard(note, sourceEl)}

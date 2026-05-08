@@ -27,6 +27,10 @@ import {
 } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
+import {
   COLLAB_SIDECAR_FILE,
   COLLAB_TIMINGS,
   EMPTY_COLLAB_SIDECAR,
@@ -146,6 +150,11 @@ export function useCollab(docId: string | null): CollabHook {
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);
 
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
+
   /** Read-modify-write under a single in-flight chain.
    *
    *  Re-reads from disk before applying the mutation so we don't stomp
@@ -158,7 +167,7 @@ export function useCollab(docId: string | null): CollabHook {
   const mutate = useCallback(
     async (fn: (prev: CollabSidecar) => CollabSidecar): Promise<void> => {
       const id = docIdRef.current;
-      if (!id) return;
+      if (!id || !handle) return;
       let base = sidecarRef.current;
       try {
         const fresh = await readSidecar<CollabSidecar>(
@@ -174,12 +183,13 @@ export function useCollab(docId: string | null): CollabHook {
       sidecarRef.current = next;
       setSidecar(next);
       try {
-        await writeSidecar(id, COLLAB_SIDECAR_FILE, next);
-      } catch {
-        /* swallow — partner will re-converge on next poll */
+        await writeSidecar(handle, COLLAB_SIDECAR_FILE, next);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        /* swallow other errors — partner will re-converge on next poll */
       }
     },
-    [],
+    [handle],
   );
 
   /* ── Load + poll the sidecar ─────────────────────────────────── */
@@ -259,7 +269,7 @@ export function useCollab(docId: string | null): CollabHook {
     const handler = () => {
       const id = docIdRef.current;
       const me = identityRef.current?.name;
-      if (!id || !me) return;
+      if (!id || !me || !handle) return;
       const prev = sidecarRef.current;
       if (!prev.enabled) return;
       let next = prev;
@@ -282,11 +292,11 @@ export function useCollab(docId: string | null): CollabHook {
       sidecarRef.current = next;
       // Fire-and-forget; FSA writes are async but the queue may not
       // flush before unload completes. This is best-effort.
-      void writeSidecar(id, COLLAB_SIDECAR_FILE, next).catch(() => {});
+      void writeSidecar(handle, COLLAB_SIDECAR_FILE, next).catch(() => {});
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, []);
+  }, [handle]);
 
   /* ── Actions ─────────────────────────────────────────────────── */
 

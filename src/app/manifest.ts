@@ -22,6 +22,10 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: `${basePath}/`,
     display: "standalone",
     display_override: ["window-controls-overlay"],
+    // Each OS-level launch (clicking the dock icon, opening from a
+    // launcher) creates a fresh window instead of focusing the
+    // existing one. In-app "New Window" uses window.open separately.
+    launch_handler: { client_mode: "navigate-new" },
     background_color: "#f8f3ed",
     theme_color: "#e5e4e1",
     icons: [

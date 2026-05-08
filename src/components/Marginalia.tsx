@@ -372,10 +372,14 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   const leftMarkers = positioned.filter((m) => m.side === "left");
   const rightMarkers = positioned.filter((m) => m.side === "right");
 
+  // When the host editor is read-only (Library Reader), suppress
+  // drag-to-rebind on every marker. Click + Delete still work.
+  const dragEnabled = editor?.isEditable !== false;
+
   return createPortal(
     <>
-      <Gutter side="left" markers={leftMarkers} />
-      <Gutter side="right" markers={rightMarkers} />
+      <Gutter side="left" markers={leftMarkers} dragEnabled={dragEnabled} />
+      <Gutter side="right" markers={rightMarkers} dragEnabled={dragEnabled} />
     </>,
     scrollEl
   );
@@ -384,9 +388,11 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
 function Gutter({
   side,
   markers,
+  dragEnabled,
 }: {
   side: "left" | "right";
   markers: PositionedMarker[];
+  dragEnabled: boolean;
 }) {
   // Subscribe to panel color changes so the gutter re-renders when the user
   // picks a new color for a panel.
@@ -407,33 +413,35 @@ function Gutter({
         const palette =
           themeKey && isPanelColorOverridden(themeKey)
             ? deriveMarkerPalette(getPanelColor(themeKey))
-            : { color: meta.color, bg: meta.bg, selectedBg: meta.selectedBg, border: meta.border };
+            : { color: meta.color, bg: meta.bg, border: meta.border };
+        // The icon never changes its fill across resting/hover/selected —
+        // the kind color stays put, and the interaction state is conveyed
+        // entirely through ring intensity. Selected = wider ring + soft
+        // outer halo; hover = thin ring; resting = none.
+        const interactionShadow = m.selected
+          ? `0 0 0 2px ${palette.border}, 0 0 0 4px color-mix(in oklab, ${palette.border} 40%, transparent)`
+          : m.hovered
+            ? `0 0 0 1.5px ${palette.border}`
+            : undefined;
         return (
           <button
             key={`${m.type}:${m.id}`}
             type="button"
-            draggable
+            draggable={dragEnabled}
             data-marginalia-marker={`${m.type}:${m.id}`}
-            className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded transition-colors focus:outline-2 focus:outline-offset-1 focus:outline-[var(--accent)]"
+            className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none"
             style={{
               left: m.cell.x,
               top: m.cell.y,
               width: MARGINALIA_ICON_SIZE,
               height: MARGINALIA_ICON_SIZE,
               color: palette.color,
-              background: m.selected ? palette.selectedBg : palette.bg,
+              background: palette.bg,
               border: `1.5px solid ${palette.border}`,
-              // Hover ring — shown when the marker's entity is hovered
-              // from any source (this marker, its linked text, or its
-              // panel card). Selection (data-card-selected) wins when
-              // both are active. The ring uses the palette border for a
-              // tinted, kind-aware look.
-              boxShadow:
-                m.hovered && !m.selected
-                  ? `0 0 0 2px ${palette.border}`
-                  : undefined,
+              boxShadow: interactionShadow,
+              transition: "box-shadow 120ms ease-out",
               opacity: m.muted ? 0.4 : undefined,
-              cursor: "grab",
+              cursor: dragEnabled ? "grab" : "pointer",
               padding: 0,
               lineHeight: 1,
             }}
@@ -454,7 +462,7 @@ function Gutter({
                 (e.target as HTMLElement).blur();
               }
             }}
-            onDragStart={(e) => {
+            onDragStart={dragEnabled ? (e) => {
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData(
                 MIME_MARGINALIA_MOVE,
@@ -465,10 +473,10 @@ function Gutter({
                 })
               );
               (e.target as HTMLElement).style.opacity = "0.4";
-            }}
-            onDragEnd={(e) => {
+            } : undefined}
+            onDragEnd={dragEnabled ? (e) => {
               (e.target as HTMLElement).style.opacity = "";
-            }}
+            } : undefined}
           >
             {meta.icon}
           </button>

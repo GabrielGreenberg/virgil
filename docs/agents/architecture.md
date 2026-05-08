@@ -1,4 +1,4 @@
-<!-- last-verified: 0a7c5a1 2026-05-04 -->
+<!-- last-verified: 2026-05-07 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -80,22 +80,36 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 
 Agents never touch this app — they read the same `.tex`/`.bib` and write these sidecars. Virgil polls/watches and surfaces changes.
 
+## EditorPane vs EditorLayout
+
+After Path A 7.8: [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx) is the **canonical editor surface**. Both the main app's doc branch (via [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)) and the Library Reader (via [library/components/PaperRender.tsx](../../library/components/PaperRender.tsx)) mount `<EditorPane>`. EditorPane owns the per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked MenuBar + detached toolbars, the panel rail (icon strip + active panel column), the floating panels block, and the canonical `DockOutline` / `CardLiftOutline`.
+
+EditorLayout shrinks to the **shell wrapper**: tab/file management (`useFiles`), `useViewPrefs` ownership (the bundle is then handed back to EditorPane via the `viewPrefs` prop), top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, DocumentClassMismatch), the Virgil bar (which reads per-doc state from `paneState` populated via `onPaneStateChange`), the `activePane` switch (paper / library-outer / doc routing), the PDF view branch, and the Code view branch. The PDF and Code branches are siblings of the EditorPane mount in the doc-branch ternary; CodeMirror still lives in EditorLayout per Path A D1 (deferred).
+
+The two bundles passed to EditorPane:
+- `viewPrefs: EditorPaneViewPrefs` — dock/float-shaped state (panel placements, focus state, undock/redock, card popouts, OutlineHost wiring). Reader passes none → main-app rail behavior stays dormant.
+- `menuBar: EditorPaneMenuBarBundle` — toggle state + setters, para-nav, dialog openers, detached-toolbar refs from the shell. Reader passes none → docked MenuBar + detached toolbars stay dormant.
+
+The `chrome` prop ([src/components/editor-layout/chrome-config.ts](../../src/components/editor-layout/chrome-config.ts)) gates feature visibility per surface: main app passes `FULL_CHROME`, Reader passes `READER_CHROME` (note-only action toolbar, no formatting toolbar, no MenuBar edit items, 6-kind panel whitelist).
+
 ## Panel / card rendering
 
-Entry points for rendering a panel instance:
+Entry points for rendering a panel instance — both inside EditorPane:
 
-1. **Sidebar-mounted**: `renderPanelWithChrome(panelId, side)` in EditorLayout (~line 4746).
-2. **Floating**: same function, wrapped in `FloatingPanel`, mounted as portal (~line 7201).
+1. **Rail-mounted**: `<PaneRail side="left|right">` (consumes `chrome.visiblePanelKinds` + `viewPrefs.prefs.placements` to split kinds across sides).
+2. **Floating**: panels in `viewPrefs.prefs.poppedOutPanels` plus dock-slot panels render through `<FloatingPanel>` portals to body.
 
 Cards inside a `CardListPanel`:
 1. **In list** — iterated by `renderCard(item)`.
 2. **In-text** — positioned via `inTextRenderItem` (uses `useInTextPositions`).
-3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; rendered via `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx).
+3. **Popped out** — registered in `prefs.poppedOutCards` with key `${keyPrefix}:${id}`; the popout dispatcher [renderPoppedCard](../../src/components/editor-layout/floating-cards.tsx) maps each key to a card component, which wraps itself in `FloatCard` from [src/components/FloatingCards.tsx](../../src/components/FloatingCards.tsx) (portal to body) when its `isPoppedOut` prop is true.
+
+The popouts mount lives inside [EditorPane.tsx](../../src/components/EditorPane.tsx) at the editor root, gated on `viewPrefs && !viewPrefs.zenMode`, with a memoized `popoutsDeps: PoppedCardDeps` bag wired from EditorPane's per-doc hooks. The Reader passes no `viewPrefs` so the mount stays dormant. Zen mode hides the floats but retains their state.
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
 `note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
-**Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element ([src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts)) and forget that position on close.
+**Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element via `popCardAtAnchor` in EditorPane (which routes through `viewPrefs.toggleCardPopout` + `viewPrefs.setCardFloatPosition`); position helper at [src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts).
 
 **Per-panel omni-item builders.** Each omni-eligible panel owns an `omni.tsx` next to its panel folder (e.g. [src/panels/Cutter/omni.tsx](../../src/panels/Cutter/omni.tsx), [src/panels/Errors/omni.tsx](../../src/panels/Errors/omni.tsx), [src/panels/Revisions/omni.tsx](../../src/panels/Revisions/omni.tsx), and the older builders for notes/footnotes/citations/etc.) exporting a `buildXOmniItems(args): OmniItem[]` function. The orchestrator-side host [src/components/editor-layout/panels/omni-host.tsx](../../src/components/editor-layout/panels/omni-host.tsx) imports each builder and concatenates the results into the per-side omni columns. When adding a new omni-eligible panel: flip `omniEligible: true` + set `omniSide` in `panel-registry.ts`, write `<panel>/omni.tsx` exporting the builder, re-export it from `<panel>/index.ts`, and import + invoke from `omni-host.tsx`.
 
@@ -109,10 +123,10 @@ Popout key prefixes for cards (DO NOT rename without migration — they're persi
 
 ## Card creation + pristine cards
 
-Two related abstractions, both mounted in EditorLayout:
+Two related abstractions, both now mounted inside EditorPane:
 
-- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createQuotation` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points.
-- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this.
+- **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createQuotation` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points. The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`).
+- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side (see "Future work" in `master-plan-the-status-buzzing-music.md`).
 
 ## System dialog primitive
 
@@ -130,6 +144,12 @@ Paragraph-level anchor drops trigger the vertical drop indicator. Inline-insert 
 - **Inline-insert**: quote, citation, archive (restore), footnote, ai-request, text-insert.
 
 When wiring a new draggable type, pick a category and register it — the drop indicator behaves correctly for free.
+
+## Keyboard: Tab in prose fields
+
+Substantive prose fields (every TipTap editor, every multi-line `<textarea>`, the BibEntryCard annotation contentEditable) treat **Tab as indent**, not as focus-move. Tab inserts a literal `\t` at the cursor; Shift-Tab is a no-op in plain prose. The escape hatch is **Esc** — it blurs the field so the next Tab navigates panels normally. Single-line `<input>` fields (search, card titles, citation/bib keys, numeric/dialog inputs) are intentionally *not* affected and keep default focus-moving Tab.
+
+Implementation: [src/lib/tiptap/tab-indent.ts](../../src/lib/tiptap/tab-indent.ts) (TipTap extension at priority 50, so list `sinkListItem` and the expex Tab handlers in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts) win first); [src/hooks/useTabIndent.ts](../../src/hooks/useTabIndent.ts) (textarea / contentEditable handler).
 
 ## Preview / dev caveats
 

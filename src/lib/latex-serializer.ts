@@ -47,8 +47,17 @@ function serializeMarks(
 ): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
 
-  // latexCommand mark: text is already raw LaTeX — return as-is
-  if (marks.some((m) => m.type === "latexCommand")) return text;
+  // latexCommand mark: text is already raw LaTeX — return as-is, except
+  // that uncompilable ASCII / smart quotes get smart-LaTeX-ified so they
+  // round-trip to a valid `.tex` even when the mark has been inherited
+  // onto stray text by Tiptap's default mark-extension behavior.
+  if (marks.some((m) => m.type === "latexCommand")) {
+    return text
+      .replace(/“/g, "``")
+      .replace(/”/g, "''")
+      .replace(/(^|[\s([{—–])"/g, "$1``")
+      .replace(/"/g, "''");
+  }
 
   let result = escapeLatex(text);
   for (const mark of marks) {
@@ -78,7 +87,13 @@ function escapeLatex(text: string): string {
   return text
     .replace(/(?<!\\)([&%#_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}");
+    .replace(/\^/g, "\\textasciicircum{}")
+    .replace(/“/g, "``")
+    .replace(/”/g, "''")
+    // Straight `"` → smart LaTeX pair. Opening if at start or after
+    // whitespace / opening punctuation; otherwise closing.
+    .replace(/(^|[\s([{—–])"/g, "$1``")
+    .replace(/"/g, "''");
 }
 
 function serializeTitleField(node: JSONContent): string {
@@ -129,13 +144,16 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "heading": {
-      const level = (node.attrs?.level as number) || 1;
+      const rawLevel = node.attrs?.level;
+      const level = typeof rawLevel === "number" ? rawLevel : 1;
       const label = node.attrs?.label as string | null;
       const uuid = node.attrs?.uuid as string | null;
       const numbered = node.attrs?.numbered;
       const inner = (node.content || []).map(serializeInline).join("");
-      const commands = ["\\chapter", "\\section", "\\subsection", "\\subsubsection"];
-      const cmd = commands[Math.min(level - 1, 3)];
+      // Indexed by level 0..6 directly.
+      const commands = ["\\part", "\\chapter", "\\section", "\\subsection", "\\subsubsection", "\\paragraph", "\\subparagraph"];
+      const clampedLevel = Math.max(0, Math.min(level, 6));
+      const cmd = commands[clampedLevel];
       const star = numbered === false ? "*" : "";
       const labelStr = label ? `\n\\label{${label}}` : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";

@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { FootnotesState, FootnoteRef } from "@/lib/types";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: FootnotesState = { footnotes: [] };
@@ -14,14 +18,20 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
   const [state, setState] = useState<FootnotesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
-  const docRef = useRef(docId);
+
+  // Pin the write handle to docId's active pipeline. Stale handles
+  // are rejected by the storage layer (see doc-pipeline.ts).
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
 
   useEffect(() => {
-    docRef.current = docId;
+    let cancelled = false;
     if (!docId) { setState(EMPTY); return; }
     readSidecar<FootnotesState>(docId, "footnotes.json", EMPTY)
       .then((data) => {
-        if (docRef.current !== docId || !data.footnotes) return;
+        if (cancelled || !data.footnotes) return;
         // Migrate legacy footnotes that stored content as HTML strings.
         const migrated: FootnotesState = {
           footnotes: data.footnotes.map((f) => ({
@@ -32,17 +42,23 @@ export function useFootnotes(docId: string | null, pristine?: PristineKindApi | 
         setState(migrated);
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [docId]);
 
-  const persist = useCallback(async (s: FootnotesState) => {
-    const id = docRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "footnotes.json", s);
-    } catch (err) {
-      console.error("Failed to save footnotes:", err);
-    }
-  }, []);
+  const persist = useCallback(
+    async (s: FootnotesState) => {
+      if (!handle) return;
+      try {
+        await writeSidecar(handle, "footnotes.json", s);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to save footnotes:", err);
+      }
+    },
+    [handle],
+  );
 
   const addFootnote = useCallback((content: JSONContent | string, existingId?: string): FootnoteRef => {
     const ref: FootnoteRef = {

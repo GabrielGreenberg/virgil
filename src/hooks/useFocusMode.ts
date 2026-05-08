@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
+import { usePersistentState } from "./usePersistentState";
 
 export interface FocusState {
   active: boolean;
@@ -15,6 +16,20 @@ const INITIAL: FocusState = {
   startBlockIndex: 0,
   endBlockIndex: 0,
 };
+
+// Block indices are doc-specific, so focus state lives in a per-doc
+// sidecar. If the doc is edited externally between sessions, the
+// restored range may point at different content; that's an acceptable
+// edge case — the user can re-pick a section from the outline.
+function migrateFocusState(raw: unknown): FocusState {
+  const s = (raw ?? {}) as Partial<FocusState>;
+  return {
+    active: typeof s.active === "boolean" ? s.active : false,
+    locked: typeof s.locked === "boolean" ? s.locked : false,
+    startBlockIndex: Number.isFinite(s.startBlockIndex) ? Number(s.startBlockIndex) : 0,
+    endBlockIndex: Number.isFinite(s.endBlockIndex) ? Number(s.endBlockIndex) : 0,
+  };
+}
 
 /**
  * Compute the block range a heading "owns" — from its own index to the
@@ -54,33 +69,39 @@ export function sectionRange(
   return [blockIndex, blockIndex];
 }
 
-export function useFocusMode() {
-  const [state, setState] = useState<FocusState>(INITIAL);
+export function useFocusMode(docId: string | null) {
+  const { state, update } = usePersistentState<FocusState>(
+    docId,
+    "focus.json",
+    INITIAL,
+    { migrate: migrateFocusState, errorLabel: "focus" },
+  );
 
   const activate = useCallback(
     (headings: { index: number; level: number }[], totalBlocks: number) => {
-      if (headings.length === 0) {
-        // No headings — focus entire document
-        setState({ active: true, locked: false, startBlockIndex: 0, endBlockIndex: totalBlocks - 1 });
-        return;
-      }
-      const [start, end] = sectionRange(headings[0].index, headings, totalBlocks);
-      setState({ active: true, locked: false, startBlockIndex: start, endBlockIndex: end });
+      update(() => {
+        if (headings.length === 0) {
+          // No headings — focus entire document
+          return { active: true, locked: false, startBlockIndex: 0, endBlockIndex: totalBlocks - 1 };
+        }
+        const [start, end] = sectionRange(headings[0].index, headings, totalBlocks);
+        return { active: true, locked: false, startBlockIndex: start, endBlockIndex: end };
+      });
     },
-    [],
+    [update],
   );
 
   const deactivate = useCallback(() => {
-    setState(INITIAL);
-  }, []);
+    update(() => INITIAL);
+  }, [update]);
 
   const toggleLock = useCallback(() => {
-    setState((s) => (s.active ? { ...s, locked: !s.locked } : s));
-  }, []);
+    update((s) => (s.active ? { ...s, locked: !s.locked } : s));
+  }, [update]);
 
   const setRange = useCallback((startBlockIndex: number, endBlockIndex: number) => {
-    setState((s) => (s.active ? { ...s, startBlockIndex, endBlockIndex } : s));
-  }, []);
+    update((s) => (s.active ? { ...s, startBlockIndex, endBlockIndex } : s));
+  }, [update]);
 
   /**
    * Click a section — move the band to exactly that section.
@@ -88,9 +109,9 @@ export function useFocusMode() {
   const moveTo = useCallback(
     (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
       const [start, end] = sectionRange(blockIndex, headings, totalBlocks);
-      setState((s) => (s.active ? { ...s, startBlockIndex: start, endBlockIndex: end } : s));
+      update((s) => (s.active ? { ...s, startBlockIndex: start, endBlockIndex: end } : s));
     },
-    [],
+    [update],
   );
 
   /**
@@ -100,14 +121,14 @@ export function useFocusMode() {
   const expandTo = useCallback(
     (blockIndex: number, headings: { index: number; level: number }[], totalBlocks: number) => {
       const [clickStart, clickEnd] = sectionRange(blockIndex, headings, totalBlocks);
-      setState((s) => {
+      update((s) => {
         if (!s.active) return s;
         const newStart = Math.min(s.startBlockIndex, clickStart);
         const newEnd = Math.max(s.endBlockIndex, clickEnd);
         return { ...s, startBlockIndex: newStart, endBlockIndex: newEnd };
       });
     },
-    [],
+    [update],
   );
 
   /**
@@ -125,7 +146,7 @@ export function useFocusMode() {
       headings: { index: number; level: number }[],
       totalBlocks: number,
     ) => {
-      setState((s) => {
+      update((s) => {
         if (!s.active || s.locked) return s;
 
         if (edge === "top") {
@@ -139,7 +160,7 @@ export function useFocusMode() {
         } else {
           // bottom edge
           const curIdx = allRowIndices.findIndex((ri) => ri >= s.endBlockIndex);
-          let nextIdx = curIdx + direction;
+          const nextIdx = curIdx + direction;
           // When moving bottom down, we need the section end, not just the row index
           if (nextIdx < 0 || nextIdx >= allRowIndices.length) return s;
           const newRowBlockIdx = allRowIndices[nextIdx];
@@ -150,7 +171,7 @@ export function useFocusMode() {
         }
       });
     },
-    [],
+    [update],
   );
 
   /**
@@ -163,7 +184,7 @@ export function useFocusMode() {
       headings: { index: number; level: number }[],
       totalBlocks: number,
     ) => {
-      setState((s) => {
+      update((s) => {
         if (!s.active || s.locked) return s;
         if (edge === "top") {
           if (blockIndex > s.endBlockIndex) return s;
@@ -175,7 +196,7 @@ export function useFocusMode() {
         }
       });
     },
-    [],
+    [update],
   );
 
   return { state, activate, deactivate, toggleLock, setRange, moveTo, expandTo, nudgeBoundary, snapBoundary };

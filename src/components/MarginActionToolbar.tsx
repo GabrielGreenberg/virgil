@@ -6,6 +6,8 @@ import {
   type ActionToolbarCallbacks,
 } from "./MenuBar";
 import type { PanelPlacement } from "@/hooks/useViewPrefs";
+import { useEditorChrome } from "./editor-layout/chrome-context";
+import { isActionCallbackVisible } from "./editor-layout/chrome-config";
 
 interface Props {
   side: "left" | "right";
@@ -23,10 +25,18 @@ interface Props {
  *
  * Positioning is handled by PanelColumn (absolute top-center of the
  * column); this component is a pure content row.
+ *
+ * Chrome consumption: hides entirely when `showActionToolbar` is false,
+ * and filters per-button on `actionToolbarKinds` (so the Reader's
+ * `["note"]` whitelist surfaces only the Note button even if other
+ * callbacks are wired upstream).
  */
 export function MarginActionToolbar({ side, actions, placements }: Props) {
+  const chrome = useEditorChrome();
+  if (!chrome.showActionToolbar) return null;
   const defs = ACTION_BUTTON_DEFS.filter((def) => {
     if (!actions[def.callbackKey]) return false;
+    if (!isActionCallbackVisible(chrome, def.callbackKey)) return false;
     const placement = placements.find((p) => p.id === def.panelId);
     return placement?.side === side;
   });

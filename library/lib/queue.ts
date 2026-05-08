@@ -10,8 +10,12 @@ export type QueueKind =
   | "reindex"
   | "bib-edit"
   | "paper-review"
-  | "richIndex"
+  | "deepIndex"
   | "delete";
+
+/** Legacy on-disk kind from before the rich-index → deep-index rename.
+ *  Read paths normalize this to "deepIndex"; new writes never use it. */
+export type LegacyQueueKind = "richIndex";
 
 export type QueueStatus =
   | "requested"
@@ -76,8 +80,8 @@ export function queueFilename(entry: QueueEntry): string {
   if (entry.kind === "paper-review") {
     return `${entry.citekey}-paperreview.json`;
   }
-  if (entry.kind === "richIndex") {
-    return `${entry.citekey}-richindex.json`;
+  if (entry.kind === "deepIndex") {
+    return `${entry.citekey}-deepindex.json`;
   }
   if (entry.kind === "delete") {
     return `${entry.citekey}-delete.json`;
@@ -209,6 +213,18 @@ export async function addPendingReview(
     pendingReviews: reviews,
     updatedAt: new Date().toISOString(),
   } satisfies PendingReviewsFile);
+}
+
+/** Normalize a freshly-read queue entry — translates legacy kind names
+ *  ("richIndex" → "deepIndex") so callers downstream see only the
+ *  current vocabulary. Returns null for null/undefined input. */
+export function normalizeQueueEntry(raw: QueueEntry | null | undefined): QueueEntry | null {
+  if (!raw) return null;
+  const legacyKind = (raw as { kind?: string }).kind;
+  if (legacyKind === "richIndex") {
+    return { ...raw, kind: "deepIndex" };
+  }
+  return raw;
 }
 
 export async function removePendingReview(

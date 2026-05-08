@@ -26,6 +26,10 @@ import type { DockSlotKey } from "@/hooks/useViewPrefs";
 export interface DockDragTarget {
   slotKey: DockSlotKey;
   rect: { left: number; top: number; width: number; height: number };
+  /** When the target is one half of a split column, the OTHER half's
+   *  rect — drawn as a fainter secondary outline so the user sees both
+   *  stacked pods during a drag. Absent for non-split (`-full`) targets. */
+  companionRect?: { left: number; top: number; width: number; height: number };
 }
 
 let active: DockDragTarget | null = null;
@@ -34,15 +38,19 @@ const listeners = new Set<() => void>();
 export function setDockDragTarget(target: DockDragTarget | null) {
   // Cheap structural compare so identical re-sets during a hover-stable
   // mousemove stream don't churn React.
+  const sameRect = (
+    a?: { left: number; top: number; width: number; height: number },
+    b?: { left: number; top: number; width: number; height: number },
+  ) =>
+    (!a && !b) ||
+    (!!a && !!b && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height);
   const same =
     active === target ||
     (!!active &&
       !!target &&
       active.slotKey === target.slotKey &&
-      active.rect.left === target.rect.left &&
-      active.rect.top === target.rect.top &&
-      active.rect.width === target.rect.width &&
-      active.rect.height === target.rect.height);
+      sameRect(active.rect, target.rect) &&
+      sameRect(active.companionRect, target.companionRect));
   if (same) return;
   active = target;
   listeners.forEach((l) => l());
@@ -98,12 +106,6 @@ export function findDockTargetAtPoint(
     if (x < r.left || x > r.right || y < r.top || y > r.bottom) continue;
     const side = (col.dataset.panelColumnSide ?? "left") as "left" | "right";
     const split = side === "left" ? splitState.left : splitState.right;
-    const half: "full" | "top" | "bottom" = !split
-      ? "full"
-      : (y - r.top) < r.height / 2
-        ? "top"
-        : "bottom";
-    const slotKey = `${side}-${half}` as DockSlotKey;
     // Always derive the FULL dock-frame rect from column geometry —
     // not the live slot anchor's rect. The anchor may be smaller than
     // the dock area when the docked panel auto-fits to short content;
@@ -119,6 +121,18 @@ export function findDockTargetAtPoint(
     const podRight = side === "left" ? r.right - 4 - podGap : r.right - 4;
     const fullTop = TOP_BAR + podGap;
     const fullHeight = window.innerHeight - TOP_BAR - 2 * podGap;
+    // Half boundary is the midline of the *viewport-bound* dock region,
+    // not the column's bounding rect. The column extends down with the
+    // document and can be many viewports tall, so `(y - r.top) < r.height/2`
+    // would always pick "top". Use absolute viewport y instead.
+    const halfHeightForBoundary = Math.floor((fullHeight - podGap) / 2);
+    const halfBoundary = fullTop + halfHeightForBoundary + podGap / 2;
+    const half: "full" | "top" | "bottom" = !split
+      ? "full"
+      : y < halfBoundary
+        ? "top"
+        : "bottom";
+    const slotKey = `${side}-${half}` as DockSlotKey;
     if (half === "full") {
       return {
         slotKey,
@@ -134,14 +148,13 @@ export function findDockTargetAtPoint(
     // reasonable default when no real anchor is available to read the
     // user's split ratio from.
     const halfHeight = Math.floor((fullHeight - podGap) / 2);
+    const podWidth = podRight - podLeft;
+    const topRect = { left: podLeft, top: fullTop, width: podWidth, height: halfHeight };
+    const bottomRect = { left: podLeft, top: fullTop + halfHeight + podGap, width: podWidth, height: halfHeight };
     return {
       slotKey,
-      rect: {
-        left: podLeft,
-        top: half === "top" ? fullTop : fullTop + halfHeight + podGap,
-        width: podRight - podLeft,
-        height: halfHeight,
-      },
+      rect: half === "top" ? topRect : bottomRect,
+      companionRect: half === "top" ? bottomRect : topRect,
     };
   }
   return null;
@@ -170,6 +183,11 @@ export function findDockTargetByPanelProximity(
   panelRect: { x: number; y: number; width: number; height: number },
   splitState: { left: boolean; right: boolean },
   threshold: number = AUTO_DOCK_PROXIMITY,
+  /** Optional cursor coords. When provided, the cursor's y is used to
+   *  pick the half in split mode — better aligned with user intent than
+   *  the panel's vertical center, which for a tall floating panel can
+   *  land in a different half than the cursor. */
+  cursor?: { x: number; y: number },
 ): DockDragTarget | null {
   if (typeof document === "undefined") return null;
   const cols = document.querySelectorAll<HTMLElement>(
@@ -202,10 +220,11 @@ export function findDockTargetByPanelProximity(
     }
   }
   if (!bestSide || !bestColRect) return null;
-  // Reuse the cursor-based finder by probing at the column's x-center
-  // and the panel's vertical center. Picks the right slot key (full or
-  // top/bottom in split mode) and resolves the slot rect for us.
+  // Reuse the cursor-based finder by probing at the column's x-center.
+  // For y, prefer the cursor when supplied — it represents user intent
+  // (which half the user is aiming at) better than panel-center, which
+  // for a tall float can sit far from where the user is hovering.
   const probeX = (bestColRect.left + bestColRect.right) / 2;
-  const probeY = panelRect.y + panelRect.height / 2;
+  const probeY = cursor ? cursor.y : panelRect.y + panelRect.height / 2;
   return findDockTargetAtPoint(probeX, probeY, splitState);
 }

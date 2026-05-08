@@ -27,6 +27,8 @@ const store = createStore("virgil", "kv");
 
 const INDEX_KEY = "index";
 const TABS_KEY = "tabs";
+const TABS_WINDOW_PREFIX = "tabs/";
+const WINDOWS_REGISTRY_KEY = "windows-registry";
 const DOC_HANDLE_PREFIX = "doc-handle/";
 const GENERAL_BIB_HANDLE_PREFIX = "general-bib-handle/";
 
@@ -57,25 +59,49 @@ export interface FsaDocIndex {
   docs: FsaDocMeta[];
 }
 
-export type ActivePaneKind = "doc" | "library";
+export type ActivePaneKind = "doc" | "paper" | "library-outer";
+
+/** Prefix used for paper outer-tab ids in `outerOrder` — the tail is
+ *  the citekey. Kept verbatim in sync with `paperLibraryId()` in the
+ *  library subsystem so a single string flows from the inner library
+ *  drag-source through the outer bar without re-encoding. */
+export const OUTER_PAPER_PREFIX = "paper:";
+/** Prefix used for library outer-tab ids in `outerOrder` — the tail is
+ *  the inner library's id (custom or `project`). Tab state lives under
+ *  the scoped key `virgil-library-tabs-outer:<libId>-<panelKey>`. */
+export const OUTER_LIBRARY_PREFIX = "library:";
+/** Sentinel id for the singleton, pinned-to-far-left Library outer tab.
+ *  Always present in `outerOrder` at index 0; non-closable; uses the
+ *  legacy unscoped panel-state keys (so it inherits whatever the user's
+ *  inline Library tab state was before the pin). */
+export const OUTER_LIBRARY_ROOT_ID = OUTER_LIBRARY_PREFIX + "__root__";
 
 export interface TabsState {
   openTabIds: string[];
   currentDocId: string | null;
-  /** Doc ids whose sibling library "shadow tab" is currently open in the
-   *  tab strip. Persisted so reloads restore the paired pill. */
-  libraryOpenFor?: string[];
-  /** Which half of the current doc's pair is active: the doc itself or
-   *  its library. Only meaningful when `currentDocId` has its library
-   *  open (otherwise implicitly "doc"). */
+  /** Which pane is active. "doc" → `currentDocId`; "paper" →
+   *  `currentPaperCitekey`; "library-outer" → `currentLibraryOuterId`
+   *  (which is `OUTER_LIBRARY_ROOT_ID` for the pinned singleton). */
   activePane?: ActivePaneKind;
+  /**
+   * Ordered list of outer tab entries — interleaves docs and paper
+   * outer tabs. Each entry is either a doc id (bare) or `paper:<citekey>`.
+   * When undefined (legacy registries), the bar falls back to
+   * `openTabIds` ordering with no paper tabs.
+   */
+  outerOrder?: string[];
+  /** Citekey of the currently active paper outer tab, when
+   *  `activePane === "paper"`. */
+  currentPaperCitekey?: string | null;
+  /** Library id of the currently active library outer tab, when
+   *  `activePane === "library-outer"`. */
+  currentLibraryOuterId?: string | null;
 }
 
 const EMPTY_INDEX: FsaDocIndex = { docs: [] };
 const EMPTY_TABS: TabsState = {
   openTabIds: [],
   currentDocId: null,
-  libraryOpenFor: [],
   activePane: "doc",
 };
 
@@ -107,16 +133,28 @@ export async function touchDocAccessed(id: string): Promise<void> {
 
 // --- Tabs ----------------------------------------------------------------
 
-export async function readTabs(): Promise<TabsState> {
+/** Per-window record of open tabs and the active pane. Keyed by the
+ *  window's sessionStorage UUID (see `multi-window/window-id.ts`). */
+export interface WindowsRegistry {
+  [windowId: string]: {
+    lastSeen: number;
+    openTabIds: string[];
+  };
+}
+
+export async function readTabs(windowId: string): Promise<TabsState> {
   // In dev-storage mode, auto-open the most recent local doc so the
-  // editor renders without any user interaction.
+  // editor renders without any user interaction. Per-window keys still
+  // apply, but on first load we have nothing to read yet so the dev
+  // bootstrap runs.
   if (isDevStorage) {
+    const existing = await get<TabsState>(TABS_WINDOW_PREFIX + windowId, store);
+    if (existing) return existing;
     try {
       const res = await fetch("/api/dev/index.json");
       const data = (await res.json()) as {
         docs: { id: string; lastModifiedAt: string; sourcePath: string }[];
       };
-      // Only consider docs that live inside virgil-data/
       const local = data.docs.filter((d) =>
         d.sourcePath.includes("virgil-data/"),
       );
@@ -125,12 +163,8 @@ export async function readTabs(): Promise<TabsState> {
           new Date(b.lastModifiedAt).getTime() -
           new Date(a.lastModifiedAt).getTime(),
       );
-      // Pick the first doc whose .tex file actually exists on disk.
       for (const doc of local) {
         const texFile = doc.sourcePath.split("/").pop() ?? "document.tex";
-        const folder = doc.sourcePath
-          .slice(doc.sourcePath.indexOf("virgil-data/") + "virgil-data/".length)
-          .split("/")[0];
         const probe = await fetch(`/api/dev/doc/${doc.id}/${texFile}`);
         if (probe.ok) {
           return { openTabIds: [doc.id], currentDocId: doc.id };
@@ -141,12 +175,61 @@ export async function readTabs(): Promise<TabsState> {
     }
     return EMPTY_TABS;
   }
-  const t = await get<TabsState>(TABS_KEY, store);
-  return t ?? EMPTY_TABS;
+
+  // Migration: if this window has no per-window record but the legacy
+  // single-window `"tabs"` key exists, claim it for this window and
+  // delete the legacy key. First-ever window after upgrade keeps its
+  // tabs; subsequent new windows start empty as expected.
+  const existing = await get<TabsState>(TABS_WINDOW_PREFIX + windowId, store);
+  if (existing) return existing;
+  const legacy = await get<TabsState>(TABS_KEY, store);
+  if (legacy) {
+    await set(TABS_WINDOW_PREFIX + windowId, legacy, store);
+    await del(TABS_KEY, store);
+    return legacy;
+  }
+  return EMPTY_TABS;
 }
 
-export async function writeTabs(t: TabsState): Promise<void> {
-  await set(TABS_KEY, t, store);
+export async function writeTabs(
+  windowId: string,
+  t: TabsState,
+): Promise<void> {
+  await set(TABS_WINDOW_PREFIX + windowId, t, store);
+}
+
+// --- Windows registry ---------------------------------------------------
+
+export async function readWindowsRegistry(): Promise<WindowsRegistry> {
+  return (await get<WindowsRegistry>(WINDOWS_REGISTRY_KEY, store)) ?? {};
+}
+
+export async function writeWindowsRegistry(
+  reg: WindowsRegistry,
+): Promise<void> {
+  await set(WINDOWS_REGISTRY_KEY, reg, store);
+}
+
+/** Stamp this window as alive in the registry with `now` and the
+ *  current open tab ids. Called on mount and on a heartbeat. */
+export async function touchWindow(
+  windowId: string,
+  openTabIds: string[],
+): Promise<void> {
+  const reg = await readWindowsRegistry();
+  reg[windowId] = { lastSeen: Date.now(), openTabIds };
+  await writeWindowsRegistry(reg);
+}
+
+/** Remove a window from the registry and drop its tabs record. Called
+ *  on `pagehide` so a clean close doesn't leave orphan state. */
+export async function forgetWindow(windowId: string): Promise<void> {
+  const reg = await readWindowsRegistry();
+  if (windowId in reg) {
+    delete reg[windowId];
+    await writeWindowsRegistry(reg);
+  }
+  await del(TABS_WINDOW_PREFIX + windowId, store);
 }
 
 // --- Per-doc folder handle ----------------------------------------------

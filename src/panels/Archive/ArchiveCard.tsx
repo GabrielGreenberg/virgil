@@ -13,7 +13,7 @@ import {
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
-import { normalizeRichContent } from "@/lib/footnote-content";
+import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 
@@ -67,12 +67,16 @@ export function ArchiveCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
+  const compressed = !selected && !isPoppedOut;
+  const compressedSummary = compressed
+    ? (richJsonToPlainText(snippet.content).trim().slice(0, 80) || "")
+    : undefined;
   const card = (
     <EditableCard
       id={snippet.id}
+      cardKind="archive"
       selected={selected}
       theme={theme}
-      grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
@@ -104,7 +108,10 @@ export function ArchiveCard({
         ) : undefined
       }
       onClick={() => onSelect(selected ? null : snippet.id)}
-      onDragStart={(e) => startArchiveDrag(e, snippet.id)}
+      // TODO(grip-redesign): drop-into-document via the grip is disabled
+      // during the unified header redesign. Re-introduce thoughtfully via
+      // a separate body-level affordance, not the grip.
+      // onDragStart={(e) => startArchiveDrag(e, snippet.id)}
       onTextDragStart={(e) => startTextDrag(e, snippet.content)}
       onDelete={() => onDelete(snippet.id)}
       value={snippet.content}
@@ -118,6 +125,10 @@ export function ArchiveCard({
       extraDataAttrs={{ "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      cardKey={cardKey}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      typeLabelKind="archive"
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;

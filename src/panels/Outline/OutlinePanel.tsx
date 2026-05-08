@@ -112,16 +112,20 @@ function PositionLozenge({ scrollRef, attr, color }: {
     setPos({ y: el.offsetTop, h: el.offsetHeight });
   }, [attr, scrollRef]);
 
-  useEffect(() => { measure(); }, [measure]);
+  // Run before paint so the lozenge lands on the right pixel without a
+  // visible "old position then new" flash.
+  useLayoutEffect(() => { measure(); }, [measure]);
 
-  // Remeasure on container resize or any child layout changes (e.g. focus
-  // mode toggling position/z-index on rows shifts offsetTop values).
+  // Remeasure on container resize and on row tree changes (collapse/expand,
+  // headings added/removed). We deliberately do NOT observe attribute
+  // mutations: every focus-state-driven opacity tween used to fire this
+  // observer dozens of times per render and was a major thrash source.
   useEffect(() => {
     if (!scrollRef.current) return;
     const ro = new ResizeObserver(() => measure());
     ro.observe(scrollRef.current);
-    const mo = new MutationObserver(() => requestAnimationFrame(measure));
-    mo.observe(scrollRef.current, { childList: true, subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    const mo = new MutationObserver(() => measure());
+    mo.observe(scrollRef.current, { childList: true, subtree: true });
     return () => { ro.disconnect(); mo.disconnect(); };
   }, [scrollRef, measure]);
 
@@ -304,7 +308,7 @@ export function extractHeadings(doc: JSONContent | null): ExtractResult {
   const preambleTitles: { title: string; index: number }[] = [];
 
   doc.content.forEach((node, idx) => {
-    if (node.type === "heading" && node.attrs?.level) {
+    if (node.type === "heading" && typeof node.attrs?.level === "number") {
       // Attach any pending parTitles to the previous heading. Titles
       // before the first heading go to the preamble list so they can
       // appear under the "Document start" row.
@@ -603,7 +607,7 @@ function OutlineNode({
       <div
         data-outline-pos={`h-${node.heading.index}`}
         className={`flex items-start gap-1 group cursor-pointer rounded ${isFocusEditing ? "" : "hover-on-light"}`}
-        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: isOutsideFocus ? undefined : "relative", zIndex: isOutsideFocus ? undefined : 5 }}
+        style={{ paddingLeft: `${depth * 16 + 8}px`, paddingRight: 8, paddingTop: 4, paddingBottom: 4, opacity: isOutsideFocus ? 0.3 : 1, transition: "opacity 200ms ease", position: "relative", zIndex: 5 }}
         onClick={handleRowClick(node.heading.index)}
       >
         {hasChildren ? (
@@ -634,7 +638,7 @@ function OutlineNode({
         <div className="min-w-0 flex-1">
           <span
             className={`text-sm leading-snug ${
-              node.heading.level === 1
+              node.heading.level <= 1
                 ? "font-semibold text-ink-strong"
                 : node.heading.level === 2
                   ? "font-medium text-ink-body"
@@ -679,8 +683,8 @@ function OutlineNode({
                   paddingBottom: 2,
                   opacity: ptOutside ? 0.3 : 1,
                   transition: "opacity 200ms ease",
-                  position: ptOutside ? undefined : "relative",
-                  zIndex: ptOutside ? undefined : 5,
+                  position: "relative",
+                  zIndex: 5,
                 }}
                 onClick={handleRowClick(pt.index)}
               >
@@ -972,7 +976,7 @@ function EditablePod({
             className={`flex-1 min-w-0 truncate cursor-text ${
               isParTitle
                 ? "text-[11px] text-[#857070]"
-                : pod.level === 1
+                : pod.level <= 1
                   ? "text-sm font-semibold text-ink-strong"
                   : pod.level === 2
                     ? "text-sm font-medium text-ink-body"
@@ -1176,7 +1180,7 @@ function FocusBand({
   focusState,
   headings,
   preambleTitles,
-  totalBlocks,
+  totalBlocks: _totalBlocks,
   onSnapBoundary,
 }: {
   scrollRef: React.RefObject<HTMLDivElement | null>;
@@ -1186,13 +1190,28 @@ function FocusBand({
   totalBlocks: number;
   onSnapBoundary?: (edge: "top" | "bottom", blockIndex: number) => void;
 }) {
+  // The band's measured rectangle. Once a real measurement lands, we never
+  // reset this to null — keeping the last good value avoids the flicker
+  // where a transient querySelector miss (during reflows or row remounts)
+  // would otherwise unmount the band entirely.
   const [band, setBand] = useState<{ top: number; height: number } | null>(null);
-  const draggingRef = useRef<{ edge: "top" | "bottom" } | null>(null);
+  // Whether to animate top/height. We disable transitions during drag so
+  // the band tracks the cursor instead of trailing 200ms behind it.
+  const [animated, setAnimated] = useState(true);
 
-  // Collect all outline row block indices for resolving drag targets
+  // Drag state: a snapshot of all candidate row positions taken at drag
+  // start, plus the last index we reported (so we only call onSnapBoundary
+  // when the closest row actually changes).
+  const dragRef = useRef<{
+    edge: "top" | "bottom";
+    rows: { blockIndex: number; mid: number }[];
+    lastIdx: number;
+  } | null>(null);
+
+  // Stable identity for outline row attrs, used both for measurement and as
+  // the candidate set for drag snapping.
   const allRowAttrs = useMemo(() => {
     const attrs: { attr: string; blockIndex: number }[] = [];
-    // docstart represents block 0
     attrs.push({ attr: "docstart", blockIndex: 0 });
     for (const pt of preambleTitles) {
       attrs.push({ attr: `pt-${pt.index}`, blockIndex: pt.index });
@@ -1206,71 +1225,103 @@ function FocusBand({
     return attrs;
   }, [headings, preambleTitles]);
 
-  // Measure band position from DOM
+  // Synchronous measure — runs before paint, reads DOM in one querySelectorAll
+  // pass, and only updates state if the rectangle actually changed.
   const measure = useCallback(() => {
-    if (!scrollRef.current) return;
     const container = scrollRef.current;
+    if (!container) return;
 
-    // Find the first outline row >= startBlockIndex
+    const rowMap = new Map<string, HTMLElement>();
+    container.querySelectorAll<HTMLElement>("[data-outline-pos]").forEach((el) => {
+      const attr = el.dataset.outlinePos;
+      if (attr) rowMap.set(attr, el);
+    });
+
     let topEl: HTMLElement | null = null;
     let botEl: HTMLElement | null = null;
-
     for (const r of allRowAttrs) {
-      if (r.blockIndex >= focusState.startBlockIndex && !topEl) {
-        topEl = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
-      }
-      if (r.blockIndex >= focusState.startBlockIndex && r.blockIndex <= focusState.endBlockIndex) {
-        botEl = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
-      }
+      const el = rowMap.get(r.attr);
+      if (!el) continue;
+      if (r.blockIndex >= focusState.startBlockIndex && !topEl) topEl = el;
+      if (r.blockIndex >= focusState.startBlockIndex && r.blockIndex <= focusState.endBlockIndex) botEl = el;
     }
-
-    if (!topEl || !botEl) { setBand(null); return; }
+    // Keep the previous band rather than blanking it. Transient misses
+    // happen during row remounts and would otherwise flash the band off.
+    if (!topEl || !botEl) return;
     const top = topEl.offsetTop;
     const height = botEl.offsetTop + botEl.offsetHeight - top;
-    setBand({ top, height });
+    setBand((prev) => (prev && prev.top === top && prev.height === height ? prev : { top, height }));
   }, [scrollRef, allRowAttrs, focusState.startBlockIndex, focusState.endBlockIndex]);
 
-  useEffect(() => { measure(); }, [measure]);
+  // Layout effect so the band lands on the right pixel before the browser
+  // paints, eliminating the "old position then snap" flash on state change.
+  useLayoutEffect(() => {
+    measure();
+  }, [measure]);
 
-  // Remeasure on resize
+  // Remeasure on container resize *and* on inner row reflows (e.g.
+  // collapse/expand). MutationObserver is scoped to childList only so it
+  // doesn't fire on every style/class change — the unscoped attribute
+  // observer was a major source of measurement thrash.
   useEffect(() => {
-    if (!scrollRef.current) return;
+    const container = scrollRef.current;
+    if (!container) return;
     const ro = new ResizeObserver(() => measure());
-    ro.observe(scrollRef.current);
-    return () => ro.disconnect();
+    ro.observe(container);
+    const mo = new MutationObserver(() => measure());
+    mo.observe(container, { childList: true, subtree: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [scrollRef, measure]);
 
-  // Handle drag
+  // Drag — snapshot row positions at mousedown and reuse them for every
+  // mousemove. Throttle with requestAnimationFrame and only call back when
+  // the snapped row index actually changes.
   useEffect(() => {
     if (!onSnapBoundary || focusState.locked) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!draggingRef.current || !scrollRef.current) return;
-      const container = scrollRef.current;
-      const rect = container.getBoundingClientRect();
-      const y = e.clientY - rect.top + container.scrollTop;
+    let rafScheduled = false;
+    let lastY = 0;
 
-      // Find closest outline row
-      let closest: { blockIndex: number; dist: number } | null = null;
-      for (const r of allRowAttrs) {
-        if (r.blockIndex < 0) continue;
-        const el = container.querySelector(`[data-outline-pos="${r.attr}"]`) as HTMLElement | null;
-        if (!el) continue;
-        const mid = el.offsetTop + el.offsetHeight / 2;
-        const dist = Math.abs(y - mid);
-        if (!closest || dist < closest.dist) {
-          closest = { blockIndex: r.blockIndex, dist };
+    const flush = () => {
+      rafScheduled = false;
+      const drag = dragRef.current;
+      if (!drag) return;
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < drag.rows.length; i++) {
+        const dist = Math.abs(lastY - drag.rows[i].mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestIdx = i;
         }
       }
-      if (closest) {
-        onSnapBoundary(draggingRef.current.edge, closest.blockIndex);
+      if (bestIdx !== drag.lastIdx) {
+        drag.lastIdx = bestIdx;
+        onSnapBoundary(drag.edge, drag.rows[bestIdx].blockIndex);
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const drag = dragRef.current;
+      const container = scrollRef.current;
+      if (!drag || !container) return;
+      const rect = container.getBoundingClientRect();
+      lastY = e.clientY - rect.top + container.scrollTop;
+      if (!rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(flush);
       }
     };
 
     const handleMouseUp = () => {
-      draggingRef.current = null;
+      if (!dragRef.current) return;
+      dragRef.current = null;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
+      setAnimated(true);
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -1279,17 +1330,36 @@ function FocusBand({
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [onSnapBoundary, focusState.locked, scrollRef, allRowAttrs]);
+  }, [onSnapBoundary, focusState.locked, scrollRef]);
 
   const startDrag = (edge: "top" | "bottom") => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    draggingRef.current = { edge };
+    const container = scrollRef.current;
+    if (!container) return;
+    // Snapshot row mids once. Drag doesn't change row layout, so we never
+    // need to re-read the DOM during the drag itself.
+    const rowMap = new Map<string, HTMLElement>();
+    container.querySelectorAll<HTMLElement>("[data-outline-pos]").forEach((el) => {
+      const attr = el.dataset.outlinePos;
+      if (attr) rowMap.set(attr, el);
+    });
+    const rows: { blockIndex: number; mid: number }[] = [];
+    for (const r of allRowAttrs) {
+      const el = rowMap.get(r.attr);
+      if (!el) continue;
+      rows.push({ blockIndex: r.blockIndex, mid: el.offsetTop + el.offsetHeight / 2 });
+    }
+    dragRef.current = { edge, rows, lastIdx: -1 };
     document.body.style.cursor = "ns-resize";
     document.body.style.userSelect = "none";
+    // Disable transitions during drag so the band tracks the cursor.
+    setAnimated(false);
   };
 
   if (!band) return null;
+
+  const transition = animated ? "top 180ms ease, height 180ms ease" : "none";
 
   return (
     <>
@@ -1306,7 +1376,7 @@ function FocusBand({
           borderRadius: 6,
           pointerEvents: "none",
           zIndex: 3,
-          transition: "top 200ms ease, height 200ms ease",
+          transition,
         }}
       />
       {/* Border */}
@@ -1322,7 +1392,7 @@ function FocusBand({
           borderRadius: 6,
           pointerEvents: "none",
           zIndex: 4,
-          transition: "top 200ms ease, height 200ms ease",
+          transition,
         }}
       />
       {/* Top handle */}
@@ -1341,7 +1411,7 @@ function FocusBand({
             border: "2px solid white",
             cursor: "ns-resize",
             zIndex: 6,
-            transition: "top 200ms ease",
+            transition: animated ? "top 180ms ease" : "none",
             boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
           }}
         />
@@ -1362,7 +1432,7 @@ function FocusBand({
             border: "2px solid white",
             cursor: "ns-resize",
             zIndex: 6,
-            transition: "top 200ms ease",
+            transition: animated ? "top 180ms ease" : "none",
             boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
           }}
         />
@@ -1704,8 +1774,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                 paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
                 opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
                 transition: "opacity 200ms ease",
-                position: focusState?.active && !(0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? "relative" : undefined,
-                zIndex: focusState?.active && !(0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 5 : undefined,
+                position: "relative",
+                zIndex: 5,
               }}
               onClick={(e) => {
                 if (focusState?.active && !focusState.locked && onFocusMoveTo) {
@@ -1749,8 +1819,8 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                         paddingLeft: 40, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
                         opacity: ptOutside ? 0.3 : 1,
                         transition: "opacity 200ms ease",
-                        position: ptOutside ? undefined : "relative",
-                        zIndex: ptOutside ? undefined : 5,
+                        position: "relative",
+                        zIndex: 5,
                       }}
                       onClick={(e) => {
                         if (focusState?.active && !focusState.locked && onFocusMoveTo) {

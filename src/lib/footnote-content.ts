@@ -231,12 +231,22 @@ function escapeLatex(text: string): string {
   return text
     .replace(/(?<!\\)([&%#_])/g, "\\$1")
     .replace(/~/g, "\\textasciitilde{}")
-    .replace(/\^/g, "\\textasciicircum{}");
+    .replace(/\^/g, "\\textasciicircum{}")
+    .replace(/“/g, "``")
+    .replace(/”/g, "''")
+    .replace(/(^|[\s([{—–])"/g, "$1``")
+    .replace(/"/g, "''");
 }
 
 function serializeMarks(text: string, marks?: { type: string }[]): string {
   if (!marks || marks.length === 0) return escapeLatex(text);
-  if (marks.some((m) => m.type === "latexCommand")) return text;
+  if (marks.some((m) => m.type === "latexCommand")) {
+    return text
+      .replace(/“/g, "``")
+      .replace(/”/g, "''")
+      .replace(/(^|[\s([{—–])"/g, "$1``")
+      .replace(/"/g, "''");
+  }
   let result = escapeLatex(text);
   for (const mark of marks) {
     switch (mark.type) {
@@ -339,6 +349,18 @@ function parseInlineLatex(text: string): JSONContent[] {
   };
 
   while (i < text.length) {
+    // LaTeX double-quote pairs → smart quotes in the display.
+    if (text[i] === "`" && text[i + 1] === "`") {
+      buffer += "“";
+      i += 2;
+      continue;
+    }
+    if (text[i] === "'" && text[i + 1] === "'") {
+      buffer += "”";
+      i += 2;
+      continue;
+    }
+
     // Inline math: $...$
     if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
       const end = text.indexOf("$", i + 1);

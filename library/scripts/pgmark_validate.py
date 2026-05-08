@@ -18,7 +18,7 @@ Used by:
   - scripts/index_paper.py — post-emit, soft (warn): findings populate
     catalog.json indexed.warnings[] but never gate the run.
 
-  - /rich-index skill — post-AI-edit, hard (error): scope violations
+  - /deep-index skill — post-AI-edit, hard (error): scope violations
     and *new* continuity breaks (relative to the previous catalog
     warnings for this citekey) cause exit code 1 and abort write-back.
 

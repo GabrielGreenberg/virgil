@@ -88,6 +88,7 @@ export interface PoppedCardDeps {
   // Notes
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
+  setNoteAiRequest: (id: string, value: boolean) => void;
   deleteNote: (id: string) => void;
 
   // Footnotes
@@ -139,6 +140,7 @@ export interface PoppedCardDeps {
 
   // Citations
   updateCitation: (id: string, command: string) => void;
+  deleteCitation: (id: string) => void;
 
   // Revisions panel (mirrors Cutter)
   updateRevisionCommentContent: (id: string, content: JSONContent) => void;
@@ -203,6 +205,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           selected={d.selectedNoteId === note.id}
           onUpdate={d.updateNote}
           onUpdateTitle={d.updateNoteTitle}
+          onSetAiRequest={d.setNoteAiRequest}
           onDelete={d.deleteNote}
           onSelect={d.setSelectedNoteId}
           onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(note, sourceEl) : undefined}
@@ -371,6 +374,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
             d.editorRef.current?.scrollToCitation(cit.id, sourceEl);
           }}
           onUpdateCitation={d.updateCitation}
+          onDelete={d.deleteCitation}
           getFormattedBib={d.getFormattedBib}
           getAnnotation={d.getAnnotation}
           setAnnotation={d.setAnnotation}

@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import CodeMirror, { EditorView } from "@uiw/react-codemirror";
 import { latex } from "codemirror-lang-latex";
 import { search, highlightSelectionMatches } from "@codemirror/search";
 import { EditorState } from "@codemirror/state";
 import { readTex, writeTex } from "@/lib/storage";
 import { findParagraphUuids } from "@/lib/latex-paragraph-map";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import CodeEditorLogDrawer from "./CodeEditorLogDrawer";
 
 const virgilTheme = EditorView.theme({
@@ -86,6 +90,10 @@ export default function CodeEditor({
   compileStatus = null,
   isCompiling = false,
 }: CodeEditorProps) {
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
   const [value, setValue] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -157,28 +165,33 @@ export default function CodeEditor({
   }, [value, initialLine, initialParagraphId]);
 
   const persist = useCallback(async (latex: string) => {
+    if (!handle) return;
     setSaving(true);
     try {
-      await writeTex(docId, latex);
+      await writeTex(handle, latex);
       savedValueRef.current = latex;
       onDirtyChange?.(false);
     } catch (err) {
+      if (isStalePipelineError(err)) return;
       console.error("Failed to save LaTeX:", err);
     } finally {
       setSaving(false);
     }
-  }, [docId, onDirtyChange]);
+  }, [handle, onDirtyChange]);
 
   // Save on unmount if dirty
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (latestValueRef.current !== savedValueRef.current) {
-        // Fire-and-forget save through the per-doc write queue.
-        writeTex(docId, latestValueRef.current).catch(() => {});
+      if (handle && latestValueRef.current !== savedValueRef.current) {
+        // Fire-and-forget save. If the pipeline ended (e.g. doc
+        // switched), storage rejects with StalePipelineError and the
+        // bytes stay on disk in their pre-edit form — better than
+        // risking a cross-doc overwrite.
+        writeTex(handle, latestValueRef.current).catch(() => {});
       }
     };
-  }, [docId]);
+  }, [handle]);
 
   const handleChange = useCallback((val: string) => {
     setValue(val);

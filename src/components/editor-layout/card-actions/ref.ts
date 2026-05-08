@@ -2,7 +2,8 @@ import { useCallback, type Dispatch, type RefObject, type SetStateAction } from 
 import type { EditorHandle } from "../../Editor";
 import type { LabelInfo, RefCommand } from "../../LabelRefPopover";
 
-const HEADING_TYPE_NAMES = ["Chapter", "Section", "Subsection", "Subsubsection"];
+// Indexed by heading level 0..6 (Part..Subparagraph).
+const HEADING_TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
 
 const LABEL_RE = /\\label\{([^}]+)\}/g;
 
@@ -83,7 +84,7 @@ export function useRefActions(deps: {
           if (child.isText && child.text) titleParts.push(child.text);
         });
         const level = nd.attrs.level as number;
-        const typeName = HEADING_TYPE_NAMES[Math.min(level - 1, 3)];
+        const typeName = HEADING_TYPE_NAMES[Math.max(0, Math.min(level, 6))];
         const secNum = (nd.attrs.sectionNumber as string | null) || "?";
         pushUnique({
           label: nd.attrs.label,

@@ -5,6 +5,7 @@ import type { JSONContent } from "@tiptap/react";
 import type { UserNote } from "@/lib/types";
 import {
   EditableCard,
+  AiRequestCheckbox,
   BadgeLabel,
   BadgeOrphaned,
   CardTitleInput,
@@ -15,7 +16,7 @@ import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
-import { normalizeRichContent } from "@/lib/footnote-content";
+import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
 
 /** Top grab bar: anchor-only drag (no inline text insertion).
@@ -35,6 +36,7 @@ export function NoteCard({
   selected,
   onUpdate,
   onUpdateTitle,
+  onSetAiRequest,
   onDelete,
   onSelect,
   onJump,
@@ -50,6 +52,7 @@ export function NoteCard({
   selected: boolean;
   onUpdate: (id: string, content: JSONContent) => void;
   onUpdateTitle: (id: string, title: string) => void;
+  onSetAiRequest?: (id: string, value: boolean) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl: HTMLElement | null) => void;
@@ -70,6 +73,10 @@ export function NoteCard({
 
   const isOrphaned = getLinkedParagraphIds(note).length === 0;
   const theme = useCardTheme("note");
+  const compressed = !selected && !isPoppedOut;
+  const compressedSummary = compressed
+    ? (richJsonToPlainText(note.content).trim().slice(0, 80) || "")
+    : undefined;
   const popped = usePoppedCards();
   const cardKey = popKey("notes", note.id);
   const onToggleFromCtx = onTogglePopout
@@ -80,9 +87,9 @@ export function NoteCard({
   const card = (
     <EditableCard
       id={note.id}
+      cardKind="note"
       selected={selected}
       theme={theme}
-      grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
@@ -114,9 +121,22 @@ export function NoteCard({
         )
       }
       onClick={() => onSelect(selected ? null : note.id)}
-      onDragStart={(e) => startNoteDrag(e, note.id)}
+      // TODO(grip-redesign): drop-into-document via the grip is disabled
+      // during the unified header redesign. Re-introduce thoughtfully via
+      // a separate body-level affordance, not the grip.
+      // onDragStart={(e) => startNoteDrag(e, note.id)}
       onTextDragStart={(e) => startTextDrag(e, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
+      footer={
+        onSetAiRequest && !compressed ? (
+          <div className="px-3 pb-2 -mt-1">
+            <AiRequestCheckbox
+              checked={!!note.aiRequest}
+              onToggle={(next) => onSetAiRequest(note.id, next)}
+            />
+          </div>
+        ) : undefined
+      }
       value={note.content}
       variant="footnote"
       panelKey="note"
@@ -129,6 +149,10 @@ export function NoteCard({
       onHoverChange={onHoverChange}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      cardKey={cardKey}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      typeLabelKind="note"
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;

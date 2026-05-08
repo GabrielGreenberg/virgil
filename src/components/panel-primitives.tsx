@@ -25,16 +25,21 @@ import { type ReactNode, type HTMLAttributes, type ButtonHTMLAttributes, forward
 import type { JSONContent } from "@tiptap/react";
 import type { AiRequest, AiRequestKind } from "@/lib/types";
 import { useDragGap } from "@/hooks/useDragGap";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
 import RichTextField from "./RichTextField";
+import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
 import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
-import { cardPopKey } from "@/panels/panel-registry";
+import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
+import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
+import type { CardKind } from "@/panels/_shared/types";
+import { useInOmni } from "./editor-layout/contexts/omni";
 import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
@@ -221,6 +226,20 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
   );
 }
 
+/** Small uppercase overline naming the card type ("Citation", "Footnote", …).
+ *  Visible always for Comment/Suggestion families; visible elsewhere only
+ *  when rendered inside OmniView (the consumer gates this with
+ *  `useInOmni()`). Matches the style first introduced on Comment cards. */
+export function CardTypeLabel({ kind, className }: { kind: CardKind; className?: string }) {
+  return (
+    <span
+      className={`text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium${className ? ` ${className}` : ""}`}
+    >
+      {cardTypeLabel(kind)}
+    </span>
+  );
+}
+
 /* ── Title input (par-title styling) ─────────────────────────────── */
 
 const TITLE_CLASS = "min-w-0 max-w-full bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal";
@@ -347,6 +366,12 @@ export interface EditableCardProps {
   variant?: "footnote" | "note";
   /** Panel kind — drives per-panel body typography overrides. */
   panelKey?: import("@/lib/panel-typography").PanelBodyKey;
+  /** Card kind for chrome-driven read-only mode. When set and the
+   *  current chrome's `editableCardKinds` whitelist excludes this kind,
+   *  the inner RichTextField mounts read-only. Reader's
+   *  `editableCardKinds: ["note"]` means everything except note cards
+   *  is read-only. Omit to keep the previous always-editable behavior. */
+  cardKind?: CardKind;
   placeholder?: string;
   muted?: boolean;
   onChange: (json: JSONContent) => void;
@@ -361,9 +386,6 @@ export interface EditableCardProps {
   wrapperStyle?: React.CSSProperties;
 
   // ── Opt-in layout features ──
-  /** Render a 6-dot grip handle as the first header element.
-   *  Only the grip is draggable; the card wrapper is NOT. */
-  grabHandle?: boolean;
   /** Suppress the FormatToolbar in the RichTextField (keyboard shortcuts still work). */
   hideToolbar?: boolean;
   /** Show an [x] delete button in the body area instead of the three-dot menu in the header. */
@@ -374,10 +396,27 @@ export interface EditableCardProps {
   onEditorFocus?: (editor: any) => void;
   /** Mouse-hover hook. Fires on mouseenter (true) and mouseleave (false). */
   onHoverChange?: (hovering: boolean) => void;
-  /** When provided, renders a popout chevron at the left edge (after grabHandle). */
+  /** When provided, renders a popout chevron at the left edge (after the grip). */
   onTogglePopout?: (anchor: DOMRect) => void;
   /** Whether this card is currently rendered in a floating window. */
   isPoppedOut?: boolean;
+  /** Card identity for the lift-off drag gesture (header-drag → popout).
+   *  Forwarded to `PanelCard`. Same `${kind}:${id}` shape used by
+   *  `usePoppedCards.toggleAtAnchor`. */
+  cardKey?: string;
+
+  /** When true, replace the rich-text body with the `compressedSummary`
+   *  one-liner. Driven by `!selected && !isPoppedOut` at the consumer.
+   *  Selection is the expansion mechanism — see plan in i-want-to-introduce-iridescent-spark. */
+  compressed?: boolean;
+  /** One-line summary rendered in place of the rich body when compressed.
+   *  Required if compressed is ever true. */
+  compressedSummary?: ReactNode;
+  /** Card kind for the OmniView type-label overline. When set and the
+   *  card is rendered inside OmniView (`useInOmni()` non-null), a small
+   *  uppercase "Note" / "Footnote" / etc. label is added between the
+   *  badge and the title. */
+  typeLabelKind?: CardKind;
 }
 
 /**
@@ -392,16 +431,35 @@ export function EditableCard({
   badge, headerContent, headerTrailing, footer,
   menuContent, onDelete,
   onClick, onDragStart, onTextDragStart,
-  value, variant, placeholder, muted, panelKey,
+  value, variant, placeholder, muted, panelKey, cardKind,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
-  grabHandle, hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
-  onTogglePopout, isPoppedOut,
+  hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
+  onTogglePopout, isPoppedOut, cardKey,
+  compressed, compressedSummary, typeLabelKind,
 }: EditableCardProps) {
+  // Chrome-driven read-only mode: when the host has set
+  // `editableCardKinds` and this card's kind isn't on the list, the
+  // inner RichTextField mounts read-only. Omitted whitelist or
+  // omitted `cardKind` falls back to fully editable (existing main-app
+  // behavior).
+  const chrome = useEditorChrome();
+  const cardEditable = !cardKind ||
+    !chrome.editableCardKinds ||
+    chrome.editableCardKinds.includes(cardKind);
+  const inOmni = useInOmni() != null;
+  const showTypeLabel = inOmni && typeLabelKind != null;
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
+  // Set during a mouse press on the card so onFocusCapture can tell
+  // pointer-driven focus (which the upcoming click will toggle) from
+  // keyboard / programmatic focus (which should auto-select). Without
+  // this, mousedown focuses the card → onFocusCapture toggles selection
+  // on, then click toggles it back off — flickering the card on header
+  // clicks where the DOM doesn't re-target between mousedown and click.
+  const isPointerInteractingRef = useRef(false);
 
   // Collab focus claim: when the partner has this card focused, dim it
   // and surface a "Sam · 12s" pill in the header. When we focus, write
@@ -460,13 +518,15 @@ export function EditableCard({
     [onBodyFocus, onEditorFocus, claimCard, releaseClaim],
   );
 
-  // When grabHandle is active, only the grip is draggable — not the whole card.
-  const cardDraggable = grabHandle ? false : (onDragStart ? !isFocused : false);
+  // The card root is HTML5-draggable for cross-editor anchor drags
+  // (Citation, Bib, AiRequest etc. set `onDragStart` for that purpose).
+  // The grip + header lift-to-popout gesture is pointer-driven and lives
+  // on PanelCard's onWrapperMouseDown — the two coexist via the lift's
+  // `dragstart` suppression for the duration of a press.
+  const cardDraggable = onDragStart ? !isFocused : false;
   const cursorClass = isFocused
     ? "cursor-default"
-    : (!grabHandle && onDragStart)
-      ? "cursor-grab active:cursor-grabbing"
-      : "";
+    : (onDragStart ? "cursor-grab active:cursor-grabbing" : "");
 
   const dataAttrs: Record<string, string> = {
     ...(dataAttr ? { [`data-${dataAttr.name}`]: dataAttr.value } : {}),
@@ -493,13 +553,24 @@ export function EditableCard({
       selected={selected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onTogglePopout}
+      cardKey={cardKey}
+      isCollapsed={!!compressed}
       onTrashClick={inlineDelete && onDelete ? tryDelete : undefined}
       extraCardClass={cursorClass}
       draggable={cardDraggable}
-      onDragStart={!grabHandle ? onDragStart : undefined}
+      onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
       onKeyDown={handleKeyDown}
-      onFocusCapture={() => { if (!selected && onClick) onClick(); }}
+      onMouseDown={() => {
+        isPointerInteractingRef.current = true;
+        requestAnimationFrame(() => {
+          isPointerInteractingRef.current = false;
+        });
+      }}
+      onFocusCapture={() => {
+        if (isPointerInteractingRef.current) return;
+        if (!selected && onClick) onClick();
+      }}
       className={`focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
@@ -511,37 +582,11 @@ export function EditableCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
       >
-        {/* Optional grab handle — sole drag source when present */}
-        {grabHandle && onDragStart && (
-          <div
-            draggable
-            onDragStart={(e) => {
-              onDragStart!(e);
-              // Use the whole card as the drag ghost, positioned below the cursor
-              // so it never obscures the drop target
-              if (cardRef.current) {
-                e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-            title="Drag to reorder"
-            data-helper="Drag to reorder"
-            data-helper-pos="above"
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
-        )}
+        <CardDragHandle />
         {badge}
+        {showTypeLabel && <CardTypeLabel kind={typeLabelKind!} />}
         {headerContent}
-        {!hideToolbar && (
+        {!hideToolbar && !compressed && (
           <div ref={setToolbarTarget} className="flex items-center" />
         )}
         {!headerContent && !hideToolbar && <div className="flex-1" />}
@@ -570,14 +615,31 @@ export function EditableCard({
       />
 
       {/* Body. When the partner has claimed this card, dim it and gate
-          pointer events so the user can't accidentally focus into it. */}
+          pointer events so the user can't accidentally focus into it.
+          When compressed, render a one-line summary in place of the
+          rich-text editor; clicking the card expands it via onClick. */}
+      {compressed ? (
+        <div
+          className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate cursor-pointer"
+          style={
+            partnerClaim
+              ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
+              : undefined
+          }
+        >
+          {compressedSummary ?? <span className="text-ink-faint italic">empty</span>}
+        </div>
+      ) : (
       <div
-        className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-        style={
-          partnerClaim
+        className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
+        style={{
+          ...(isPoppedOut
+            ? null
+            : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }),
+          ...(partnerClaim
             ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
-            : undefined
-        }
+            : null),
+        }}
         title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
         {/* Optional text-drag handle — drags only text content for inline insertion */}
@@ -615,11 +677,13 @@ export function EditableCard({
             onCitationCreated={onCitationCreated}
             onFocusChange={handleFocusChange}
             toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
-            hideToolbar={hideToolbar}
+            hideToolbar={hideToolbar || !cardEditable}
             panelKey={panelKey}
+            editable={cardEditable}
           />
         </div>
       </div>
+      )}
 
       {/* Optional footer (e.g. archive action buttons) */}
       {footer}
@@ -637,6 +701,41 @@ export function EditableCard({
       )}
     </PanelCard>
     </CardClaimContext.Provider>
+  );
+}
+
+/* ── AiRequestCheckbox — centralized "AI request" checkbox ──────────
+ * Single source of truth for the per-card "AI request" toggle. Used by
+ * NoteCard, TodoRow, CutterCommentCard, RevisionCommentCard. Update the
+ * markup or styling here to change every consumer at once. */
+export function AiRequestCheckbox({
+  checked,
+  onToggle,
+  className,
+}: {
+  checked: boolean;
+  onToggle: (next: boolean) => void;
+  /** Optional extra classes (e.g. spacing) for consumer-specific layout. */
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(!checked);
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      className={`flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0${className ? ` ${className}` : ""}`}
+    >
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0">
+        <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" fill="none" />
+        {checked && (
+          <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#0369a1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+        )}
+      </svg>
+      AI request
+    </button>
   );
 }
 
@@ -958,6 +1057,35 @@ export function PanelClose() {
 }
 
 /**
+ * Universal card grip — leftmost element of every card header.
+ *
+ * Pure visual: not draggable, no event handlers. The lift-to-popout
+ * gesture lives on the wrapping header (see `PanelCard.onWrapperMouseDown`),
+ * which adds `.is-pressed` to this element on mousedown so the grip
+ * "squeezes" regardless of where in the header the press lands.
+ */
+export function CardDragHandle() {
+  return (
+    <div
+      className="card-drag-handle cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+      title="Drag to pop out"
+      data-helper="Drag to pop out"
+      data-helper-pos="above"
+      aria-hidden="true"
+    >
+      <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+        <circle cx="3" cy="2" r="1.2" />
+        <circle cx="7" cy="2" r="1.2" />
+        <circle cx="3" cy="7" r="1.2" />
+        <circle cx="7" cy="7" r="1.2" />
+        <circle cx="3" cy="12" r="1.2" />
+        <circle cx="7" cy="12" r="1.2" />
+      </svg>
+    </div>
+  );
+}
+
+/**
  * Per-card popout toggle. Always rendered as the last element of the card
  * header (top-right). Styled identically to PanelPopout / PanelClose:
  * docked state shows a pod with an up arrow; popped state shows a bare X
@@ -1040,7 +1168,24 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
    *  `"opacity-60"`. */
   extraCardClass?: string;
   onClick?: (e: React.MouseEvent) => void;
+  /** Card identity for the lift-off drag handoff. When set together
+   *  with `onTogglePopout`, mousedown on the card's header element
+   *  becomes a drag-to-popout gesture. */
+  cardKey?: string;
+  /** When true, the card is in its collapsed/minimized form and the
+   *  lift-off drag is disabled (cards are only liftable when expanded). */
+  isCollapsed?: boolean;
 }
+
+/** Cursor distance (px) the user must drag from a card's header before
+ *  the lift-off triggers. Small enough that a deliberate drag fires
+ *  immediately, large enough that text selection / single clicks within
+ *  the header still work. */
+const CARD_LIFT_THRESHOLD = 5;
+/** Default size for a freshly lifted-off card float. Matches the
+ *  `POPUP_W`/`POPUP_H` used by EditorLayout's spawn computations. */
+const LIFT_FLOAT_W = 360;
+const LIFT_FLOAT_H = 280;
 
 export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function PanelCard(
   {
@@ -1054,6 +1199,9 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     className,
     style,
     onClick,
+    cardKey,
+    isCollapsed,
+    onMouseDown: callerMouseDown,
     ...rest
   },
   ref,
@@ -1087,25 +1235,146 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     [ref],
   );
 
+  // Lift-off drag gesture. Wired via the wrapper's onMouseDown so we can
+  // both measure the source card rect and scope the gesture to the card's
+  // header subtree (skipping the body and any interactive children).
+  // Note: works off the popped-cards context (popOutAtRect) rather than
+  // the onTogglePopout callback, so cards that handle their own X
+  // rendering (e.g. BibEntryCard) still get the lift gesture even when
+  // they don't pass onTogglePopout up to PanelCard.
+  const popped = usePoppedCards();
+  const onWrapperMouseDown = (e: React.MouseEvent) => {
+    if (!cardKey || isPoppedOut || isCollapsed) return;
+    if (!popped?.popOutAtRect && !onTogglePopout) return;
+    if (e.button !== 0) return;
+    const cardEl = innerRef.current;
+    if (!cardEl) return;
+    const headerEl = cardEl.firstElementChild as HTMLElement | null;
+    if (!headerEl) return;
+    const target = e.target as HTMLElement;
+    if (!headerEl.contains(target)) return;
+    // Don't steal mousedown from interactive controls inside the header
+    // (input fields, buttons, the trash button overlay, drag handles for
+    // reordering, etc.). The generic chrome elements that DO want the
+    // gesture (titles, label text, decorative wrappers) bubble through.
+    //
+    // Scoping by `headerEl.contains(blocker)` is critical: the card root
+    // itself is often `draggable="true"` (for cross-editor anchor drags),
+    // and an unscoped `closest('[draggable="true"]')` walks past the
+    // header and matches that root — which would block every lift.
+    const blocker = target.closest(
+      "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
+    );
+    if (blocker && headerEl.contains(blocker)) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let triggered = false;
+    // Visual squeeze: toggle `.is-pressed` on both the leftmost grip AND
+    // the header bar so the whole header reads as "grabbed" — the grip
+    // squeezes (translateY + bg + color), the header gets a subtle darken
+    // overlay. Mirrors the paragraph/heading drag-handle pattern; CSS in
+    // globals.css. The same class name is used on both because the grip
+    // is nested inside the header — the CSS uses `[data-card] > .is-pressed`
+    // to target only the header at the card-root level.
+    const gripEl = headerEl.querySelector(".card-drag-handle") as HTMLElement | null;
+    gripEl?.classList.add("is-pressed");
+    headerEl.classList.add("is-pressed");
+    // Suppress the card root's HTML5 dragstart (used for cross-editor
+    // anchor drags) for the duration of this gesture so it can't preempt
+    // the pointer-driven lift. Cleared in `cleanup()`.
+    const suppressDragStart = (ev: DragEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+    };
+    cardEl.addEventListener("dragstart", suppressDragStart);
+    const onMove = (ev: MouseEvent) => {
+      if (triggered) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (dx * dx + dy * dy < CARD_LIFT_THRESHOLD * CARD_LIFT_THRESHOLD) return;
+      triggered = true;
+      // Snapshot the source card's rect before any DOM churn (the card
+      // may unmount on the next render once it flips to popped).
+      const r = cardEl.getBoundingClientRect();
+      setCardLiftTarget({
+        cardKey,
+        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+      });
+      // Spawn the float centered on the cursor's x and slightly below
+      // the cursor's y, so the user's grip lands inside the header.
+      const spawn = {
+        x: Math.round(ev.clientX - LIFT_FLOAT_W / 2),
+        y: Math.round(ev.clientY - 16),
+        width: LIFT_FLOAT_W,
+        height: LIFT_FLOAT_H,
+      };
+      // Set the handoff BEFORE flipping to popped so the FloatCard's
+      // mount-time `consumeCardLiftHandoff` sees it and picks up the
+      // in-flight drag without a frame gap.
+      setCardLiftHandoff({
+        cardKey,
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+        width: LIFT_FLOAT_W,
+        height: LIFT_FLOAT_H,
+      });
+      if (popped?.popOutAtRect) {
+        popped.popOutAtRect(cardKey, spawn);
+      } else if (onTogglePopout) {
+        // Fallback: synthesize a DOMRect anchor at the cursor position.
+        // The legacy `toggleAtAnchor` will run computeSpawnPosition over
+        // it, which won't be cursor-perfect but is at least close.
+        onTogglePopout(new DOMRect(spawn.x, spawn.y, spawn.width, spawn.height));
+      }
+      // Schedule the highlight's fade-out — it lingers a couple seconds
+      // after lift-off so the user gets a clear, sustained "you've lifted
+      // off" affordance, then fades.
+      window.setTimeout(() => setCardLiftTarget(null), 2000);
+      cleanup();
+    };
+    const onUp = () => {
+      if (!triggered) {
+        // Pure click — never showed the highlight, nothing to fade.
+        setCardLiftTarget(null);
+      }
+      cleanup();
+    };
+    const cleanup = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      cardEl.removeEventListener("dragstart", suppressDragStart);
+      gripEl?.classList.remove("is-pressed");
+      headerEl.classList.remove("is-pressed");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
   return (
     <div
       ref={setRefs}
       data-card="1"
+      data-card-key={cardKey}
       className={`group relative ${themedCard(theme, selected, extraCardClass)}${isPoppedOut ? " h-full flex flex-col" : ""}${className ? ` ${className}` : ""}`}
       style={{
         ...themedCardStyle(theme, selected, { isPoppedOut }),
         ...style,
       }}
       onClick={onClick ? (e) => { e.stopPropagation(); onClick(e); } : undefined}
+      onMouseDown={(e) => {
+        callerMouseDown?.(e);
+        if (e.defaultPrevented) return;
+        onWrapperMouseDown(e);
+      }}
       {...rest}
     >
       {children}
-      {onTogglePopout && (
+      {onTogglePopout && isPoppedOut && (
         <div
           className="absolute right-1.5 z-10"
           style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
         >
-          <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onTogglePopout} />
+          <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
         </div>
       )}
       {onTrashClick && <CardTrashButton onClick={onTrashClick} />}
@@ -1312,6 +1581,10 @@ const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
   citation: "citation",
   todo: "todo",
   suggestion: "suggestion",
+  // style-merge requests are filed by the Style dropdown and never
+  // surface as panel cards; this entry exists only to keep the Record
+  // type exhaustive.
+  "style-merge": "style merge",
 };
 
 /**
@@ -1339,6 +1612,7 @@ export function AiRequestCard({
   const [draft, setDraft] = useState(request.text);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
   const popped = usePoppedCards();
   const popKey = cardPopKey("ai", request.id);
 
@@ -1407,6 +1681,7 @@ export function AiRequestCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: theme.headerDefault }}
       >
+        <CardDragHandle />
         <span
           className="inline-flex items-center justify-center w-5 h-5 shrink-0 text-sky-500"
           title={`AI ${kindLabel} request`}
@@ -1470,6 +1745,7 @@ export function AiRequestCard({
           onBlur={handleBlur}
           onMouseDown={(e) => e.stopPropagation()}
           onDragStart={(e) => e.stopPropagation()}
+          onKeyDown={onTextareaKeyDown}
           draggable={false}
           placeholder={`Describe what you want the AI to ${
             request.kind === "todo" ? "do" : "find or write"

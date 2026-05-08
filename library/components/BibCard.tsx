@@ -306,7 +306,7 @@ export function AiNotePanel({
 // Expanded view
 // ────────────────────────────────────────────────────────────────────────
 
-function ExpandedFields({ entry }: { entry: BibEntry }) {
+export function ExpandedFields({ entry }: { entry: BibEntry }) {
   const { fields, type } = entry;
   const known = knownFieldsForType(type);
   const otherKeys = Object.keys(fields).filter((k) => !known.has(k) && k !== "title" && k !== "author");

@@ -37,7 +37,7 @@ directory).
    script reported as deferred:
    - `kind: "bib-edit"`     → invoke `/apply-bib-edit <citekey>`
    - `kind: "authenticate"` → invoke `/authenticate-bib <citekey>`
-   - `kind: "richIndex"`    → invoke `/rich-index <citekey>`
+   - `kind: "deepIndex"` (or legacy `"richIndex"`) → invoke `/deep-index <citekey>`
    - `kind: "triage"`       → these are pre-`triage_apply` stubs;
      normally produced only by the legacy per-file flow. Invoke
      `/triage-pdf <filename>` for each.
@@ -47,7 +47,7 @@ directory).
    AI review requests instead of scanning individual queue files.
 
    Order: process `bib-edit` and `authenticate` first (they may
-   improve a future re-index), then `richIndex`, then any `triage`.
+   improve a future re-index), then `deepIndex`, then any `triage`.
    Run them sequentially — most queues will have at most a handful.
 
 3. **If `bib-edit` or `authenticate` skill runs produced changes**,

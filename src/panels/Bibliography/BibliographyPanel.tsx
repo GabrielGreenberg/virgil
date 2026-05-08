@@ -9,6 +9,7 @@ import { searchGeneralBib, searchLocalBib } from "@/lib/bib-search";
 import { pickGeneralBib } from "@/lib/storage";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { useLibraryItems } from "@/hooks/useLibrary";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import {
   BibLibraryChip,
   type BibLibraryChipKind,
@@ -402,6 +403,14 @@ function BibliographyPanel({
     setRequestText("");
   }, [requestText, onAddEntryRequest]);
 
+  const onRequestKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
+    if (e.key === "Escape") {
+      setShowRequestForm(false);
+      setRequestText("");
+    }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
+  });
+
   const handleAddEntry = useCallback(
     (entry: BibEntry) => {
       onAddBibEntry?.(entry);
@@ -678,14 +687,7 @@ function BibliographyPanel({
             ref={requestInputRef}
             value={requestText}
             onChange={(e) => setRequestText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setShowRequestForm(false);
-                setRequestText("");
-              }
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey))
-                handleSubmitRequest();
-            }}
+            onKeyDown={onRequestKeyDown}
             placeholder="Describe the bibliography entry you need..."
             className="w-full text-xs bg-surface border border-edge-subtle rounded px-2 py-1.5 outline-none focus:border-edge-strong resize-none"
             rows={3}

@@ -23,7 +23,7 @@ Do this, in order:
    - If any entry is `kind: "triage"` and `status: "requested"` → run `/triage-pdf`.
    - If any entry is `kind: "index"` and `status: "requested"` → run `/index-paper`.
    - If any entry is `kind: "authenticate"` and `status: "requested"` → run `/authenticate-bib`.
-   - If any entry is `kind: "richIndex"` and `status: "requested"` → run `/rich-index`.
+   - If any entry is `kind: "deepIndex"` (or legacy `"richIndex"`) and `status: "requested"` → run `/deep-index`.
    - If any entry is `kind: "paper-review"` or has a user `note` → run `/ai-requests`.
 4. **If the queue is empty,** report that and ask the user what they'd like to
    do next.
@@ -52,13 +52,15 @@ new entries as they appear.
   frontend's "Edit" button. Reads `queue/<citekey>-bibedit.json`,
   rewrites the `master.bib` block, re-emits `references.bib`, and bumps
   the catalog version.
-- **`/rich-index <citekey>`** — applies structural cleanup to an
+- **`/deep-index <citekey>`** — applies structural cleanup to an
   already-indexed paper. Runs deterministic preprocessing (strips
   repeating headers/footers, removes leaked page numbers, rejoins
   hyphenated words, joins broken paragraphs), then AI-driven structural
   fixes (heading hierarchy, `\maketitle` cleanup, pgmark alignment,
-  orphan footnote re-attachment). Sets `indexed.state = "richIndexed"`
-  (double checkmark in the frontend).
+  orphan footnote re-attachment). Sets `indexed.state = "deepIndexed"`
+  (double checkmark in the frontend). Was previously `/rich-index`;
+  legacy `richIndex` queue entries and `richIndexed` catalog rows are
+  still accepted on read.
 - **`/ai-requests`** — drains user-authored AI requests only (entries
   with a `note` field, plus all `paper-review` entries). Surfaces the
   user's note verbatim and acts on it. Skips general indexing/triage.

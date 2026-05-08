@@ -91,24 +91,51 @@ export function DockOutline() {
       data-dock-outline
       style={{
         position: "fixed",
-        left: displayed.rect.left,
-        top: displayed.rect.top,
-        width: displayed.rect.width,
-        height: displayed.rect.height,
-        // Thin clear-blue outline with a static blue glow. The 1.5px
-        // border keeps it visually crisp without weighing the panel
-        // down; the layered box-shadow gives a soft outer halo plus a
-        // tighter inner highlight, both blue, both static.
-        border: OUTLINE_BORDER,
-        borderRadius: "var(--pod-radius)",
+        inset: 0,
         pointerEvents: "none",
         zIndex: 9999,
-        background: "transparent",
-        boxShadow: OUTLINE_GLOW,
         // Initial opacity 0; WAAPI animates it to 1.
         opacity: 0,
       }}
-    />,
+    >
+      {/* Companion outline (other half of a split column) — fainter so
+          the active landing target stays visually dominant. Rendered
+          first so the primary outline's box-shadow paints over it. */}
+      {displayed.companionRect && (
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            left: displayed.companionRect.left,
+            top: displayed.companionRect.top,
+            width: displayed.companionRect.width,
+            height: displayed.companionRect.height,
+            border: OUTLINE_BORDER,
+            borderRadius: "var(--pod-radius)",
+            background: "transparent",
+            opacity: 0.35,
+          }}
+        />
+      )}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: displayed.rect.left,
+          top: displayed.rect.top,
+          width: displayed.rect.width,
+          height: displayed.rect.height,
+          // Thin clear-blue outline with a static blue glow. The 1.5px
+          // border keeps it visually crisp without weighing the panel
+          // down; the layered box-shadow gives a soft outer halo plus a
+          // tighter inner highlight, both blue, both static.
+          border: OUTLINE_BORDER,
+          borderRadius: "var(--pod-radius)",
+          background: "transparent",
+          boxShadow: OUTLINE_GLOW,
+        }}
+      />
+    </div>,
     document.body,
   );
 }

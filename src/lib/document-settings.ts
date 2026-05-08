@@ -5,28 +5,43 @@
  * is the source of truth for what LaTeX actually compiles; this sidecar
  * is the source of truth for what the Style dropdown displays as
  * "currently selected" after a reload.
+ *
+ * The styleId is a free-form string that resolves against the user's
+ * style library (localStorage) via `resolveStyle()` — it can be a seed
+ * id like `"classic"` or a user-generated id like `"style_abc12345"`.
  */
 
-import { readSidecar, writeSidecar } from "@/lib/storage";
-import { DEFAULT_STYLE_ID, type DocumentStyleId } from "@/lib/document-styles";
+import { readSidecar, writeSidecar, type DocWriteHandle } from "@/lib/storage";
+import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
 
 export interface DocumentSettings {
-  style: DocumentStyleId;
+  styleId: string;
 }
 
 const SIDECAR_FILENAME = "document-settings.json";
 
-const DEFAULT_SETTINGS: DocumentSettings = { style: DEFAULT_STYLE_ID };
+const DEFAULT_SETTINGS: DocumentSettings = { styleId: DEFAULT_STYLE_ID };
+
+/**
+ * Migrate a raw JSON blob to the current shape. Handles the legacy
+ * `style` field (renamed to `styleId` when the library overhaul landed).
+ */
+export function migrateDocumentSettings(raw: unknown): DocumentSettings {
+  const s = (raw ?? {}) as Partial<DocumentSettings> & { style?: string };
+  const styleId = s.styleId ?? s.style ?? DEFAULT_STYLE_ID;
+  return { styleId };
+}
 
 export async function readDocumentSettings(
   docId: string,
 ): Promise<DocumentSettings> {
-  return readSidecar<DocumentSettings>(docId, SIDECAR_FILENAME, DEFAULT_SETTINGS);
+  const raw = await readSidecar<unknown>(docId, SIDECAR_FILENAME, DEFAULT_SETTINGS);
+  return migrateDocumentSettings(raw);
 }
 
 export async function writeDocumentSettings(
-  docId: string,
+  handle: DocWriteHandle,
   settings: DocumentSettings,
 ): Promise<void> {
-  return writeSidecar(docId, SIDECAR_FILENAME, settings);
+  return writeSidecar(handle, SIDECAR_FILENAME, settings);
 }

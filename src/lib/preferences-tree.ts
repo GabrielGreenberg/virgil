@@ -85,9 +85,9 @@ const LOGO_FONTS = ["Cinzel", "Playfair Display", "Cormorant Garamond", "Libre B
 /** Curated pool for the Fonts… dialog (main-text categories). Grouped
  *  serif → sans → display so the dropdown can render section dividers. */
 export const MAIN_TEXT_FONTS: { group: string; fonts: string[] }[] = [
-  { group: "Serif", fonts: ["Source Serif 4", "Georgia", "Libre Baskerville", "Lora", "Merriweather", "EB Garamond", "Crimson Text"] },
-  { group: "Sans-serif", fonts: ["Inter", "system-ui", "Helvetica Neue", "Open Sans", "Lato", "Roboto", "IBM Plex Sans", "Source Sans 3"] },
-  { group: "Display", fonts: ["Playfair Display", "Cinzel", "Cormorant Garamond"] },
+  { group: "Serif", fonts: ["Source Serif 4", "Georgia", "Libre Baskerville", "Libre Caslon Text", "Lora", "Lusitana", "Merriweather", "EB Garamond", "Crimson Text", "Cardo", "Spectral", "PT Serif", "Old Standard TT", "Vollkorn", "Gentium Plus"] },
+  { group: "Sans-serif", fonts: ["Inter", "system-ui", "Helvetica Neue", "Open Sans", "Lato", "Roboto", "IBM Plex Sans", "Source Sans 3", "Work Sans", "DM Sans", "Manrope", "Public Sans", "Atkinson Hyperlegible"] },
+  { group: "Display", fonts: ["Playfair Display", "Cinzel", "Cormorant Garamond", "Cormorant SC", "IM Fell English", "Marcellus", "Bodoni Moda"] },
 ];
 
 export const ALL_MAIN_TEXT_FONTS: string[] = MAIN_TEXT_FONTS.flatMap((g) => g.fonts);
@@ -351,10 +351,16 @@ export const PREF_TO_CSS: CssMapping[] = [
   // resolve "pinned to body" → bodySerif rather than leaving the var empty
   // (which would defeat the var() fallback chain).
   { key: "fontMaketitleTitleSize", cssVar: "--font-maketitle-title-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontMaketitleTitleWeight", cssVar: "--font-maketitle-title-weight", isColor: false, transform: (v) => `${v}` },
   { key: "fontMaketitleMetaSize", cssVar: "--font-maketitle-meta-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontMaketitleMetaWeight", cssVar: "--font-maketitle-meta-weight", isColor: false, transform: (v) => `${v}` },
   { key: "fontHeadersH1Size", cssVar: "--font-headers-h1-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH1Weight", cssVar: "--font-headers-h1-weight", isColor: false, transform: (v) => `${v}` },
   { key: "fontHeadersH2Size", cssVar: "--font-headers-h2-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH2Weight", cssVar: "--font-headers-h2-weight", isColor: false, transform: (v) => `${v}` },
   { key: "fontHeadersH3Size", cssVar: "--font-headers-h3-size", isColor: false, transform: (v) => `${v}rem` },
+  { key: "fontHeadersH3Weight", cssVar: "--font-headers-h3-weight", isColor: false, transform: (v) => `${v}` },
+  { key: "fontParTitleWeight", cssVar: "--font-partitle-weight", isColor: false, transform: (v) => `${v}` },
 ];
 
 // Derived CSS variables computed from multiple preferences

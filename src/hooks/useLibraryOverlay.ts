@@ -7,18 +7,26 @@
  * in the doc's `virgil/` sidecar folder.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import {
   EMPTY_LIBRARY_OVERLAY,
   type LibraryOverlay,
 } from "@/lib/library/library-types";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 
 const SIDECAR = "library-overlay.json";
 
 export function useLibraryOverlay(docId: string | null) {
   const [state, setState] = useState<LibraryOverlay>(EMPTY_LIBRARY_OVERLAY);
   const docRef = useRef(docId);
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
 
   useEffect(() => {
     docRef.current = docId;
@@ -37,15 +45,18 @@ export function useLibraryOverlay(docId: string | null) {
       .catch(() => {});
   }, [docId]);
 
-  const persist = useCallback(async (next: LibraryOverlay) => {
-    const id = docRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, SIDECAR, next);
-    } catch (err) {
-      console.error("Failed to save library overlay:", err);
-    }
-  }, []);
+  const persist = useCallback(
+    async (next: LibraryOverlay) => {
+      if (!handle) return;
+      try {
+        await writeSidecar(handle, SIDECAR, next);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to save library overlay:", err);
+      }
+    },
+    [handle],
+  );
 
   const setItemNotes = useCallback(
     (itemId: string, notes: string) => {

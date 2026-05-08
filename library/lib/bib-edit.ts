@@ -5,7 +5,14 @@
 // applies the changes to master.bib + catalog.json + bumps the version
 // counter so other clients reload.
 
-import { writeQueueEntry, addPendingReview, removePendingReview, type QueueEntry, type BibEditPayload } from "./queue";
+import {
+  writeQueueEntry,
+  addPendingReview,
+  removePendingReview,
+  normalizeQueueEntry,
+  type QueueEntry,
+  type BibEditPayload,
+} from "./queue";
 import { deleteFile, readJsonFile, SUBDIRS } from "./library-storage";
 
 /** Enqueue a manual bib edit. The skill `/apply-bib-edit` consumes this. */
@@ -150,9 +157,12 @@ export async function readBibReviewState(
   return !!cur && cur.kind === "authenticate" && cur.status === "requested";
 }
 
-/** Enqueue a rich-index request. If the paper isn't indexed yet,
- *  set `alsoIndex` to queue a vanilla index first. */
-export async function queueRichIndex(
+/** Enqueue a deep-index request. If the paper isn't indexed yet,
+ *  set `alsoIndex` to queue a vanilla index first.
+ *
+ *  (Was `queueRichIndex` before the rename — disk format is now
+ *  `<citekey>-deepindex.json` with `kind: "deepIndex"`.) */
+export async function queueDeepIndex(
   root: FileSystemDirectoryHandle,
   citekey: string,
   note?: string,
@@ -169,7 +179,7 @@ export async function queueRichIndex(
     await writeQueueEntry(root, indexEntry);
   }
   const entry: QueueEntry = {
-    kind: "richIndex",
+    kind: "deepIndex",
     status: "requested",
     citekey,
     requestedAt: new Date().toISOString(),
@@ -179,37 +189,59 @@ export async function queueRichIndex(
   return writeQueueEntry(root, entry);
 }
 
-/** Read a pending rich-index queue entry. Returns null if none queued. */
-export async function readRichIndexState(
+/** Read a pending deep-index queue entry. Returns null if none queued.
+ *  Dual-reads the legacy `<citekey>-richindex.json` filename for one
+ *  release so existing on-disk queue files keep working. */
+export async function readDeepIndexState(
   root: FileSystemDirectoryHandle,
   citekey: string,
 ): Promise<QueueEntry | null> {
-  const cur = await readJsonFile<QueueEntry>(
-    root,
-    `${SUBDIRS.queue}/${citekey}-richindex.json`,
+  const primary = normalizeQueueEntry(
+    await readJsonFile<QueueEntry>(
+      root,
+      `${SUBDIRS.queue}/${citekey}-deepindex.json`,
+    ),
   );
-  if (!cur || cur.kind !== "richIndex" || cur.status !== "requested") {
+  const cur = primary
+    ?? normalizeQueueEntry(
+      await readJsonFile<QueueEntry>(
+        root,
+        `${SUBDIRS.queue}/${citekey}-richindex.json`,
+      ),
+    );
+  if (!cur || cur.kind !== "deepIndex" || cur.status !== "requested") {
     return null;
   }
   return cur;
 }
 
-/** Cancel a queued rich-index request. Also cancels a companion index
- *  entry if it was queued alongside (for un-indexed papers). */
-export async function cancelRichIndex(
+/** Cancel a queued deep-index request. Also cancels a companion index
+ *  entry if it was queued alongside (for un-indexed papers). Removes
+ *  whichever filename variant is present (legacy `-richindex.json` or
+ *  current `-deepindex.json`). */
+export async function cancelDeepIndex(
   root: FileSystemDirectoryHandle,
   citekey: string,
 ): Promise<boolean> {
-  const path = `${SUBDIRS.queue}/${citekey}-richindex.json`;
-  const cur = await readJsonFile<QueueEntry>(root, path);
-  if (!cur || cur.kind !== "richIndex" || cur.status !== "requested") return false;
-  await deleteFile(root, path);
-  const companionPath = `${SUBDIRS.queue}/${citekey}.json`;
-  const companion = await readJsonFile<QueueEntry>(root, companionPath);
-  if (companion && companion.kind === "index" && companion.status === "requested") {
-    await deleteFile(root, companionPath);
+  const candidates = [
+    `${SUBDIRS.queue}/${citekey}-deepindex.json`,
+    `${SUBDIRS.queue}/${citekey}-richindex.json`,
+  ];
+  let removed = false;
+  for (const path of candidates) {
+    const cur = normalizeQueueEntry(await readJsonFile<QueueEntry>(root, path));
+    if (!cur || cur.kind !== "deepIndex" || cur.status !== "requested") continue;
+    await deleteFile(root, path);
+    removed = true;
   }
-  return true;
+  if (removed) {
+    const companionPath = `${SUBDIRS.queue}/${citekey}.json`;
+    const companion = await readJsonFile<QueueEntry>(root, companionPath);
+    if (companion && companion.kind === "index" && companion.status === "requested") {
+      await deleteFile(root, companionPath);
+    }
+  }
+  return removed;
 }
 
 /** Standard BibTeX entry types we offer in the type dropdown. */

@@ -1,14 +1,22 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { BibReviewState, BibReviewRequest } from "@/lib/types";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 
 const EMPTY: BibReviewState = { requests: [] };
 
 export function useBibReview(docId: string | null) {
   const [state, setState] = useState<BibReviewState>(EMPTY);
   const docIdRef = useRef(docId);
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
 
   const fetchState = useCallback(async (id: string) => {
     try {
@@ -39,15 +47,18 @@ export function useBibReview(docId: string | null) {
     return () => clearInterval(interval);
   }, [docId, hasPending, fetchState]);
 
-  const persist = useCallback(async (s: BibReviewState) => {
-    const id = docIdRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "bib-review-requests.json", s);
-    } catch (err) {
-      console.error("Failed to save bib review requests:", err);
-    }
-  }, []);
+  const persist = useCallback(
+    async (s: BibReviewState) => {
+      if (!handle) return;
+      try {
+        await writeSidecar(handle, "bib-review-requests.json", s);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to save bib review requests:", err);
+      }
+    },
+    [handle],
+  );
 
   const requestReview = useCallback((bibKey: string, type: "fields" | "notes", requestNotes?: string) => {
     setState((prev) => {

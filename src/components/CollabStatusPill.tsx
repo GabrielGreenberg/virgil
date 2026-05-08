@@ -86,7 +86,7 @@ export default function CollabStatusPill({
         <button
           onClick={handleClick}
           title={collab.enabled ? "Collaborator mode" : "Turn on collaborator mode"}
-          className="topbarbtn topbarbtn-icon"
+          className="topbarbtn"
           data-helper="Collaborator mode"
           aria-pressed={collab.enabled || undefined}
         >

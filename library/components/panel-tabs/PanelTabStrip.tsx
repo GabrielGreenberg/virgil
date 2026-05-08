@@ -13,7 +13,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
-import { ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
+import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import { PanelFolderTab } from "./PanelFolderTab";
 
 export type TabDef = {
@@ -25,6 +25,20 @@ export type TabDef = {
   /** When set, a vertical-dots trigger renders inside the tab on the left,
    *  opening a per-tab dropdown of the given items. */
   menu?: PanelMenuItem[];
+  /** Pinned state for paper-kind tabs. When defined, a pin toggle is
+   *  rendered on the tab; clicking it calls onTogglePin. Pinned paper tabs
+   *  are not auto-replaced when another paper is opened. */
+  pinned?: boolean;
+  onTogglePin?: () => void;
+  /** Citekey for paper-kind tabs. When set, the dragstart handler also
+   *  publishes a PAPER_DT_TYPE payload so consumers outside the library
+   *  (e.g. the Virgil bar) can promote the paper to an outer tab. */
+  paperCitekey?: string;
+  /** Library id for non-Central library tabs (project / custom). When
+   *  set, dragstart also publishes a LIBRARY_DT_TYPE payload so the
+   *  Virgil bar can promote the library to an outer tab (copy semantics
+   *  — the donor inner tab stays put). */
+  outerDraggableLibraryId?: string;
 };
 
 export type RecentLibrary = {
@@ -50,7 +64,8 @@ type Props = {
   onOpenRecent: (id: string) => void;
   onMoveTab: (libId: string, toPanel: PanelKey, toIndex: number) => void;
   /** Add an entry (from a row drag) to the library matching libId. */
-  onDropEntry: (libId: string, entryKey: string) => void;
+  /** Always batched — see TabbedLibraryPanel.onAddEntriesToLibrary. */
+  onDropEntries: (libId: string, entryKeys: readonly string[]) => void;
   /**
    * Ref to the surrounding library panel container (tab strip + list).
    * Used as the HTML5 drag image so dragging a tab visually carries the
@@ -70,7 +85,7 @@ export function PanelTabStrip({
   onCreate,
   onOpenRecent,
   onMoveTab,
-  onDropEntry,
+  onDropEntries,
   panelRef,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -133,6 +148,27 @@ export function PanelTabStrip({
       if (types[i] === type) return true;
     }
     return false;
+  };
+
+  // Read the multi-row drag payload if present, falling back to the
+  // single-key payload. See `ENTRIES_DT_TYPE` in dnd-types.ts.
+  const readEntryKeys = (e: DragEvent<HTMLElement>): string[] => {
+    const multi = e.dataTransfer.getData(ENTRIES_DT_TYPE);
+    if (multi) {
+      try {
+        const parsed = JSON.parse(multi);
+        if (
+          Array.isArray(parsed) &&
+          parsed.every((k): k is string => typeof k === "string")
+        ) {
+          return parsed;
+        }
+      } catch {
+        // fall through
+      }
+    }
+    const single = e.dataTransfer.getData(ENTRY_DT_TYPE);
+    return single ? [single] : [];
   };
 
   // Bounding-box hit test: which tab (if any) is the cursor over?
@@ -199,19 +235,20 @@ export function PanelTabStrip({
       onMoveTab(tabLibId, panel, idx);
       return;
     }
-    const entryKey = e.dataTransfer.getData(ENTRY_DT_TYPE);
-    if (entryKey) {
+    const entryKeys = readEntryKeys(e);
+    if (entryKeys.length > 0) {
       const tabId = findTabAtPosition(e.clientX, e.clientY);
       if (!tabId) return;
       e.preventDefault();
       setEntryDragOverTabId(null);
-      onDropEntry(tabId, entryKey);
+      onDropEntries(tabId, entryKeys);
       return;
     }
   };
 
 
-  const handleTabDragStart = (e: DragEvent<HTMLElement>, libId: string) => {
+  const handleTabDragStart = (e: DragEvent<HTMLElement>, tab: TabDef) => {
+    const libId = tab.id;
     // Activate the dragged tab synchronously so the panel re-renders to
     // show its library content BEFORE the browser captures the drag image
     // — that way the visual that follows the cursor matches the tab the
@@ -220,15 +257,58 @@ export function PanelTabStrip({
       flushSync(() => onActivate(libId));
     }
     e.dataTransfer.setData(TAB_DT_TYPE, libId);
-    e.dataTransfer.effectAllowed = "move";
+    if (tab.paperCitekey) {
+      // Sibling payload so the Virgil bar (outside the library subsystem)
+      // can promote a paper to an outer tab without parsing libId.
+      e.dataTransfer.setData(PAPER_DT_TYPE, tab.paperCitekey);
+    }
+    if (tab.outerDraggableLibraryId) {
+      // Sibling payload for promoting a library tab (non-Central) to an
+      // outer tab. Copy semantics — donor inner tab stays.
+      e.dataTransfer.setData(LIBRARY_DT_TYPE, tab.outerDraggableLibraryId);
+    }
+    // copyMove keeps both options open: in-strip drops behave as move
+    // (reorder / cross-panel), the outer Virgil bar treats the drop as
+    // copy at the dataTransfer level (paper tabs close via a separate
+    // event; library tabs simply stay put after the copy).
+    e.dataTransfer.effectAllowed =
+      tab.paperCitekey || tab.outerDraggableLibraryId ? "copyMove" : "move";
     const panelEl = panelRef?.current;
     if (panelEl) {
       const rect = panelEl.getBoundingClientRect();
+      // Build a "library file" drag image: only the dragged tab's trapezoid
+      // and the pod body — no strip ribbon, no sibling tabs, no "+" button.
+      // Clone the panel, hide everything in the strip except the active tab,
+      // clear the strip's filled background, and use the clone as the snapshot
+      // source. visibility:hidden preserves layout so the active tab keeps its
+      // original X position, which makes the cursor offset still align.
+      const clone = panelEl.cloneNode(true) as HTMLElement;
+      const strip = clone.firstElementChild as HTMLElement | null;
+      if (strip) {
+        strip.style.background = "transparent";
+        for (const child of Array.from(strip.children) as HTMLElement[]) {
+          if (child.getAttribute("data-tab-id") !== libId) {
+            child.style.visibility = "hidden";
+          }
+        }
+      }
+      clone.style.position = "fixed";
+      clone.style.top = "0";
+      clone.style.left = "-10000px";
+      clone.style.width = `${rect.width}px`;
+      clone.style.height = `${rect.height}px`;
+      clone.style.pointerEvents = "none";
+      document.body.appendChild(clone);
       e.dataTransfer.setDragImage(
-        panelEl,
+        clone,
         e.clientX - rect.left,
         e.clientY - rect.top,
       );
+      // The browser captures the snapshot synchronously inside setDragImage,
+      // but Firefox defers to the next frame — remove on rAF to cover both.
+      requestAnimationFrame(() => {
+        clone.remove();
+      });
     }
     setDraggingId(libId);
   };
@@ -269,17 +349,22 @@ export function PanelTabStrip({
         const dragProps = {
           draggable: !isEditing,
           onDragStart: (e: DragEvent<HTMLElement>) =>
-            handleTabDragStart(e, tab.id),
+            handleTabDragStart(e, tab),
           onDragEnd: handleTabDragEnd,
         };
 
         if (isActive) {
+          // Paper-kind tabs fill the warm Virgil canvas so the active
+          // tab merges seamlessly with the paper-file body — that's the
+          // same background the editor/view sits on elsewhere in Virgil.
+          // Other tab kinds keep the white surface fill.
+          const activeFill = tab.paperCitekey ? "var(--background)" : "var(--surface)";
           return (
             <Fragment key={tab.id}>
               <PanelFolderTab
                 ref={setRef}
                 active
-                fill="var(--surface)"
+                fill={activeFill}
                 title={tab.label}
                 dataTabId={tab.id}
                 wrapperProps={{
@@ -331,6 +416,14 @@ export function PanelTabStrip({
                     pushRight
                   />
                 )}
+                {tab.onTogglePin && !isEditing && (
+                  <PinButton
+                    pinned={!!tab.pinned}
+                    onClick={tab.onTogglePin}
+                    muted={false}
+                    pushRight={!tab.menu}
+                  />
+                )}
                 {tab.closable && !isEditing && (
                   <CloseButton onClick={() => onClose(tab.id)} muted={false} />
                 )}
@@ -357,6 +450,8 @@ export function PanelTabStrip({
               setTabMenuOpenId((prev) => (prev === tab.id ? null : tab.id))
             }
             onMenuClose={() => setTabMenuOpenId(null)}
+            pinned={tab.pinned}
+            onTogglePin={tab.onTogglePin}
           />
         );
       })}
@@ -402,6 +497,8 @@ const BackgroundTab = forwardRef<
     menuOpen: boolean;
     onMenuToggle: () => void;
     onMenuClose: () => void;
+    pinned?: boolean;
+    onTogglePin?: () => void;
   }
 >(function BackgroundTab(
   {
@@ -417,10 +514,14 @@ const BackgroundTab = forwardRef<
     menuOpen,
     onMenuToggle,
     onMenuClose,
+    pinned,
+    onTogglePin,
   },
   ref,
 ) {
   const hasMenu = !!menu && menu.length > 0;
+  const hasPin = !!onTogglePin;
+  const hasTrailing = closable || hasMenu || hasPin;
   return (
     <div
       ref={ref}
@@ -437,7 +538,7 @@ const BackgroundTab = forwardRef<
         outlineOffset: isEntryDropTarget ? -2 : 0,
         borderRadius: isEntryDropTarget ? 6 : 0,
         background: isEntryDropTarget ? "var(--accent-light)" : "transparent",
-        paddingRight: hasMenu && !closable ? 4 : 0,
+        paddingRight: hasTrailing && !closable ? 4 : 0,
       }}
     >
       <button
@@ -447,7 +548,7 @@ const BackgroundTab = forwardRef<
         style={{
           background: "transparent",
           border: "none",
-          padding: closable || hasMenu ? "0 4px 0 14px" : "0 14px",
+          padding: hasTrailing ? "0 4px 0 14px" : "0 14px",
           height: 32,
           fontSize: 13,
           lineHeight: "16px",
@@ -468,10 +569,80 @@ const BackgroundTab = forwardRef<
           muted
         />
       )}
+      {hasPin && (
+        <PinButton pinned={!!pinned} onClick={onTogglePin!} muted />
+      )}
       {closable && <CloseButton onClick={onClose} muted />}
     </div>
   );
 });
+
+// Pinned state colors the icon itself blue. The button chrome (ring,
+// background) stays neutral so the affordance reads as "ON" without
+// dominating the tab strip.
+const PIN_ACTIVE_COLOR = "#2563eb";
+
+function PinButton({
+  pinned,
+  onClick,
+  muted,
+  pushRight,
+}: {
+  pinned: boolean;
+  onClick: () => void;
+  muted: boolean;
+  /** When true (active tab without a menu), push to the right edge so the
+   *  pin lands next to the close button instead of next to the title. */
+  pushRight?: boolean;
+}) {
+  const idleColor = muted ? "var(--muted-light)" : "var(--muted)";
+  const activeColor = pinned ? PIN_ACTIVE_COLOR : idleColor;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      title={pinned ? "Unpin tab — opening another paper will replace it" : "Pin tab — keep open when another paper is opened"}
+      aria-label={pinned ? "Unpin tab" : "Pin tab"}
+      aria-pressed={pinned}
+      style={{
+        flexShrink: 0,
+        background: "transparent",
+        border: "none",
+        width: 18,
+        height: 18,
+        marginLeft: pushRight ? "auto" : 2,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: activeColor,
+        cursor: "pointer",
+        borderRadius: 3,
+        padding: 0,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background =
+          "rgba(0,0,0,0.08)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+      }}
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        aria-hidden
+      >
+        <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1 0 .707c-.48.48-1.072.588-1.503.588-.177 0-.335-.018-.46-.039l-3.134 3.134a5.927 5.927 0 0 1 .16 1.013c.046.702-.032 1.687-.72 2.375a.5.5 0 0 1-.707 0l-2.829-2.828-3.182 3.182c-.195.195-1.219.902-1.414.707-.195-.195.512-1.22.707-1.414l3.182-3.182-2.828-2.829a.5.5 0 0 1 0-.707c.688-.688 1.673-.767 2.375-.72a5.922 5.922 0 0 1 1.013.16l3.134-3.133a2.772 2.772 0 0 1-.04-.461c0-.43.108-1.022.589-1.503a.5.5 0 0 1 .353-.146zm.122 2.112v-.002.002zm0-.002v.002a.5.5 0 0 1-.122.51L6.293 6.878a.5.5 0 0 1-.511.12H5.78l-.014-.004a4.507 4.507 0 0 0-.288-.076 4.922 4.922 0 0 0-.765-.116c-.422-.028-.836.008-1.175.15l5.51 5.509c.141-.34.177-.753.149-1.175a4.924 4.924 0 0 0-.192-1.054l-.004-.013v-.001a.5.5 0 0 1 .12-.512l3.536-3.535a.5.5 0 0 1 .532-.115l.096.022c.087.017.208.034.344.034.114 0 .23-.011.343-.04L9.927 2.028c-.029.113-.04.23-.04.343a1.779 1.779 0 0 0 .062.46z" />
+      </svg>
+    </button>
+  );
+}
 
 function CloseButton({
   onClick,

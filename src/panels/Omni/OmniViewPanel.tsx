@@ -9,6 +9,7 @@ import {
   getPanelByCardKind,
 } from "@/panels/panel-registry";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
+import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -259,7 +260,7 @@ export function OmniFilterMenu({
 }
 
 function OmniViewPanel({
-  side: _side,
+  side,
   items,
   editor,
   enabledCategories,
@@ -280,12 +281,20 @@ function OmniViewPanel({
     const anchored: Array<OmniItem & { pos: number }> = [];
     const unanchored: OmniItem[] = [];
     for (const item of visibleItems) {
-      if (item.pos == null) unanchored.push(item);
-      else anchored.push({ ...item, pos: item.pos });
+      if (item.pos == null) {
+        // Builders that resolve paragraph UUIDs return pos:null while the
+        // editor is still mounting. Don't flash those into the unanchored
+        // bucket — drop until the editor is live, at which point pos:null
+        // genuinely means "no anchor / orphaned paragraph".
+        if (!editor) continue;
+        unanchored.push(item);
+      } else {
+        anchored.push({ ...item, pos: item.pos });
+      }
     }
     anchored.sort((a, b) => a.pos - b.pos);
     return { anchored, unanchored };
-  }, [visibleItems]);
+  }, [visibleItems, editor]);
 
   const inTextItems = useMemo(
     () => anchored.map((i) => ({ id: i.id, pos: i.pos })),
@@ -296,6 +305,7 @@ function OmniViewPanel({
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper");
 
   return (
+    <OmniProvider value={{ side }}>
     <div
       className="relative w-full"
       onMouseDown={(e) => {
@@ -312,8 +322,8 @@ function OmniViewPanel({
         </div>
       )}
       {unanchored.length > 0 && (
-        <div className="px-2 pt-2 pb-2 space-y-2">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1">
+        <div className="px-2 pt-4 pb-2 space-y-2">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted px-1 pb-1">
             Unanchored
           </div>
           {unanchored.map((item) => (
@@ -362,6 +372,7 @@ function OmniViewPanel({
         </div>
       </div>
     </div>
+    </OmniProvider>
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { getHiddenTopLevelIndices } from "@/lib/section-folding";
 import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
@@ -31,9 +32,12 @@ import type {
 import type { LatexError } from "@/lib/latex-errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
 import type { CardWithLinks } from "@/links/links";
+import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+
+const EMPTY_HIDDEN: ReadonlySet<number> = new Set<number>();
 
 type NotesHook = ReturnType<typeof useNotes>;
 type TodosHook = ReturnType<typeof useTodos>;
@@ -61,6 +65,7 @@ export interface OmniHostProps {
   bibEntries: CitationsHook["bibEntries"];
   bibPackage: CitationsHook["bibPackage"];
   updateCitation: CitationsHook["updateCitation"];
+  deleteCitation: CitationsHook["deleteCitation"];
   getFormattedBib: CitationsHook["getFormattedBib"];
   updateBibEntry: CitationsHook["updateBibEntry"];
   updateBibKeyAndType: CitationsHook["updateBibKeyAndType"];
@@ -84,6 +89,7 @@ export interface OmniHostProps {
   notes: NotesHook["notes"];
   updateNote: NotesHook["updateNote"];
   updateNoteTitle: NotesHook["updateNoteTitle"];
+  setNoteAiRequest: NotesHook["setNoteAiRequest"];
   deleteNote: NotesHook["deleteNote"];
   // Archive
   sortedArchiveSnippets: ArchivedSnippet[];
@@ -132,10 +138,27 @@ export interface OmniHostProps {
   /** When true, the next cardsOffset change is applied without the 150ms
    *  transition. Used by jump-to so the card stays visually stable. */
   cardsSilent?: boolean;
+  /** When focus mode is active, anchored cards outside the focused block
+   *  range are dimmed (unlocked) or hidden (locked) — mirroring the
+   *  editor's own focus-dim/hide behavior. Unanchored cards are unaffected. */
+  focusState?: FocusState | null;
 }
 
 export function OmniHost(p: OmniHostProps) {
   const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
+
+  // Re-render on every editor transaction so we can re-read
+  // ProseMirror plugin state (e.g. section-folding) that doesn't
+  // change the `editorInstance` reference itself.
+  const [editorTick, setEditorTick] = useState(0);
+  useEffect(() => {
+    if (!editorInstance) return;
+    const onTr = () => setEditorTick((v) => v + 1);
+    editorInstance.on("transaction", onTr);
+    return () => {
+      editorInstance.off("transaction", onTr);
+    };
+  }, [editorInstance]);
   const {
     selectedFootnoteId, setSelectedFootnoteId,
     selectedCitationId, setSelectedCitationId,
@@ -398,6 +421,7 @@ export function OmniHost(p: OmniHostProps) {
       bibPackage: p.bibPackage,
       getCitationDisplayText,
       updateCitation: p.updateCitation,
+      deleteCitation: p.deleteCitation,
       getFormattedBib: p.getFormattedBib,
       getAnnotation: p.getAnnotation,
       setAnnotation: p.setAnnotation,
@@ -433,6 +457,7 @@ export function OmniHost(p: OmniHostProps) {
       findParagraphPos,
       updateNote: p.updateNote,
       updateNoteTitle: p.updateNoteTitle,
+      setNoteAiRequest: p.setNoteAiRequest,
       deleteNote: p.deleteNote,
       setOverrideEditor,
       getCitationDisplayText,
@@ -564,10 +589,81 @@ export function OmniHost(p: OmniHostProps) {
     p.updateCutterSuggestionField, p.deleteCutterCard,
   ]);
 
+  // Hide cards anchored inside a collapsed section. The section-folding
+  // plugin already hides the prose via a CSS decoration; mirror that on
+  // the omni side so dangling cards don't sit next to a section that's
+  // not visible. Native panel lists are unaffected — this only filters
+  // the in-text-positioned omni mirror.
+  const hiddenTopLevel = useMemo<ReadonlySet<number>>(() => {
+    if (!editorInstance) return EMPTY_HIDDEN;
+    return getHiddenTopLevelIndices(editorInstance.state);
+    // editorTick forces re-eval on every editor transaction (fold toggles
+    // dispatch a transaction but don't change editorInstance's identity).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorInstance, editorTick]);
+
+  // Focus-mode suppression. When focus is active, anchored cards whose
+  // owning top-level block falls outside [startBlockIndex, endBlockIndex]
+  // are dimmed (unlocked) or omitted from the list entirely (locked) —
+  // mirroring the editor's nth-child dim/hide CSS in EditorLayout.
+  // Unanchored items (pos === null) are always passed through. Items
+  // whose pos no longer resolves cleanly (stale anchor) are also passed
+  // through rather than silently dropped.
+  //
+  // Fold filter runs first: cards in a collapsed section are dropped
+  // outright before focus suppression considers them.
+  const displayedItems: OmniItem[] = useMemo(() => {
+    const doc = editorInstance?.state.doc ?? null;
+
+    // Pass 1: fold filter.
+    let foldFiltered: OmniItem[];
+    if (hiddenTopLevel.size === 0 || !doc) {
+      foldFiltered = items;
+    } else {
+      foldFiltered = [];
+      for (const item of items) {
+        if (item.pos == null) { foldFiltered.push(item); continue; }
+        let bi: number | null = null;
+        try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
+        if (bi == null || !hiddenTopLevel.has(bi)) {
+          foldFiltered.push(item);
+        }
+        // else: drop — card lives in a collapsed section
+      }
+    }
+
+    // Pass 2: focus-mode suppression (unchanged logic).
+    const fs = p.focusState;
+    if (!fs?.active || !doc) return foldFiltered;
+    const { startBlockIndex, endBlockIndex, locked } = fs;
+    const out: OmniItem[] = [];
+    for (const item of foldFiltered) {
+      if (item.pos == null) { out.push(item); continue; }
+      let bi: number | null = null;
+      try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
+      if (bi == null) { out.push(item); continue; }
+      const outside = bi < startBlockIndex || bi > endBlockIndex;
+      if (!outside) { out.push(item); continue; }
+      if (locked) continue; // hide
+      out.push({
+        ...item,
+        content: (
+          <div
+            data-omni-focus-suppressed="true"
+            style={{ opacity: 0.3, pointerEvents: "none", transition: "opacity 200ms ease" }}
+          >
+            {item.content}
+          </div>
+        ),
+      });
+    }
+    return out;
+  }, [items, hiddenTopLevel, p.focusState, editorInstance]);
+
   return (
     <OmniViewPanel
       side={p.side}
-      items={items}
+      items={displayedItems}
       editor={editorInstance}
       enabledCategories={p.getOmniEnabled(p.side)}
       hideAllCards={p.getOmniHideAll(p.side)}

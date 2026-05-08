@@ -5,10 +5,14 @@ import type { ExampleInfo } from "@/components/Editor";
 import {
   PanelCard,
   CardTargetIcon,
+  CardTypeLabel,
+  CardDragHandle,
 } from "@/components/panel-primitives";
+import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { FloatCard } from "@/components/FloatingCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
 
@@ -51,12 +55,23 @@ export function ExampleCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
+  const inOmni = useInOmni() != null;
+  const compressed = !isSelected && !isPoppedOut;
 
   const [isEditing, setIsEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [latexDraft, setLatexDraft] = useState(example.latex);
   const [editError, setEditError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      cancelEdit();
+    } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      applyEdit();
+    }
+  });
 
   // Re-sync the draft when the underlying source changes (e.g. another
   // edit channel touches the example) — but only while the editor is
@@ -100,6 +115,8 @@ export function ExampleCard({
       onClick={onSelect}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      cardKey={cardKey}
+      isCollapsed={compressed}
       data-link-card={`example:${example.exampleId}`}
       {...(extraDataAttrs ?? {})}
     >
@@ -108,6 +125,8 @@ export function ExampleCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
+        <CardDragHandle />
+        {inOmni && <CardTypeLabel kind="example" />}
         <span
           className="flex-1 min-w-0 truncate"
           style={{
@@ -118,7 +137,7 @@ export function ExampleCard({
             letterSpacing: "0.02em",
           }}
         >
-          Example
+          {inOmni ? `(${example.number || "?"})` : "Example"}
         </span>
         <CardTargetIcon
           selected={isSelected}
@@ -137,6 +156,26 @@ export function ExampleCard({
         style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
+      {compressed ? (
+        <div
+          className="px-3 py-1.5 text-xs text-ink-body truncate"
+          style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}
+        >
+          <span
+            className="font-mono mr-2"
+            style={{ color: theme.titleColor }}
+          >
+            ({example.number || "?"})
+          </span>
+          {(() => {
+            const text = example.bodyText || example.items[0]?.text || "";
+            const trimmed = text.replace(/\s+/g, " ").trim();
+            if (trimmed) return trimmed;
+            return <span className="italic text-ink-muted">empty</span>;
+          })()}
+        </div>
+      ) : (
+      <>
       {/* ── Body — recreate the example structure ────────────────── */}
       <div
         className="px-3 py-2 text-xs text-ink-body"
@@ -250,15 +289,7 @@ export function ExampleCard({
                 setLatexDraft(e.target.value);
                 if (editError) setEditError(null);
               }}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  cancelEdit();
-                } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  applyEdit();
-                }
-              }}
+              onKeyDown={onTextareaKeyDown}
               spellCheck={false}
               rows={Math.max(4, Math.min(latexDraft.split("\n").length + 1, 16))}
               className="w-full text-[11px] font-mono text-ink-body bg-transparent border border-edge-subtle rounded p-1.5 outline-none focus:ring-1 focus:ring-edge-hover resize-y"
@@ -329,6 +360,8 @@ export function ExampleCard({
             </ul>
           </div>
         </>
+      )}
+      </>
       )}
     </PanelCard>
   );

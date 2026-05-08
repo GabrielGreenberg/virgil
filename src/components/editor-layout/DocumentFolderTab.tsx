@@ -124,7 +124,7 @@ export function DocumentFolderTab({
           contained in the [S, S+tabW] x-range. */}
       <div
         ref={contentRef}
-        className="absolute flex items-center gap-1.5 px-3.5 text-ink-strong"
+        className="absolute flex items-center gap-1.5 pl-3.5 pr-1 text-ink-strong"
         style={{
           left: S,
           top: 0,

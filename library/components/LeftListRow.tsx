@@ -2,7 +2,7 @@
 
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
-import { ENTRY_DT_TYPE } from "@library/lib/dnd-types";
+import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
 import { Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
 
@@ -30,7 +30,11 @@ interface Props {
    * for unsorted ones. Used as the dataTransfer payload when dragging the
    * row to another library. */
   entryKey: string;
-  onClick: () => void;
+  /** Full multi-select set (so a drag from a selected row can carry the
+   *  whole selection). When the dragged row isn't in the set, the drag
+   *  carries just `entryKey`. */
+  selectedKeys: ReadonlySet<string>;
+  onClick: (e: React.MouseEvent | React.KeyboardEvent) => void;
   actions: RowActions;
   /** Far-left request-state dot. Red = a queue request is outstanding for
    *  this citekey; green = a completion notification has fired and the
@@ -44,7 +48,7 @@ export const ACTION_COL_WIDTH = 32;
 /** Width of the always-visible request-state dot column on the left edge. */
 export const STATUS_DOT_COL_WIDTH = 16;
 
-export default function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, onClick, actions, dotTone }: Props) {
+export default function LeftListRow({ entry, bib, selected, gridTemplate, entryKey, selectedKeys, onClick, actions, dotTone }: Props) {
   // Bib wins over catalog: master.bib is the authoritative source for
   // bibliographic display fields. Catalog title/authors/year is a snapshot
   // taken at index time and can drift after /authenticate-bib runs.
@@ -67,7 +71,16 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
       tabIndex={0}
       draggable
       onDragStart={(e) => {
+        // Multi-row drag: if the grabbed row is part of the current
+        // selection, carry every selected key. Otherwise the drag
+        // operates on just this row, regardless of what else is
+        // highlighted (matches Finder / VS Code behavior).
+        const keys =
+          selectedKeys.has(entryKey) && selectedKeys.size > 1
+            ? Array.from(selectedKeys)
+            : [entryKey];
         e.dataTransfer.setData(ENTRY_DT_TYPE, entryKey);
+        e.dataTransfer.setData(ENTRIES_DT_TYPE, JSON.stringify(keys));
         // copy semantics — drops are additive, the source row stays put.
         e.dataTransfer.effectAllowed = "copy";
       }}
@@ -75,7 +88,7 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
-          onClick();
+          onClick(e);
         }
       }}
       title={`${title}${firstAuthor ? ` — ${firstAuthor}` : ""}${year ? ` (${year})` : ""}`}

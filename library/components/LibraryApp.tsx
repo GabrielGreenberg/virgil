@@ -5,11 +5,18 @@
 // child. Equivalent to virgil-library/src/components/App.tsx.
 
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
+import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import LibraryFolderPicker from "./LibraryFolderPicker";
 import LibraryPermissionGate from "./LibraryPermissionGate";
 import LibraryView from "./LibraryView";
 
-export default function LibraryApp() {
+interface Props {
+  /** Optional scope/seed for the inner `useLibraryTabs`. Passed through
+   *  by library outer tabs so each one has its own panel state. */
+  tabsOptions?: UseLibraryTabsOptions;
+}
+
+export default function LibraryApp({ tabsOptions }: Props = {}) {
   const { state, pick, grant, reset, lastSync } = useLibraryHandle();
 
   if (state.kind === "loading") {
@@ -34,5 +41,12 @@ export default function LibraryApp() {
     return <LibraryPermissionGate onGrant={grant} onReset={reset} />;
   }
 
-  return <LibraryView handle={state.handle} onReset={reset} lastSync={lastSync} />;
+  return (
+    <LibraryView
+      handle={state.handle}
+      onReset={reset}
+      lastSync={lastSync}
+      tabsOptions={tabsOptions}
+    />
+  );
 }

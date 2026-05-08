@@ -35,6 +35,7 @@ import {
   AiRequestMarker,
   LinkedAnchor,
   LinkedAnchorGuard,
+  TabIndent,
 } from "@/lib/tiptap-extensions";
 
 import { FloatCard } from "./FloatingCards";
@@ -43,6 +44,7 @@ import { PopoutButton } from "./panel-primitives";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import type { EditorHandle } from "./Editor";
+import { useEditorChrome } from "./editor-layout/chrome-context";
 
 export function ParagraphFloat({
   cardKey,
@@ -54,6 +56,7 @@ export function ParagraphFloat({
   editorRef: RefObject<EditorHandle | null>;
 }) {
   const popped = usePoppedCards();
+  const chrome = useEditorChrome();
   const mainEditor = editorRef.current?.getEditor() ?? null;
   const [title, setTitle] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -117,8 +120,10 @@ export function ParagraphFloat({
       AiRequestMarker,
       LinkedAnchor,
       LinkedAnchorGuard,
+      TabIndent,
     ],
     content: initial.doc,
+    editable: chrome.showParagraphFloatTitleEdit,
     immediatelyRender: false,
     editorProps: {
       // Same class stack the main editor uses on its contenteditable so
@@ -243,11 +248,19 @@ export function ParagraphFloat({
           >
             <ParagraphFloatTitle
               title={title}
-              editing={editingTitle}
-              onStartEdit={() => setEditingTitle(true)}
+              editing={chrome.showParagraphFloatTitleEdit && editingTitle}
+              onStartEdit={
+                chrome.showParagraphFloatTitleEdit
+                  ? () => setEditingTitle(true)
+                  : () => {}
+              }
               onCommit={commitTitle}
               onCancel={() => setEditingTitle(false)}
-              onClear={() => commitTitle(null)}
+              onClear={
+                chrome.showParagraphFloatTitleEdit
+                  ? () => commitTitle(null)
+                  : () => {}
+              }
             />
             <div className="par-body-container">
               <EditorContent editor={floatEditor} />

@@ -46,6 +46,7 @@ import type {
 import ConfirmDialog from "./ConfirmDialog";
 import SystemDialog from "./system-dialog";
 import { Button } from "./panel-primitives";
+import { useTabIndent } from "@/hooks/useTabIndent";
 
 export type AIRequestKind =
   | "bib-fields"
@@ -269,9 +270,14 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
     quotation: "panel-quotation",
     todo: "panel-todo",
     suggestion: "panel-suggestion",
+    // style-merge requests are filed by the Style dropdown, not panels,
+    // and are filtered out below before reaching this map. The entry is
+    // here only so the Record<…> type stays exhaustive.
+    "style-merge": "panel-suggestion",
   };
 
   for (const r of args.panelAiRequests) {
+    if (r.kind === "style-merge") continue;
     out.push({
       id: `panel:${r.id}`,
       kind: PANEL_KIND_MAP[r.kind],
@@ -476,6 +482,13 @@ export default function AIWindow({
     addPanelAiRequest,
   ]);
 
+  const onComposerKeyDown = useTabIndent<HTMLTextAreaElement>((e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      submitComposer();
+    }
+  });
+
   if (!open) return null;
 
   const composerNeedsBibKey =
@@ -650,12 +663,7 @@ export default function AIWindow({
                                 : "Optional notes for Claude (what to focus on)…"
                           }
                           rows={3}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                              e.preventDefault();
-                              submitComposer();
-                            }
-                          }}
+                          onKeyDown={onComposerKeyDown}
                           className="flex-1 text-xs bg-surface border border-[var(--border)] rounded px-2 py-1.5 text-ink-body placeholder:text-ink-muted focus:outline-none focus:border-[var(--accent)] resize-none"
                         />
                         <div className="flex flex-col gap-1.5">

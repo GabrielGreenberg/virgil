@@ -19,11 +19,26 @@ export function markPendingCitationCreate(partial: string): void {
 
 // Citation regexes are defined in @/lib/cite-commands so the parser, the
 // tiptap input rule, and the bib formatter all agree on the supported set.
-export const Citation = Node.create({
+
+// Options accepted by the Citation extension. `idGenerator` lets a host
+// (e.g. the Library Reader) substitute a different ID strategy for newly
+// created citations. Defaults to the 4-char hex generator with collision
+// avoidance against the existing citation IDs in the document.
+export interface CitationOptions {
+  idGenerator: (existing: Set<string>) => string;
+}
+
+export const Citation = Node.create<CitationOptions>({
   name: "citation",
   group: "inline",
   inline: true,
   atom: true,
+
+  addOptions() {
+    return {
+      idGenerator: (existing: Set<string>) => generateShortId(existing),
+    };
+  },
 
   addAttributes() {
     return {
@@ -64,6 +79,7 @@ export const Citation = Node.create({
 
   addProseMirrorPlugins() {
     const nodeType = this.type;
+    const idGenerator = this.options.idGenerator;
     return [
       new Plugin({
         key: new PluginKey("citationInput"),
@@ -98,7 +114,7 @@ export const Citation = Node.create({
                   start,
                   from + text.length,
                   nodeType.create({
-                    citationId: generateShortId(existing),
+                    citationId: idGenerator(existing),
                     command,
                     displayText: "",
                   })

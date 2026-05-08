@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import type { ExamplesState, ExampleRef } from "@/lib/types";
 import { nextCardTitle } from "@/panels/panel-registry";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import type { PristineKindApi } from "./usePristineCardManager";
 
 const EMPTY: ExamplesState = { examples: [] };
@@ -21,31 +25,41 @@ export function useExamples(docId: string | null, pristine?: PristineKindApi | n
   const [state, setState] = useState<ExamplesState>(EMPTY);
   const stateRef = useRef(state);
   stateRef.current = state;
-  const docRef = useRef(docId);
+
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
 
   useEffect(() => {
-    docRef.current = docId;
+    let cancelled = false;
     if (!docId) {
       setState(EMPTY);
       return;
     }
     readSidecar<ExamplesState>(docId, "examples.json", EMPTY)
       .then((data) => {
-        if (docRef.current !== docId || !data.examples) return;
+        if (cancelled || !data.examples) return;
         setState({ examples: data.examples });
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [docId]);
 
-  const persist = useCallback(async (s: ExamplesState) => {
-    const id = docRef.current;
-    if (!id) return;
-    try {
-      await writeSidecar(id, "examples.json", s);
-    } catch (err) {
-      console.error("Failed to save examples:", err);
-    }
-  }, []);
+  const persist = useCallback(
+    async (s: ExamplesState) => {
+      if (!handle) return;
+      try {
+        await writeSidecar(handle, "examples.json", s);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to save examples:", err);
+      }
+    },
+    [handle],
+  );
 
   const updateExampleTitle = useCallback(
     (id: string, title: string) => {

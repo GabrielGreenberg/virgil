@@ -17,7 +17,10 @@ import {
   PanelCard,
   PANEL,
   TargetIcon,
+  CardTypeLabel,
+  CardDragHandle,
 } from "@/components/panel-primitives";
+import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -28,6 +31,26 @@ import CitationBuilder, {
 } from "@/components/CitationBuilder";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
+
+function lastNameOf(author: string): string {
+  const commaParts = author.split(",");
+  if (commaParts.length >= 2) return commaParts[0].trim();
+  const words = author.trim().split(/\s+/);
+  return words[words.length - 1] || author.trim();
+}
+
+function firstThreeAuthorLastNames(authorField: string): string {
+  const authors = authorField
+    .split(" and ")
+    .map((a) => a.trim())
+    .filter(Boolean);
+  if (authors.length === 0) return "";
+  const names = authors.slice(0, 3).map(lastNameOf);
+  if (authors.length === 1) return names[0];
+  if (authors.length === 2) return `${names[0]} and ${names[1]}`;
+  if (authors.length === 3) return `${names[0]}, ${names[1]}, and ${names[2]}`;
+  return `${names[0]}, ${names[1]}, ${names[2]}, et al.`;
+}
 
 export interface CitationCardProps {
   citation: CitationRef;
@@ -63,6 +86,7 @@ export interface CitationCardProps {
   extraDataAttrs?: Record<string, string>;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
+  onDelete?: (id: string) => void;
 }
 
 export function CitationCard({
@@ -88,6 +112,7 @@ export function CitationCard({
   extraDataAttrs,
   onTogglePopout,
   isPoppedOut,
+  onDelete,
 }: CitationCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
@@ -119,6 +144,8 @@ export function CitationCard({
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
+  const inOmni = useInOmni() != null;
+  const compressed = !isSelected && !isPoppedOut;
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -268,6 +295,69 @@ export function CitationCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
 
+  const headerStyle: React.CSSProperties = {
+    fontSize: "var(--par-title-size, 0.78rem)",
+    color: theme.titleColor,
+    fontWeight: 500,
+    fontFamily: "var(--font-sans), Inter, sans-serif",
+    letterSpacing: "0.02em",
+    ...bodyStyle,
+  };
+  const firstHeaderKey = cit.keys[0];
+  const firstHeaderEntry = firstHeaderKey ? bibEntryMap.get(firstHeaderKey) : undefined;
+  const headerAuthor = firstHeaderEntry
+    ? firstThreeAuthorLastNames(firstHeaderEntry.fields.author || "")
+    : "";
+  const headerYear = firstHeaderEntry?.fields.year || firstHeaderEntry?.fields.date || "";
+  const headerTitle = firstHeaderEntry?.fields.title || "";
+  const headerMore = cit.keys.length > 1 ? ` +${cit.keys.length - 1}` : "";
+  const headerContent = compressed ? (
+    <div
+      data-panel-kind="citation"
+      className="leading-snug"
+      style={{
+        ...headerStyle,
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+        overflowWrap: "anywhere",
+      }}
+      title={[headerAuthor || firstHeaderKey, headerYear, headerTitle]
+        .filter(Boolean)
+        .join(" · ") + headerMore}
+    >
+      {firstHeaderKey ? (
+        <>
+          <span className="font-semibold">{headerAuthor || firstHeaderKey}</span>
+          {headerYear && (
+            <>
+              <span className="text-ink-muted mx-1">&middot;</span>
+              <span className="font-semibold">{headerYear}</span>
+            </>
+          )}
+          {headerTitle && (
+            <>
+              <span className="text-ink-muted mx-1">&middot;</span>
+              <span className="italic text-ink-subtle">{headerTitle}</span>
+            </>
+          )}
+          {headerMore && <span className="text-ink-muted">{headerMore}</span>}
+        </>
+      ) : (
+        <span className="text-ink-faint italic">no keys</span>
+      )}
+    </div>
+  ) : (
+    <div
+      data-panel-kind="citation"
+      className="overflow-hidden text-ellipsis whitespace-nowrap"
+      style={headerStyle}
+      title={getDisplayText(cit.command).replace(/<[^>]+>/g, "")}
+      dangerouslySetInnerHTML={{ __html: getDisplayText(cit.command) }}
+    />
+  );
+
   const card = (
     <PanelCard
       data-link-card={`citation:${cit.id}`}
@@ -278,6 +368,9 @@ export function CitationCard({
       selected={isSelected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
+      onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
+      cardKey={cardKey}
+      isCollapsed={compressed}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
       draggable={!isEditing}
       onDragStart={handleDragStart}
@@ -297,22 +390,15 @@ export function CitationCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
-        <div
-          data-panel-kind="citation"
-          className="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap"
-          style={{
-            fontSize: "var(--par-title-size, 0.78rem)",
-            color: theme.titleColor,
-            fontWeight: 500,
-            fontFamily: "var(--font-sans), Inter, sans-serif",
-            letterSpacing: "0.02em",
-            ...bodyStyle,
-          }}
-          title={getDisplayText(cit.command).replace(/<[^>]+>/g, "")}
-          dangerouslySetInnerHTML={{
-            __html: getDisplayText(cit.command),
-          }}
-        />
+        <CardDragHandle />
+        {inOmni ? (
+          <div className="flex-1 min-w-0 flex flex-col">
+            <CardTypeLabel kind="citation" />
+            {headerContent}
+          </div>
+        ) : (
+          <div className="flex-1 min-w-0">{headerContent}</div>
+        )}
         <div
           className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
           draggable={false}
@@ -335,6 +421,12 @@ export function CitationCard({
         style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
+      {compressed ? (
+        <div className="px-3 py-1 text-[11px] font-mono text-ink-subtle truncate">
+          {cit.command}
+        </div>
+      ) : (
+      <>
       <div
         className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
       >
@@ -416,7 +508,7 @@ export function CitationCard({
         style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
-      <div className="flex items-center gap-1.5 min-w-0 px-3 py-1 bg-surface-muted/30">
+      <div className="flex items-center gap-1.5 min-w-0 pl-3 pr-9 py-1 bg-surface-muted/30">
         {isEditing ? (
           <input
             ref={latexInputRef}
@@ -438,9 +530,17 @@ export function CitationCard({
             title="Edit raw LaTeX command (auto-saves)"
           />
         ) : (
-          <div className="text-[11px] font-mono text-ink-subtle truncate flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            className="text-[11px] font-mono text-ink-subtle truncate flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-text hover:text-ink-body"
+            title="Edit citation"
+          >
             {cit.command}
-          </div>
+          </button>
         )}
         <button
           onClick={(e) => {
@@ -480,6 +580,8 @@ export function CitationCard({
           </div>
         </>
       )}
+      </>
+      )}
     </PanelCard>
   );
   const expandedEntry = expandedBibKey
@@ -489,7 +591,14 @@ export function CitationCard({
   const grouped = expandedEntry ? (
     <div className="space-y-2">
       {card}
-      <div className="ml-4">
+      <div
+        className="ml-4 overflow-y-auto"
+        style={
+          isPoppedOut
+            ? undefined
+            : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }
+        }
+      >
         <BibEntryCard
           entry={expandedEntry}
           isSelected={false}

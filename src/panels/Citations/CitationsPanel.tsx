@@ -79,6 +79,7 @@ function CitationsPanel({
   onSelect,
   onScrollToMarker,
   onUpdateCitation,
+  onDeleteCitation,
   onSetStyle,
   onSetBibPackage,
   getDisplayText,
@@ -306,6 +307,7 @@ function CitationsPanel({
             panelScrollRef.current?.focus();
           }}
           onJump={(sourceEl) => jumpToCitation(cit.id, sourceEl)}
+          onDelete={onDeleteCitation}
           {...sharedCardProps}
         />
       )}

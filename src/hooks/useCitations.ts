@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { generateShortId } from "@/lib/uuid";
 import { readBib, writeBib } from "@/lib/storage";
+import { DOC_BIB_CHANGED_EVENT } from "@/lib/project-bib";
 import { isUnanchored } from "@/links/links";
 import type { CitationsState, CitationRef, BibEntry } from "@/lib/types";
 import {
@@ -12,6 +13,10 @@ import {
   formatInlineCitation,
   formatBibliography,
 } from "@/lib/bib-parser";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import { usePersistentState } from "./usePersistentState";
 import type { PristineKindApi } from "./usePristineCardManager";
 
@@ -50,16 +55,17 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
   const [bibRaw, setBibRaw] = useState("");
   const docRef = useRef(docId);
 
-  useEffect(() => {
-    docRef.current = docId;
-    if (!docId) {
-      setBibEntries([]);
-      setBibRaw("");
-      return;
-    }
-    readBib(docId)
+  // Pin the bib write handle to docId's currently-active pipeline.
+  // Stale handles (from a doc switch) are rejected by writeBib.
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
+
+  const refreshBib = useCallback((id: string) => {
+    readBib(id)
       .then((data) => {
-        if (docRef.current !== docId) return;
+        if (docRef.current !== id) return;
         setBibRaw(data.bibText || "");
         if (data.bibText) {
           try {
@@ -67,6 +73,8 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           } catch {
             setBibEntries([]);
           }
+        } else {
+          setBibEntries([]);
         }
         // Auto-set bib package from tex preamble detection.
         if (data.detectedPackage) {
@@ -74,17 +82,45 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
         }
       })
       .catch(() => {});
-  }, [docId, setState]);
+  }, [setState]);
 
-  const persistBib = useCallback(async (text: string) => {
-    const id = docRef.current;
-    if (!id) return;
-    try {
-      await writeBib(id, text);
-    } catch (err) {
-      console.error("Failed to save bib:", err);
+  useEffect(() => {
+    docRef.current = docId;
+    if (!docId) {
+      setBibEntries([]);
+      setBibRaw("");
+      return;
     }
-  }, []);
+    refreshBib(docId);
+  }, [docId, refreshBib]);
+
+  // Out-of-band writes to references.bib (e.g. dropping an entry onto a
+  // Project library tab) dispatch DOC_BIB_CHANGED_EVENT — re-read so the
+  // doc's citation UI reflects the new entry without a manual refresh.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ docId?: string }>).detail;
+      const id = docRef.current;
+      if (!id) return;
+      if (detail?.docId && detail.docId !== id) return;
+      refreshBib(id);
+    };
+    window.addEventListener(DOC_BIB_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(DOC_BIB_CHANGED_EVENT, handler);
+  }, [refreshBib]);
+
+  const persistBib = useCallback(
+    async (text: string) => {
+      if (!handle) return;
+      try {
+        await writeBib(handle, text);
+      } catch (err) {
+        if (isStalePipelineError(err)) return;
+        console.error("Failed to save bib:", err);
+      }
+    },
+    [handle],
+  );
 
   const addCitation = useCallback(
     (command: string, existingId?: string, markUnanchored?: boolean): CitationRef => {

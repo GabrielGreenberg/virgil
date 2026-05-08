@@ -4,9 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
+  AiRequestCheckbox,
   BadgeLabel,
   BadgeOrphaned,
+  CardDragHandle,
   CardTargetIcon,
+  CardTypeLabel,
   PanelCard,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -17,6 +20,7 @@ import {
 } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { cardPopKey } from "@/panels/panel-registry";
 import { MIME_CUT } from "@/lib/marginalia";
@@ -72,9 +76,11 @@ export function CutterCommentCard({
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
   const [commentExpanded, setCommentExpanded] = useState(!!card.text);
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
+  const compressed = !selected && !isPoppedOut;
   const { partnerClaim, claim, release } = useCardClaim("cut", card.id);
   const collabCtx = useCollabContext();
   const partnerSelections = collabCtx.getCardSelections("cut", card.id);
@@ -92,6 +98,8 @@ export function CutterCommentCard({
       selected={selected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
+      cardKey={cardKey}
+      isCollapsed={compressed}
       onTrashClick={() => onDelete(card.id)}
       draggable={!selected}
       onDragStart={(e) => startCutterCommentDrag(e, card.id)}
@@ -115,15 +123,14 @@ export function CutterCommentCard({
         className="flex items-center gap-2 pl-3 pr-7 py-1.5"
         style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
       >
+        <CardDragHandle />
         {isOrphaned ? (
           <BadgeOrphaned theme={theme} />
         ) : (
           <BadgeLabel label="C" theme={theme} />
         )}
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          <span className="text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium">
-            Comment
-          </span>
+          <CardTypeLabel kind="cutter-comment" />
         </div>
         {onJump && (
           <CardTargetIcon
@@ -155,6 +162,24 @@ export function CutterCommentCard({
         style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
+      {compressed ? (
+        <div
+          className="px-3 pt-1 pb-1.5 text-xs truncate"
+          style={
+            partnerClaim
+              ? { opacity: 0.55, filter: "saturate(0.7)" }
+              : undefined
+          }
+        >
+          {card.selectedText ? (
+            <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
+          ) : card.text ? (
+            <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
+          ) : (
+            <span className="text-ink-faint italic">empty comment</span>
+          )}
+        </div>
+      ) : (
       <div
         className={`px-3 pt-2 pb-2 space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
         onClick={(e) => e.stopPropagation()}
@@ -214,6 +239,7 @@ export function CutterCommentCard({
                 onBlur={() => release()}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
+                onKeyDown={onTextareaKeyDown}
                 placeholder="Comment text…"
                 style={cutBodyStyle}
                 className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
@@ -223,24 +249,12 @@ export function CutterCommentCard({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onSetAiRequest(card.id, !card.aiRequest);
-          }}
-          onMouseDown={(e) => e.stopPropagation()}
-          className="flex items-center gap-1.5 text-[11px] text-ink-subtle cursor-pointer select-none bg-transparent p-0"
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" className="shrink-0">
-            <rect x="1" y="1" width="14" height="14" rx="3" stroke="#b5b0aa" strokeWidth="1.5" fill="none" />
-            {card.aiRequest && (
-              <path d="M4.5 8l2.5 2.5 4.5-5" stroke="#0369a1" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            )}
-          </svg>
-          AI request
-        </button>
+        <AiRequestCheckbox
+          checked={card.aiRequest}
+          onToggle={(next) => onSetAiRequest(card.id, next)}
+        />
       </div>
+      )}
     </PanelCard>
   );
 

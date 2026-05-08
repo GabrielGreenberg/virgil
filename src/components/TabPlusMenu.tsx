@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle } from "@/lib/doc-index";
+import { multiWindowSupported } from "@/lib/multi-window/bus";
 import { IconPlus } from "./editor-layout/panel-icons";
 import { RecentPaperRow } from "./RecentPapersList";
 
@@ -26,6 +27,7 @@ interface Props {
   onOpenRecent: (id: string) => void;
   onOpenFolder: () => void;
   onCreateNew: () => void;
+  onOpenNewWindow: () => void;
   devStorage: boolean;
 }
 
@@ -35,10 +37,19 @@ export function TabPlusMenu({
   onOpenRecent,
   onOpenFolder,
   onCreateNew,
+  onOpenNewWindow,
   devStorage,
 }: Props) {
   const [open, setOpen] = useState(false);
+  const [canMultiWindow, setCanMultiWindow] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+
+  // Feature-detect cross-window plumbing on the client. Hidden for
+  // Safari (no BroadcastChannel-backed lock semantics) so users don't
+  // see a menu item that wouldn't work coherently.
+  useEffect(() => {
+    setCanMultiWindow(multiWindowSupported());
+  }, []);
 
   const close = useCallback(() => setOpen(false), []);
 
@@ -91,11 +102,12 @@ export function TabPlusMenu({
   );
 
   return (
-    <div ref={wrapRef} className="relative self-center">
+    <div ref={wrapRef} className="relative self-center inline-flex">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="topbarbtn topbarbtn-icon"
+        style={{ padding: "0 4px" }}
         title="Open paper or create new"
         data-helper="Open paper or create new"
         aria-haspopup="menu"
@@ -155,6 +167,24 @@ export function TabPlusMenu({
           >
             <PlusIcon />
           </MenuItem>
+          {canMultiWindow && (
+            <>
+              <div
+                aria-hidden
+                className="my-1.5 mx-2 h-px bg-edge-hover/50"
+              />
+              <MenuItem
+                label="New Virgil window"
+                shortcut="⌘⇧N"
+                onClick={() => {
+                  onOpenNewWindow();
+                  close();
+                }}
+              >
+                <WindowIcon />
+              </MenuItem>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -165,10 +195,12 @@ function MenuItem({
   label,
   onClick,
   children,
+  shortcut,
 }: {
   label: string;
   onClick: () => void;
   children: React.ReactNode;
+  shortcut?: string;
 }) {
   return (
     <button
@@ -178,8 +210,32 @@ function MenuItem({
       className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm text-ink-strong hover-on-light text-left"
     >
       {children}
-      <span>{label}</span>
+      <span className="flex-1">{label}</span>
+      {shortcut && (
+        <span className="text-[11px] text-ink-subtle tabular-nums">
+          {shortcut}
+        </span>
+      )}
     </button>
+  );
+}
+
+function WindowIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-ink-subtle shrink-0"
+    >
+      <rect x="3" y="4" width="13" height="11" rx="1.5" />
+      <rect x="8" y="9" width="13" height="11" rx="1.5" />
+    </svg>
   );
 }
 

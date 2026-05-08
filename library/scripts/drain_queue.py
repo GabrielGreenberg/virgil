@@ -35,6 +35,9 @@ KIND_PRIORITY = {
     "authenticate": 1,
     "index": 2,
     "reindex": 2,
+    "deepIndex": 4,
+    # Legacy alias from before the rich-index → deep-index rename. Old
+    # queue files may still use this kind; treat them at the same priority.
     "richIndex": 4,
     "triage": 5,
 }

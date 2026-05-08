@@ -1,8 +1,13 @@
 ---
-description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Sets indexed.state to "richIndexed" (double checkmark). Args: <citekey>
+description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Sets indexed.state to "deepIndexed" (double checkmark). Args: <citekey>
 ---
 
-# /rich-index
+# /deep-index
+
+> **Naming note.** This skill was previously called `/rich-index`. Old
+> queue files (`queue/<citekey>-richindex.json`) and catalog entries
+> (`indexed.state == "richIndexed"`) are still accepted on read; new
+> writes use the deep-index vocabulary throughout.
 
 **Structurally improve a paper's `main.tex`** — transform raw extracted
 text into properly structured LaTeX that is useful to a human reader.
@@ -24,7 +29,7 @@ and stop.
 ### 1. Run deterministic preprocessing
 
 ```bash
-python3 scripts/rich_preprocess.py papers/$ARGUMENTS/main.tex
+python3 scripts/deep_preprocess.py papers/$ARGUMENTS/main.tex
 ```
 
 This applies automated cleanup: strips repeating running headers and
@@ -43,7 +48,8 @@ Read all of these:
 - `master.bib` — find the entry for this citekey (authoritative
   title, author, year, journal, etc.)
 - Check for user notes:
-  - `queue/$ARGUMENTS-richindex.json` — if present with a `note` field
+  - `queue/$ARGUMENTS-deepindex.json` — if present with a `note` field
+    (legacy `queue/$ARGUMENTS-richindex.json` is also accepted on read)
   - `queue/$ARGUMENTS-paperreview.json` — if present, a coexisting
     paper-review request to incorporate
 
@@ -180,13 +186,14 @@ Output:
 
 **f. Process user notes**
 
-If `queue/$ARGUMENTS-richindex.json` has a `note`, or a coexisting
+If `queue/$ARGUMENTS-deepindex.json` (or the legacy
+`queue/$ARGUMENTS-richindex.json`) has a `note`, or a coexisting
 `queue/$ARGUMENTS-paperreview.json` exists, print the note verbatim
 in a delimited block:
 
 ```
 ════════════════════════════════════════════════════════════
-RICH-INDEX NOTE · $ARGUMENTS
+DEEP-INDEX NOTE · $ARGUMENTS
 ────────────────────────────────────────────────────────────
 <full verbatim note>
 ════════════════════════════════════════════════════════════
@@ -226,8 +233,8 @@ extraction and are fine to leave. Only `**new**` findings gate the
 pass.
 
 If three iterations fail to clear all blockers, **abort**: leave
-`indexed.state` unchanged (do not write `richIndexed`), append a
-notification with `kind: "rich-index-blocked"` (see step 6 for shape,
+`indexed.state` unchanged (do not write `deepIndexed`), append a
+notification with `kind: "deep-index-blocked"` (see step 6 for shape,
 swap the kind), and stop. Do not silently downgrade the validator
 severity to `warn` — that is the failure mode this skill exists to
 prevent.
@@ -241,7 +248,7 @@ Save the improved document back to `papers/$ARGUMENTS/main.tex`.
 Read `catalog.json`, find the entry for this citekey, and update:
 
 ```python
-entry["indexed"]["state"] = "richIndexed"
+entry["indexed"]["state"] = "deepIndexed"
 entry["indexed"]["lastIndexedAt"] = "<current ISO timestamp>"
 ```
 
@@ -259,21 +266,22 @@ Append to `notifications/inbox.json`:
   "kind": "indexed",
   "citekey": "$ARGUMENTS",
   "at": "<ISO>",
-  "summary": "Rich-indexed $ARGUMENTS"
+  "summary": "Deep-indexed $ARGUMENTS"
 }
 ```
 
 ### 7. Mark done
 
-Delete `queue/$ARGUMENTS-richindex.json` if it exists. If a coexisting
+Delete `queue/$ARGUMENTS-deepindex.json` (or the legacy
+`queue/$ARGUMENTS-richindex.json`) if it exists. If a coexisting
 `queue/$ARGUMENTS-paperreview.json` was also processed, delete that too.
 
 ### 8. Log
 
-Write a summary to `logs/$ARGUMENTS/<ISO>-richindex.summary.md`:
+Write a summary to `logs/$ARGUMENTS/<ISO>-deepindex.summary.md`:
 
 ```markdown
-# Rich-index summary: $ARGUMENTS
+# Deep-index summary: $ARGUMENTS
 
 **Date:** <ISO>
 **Preprocessing:** <stats from step 1>
@@ -284,7 +292,7 @@ Write a summary to `logs/$ARGUMENTS/<ISO>-richindex.summary.md`:
 ## Output format
 
 ```
-Rich-indexed $ARGUMENTS.
+Deep-indexed $ARGUMENTS.
 Preprocessing: <N> headers removed, <M> page numbers removed, ...
 AI fixes: <bulleted list of structural changes>.
 ```
@@ -305,7 +313,7 @@ AI fixes: <bulleted list of structural changes>.
 
 ## Idempotency
 
-Running `/rich-index` twice on the same paper should not degrade it.
+Running `/deep-index` twice on the same paper should not degrade it.
 The preprocessing script detects already-cleaned content (no running
 headers to strip = no changes). The AI step should similarly recognize
 when structural fixes have already been applied and avoid double-fixing.
@@ -335,3 +343,26 @@ handle. Stick to:
 - Plain text paragraphs
 
 Do not introduce commands that aren't in this list.
+
+### Font policy (strip rule)
+
+If the input `main.tex` contains any font-affecting preamble line —
+`\usepackage{fontspec}`, `\setmainfont`, `\renewcommand{\rmdefault}{...}`,
+`\usepackage{times|palatino|lmodern|mathptmx|newtx|...}`, `\fontfamily`,
+`\usepackage[T1]{fontenc}` (when paired with a font choice), or any
+similar font-controlling directive — **remove it**. Do not preserve,
+translate, or replace it with a different font. The Virgil library
+renderer pins fonts independently of the source via
+`--library-editing-font`; the indexed `.tex` must stay font-agnostic.
+
+The output preamble should match the minimal preamble emitted by
+`tex_emit.py`:
+
+```latex
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\providecommand{\pgmark}[1]{}
+```
+
+…plus `\title`/`\author`/`\date` lines. Nothing else font-related.

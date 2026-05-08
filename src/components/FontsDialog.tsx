@@ -243,24 +243,29 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           onReset={() => {
             onUpdate("fontMaketitleFamily", DEFAULT_PREFS.fontMaketitleFamily);
             onUpdate("fontMaketitleTitleSize", DEFAULT_PREFS.fontMaketitleTitleSize);
+            onUpdate("fontMaketitleTitleWeight", DEFAULT_PREFS.fontMaketitleTitleWeight);
             onUpdate("fontMaketitleMetaSize", DEFAULT_PREFS.fontMaketitleMetaSize);
+            onUpdate("fontMaketitleMetaWeight", DEFAULT_PREFS.fontMaketitleMetaWeight);
           }}
           resetDisabled={
             prefs.fontMaketitleFamily === DEFAULT_PREFS.fontMaketitleFamily &&
             prefs.fontMaketitleTitleSize === DEFAULT_PREFS.fontMaketitleTitleSize &&
-            prefs.fontMaketitleMetaSize === DEFAULT_PREFS.fontMaketitleMetaSize
+            prefs.fontMaketitleTitleWeight === DEFAULT_PREFS.fontMaketitleTitleWeight &&
+            prefs.fontMaketitleMetaSize === DEFAULT_PREFS.fontMaketitleMetaSize &&
+            prefs.fontMaketitleMetaWeight === DEFAULT_PREFS.fontMaketitleMetaWeight
           }
         >
           <PreviewPod
             text="On the History of Annotation"
             fontFamily={titleFamily}
             fontSizeRem={prefs.fontMaketitleTitleSize}
-            weight={700}
+            weight={prefs.fontMaketitleTitleWeight}
           />
           <PreviewPod
             text="Jane Doe · 2026"
             fontFamily={titleFamily}
             fontSizeRem={prefs.fontMaketitleMetaSize}
+            weight={prefs.fontMaketitleMetaWeight}
           />
           <FieldRow label="Family">
             <FontPicker
@@ -282,11 +287,25 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
               min={1.1} max={3.5} step={0.05} unit="rem"
             />
           </FieldRow>
+          <FieldRow label="Title weight">
+            <SizeStepper
+              value={prefs.fontMaketitleTitleWeight}
+              onChange={(v) => onUpdate("fontMaketitleTitleWeight", v)}
+              min={100} max={900} step={100} precision={0}
+            />
+          </FieldRow>
           <FieldRow label="Meta size">
             <SizeStepper
               value={prefs.fontMaketitleMetaSize}
               onChange={(v) => onUpdate("fontMaketitleMetaSize", v)}
               min={0.7} max={1.6} step={0.05} unit="rem"
+            />
+          </FieldRow>
+          <FieldRow label="Meta weight">
+            <SizeStepper
+              value={prefs.fontMaketitleMetaWeight}
+              onChange={(v) => onUpdate("fontMaketitleMetaWeight", v)}
+              min={100} max={900} step={100} precision={0}
             />
           </FieldRow>
         </CategoryCard>
@@ -297,19 +316,25 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           onReset={() => {
             onUpdate("fontHeadersFamily", DEFAULT_PREFS.fontHeadersFamily);
             onUpdate("fontHeadersH1Size", DEFAULT_PREFS.fontHeadersH1Size);
+            onUpdate("fontHeadersH1Weight", DEFAULT_PREFS.fontHeadersH1Weight);
             onUpdate("fontHeadersH2Size", DEFAULT_PREFS.fontHeadersH2Size);
+            onUpdate("fontHeadersH2Weight", DEFAULT_PREFS.fontHeadersH2Weight);
             onUpdate("fontHeadersH3Size", DEFAULT_PREFS.fontHeadersH3Size);
+            onUpdate("fontHeadersH3Weight", DEFAULT_PREFS.fontHeadersH3Weight);
           }}
           resetDisabled={
             prefs.fontHeadersFamily === DEFAULT_PREFS.fontHeadersFamily &&
             prefs.fontHeadersH1Size === DEFAULT_PREFS.fontHeadersH1Size &&
+            prefs.fontHeadersH1Weight === DEFAULT_PREFS.fontHeadersH1Weight &&
             prefs.fontHeadersH2Size === DEFAULT_PREFS.fontHeadersH2Size &&
-            prefs.fontHeadersH3Size === DEFAULT_PREFS.fontHeadersH3Size
+            prefs.fontHeadersH2Weight === DEFAULT_PREFS.fontHeadersH2Weight &&
+            prefs.fontHeadersH3Size === DEFAULT_PREFS.fontHeadersH3Size &&
+            prefs.fontHeadersH3Weight === DEFAULT_PREFS.fontHeadersH3Weight
           }
         >
-          <PreviewPod text="1 Introduction" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH1Size} weight={700} />
-          <PreviewPod text="1.1 Background" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH2Size} weight={600} />
-          <PreviewPod text="1.1.1 Prior work" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH3Size} weight={600} />
+          <PreviewPod text="1 Introduction" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH1Size} weight={prefs.fontHeadersH1Weight} />
+          <PreviewPod text="1.1 Background" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH2Size} weight={prefs.fontHeadersH2Weight} />
+          <PreviewPod text="1.1.1 Prior work" fontFamily={headersFamily} fontSizeRem={prefs.fontHeadersH3Size} weight={prefs.fontHeadersH3Weight} />
           <FieldRow label="Family">
             <FontPicker
               value={headersFamily}
@@ -326,11 +351,20 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           <FieldRow label="H1 size">
             <SizeStepper value={prefs.fontHeadersH1Size} onChange={(v) => onUpdate("fontHeadersH1Size", v)} min={1.1} max={3.0} step={0.05} unit="rem" />
           </FieldRow>
+          <FieldRow label="H1 weight">
+            <SizeStepper value={prefs.fontHeadersH1Weight} onChange={(v) => onUpdate("fontHeadersH1Weight", v)} min={100} max={900} step={100} precision={0} />
+          </FieldRow>
           <FieldRow label="H2 size">
             <SizeStepper value={prefs.fontHeadersH2Size} onChange={(v) => onUpdate("fontHeadersH2Size", v)} min={0.95} max={2.4} step={0.05} unit="rem" />
           </FieldRow>
+          <FieldRow label="H2 weight">
+            <SizeStepper value={prefs.fontHeadersH2Weight} onChange={(v) => onUpdate("fontHeadersH2Weight", v)} min={100} max={900} step={100} precision={0} />
+          </FieldRow>
           <FieldRow label="H3 size">
             <SizeStepper value={prefs.fontHeadersH3Size} onChange={(v) => onUpdate("fontHeadersH3Size", v)} min={0.9} max={2.0} step={0.05} unit="rem" />
+          </FieldRow>
+          <FieldRow label="H3 weight">
+            <SizeStepper value={prefs.fontHeadersH3Weight} onChange={(v) => onUpdate("fontHeadersH3Weight", v)} min={100} max={900} step={100} precision={0} />
           </FieldRow>
         </CategoryCard>
 
@@ -340,17 +374,19 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
           onReset={() => {
             onUpdate("fontParTitleFamily", DEFAULT_PREFS.fontParTitleFamily);
             onUpdate("parTitleSize", DEFAULT_PREFS.parTitleSize);
+            onUpdate("fontParTitleWeight", DEFAULT_PREFS.fontParTitleWeight);
           }}
           resetDisabled={
             prefs.fontParTitleFamily === DEFAULT_PREFS.fontParTitleFamily &&
-            prefs.parTitleSize === DEFAULT_PREFS.parTitleSize
+            prefs.parTitleSize === DEFAULT_PREFS.parTitleSize &&
+            prefs.fontParTitleWeight === DEFAULT_PREFS.fontParTitleWeight
           }
         >
           <PreviewPod
             text="On marginalia"
             fontFamily={parTitleFamily}
             fontSizeRem={prefs.parTitleSize}
-            weight={500}
+            weight={prefs.fontParTitleWeight}
           />
           <FieldRow label="Family">
             <FontPicker
@@ -372,6 +408,13 @@ export default function FontsDialog({ open, onClose, prefs, onUpdate }: FontsDia
               value={prefs.parTitleSize}
               onChange={(v) => onUpdate("parTitleSize", v)}
               min={0.6} max={1.0} step={0.02} unit="rem"
+            />
+          </FieldRow>
+          <FieldRow label="Weight">
+            <SizeStepper
+              value={prefs.fontParTitleWeight}
+              onChange={(v) => onUpdate("fontParTitleWeight", v)}
+              min={100} max={900} step={100} precision={0}
             />
           </FieldRow>
         </CategoryCard>

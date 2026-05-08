@@ -127,6 +127,9 @@ def emit(
     page_map = page_map or []
 
     lines: list[str] = []
+    # Preamble is intentionally font-agnostic: the Virgil library renderer
+    # pins indexed papers to --library-editing-font on the frontend.
+    # Do not add fontspec / times / palatino / lmodern / setmainfont / etc.
     lines.append("\\documentclass{article}")
     lines.append("\\usepackage[utf8]{inputenc}")
     lines.append("\\usepackage{amsmath, amssymb}")

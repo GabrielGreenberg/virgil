@@ -4,12 +4,17 @@ import {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   type Dispatch,
   type SetStateAction,
   type MutableRefObject,
 } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 
 export interface PersistentStateOptions<S> {
   /**
@@ -40,15 +45,20 @@ export interface PersistentStateApi<S> {
 
 /**
  * Factory for `docId`-scoped state persisted to a sidecar JSON file.
- * Collapses the duplicated load/migrate/persist pattern that used to
- * live inline in every card hook (useNotes, useCutter, useArchive, …).
+ *
+ * The handle that pins all writes comes from the active pipeline
+ * registry (see src/lib/multi-window/doc-pipeline.ts). Writes that
+ * land after the pipeline ends — e.g. a debounced persist that fires
+ * after the user switched docs — are rejected by the storage layer
+ * with StalePipelineError, which we swallow silently. This is the
+ * structural fix for the cross-doc autosave overwrite bug.
  *
  * Behavioral contract:
  *  - Mount / `docId` change → read `filename`, optionally migrate, set state.
  *  - `docId` becomes null → reset to `defaultValue` without writing to disk.
  *  - A stale docId that completes after a switch is ignored.
- *  - `persist` and `update` write synchronously through `writeSidecar`,
- *    which already serializes per-file via `enqueueWrite`.
+ *  - `persist` and `update` write through `writeSidecar`, which both
+ *    serializes per-file via `enqueueWrite` AND rejects on stale handle.
  */
 export function usePersistentState<S>(
   docId: string | null,
@@ -60,41 +70,52 @@ export function usePersistentState<S>(
   const [state, setState] = useState<S>(defaultValue);
   const stateRef = useRef(state);
   stateRef.current = state;
-  const docIdRef = useRef(docId);
+
+  // The write handle is pinned to the docId's currently-active
+  // pipeline. If the user switches docs, the pipeline ends and this
+  // handle becomes stale; subsequent writes throw StalePipelineError
+  // and are dropped. Fresh handle per render that sees a new docId.
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
 
   useEffect(() => {
-    docIdRef.current = docId;
+    let cancelled = false;
     if (!docId) {
       setState(defaultValue);
       return;
     }
     readSidecar<S>(docId, filename, defaultValue)
       .then((raw) => {
-        if (docIdRef.current !== docId) return;
+        if (cancelled) return;
         const migrated = migrate ? migrate(raw) : raw;
         setState(migrated);
-        if (persistMigrationOnLoad) {
-          writeSidecar(docId, filename, migrated).catch(() => {});
+        if (persistMigrationOnLoad && handle) {
+          writeSidecar(handle, filename, migrated).catch(() => {});
         }
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
     // `defaultValue`, `filename`, and the option functions are expected to
     // be module-level constants. We intentionally only track `docId` so a
     // document switch reloads but a re-render does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
+  }, [docId, handle]);
 
   const persist = useCallback(
     async (s: S) => {
-      const id = docIdRef.current;
-      if (!id) return;
+      if (!handle) return;
       try {
-        await writeSidecar(id, filename, s);
+        await writeSidecar(handle, filename, s);
       } catch (err) {
+        if (isStalePipelineError(err)) return;
         console.error(`Failed to save ${errorLabel ?? filename}:`, err);
       }
     },
-    [filename, errorLabel],
+    [handle, filename, errorLabel],
   );
 
   const update = useCallback(

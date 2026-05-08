@@ -31,6 +31,11 @@ export interface PoppedCardsValue {
    *  float near the supplied anchor rect (typically the docked card's
    *  bounding rect). Re-dock branch ignores the anchor. */
   toggleAtAnchor: (key: string, anchor: DOMRect | null) => void;
+  /** Pop out a card with the float positioned at exactly the given rect.
+   *  Used by the lift-off drag gesture (PanelCard) to spawn the float
+   *  under the cursor for a continuous drag handoff. No-op if already
+   *  popped. */
+  popOutAtRect: (key: string, rect: CardRect) => void;
   close: (key: string) => void;
   /** Saved position/size for a card, if any. */
   getFloatPosition: (key: string) => CardRect | undefined;

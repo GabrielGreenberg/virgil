@@ -25,13 +25,37 @@
   --citation-border: #e0d5a8;
 }
 
+/* ── Paper-file body — white pod sitting on the warm Virgil canvas ─── */
+
+/* The .paper-render-pod wraps <EditorContent> and gives the editor its
+ * "page on a desk" appearance: white surface, soft rounded corners,
+ * subtle pod-shadow. The container around it is the warm Virgil canvas
+ * (var(--background)) painted by RightDetail / TabbedLibraryPanel —
+ * the same canvas color the editor/view sits on elsewhere in Virgil. */
+.paper-render-pod {
+  background: var(--surface);
+  border: var(--pod-border);
+  border-radius: var(--pod-radius);
+  box-shadow: var(--pod-shadow);
+}
+
+/* ── Page-number scroll strip ──────────────────────────────────────── */
+
+.page-scroll-strip {
+  /* Inherits the warm canvas from its parent; no border so the strip
+   * blends visually with the body around it. */
+}
+
 /* ── TipTap rendering for indexed papers ──────────────────────────── */
 
-.paper-render { padding: 28px 32px; }
+[data-virgil-library-reader] .paper-render { padding: 28px 32px; }
 
-.paper-render .tiptap {
+[data-virgil-library-reader] .paper-render .tiptap {
   outline: none;
-  font-family: var(--serif);
+  /* Pinned to --library-editing-font so all indexed papers render in
+     one face. Defined in src/app/globals.css; tracks the editor's
+     serif font (and any FontsDialog override). */
+  font-family: var(--library-editing-font), "Source Serif 4", Georgia, serif;
   /* Library uses a slightly muted body color (#2a2a2a) instead of
      Virgil's editor #000 — softer for read-only academic papers. */
   color: #2a2a2a;
@@ -39,31 +63,31 @@
   font-size: 15.5px;
 }
 
-.paper-render .tiptap p { margin-bottom: 1em; }
+[data-virgil-library-reader] .paper-render .tiptap p { margin-bottom: 1em; }
 
-.paper-render .tiptap h1 {
+[data-virgil-library-reader] .paper-render .tiptap h1 {
   font-size: 1.75rem;
   font-weight: 700;
   margin: 0.6em 0 0.4em;
   line-height: 1.2;
 }
-.paper-render .tiptap h2 {
+[data-virgil-library-reader] .paper-render .tiptap h2 {
   font-size: 1.3rem;
   font-weight: 600;
   margin: 1.4em 0 0.3em;
 }
-.paper-render .tiptap h3 {
+[data-virgil-library-reader] .paper-render .tiptap h3 {
   font-size: 1.1rem;
   font-weight: 600;
   margin: 1em 0 0.25em;
 }
-.paper-render .tiptap h4 {
+[data-virgil-library-reader] .paper-render .tiptap h4 {
   font-size: 1rem;
   font-weight: 600;
   margin: 0.8em 0 0.2em;
 }
 
-.paper-render .tiptap blockquote {
+[data-virgil-library-reader] .paper-render .tiptap blockquote {
   border-left: 3px solid var(--border);
   padding-left: 14px;
   margin: 1em 0;
@@ -71,15 +95,15 @@
   font-style: italic;
 }
 
-.paper-render .tiptap ul, .paper-render .tiptap ol {
+[data-virgil-library-reader] .paper-render .tiptap ul, [data-virgil-library-reader] .paper-render .tiptap ol {
   margin: 0 0 1em 1.4em;
   padding: 0;
 }
-.paper-render .tiptap li { margin-bottom: 0.3em; }
+[data-virgil-library-reader] .paper-render .tiptap li { margin-bottom: 0.3em; }
 
 /* Inline math */
-.paper-render .tiptap .inline-math {
-  font-family: var(--mono);
+[data-virgil-library-reader] .paper-render .tiptap .inline-math {
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   color: var(--math-color);
   background: var(--math-bg);
   padding: 0 4px;
@@ -88,12 +112,12 @@
 }
 
 /* Display math */
-.paper-render .tiptap .display-math {
+[data-virgil-library-reader] .paper-render .tiptap .display-math {
   display: block;
   text-align: center;
   background: var(--math-bg);
   color: var(--math-color);
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   padding: 8px 12px;
   margin: 0.8em 0;
   border-radius: 4px;
@@ -102,48 +126,48 @@
 }
 
 /* LaTeX comments */
-.paper-render .tiptap .latex-comment {
+[data-virgil-library-reader] .paper-render .tiptap .latex-comment {
   color: var(--latex-comment-color);
   background: var(--latex-comment-bg);
   padding: 4px 8px;
   border-radius: 3px;
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 0.88em;
   margin: 0.4em 0;
 }
 
 /* Citations */
-.paper-render .tiptap .citation-node {
+[data-virgil-library-reader] .paper-render .tiptap .citation-node {
   color: var(--citation-color);
   background: var(--citation-bg);
   border: 1px solid var(--citation-border);
   padding: 0 4px;
   border-radius: 3px;
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 0.88em;
 }
 
 /* Footnote superscript markers */
-.paper-render .tiptap span.footnote-marker {
+[data-virgil-library-reader] .paper-render .tiptap span.footnote-marker {
   color: var(--footnote-color);
   background: var(--footnote-bg);
   font-size: 0.7em;
   vertical-align: super;
   padding: 0 4px;
   border-radius: 999px;
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   cursor: pointer;
 }
 
 /* Generic LaTeX commands */
-.paper-render .tiptap .latex-cmd {
-  font-family: var(--mono);
+[data-virgil-library-reader] .paper-render .tiptap .latex-cmd {
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   color: var(--latex-cmd-color);
   font-size: 0.9em;
 }
 
 /* \pgmark{N} margin chip */
-.paper-render .tiptap .pgmark-chip {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip {
   display: inline-block;
   background: var(--pgmark-bg);
   color: var(--pgmark-color);
@@ -155,31 +179,31 @@
 }
 
 /* Hide the `\pgmark{N}` text — chip label rendered via ::before. */
-.paper-render .tiptap .pgmark-chip,
-.paper-render .tiptap .pgmark-chip * {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip,
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip * {
   font-size: 0 !important;
   letter-spacing: 0 !important;
   color: transparent !important;
 }
 
-.paper-render .tiptap .pgmark-chip::before {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip::before {
   content: attr(data-label);
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 11px !important;
   letter-spacing: 0.02em !important;
   color: var(--pgmark-color) !important;
 }
 
-.paper-render .tiptap .pgmark-chip-low {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip-low {
   opacity: 0.55;
   border: 1px dashed var(--pgmark-color);
   padding: 0 5px;
   cursor: help;
 }
 
-.paper-render .tiptap .pgmark-chip-first { display: none; }
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-chip-first { display: none; }
 
-.paper-render .tiptap .pgmark-rule {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-rule {
   display: block;
   position: relative;
   height: 0;
@@ -188,13 +212,13 @@
   padding-bottom: 0.3em;
 }
 
-.paper-render .tiptap .pgmark-rule-tag {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-rule-tag {
   position: absolute;
   top: -0.65em;
   right: 0.2em;
   background: var(--surface, white);
   color: #c0392b;
-  font-family: var(--mono);
+  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
   font-size: 9px;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -202,27 +226,27 @@
   user-select: none;
 }
 
-.paper-render .tiptap .pgmark-rule-top {
+[data-virgil-library-reader] .paper-render .tiptap .pgmark-rule-top {
   margin-top: 0;
   margin-bottom: 1em;
 }
 
 /* Title field */
-.paper-render .tiptap .title-field-wrapper {
+[data-virgil-library-reader] .paper-render .tiptap .title-field-wrapper {
   text-align: center;
   margin-bottom: 0.4em;
 }
-.paper-render .tiptap .title-field-content {
-  font-family: var(--serif);
+[data-virgil-library-reader] .paper-render .tiptap .title-field-content {
+  font-family: var(--library-editing-font), "Source Serif 4", Georgia, serif;
   font-size: 1rem;
   color: var(--muted);
 }
-.paper-render .tiptap .title-field-content.title-field-title {
+[data-virgil-library-reader] .paper-render .tiptap .title-field-content.title-field-title {
   font-size: 1.6rem;
   font-weight: 700;
   color: #2a2a2a;
   line-height: 1.2;
   margin-bottom: 0.2em;
 }
-.paper-render .tiptap .title-field-annotation { display: none; }
-.paper-render .tiptap .maketitle-marker { display: none; }
+[data-virgil-library-reader] .paper-render .tiptap .title-field-annotation { display: none; }
+[data-virgil-library-reader] .paper-render .tiptap .maketitle-marker { display: none; }

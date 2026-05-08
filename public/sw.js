@@ -8,7 +8,15 @@
 //
 // Bump CACHE_NAME whenever you ship a change the SW could otherwise serve
 // stale. The activate handler purges every cache whose name doesn't match.
-const CACHE_NAME = "virgil-v3";
+const CACHE_NAME = "virgil-v4";
+
+// Cross-origin hosts whose responses we deliberately cache so they keep
+// working offline. Google Fonts is on the allowlist because the Fonts…
+// dialog loads picker-pool families from there at runtime.
+const CACHEABLE_ORIGINS = new Set([
+  "https://fonts.googleapis.com",
+  "https://fonts.gstatic.com",
+]);
 
 // Localhost dev mode: never cache. Stops the SW from pinning stale
 // Turbopack chunks across iterations.
@@ -42,7 +50,7 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin && !CACHEABLE_ORIGINS.has(url.origin)) return;
 
   // In dev, pass through every request directly to the network so HMR
   // and rebuilt chunks are never served stale.
@@ -53,10 +61,17 @@ self.addEventListener("fetch", (event) => {
 
 async function handle(request) {
   const cache = await caches.open(CACHE_NAME);
+  const url = new URL(request.url);
+  const isAllowedCrossOrigin = CACHEABLE_ORIGINS.has(url.origin);
   try {
     const response = await fetch(request);
-    if (response && response.ok && response.type === "basic") {
-      cache.put(request, response.clone());
+    if (response) {
+      // Same-origin: only cache "basic" 2xx (skips redirects/errors).
+      // Allowed cross-origin: cache opaque (no-cors woff2) or cors 2xx.
+      const cacheable = isAllowedCrossOrigin
+        ? response.type === "opaque" || response.ok
+        : response.ok && response.type === "basic";
+      if (cacheable) cache.put(request, response.clone());
     }
     return response;
   } catch {

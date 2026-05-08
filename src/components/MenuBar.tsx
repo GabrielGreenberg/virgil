@@ -23,6 +23,8 @@ import {
   PodGrabHandle,
   type ToolbarOrientation,
 } from "./editor-layout/floating-toolbar-shell";
+import { useEditorChrome } from "./editor-layout/chrome-context";
+import { isActionCallbackVisible } from "./editor-layout/chrome-config";
 
 export { type ToolbarOrientation };
 
@@ -250,7 +252,7 @@ export function handleExampleMenuPick(
 }
 
 export type MarginaliaType = "quote" | "note" | "archive" | "todo";
-export type DividerLevel = 1 | 2 | 3 | 4;
+export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type DividerWidth = "full" | "mid" | "text";
 
 /** The tilted-star glyph used for every Actions affordance — toolbar
@@ -276,10 +278,13 @@ function FormatGlyphIcon({ size = 16 }: { size?: number }) {
 }
 
 const DIVIDER_LEVEL_LABELS: Record<DividerLevel, string> = {
+  0: "Parts",
   1: "Chapters",
   2: "Sections",
   3: "Subsections",
   4: "Subsubsections",
+  5: "Paragraph headings",
+  6: "Subparagraph headings",
 };
 
 const DIVIDER_WIDTH_LABELS: Record<DividerWidth, string> = {
@@ -348,6 +353,9 @@ interface MenuBarProps extends ActionToolbarCallbacks {
      is reserved for "create new item" operations. */
   onCloseAllPanels?: () => void;
   onOpenFontsDialog?: () => void;
+  /** Enter the in-editor margin-edit mode — guides appear over the
+   *  text column and Save/Cancel buttons appear in the docked toolbar. */
+  onOpenMarginsMode?: () => void;
   onGrabStart?: (e: React.MouseEvent<HTMLDivElement>) => void;
   orientation: ToolbarOrientation;
   onSetOrientation: (o: ToolbarOrientation) => void;
@@ -372,6 +380,15 @@ interface MenuBarProps extends ActionToolbarCallbacks {
    *  the bar. Owned by the host (EditorLayout) so it can plug in
    *  per-doc collab state. */
   collabStatus?: ReactNode;
+  /** When false, suppress edit-mutating items in the View menu (Fonts,
+   *  Margins). View toggles (par titles, latex comments, dividers, etc.)
+   *  remain visible. Defaults to true. EditorPane wires this from
+   *  `chrome.showMenuBarEditItems`; the Library Reader's chrome sets it
+   *  to false. */
+  showEditItems?: boolean;
+  /** When false, suppress the Formatting popover entirely. Defaults to
+   *  true. EditorPane wires this from `chrome.showFormattingToolbar`. */
+  showFormattingToolbar?: boolean;
 }
 
 /** Small outline-style icon button used both in the main floating toolbar
@@ -438,11 +455,14 @@ function TextBtn({
 }
 
 const BLOCK_TYPES = [
-  { value: "0", label: "Body text" },
+  { value: "p", label: "Body text" },
+  { value: "0", label: "Part" },
   { value: "1", label: "Chapter" },
   { value: "2", label: "Section" },
   { value: "3", label: "Subsection" },
   { value: "4", label: "Subsubsection" },
+  { value: "5", label: "Paragraph heading" },
+  { value: "6", label: "Subparagraph heading" },
 ];
 
 function BlockTypeDropdown({ editor }: { editor: Editor }) {
@@ -450,15 +470,21 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
 
-  const current = editor.isActive("heading", { level: 1 })
-    ? "1"
-    : editor.isActive("heading", { level: 2 })
-      ? "2"
-      : editor.isActive("heading", { level: 3 })
-        ? "3"
-        : editor.isActive("heading", { level: 4 })
-          ? "4"
-          : "0";
+  const current = editor.isActive("heading", { level: 0 })
+    ? "0"
+    : editor.isActive("heading", { level: 1 })
+      ? "1"
+      : editor.isActive("heading", { level: 2 })
+        ? "2"
+        : editor.isActive("heading", { level: 3 })
+          ? "3"
+          : editor.isActive("heading", { level: 4 })
+            ? "4"
+            : editor.isActive("heading", { level: 5 })
+              ? "5"
+              : editor.isActive("heading", { level: 6 })
+                ? "6"
+                : "p";
 
   useEffect(() => {
     if (!open) return;
@@ -472,8 +498,8 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const handleToggle = () => {
     if (!open && ref.current) {
       const r = ref.current.getBoundingClientRect();
-      // Popup height: 5 items × ~30px + 8px padding ≈ 158px. Flip up if below overflows.
-      const POPUP_H = 160;
+      // Popup height: 8 items × ~30px + 8px padding ≈ 248px. Flip up if below overflows.
+      const POPUP_H = 250;
       const POPUP_W = 160;
       const GAP = 4;
       const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
@@ -502,10 +528,12 @@ function BlockTypeDropdown({ editor }: { editor: Editor }) {
             <button
               key={bt.value}
               onClick={() => {
-                if (bt.value === "0") {
+                if (bt.value === "p") {
                   if (editor.isActive("heading")) editor.chain().focus().setParagraph().run();
                 } else {
-                  const level = parseInt(bt.value) as 1 | 2 | 3 | 4;
+                  // TipTap's Level type is 1..6; we widen to 0..6 for \part.
+                  // The schema accepts integer levels regardless.
+                  const level = parseInt(bt.value) as unknown as 1 | 2 | 3 | 4 | 5 | 6;
                   editor.chain().focus().toggleHeading({ level }).run();
                 }
                 setOpen(false);
@@ -845,16 +873,23 @@ export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
  *
  *  Each button mirrors the corresponding side-panel's icon tinted to
  *  that panel's color, so the toolbar reads as a color-coded index of
- *  the panels it feeds. */
+ *  the panels it feeds.
+ *
+ *  Chrome consumption: hidden buttons fall away per
+ *  `chrome.actionToolbarKinds`. The whole row stays mounted even when
+ *  `showActionToolbar` is false so the parent toolbar shell can still
+ *  render; the parent decides whether to show the toolbar at all. */
 export function ActionButtonsRow({
   close,
   ...callbacks
 }: { close: () => void } & ActionToolbarCallbacks) {
+  const chrome = useEditorChrome();
   return (
     <>
       {ACTION_BUTTON_DEFS.map((def) => {
         const cb = callbacks[def.callbackKey];
         if (!cb) return null;
+        if (!isActionCallbackVisible(chrome, def.callbackKey)) return null;
         const button = (
           <ActionButton
             onClick={(rect) => cb(rect)}
@@ -1058,6 +1093,7 @@ function ViewMenu({
   onSetOrientation,
   onCloseAllPanels,
   onOpenFontsDialog,
+  onOpenMarginsMode,
 }: Pick<MenuBarProps,
   | "showParTitles" | "onToggleParTitles"
   | "showLatexComments" | "onToggleLatexComments"
@@ -1073,6 +1109,7 @@ function ViewMenu({
   | "orientation" | "onSetOrientation"
   | "onCloseAllPanels"
   | "onOpenFontsDialog"
+  | "onOpenMarginsMode"
 >) {
   const [open, setOpen] = useState(false);
   const [marginaliaExpanded, setMarginaliaExpanded] = useState(false);
@@ -1239,7 +1276,7 @@ function ViewMenu({
               </button>
               {dividersExpanded && (
                 <>
-                  {([1, 2, 3, 4] as const).filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
+                  {([0, 1, 2, 3, 4, 5, 6] as const).filter((lvl) => availableDividerLevels.has(lvl)).map((lvl) => (
                     <button
                       key={lvl}
                       onClick={() => onToggleDividerLevel(lvl)}
@@ -1272,10 +1309,24 @@ function ViewMenu({
               )}
             </>
           )}
+          {/* Margins editor entry — opens an in-text drag mode with
+              save/cancel buttons in the docked toolbar band. Sits in
+              the same trailing block as Fonts… */}
+          {onOpenMarginsMode ? (
+            <>
+              <div className="my-1 border-t border-edge-subtle" />
+              <button
+                onClick={() => { onOpenMarginsMode(); setOpen(false); }}
+                className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
+              >
+                <span>Margins&hellip;</span>
+              </button>
+            </>
+          ) : null}
           {/* Fonts dialog launcher — sits above the close-all action. */}
           {onOpenFontsDialog ? (
             <>
-              <div className="my-1 border-t border-edge-subtle" />
+              {!onOpenMarginsMode && <div className="my-1 border-t border-edge-subtle" />}
               <button
                 onClick={() => { onOpenFontsDialog(); setOpen(false); }}
                 className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-3"
@@ -1327,6 +1378,9 @@ function MenuBarContent({
   onActionsDetach, onFormatDetach,
   onSetOrientation,
   onOpenFontsDialog,
+  onOpenMarginsMode,
+  showEditItems = true,
+  showFormattingToolbar = true,
   kebabAtEnd = false,
   collabStatus,
 }: {
@@ -1365,7 +1419,8 @@ function MenuBarContent({
       orientation={orientation}
       onSetOrientation={onSetOrientation}
       onCloseAllPanels={onCloseAllPanels}
-      onOpenFontsDialog={onOpenFontsDialog}
+      onOpenFontsDialog={showEditItems ? onOpenFontsDialog : undefined}
+      onOpenMarginsMode={showEditItems ? onOpenMarginsMode : undefined}
     />
   );
   return (
@@ -1376,14 +1431,18 @@ function MenuBarContent({
           so the indicator stays visible at the bar's leading edge. */}
       {collabStatus}
 
-      {/* Format popup — each grab spawns a detached Formatting toolbar. */}
-      <AttachedPopover
-        title="Formatting"
-        onGrabStart={onFormatDetach}
-        anchor={<FormatGlyphIcon />}
-      >
-        {() => <FormatButtonsRow editor={editor} />}
-      </AttachedPopover>
+      {/* Format popup — each grab spawns a detached Formatting toolbar.
+          Suppressed when the host's chrome disables the formatting
+          toolbar entirely (e.g. Library Reader). */}
+      {showFormattingToolbar && (
+        <AttachedPopover
+          title="Formatting"
+          onGrabStart={onFormatDetach}
+          anchor={<FormatGlyphIcon />}
+        >
+          {() => <FormatButtonsRow editor={editor} />}
+        </AttachedPopover>
+      )}
 
       {/* Actions popup — each grab spawns a detached Actions toolbar. */}
       <AttachedPopover

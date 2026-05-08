@@ -158,11 +158,9 @@ export interface MarkerMeta {
   defaultSide: "left" | "right";
   /** Color token for the marker icon */
   color: string;
-  /** Hover background */
+  /** Icon background (constant across all interaction states) */
   bg: string;
-  /** Selected background */
-  selectedBg: string;
-  /** Border color */
+  /** Border + interaction-ring color */
   border: string;
   /** SVG path data — rendered inside a 16x16 viewBox */
   icon: React.ReactNode;

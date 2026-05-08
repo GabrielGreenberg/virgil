@@ -27,6 +27,7 @@ function migrateNote(raw: unknown): UserNote {
     title: typeof r.title === "string" ? r.title : "",
     content: normalizeRichContent(r.content),
     createdAt: r.createdAt!,
+    aiRequest: !!r.aiRequest,
     links: migrateCardLinks("note", raw),
   };
 }
@@ -57,6 +58,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         title: nextCardTitle("note", state.notes.length),
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
+        aiRequest: false,
         links: [],
       };
       if (paragraphId) newNote = addParagraphLink(newNote, "note", paragraphId);
@@ -134,6 +136,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update, pristine],
   );
 
+  const setNoteAiRequest = useCallback(
+    (id: string, value: boolean) => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        notes: prev.notes.map((n) => (n.id === id ? { ...n, aiRequest: value } : n)),
+      }));
+    },
+    [update, pristine],
+  );
+
   const addNoteParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
@@ -186,6 +198,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     addNote,
     updateNote,
     updateNoteTitle,
+    setNoteAiRequest,
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,

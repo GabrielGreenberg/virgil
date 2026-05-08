@@ -6,7 +6,7 @@
  */
 
 import type { BibEntry } from "./types";
-import { MULTI_CITE_NAMES } from "./cite-commands";
+import { MULTI_CITE_NAMES } from "@/lib/cite-commands";
 
 // citation-js is CJS-only; we lazy-load it to avoid SSR issues
 let Cite: any = null;

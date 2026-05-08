@@ -156,7 +156,22 @@ export type AiRequestKind =
   | "quotation"
   | "citation"
   | "todo"
-  | "suggestion";
+  | "suggestion"
+  | "style-merge";
+
+/**
+ * Kind-specific structured payload. The `style-merge` payload inlines
+ * the source and target preambles because the agent that fulfills the
+ * request runs outside the app and can't import the style library.
+ */
+export type AiRequestPayload =
+  | {
+      kind: "style-merge";
+      targetStyleId: string;
+      targetStyleName: string;
+      targetPreamble: string;
+      currentPreamble: string;
+    };
 
 export interface AiRequest {
   id: string;
@@ -166,6 +181,9 @@ export interface AiRequest {
   status: "draft" | "submitted" | "complete";
   // Reserved for the AI fulfillment follow-up. Unused in this PR.
   resultId?: string;
+  /** Kind-specific structured payload. Set for `style-merge` (and any
+   *  future kind that needs more than free-form `text`). */
+  payload?: AiRequestPayload;
 }
 
 export interface AiRequestsState {
@@ -258,6 +276,9 @@ export interface UserNote {
   // Legacy notes were stored as HTML strings; the helper migrates them on read.
   content: unknown;
   createdAt: string;
+  /** Mirror of TodoItem.aiRequest — flags this note as something the user
+   *  wants Claude to act on. Toggled via the per-card AiRequestCheckbox. */
+  aiRequest: boolean;
   links: Link[];
 }
 

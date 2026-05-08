@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "@/lib/print";
 import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-position";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
+import { getWindowId } from "@/lib/multi-window/window-id";
+import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 
@@ -120,9 +122,20 @@ export interface ViewPrefs {
    *  touching the page's 400 min-height. */
   topGutter: number;
   bottomGutter: number;
+  /** In-editor text margins (left/right padding inside the editor pod),
+   *  in pixels. The left margin must clear the 72px marginalia gutter
+   *  plus an 8px breathing strip for heading fold-chevrons. The right
+   *  margin sits flush against the right gutter. Adjustable via the
+   *  ViewMenu → "Margins…" mode, which renders draggable in-text guides. */
+  editorLeftMargin: number;
+  editorRightMargin: number;
   /** Last-used print options. The Print dialog reads and writes here so
    *  user choices persist across sessions. */
   printOptions: PrintOptions;
+  /** When true, the Virgil bar's right-side cluster (modes, divider,
+   *  Preferences/Help/Print/AI/Style/Code/Compile/PDF/Zen) collapses,
+   *  leaving only the chevron toggle. Per-window. */
+  topbarRightCollapsed: boolean;
 }
 
 const DEFAULT_PREFS: ViewPrefs = {
@@ -168,17 +181,78 @@ const DEFAULT_PREFS: ViewPrefs = {
   pageWidth: 880,
   topGutter: 0,
   bottomGutter: 0,
+  editorLeftMargin: 88,
+  editorRightMargin: 72,
   printOptions: DEFAULT_PRINT_OPTIONS,
+  topbarRightCollapsed: false,
 };
 
-const STORAGE_KEY = "virgil-view-prefs";
+const LEGACY_STORAGE_KEY = "virgil-view-prefs";
+const GLOBAL_STORAGE_KEY = "virgil-view-prefs/global";
+const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
+
+/**
+ * Keys whose values are user-level preferences and should mirror across
+ * every Virgil window (theme-adjacent: highlights, print options).
+ * Everything not listed here is per-window — layout, dock state, popped
+ * cards, panel widths, gutters — so a draft window and a reviewer
+ * window on different monitors can have totally different shapes.
+ */
+const GLOBAL_PREF_KEYS = [
+  "showHighlights",
+  "hiddenHighlightTypes",
+  "printOptions",
+] as const;
+type GlobalPrefKey = (typeof GLOBAL_PREF_KEYS)[number];
+const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
+
+function windowStorageKey(): string {
+  return WINDOW_STORAGE_PREFIX + getWindowId();
+}
+
+function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
+  return {
+    showHighlights: p.showHighlights,
+    hiddenHighlightTypes: p.hiddenHighlightTypes,
+    printOptions: p.printOptions,
+  };
+}
 
 function loadPrefs(): ViewPrefs {
   if (typeof window === "undefined") return DEFAULT_PREFS;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_PREFS;
-    const parsed = JSON.parse(raw);
+    // Migration: split the legacy single-blob key into per-window +
+    // global on first load. The migrating window keeps the layout;
+    // every other window starts fresh with default layout.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      try {
+        const parsed = JSON.parse(legacy);
+        const globalSlice: Record<string, unknown> = {};
+        const windowSlice: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(parsed)) {
+          if (GLOBAL_PREF_SET.has(k)) globalSlice[k] = v;
+          else windowSlice[k] = v;
+        }
+        if (!localStorage.getItem(GLOBAL_STORAGE_KEY)) {
+          localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
+        }
+        if (!localStorage.getItem(windowStorageKey())) {
+          localStorage.setItem(windowStorageKey(), JSON.stringify(windowSlice));
+        }
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      }
+    }
+
+    const windowRaw = localStorage.getItem(windowStorageKey());
+    const globalRaw = localStorage.getItem(GLOBAL_STORAGE_KEY);
+    if (!windowRaw && !globalRaw) return DEFAULT_PREFS;
+    const parsed = {
+      ...(windowRaw ? JSON.parse(windowRaw) : {}),
+      ...(globalRaw ? JSON.parse(globalRaw) : {}),
+    };
     // Migrate: replace old "references" panel with "citations" + "bibliography"
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let placements: any[] = parsed.placements || [];
@@ -233,13 +307,12 @@ function loadPrefs(): ViewPrefs {
     // omni-side detection and marginalia connectors still read
     // activeLeft/Right to identify the omni column. Splits are off by
     // default; the new dock model can re-enable them via toggleSplit.
-    // panelWidths cleared because old values referenced docked-panel
-    // sizes that no longer apply.
     //
     // Open state (poppedOutPanels, dockSlots) is session-only: a reload
-    // starts with no panels open. Mode prefs (panelModes) and saved
-    // float rects (floatPositions) DO persist so reopening a panel
-    // restores its last mode + rect.
+    // starts with no panels open. Mode prefs (panelModes), saved float
+    // rects (floatPositions), and gutter widths (panelWidths) DO persist
+    // so reopening a panel restores its last mode + rect, and the
+    // editor pod's surrounding gutters keep their dragged size.
     return {
       ...DEFAULT_PREFS,
       ...parsed,
@@ -251,12 +324,12 @@ function loadPrefs(): ViewPrefs {
       activeRightBottom: null,
       _stashedLeft: null,
       _stashedRight: null,
-      panelWidths: {},
       poppedOutPanels: [],
       poppedOutOrigins: {},
       dockSlots: {},
       panelModes: parsed.panelModes ?? {},
       floatPositions: parsed.floatPositions ?? {},
+      panelWidths: parsed.panelWidths ?? {},
     };
   } catch {
     return DEFAULT_PREFS;
@@ -272,16 +345,61 @@ export function useViewPrefs() {
     initialized.current = true;
   }, []);
 
-  const persist = useCallback((newPrefs: ViewPrefs) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newPrefs));
-    } catch {}
+  // Listen for global pref changes published by peer windows. Re-read
+  // the global slice and merge into local state. Per-window keys are
+  // never broadcast — each window's layout is its own.
+  useEffect(() => {
+    const onEvent = (e: BusEvent) => {
+      if (e.type !== "global-pref-changed") return;
+      try {
+        const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
+        if (!raw) return;
+        const globalSlice = JSON.parse(raw) as Partial<ViewPrefs>;
+        setPrefs((prev) => ({ ...prev, ...globalSlice }));
+      } catch {
+        // ignore parse failures
+      }
+    };
+    return subscribe(onEvent);
   }, []);
+
+  const persist = useCallback(
+    (newPrefs: ViewPrefs, prevPrefs: ViewPrefs) => {
+      try {
+        const windowSlice: Record<string, unknown> = {};
+        const globalSlice: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(newPrefs)) {
+          if (GLOBAL_PREF_SET.has(k)) globalSlice[k] = v;
+          else windowSlice[k] = v;
+        }
+        localStorage.setItem(windowStorageKey(), JSON.stringify(windowSlice));
+        localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
+        // Notify peer windows when any global key changed. Cheap shallow
+        // compare on the global keys is enough — values are JSON-serializable
+        // primitives, arrays, or plain objects.
+        const newGlobal = pickGlobal(newPrefs);
+        const prevGlobal = pickGlobal(prevPrefs);
+        for (const k of GLOBAL_PREF_KEYS) {
+          if (
+            JSON.stringify(newGlobal[k]) !== JSON.stringify(prevGlobal[k])
+          ) {
+            publish({
+              type: "global-pref-changed",
+              key: k,
+              value: newGlobal[k],
+            });
+            break;
+          }
+        }
+      } catch {}
+    },
+    [],
+  );
 
   const update = useCallback((fn: (prev: ViewPrefs) => ViewPrefs) => {
     setPrefs((prev) => {
       const next = fn(prev);
-      persist(next);
+      persist(next, prev);
       return next;
     });
   }, [persist]);
@@ -776,24 +894,23 @@ export function useViewPrefs() {
   const redockPanel = useCallback(
     (id: PanelId, slotKey: DockSlotKey) => {
       update((p) => {
-        // If the slot is occupied by a different panel, displace that
-        // panel to floating so we don't clobber it.
+        // Replace, don't displace: if the slot is occupied by a different
+        // panel, that panel just closes (kept out of poppedOutPanels).
+        // Matches the strip-click `openPanelDocked` semantics — dropping
+        // a panel onto an occupied dock is "swap this in", not "kick the
+        // other panel out as a floater".
         const occupant = p.dockSlots[slotKey];
-        let next: ViewPrefs = p;
-        if (occupant && occupant !== id) {
-          next = {
-            ...next,
-            panelModes: { ...next.panelModes, [occupant]: "floating" },
-            poppedOutPanels: next.poppedOutPanels.includes(occupant)
-              ? next.poppedOutPanels
-              : [...next.poppedOutPanels, occupant],
-          };
-        }
         return {
-          ...next,
-          dockSlots: { ...next.dockSlots, [slotKey]: id },
-          poppedOutPanels: next.poppedOutPanels.filter((x) => x !== id),
-          panelModes: { ...next.panelModes, [id]: "docked" },
+          ...p,
+          dockSlots: { ...p.dockSlots, [slotKey]: id },
+          poppedOutPanels: p.poppedOutPanels.filter(
+            (x) => x !== id && (!occupant || x !== occupant),
+          ),
+          panelModes: {
+            ...p.panelModes,
+            [id]: "docked",
+            ...(occupant && occupant !== id ? { [occupant]: "docked" } : null),
+          },
         };
       });
     },
@@ -861,11 +978,30 @@ export function useViewPrefs() {
     update((p) => ({ ...p, bottomGutter: Math.max(0, h) }));
   }, [update]);
 
+  const setEditorLeftMargin = useCallback((px: number) => {
+    update((p) => ({ ...p, editorLeftMargin: Math.max(72, Math.min(240, Math.round(px))) }));
+  }, [update]);
+
+  const setEditorRightMargin = useCallback((px: number) => {
+    update((p) => ({ ...p, editorRightMargin: Math.max(24, Math.min(240, Math.round(px))) }));
+  }, [update]);
+
   const setPrintOptions = useCallback(
     (v: PrintOptions | ((prev: PrintOptions) => PrintOptions)) => {
       update((p) => ({
         ...p,
         printOptions: typeof v === "function" ? v(p.printOptions) : v,
+      }));
+    },
+    [update],
+  );
+
+  const setTopbarRightCollapsed = useCallback(
+    (v: boolean | ((prev: boolean) => boolean)) => {
+      update((p) => ({
+        ...p,
+        topbarRightCollapsed:
+          typeof v === "function" ? v(p.topbarRightCollapsed) : v,
       }));
     },
     [update],
@@ -899,6 +1035,8 @@ export function useViewPrefs() {
     setPageWidth,
     setTopGutter,
     setBottomGutter,
+    setEditorLeftMargin,
+    setEditorRightMargin,
     setShowHighlights,
     toggleHighlightType,
     setMenuLocation,
@@ -914,5 +1052,6 @@ export function useViewPrefs() {
     closeCardPopout,
     setCardFloatPosition,
     setPrintOptions,
+    setTopbarRightCollapsed,
   };
 }

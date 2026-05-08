@@ -137,6 +137,18 @@ you to disambiguate something.
      for a chapter/conference paper. If core fields are still missing
      after step 4, call it out in your reply.
 
+## Font policy
+
+The emitted `papers/<citekey>/main.tex` must contain **no font directives**
+— no `\usepackage{fontspec}`, `\setmainfont`, `\usepackage{times}`,
+`\usepackage{lmodern}`, `\usepackage{palatino}`, `\renewcommand{\rmdefault}`,
+`\fontfamily`, or any other font-affecting preamble. The Virgil library
+renderer pins fonts on the frontend (via `--library-editing-font`); the
+indexed `.tex` stays font-agnostic and portable. `tex_emit.py` is the
+authoritative emitter and already complies — never extract or carry over
+font information from the source PDF/DOCX, and never hand-add font
+commands to a generated preamble.
+
 ## Optional flags
 
 - `--extractor marker` — force marker (PDF only; skips pymupdf fast-path; slow on CPU).

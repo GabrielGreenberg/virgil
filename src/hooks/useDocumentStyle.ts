@@ -1,52 +1,56 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { readTex, writeTex } from "@/lib/storage";
 import { extractPreambleAndPostamble } from "@/lib/latex-parser";
-import {
-  DEFAULT_STYLE_ID,
-  getStyle,
-  type DocumentStyleId,
-} from "@/lib/document-styles";
+import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
+import { resolveStyle } from "@/lib/style-library";
 import {
   type DocumentSettings,
+  migrateDocumentSettings,
 } from "@/lib/document-settings";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import { usePersistentState } from "./usePersistentState";
 
-const EMPTY: DocumentSettings = { style: DEFAULT_STYLE_ID };
-
-function migrate(raw: unknown): DocumentSettings {
-  const s = (raw ?? {}) as Partial<DocumentSettings>;
-  return { style: (s.style as DocumentStyleId) ?? DEFAULT_STYLE_ID };
-}
+const EMPTY: DocumentSettings = { styleId: DEFAULT_STYLE_ID };
 
 /**
  * Per-doc hook backing the Virgil bar's Style dropdown.
  *
  *  - `style` is the persisted choice from `virgil/document-settings.json`.
  *  - `setStyle(next)` writes the sidecar and rewrites the bytes before
- *    `\begin{document}` in the doc's `.tex` file with the new preset's
- *    preamble. Body and postamble are preserved verbatim.
+ *    `\begin{document}` in the doc's `.tex` file with the resolved
+ *    preamble from the user's style library. Body and postamble are
+ *    preserved verbatim.
  *
  * Whatever was in the user's preamble (custom packages, etc.) is
- * intentionally discarded on switch — that's the point.
+ * intentionally discarded on switch — that's the "Hard update" path.
+ * For AI-managed merges, see addStyleMergeRequest in useAiRequests.
  */
 export function useDocumentStyle(docId: string | null) {
   const { state, update } = usePersistentState<DocumentSettings>(
     docId,
     "document-settings.json",
     EMPTY,
-    { migrate, errorLabel: "document settings" },
+    { migrate: migrateDocumentSettings, errorLabel: "document settings" },
+  );
+
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
   );
 
   const setStyle = useCallback(
-    async (next: DocumentStyleId) => {
+    async (next: string) => {
       // Persist the choice immediately so the dropdown shows the new
       // selection even if the .tex rewrite below fails.
-      update(() => ({ style: next }));
-      if (!docId) return;
+      update(() => ({ styleId: next }));
+      if (!docId || !handle) return;
 
-      const preset = getStyle(next);
+      const preset = resolveStyle(next);
       try {
         const existingLatex = await readTex(docId);
         const delimiters = extractPreambleAndPostamble(existingLatex);
@@ -69,13 +73,14 @@ export function useDocumentStyle(docId: string | null) {
           .replace(/\n+$/, "");
 
         const newLatex = preset.preamble + body + delimiters.postamble;
-        await writeTex(docId, newLatex);
+        await writeTex(handle, newLatex);
       } catch (err) {
+        if (isStalePipelineError(err)) return;
         console.error("Failed to rewrite preamble for style switch:", err);
       }
     },
-    [docId, update],
+    [docId, handle, update],
   );
 
-  return { style: state.style, setStyle };
+  return { styleId: state.styleId, setStyle };
 }

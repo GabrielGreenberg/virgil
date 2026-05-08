@@ -177,6 +177,20 @@ function parseInlineContent(text: string): JSONContent[] {
   };
 
   while (i < text.length) {
+    // LaTeX double-quote pairs → smart quotes in the display.
+    // Lone ` and ' pass through (single-quote LaTeX semantics +
+    // apostrophes in contractions are out of scope).
+    if (text[i] === "`" && text[i + 1] === "`") {
+      buffer += "“";
+      i += 2;
+      continue;
+    }
+    if (text[i] === "'" && text[i + 1] === "'") {
+      buffer += "”";
+      i += 2;
+      continue;
+    }
+
     // Inline math: $...$
     if (text[i] === "$" && (i === 0 || text[i - 1] !== "\\")) {
       flush();
@@ -652,29 +666,30 @@ function numberFootnotes(node: JSONContent): void {
 
 /** Assign hierarchical section numbers (e.g. "1", "2.3", "2.3.1") to heading nodes. */
 function numberHeadings(node: JSONContent): void {
-  // First pass: find the highest heading level used (chapter=1, section=2, …)
-  let topLevel = 5;
+  // First pass: find the highest heading level used.
+  // Levels 0..6 (part..subparagraph); 7 is the sentinel "above all".
+  let topLevel = 7;
   function findTop(n: JSONContent) {
     if (n.type === "heading" && n.attrs?.numbered !== false) {
-      const lvl = (n.attrs?.level as number) || 2;
+      const lvl = (n.attrs?.level as number) ?? 2;
       if (lvl < topLevel) topLevel = lvl;
     }
     n.content?.forEach(findTop);
   }
   findTop(node);
-  if (topLevel > 4) return; // no numbered headings
+  if (topLevel > 6) return; // no numbered headings
 
-  const counters = [0, 0, 0, 0]; // indices 0–3 → levels 1–4
+  const counters = [0, 0, 0, 0, 0, 0, 0]; // indices 0..6 → levels 0..6
 
   function walk(n: JSONContent) {
     if (n.type === "heading") {
       if (n.attrs?.numbered !== false) {
-        const lvl = (n.attrs?.level as number) || 2;
-        const idx = lvl - 1;
+        const rawLvl = (n.attrs?.level as number) ?? 2;
+        const idx = Math.max(0, Math.min(rawLvl, 6));
         counters[idx]++;
-        for (let i = idx + 1; i < 4; i++) counters[i] = 0;
+        for (let i = idx + 1; i < 7; i++) counters[i] = 0;
         const parts: number[] = [];
-        for (let i = topLevel - 1; i <= idx; i++) parts.push(counters[i]);
+        for (let i = topLevel; i <= idx; i++) parts.push(counters[i]);
         n.attrs = { ...n.attrs, sectionNumber: parts.join(".") };
       } else {
         n.attrs = { ...n.attrs, sectionNumber: null };
@@ -890,17 +905,20 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     const rest = ctx.src.slice(ctx.pos);
 
-    // \chapter{...}, \section{...}, \section*{...}, etc.
-    const sectionMatch = rest.match(/^\\(chapter|section|subsection|subsubsection)(\*?)\{/);
+    // \part{...}, \chapter{...}, \section{...}, \subsection{...}, \subsubsection{...},
+    // \paragraph{...}, \subparagraph{...} — and starred variants.
+    const sectionMatch = rest.match(/^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph)(\*?)\{/);
     if (sectionMatch) {
-      const level =
-        sectionMatch[1] === "chapter"
-          ? 1
-          : sectionMatch[1] === "section"
-            ? 2
-            : sectionMatch[1] === "subsection"
-              ? 3
-              : 4;
+      const HEADING_LEVELS: Record<string, number> = {
+        part: 0,
+        chapter: 1,
+        section: 2,
+        subsection: 3,
+        subsubsection: 4,
+        paragraph: 5,
+        subparagraph: 6,
+      };
+      const level = HEADING_LEVELS[sectionMatch[1]];
       const numbered = sectionMatch[2] !== "*";
       ctx.pos += sectionMatch[0].length - 1; // position at {
       const inner = extractBraced(ctx.src, ctx.pos);
@@ -1465,7 +1483,7 @@ function readParagraph(ctx: ParseContext): string {
     if (ctx.src[ctx.pos] === "\\" && result.trim()) {
       const rest = ctx.src.slice(ctx.pos);
       if (
-        /^\\(chapter|section|subsection|subsubsection|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|begingl|endgl)\b/.test(
+        /^\\(part|chapter|section|subsection|subsubsection|paragraph|subparagraph|begin|end|\[|hrulefill|title|author|date|maketitle|noindent|vspace|hspace|newcounter|setcounter|renewcommand|newcommand|usepackage|bibliographystyle|bibliography|tableofcontents|appendix|clearpage|newpage|par|ex|pex|xe|vexid|begingl|endgl)\b/.test(
           rest
         )
       ) {

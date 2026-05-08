@@ -33,10 +33,32 @@ import type {
   TodoItem,
   UserNote,
 } from "@/lib/types";
+import type { CardKind } from "@/panels/_shared/types";
+import { cardPopKey } from "@/panels/panel-registry";
 import type { Link } from "./types";
 import { resolveLink } from "../links";
 
 const DATA_CARD_SELECTED = "data-card-selected";
+const DATA_PARAGRAPH_KIND = "data-paragraph-kind";
+const DATA_MARGIN_SIDE = "data-margin-side";
+
+/** Map a CardKind to the kind token used by `data-paragraph-kind`
+ *  selectors in globals.css. The token aligns with the existing
+ *  `.linked-anchor[data-link-card^="<kind>:"]` map so a paragraph
+ *  anchor and a Mode B span for the same card paint in the same color. */
+function paragraphKindFor(kind: CardKind): string | null {
+  switch (kind) {
+    case "note":               return "note";
+    case "cutter-comment":
+    case "cutter-suggestion":  return "cut";
+    case "comment":
+    case "revision-suggestion": return "comment";
+    case "archive":            return "archive";
+    case "quotation":          return "quotation";
+    case "todo":               return "todo";
+    default:                   return null;
+  }
+}
 
 /** Domain-aware resolver for a selected card → a Link record that
  *  jumpToLink/resolveLink can follow. Inline-atom cards (footnote,
@@ -140,6 +162,8 @@ export function useCardSelectionHighlight({
 
     // Apply. We track applied elements for cleanup.
     const applied: HTMLElement[] = [];
+    const appliedParagraphKind: HTMLElement[] = [];
+    const appliedMarginSide: HTMLElement[] = [];
     for (const link of activeLinks) {
       const resolved = resolveLink(editor, link);
       if (!resolved?.domEl) continue;
@@ -147,20 +171,74 @@ export function useCardSelectionHighlight({
         resolved.kind === "paragraph" ? "paragraph" : "true";
       resolved.domEl.setAttribute(DATA_CARD_SELECTED, kindAttr);
       applied.push(resolved.domEl);
+      if (resolved.kind === "paragraph") {
+        const pk = paragraphKindFor(link.target.ref.kind);
+        if (pk) {
+          resolved.domEl.setAttribute(DATA_PARAGRAPH_KIND, pk);
+          appliedParagraphKind.push(resolved.domEl);
+        }
+        // Mode A paragraphs render the kind color as a vertical line on
+        // the same side as the margin marker. Carry that side onto the
+        // paragraph element so CSS can pick which edge to draw.
+        if (link.anchor.type === "anchor") {
+          resolved.domEl.setAttribute(
+            DATA_MARGIN_SIDE,
+            link.anchor.margin.side,
+          );
+          appliedMarginSide.push(resolved.domEl);
+        }
+      }
     }
 
-    // Defensive: also clear any stale attrs anywhere in the editor root
-    // that we didn't just apply. Handles edges where a previous render
-    // painted an element that's no longer in our applied set.
-    const stale = root.querySelectorAll<HTMLElement>(
+    // Also light up every panel card that matches one of the selected
+    // entities, so the card's outline picks up the same kind color at
+    // the same intensity as the anchor in the editor body. Cards live
+    // outside the editor root, so we search the whole document.
+    // CardKind → data-card-key prefix is *not* identity (e.g. "comment"
+    // → "revision:"), so always go through cardPopKey.
+    const cardKeys = activeLinks.map((l) =>
+      cardPopKey(l.target.ref.kind, l.target.ref.id),
+    );
+    const cardEls: HTMLElement[] = [];
+    for (const key of cardKeys) {
+      const matches = document.querySelectorAll<HTMLElement>(
+        `[data-card-key="${key}"]`,
+      );
+      for (const el of matches) {
+        el.setAttribute(DATA_CARD_SELECTED, "true");
+        cardEls.push(el);
+      }
+    }
+
+    // Defensive: also clear any stale data-card-selected attrs anywhere
+    // in the document that we didn't just apply. Handles edges where a
+    // previous render painted an element that's no longer in our applied
+    // set. (We don't do this for data-paragraph-kind because the hover
+    // hook can also write it; we only clean up our own writes.)
+    const stale = document.querySelectorAll<HTMLElement>(
       `[${DATA_CARD_SELECTED}]`,
     );
     for (const el of stale) {
-      if (!applied.includes(el)) el.removeAttribute(DATA_CARD_SELECTED);
+      if (!applied.includes(el) && !cardEls.includes(el)) {
+        el.removeAttribute(DATA_CARD_SELECTED);
+      }
     }
 
     return () => {
       for (const el of applied) el.removeAttribute(DATA_CARD_SELECTED);
+      for (const el of cardEls) el.removeAttribute(DATA_CARD_SELECTED);
+      for (const el of appliedParagraphKind) {
+        // Don't remove if the hover hook still needs it (paragraph is
+        // currently hovered). Selection and hover share this attribute.
+        if (!el.hasAttribute("data-card-hovered")) {
+          el.removeAttribute(DATA_PARAGRAPH_KIND);
+        }
+      }
+      for (const el of appliedMarginSide) {
+        if (!el.hasAttribute("data-card-hovered")) {
+          el.removeAttribute(DATA_MARGIN_SIDE);
+        }
+      }
     };
   }, [
     editor,

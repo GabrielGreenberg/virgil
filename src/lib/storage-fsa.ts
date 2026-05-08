@@ -34,7 +34,9 @@ import {
   assignUuids,
   extractSidecarData,
 } from "@/lib/latex-serializer";
-import { getStyle, DEFAULT_STYLE_ID, type DocumentStyleId } from "@/lib/document-styles";
+import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
+import { resolveStyle } from "@/lib/style-library";
+import { migrateDocumentSettings } from "@/lib/document-settings";
 import {
   readIndex,
   writeIndex,
@@ -45,7 +47,13 @@ import {
   setGeneralBibHandle,
   type FsaDocMeta,
 } from "@/lib/doc-index";
-import { enqueueWrite, flushWrites } from "@/lib/write-queue";
+import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
+import { withDocLock } from "@/lib/multi-window/doc-ownership";
+import {
+  assertActive,
+  assertNotSuperseded,
+  type DocWriteHandle,
+} from "@/lib/multi-window/doc-pipeline";
 import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
@@ -130,6 +138,30 @@ async function writeTextToHandle(
   await writable.close();
 }
 
+/**
+ * Combine the in-window write queue with the cross-window doc lock and
+ * the per-doc pipeline check. `enqueueWrite` serializes writes to the
+ * same `${docId}/${subkey}` within this window; `withDocLock` enforces
+ * cross-window exclusion. The pipeline is checked twice — strictly at
+ * enqueue time (fast-fail for stale closures), and leniently inside the
+ * queued task: a write whose pipeline ended cleanly (no replacement) is
+ * still safe to land, but one whose pipeline has been *superseded* by a
+ * new one for the same docId would corrupt the new pipeline's content.
+ */
+function enqueueDocWrite<T>(
+  h: DocWriteHandle,
+  subkey: string,
+  task: () => Promise<T>,
+): Promise<T> {
+  assertActive(h);
+  return enqueueWrite(`${h.docId}/${subkey}`, () =>
+    withDocLock(h.docId, async () => {
+      assertNotSuperseded(h);
+      return task();
+    }),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sidecar JSON files (everything in `virgil/`)
 // ---------------------------------------------------------------------------
@@ -152,13 +184,12 @@ export async function readSidecar<T>(
 }
 
 export async function writeSidecar<T>(
-  docId: string,
+  h: DocWriteHandle,
   filename: string,
   data: T,
 ): Promise<void> {
-  const key = `${docId}/virgil/${filename}`;
-  return enqueueWrite(key, async () => {
-    const docHandle = await requireDocHandle(docId);
+  return enqueueDocWrite(h, `virgil/${filename}`, async () => {
+    const docHandle = await requireDocHandle(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
     const fileHandle = await virgil.getFileHandle(filename, { create: true });
     await writeTextToHandle(fileHandle, JSON.stringify(data, null, 2));
@@ -188,12 +219,11 @@ export async function readTex(docId: string): Promise<string> {
   }
 }
 
-export async function writeTex(docId: string, latex: string): Promise<void> {
-  const key = `${docId}/tex`;
-  return enqueueWrite(key, async () => {
-    const fh = await getTexFileHandle(docId, { create: true });
+export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
+  return enqueueDocWrite(h, "tex", async () => {
+    const fh = await getTexFileHandle(h.docId, { create: true });
     await writeTextToHandle(fh, latex);
-    await touchDocTimestamp(docId);
+    await touchDocTimestamp(h.docId);
   });
 }
 
@@ -235,14 +265,13 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
 }
 
 export async function writeDocBundle(
-  docId: string,
+  h: DocWriteHandle,
   content: JSONContent,
   editorState: EditorStateData,
 ): Promise<void> {
-  const key = `${docId}/bundle`;
-  return enqueueWrite(key, async () => {
-    const docHandle = await requireDocHandle(docId);
-    const meta = await getDocMetaOrThrow(docId);
+  return enqueueDocWrite(h, "bundle", async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const meta = await getDocMetaOrThrow(h.docId);
     const virgil = await getVirgilSubdir(docHandle);
 
     // Recover any UUIDs whose paragraph markers were stripped by an
@@ -269,14 +298,20 @@ export async function writeDocBundle(
     // verbatim preamble.
     let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
     if (!delimiters) {
-      const settings = await safeReadJson<{ style?: DocumentStyleId }>(
+      const rawSettings = await safeReadJson<unknown>(
         virgil,
         "document-settings.json",
-        { style: DEFAULT_STYLE_ID },
+        { styleId: DEFAULT_STYLE_ID },
       );
-      serializeOpts = { preamble: getStyle(settings.style).preamble };
+      const settings = migrateDocumentSettings(rawSettings);
+      serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
     }
     const latex = serializeToLatex(content, serializeOpts);
+
+    // Shadow snapshot the prior bundle BEFORE overwriting. This is the
+    // forensic safety net: if a regression ever slipped past the
+    // pipeline check, the user can recover from virgil/.history/.
+    await snapshotPriorBundle(docHandle, virgil, meta.texFilename);
 
     const texFh = await docHandle.getFileHandle(meta.texFilename, {
       create: true,
@@ -300,7 +335,7 @@ export async function writeDocBundle(
       ),
     );
 
-    await touchDocTimestamp(docId);
+    await touchDocTimestamp(h.docId);
   });
 }
 
@@ -377,11 +412,12 @@ export async function readBib(docId: string): Promise<BibReadResult> {
   return { bibText, bibFilename, detectedPackage };
 }
 
-export async function writeBib(docId: string, bibText: string): Promise<void> {
-  const bibFilename = await resolveBibFilename(docId);
-  const key = `${docId}/bib/${bibFilename}`;
-  return enqueueWrite(key, async () => {
-    const docHandle = await requireDocHandle(docId);
+export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
+  const bibFilename = await resolveBibFilename(h.docId);
+  return enqueueDocWrite(h, `bib/${bibFilename}`, async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const virgil = await getVirgilSubdir(docHandle);
+    await snapshotPriorBib(docHandle, virgil, bibFilename);
     const fh = await docHandle.getFileHandle(bibFilename, { create: true });
     await writeTextToHandle(fh, bibText);
   });
@@ -400,11 +436,10 @@ export async function getPdfFilename(docId: string): Promise<string> {
   return pdfFilenameFromTex(meta.texFilename);
 }
 
-export async function writePdf(docId: string, pdfBytes: Uint8Array): Promise<void> {
-  const key = `${docId}/pdf`;
-  return enqueueWrite(key, async () => {
-    const docHandle = await requireDocHandle(docId);
-    const filename = await getPdfFilename(docId);
+export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+  return enqueueDocWrite(h, "pdf", async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const filename = await getPdfFilename(h.docId);
     const fh = await docHandle.getFileHandle(filename, { create: true });
     const writable = await fh.createWritable();
     await writable.write(pdfBytes.buffer as ArrayBuffer);
@@ -718,7 +753,36 @@ export async function listDocs(): Promise<FsaDocMeta[]> {
   return idx.docs;
 }
 
+/**
+ * Library Reader docId convention: `library-paper:<citekey>` resolves
+ * to a paper folder under `~/Virgil-Library/papers/<citekey>/`. These
+ * IDs are registered via `setDocHandle` by the Reader's mount layer
+ * but are intentionally NOT in the `FsaDocIndex` (so they don't
+ * pollute the main app's recents). The metadata they need to
+ * round-trip through the storage layer (texFilename, folderName,
+ * timestamps) is synthesized on the fly here — Library papers always
+ * use the canonical `main.tex` filename, and the timestamps are
+ * cosmetic (sidecar reads don't consult them).
+ */
+const LIBRARY_PAPER_PREFIX = "library-paper:";
+function syntheticLibraryPaperMeta(docId: string): FsaDocMeta {
+  const citekey = docId.slice(LIBRARY_PAPER_PREFIX.length);
+  const stamp = "1970-01-01T00:00:00.000Z";
+  return {
+    id: docId,
+    name: citekey,
+    texFilename: "main.tex",
+    folderName: citekey,
+    createdAt: stamp,
+    lastModifiedAt: stamp,
+    lastAccessedAt: stamp,
+  };
+}
+
 async function getDocMetaOrThrow(docId: string): Promise<FsaDocMeta> {
+  if (docId.startsWith(LIBRARY_PAPER_PREFIX)) {
+    return syntheticLibraryPaperMeta(docId);
+  }
   const idx = await readIndex();
   const doc = idx.docs.find((d) => d.id === docId);
   if (!doc) throw new Error(`Doc ${docId} not in index`);
@@ -804,13 +868,11 @@ export async function getTexFilename(docId: string): Promise<string> {
 // Drain helpers
 // ---------------------------------------------------------------------------
 
-/** Wait for all pending writes for a doc to finish. */
+/** Wait for ALL pending writes for a doc to drain — bundle, tex, bib,
+ *  every sidecar, pdf. Used by the doc-switch barrier so the outgoing
+ *  pipeline finishes its work before the new pipeline takes over. */
 export async function flushDoc(docId: string): Promise<void> {
-  await Promise.all([
-    flushWrites(`${docId}/bundle`),
-    flushWrites(`${docId}/tex`),
-    flushWrites(`${docId}/pdf`),
-  ]);
+  await flushPrefix(docId);
 }
 
 // ---------------------------------------------------------------------------
@@ -843,5 +905,110 @@ async function safeReadJson<T>(
   } catch (e) {
     if (isNotFound(e)) return fallback;
     throw e;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Shadow snapshots — virgil/.history/<timestamp>/
+//
+// Forensic recovery layer. Every successful writeDocBundle / writeBib
+// snapshots the prior version under virgil/.history/<ISO-timestamp>/
+// before overwriting. Last 20 snapshots are kept. If anything ever
+// slips past the pipeline check (Layer 1) and overwrites a doc with
+// the wrong content, prior versions are recoverable from the doc's
+// own folder without restoring from a backup elsewhere.
+// ---------------------------------------------------------------------------
+
+const HISTORY_DIR = ".history";
+const HISTORY_LIMIT = 20;
+
+function historyTimestamp(): string {
+  // Filesystem-safe ISO timestamp (no colons or dots).
+  return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+async function copyFileIfPresent(
+  source: FileSystemDirectoryHandle,
+  filename: string,
+  dest: FileSystemDirectoryHandle,
+): Promise<void> {
+  try {
+    const sourceFh = await source.getFileHandle(filename);
+    const file = await sourceFh.getFile();
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const destFh = await dest.getFileHandle(filename, { create: true });
+    const w = await destFh.createWritable();
+    await w.write(bytes.buffer as ArrayBuffer);
+    await w.close();
+  } catch (e) {
+    if (isNotFound(e)) return; // nothing to snapshot yet
+    // Don't let snapshot failures block the actual write — log and
+    // continue. The write itself is the thing the user cares about.
+    console.warn(`[storage] history snapshot failed for ${filename}:`, e);
+  }
+}
+
+async function pruneHistory(
+  history: FileSystemDirectoryHandle,
+  limit: number,
+): Promise<void> {
+  const slots: string[] = [];
+  try {
+    for await (const entry of history.values()) {
+      if (entry.kind === "directory") slots.push(entry.name);
+    }
+  } catch {
+    return;
+  }
+  if (slots.length <= limit) return;
+  // Names are ISO-derived, so lexicographic sort matches chronological.
+  slots.sort();
+  const toRemove = slots.slice(0, slots.length - limit);
+  for (const name of toRemove) {
+    try {
+      await history.removeEntry(name, { recursive: true });
+    } catch (e) {
+      console.warn(`[storage] history prune failed for ${name}:`, e);
+    }
+  }
+}
+
+async function snapshotPriorBundle(
+  docHandle: FileSystemDirectoryHandle,
+  virgil: FileSystemDirectoryHandle,
+  texFilename: string,
+): Promise<void> {
+  try {
+    const history = await virgil.getDirectoryHandle(HISTORY_DIR, {
+      create: true,
+    });
+    const slot = await history.getDirectoryHandle(historyTimestamp(), {
+      create: true,
+    });
+    await copyFileIfPresent(docHandle, texFilename, slot);
+    await copyFileIfPresent(virgil, "virgil.json", slot);
+    await copyFileIfPresent(virgil, "editor-state.json", slot);
+    await pruneHistory(history, HISTORY_LIMIT);
+  } catch (e) {
+    console.warn("[storage] failed to snapshot prior bundle:", e);
+  }
+}
+
+async function snapshotPriorBib(
+  docHandle: FileSystemDirectoryHandle,
+  virgil: FileSystemDirectoryHandle,
+  bibFilename: string,
+): Promise<void> {
+  try {
+    const history = await virgil.getDirectoryHandle(HISTORY_DIR, {
+      create: true,
+    });
+    const slot = await history.getDirectoryHandle(historyTimestamp(), {
+      create: true,
+    });
+    await copyFileIfPresent(docHandle, bibFilename, slot);
+    await pruneHistory(history, HISTORY_LIMIT);
+  } catch (e) {
+    console.warn("[storage] failed to snapshot prior bib:", e);
   }
 }

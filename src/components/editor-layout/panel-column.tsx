@@ -102,17 +102,34 @@ export function PanelColumn({
         getComputedStyle(document.documentElement).getPropertyValue('--panel-min'),
       ) || 0;
       let requested = Math.max(panelMin, startPanel.current + delta);
+      // Walk up to the row container that holds *all* columns (editor +
+      // both panel rails). Pre-extraction this was `col.parentElement`;
+      // post-extraction the panel column is wrapped by `<PaneRail>`'s
+      // outer div, so we need to walk up two levels to reach the row.
+      // The row carries the `editor-pane-root` class.
       const col = gapRef.current?.closest<HTMLElement>('[data-flex-col]');
-      const main = col?.parentElement;
+      const main = col?.closest('.editor-pane-root') as HTMLElement | null;
       if (main) {
         const editor = main.querySelector('[data-editor-col]') as HTMLElement | null;
         const editorMin = editor ? (parseFloat(getComputedStyle(editor).minWidth) || 0) : 0;
+        // Reserve everything in the row that ISN'T the panel being
+        // dragged or the editor column. We sum measured widths of the
+        // intermediate wrappers (PaneRail outer divs etc.) by their
+        // current rendered widths minus the dragged column's
+        // contribution.
         let reserved = editorMin;
+        const dragRail = col?.closest<HTMLElement>('.editor-pane-root > div') ?? col;
         for (const child of Array.from(main.children)) {
-          if (child !== col && child !== editor) {
-            const el = child as HTMLElement;
-            const basis = parseFloat(getComputedStyle(el).flexBasis);
-            reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
+          if (child === editor) continue;
+          if (child === dragRail) {
+            // The rail containing the panel being dragged: count only
+            // its non-panel-column siblings (icon strip).
+            for (const inner of Array.from((child as HTMLElement).children)) {
+              if (inner === col) continue;
+              reserved += (inner as HTMLElement).getBoundingClientRect().width;
+            }
+          } else {
+            reserved += (child as HTMLElement).getBoundingClientRect().width;
           }
         }
         const maxPanel = Math.max(0, main.clientWidth - reserved);
@@ -210,10 +227,23 @@ export function PanelColumn({
     if (occupant) {
       // No min-height — the panel's own min handles that. The slot
       // can shrink to the panel's auto-size; no manilla bg gap below.
-      return { maxHeight: fullHeight };
+      // Also expose the dock-frame max-height as a CSS custom property
+      // so the docked FloatingPanel inside can cap itself at the same
+      // bound — without that cap, every parent height stays content-
+      // driven and PANEL.list's flex-1 overflow-y-auto never engages.
+      return {
+        maxHeight: fullHeight,
+        ['--dock-slot-frame-h' as string]: fullHeight,
+      };
     }
-    // Slot empty — omni view shown, full height as before.
-    return { height: fullHeight };
+    // Slot empty — omni view shown, full height as before. Expose
+    // --dock-slot-frame-h here too so omni cards inside can cap their
+    // expanded bodies at the dock's visible height (same hook docked
+    // panels use above).
+    return {
+      height: fullHeight,
+      ['--dock-slot-frame-h' as string]: fullHeight,
+    };
   };
 
   // The dock-outline is rendered at EditorLayout root via the body-
@@ -228,6 +258,23 @@ export function PanelColumn({
       style={{
         flex: isResizing ? `0 0 ${panelPref}px` : `1 100 ${panelPref}px`,
         minWidth: isResizing ? 0 : 'var(--panel-min)',
+        // Cap height at the editor column's scrollHeight (set on the row
+        // as `--row-bound-h` by EditorScrollbar). Unanchored cards can
+        // stack the column taller than the editor; without this cap the
+        // row's natural scroll bound would exceed the editor's bottom and
+        // produce a visible bounce/stutter against any JS clamp. `clip`
+        // (not `hidden`) avoids establishing a scroll container, so any
+        // `position: sticky` descendants keep latching to the row scroll.
+        maxHeight: 'var(--row-bound-h, none)',
+        overflow: 'clip',
+        // Expose the dock-frame max-height column-wide so any descendant
+        // (omni-view cards, docked-panel cards) can cap an expanded body
+        // at the visible dock height. The slot wrapper redeclares this
+        // with the same value when occupied — same number, no conflict —
+        // and chromeless omni paths inherit straight from here.
+        ['--dock-slot-frame-h' as string]: extendsOverToolbar
+          ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
+          : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
         // When a top-region docked panel is in this column, give the column
         // its top var(--pod-gap) padding directly (the toolbar normally
         // owned that space — it's hidden in this state). Otherwise leave
@@ -265,59 +312,169 @@ export function PanelColumn({
         <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
       ) : split && isSplitChildren(children) ? (
         <div
-          ref={stackRef}
-          className={`flex-1 min-w-0 flex flex-col min-h-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
+          className={`relative flex-1 min-w-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
           style={{
-            position: 'sticky',
-            top: extendsOverToolbar ? 'var(--pod-gap)' : 64,
-            alignSelf: 'flex-start',
-            // Lift the dock above the column's bottom-fade strip (z-20)
-            // so the fade doesn't darken the docked pod's bottom edge.
-            // The fade should only mask scrolled omni content, not docked
-            // panels — which are already visually framed by the pod.
-            zIndex: (topSlot || bottomSlot) ? 30 : undefined,
-            // Pod height is window-driven (NOT content-driven): the dock
-// is always exactly viewport-tall minus the 32px Virgil top
-// bar, the sticky top reserve (var(--pod-gap) when docked,
-// 64px when omni-only), and a matching var(--pod-gap) on the
-// bottom so the pod's bottom edge aligns with the editor's
-// bottom-cap. Using `height` (not `maxHeight`) forces the size
-// regardless of column flex / document length.
-height: extendsOverToolbar
-  ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
-  : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
+            // Always normal-flow so omni scrolls with the page, regardless
+            // of whether a panel is docked. The sticky dock overlay below
+            // is `position: absolute` so it takes no flow space, and its
+            // sticky inner stays pinned in the viewport.
+            position: 'relative',
+            minHeight: extendsOverToolbar
+              ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
+              : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
           }}
         >
+          {/* Omni layer — natural flex flow. Tall content scrolls with
+              the page exactly like non-split mode. Docked panels above
+              overlay (sticky) but never bound omni's height. */}
+          {children!.top.omni}
+
+          {/* Dock overlay — absolute (zero flow), sticky inside so the
+              docked half anchors stay pinned in the viewport while omni
+              scrolls behind. pointer-events:none on the wrapper so empty
+              regions pass clicks through to omni; each occupied anchor
+              re-enables pointer events for itself. */}
           <div
-            className="relative min-h-0 overflow-hidden"
-            style={isChromeless(topPanelId) && !topSlot
-              ? { flex: `${children!.ratio} 1 0`, minHeight: 0 }
-              : { flex: `${children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
-            onMouseDown={() => onFocusHalf?.("top")}
-            data-panel-side={side}
-            data-panel-id={topPanelId}
-            data-panel-half="top"
-            data-dock-slot={topSlot ? topKey : undefined}
+            className="absolute inset-0"
+            style={{ pointerEvents: 'none' }}
           >
-            {renderSlot(children!.top)}
-          </div>
-          <HSplit
-            ratio={children!.ratio}
-            onRatioChange={children!.onRatioChange}
-            containerRef={stackRef}
-          />
-          <div
-            className="relative min-h-0 overflow-hidden"
-            style={isChromeless(bottomPanelId) && !bottomSlot
-              ? { flex: `${1 - children!.ratio} 1 0`, minHeight: 0 }
-              : { flex: `${1 - children!.ratio} 1 0`, minHeight: 0, background: 'var(--pod-panel)', borderRadius: podRadius, border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow-light)' }}
-            onMouseDown={() => onFocusHalf?.("bottom")}
-            data-panel-side={side}
-            data-panel-id={bottomPanelId}
-            data-panel-half="bottom"
-            data-dock-slot={bottomSlot ? bottomKey : undefined}
-          >
-            {renderSlot(children!.bottom)}
+            <div
+              ref={stackRef}
+              style={{
+                position: 'sticky',
+                top: extendsOverToolbar ? 'var(--pod-gap)' : 64,
+                height: extendsOverToolbar
+                  ? 'calc(100dvh - 32px - 2 * var(--pod-gap))'
+                  : 'calc(100dvh - 32px - 64px - var(--pod-gap))',
+                // Lift above column's bottom-fade strip (z-20) so docked
+                // pods don't get darkened at the bottom.
+                zIndex: (topSlot || bottomSlot) ? 30 : undefined,
+              }}
+            >
+              {/* Top half anchor — explicit height so the docked panel
+                  inside (which sets `height: 100%`) has a real value to
+                  resolve against and its internal scrolling can kick in
+                  for tall content. Empty halves are invisible boxes. */}
+              <div
+                className="absolute"
+                style={{
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: `calc(${children!.ratio * 100}% - var(--pod-gap) / 2)`,
+                  pointerEvents: topSlot ? 'auto' : 'none',
+                  overflow: 'hidden',
+                }}
+                onMouseDown={topSlot ? () => onFocusHalf?.("top") : undefined}
+                data-panel-side={side}
+                data-panel-id={topPanelId}
+                data-panel-half="top"
+                data-dock-slot={topSlot ? topKey : undefined}
+              >
+                {topSlot ? children!.top.overlay : null}
+              </div>
+
+              {/* Resize divider — always present, invisible until hover
+                  (the .drag-gap underlay shows a blue hover-preview line
+                  via useDragGap). */}
+              <div
+                className="absolute"
+                style={{
+                  left: 0,
+                  right: 0,
+                  top: `${children!.ratio * 100}%`,
+                  transform: 'translateY(-50%)',
+                  height: 'var(--pod-gap)',
+                  pointerEvents: 'auto',
+                  zIndex: 1,
+                }}
+              >
+                <HSplit
+                  ratio={children!.ratio}
+                  onRatioChange={children!.onRatioChange}
+                  containerRef={stackRef}
+                />
+              </div>
+
+              {/* Gap-edge fades — when a panel is docked in a half, place
+                  opaque-to-transparent strips just outside the panel's
+                  edges so omni cards scrolling past behind don't bleed
+                  visually into the panel chrome. Mirrors the existing
+                  column-top/bottom fade strips. */}
+              {topSlot && (
+                <>
+                  {/* Above the top panel — fades omni in the gap between
+                      the Virgil bar and the panel's top edge. Negative
+                      top extends above the sticky inner; the Virgil bar
+                      hides the part outside the visible pod-gap. */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute"
+                    style={{
+                      left: 0,
+                      right: 0,
+                      top: -32,
+                      height: 32,
+                      background:
+                        'linear-gradient(to top, var(--background) 0, transparent 100%)',
+                      pointerEvents: 'none',
+                      zIndex: 0,
+                    }}
+                  />
+                  {/* Below the top panel — into the gap between halves. */}
+                  <div
+                    aria-hidden="true"
+                    className="absolute"
+                    style={{
+                      left: 0,
+                      right: 0,
+                      top: `calc(${children!.ratio * 100}% - var(--pod-gap) / 2)`,
+                      height: 32,
+                      background:
+                        'linear-gradient(to bottom, var(--background) 0, transparent 100%)',
+                      pointerEvents: 'none',
+                      zIndex: 0,
+                    }}
+                  />
+                </>
+              )}
+              {bottomSlot && (
+                <div
+                  aria-hidden="true"
+                  className="absolute"
+                  style={{
+                    left: 0,
+                    right: 0,
+                    top: `calc(${children!.ratio * 100}% + var(--pod-gap) / 2 - 32px)`,
+                    height: 32,
+                    background:
+                      'linear-gradient(to top, var(--background) 0, transparent 100%)',
+                    pointerEvents: 'none',
+                    zIndex: 0,
+                  }}
+                />
+              )}
+
+              {/* Bottom half anchor — explicit height (mirror of top). */}
+              <div
+                className="absolute"
+                style={{
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: `calc(${(1 - children!.ratio) * 100}% - var(--pod-gap) / 2)`,
+                  pointerEvents: bottomSlot ? 'auto' : 'none',
+                  overflow: 'hidden',
+                }}
+                onMouseDown={bottomSlot ? () => onFocusHalf?.("bottom") : undefined}
+                data-panel-side={side}
+                data-panel-id={bottomPanelId}
+                data-panel-half="bottom"
+                data-dock-slot={bottomSlot ? bottomKey : undefined}
+              >
+                {bottomSlot ? children!.bottom.overlay : null}
+              </div>
+            </div>
           </div>
         </div>
       ) : (

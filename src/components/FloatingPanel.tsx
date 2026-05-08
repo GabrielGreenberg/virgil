@@ -1,12 +1,34 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import type { DockSlotKey, PanelId } from "@/hooks/useViewPrefs";
 import {
   setDockDragTarget,
   findDockTargetByPanelProximity,
+  findDockTargetAtPoint,
+  type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
+
+/**
+ * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
+ * off an in-progress mouse drag from the source card's lift gesture
+ * directly into this floating panel — see `card-lift.ts` for the flow.
+ */
+export interface FloatingPanelHandle {
+  /** Begin a move-drag at the given viewport coords as if the user just
+   *  mousedowned the floating panel's header. The window-level move/up
+   *  listeners (already mounted) pick up the gesture from there. */
+  beginDragAt: (clientX: number, clientY: number) => void;
+}
 
 interface FloatingPanelProps {
   /** Panel id this shell hosts. Required for dock-aware mounts; optional
@@ -57,7 +79,7 @@ interface FloatingPanelProps {
  * handled by a parent: this shell forwards the mouseup event so a
  * containing layout component can decide whether to redock.)
  */
-export default function FloatingPanel({
+function FloatingPanelInner({
   panelId,
   mode = "floating",
   slotKey = null,
@@ -72,7 +94,7 @@ export default function FloatingPanel({
   onMaybeRedock,
   getSplitState,
   onFocus,
-}: FloatingPanelProps) {
+}: FloatingPanelProps, handleRef: React.ForwardedRef<FloatingPanelHandle>) {
   const [pos, setPos] = useState({
     x: initialX,
     y: initialY,
@@ -107,7 +129,7 @@ export default function FloatingPanel({
         // showing instead of swelling to the source dock's full frame.
         // Only when the cursor approaches a *different* dock do we
         // switch to that dock's full-frame "set-down" outline.
-        sourceGhost: { slotKey: DockSlotKey; rect: { left: number; top: number; width: number; height: number } } | null;
+        sourceGhost: DockDragTarget | null;
       }
     | { mode: "resize"; startX: number; startY: number; origW: number; origH: number }
     | null
@@ -170,6 +192,13 @@ export default function FloatingPanel({
         const nx = Math.max(-latestPosRef.current.width + 60, Math.min(maxX, s.origX + dx));
         const ny = Math.max(0, Math.min(maxY, s.origY + dy));
         setPos((p) => ({ ...p, x: nx, y: ny }));
+        // Skip dock-outline updates entirely for shells that aren't
+        // dock-eligible (popped-out cards, dialogs). Cards can't redock,
+        // so flashing the dock outline as they pass over a column would
+        // promise a drop that never happens.
+        if (!handlersRef.current.onMaybeRedock) {
+          return;
+        }
         // Update the dock-drag target so the outline previews where
         // the float would redock if released. Two outline modes:
         //  - Lift-off ghost (drag started from docked): keep showing
@@ -187,7 +216,12 @@ export default function FloatingPanel({
           width: latestPosRef.current.width,
           height: latestPosRef.current.height,
         };
-        const proximity = findDockTargetByPanelProximity(panelRect, splitState);
+        const proximity = findDockTargetByPanelProximity(
+          panelRect,
+          splitState,
+          undefined,
+          { x: e.clientX, y: e.clientY },
+        );
         if (proximity && proximity.slotKey !== s.sourceGhost?.slotKey) {
           // A *different* dock is the candidate — show its full frame.
           setDockDragTarget(proximity);
@@ -207,7 +241,7 @@ export default function FloatingPanel({
         setPos((p) => ({ ...p, width: nw, height: nh }));
       }
     };
-    const onUp = () => {
+    const onUp = (e: MouseEvent) => {
       const s = dragStateRef.current;
       if (!s) return;
       const wasFloatingMove =
@@ -228,6 +262,8 @@ export default function FloatingPanel({
             height: latestPosRef.current.height,
           },
           splitState,
+          undefined,
+          { x: e.clientX, y: e.clientY },
         );
       }
       if (s.mode === "move") {
@@ -272,16 +308,62 @@ export default function FloatingPanel({
       origY = dockedRect.top;
     }
     const socketSlot = pendingUndock ? slotKey : null;
-    const sourceGhost = (socketSlot && dockedRect)
-      ? {
-          slotKey: socketSlot,
-          rect: {
-            left: dockedRect.left,
-            top: dockedRect.top,
-            width: dockedRect.width,
-            height: dockedRect.height,
-          },
+    // Source-ghost rect: for a non-split slot, use the panel's rendered
+    // rect. For a split-half slot, use the half-slot anchor's rect
+    // instead — `rootRef` reflects the panel's intrinsic content height
+    // (which can exceed the half) while the anchor div is the actual
+    // half-height frame the user sees, clipped by `overflow: hidden`.
+    // Using the anchor keeps the primary outline visually symmetric
+    // with the companion half rect during the lift-off drag.
+    let primaryRect = dockedRect
+      ? { left: dockedRect.left, top: dockedRect.top, width: dockedRect.width, height: dockedRect.height }
+      : null;
+    let companionRect: DockDragTarget["companionRect"];
+    if (socketSlot) {
+      const m = socketSlot.match(/^(left|right)-(top|bottom)$/);
+      if (m) {
+        const sourceHalf = document.querySelector<HTMLElement>(
+          `[data-panel-column-side="${m[1]}"] [data-panel-half="${m[2]}"]`,
+        );
+        if (sourceHalf) {
+          const r = sourceHalf.getBoundingClientRect();
+          primaryRect = { left: r.left, top: r.top, width: r.width, height: r.height };
         }
+        // Companion = the OTHER half's geometric rect (derived from the
+        // column + viewport, not the sibling element's bounding rect).
+        // The sibling div is empty while the other half is undocked, so
+        // its bounding rect collapses to ~0 — useless as an outline.
+        // Reuse findDockTargetAtPoint by probing at the column center
+        // and the other half's vertical midline.
+        const col = document.querySelector<HTMLElement>(
+          `[data-panel-column-side="${m[1]}"]`,
+        );
+        if (col) {
+          const cr = col.getBoundingClientRect();
+          const splitState = { left: m[1] === "left", right: m[1] === "right" };
+          // Probe at viewport-bound y so we don't fall outside the column rect.
+          const podGap =
+            parseFloat(
+              getComputedStyle(document.documentElement).getPropertyValue("--pod-gap"),
+            ) || 10;
+          const TOP_BAR = 32;
+          const fullTop = TOP_BAR + podGap;
+          const fullHeight = window.innerHeight - TOP_BAR - 2 * podGap;
+          const halfHeight = Math.floor((fullHeight - podGap) / 2);
+          const probeY = m[2] === "top"
+            ? fullTop + halfHeight + podGap + halfHeight / 2  // center of bottom
+            : fullTop + halfHeight / 2;                       // center of top
+          const otherTarget = findDockTargetAtPoint(
+            cr.left + cr.width / 2,
+            probeY,
+            splitState,
+          );
+          if (otherTarget) companionRect = otherTarget.rect;
+        }
+      }
+    }
+    const sourceGhost: DockDragTarget | null = (socketSlot && primaryRect)
+      ? { slotKey: socketSlot, rect: primaryRect, companionRect }
       : null;
     if (sourceGhost) {
       // Body-portaled outline at the docked rect — captured once at
@@ -303,6 +385,27 @@ export default function FloatingPanel({
     document.body.style.cursor = "grabbing";
     e.preventDefault();
   };
+
+  // Expose an imperative `beginDragAt(x, y)` so a card lift-off can
+  // hand the in-flight mouse drag straight into this freshly-mounted
+  // floating panel — same effect as if the user had mousedowned the
+  // header at (x, y). pendingUndock is false (already floating).
+  useImperativeHandle(handleRef, () => ({
+    beginDragAt: (clientX: number, clientY: number) => {
+      dragStateRef.current = {
+        mode: "move",
+        startX: clientX,
+        startY: clientY,
+        origX: latestPosRef.current.x,
+        origY: latestPosRef.current.y,
+        pendingUndock: false,
+        socketSlot: null,
+        sourceGhost: null,
+      };
+      document.body.style.userSelect = "none";
+      document.body.style.cursor = "grabbing";
+    },
+  }), []);
 
   const onResizeMouseDown = (e: React.MouseEvent) => {
     dragStateRef.current = {
@@ -352,13 +455,29 @@ export default function FloatingPanel({
   // leaving an empty manilla band below it. min-height keeps an empty
   // panel from collapsing below ~2 cards' worth.
   // Floating: positioned via fixed left/top and explicit w/h.
+  // In split mode, the slot anchor has an explicit height (50% of the
+  // column dock area). The docked panel must fill that to ~100% so its
+  // internal scrolling kicks in for tall content; otherwise the panel
+  // grows past the slot's max-height and gets clipped by the half's
+  // overflow:hidden, leaving the bottom truncated. In non-split (full
+  // slot) the anchor is auto-height with a max-height cap, so the panel
+  // stays content-driven (with min-height 200) — same as before.
+  const isHalfSlot = !!slotKey && (slotKey.endsWith("-top") || slotKey.endsWith("-bottom"));
   const containerStyle: React.CSSProperties =
     mode === "docked"
       ? {
           position: "relative",
           width: "100%",
-          minHeight: 200,
-          // height: auto — content drives sizing.
+          ...(isHalfSlot
+            ? { height: "100%" }
+            : {
+                minHeight: 200,
+                // Cap at the dock-frame max-height the slot exposes,
+                // so PANEL.list's flex-1 overflow-y-auto can engage when
+                // content overflows. Falls back to none when not docked
+                // into a slot (defensive — shouldn't happen).
+                maxHeight: "var(--dock-slot-frame-h, none)",
+              }),
           background: "var(--pod-panel, #f3f0eb)",
           borderRadius: "var(--pod-radius, 8px)",
           border: "var(--pod-border, 1px solid #e5e2dd)",
@@ -411,3 +530,9 @@ export default function FloatingPanel({
     target,
   );
 }
+
+const FloatingPanel = forwardRef<FloatingPanelHandle, FloatingPanelProps>(
+  FloatingPanelInner,
+);
+FloatingPanel.displayName = "FloatingPanel";
+export default FloatingPanel;

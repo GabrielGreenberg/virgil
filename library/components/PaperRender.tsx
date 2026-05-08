@@ -1,36 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
+import { useEffect, useRef, useState } from "react";
+import type { Editor } from "@tiptap/react";
+import type { JSONContent } from "@tiptap/react";
+import EditorPane from "@/components/EditorPane";
+import type { EditorHandle } from "@/components/Editor";
+import { READER_CHROME } from "@/components/editor-layout/chrome-config";
+import { useReaderViewPrefs } from "@/components/editor-layout/reader-view-prefs";
+import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
 import { readTextFile } from "@library/lib/library-storage";
-import { parseLatex } from "@library/lib/latex-parser";
-import {
-  cancelPaperReview,
-  cancelRichIndex,
-  queueBibReview,
-  queuePaperReview,
-  queueRichIndex,
-  readPaperReviewState,
-  readRichIndexState,
-} from "@library/lib/bib-edit";
+import { parseLatex } from "@/lib/latex-parser";
+import { assignUuids } from "@/lib/latex-serializer";
 import type { IndexedState } from "@library/lib/catalog";
-import { AiNotePanel } from "./BibCard";
-import {
-  InlineMath,
-  DisplayMath,
-  Footnote,
-  LatexComment,
-  Citation,
-  LabelRef,
-  LatexCommandMark,
-  TitleField,
-  MaketitleMarker,
-  EmptyParagraphTitleCleaner,
-  LinkedAnchor,
-  LinkedAnchorGuard,
-  PgMarkChip,
-} from "@library/tiptap";
+import PageScrollStrip from "./PageScrollStrip";
 
 interface Props {
   handle: FileSystemDirectoryHandle | null;
@@ -38,13 +20,42 @@ interface Props {
   indexedState: IndexedState;
 }
 
-type AiScope = "paper" | "bib";
-
+/**
+ * Renders the body of a paper-file tab — mounts the **main Virgil
+ * editor** (`@/components/Editor`) in read-only mode with the
+ * `READER_CHROME` config in context, so all editor improvements made
+ * in the main app automatically flow through to the Library Reader.
+ *
+ * Suppressed in Reader mode (via `READER_CHROME`):
+ *  - text editing (TipTap `editable: false`)
+ *  - paragraph float title-edit input + heading float label-edit input
+ *  - drop / paste handlers (gated on `view.editable`)
+ *
+ * Library-specific chrome layered on top of the editor:
+ *  - sticky `PageScrollStrip` for `\pgmark{N}` printed-page navigation
+ *  - right-side panel rail with the Outline panel (more panels follow
+ *    the EditorPane extraction)
+ *
+ * Panels currently inherited (Reader subset):
+ *  - **Outline** — derived from the editor's parsed content; click any
+ *    heading to scroll the reader to it.
+ *
+ * Panels deferred (require EditorPane extraction from EditorLayout):
+ *  - Notes, Footnotes, Citations, Bibliography, Examples — depend on
+ *    sidecar persistence wired through `usePersistentState`, the
+ *    pristine-card manager, and the popped-cards / FloatingCards
+ *    portal system.
+ *  - Marginalia rendering (left + right gutter chips) — depends on
+ *    `linksByParagraph` derived from all card hooks plus per-card
+ *    hover/selection coupling.
+ *  - Omni view, drag-drop card creation, action toolbar, formatting
+ *    toolbar — orchestrated by EditorLayout.
+ */
 export default function PaperRender({ handle, citekey, indexedState }: Props) {
   const [tex, setTex] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
 
-  const isIndexed = indexedState === "indexed" || indexedState === "richIndexed";
+  const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
 
   useEffect(() => {
     setTex(null);
@@ -60,25 +71,55 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
     };
   }, [handle, citekey, isIndexed]);
 
+  // Register the paper folder under a synthetic `library-paper:<citekey>`
+  // docId. Per-doc storage hooks (useDocument, useNotes, useFootnotes,
+  // ...) resolve the folder via this registration; storage-fsa.ts
+  // synthesizes the FsaDocMeta on the fly so the synthetic id never
+  // appears in the doc index. Cleanup deletes the handle on unmount /
+  // citekey change so a stale handle can't be picked up after the user
+  // closes the paper.
+  useEffect(() => {
+    if (!handle || !citekey || !isIndexed) return;
+    const docId = `library-paper:${citekey}`;
+    let cancelled = false;
+    (async () => {
+      try {
+        const papersDir = await handle.getDirectoryHandle("papers");
+        const paperDir = await papersDir.getDirectoryHandle(citekey);
+        if (cancelled) return;
+        await setDocHandle(docId, paperDir);
+      } catch (e) {
+        // Folder may not exist yet (e.g. mid-indexing); the editor's
+        // own load path will surface the error to the user. Just don't
+        // register a stale handle.
+        console.warn(`Failed to register Library paper handle for ${docId}`, e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      void deleteDocHandle(docId);
+    };
+  }, [handle, citekey, isIndexed]);
+
   if (!citekey) return null;
 
   if (!isIndexed) {
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <RichIndexCheckbox handle={handle} citekey={citekey} indexedState={indexedState} />
-        <div
-          style={{
-            padding: 16,
-            background: "var(--surface)",
-            border: "var(--pod-border)",
-            borderRadius: "var(--pod-radius)",
-            color: "var(--muted)",
-            fontStyle: "italic",
-          }}
-        >
-          This paper hasn&apos;t been indexed yet. Run <code>/index-pending</code> in
-          a Claude session to index queued papers.
-        </div>
+      <div
+        style={{
+          padding: 16,
+          background: "var(--surface)",
+          border: "var(--pod-border)",
+          borderRadius: "var(--pod-radius)",
+          color: "var(--muted)",
+          fontStyle: "italic",
+          margin: 16,
+        }}
+      >
+        This paper hasn&apos;t been indexed yet. Use the <strong>Index</strong> or{" "}
+        <strong>Deep&nbsp;index</strong> button in the header above to queue it,
+        then run <code>/library/index-pending</code> in a Claude session to drain
+        the queue.
       </div>
     );
   }
@@ -100,381 +141,44 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <PaperAiRequestBar handle={handle} citekey={citekey} indexedState={indexedState} />
-      <PaperEditor tex={tex} onParseError={setParseError} parseError={parseError} />
-    </div>
+    <PaperReader
+      citekey={citekey}
+      tex={tex}
+      onParseError={setParseError}
+      parseError={parseError}
+    />
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// AI request bar — sits above the rendered paper. Lets the user file an
-// AI request scoped to either the bib entry or the paper text itself.
-// ────────────────────────────────────────────────────────────────────────
-
-interface PaperAiRequestBarProps {
-  handle: FileSystemDirectoryHandle | null;
+interface PaperReaderProps {
   citekey: string;
-  indexedState: IndexedState;
-}
-
-function PaperAiRequestBar({ handle, citekey, indexedState }: PaperAiRequestBarProps) {
-  const [open, setOpen] = useState(false);
-  const [scope, setScope] = useState<AiScope>("paper");
-  const [note, setNote] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [paperQueued, setPaperQueued] = useState(false);
-  const [richQueued, setRichQueued] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-
-  const needsIndex = indexedState === "none" || indexedState === "failed";
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!handle) {
-      setPaperQueued(false);
-      setRichQueued(false);
-      return;
-    }
-    (async () => {
-      const [pr, ri] = await Promise.all([
-        readPaperReviewState(handle, citekey),
-        readRichIndexState(handle, citekey),
-      ]);
-      if (!cancelled) {
-        setPaperQueued(!!pr);
-        setRichQueued(!!ri);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [handle, citekey]);
-
-  const flashFor = (msg: string) => {
-    setFlash(msg);
-    window.setTimeout(() => setFlash((cur) => (cur === msg ? null : cur)), 2400);
-  };
-
-  const handleClick = () => {
-    if (busy || !handle) return;
-    if (paperQueued) {
-      void doCancel();
-      return;
-    }
-    setNote("");
-    setScope("paper");
-    setOpen(true);
-  };
-
-  const doCancel = async () => {
-    if (!handle) return;
-    setBusy(true);
-    try {
-      await cancelPaperReview(handle, citekey);
-      setPaperQueued(false);
-      flashFor("cancelled");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doSubmit = async () => {
-    if (!handle || busy) return;
-    const trimmed = note.trim();
-    if (trimmed.length === 0) {
-      flashFor("note required");
-      return;
-    }
-    setBusy(true);
-    try {
-      if (scope === "bib") {
-        await queueBibReview(handle, citekey, trimmed);
-      } else {
-        await queuePaperReview(handle, citekey, trimmed);
-        setPaperQueued(true);
-      }
-      setOpen(false);
-      setNote("");
-      flashFor("queued ✓");
-    } catch (e) {
-      flashFor(`failed: ${(e as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const toggleRichIndex = async () => {
-    if (!handle || busy) return;
-    setBusy(true);
-    try {
-      if (richQueued) {
-        await cancelRichIndex(handle, citekey);
-        setRichQueued(false);
-        flashFor("cancelled");
-      } else {
-        await queueRichIndex(handle, citekey, undefined, needsIndex);
-        setRichQueued(true);
-        flashFor(needsIndex ? "queued (will index first)" : "queued");
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const buttonLabel = busy
-    ? (paperQueued ? "Cancelling…" : "Submitting…")
-    : paperQueued
-      ? "AI request queued"
-      : "AI request";
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <label
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
-            fontSize: 11,
-            fontFamily: "var(--sans, inherit)",
-            cursor: !handle || busy ? "not-allowed" : "pointer",
-            opacity: !handle || busy ? 0.6 : 1,
-            color: richQueued ? "var(--accent)" : "var(--foreground)",
-          }}
-          title={
-            richQueued
-              ? "Click to cancel the queued rich-index request"
-              : needsIndex
-                ? "Queue rich indexing (will index first, then apply structural cleanup)"
-                : "Queue rich indexing (structural cleanup of extracted text)"
-          }
-        >
-          <input
-            type="checkbox"
-            checked={richQueued}
-            onChange={toggleRichIndex}
-            disabled={!handle || busy}
-            style={{ accentColor: "var(--accent)" }}
-          />
-          Rich index{needsIndex && !richQueued ? " (will index first)" : ""}
-        </label>
-        <button
-          type="button"
-          onClick={handleClick}
-          disabled={!handle || busy}
-          aria-pressed={paperQueued}
-          title={
-            paperQueued
-              ? "Click to cancel the queued paper-text AI request"
-              : "Click to write a note and queue an AI request for this paper"
-          }
-          style={{
-            background: paperQueued ? "var(--accent)" : "transparent",
-            color: paperQueued ? "white" : "var(--foreground)",
-            border: paperQueued ? "1px solid var(--accent)" : "1px solid var(--border-light)",
-            borderRadius: 4,
-            padding: "3px 10px",
-            fontSize: 11,
-            fontFamily: "var(--sans, inherit)",
-            cursor: !handle || busy ? "not-allowed" : "pointer",
-            opacity: !handle || busy ? 0.6 : 1,
-          }}
-        >
-          ★ {buttonLabel}
-        </button>
-        {flash && (
-          <span
-            style={{
-              fontFamily: "var(--mono)",
-              fontSize: 11,
-              color: "var(--accent, var(--muted))",
-            }}
-          >
-            {flash}
-          </span>
-        )}
-      </div>
-      {open && (
-        <AiNotePanel
-          title={`AI request — ${scope === "bib" ? "bibliographic entry" : "paper text"}`}
-          placeholder={
-            scope === "bib"
-              ? 'e.g. "Find the missing DOI", "Re-verify the publisher and year".'
-              : 'e.g. "Section 3 was cut off mid-sentence — re-extract it", "Footnote 12 is attached to the wrong word", "Re-do the linearization, this paper has a two-column layout".'
-          }
-          value={note}
-          onChange={setNote}
-          onSubmit={doSubmit}
-          onCancel={() => {
-            setOpen(false);
-            setNote("");
-          }}
-          busy={busy}
-          extraHeader={
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: 11,
-                  color: "var(--muted)",
-                }}
-              >
-                Scope:
-              </span>
-              <ScopePill active={scope === "paper"} onClick={() => setScope("paper")}>
-                paper text
-              </ScopePill>
-              <ScopePill active={scope === "bib"} onClick={() => setScope("bib")}>
-                bib entry
-              </ScopePill>
-            </div>
-          }
-        />
-      )}
-    </div>
-  );
-}
-
-// Standalone rich-index checkbox for un-indexed papers (no AI request bar).
-function RichIndexCheckbox({
-  handle,
-  citekey,
-  indexedState,
-}: {
-  handle: FileSystemDirectoryHandle | null;
-  citekey: string;
-  indexedState: IndexedState;
-}) {
-  const [richQueued, setRichQueued] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-  const needsIndex = indexedState === "none" || indexedState === "failed";
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!handle) { setRichQueued(false); return; }
-    (async () => {
-      const ri = await readRichIndexState(handle, citekey);
-      if (!cancelled) setRichQueued(!!ri);
-    })();
-    return () => { cancelled = true; };
-  }, [handle, citekey]);
-
-  const flashFor = (msg: string) => {
-    setFlash(msg);
-    window.setTimeout(() => setFlash((cur) => (cur === msg ? null : cur)), 2400);
-  };
-
-  const toggle = async () => {
-    if (!handle || busy) return;
-    setBusy(true);
-    try {
-      if (richQueued) {
-        await cancelRichIndex(handle, citekey);
-        setRichQueued(false);
-        flashFor("cancelled");
-      } else {
-        await queueRichIndex(handle, citekey, undefined, needsIndex);
-        setRichQueued(true);
-        flashFor(needsIndex ? "queued (will index first)" : "queued");
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <label
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 5,
-          fontSize: 11,
-          fontFamily: "var(--sans, inherit)",
-          cursor: !handle || busy ? "not-allowed" : "pointer",
-          opacity: !handle || busy ? 0.6 : 1,
-          color: richQueued ? "var(--accent)" : "var(--foreground)",
-        }}
-        title={
-          richQueued
-            ? "Click to cancel the queued rich-index request"
-            : "Queue rich indexing (will index first, then apply structural cleanup)"
-        }
-      >
-        <input
-          type="checkbox"
-          checked={richQueued}
-          onChange={toggle}
-          disabled={!handle || busy}
-          style={{ accentColor: "var(--accent)" }}
-        />
-        Rich index (will index first)
-      </label>
-      {flash && (
-        <span
-          style={{
-            fontFamily: "var(--mono)",
-            fontSize: 11,
-            color: "var(--accent, var(--muted))",
-          }}
-        >
-          {flash}
-        </span>
-      )}
-    </div>
-  );
-}
-
-function ScopePill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      style={{
-        background: active ? "var(--accent)" : "transparent",
-        color: active ? "white" : "var(--foreground)",
-        border: active ? "1px solid var(--accent)" : "1px solid var(--border-light)",
-        borderRadius: 999,
-        padding: "2px 10px",
-        fontSize: 11,
-        fontFamily: "var(--sans, inherit)",
-        cursor: "pointer",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-interface PaperEditorProps {
   tex: string;
   parseError: string | null;
   onParseError: (err: string | null) => void;
 }
 
-function PaperEditor({ tex, parseError, onParseError }: PaperEditorProps) {
-  const [content, setContent] = useState<unknown>(null);
+function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProps) {
+  const readerViewPrefs = useReaderViewPrefs();
+  const [content, setContent] = useState<JSONContent | null>(null);
+  // PageScrollStrip needs the live TipTap Editor instance to compute
+  // page-mark scroll positions. Editor.tsx hands one back via
+  // `onEditorReady`; we keep it in state (not a ref) so the strip
+  // re-renders once the editor is mounted.
+  const [editor, setEditor] = useState<Editor | null>(null);
+  // Tracked as state (not a ref) so the strip re-mounts/relays out once
+  // the scroll container exists. A plain ref would leave the strip
+  // with `null` on its first render.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const editorRef = useRef<EditorHandle | null>(null);
 
   useEffect(() => {
     try {
       const doc = parseLatex(tex);
+      // Assign UUIDs to anchorable nodes so marginalia / linked-anchor
+      // operations have stable paragraph ids to bind to. The main-app
+      // load path runs this inside `readDocBundle`; the Reader parses
+      // tex directly so we run it here.
+      assignUuids(doc);
       setContent(doc);
       onParseError(null);
     } catch (e) {
@@ -482,35 +186,6 @@ function PaperEditor({ tex, parseError, onParseError }: PaperEditorProps) {
       setContent(null);
     }
   }, [tex, onParseError]);
-
-  const editor = useEditor(
-    {
-      // Mirrors a subset of Virgil's Editor.tsx mount. Read-only for now;
-      // editability of the indexed paper is a Phase 4+ concern.
-      editable: false,
-      immediatelyRender: false,
-      extensions: [
-        StarterKit.configure({
-          dropcursor: false,
-        }),
-        InlineMath,
-        DisplayMath,
-        Footnote,
-        LatexComment,
-        Citation,
-        LabelRef,
-        LatexCommandMark,
-        TitleField,
-        MaketitleMarker,
-        EmptyParagraphTitleCleaner,
-        LinkedAnchor,
-        LinkedAnchorGuard,
-        PgMarkChip,
-      ],
-      content: (content as never) ?? { type: "doc", content: [{ type: "paragraph" }] },
-    },
-    [content],
-  );
 
   if (parseError) {
     return (
@@ -523,6 +198,7 @@ function PaperEditor({ tex, parseError, onParseError }: PaperEditorProps) {
           fontFamily: "var(--mono)",
           fontSize: 12,
           whiteSpace: "pre-wrap",
+          margin: 16,
         }}
       >
         Parse error: {parseError}
@@ -530,20 +206,48 @@ function PaperEditor({ tex, parseError, onParseError }: PaperEditorProps) {
     );
   }
 
-  if (!editor || !content) {
+  if (!content) {
     return <div style={{ padding: 16, color: "var(--muted)" }}>Rendering…</div>;
   }
 
+  // The Reader's docId is synthetic — it doesn't appear in the FsaDocIndex
+  // and intentionally doesn't pollute the main app's recents. Per-doc
+  // sidecar hooks (post-extraction) will resolve this prefix to the
+  // paper folder via the doc-handle registry.
+  const docId = `library-paper:${citekey}`;
+
   return (
     <div
+      ref={setScrollEl}
+      data-virgil-row-scroll
+      data-virgil-library-reader
       style={{
-        background: "var(--surface)",
-        border: "var(--pod-border)",
-        borderRadius: "var(--pod-radius)",
-        boxShadow: "var(--pod-shadow)",
+        flex: 1,
+        minHeight: 0,
+        overflow: "auto",
+        background: "var(--background)",
+        padding: "16px 0",
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "stretch",
+        gap: 2,
       }}
     >
-      <EditorContent editor={editor} className="paper-render" />
+      {/* Left: page-mark scroll strip. The editor pod + right-side
+       *  panel rail are now both inside `<EditorPane>` — the rail
+       *  renders only when `chrome.visiblePanelKinds` is non-empty
+       *  (Reader's whitelist is `outline`, `footnotes`, `examples`,
+       *  `citations`, `bibliography`, `notes`). */}
+      <PageScrollStrip editor={editor} scrollContainer={scrollEl} />
+      <EditorPane
+        ref={editorRef}
+        docId={docId}
+        initialContent={content as JSONContent}
+        editable={false}
+        chrome={READER_CHROME}
+        viewPrefs={readerViewPrefs}
+        onEditorReady={setEditor}
+      />
     </div>
   );
 }

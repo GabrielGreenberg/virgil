@@ -99,13 +99,17 @@ export function FootnoteCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
+  const compressed = !isSelected && !isPoppedOut;
+  const compressedSummary = compressed
+    ? (richJsonToPlainText(fn.content).trim().slice(0, 80) || "")
+    : undefined;
 
   const card = (
     <EditableCard
       id={fn.footnoteId}
+      cardKind="footnote"
       selected={isSelected}
       theme={theme}
-      grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
@@ -127,7 +131,10 @@ export function FootnoteCard({
         />
       }
       onClick={onSelect}
-      onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
+      // TODO(grip-redesign): drop-into-document via the grip is disabled
+      // during the unified header redesign. Re-introduce thoughtfully via
+      // a separate body-level affordance, not the grip.
+      // onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
       onTextDragStart={(e) => startTextDrag(e, fn.content)}
       onDelete={onDelete}
       value={fn.content}
@@ -144,6 +151,10 @@ export function FootnoteCard({
       wrapperStyle={wrapperStyle}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
+      cardKey={cardKey}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      typeLabelKind="footnote"
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
@@ -184,13 +195,17 @@ export function OrphanedFootnoteCard({
     [onEdit],
   );
   const theme = useCardTheme("footnote");
+  const compressed = !isSelected;
+  const compressedSummary = compressed
+    ? (richJsonToPlainText(orphan.content).trim().slice(0, 80) || "")
+    : undefined;
 
   return (
     <EditableCard
       id={orphan.footnoteId}
+      cardKind="footnote"
       selected={isSelected}
       theme={theme}
-      grabHandle
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
@@ -204,9 +219,12 @@ export function OrphanedFootnoteCard({
       }
       headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
       onClick={onSelect}
-      onDragStart={(e) =>
-        startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
-      }
+      // TODO(grip-redesign): drop-into-document via the grip is disabled
+      // during the unified header redesign — see note on the FootnoteCard
+      // path above.
+      // onDragStart={(e) =>
+      //   startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
+      // }
       onTextDragStart={(e) => startTextDrag(e, orphan.content)}
       onDelete={onDelete}
       value={orphan.content}
@@ -221,6 +239,9 @@ export function OrphanedFootnoteCard({
       extraDataAttrs={extraDataAttrs}
       wrapperClassName={wrapperClassName}
       wrapperStyle={wrapperStyle}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+      typeLabelKind="footnote"
     />
   );
 }

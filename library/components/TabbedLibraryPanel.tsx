@@ -7,16 +7,18 @@ import {
   CENTRAL_LIBRARY_ID,
   isBuiltin,
   isCentral,
+  isPaper,
   isProject,
   type Library,
   type PanelTabsState,
   type Registry,
 } from "@library/lib/library-store";
-import { ENTRY_DT_TYPE } from "@library/lib/dnd-types";
+import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { useRowDotState } from "@library/hooks/useRowDotState";
 import { useProjectLibrary } from "@library/lib/project-library-context";
 import LeftList from "./LeftList";
+import PaperFileBody from "./PaperFileBody";
 import type { RowActions } from "./LeftListRow";
 
 /** Primitive entry-action helpers passed down from LibraryView. The panel
@@ -42,19 +44,32 @@ interface Props {
   libraryById: Map<string, Library>;
   entries: CatalogEntry[];
   bibByKey: Map<string, BibEntry>;
-  selectedKey: string | null;
-  onSelect: (key: string | null) => void;
+  selectedKeys: ReadonlySet<string>;
+  anchorKey: string | null;
+  /** Commit a new selection set + anchor. The anchor is the pivot for
+   *  future shift-click range selections; pass the most recently
+   *  single-clicked or cmd-clicked key. Pass `null` to clear the anchor. */
+  onSelectKeys: (keys: ReadonlySet<string>, anchor: string | null) => void;
+  /** Open a paper as a tabbed library file in the opposite panel. */
+  onOpenPaper: (citekey: string, fromPanel: PanelKey) => void;
   onActivate: (id: string, panel: PanelKey) => void;
   onClose: (id: string, panel: PanelKey) => void;
   onRename: (id: string, label: string) => void;
   onCreate: (panel: PanelKey) => string;
   onOpenRecent: (id: string, panel: PanelKey) => void;
   onMoveTab: (libId: string, toPanel: PanelKey, toIndex: number) => void;
-  onAddEntryToLibrary: (libId: string, entryKey: string) => void;
+  /** Always batched: a multi-row drop must dispatch a single call so
+   *  project-library writes (which read-modify-write references.bib)
+   *  don't race. Callers pass `[key]` for single-row drops. */
+  onAddEntriesToLibrary: (libId: string, entryKeys: readonly string[]) => void;
+  onTogglePinPaper: (libId: string) => void;
   entryActions: EntryActions;
   /** FSA handle for the library root. Used by the request-state dot hook
-   *  to scan queue/ and notifications/inbox.json on a 6s poll. */
+   *  to scan queue/ and notifications/inbox.json on a 6s poll, and by
+   *  paper-kind tabs to read main.tex / references.bib / pdfs/. */
   handle: FileSystemDirectoryHandle;
+  /** Reload master.bib after a save lands inside a paper-kind tab. */
+  onBibChanged?: () => void;
   /** Forget the current library folder and prompt for a new one. Surfaced
    *  in the panel-level "⋮" menu (left panel only). Right panel passes
    *  undefined and the menu button is omitted. */
@@ -68,17 +83,21 @@ export default function TabbedLibraryPanel({
   libraryById,
   entries,
   bibByKey,
-  selectedKey,
-  onSelect,
+  selectedKeys,
+  anchorKey,
+  onSelectKeys,
+  onOpenPaper,
   onActivate,
   onClose,
   onRename,
   onCreate,
   onOpenRecent,
   onMoveTab,
-  onAddEntryToLibrary,
+  onAddEntriesToLibrary,
+  onTogglePinPaper,
   entryActions,
   handle,
+  onBibChanged,
   onChangeFolder,
 }: Props) {
   const { toneFor: dotToneFor, markViewed } = useRowDotState(handle);
@@ -89,23 +108,37 @@ export default function TabbedLibraryPanel({
       tabs.openIds
         .map((id) => libraryById.get(id))
         .filter((l): l is Library => Boolean(l))
-        .map((l) => ({
-          id: l.id,
-          label: l.label,
-          closable: !isBuiltin(l.id),
-          renamable: !isBuiltin(l.id),
-          menu:
-            l.id === CENTRAL_LIBRARY_ID && onChangeFolder
-              ? ([{ label: "Change folder…", onClick: onChangeFolder }] satisfies PanelMenuItem[])
-              : undefined,
-        })),
-    [tabs.openIds, libraryById, onChangeFolder],
+        .map((l) => {
+          const paper = isPaper(l);
+          return {
+            id: l.id,
+            label: l.label,
+            closable: !isBuiltin(l.id),
+            renamable: !isBuiltin(l.id) && !paper,
+            pinned: paper ? !!l.pinned : undefined,
+            onTogglePin: paper ? () => onTogglePinPaper(l.id) : undefined,
+            paperCitekey: paper ? l.citekey : undefined,
+            // Custom libraries are draggable to the Virgil bar to spawn
+            // their own outer tab. Central, paper-kind, and per-doc
+            // project tabs are excluded — Central is the baseline,
+            // papers tear out via the paper drag payload, and project
+            // tabs are derived from the open Virgil docs (closing the
+            // doc removes its tab).
+            outerDraggableLibraryId:
+              !paper && !isBuiltin(l.id) ? l.id : undefined,
+            menu:
+              l.id === CENTRAL_LIBRARY_ID && onChangeFolder
+                ? ([{ label: "Change folder…", onClick: onChangeFolder }] satisfies PanelMenuItem[])
+                : undefined,
+          } satisfies TabDef;
+        }),
+    [tabs.openIds, libraryById, onChangeFolder, onTogglePinPaper],
   );
 
   const recentLibraries: RecentLibrary[] = useMemo(() => {
     const openSet = new Set(tabs.openIds);
     return registry.libraries
-      .filter((l) => !isBuiltin(l.id) && !openSet.has(l.id))
+      .filter((l) => !isBuiltin(l.id) && !isPaper(l) && !openSet.has(l.id))
       .sort((a, b) => b.createdAt - a.createdAt)
       .map((l) => ({ id: l.id, label: l.label }));
   }, [registry.libraries, tabs.openIds]);
@@ -132,15 +165,20 @@ export default function TabbedLibraryPanel({
       };
     }
     if (isProject(activeLibrary.id)) {
-      // Membership comes from the doc's `.bib`; removing an entry here
-      // would mean editing the .bib, which belongs in Virgil's Bibliography
-      // panel. Keep the AI-review actions; route delete to a hint.
+      // Membership comes from the doc's references.bib. Deleting from a
+      // project library mutates that file directly — the central library
+      // and master.bib are untouched. Warn the user before writing,
+      // since any \cite{key} commands already in the document will be
+      // left dangling.
+      const libId = activeLibrary.id;
       return {
-        deleteLabel: "Edit in Bibliography panel…",
-        onDelete: () => {
-          window.alert(
-            "To remove an entry from this project, edit references.bib via Virgil's Bibliography panel.",
+        deleteLabel: "Remove from references.bib…",
+        onDelete: (citekey: string) => {
+          const ok = window.confirm(
+            `Remove ${citekey} from this project's references.bib?\n\nThe entry stays in the central library — only this document's bibliography is affected. Any \\cite{${citekey}} commands already in the text will reference a missing entry.`,
           );
+          if (!ok) return;
+          entryActions.removeFromLibrary(libId, citekey);
         },
         onBibReview: entryActions.queueBibReview,
         onTextReview: entryActions.queuePaperReview,
@@ -160,6 +198,7 @@ export default function TabbedLibraryPanel({
 
   const visibleEntries = useMemo<CatalogEntry[]>(() => {
     if (!activeLibrary) return [];
+    if (isPaper(activeLibrary)) return [];
     if (isCentral(activeLibrary.id)) return entries;
     if (isProject(activeLibrary.id)) {
       // Project tab: one row per key in the doc's bib (filtered to the
@@ -205,49 +244,98 @@ export default function TabbedLibraryPanel({
 
   const panelRef = useRef<HTMLDivElement | null>(null);
 
-  // Panel-wide entry drop zone: dropping a row anywhere in the library
-  // panel adds it to the active library. Per-tab targeting is still handled
-  // by PanelTabStrip (deeper in the DOM, fires first); when that handler
-  // runs e.preventDefault() we defer via the defaultPrevented check so the
-  // entry isn't added twice. Skipped when the active library is Central
-  // (which already contains everything).
-  const [panelDragOver, setPanelDragOver] = useState(false);
-  // Drag-to-add only works on user-spawned libraries. Built-ins (Central,
-  // Project) compute their membership and ignore drops.
-  const dropTargetId = activeLibrary && !isBuiltin(activeLibrary.id) ? activeLibrary.id : null;
+  // Panel-wide drop zone — accepts:
+  //   - Entry rows (ENTRY_DT_TYPE): adds to the active library if it's a
+  //     drop-eligible custom library. Per-tab targeting still wins
+  //     (PanelTabStrip handles it deeper in the DOM and preventDefaults).
+  //   - Library/paper tabs (TAB_DT_TYPE): drops into this panel. The
+  //     strip handles in-strip drops; this catches drops anywhere else
+  //     in the panel area, which is the intuitive target when the panel
+  //     is empty.
+  const [panelDragOver, setPanelDragOver] = useState<null | "entry" | "tab">(null);
+  // Drop targets:
+  //   - "custom" libraries: append to entryKeys (registry mutation).
+  //   - "project" (per-doc) libraries: append the bib entry to the doc's
+  //     references.bib via a window-event handler in `LibraryTabView`.
+  // Central / paper / unknown reject the drop.
+  const dropTargetId =
+    activeLibrary &&
+    !isPaper(activeLibrary) &&
+    (activeLibrary.kind === "custom" || activeLibrary.kind === "project")
+      ? activeLibrary.id
+      : null;
 
-  const dataTransferHasEntry = (e: DragEvent<HTMLDivElement>): boolean => {
+  const dataTransferHas = (
+    e: DragEvent<HTMLDivElement>,
+    type: string,
+  ): boolean => {
     const types = e.dataTransfer.types;
     for (let i = 0; i < types.length; i++) {
-      if (types[i] === ENTRY_DT_TYPE) return true;
+      if (types[i] === type) return true;
     }
     return false;
   };
 
+  // Read the multi-row payload if present (JSON array of entry keys),
+  // falling back to the single-key payload for back-compat. Returns []
+  // when neither is present, or the JSON is malformed.
+  const readEntryKeys = (e: DragEvent<HTMLDivElement>): string[] => {
+    const multi = e.dataTransfer.getData(ENTRIES_DT_TYPE);
+    if (multi) {
+      try {
+        const parsed = JSON.parse(multi);
+        if (
+          Array.isArray(parsed) &&
+          parsed.every((k): k is string => typeof k === "string")
+        ) {
+          return parsed;
+        }
+      } catch {
+        // fall through to single-key
+      }
+    }
+    const single = e.dataTransfer.getData(ENTRY_DT_TYPE);
+    return single ? [single] : [];
+  };
+
   const handlePanelDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (e.defaultPrevented) return; // strip handled a per-tab drop
+    if (e.defaultPrevented) return; // strip handled per-tab targeting
+    if (dataTransferHas(e, TAB_DT_TYPE)) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (panelDragOver !== "tab") setPanelDragOver("tab");
+      return;
+    }
     if (!dropTargetId) return;
-    if (!dataTransferHasEntry(e)) return;
+    if (!dataTransferHas(e, ENTRY_DT_TYPE)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
-    if (!panelDragOver) setPanelDragOver(true);
+    if (panelDragOver !== "entry") setPanelDragOver("entry");
   };
 
   const handlePanelDragLeave = (e: DragEvent<HTMLDivElement>) => {
     const next = e.relatedTarget as Node | null;
     if (next && e.currentTarget.contains(next)) return;
-    setPanelDragOver(false);
+    setPanelDragOver(null);
   };
 
   const handlePanelDrop = (e: DragEvent<HTMLDivElement>) => {
-    setPanelDragOver(false);
-    if (e.defaultPrevented) return; // strip handled a per-tab drop
+    setPanelDragOver(null);
+    if (e.defaultPrevented) return; // strip handled per-tab drop
+    const tabLibId = e.dataTransfer.getData(TAB_DT_TYPE);
+    if (tabLibId) {
+      e.preventDefault();
+      onMoveTab(tabLibId, panel, tabs.openIds.length);
+      return;
+    }
     if (!dropTargetId) return;
-    const entryKey = e.dataTransfer.getData(ENTRY_DT_TYPE);
-    if (!entryKey) return;
+    const keys = readEntryKeys(e);
+    if (keys.length === 0) return;
     e.preventDefault();
-    onAddEntryToLibrary(dropTargetId, entryKey);
+    onAddEntriesToLibrary(dropTargetId, keys);
   };
+
+  const handleOpenPaper = (citekey: string) => onOpenPaper(citekey, panel);
 
   return (
     <div
@@ -286,65 +374,120 @@ export default function TabbedLibraryPanel({
         onCreate={() => onCreate(panel)}
         onOpenRecent={(id) => onOpenRecent(id, panel)}
         onMoveTab={onMoveTab}
-        onDropEntry={onAddEntryToLibrary}
+        onDropEntries={onAddEntriesToLibrary}
         panelRef={panelRef}
       />
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          background: "var(--surface)",
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "column",
-          border: "1px solid var(--topbar-border)",
-          borderRadius: 10,
-        }}
-      >
-        {activeLibrary && isProject(activeLibrary.id) ? (
-          <ProjectHeader
-            hasDoc={project.hasDoc}
-            docLabel={project.docLabel}
-            citedOnly={project.citedOnly}
-            setCitedOnly={project.setCitedOnly}
-            bibCount={project.bibKeys.size}
-            citedCount={project.citedKeys.size}
-          />
-        ) : null}
-        {activeLibrary && isProject(activeLibrary.id) && !project.hasDoc ? (
-          <div
-            style={{
-              flex: 1,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 24,
-              color: "var(--muted)",
-              fontStyle: "italic",
-              fontSize: 13,
-              textAlign: "center",
-            }}
-          >
-            Open a document tab to see its bibliography here.
-          </div>
-        ) : (
-          <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
-            <LeftList
-              entries={visibleEntries}
+      {activeLibrary ? (
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            // Paper-kind tabs fill the warm Virgil canvas so the body
+            // extends the active tab's color into the editor pod's
+            // frame — same ground the editor/view sits on elsewhere.
+            // Other library kinds (Central, project, custom) keep the
+            // crisp white surface.
+            background: isPaper(activeLibrary) ? "var(--background)" : "var(--surface)",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            border: "1px solid var(--topbar-border)",
+            borderRadius: 10,
+          }}
+        >
+          {isPaper(activeLibrary) ? (
+            <PaperFileBody
+              handle={handle}
+              citekey={activeLibrary.citekey ?? null}
+              entries={entries}
               bibByKey={bibByKey}
-              selectedKey={selectedKey}
-              onSelect={onSelect}
-              rowActions={rowActions}
-              dropHighlight={panelDragOver}
-              dotToneFor={dotToneFor}
-              onRowViewed={(citekey: string | null | undefined) => {
-                if (citekey) markViewed(citekey);
-              }}
+              onBibChanged={onBibChanged}
             />
-          </div>
-        )}
+          ) : (
+            <>
+              {isProject(activeLibrary.id) ? (
+                <ProjectHeader
+                  hasDoc={project.hasDoc}
+                  docLabel={project.docLabel}
+                  citedOnly={project.citedOnly}
+                  setCitedOnly={project.setCitedOnly}
+                  bibCount={project.bibKeys.size}
+                  citedCount={project.citedKeys.size}
+                />
+              ) : null}
+              {isProject(activeLibrary.id) && !project.hasDoc ? (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: 24,
+                    color: "var(--muted)",
+                    fontStyle: "italic",
+                    fontSize: 13,
+                    textAlign: "center",
+                  }}
+                >
+                  Open a document tab to see its bibliography here.
+                </div>
+              ) : (
+                <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+                  <LeftList
+                    entries={visibleEntries}
+                    bibByKey={bibByKey}
+                    selectedKeys={selectedKeys}
+                    anchorKey={anchorKey}
+                    onSelectKeys={onSelectKeys}
+                    onOpenPaper={handleOpenPaper}
+                    rowActions={rowActions}
+                    dropHighlight={panelDragOver === "entry"}
+                    dotToneFor={dotToneFor}
+                    onRowViewed={(citekey: string | null | undefined) => {
+                      if (citekey) markViewed(citekey);
+                    }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      ) : (
+        <EmptyPanelBody />
+      )}
       </div>
-      </div>
+      {panelDragOver === "tab" && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "rgba(124, 94, 60, 0.08)",
+            border: "2px dashed var(--accent)",
+            pointerEvents: "none",
+            zIndex: 30,
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function EmptyPanelBody() {
+  return (
+    <div
+      style={{
+        flex: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        color: "var(--muted)",
+        fontStyle: "italic",
+        fontSize: 13,
+        textAlign: "center",
+      }}
+    >
+      Open a library or paper from the other panel, or use “+” above to add a tab.
     </div>
   );
 }

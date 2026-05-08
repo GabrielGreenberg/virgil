@@ -1,18 +1,20 @@
 "use client";
 
-import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo } from "react";
-import { createPortal } from "react-dom";
+import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, type ReactNode } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { readPdf } from "@/lib/storage";
-import MenuBar, { DetachedActionsToolbar, DetachedFormattingToolbar, DetachedMenuToolbar, type MarginaliaType, type DividerLevel, type DividerWidth, type ToolbarOrientation } from "./MenuBar";
+import { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
-import { useDragGap } from "@/hooks/useDragGap";
 import { useFiles } from "@/hooks/useFiles";
+import {
+  beginDocPipeline,
+  endDocPipeline,
+} from "@/lib/multi-window/doc-pipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useDocument } from "@/hooks/useDocument";
 import { useCollab, CollabProvider } from "@/hooks/useCollab";
@@ -26,23 +28,23 @@ import { ErrorsHost } from "./editor-layout/panels/errors-host";
 import { IconErrors } from "./editor-layout/panel-icons";
 import PrintDialog from "./PrintDialog";
 import FontsDialog from "./FontsDialog";
-import PrintAppendices from "./PrintAppendices";
-import type { PrintPanelKey } from "@/lib/print";
 import { useSuggestions } from "@/hooks/useSuggestions";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useTodos } from "@/hooks/useTodos";
 import { useAiRequests } from "@/hooks/useAiRequests";
+import type { AiRequest } from "@/lib/types";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
-import { useAnnotations } from "@/hooks/useAnnotations";
-import { useBibReview } from "@/hooks/useBibReview";
-import { useBibSettings } from "@/hooks/useBibSettings";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
-import { DOCUMENT_STYLES, type DocumentStyleId } from "@/lib/document-styles";
+import { useStyleLibrary } from "@/hooks/useStyleLibrary";
+import { readTex } from "@/lib/storage";
+import { extractPreambleAndPostamble } from "@/lib/latex-parser";
+import StyleApplyDialog from "./StyleApplyDialog";
+import StyleEditorModal from "./StyleEditorModal";
+import ManageStylesModal from "./ManageStylesModal";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
 import { useQuotations } from "@/hooks/useQuotations";
-import Marginalia from "./Marginalia";
 import {
   isAnchorableNode,
   MIME_ARCHIVE,
@@ -121,6 +123,12 @@ import {
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
 import { DockOutline } from "./editor-layout/DockOutline";
+import { CardLiftOutline } from "./CardLiftOutline";
+import {
+  findDockTargetAtPoint,
+  setDockDragTarget,
+  getDockDragTarget,
+} from "./editor-layout/dock-drag";
 import {
   FLOATING_PANEL_WIDTH,
   FLOATING_PANEL_HEIGHT,
@@ -132,31 +140,14 @@ import { computeSpawnPosition } from "./editor-layout/spawn-position";
 import {
   alignEntryToY,
   scrollEntryIntoView,
-  findRowScroll,
   findEditorScrollFor,
 } from "./editor-layout/layout-scroll";
 import {
-  PANEL_ICONS,
-  panelLabel,
-  IconPlus,
   IconX,
-  IconBlank,
-  IconSplit,
   IconLibrary,
 } from "./editor-layout/panel-icons";
 import { DocumentFolderTab } from "./editor-layout/DocumentFolderTab";
-import { PanelColumn, PlaceholderPanel } from "./editor-layout/panel-column";
-import {
-  computeSnapGrid,
-  resolveDragPosition,
-  type SnapGrid,
-  type RectLike,
-} from "./editor-layout/snap-grid";
-import { ZenMargin } from "./editor-layout/zen-margin";
-import { MarginActionToolbar } from "./MarginActionToolbar";
-import { SectionLozenge } from "./editor-layout/section-lozenge";
-import { SplitEditorPanes } from "./editor-layout/split-editor-panes";
-import { StripButton, useStripHandlers } from "./editor-layout/drag-drop";
+import { useStripHandlers } from "./editor-layout/drag-drop";
 import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
@@ -184,11 +175,8 @@ import { SelectionsProvider } from "./editor-layout/contexts/selections";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
-import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
-import { useCardCreation } from "./editor-layout/card-actions/card-creation";
-import { renderPoppedCard } from "./editor-layout/floating-cards";
 import { OutlineHost } from "./editor-layout/panels/outline-host";
 import { CutterHost } from "./editor-layout/panels/cutter-host";
 import { TodoHost } from "./editor-layout/panels/todo-host";
@@ -213,7 +201,9 @@ import PreferenceModePicker from "./PreferenceModePicker";
 import { applyTransforms } from "@/lib/color-transforms";
 import { PREF_TO_CSS, DERIVED_CSS } from "@/lib/preferences-tree";
 import PreferencesModal from "./PreferencesModal";
-import AIWindow, { aiRequestDotStatus } from "./AIWindow";
+import EditorPane, { stubAddStyleMergeRequest } from "./EditorPane";
+import type { PaneState, EditorPaneViewPrefs, EditorPaneMenuBarBundle } from "./EditorPane";
+import { FULL_CHROME } from "./editor-layout/chrome-config";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
@@ -227,6 +217,11 @@ import { serializeToLatex } from "@/lib/latex-serializer";
 import pkg from "../../package.json";
 
 const APP_VERSION = pkg.version;
+
+// Stable no-op fallback for the `paneState?.X ?? noop` reads in the
+// vbar source. Module-scope so JSX references stay referentially
+// stable across renders.
+const noop = () => {};
 import type { OrphanedFootnote } from "@/lib/types";
 import { hasFsaSupport } from "@/lib/fsa-support";
 import { queryRW } from "@/lib/fsa-permissions";
@@ -237,18 +232,60 @@ import { RecentPapersList } from "./RecentPapersList";
 import { InstallPwaPrompt } from "./InstallPwaPrompt";
 import { TabPlusMenu } from "./TabPlusMenu";
 import { LibraryTabView } from "./library/LibraryTabView";
+import PaperOuterView from "./library/PaperOuterView";
+import LibraryOuterView from "./library/LibraryOuterView";
+import {
+  OUTER_LIBRARY_PREFIX,
+  OUTER_LIBRARY_ROOT_ID,
+  OUTER_PAPER_PREFIX,
+} from "@/lib/doc-index";
+import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-types";
+import { addEntryToLibraryGlobal } from "@library/lib/library-store";
+import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
 
 /**
  * "Style" dropdown for the active document, mounted in the Virgil bar.
- * Shows the currently-selected preamble preset and lets the user swap
- * presets — see useDocumentStyle for the rewrite mechanics. Renders
- * nothing when no doc is open.
+ * Reads the user's style library (cross-doc, localStorage), shows the
+ * doc's currently-selected style, and routes pick / add / manage
+ * actions through the appropriate modal.
+ *
+ *   - Picking a style with no preamble drift  → silent apply.
+ *   - Picking a style with drift              → StyleApplyDialog
+ *                                               (Hard vs AI-managed).
+ *   - "Save current preamble as new style…"   → StyleEditorModal seeded
+ *                                               with the doc's preamble.
+ *   - "Add new style…"                        → StyleEditorModal blank.
+ *   - "Manage styles…"                        → ManageStylesModal.
+ *
+ * A pending `style-merge` AI request disables apply actions and tags the
+ * active label with "· merging…" until the agent runs `/style-merge`.
  */
-function DocStyleDropdown({ docId }: { docId: string | null }) {
-  const { style, setStyle } = useDocumentStyle(docId);
+interface DocStyleDropdownProps {
+  docId: string | null;
+  aiRequests: AiRequest[];
+  addStyleMergeRequest: (args: {
+    targetStyleId: string;
+    targetStyleName: string;
+    targetPreamble: string;
+    currentPreamble: string;
+    note?: string;
+  }) => AiRequest;
+}
+
+function DocStyleDropdown({
+  docId,
+  aiRequests,
+  addStyleMergeRequest,
+}: DocStyleDropdownProps) {
+  const { styleId, setStyle } = useDocumentStyle(docId);
+  const { styles, addStyle } = useStyleLibrary();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
+  const [docPreamble, setDocPreamble] = useState<string | null>(null);
+  const [manageOpen, setManageOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<null | "new" | "fromCurrent">(null);
+  const [applyTarget, setApplyTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -259,13 +296,50 @@ function DocStyleDropdown({ docId }: { docId: string | null }) {
     return () => document.removeEventListener("mousedown", close);
   }, [open]);
 
+  // Load the doc's current preamble whenever the dropdown opens or the
+  // active doc changes. Used for drift detection and as the source for
+  // "save current as new style" / the apply confirmation diff.
+  useEffect(() => {
+    if (!docId) {
+      setDocPreamble(null);
+      return;
+    }
+    let cancelled = false;
+    readTex(docId)
+      .then((latex) => {
+        if (cancelled) return;
+        const d = extractPreambleAndPostamble(latex);
+        setDocPreamble(d?.preamble ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setDocPreamble(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Re-read when the dropdown opens — the user might have just edited
+    // the preamble in code view.
+  }, [docId, open]);
+
+  const pendingMerge = aiRequests.find(
+    (r) => r.kind === "style-merge" && r.status === "submitted",
+  );
+
   if (!docId) return null;
+
+  const activeStyle = styles.find((s) => s.id === styleId);
+  const activeName = activeStyle?.name ?? "Style";
+  const drifted =
+    !!activeStyle &&
+    docPreamble != null &&
+    docPreamble !== activeStyle.preamble;
 
   const handleToggle = () => {
     if (!open && ref.current) {
       const r = ref.current.getBoundingClientRect();
-      const POPUP_H = 24 * DOCUMENT_STYLES.length + 8;
-      const POPUP_W = 160;
+      // Conservative size estimate — list + 3 menu items + separator.
+      const POPUP_H = 24 * (styles.length + 3) + 16;
+      const POPUP_W = 220;
       const GAP = 4;
       const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
       const flipLeft = r.left + POPUP_W > window.innerWidth - 4 && window.innerWidth - r.right > POPUP_W;
@@ -276,227 +350,316 @@ function DocStyleDropdown({ docId }: { docId: string | null }) {
     setOpen(!open);
   };
 
-  const pick = (id: DocumentStyleId) => {
-    setOpen(false);
-    if (id !== style) void setStyle(id);
+  /** Resolve the doc's current preamble synchronously if cached, else
+   *  fetch it from disk. Used by `pick` to decide drift before showing
+   *  the confirmation. */
+  const ensureDocPreamble = async (): Promise<string> => {
+    if (docPreamble != null) return docPreamble;
+    if (!docId) return "";
+    try {
+      const latex = await readTex(docId);
+      const d = extractPreambleAndPostamble(latex);
+      const p = d?.preamble ?? "";
+      setDocPreamble(p);
+      return p;
+    } catch {
+      return "";
+    }
   };
+
+  const pick = async (id: string) => {
+    setOpen(false);
+    if (pendingMerge) return;
+    if (id === styleId) return;
+    const target = styles.find((s) => s.id === id);
+    if (!target) return;
+    const current = await ensureDocPreamble();
+    const activeRegistered = activeStyle?.preamble ?? "";
+    if (current === activeRegistered) {
+      // No drift — silent apply.
+      void setStyle(id);
+    } else {
+      setApplyTarget(id);
+    }
+  };
+
+  const onApplyHard = () => {
+    if (!applyTarget) return;
+    void setStyle(applyTarget);
+    setApplyTarget(null);
+  };
+
+  const onApplyAi = async () => {
+    if (!applyTarget) return;
+    const target = styles.find((s) => s.id === applyTarget);
+    if (!target) {
+      setApplyTarget(null);
+      return;
+    }
+    const current = await ensureDocPreamble();
+    addStyleMergeRequest({
+      targetStyleId: target.id,
+      targetStyleName: target.name,
+      targetPreamble: target.preamble,
+      currentPreamble: current,
+    });
+    setApplyTarget(null);
+  };
+
+  const targetEntry = applyTarget
+    ? styles.find((s) => s.id === applyTarget)
+    : null;
+
+  const canSaveCurrent =
+    docPreamble != null &&
+    !!activeStyle &&
+    docPreamble !== activeStyle.preamble;
 
   return (
     <div ref={ref} className="relative inline-flex items-center">
       <button
         onClick={handleToggle}
-        className="topbarbtn ml-1"
-        title="Document style"
+        disabled={!!pendingMerge}
+        className="topbarbtn"
+        title={pendingMerge ? "AI merge in progress…" : "Document style"}
         data-helper="Document style"
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        Style
+        {pendingMerge ? `${activeName} · merging…` : "Style"}
         <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
       </button>
       {open && (
         <div
           role="menu"
-          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[140px]"
+          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[200px]"
           style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right }}
         >
-          {DOCUMENT_STYLES.map((s) => {
-            const active = s.id === style;
+          {styles.map((s) => {
+            const active = s.id === styleId;
             return (
               <button
                 key={s.id}
                 role="menuitem"
-                onClick={() => pick(s.id)}
+                onClick={() => void pick(s.id)}
                 className="w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
               >
                 <span className="w-3 inline-block text-[var(--accent)]">{active ? "✓" : ""}</span>
-                {s.name}
+                <span className="flex-1 truncate">{s.name}</span>
+                {active && drifted && (
+                  <span
+                    title="Doc preamble has been edited since this style was applied"
+                    className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
+                  />
+                )}
               </button>
             );
           })}
+          <div className="my-1 border-t border-[var(--border)]" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              if (canSaveCurrent) setEditorMode("fromCurrent");
+            }}
+            disabled={!canSaveCurrent}
+            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Save current preamble as new style…
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setEditorMode("new");
+            }}
+            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light"
+          >
+            Add new style…
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              setOpen(false);
+              setManageOpen(true);
+            }}
+            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light"
+          >
+            Manage styles…
+          </button>
         </div>
       )}
+
+      {targetEntry && docPreamble != null && (
+        <StyleApplyDialog
+          targetStyleName={targetEntry.name}
+          currentPreamble={docPreamble}
+          targetPreamble={targetEntry.preamble}
+          onHard={onApplyHard}
+          onAi={() => void onApplyAi()}
+          onCancel={() => setApplyTarget(null)}
+        />
+      )}
+
+      {editorMode === "new" && (
+        <StyleEditorModal
+          title="New style"
+          subtitle="Define a new preamble. Available across all your documents."
+          takenNames={styles.map((s) => s.name)}
+          onSave={({ name, preamble }) => {
+            addStyle({ name, preamble });
+            setEditorMode(null);
+          }}
+          onCancel={() => setEditorMode(null)}
+        />
+      )}
+
+      {editorMode === "fromCurrent" && docPreamble != null && (
+        <StyleEditorModal
+          title="Save current preamble as new style"
+          subtitle="The current document's preamble is pre-filled below."
+          initialPreamble={docPreamble}
+          takenNames={styles.map((s) => s.name)}
+          onSave={({ name, preamble }) => {
+            addStyle({ name, preamble });
+            setEditorMode(null);
+          }}
+          onCancel={() => setEditorMode(null)}
+        />
+      )}
+
+      {manageOpen && <ManageStylesModal onClose={() => setManageOpen(false)} />}
     </div>
   );
 }
 
 /**
- * Custom thin scrollbar pinned to the editor column's right edge.
+ * Negative margins applied to the active folder tab's wrapper so the
+ * layout stays pixel-stable when promoting/demoting an inline tab:
  *
- * The unified row scroll places the native scrollbar at the far right of
- * the window. This component instead renders a custom thumb at the editor
- * pod's right edge, so the scroll affordance sits next to the content it
- * scrolls. The native vertical scrollbar is hidden via CSS in globals.css.
+ *   • LEFT (-18px): the folder's content text sits 26px in from its visual
+ *     left edge (12px swoop + 14px pl-3.5). Inline labels place text 8px
+ *     in (pl-2). Shifting the active wrapper left by their difference
+ *     keeps the text x-position fixed across activation.
  *
- * Position is computed in viewport coords from the editor column's
- * bounding rect, updated on row scroll, resize, and panel collapse/expand.
- * Drag handlers translate thumb-Y deltas into row.scrollTop changes.
+ *   • RIGHT (-8px): the folder is 26px wider than the inline (12+14+4+12
+ *     vs 8+8 of horizontal padding). After the -18 left shift, the folder
+ *     still claims 8 more px on the right of the layout slot than the
+ *     inline did. The negative marginRight reclaims that space so right-
+ *     hand neighbors don't shift when a tab is activated.
+ *
+ * The silhouette visually extends past the inline slot on both sides —
+ * fine because only one active tab exists at a time and the swoop just
+ * pleasantly overlaps the gap between adjacent items.
+ *
+ * Both margins assume the inline label uses gap-1.5 (matching the folder's
+ * child gap), so the children's combined width is identical in both
+ * states regardless of the number of children (icon + label + close X).
  */
-function EditorScrollbar({
-  rowRef,
-  editorColRef,
-  topInset = 40,
-  bottomInset = 18,
-  width = 6,
-  outset = 2,
+const ACTIVE_TAB_LEFT_SHIFT_PX = 18;
+const ACTIVE_TAB_RIGHT_SHIFT_PX = 8;
+
+/**
+ * Inline (inactive) tab label rendered as flat clickable text in the Virgil
+ * bar. Used for every outer tab that isn't the currently-active item —
+ * those keep the full DocumentFolderTab silhouette.
+ *
+ * `variant` defaults to "tight" (pl-2 pr-2): used by paper/library/doc
+ * tabs whose active counterpart applies negative margins to keep text and
+ * neighbors pixel-stable across activation. The Library root tab passes
+ * "library-pinned" instead (pl-[26px] pr-[26px]) — Library can't shift
+ * its silhouette leftward (it's the leftmost item), so the inline label
+ * pre-reserves the swoop+inner-padding space, matching the folder
+ * geometry exactly.
+ *
+ * Omitting `onClose` hides the × button (used by the Library root tab,
+ * which is permanent and can't be closed).
+ */
+function InlineTabLabel({
+  icon,
+  label,
+  title,
+  monospace,
+  variant = "tight",
+  onClick,
+  onClose,
 }: {
-  rowRef: React.RefObject<HTMLElement | null>;
-  editorColRef: React.RefObject<HTMLElement | null>;
-  topInset?: number;
-  bottomInset?: number;
-  width?: number;
-  /** Pixels right of the editor column's right edge to start the track. */
-  outset?: number;
+  icon?: ReactNode;
+  label: string;
+  title: string;
+  monospace?: boolean;
+  variant?: "tight" | "library-pinned";
+  onClick: () => void;
+  onClose?: () => void;
 }) {
-  const [layout, setLayout] = useState({ left: 0, top: 0, height: 0 });
-  const [scroll, setScroll] = useState({ top: 0, height: 1, client: 1 });
-  const [hover, setHover] = useState(false);
-  const dragging = useRef(false);
-
-  const refresh = useCallback(() => {
-    const ec = editorColRef.current;
-    const row = rowRef.current;
-    if (!ec || !row) return;
-    const ecr = ec.getBoundingClientRect();
-    const rowr = row.getBoundingClientRect();
-    setLayout({
-      left: ecr.right + outset,
-      top: rowr.top + topInset,
-      height: Math.max(0, rowr.height - topInset - bottomInset),
-    });
-    // Use editor-column scrollHeight (capped by row's), not row's, so the
-    // thumb maxes out when the editor's bottom comes into view rather than
-    // when the (possibly taller) panel columns do.
-    const effectiveHeight = Math.min(ec.scrollHeight, row.scrollHeight);
-    setScroll({
-      top: row.scrollTop,
-      height: effectiveHeight,
-      client: row.clientHeight,
-    });
-  }, [rowRef, editorColRef, topInset, bottomInset, outset]);
-
-  useEffect(() => {
-    refresh();
-    const row = rowRef.current;
-    const ec = editorColRef.current;
-    if (!row || !ec) return;
-    // Clamp the row's scrollTop to the editor's effective end. The panel
-    // columns can be taller than the editor (unanchored cards stack above
-    // the anchored ones) and would otherwise let the row scroll past the
-    // editor's bottom into empty space.
-    const onScrollClamp = () => {
-      const max = Math.max(0, ec.scrollHeight - row.clientHeight);
-      if (row.scrollTop > max) row.scrollTop = max;
-    };
-    row.addEventListener("scroll", onScrollClamp, { passive: true });
-    row.addEventListener("scroll", refresh, { passive: true });
-    window.addEventListener("resize", refresh);
-    const ro = new ResizeObserver(() => { onScrollClamp(); refresh(); });
-    ro.observe(row);
-    ro.observe(ec);
-    // The row's scrollHeight grows as document content is appended/laid
-    // out; ResizeObserver only fires on clientWidth/Height changes, not
-    // scrollHeight, so also observe the page-wrapper (the actual content
-    // host that grows) and use a MutationObserver as a backstop for
-    // text/node mutations the ResizeObserver misses.
-    const page = ec.querySelector("[data-editor-page]") as HTMLElement | null;
-    if (page) ro.observe(page);
-    const mo = new MutationObserver(() => { onScrollClamp(); refresh(); });
-    mo.observe(row, { childList: true, subtree: true, characterData: true });
-    return () => {
-      row.removeEventListener("scroll", onScrollClamp);
-      row.removeEventListener("scroll", refresh);
-      window.removeEventListener("resize", refresh);
-      ro.disconnect();
-      mo.disconnect();
-    };
-  }, [rowRef, editorColRef, refresh]);
-
-  const scrollable = scroll.height > scroll.client + 1;
-  const thumbRatio = scrollable ? scroll.client / scroll.height : 1;
-  const thumbHeight = Math.max(24, layout.height * thumbRatio);
-  const maxThumbY = Math.max(0, layout.height - thumbHeight);
-  const progress = scrollable
-    ? Math.min(1, Math.max(0, scroll.top / (scroll.height - scroll.client)))
-    : 0;
-  const thumbY = progress * maxThumbY;
-
-  const onThumbMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      const row = rowRef.current;
-      if (!row || !scrollable) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragging.current = true;
-      const startY = e.clientY;
-      const startScrollTop = row.scrollTop;
-      const dragRange = scroll.height - scroll.client;
-      const trackRange = Math.max(1, maxThumbY);
-      const onMove = (ev: MouseEvent) => {
-        if (!dragging.current) return;
-        const dy = ev.clientY - startY;
-        row.scrollTop = startScrollTop + (dy / trackRange) * dragRange;
-      };
-      const onUp = () => {
-        dragging.current = false;
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
-    },
-    [rowRef, scrollable, scroll.height, scroll.client, maxThumbY],
-  );
-
-  const onTrackMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      const row = rowRef.current;
-      if (!row || !scrollable) return;
-      const trackRect = e.currentTarget.getBoundingClientRect();
-      const clickY = e.clientY - trackRect.top;
-      const direction = clickY < thumbY ? -1 : 1;
-      row.scrollTop = row.scrollTop + direction * scroll.client * 0.9;
-    },
-    [rowRef, scrollable, thumbY, scroll.client],
-  );
-
-  if (!scrollable) return null;
-
+  const padding =
+    variant === "library-pinned" ? "pl-[26px] pr-[26px]" : "pl-2 pr-2";
+  // Tight inline tabs (paper / doc / library outer) keep compact content
+  // padding but render their hover highlight at the active-folder's full
+  // visible extent — extending 18px left and 8px right past the wrapper
+  // (matching the folder's swoop offset on each side after the active
+  // wrapper's negative margins of -18 / -8). The Library-pinned variant
+  // already shares the folder's geometry, so its highlight sits flush
+  // with the wrapper.
+  const hoverBgInsetX =
+    variant === "library-pinned" ? "inset-x-0" : "-left-[18px] -right-[8px]";
   return (
     <div
-      data-editor-scrollbar
-      style={{
-        position: "fixed",
-        left: layout.left,
-        top: layout.top,
-        width,
-        height: layout.height,
-        zIndex: 25,
-        pointerEvents: "auto",
-        background: "transparent",
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
       }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onMouseDown={onTrackMouseDown}
+      title={title}
+      className={`group relative flex items-center gap-1.5 ${padding} h-[24px] cursor-default shrink-0`}
     >
       <div
-        onMouseDown={onThumbMouseDown}
-        style={{
-          position: "absolute",
-          top: thumbY,
-          left: 0,
-          width,
-          height: thumbHeight,
-          background:
-            hover || dragging.current
-              ? "rgba(0,0,0,0.45)"
-              : "rgba(0,0,0,0.25)",
-          borderRadius: width / 2,
-          cursor: "grab",
-          transition: "background 120ms ease",
-        }}
+        aria-hidden
+        className={`absolute inset-y-0 rounded transition-colors group-hover:bg-black/5 ${hoverBgInsetX}`}
       />
+      {icon ? <span className="relative inline-flex">{icon}</span> : null}
+      <span
+        className="relative text-[13px] leading-4 truncate max-w-[220px]"
+        style={monospace ? { fontFamily: "var(--mono)" } : undefined}
+      >
+        {label}
+      </span>
+      {onClose ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
+          className="relative topbarbtn topbarbtn-icon opacity-40 group-hover:opacity-100 hover:!opacity-100 transition-opacity"
+          title="Close tab"
+          data-helper="Close tab"
+        >
+          <IconX />
+        </button>
+      ) : null}
     </div>
+  );
+}
+
+/** Thin vertical divider drawn between non-Library tabs. Always occupies
+ *  layout space (so promoting/demoting a tab doesn't shift its neighbors);
+ *  only painted when both adjacent tabs are inline — adjacent to the active
+ *  folder tab, the silhouette's edge serves as the divider so the line is
+ *  hidden via `visibility: hidden`. Same pattern as Chrome/Edge. */
+function TabSeparator({ visible }: { visible: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="self-center inline-block shrink-0 w-px h-4 mx-1"
+      style={{
+        background: "var(--edge-strong, #a8a29e)",
+        visibility: visible ? "visible" : "hidden",
+      }}
+    />
   );
 }
 
@@ -564,11 +727,20 @@ export default function EditorLayout() {
     createFileInPendingFolder,
     activePane,
     activateDocPane,
-    activateLibraryPane,
-    toggleActivePane,
+    focusDoc,
+    outerOrder,
+    currentPaperCitekey,
+    openPaperTab,
+    closePaperTab,
+    activatePaperPane,
+    currentLibraryOuterId,
+    openLibraryOuterTab,
+    closeLibraryOuterTab,
+    activateLibraryOuterPane,
   } = useFiles();
+  const libraryRegistry = useLibraryRegistry();
 
-  useLibraryBridge({ currentDocId, activateLibraryPane });
+  useLibraryBridge({ activateLibraryOuterPane });
 
   // "New document" modal state. `mode: "fresh"` uses the OS directory
   // picker; `mode: "inFolder"` writes into the already-picked folder
@@ -584,6 +756,11 @@ export default function EditorLayout() {
   const [docPermState, setDocPermState] = useState<DocPermState>("loading");
   const [activeDocHandle, setActiveDocHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
+  // EditorPane bubbles its per-doc state here via `onPaneStateChange`
+  // so the Virgil bar can read editor / compile / view-switch / AI-dot
+  // status against the live values without owning the hooks itself.
+  const [paneState, setPaneState] = useState<PaneState | null>(null);
+
   // SSR-safe mirror of `isDevStorage`. The runtime check requires `window`
   // (iframe + FSA detection), so we start false on the server and update
   // after hydration. Used in render to hide FSA-only chrome inside the
@@ -598,6 +775,19 @@ export default function EditorLayout() {
   // (tab strip, path bar) keeps using the un-gated currentDocId.
   const docIdForHooks: string | null =
     docPermState === "granted" ? currentDocId : null;
+
+  // Open the per-doc write pipeline for the active doc and close it on
+  // switch / unmount. Storage writers (writeDocBundle, writeSidecar,
+  // writeBib, writeTex, writePdf) check that their handle's pipelineId
+  // is still the registered pipelineId for the docId — if not, they
+  // throw StalePipelineError and the write is dropped. This is what
+  // mathematically prevents a stale debounced autosave from ever
+  // writing one doc's content into another doc's files.
+  useEffect(() => {
+    if (!docIdForHooks) return;
+    const handle = beginDocPipeline(docIdForHooks);
+    return () => endDocPipeline(handle);
+  }, [docIdForHooks]);
 
   const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(docIdForHooks);
   // Mismatch prompt: fired by the compile hook when the source's
@@ -655,25 +845,10 @@ export default function EditorLayout() {
   } = useSuggestions(docIdForHooks);
   const {
     cards: revisionCards,
-    tracker: revisionsTracker,
     addComment: addRevisionComment,
     addSuggestion: addRevisionSuggestion,
-    updateCommentContent: updateRevisionCommentContent,
-    updateCommentText: updateRevisionCommentText,
-    setCommentAiRequest: setRevisionCommentAiRequest,
-    updateSuggestionField: updateRevisionSuggestionField,
-    setSuggestionStatus: setRevisionSuggestionStatus,
-    setTrackerTarget: setRevisionsTrackerTarget,
-    addCardParagraphId: addRevisionCardParagraphId,
-    removeCardParagraphId: removeRevisionCardParagraphId,
-    deleteCard: deleteRevisionCard,
-    discardPristineCards: discardRevisionPristineCards,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
-  const activeRevisionsCount = revisionCards.length;
-  const refreshRevisions = useCallback(() => {}, []);
-  void addRevisionCardParagraphId;
-  void removeRevisionCardParagraphId;
   // Unified pristine-card manager — tracks blank-on-create cards across all
   // kinds and discards them via a global click-away listener once the user
   // clicks outside the card's DOM. Each per-kind hook gets its slice here.
@@ -688,8 +863,6 @@ export default function EditorLayout() {
   const {
     notes,
     addNote,
-    updateNote,
-    updateNoteTitle,
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,
@@ -701,11 +874,6 @@ export default function EditorLayout() {
     goal: cutterGoal,
     addComment: addCutterComment,
     addSuggestion: addCutterSuggestion,
-    updateCommentContent: updateCutterCommentContent,
-    updateCommentText: updateCutterCommentText,
-    setCommentAiRequest: setCutterCommentAiRequest,
-    updateSuggestionField: updateCutterSuggestionField,
-    setSuggestionStatus: setCutterSuggestionStatus,
     setGoal: setCutterGoal,
     clearGoal: clearCutterGoal,
     addCardParagraphId,
@@ -718,24 +886,13 @@ export default function EditorLayout() {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
     deleteGroup: deleteQuotationGroup,
-    updateGroupTitle: updateQuotationGroupTitle,
-    updateNotes: updateQuotationNotes,
     addParagraphId: addQuotationParagraphId,
     removeParagraphId: removeQuotationParagraphId,
-    addReference: addQuotationReference,
-    deleteReference: deleteQuotationReference,
-    updateReferenceCiteKey: updateQuotationReferenceCiteKey,
-    addQuote: addQuotationQuote,
-    updateQuote: updateQuotationQuote,
-    deleteQuote: deleteQuotationQuote,
   } = useQuotations(docIdForHooks, quotationPristine);
   const {
     items: todoItems,
     addItem: addTodo,
-    toggleItem: toggleTodo,
     updateItem: updateTodo,
-    updateNotes: updateTodoNotes,
-    setAiRequest: setTodoAiRequest,
     deleteItem: deleteTodo,
     archiveDone: archiveTodos,
     addParagraphId: addTodoParagraphId,
@@ -746,6 +903,7 @@ export default function EditorLayout() {
   const {
     requests: aiRequests,
     addRequest: addAiRequest,
+    addStyleMergeRequest,
     updateRequestText: updateAiRequestText,
     deleteRequest: deleteAiRequest,
   } = useAiRequests(docIdForHooks);
@@ -754,7 +912,6 @@ export default function EditorLayout() {
     snippets: archiveSnippets,
     archiveContent,
     updateSnippet: updateArchiveSnippet,
-    updateSnippetTitle: updateArchiveSnippetTitle,
     addParagraphId: addArchiveParagraphId,
     removeParagraphId: removeArchiveParagraphId,
     restoreSnippet,
@@ -765,18 +922,13 @@ export default function EditorLayout() {
     citations,
     bibPath,
     citationStyle,
-    bibPackage,
     bibEntries,
     addCitation,
-    updateCitation,
     deleteCitation,
     setStyle: setCitationStyle,
     setBibPackage,
     addBibEntry,
-    updateBibEntry,
-    updateBibKeyAndType,
     getDisplayText: getCitationDisplayText,
-    getFormattedBib,
     syncFromEditor: syncCitationsFromEditor,
   } = useCitations(docIdForHooks, citationPristine);
 
@@ -818,27 +970,8 @@ export default function EditorLayout() {
     />
   );
 
-  const { getAnnotation, setAnnotation } = useAnnotations(docIdForHooks);
-  const {
-    requests: bibReviewRequests,
-    requestReview: requestBibReview,
-    cancelRequest: cancelBibReview,
-    getRequestStatus: getBibReviewStatus,
-    refresh: refreshBibReview,
-  } = useBibReview(docIdForHooks);
-  const {
-    generalBibPath,
-    entryRequests,
-    setGeneralBibPath,
-    addEntryRequest,
-    removeEntryRequest,
-    refresh: refreshBibSettings,
-  } = useBibSettings(docIdForHooks);
-
   const {
     prefs,
-    leftItems,
-    rightItems,
     togglePanel,
     movePanel,
     setPanelWidth,
@@ -870,6 +1003,11 @@ export default function EditorLayout() {
     closeCardPopout,
     setCardFloatPosition,
     setPrintOptions,
+    setEditorLeftMargin,
+    setEditorRightMargin,
+    setTopGutter,
+    setBottomGutter,
+    setTopbarRightCollapsed,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -881,244 +1019,60 @@ export default function EditorLayout() {
   // route strip-icon clicks when the side is split. Session-only state.
   const [focusedHalfLeft, setFocusedHalfLeft] = useState<Half>("top");
   const [focusedHalfRight, setFocusedHalfRight] = useState<Half>("top");
+
+  // Transient dock-zone flash on split toggle. Splitting a side doesn't
+  // visually change the column when no panels are docked; this brief
+  // outline pulse communicates *where* the two dock zones live so the
+  // toggle isn't silent. Reuses the DockOutline machinery (primary +
+  // companion rects with WAAPI fade) for a ~720ms pulse.
+  const prevSplitLeftRef = useRef(prefs.activeLeftBottom != null);
+  const prevSplitRightRef = useRef(prefs.activeRightBottom != null);
+  useEffect(() => {
+    const isSplitLeft = prefs.activeLeftBottom != null;
+    const isSplitRight = prefs.activeRightBottom != null;
+    const flash = (side: Side) => {
+      const col = document.querySelector<HTMLElement>(
+        `[data-panel-column-side="${side}"]`,
+      );
+      if (!col) return;
+      const r = col.getBoundingClientRect();
+      const splitState = { left: isSplitLeft, right: isSplitRight };
+      const target = findDockTargetAtPoint(
+        r.left + r.width / 2,
+        r.top + r.height * 0.25,
+        splitState,
+      );
+      if (!target) return;
+      setDockDragTarget(target);
+      window.setTimeout(() => {
+        const cur = getDockDragTarget();
+        // Only clear if the flash is still the active target — if a
+        // drag started in the meantime its mousemove already overwrote.
+        if (cur && cur.slotKey === target.slotKey && !cur.companionRect === !target.companionRect) {
+          setDockDragTarget(null);
+        }
+      }, 720);
+    };
+    if (isSplitLeft && !prevSplitLeftRef.current) flash("left");
+    if (isSplitRight && !prevSplitRightRef.current) flash("right");
+    prevSplitLeftRef.current = isSplitLeft;
+    prevSplitRightRef.current = isSplitRight;
+  }, [prefs.activeLeftBottom, prefs.activeRightBottom]);
   // Which pane last received focus — used to route panel interactions
   // (outline clicks, note jumps, etc.) to the pane the user is in.
   const [activeSplitPane, setActiveSplitPane] = useState<"top" | "bottom">("top");
   const mirrorViewRef = useRef<import("prosemirror-view").EditorView | null>(null);
 
-  // MenuBar lives at home (docked in the Virgil top bar, centered over
-  // the document). Tearing off via the grab bar spawns a
-  // `DetachedMenuToolbar` copy; the home bar itself never moves.
-  const editorColRef = useRef<HTMLDivElement>(null);
-  const menuWrapRef = useRef<HTMLDivElement>(null);
-  const menuWrapRoRef = useRef<ResizeObserver | null>(null);
-  const [menuPortalReady, setMenuPortalReady] = useState(false);
+  // Editor column ref — kept here as a placeholder; the actual
+  // editor column rendering lives inside EditorPane post-7.8.
+  // Some legacy code paths (search, error highlight scroll) still
+  // need to address it; they consult `editorRef` directly now.
 
-  // Rects of the two non-empty groups in the Virgil top bar — the
-  // MenuBar's home position clamps between these so it never overlaps the
-  // tabs on the left or the Zen/Prefs/Version cluster on the right.
-  const topbarLeftRef = useRef<HTMLDivElement>(null);
-  const topbarRightRef = useRef<HTMLDivElement>(null);
-  const [topbarGaps, setTopbarGaps] = useState<{
-    leftEnd: number;
-    rightStart: number;
-    top: number;
-    bottom: number;
-  } | null>(null);
+  // Detached-toolbar state (Actions / Formatting / Menu copies) lives
+  // inside EditorPane post-7.8; the EditorLayout shell only references
+  // toolbar refs (menuWrapRef, topbarLeftRef, topbarRightRef, etc.) for
+  // home-position computation, which remain in scope below.
 
-  // Measured size of the rendered menu wrap so we can clamp it against
-  // the topbar gaps and center it over the document at "home".
-  const [menuWrapSize, setMenuWrapSize] = useState<{ w: number; h: number } | null>(null);
-
-  useEffect(() => {
-    setMenuPortalReady(true);
-  }, []);
-
-  // Track the toolbar wrap's measured size via a ResizeObserver bound to
-  // the wrap element through a ref callback. This captures the size
-  // reliably across portal mount and orientation changes — the
-  // home-position calc uses this width to center the pod over the
-  // document and clamp it against the top-bar gaps.
-  const menuWrapRefCb = useCallback((el: HTMLDivElement | null) => {
-    menuWrapRef.current = el;
-    menuWrapRoRef.current?.disconnect();
-    menuWrapRoRef.current = null;
-    if (el) {
-      const read = () => {
-        const r = el.getBoundingClientRect();
-        setMenuWrapSize((prev) =>
-          prev && prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height },
-        );
-      };
-      read();
-      if (typeof ResizeObserver !== "undefined") {
-        const ro = new ResizeObserver(read);
-        ro.observe(el);
-        menuWrapRoRef.current = ro;
-      }
-    }
-  }, []);
-
-  // Live rects for every region that contributes grid lines. Snap lines
-  // are congruent with the edges of the main-text region (the editor
-  // column), plus — when the editor is split — the edges of each split
-  // pane. The editor-col ref comes from a callback ref so we can
-  // re-attach the observer when the column remounts; split panes mount
-  // conditionally and are found via `[data-editor-pane]` attributes.
-  const [colRect, setColRect] = useState<RectLike | null>(null);
-  const [splitPaneRects, setSplitPaneRects] = useState<RectLike[] | null>(null);
-  const [winSize, setWinSize] = useState<{ w: number; h: number } | null>(null);
-
-  const rectsEqual = (a: RectLike | null, b: RectLike | null): boolean => {
-    if (!a && !b) return true;
-    if (!a || !b) return false;
-    return a.left === b.left && a.top === b.top && a.right === b.right && a.bottom === b.bottom;
-  };
-  const paneListsEqual = (a: RectLike[] | null, b: RectLike[] | null): boolean => {
-    if (!a && !b) return true;
-    if (!a || !b) return false;
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (!rectsEqual(a[i], b[i])) return false;
-    }
-    return true;
-  };
-
-  const readAllRects = useCallback(() => {
-    setWinSize((prev) => {
-      const w = window.innerWidth;
-      const h = window.innerHeight;
-      return prev && prev.w === w && prev.h === h ? prev : { w, h };
-    });
-    const el = editorColRef.current;
-    const nextCol: RectLike | null = el
-      ? (() => {
-          const r = el.getBoundingClientRect();
-          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
-        })()
-      : null;
-    setColRect((prev) => (rectsEqual(prev, nextCol) ? prev : nextCol));
-
-    const panes = Array.from(document.querySelectorAll<HTMLElement>('[data-editor-pane]'));
-    const nextPanes: RectLike[] | null = panes.length > 0
-      ? panes.map((p) => {
-          const r = p.getBoundingClientRect();
-          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
-        })
-      : null;
-    setSplitPaneRects((prev) => (paneListsEqual(prev, nextPanes) ? prev : nextPanes));
-  }, []);
-
-  const roRef = useRef<ResizeObserver | null>(null);
-  const moRef = useRef<MutationObserver | null>(null);
-  const editorColRefCb = useCallback((el: HTMLDivElement | null) => {
-    editorColRef.current = el;
-    roRef.current?.disconnect();
-    roRef.current = null;
-    if (el && typeof ResizeObserver !== "undefined") {
-      readAllRects();
-      const ro = new ResizeObserver(readAllRects);
-      ro.observe(el);
-      roRef.current = ro;
-    }
-  }, [readAllRects]);
-
-  // Watch panel-pod mount/unmount (panels are conditionally rendered)
-  // and re-measure. A MutationObserver on document.body with subtree +
-  // attribute watching is coarse but cheap and the measurement is
-  // cheap too.
-  useEffect(() => {
-    if (typeof MutationObserver === "undefined") return;
-    let rafId = 0;
-    const schedule = () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        readAllRects();
-      });
-    };
-    const mo = new MutationObserver(schedule);
-    mo.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ["data-editor-pane", "style", "class"],
-    });
-    moRef.current = mo;
-    return () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      mo.disconnect();
-      moRef.current = null;
-    };
-  }, [readAllRects]);
-
-  useEffect(() => {
-    window.addEventListener("resize", readAllRects);
-    return () => {
-      window.removeEventListener("resize", readAllRects);
-      roRef.current?.disconnect();
-      menuWrapRoRef.current?.disconnect();
-    };
-  }, [readAllRects]);
-
-  // Snap lines disabled — floating toolbars follow the cursor freely
-  // (viewport clamp still applies in resolveDragPosition). Re-enable by
-  // restoring the computeSnapGrid call and its colRect/splitPaneRects deps.
-  const snapGrid = useMemo<SnapGrid>(() => ({ h: [], v: [] }), []);
-  const snapGridRef = useRef(snapGrid);
-  snapGridRef.current = snapGrid;
-
-  // Track the end of the top bar's tab/logo content (via a zero-width
-  // sentinel placed after the "Open folder" "+" button) and the start of
-  // the right cluster (Focus / Zen / Prefs / Version / ...). The MenuBar's
-  // home position clamps between these so it never overlaps either side,
-  // even when tabs crowd the middle.
-  const topbarLeftRoRef = useRef<ResizeObserver | null>(null);
-  const topbarRightRoRef = useRef<ResizeObserver | null>(null);
-  const readTopbarGaps = useCallback(() => {
-    const l = topbarLeftRef.current;
-    const r = topbarRightRef.current;
-    if (!l || !r) return;
-    const lRect = l.getBoundingClientRect();
-    const rRect = r.getBoundingClientRect();
-    setTopbarGaps({
-      leftEnd: lRect.left,
-      rightStart: rRect.left,
-      top: rRect.top,
-      bottom: rRect.bottom,
-    });
-  }, []);
-  const topbarLeftRefCb = useCallback((el: HTMLDivElement | null) => {
-    topbarLeftRef.current = el;
-    topbarLeftRoRef.current?.disconnect();
-    topbarLeftRoRef.current = null;
-    if (el) {
-      readTopbarGaps();
-      if (typeof ResizeObserver !== "undefined") {
-        const ro = new ResizeObserver(readTopbarGaps);
-        ro.observe(el);
-        topbarLeftRoRef.current = ro;
-      }
-    }
-  }, [readTopbarGaps]);
-  const topbarRightRefCb = useCallback((el: HTMLDivElement | null) => {
-    topbarRightRef.current = el;
-    topbarRightRoRef.current?.disconnect();
-    topbarRightRoRef.current = null;
-    if (el) {
-      readTopbarGaps();
-      if (typeof ResizeObserver !== "undefined") {
-        const ro = new ResizeObserver(readTopbarGaps);
-        ro.observe(el);
-        topbarRightRoRef.current = ro;
-      }
-    }
-  }, [readTopbarGaps]);
-
-  useEffect(() => {
-    window.addEventListener("resize", readTopbarGaps);
-    return () => {
-      window.removeEventListener("resize", readTopbarGaps);
-      topbarLeftRoRef.current?.disconnect();
-      topbarRightRoRef.current?.disconnect();
-    };
-  }, [readTopbarGaps]);
-
-
-  // MenuBar is always home-docked now. The grab bar spawns a detached
-  // floating copy instead of moving the bar itself — state below.
-
-  // Detached floating toolbars — the Actions and Formatting popovers in
-  // MenuBar can each be torn off by grabbing their trailing grab bar.
-  // State lives here so each floating copy can outlive the popover
-  // (which closes on tear), and so multiple copies can coexist: every
-  // tear-off spawns a new entry. Actions + Formatting share the same
-  // shape and the same drag helper below.
-  type DetachedToolbarEntry = { id: string; pos: { left: number; top: number } };
-  const [detachedActions, setDetachedActions] = useState<DetachedToolbarEntry[]>([]);
-  const [detachedFormatting, setDetachedFormatting] = useState<DetachedToolbarEntry[]>([]);
-  const [detachedMenus, setDetachedMenus] = useState<DetachedToolbarEntry[]>([]);
-  const [toolbarDragging, setToolbarDragging] = useState(false);
   // True while a panel inner-edge is being dragged. Freezes panel flex
   // (grow/shrink to 0) so the dragged edge stays glued to the cursor —
   // outside drag, panels shrink 100× faster than the editor so window
@@ -1130,10 +1084,6 @@ export default function EditorLayout() {
   // first: the editor holds its basis while panels' flex-shrink (100)
   // eats the shortage before the editor's (1) contributes.
   const [editorBasis, setEditorBasis] = useState(880);
-
-  const nextActionsIdRef = useRef(0);
-  const nextFormattingIdRef = useRef(0);
-  const nextMenuIdRef = useRef(0);
 
   // MRU focus stack for in-app floating windows. Drives Cmd-W (close
   // frontmost). Push on first focus / on open; reconcile when underlying
@@ -1165,9 +1115,6 @@ export default function EditorLayout() {
     const liveKeys = new Set<string>();
     for (const id of prefs.poppedOutPanels) liveKeys.add(`panel:${id}`);
     for (const key of prefs.poppedOutCards) liveKeys.add(`card:${key}`);
-    for (const tb of detachedActions) liveKeys.add(`tb:actions:${tb.id}`);
-    for (const tb of detachedFormatting) liveKeys.add(`tb:formatting:${tb.id}`);
-    for (const tb of detachedMenus) liveKeys.add(`tb:menus:${tb.id}`);
     setFocusStack((prev) => {
       const known = new Set(prev.map(refKey));
       const pruned = prev.filter((r) => liveKeys.has(refKey(r)));
@@ -1178,19 +1125,10 @@ export default function EditorLayout() {
       for (const key of prefs.poppedOutCards) {
         if (!known.has(`card:${key}`)) additions.push({ kind: "card", key });
       }
-      for (const tb of detachedActions) {
-        if (!known.has(`tb:actions:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "actions", id: tb.id });
-      }
-      for (const tb of detachedFormatting) {
-        if (!known.has(`tb:formatting:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "formatting", id: tb.id });
-      }
-      for (const tb of detachedMenus) {
-        if (!known.has(`tb:menus:${tb.id}`)) additions.push({ kind: "toolbar", bucket: "menus", id: tb.id });
-      }
       if (pruned.length === prev.length && additions.length === 0) return prev;
       return [...pruned, ...additions];
     });
-  }, [prefs.poppedOutPanels, prefs.poppedOutCards, detachedActions, detachedFormatting, detachedMenus]);
+  }, [prefs.poppedOutPanels, prefs.poppedOutCards]);
 
   // Cmd-W closes the most-recently-focused floating window (the top of
   // the MRU stack). When the stack is empty, preventDefault is skipped so
@@ -1203,131 +1141,18 @@ export default function EditorLayout() {
       e.preventDefault();
       if (target.kind === "panel") closePopout(target.id);
       else if (target.kind === "card") closeCardPopout(target.key);
-      else if (target.kind === "toolbar") {
-        const setter =
-          target.bucket === "actions" ? setDetachedActions
-            : target.bucket === "formatting" ? setDetachedFormatting
-            : setDetachedMenus;
-        setter((prev) => prev.filter((t) => t.id !== target.id));
-      }
+      // `toolbar` kind no longer originates here — EditorPane owns
+      // the detached toolbars and dismisses them via its own MRU.
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [focusStack, closePopout, closeCardPopout]);
-
-  // Shared drag routine for every floating toolbar — single-instance
-  // (MenuBar) and multi-instance (Actions, Formatting). Runs the snap
-  // grid math per frame against the wrapper resolved by `getWrapper()`.
-  // `onUpdatePos` receives the final snapped {left, top} that should
-  // drive the wrapper's style; the caller decides what state it writes.
-  const beginToolbarDrag = useCallback((opts: {
-    clientX: number;
-    clientY: number;
-    podLeft: number;
-    podTop: number;
-    getWrapper: () => HTMLElement | null;
-    onUpdatePos: (pos: { left: number; top: number }) => void;
-    onEnd?: (ev: MouseEvent, pos: { left: number; top: number }) => void;
-  }) => {
-    const { clientX, clientY, podLeft, podTop, getWrapper, onUpdatePos, onEnd } = opts;
-    const offX = clientX - podLeft;
-    const offY = clientY - podTop;
-    setToolbarDragging(true);
-    let lastPos = { left: podLeft, top: podTop };
-    const onMove = (ev: MouseEvent) => {
-      const rawLeft = ev.clientX - offX;
-      const rawTop = ev.clientY - offY;
-      const snapped = resolveDragPosition({
-        rawLeft, rawTop,
-        wrapper: getWrapper(),
-        grid: snapGridRef.current,
-        winW: window.innerWidth,
-        winH: window.innerHeight,
-      });
-      lastPos = snapped;
-      onUpdatePos(snapped);
-    };
-    const onUp = (ev: MouseEvent) => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      setToolbarDragging(false);
-      onEnd?.(ev, lastPos);
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  }, []);
-
-  const handleActionsDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
-    e.preventDefault();
-    const id = `actions-${++nextActionsIdRef.current}`;
-    setDetachedActions(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: rect.left, podTop: rect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedActions(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag]);
-
-  const handleFormatDetach = useCallback((e: React.MouseEvent<HTMLDivElement>, rect: DOMRect) => {
-    e.preventDefault();
-    const id = `formatting-${++nextFormattingIdRef.current}`;
-    setDetachedFormatting(prev => [...prev, { id, pos: { left: rect.left, top: rect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: rect.left, podTop: rect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag]);
-
-  useEffect(() => {
-    if (!toolbarDragging) return;
-    const prevCursor = document.body.style.cursor;
-    const prevSelect = document.body.style.userSelect;
-    document.body.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
-    return () => {
-      document.body.style.cursor = prevCursor;
-      document.body.style.userSelect = prevSelect;
-    };
-  }, [toolbarDragging]);
-
-  // MenuBar grab — spawns a detached floating copy at the home bar's
-  // current viewport position. The home bar stays in place; each grab
-  // adds another copy (multi-instance, matching Actions/Formatting).
-  // Seamless drag pick-up via the shared snap routine so the new copy
-  // follows the cursor and snaps to the same grid as every other
-  // floating toolbar.
-  const handleMenuGrabStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const menuEl = menuWrapRef.current;
-    if (!menuEl) return;
-    const menuRect = menuEl.getBoundingClientRect();
-    const id = `menu-${++nextMenuIdRef.current}`;
-    setDetachedMenus(prev => [...prev, { id, pos: { left: menuRect.left, top: menuRect.top } }]);
-    beginToolbarDrag({
-      clientX: e.clientX, clientY: e.clientY,
-      podLeft: menuRect.left, podTop: menuRect.top,
-      getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${id}"]`),
-      onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(tb => tb.id === id ? { ...tb, pos } : tb)),
-    });
-  }, [beginToolbarDrag]);
 
   // (menuWrapStyle is declared below, after the zen
   // mode hook is available — zen force-pins the toolbar at home regardless
   // of the persisted location.)
 
   const editorRef = useRef<EditorHandle>(null);
-  const mainAreaRef = useRef<HTMLDivElement>(null);
-  const [mainAreaMounted, setMainAreaMounted] = useState(false);
-  const mainAreaRefCb = useCallback((el: HTMLDivElement | null) => {
-    (mainAreaRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
-    setMainAreaMounted(prev => {
-      const next = !!el;
-      return prev === next ? prev : next;
-    });
-  }, []);
 
   // Central "is this label key already claimed" predicate — consulted
   // by every label-editing surface (heading input in the main editor,
@@ -1340,12 +1165,11 @@ export default function EditorLayout() {
     },
     [],
   );
-  // Read by the paragraph node view each render to flip the popout
-  // button's glyph between docked (arrow up) and popped (arrow down).
-  const paragraphIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
   // When the list of popped-out paragraphs changes from anywhere other
   // than the gutter button (e.g. float's own X, restored from prefs),
   // ping the editor so every paragraph node view rebuilds its glyph.
+  // (The ref EditorPane passes to its VirgilEditor handles the per-render
+  // glyph predicate; this just nudges the editor on prefs change.)
   const paragraphPoppedKeys = useMemo(
     () =>
       prefs.poppedOutCards
@@ -1358,7 +1182,6 @@ export default function EditorLayout() {
     editorRef.current?.refreshParagraphPopouts();
   }, [paragraphPoppedKeys]);
   // Same setup for headings.
-  const headingIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
   const headingPoppedKeys = useMemo(
     () =>
       prefs.poppedOutCards
@@ -1371,7 +1194,6 @@ export default function EditorLayout() {
     editorRef.current?.refreshHeadingPopouts();
   }, [headingPoppedKeys]);
   // Same setup for example blocks.
-  const exampleIsPoppedRef = useRef<(uuid: string) => boolean>(() => false);
   const examplePoppedKeys = useMemo(
     () =>
       prefs.poppedOutCards
@@ -1411,8 +1233,9 @@ export default function EditorLayout() {
       editorInstance.off("transaction", onTr);
     };
   }, [editorInstance, collab.iHavePen, collab.bumpActivity]);
-  const { counts: wordCounts, selection: wordSelection } = useWordCount(editorInstance);
-  const focusMode = useFocusMode();
+  // useWordCount is consumed inside EditorPane (per-doc); no shell-side
+  // counter needed.
+  const focusMode = useFocusMode(docIdForHooks);
   const { config: focusWcConfig } = useWordCountConfig();
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
@@ -1506,6 +1329,14 @@ export default function EditorLayout() {
   const [fontsOpen, setFontsOpen] = useState(false);
   const [helperMenuOpen, setHelperMenuOpen] = useState(false);
 
+  // Margin-edit mode (interactive page-margin guides) was deleted with
+  // the visual editor JSX; reintroduce inside EditorPane to bring it
+  // back. The bundle's `onOpenMarginsMode` is currently a noop so the
+  // ViewMenu item simply does nothing.
+  const enterMarginEditMode = useCallback(() => {
+    /* margin-edit UI not yet ported to EditorPane */
+  }, []);
+
   useEffect(() => {
     if (!helperMenuOpen) return;
     const close = () => { setHelperMenuOpen(false); setCommandsPopoutOpen(false); };
@@ -1523,12 +1354,6 @@ export default function EditorLayout() {
     setHelperMenuOpen(false);
     setCommandsPopoutOpen(false);
   }, []);
-  const aiDot = useMemo(() => aiRequestDotStatus({
-    bibReviewRequests,
-    bibEntryRequests: entryRequests,
-    comments,
-    panelAiRequests: aiRequests,
-  }), [bibReviewRequests, entryRequests, comments, aiRequests]);
   const { prefs: editorPrefs, transforms: editorTransforms, presets: editorPresets, updatePref, updateTransform, resetAll: resetPrefs, savePreset, loadPreset, deletePreset } = usePreferences();
   // Preference mode toggle. `on` drives the top-bar button styling and gates
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
@@ -1549,12 +1374,11 @@ export default function EditorLayout() {
   // Snap all panel/margin prefs to their current rendered widths. Called
   // on drag start so that when the flex switches from "1 100 pref"
   // (shrinkable) to "0 0 pref" (pinned), shrunk panels don't snap back
-  // to pref and jump the editor.
+  // to pref and jump the editor. Scoped to the document — `[data-flex-col]`
+  // is a unique attribute on the active EditorPane's panel columns.
   const syncPanelPrefsToRendered = useCallback(() => {
-    const main = mainAreaRef.current;
-    if (!main) return;
-    const cols = main.querySelectorAll<HTMLElement>('[data-flex-col]');
-    cols.forEach(col => {
+    const cols = document.querySelectorAll<HTMLElement>('[data-flex-col]');
+    cols.forEach((col) => {
       const side = col.getAttribute('data-flex-col') as 'left' | 'right' | null;
       if (side !== 'left' && side !== 'right') return;
       const rendered = col.getBoundingClientRect().width;
@@ -1575,90 +1399,15 @@ export default function EditorLayout() {
     });
   }, [zenModeOn, zenLeftMargin, zenRightMargin, setZenLeftMargin, setZenRightMargin, prefs.activeLeft, prefs.activeRight, setPanelWidth, getPanelWidth]);
 
-  // Recompute the editor's flex-basis whenever the panel layout
-  // changes — drag, panel toggle, zen mode. The basis captures the
-  // "intended" editor width given current panel prefs + window, so
-  // during window resize the editor holds that width and panel
-  // flex-shrink eats the shortage first (panels first, then text area).
-  useLayoutEffect(() => {
-    const main = mainAreaRef.current;
-    if (!main) return;
-    let reserved = 0;
-    for (const child of main.children) {
-      const el = child as HTMLElement;
-      if (el.hasAttribute('data-editor-col')) continue;
-      const basis = parseFloat(getComputedStyle(el).flexBasis);
-      reserved += Number.isFinite(basis) ? basis : el.getBoundingClientRect().width;
-    }
-    const available = main.clientWidth - reserved;
-    const next = Math.max(400, Math.min(1400, available));
-    setEditorBasis(prev => prev !== next ? next : prev);
-  }, [prefs.panelWidths, prefs.activeLeft, prefs.activeRight, prefs.activeLeftBottom, prefs.activeRightBottom, zenLeftMargin, zenRightMargin, zenModeOn, mainAreaMounted]);
-
-  // Match panel columns' min-height to the editor column's natural height
-  // so sticky panel pods stay pinned through the entire document scroll.
-  // Without this, a panel column is only as tall as its content (short),
-  // and sticky un-pins once we scroll past the column's bottom.
-  useEffect(() => {
-    const main = mainAreaRef.current;
-    const editorCol = editorColRef.current;
-    if (!main || !editorCol) return;
-    const apply = () => {
-      const h = editorCol.getBoundingClientRect().height;
-      main.querySelectorAll<HTMLElement>('[data-flex-col]').forEach((p) => {
-        p.style.minHeight = `${h}px`;
-      });
-    };
-    apply();
-    const obs = new ResizeObserver(apply);
-    obs.observe(editorCol);
-    return () => obs.disconnect();
-  }, [mainAreaMounted, currentDocId, docLoading, editorSplit, zenModeOn]);
-
-  // MenuBar is always home-docked in the Virgil top bar, centered
-  // between the tabs (left) and Zen/Prefs cluster (right). No free
-  // position — tearing off spawns a `DetachedMenuToolbar` instead.
-  const menuWrapStyle = useMemo<React.CSSProperties>(() => {
-    if (!colRect || !topbarGaps || !menuWrapSize) {
-      return { left: -10000, top: -10000, visibility: "hidden" as const };
-    }
-    const PAD = 8;
-    const homeCenterX = (colRect.left + colRect.right) / 2;
-    const availMin = topbarGaps.leftEnd + PAD;
-    const availMax = topbarGaps.rightStart - PAD;
-    const availWidth = availMax - availMin;
-    let left: number;
-    if (availWidth < menuWrapSize.w) {
-      // Not enough room — anchor to the left of the available band and
-      // accept overflow into the right cluster (worst case when tabs
-      // fully crowd the middle).
-      left = availMin;
-    } else {
-      const desired = homeCenterX - menuWrapSize.w / 2;
-      left = Math.max(availMin, Math.min(desired, availMax - menuWrapSize.w));
-    }
-    const top =
-      topbarGaps.top +
-      Math.max(0, (topbarGaps.bottom - topbarGaps.top - menuWrapSize.h) / 2);
-    return { left, top };
-  }, [colRect, topbarGaps, menuWrapSize]);
-
-  // Preserve the editor column's current L/R position when turning Zen
-  // on: measure the chrome widths flanking the editor and use those as
-  // the Zen margins, so the "page" doesn't jump.
+  // The editor-basis recompute, panel-min-height observer, MenuBar
+  // home-position style, and zen-margin-snapshot toggle that used
+  // `mainAreaRef` / `editorColRef` / `colRect` / `topbarGaps` /
+  // `menuWrapSize` all moved into EditorPane (or were dropped) along
+  // with the visual editor JSX. The shell-side zen toggle is a
+  // straight pass-through now.
   const handleToggleZen = useCallback(() => {
-    if (!zenModeOn) {
-      const mainEl = mainAreaRef.current;
-      const editorEl = editorColRef.current;
-      if (mainEl && editorEl) {
-        const mRect = mainEl.getBoundingClientRect();
-        const eRect = editorEl.getBoundingClientRect();
-        setZenLeftMargin(eRect.left - mRect.left);
-        setZenRightMargin(mRect.right - eRect.right);
-      }
-    }
     toggleZenMode();
-  }, [zenModeOn, toggleZenMode, setZenLeftMargin, setZenRightMargin]);
+  }, [toggleZenMode]);
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
@@ -1750,37 +1499,10 @@ export default function EditorLayout() {
   // Auto-clear-on-offscreen: keep the infrastructure here but disabled
   // for now. Flip CLEAR_OFFSET_ON_OFFSCREEN to true to clear a side's
   // offset once its anchor scrolls out of the visible row band. With it
-  // off, the offset persists until another click moves it.
-  const CLEAR_OFFSET_ON_OFFSCREEN = false;
-  useEffect(() => {
-    if (!CLEAR_OFFSET_ON_OFFSCREEN) return;
-    const row = mainAreaRef.current;
-    if (!row) return;
-    const onScroll = () => {
-      const rowRect = row.getBoundingClientRect();
-      let changed = false;
-      let next = omniOffsetsRef.current;
-      for (const side of ["left", "right"] as const) {
-        if (next[side] === 0) continue;
-        const el = omniAnchorElsRef.current[side];
-        const offscreen =
-          !el ||
-          !el.isConnected ||
-          (() => {
-            const r = el.getBoundingClientRect();
-            return r.bottom < rowRect.top || r.top > rowRect.bottom;
-          })();
-        if (offscreen) {
-          next = { ...next, [side]: 0 };
-          omniAnchorElsRef.current[side] = null;
-          changed = true;
-        }
-      }
-      if (changed) setOmniOffsets(next);
-    };
-    row.addEventListener("scroll", onScroll, { passive: true });
-    return () => row.removeEventListener("scroll", onScroll);
-  }, [mainAreaMounted]);
+  // (Auto-clear-on-offscreen for omni cards was kept disabled here and
+  // depended on the EditorLayout-side mainAreaRef. Removed with the
+  // 7.8 mount swap; reintroduce inside EditorPane if needed.)
+
   // Linked-entity hover/activation. One pair drives all three linked
   // surfaces (text passages, margin icons, panel cards). Per-kind
   // selected*Id slots remain for backwards compatibility, but hover is
@@ -2057,6 +1779,86 @@ export default function EditorLayout() {
       return next;
     });
     setSelectedErrorId((cur) => (cur === id ? null : cur));
+  }, []);
+
+  // Single-selection across all marginalia kinds. Today every panel kind
+  // owns its own selection slot (selectedNoteId, selectedTodoId, …) and
+  // the slots are independent — selecting a note doesn't clear the
+  // currently-selected todo. This effect makes the slots behave as one
+  // logical "selected entity" by clearing every other slot whenever a
+  // new one is set. Identifies "new" by comparing against the last known
+  // singleton; handles the case where two slots are set in the same tick
+  // by falling back to the last in the active list.
+  const lastSingleSelectionRef = useRef<{ kind: string; id: string } | null>(null);
+  useLayoutEffect(() => {
+    const slots: Array<[string, string | null, (id: string | null) => void]> = [
+      ["note", selectedNoteId, setSelectedNoteId],
+      ["cut", selectedCutterCardId, setSelectedCutterCardId],
+      ["revision", selectedCommentId, setSelectedCommentId],
+      ["todo", selectedTodoId, setSelectedTodoId],
+      ["archive", selectedArchiveId, setSelectedArchiveId],
+      ["quotation", selectedQuotationGroupId, setSelectedQuotationGroupId],
+      ["footnote", selectedFootnoteId, setSelectedFootnoteId],
+      ["citation", selectedCitationId, setSelectedCitationId],
+      ["bib", selectedBibKey, setSelectedBibKey],
+      ["example", selectedExampleId, setSelectedExampleId],
+      ["error", selectedErrorId, setSelectedErrorId],
+    ];
+    const active = slots.filter(([, id]) => id != null);
+    if (active.length <= 1) {
+      lastSingleSelectionRef.current = active[0]
+        ? { kind: active[0][0], id: active[0][1] as string }
+        : null;
+      return;
+    }
+    const prev = lastSingleSelectionRef.current;
+    const newest =
+      active.find(
+        ([k, id]) => !prev || prev.kind !== k || prev.id !== id,
+      ) ?? active[active.length - 1];
+    for (const [k, id, setter] of slots) {
+      if (k !== newest[0] && id != null) setter(null);
+    }
+    lastSingleSelectionRef.current = { kind: newest[0], id: newest[1] as string };
+  }, [
+    selectedNoteId, selectedCutterCardId, selectedCommentId, selectedTodoId,
+    selectedArchiveId, selectedQuotationGroupId, selectedFootnoteId,
+    selectedCitationId, selectedBibKey, selectedExampleId, selectedErrorId,
+  ]);
+
+  // Click-away: clear all selection when the user clicks outside any
+  // marginalia surface (panel card, gutter marker, linked-anchor span,
+  // inline atom). Buttons / toolbar / editor body count as "outside".
+  // Uses mousedown so the gesture is felt before focus changes; runs in
+  // bubble phase so the clicked element's own handler can set its slot
+  // first if it's a marginalia surface (we no-op in that case).
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const t = e.target;
+      if (!(t instanceof Element)) return;
+      if (
+        t.closest("[data-card-key]") ||
+        t.closest("[data-marginalia-marker]") ||
+        t.closest(".linked-anchor") ||
+        t.closest(".footnote-marker") ||
+        t.closest('[data-type="citation"]')
+      ) {
+        return;
+      }
+      setSelectedNoteId(null);
+      setSelectedCutterCardId(null);
+      setSelectedCommentId(null);
+      setSelectedTodoId(null);
+      setSelectedArchiveId(null);
+      setSelectedQuotationGroupId(null);
+      setSelectedFootnoteId(null);
+      setSelectedCitationId(null);
+      setSelectedBibKey(null);
+      setSelectedExampleId(null);
+      setSelectedErrorId(null);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
   }, []);
 
   // Resolve `error.id → paragraphUuid` when the error's line falls inside
@@ -2378,14 +2180,17 @@ export default function EditorLayout() {
     setTimeout(() => { navigatingRef.current = false; }, 1500);
   }, [scrollToParagraph]);
 
+  // Para nav disabled state — derived from `paraHistoryRef.current` so it
+  // updates when paraNavVersion bumps. Bumped from `paraNavBack` and
+  // `paraNavForward` plus the history-recording effect.
+  const paraNavBackDisabled = paraHistoryRef.current.idx <= 0;
+  const paraNavForwardDisabled =
+    paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1;
+
   // Derive citation order from editor state
   // Debounced citation order and editor citations (avoid recomputing on every keystroke)
   const [citationOrder, setCitationOrder] = useState<string[]>([]);
   const [allEditorCitations, setAllEditorCitations] = useState<Array<{ citationId: string; command: string; keys: string[]; pos: number }>>([]);
-  const citationPositionMap = useMemo(
-    () => new Map(allEditorCitations.map((c) => [c.citationId, c.pos])),
-    [allEditorCitations]
-  );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -2528,13 +2333,19 @@ export default function EditorLayout() {
 
     if (!fs.active || !editorInstance) return;
 
+    // Guard against the editor being un-mounted: tiptap's `editor.view`
+    // getter throws if the view isn't ready yet, so peek defensively.
+    let editorDom: HTMLElement | null = null;
+    try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
+    if (!editorDom) return;
+
     const style = document.createElement("style");
     style.setAttribute("data-virgil-focus", "true");
 
     // Build CSS rules using nth-child to target blocks outside the range
     const rules: string[] = [];
     const selector = ".tiptap > *";
-    const totalChildren = editorInstance.view.dom.children.length;
+    const totalChildren = editorDom.children.length;
 
     for (let i = 0; i < totalChildren; i++) {
       const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
@@ -2785,22 +2596,6 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, content, editorInstance]);
 
-  // Derive expex examples list from the editor on the same trigger cadence
-  // as footnotes — numbering + sub-labels come from the live plugin.
-  const examples = useMemo(() => {
-    return editorRef.current?.getExamples() ?? [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, content, editorInstance]);
-
-  // Set of archive snippet IDs that have at least one paragraph anchor
-  const anchoredIds = useMemo<Set<string>>(() => {
-    const ids = new Set<string>();
-    for (const s of archiveSnippets) {
-      if (getLinkedParagraphIds(s).length > 0) ids.add(s.id);
-    }
-    return ids;
-  }, [archiveSnippets]);
-
   // Snippets sorted: anchored first (by paragraph position in doc), orphaned after
   const sortedArchiveSnippets = useMemo(() => {
     // Build a paragraph-order map from the editor doc
@@ -2829,6 +2624,18 @@ export default function EditorLayout() {
   }, [archiveSnippets, latestDoc, editorInstance]);
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState("");
+  // Refs to each rendered outer-tab pair (keyed by entry id — doc id or
+  // `paper:<citekey>`). Used by the tab-strip's drop handler to compute
+  // an insertion index when a paper inner tab is dragged onto the bar.
+  const outerTabRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const [paperDropIndex, setPaperDropIndex] = useState<number | null>(null);
+  // Library outer tab id currently being hovered with an entry drag.
+  // Drives the accent outline / fill on that tab so the user sees the
+  // drop target light up.
+  const [entryDropOuterLibId, setEntryDropOuterLibId] = useState<string | null>(
+    null,
+  );
+  const tabStripRef = useRef<HTMLDivElement | null>(null);
   // FSA browser support — defaults to true for SSR/initial render to
   // avoid a flash, then re-checks after mount.
   const [fsaSupported, setFsaSupported] = useState(true);
@@ -2918,7 +2725,7 @@ export default function EditorLayout() {
   const availableDividerLevels = useMemo(() => {
     const s = new Set<DividerLevel>();
     outlineHeadings.forEach((h) => {
-      if (h.level >= 1 && h.level <= 4) s.add(h.level as DividerLevel);
+      if (h.level >= 0 && h.level <= 6) s.add(h.level as DividerLevel);
     });
     return s;
   }, [outlineHeadings]);
@@ -2969,11 +2776,7 @@ export default function EditorLayout() {
   });
 
   const {
-    handleArchive,
     handleArchiveCapture,
-    handleInsertArchive,
-    handleRestoreArchive,
-    handleDeleteArchive,
   } = useArchiveActions({
     editorRef,
     archiveContent,
@@ -3005,11 +2808,8 @@ export default function EditorLayout() {
     selectedId: selectedNoteId,
     entities: notes,
     kind: "note",
-    dataAttrName: "note-entry",
-    setSelectedId: setSelectedNoteId,
     setActiveAnchorId,
     setActiveAnchorKind,
-    skipSelectors: ['[data-selection-chip]', '[data-add-note-button]'],
   });
   // Cutter shares one selection across both card kinds. Anchor sync
   // happens for both — the kind reported to setActiveAnchorKind is
@@ -3020,21 +2820,15 @@ export default function EditorLayout() {
     selectedId: selectedCutterCardId,
     entities: cutterCards,
     kind: "cutter-comment",
-    dataAttrName: ["cutter-comment-entry", "cutter-suggestion-entry"],
-    setSelectedId: setSelectedCutterCardId,
     setActiveAnchorId,
     setActiveAnchorKind,
-    skipSelectors: ['[data-selection-chip]', '[data-cut-selection-button]'],
   });
   useSelectedAnchorSync({
     selectedId: selectedCommentId,
     entities: comments,
     kind: "revision",
-    dataAttrName: ["revision-comment-entry", "revision-suggestion-entry"],
-    setSelectedId: setSelectedCommentId,
     setActiveAnchorId,
     setActiveAnchorKind,
-    skipSelectors: ['[data-selection-chip]', '[data-add-comment-button]'],
   });
 
 
@@ -3137,10 +2931,7 @@ export default function EditorLayout() {
 
 
   const {
-    handleEditFootnote,
-    handleEditFootnoteTitle,
     handleDeleteFootnote,
-    handleAddFootnote,
   } = useFootnoteActions({
     editorRef,
     suppressOrphanRef,
@@ -3148,7 +2939,7 @@ export default function EditorLayout() {
     setOrphanedFootnotes,
   });
 
-  const { handleCitationCreated, handleCitationDrop } = useCitationActions({
+  const { handleCitationCreated } = useCitationActions({
     editorRef,
     getCitationDisplayText,
     addCitation,
@@ -3158,6 +2949,74 @@ export default function EditorLayout() {
   const { handleDeleteOrphan, handleEditOrphan, handleEditOrphanTitle } = useOrphanActions({
     setOrphanedFootnotes,
   });
+
+  // ─── Path A 7.8: bundle construction for EditorPane ────────────────
+  // The `editorPaneViewPrefs` bundle (which references handleIconDrop
+  // and iconDropMimesByPanel) is constructed later in the file, after
+  // those functions are declared. The MenuBar bundle has no such
+  // forward reference and is built here.
+
+  const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
+    showParTitles,
+    showLatexComments,
+    showHeadingLabels,
+    showSectionIndicator,
+    showMarginalia,
+    hiddenMarginaliaTypes,
+    hiddenHighlightTypes,
+    availableDividerLevels,
+    activeDividerLevels,
+    dividerWidth,
+    editorSplit,
+    activeSplitPane,
+    setShowParTitles,
+    setShowLatexComments,
+    toggleHeadingLabels,
+    toggleSectionIndicator,
+    toggleMarginalia,
+    toggleMarginaliaType,
+    toggleHighlightType,
+    toggleDividerLevel,
+    setDividerWidth,
+    setShowHighlights,
+    toggleEditorSplit: () => setEditorSplit((s) => !s),
+    closeAllPanels,
+    paraNavBack,
+    paraNavForward,
+    paraNavBackDisabled,
+    paraNavForwardDisabled,
+    onOpenPreferences: () => setPreferencesOpen(true),
+    onOpenFontsDialog: () => setFontsOpen(true),
+    onOpenMarginsMode: enterMarginEditMode,
+  }), [
+    showParTitles,
+    showLatexComments,
+    showHeadingLabels,
+    showSectionIndicator,
+    showMarginalia,
+    hiddenMarginaliaTypes,
+    hiddenHighlightTypes,
+    availableDividerLevels,
+    activeDividerLevels,
+    dividerWidth,
+    editorSplit,
+    activeSplitPane,
+    toggleHeadingLabels,
+    toggleSectionIndicator,
+    toggleMarginalia,
+    toggleMarginaliaType,
+    toggleHighlightType,
+    toggleDividerLevel,
+    setDividerWidth,
+    setShowHighlights,
+    setEditorSplit,
+    closeAllPanels,
+    paraNavBack,
+    paraNavForward,
+    paraNavBackDisabled,
+    paraNavForwardDisabled,
+    enterMarginEditMode,
+  ]);
 
   // Listen for archive marker clicks from the editor
   useMarkerClickBridges({
@@ -3223,27 +3082,6 @@ export default function EditorLayout() {
     editorRef,
     setActiveRefLabel,
   });
-
-  // Click on empty editor space → deselect all panel items.
-  // Marker click handlers call stopPropagation(), so this only fires
-  // for non-marker clicks (regular text, whitespace, etc.).
-  useEffect(() => {
-    const editor = editorRef.current?.getEditor();
-    if (!editor) return;
-    const editorDom = editor.view.dom;
-    const handler = () => {
-      setSelectedCommentId(null);
-      setSelectedNoteId(null);
-      setSelectedQuotationGroupId(null);
-      setSelectedArchiveId(null);
-      setSelectedTodoId(null);
-      setSelectedFootnoteId(null);
-      setSelectedCitationId(null);
-      setSelectedBibKey(null);
-    };
-    editorDom.addEventListener("click", handler);
-    return () => editorDom.removeEventListener("click", handler);
-  }, [editorInstance]);
 
   useCommandInputBridges({
     editorRef,
@@ -3356,82 +3194,11 @@ export default function EditorLayout() {
     setPendingCommentText,
   });
 
-  /** Default floating-card popup size (matches FloatingCards.tsx). */
+  /** Default floating-card popup size (matches FloatingCards.tsx).
+   *  Used by the per-kind paragraph/heading/example popout helpers below;
+   *  the per-card popout dispatcher lives inside EditorPane post-7.8. */
   const POPUP_W = 360;
   const POPUP_H = 280;
-
-  /** Position-and-pop a newly-created card as a floating popover near
-   *  the action toolbar. Uses the quadrant-aware spawn helper so the
-   *  popup biases inward (above bottom-half triggers, below top-half;
-   *  drifts right of left-side triggers, left of right-side). When no
-   *  anchor rect is available (e.g. a keyboard shortcut), the popup
-   *  centers in the viewport. */
-  const popCardAtAnchor = useCallback(
-    (cardKind: string, cardId: string, anchorRect: DOMRect | null) => {
-      const key = `${cardKind}:${cardId}`;
-      const pos = computeSpawnPosition(anchorRect, {
-        width: POPUP_W,
-        height: POPUP_H,
-      });
-      setCardFloatPosition(key, pos);
-      if (!prefsRef.current.poppedOutCards.includes(key)) {
-        toggleCardPopout(key);
-      }
-    },
-    [setCardFloatPosition, toggleCardPopout],
-  );
-
-  /** Snapshot the live editor selection. Callers use this to branch
-   *  between selection-anchored and blank-card creation paths. */
-  const readSelection = useCallback(() => {
-    const ed = editorRef.current?.getEditor();
-    if (!ed || !editorRef.current) return null;
-    const { from, to } = ed.state.selection;
-    if (from === to) return null;
-    const text = ed.state.doc.textBetween(from, to, " ").trim();
-    if (!text) return null;
-    return { ed, from, to, text, editorHandle: editorRef.current };
-  }, []);
-
-  // Footnotes live in the editor rather than a per-doc hook, so pristine
-  // marking is done explicitly from the card-creation layer and discarded
-  // via the editor's deleteFootnote handle.
-  const markFootnotePristine = useCallback(
-    (id: string) => { footnotePristine.markNew(id); },
-    [footnotePristine],
-  );
-
-  // Central card-creation API — every "+" / toolbar / drop / selection
-  // path routes through this so pristine marking, selection setting,
-  // panel activation, and floating-popup spawning stay consistent.
-  const cardCreation = useCardCreation({
-    editorRef,
-    addNote,
-    addCutterComment,
-    addCutterSuggestion,
-    addRevisionComment,
-    addRevisionSuggestion,
-    addTodo,
-    updateTodo,
-    addTodoParagraphId,
-    addQuotationGroup,
-    addCitation,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-    setSelectedCommentId,
-    setSelectedTodoId,
-    setSelectedFootnoteId,
-    setSelectedQuotationGroupId,
-    setSelectedCitationId,
-    prefs,
-    setActiveLeft,
-    setActiveRight,
-    popCardAtAnchor,
-    markFootnotePristine,
-    getFootnoteCount: () =>
-      (editorRef.current?.getFootnotes().length ?? 0) + orphanedFootnotes.length,
-    recentlyAdded,
-  });
 
   // Register per-kind discard callbacks. When the click-away watcher in
   // the pristine manager sees a pointerdown outside a pristine card, it
@@ -3452,144 +3219,9 @@ export default function EditorLayout() {
     [footnotePristine, handleDeleteFootnote],
   );
 
-  // ─── Toolbar action handlers ────────────────────────────────────────
-  // Each handler creates a card in its corresponding panel — selection-
-  // anchored when text is selected, blank otherwise — then spawns a
-  // floating popup via popCardAtAnchor. `anchorRect` comes from the
-  // Actions toolbar pod via the ActionButton click handler in MenuBar.
-
-  const handleToolbarAddComment = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchorId: string | null = null;
-    if (sel) {
-      const record = createLinkedAnchor(sel.ed, "revision");
-      anchorId = record?.anchorId ?? null;
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-    const anchor = anchorId && sel?.text
-      ? { anchorId, anchorText: sel.text }
-      : undefined;
-    const created = addRevisionComment(null, undefined, anchor);
-    if (anchorId) {
-      const ed = editorRef.current?.getEditor();
-      if (ed) updateLinkedAnchorCard(ed, anchorId, "comment", created.id);
-    }
-    popCardAtAnchor("revision", created.id, anchorRect);
-  }, [readSelection, addRevisionComment, popCardAtAnchor, editorRef]);
-
-  const handleToolbarAddNote = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchor: { anchorId: string; anchorText: string } | undefined;
-    let paragraphId: string | null = null;
-    if (sel) {
-      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      const record = createLinkedAnchor(sel.ed, "note");
-      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
-    }
-    const note = cardCreation.createNote({ paragraphId, anchor, anchorRect });
-    if (sel && anchor) {
-      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "note", note.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    const paragraphId = sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null;
-    cardCreation.createTodo({ text: sel?.text, paragraphId, anchorRect });
-    if (sel) {
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarAddCut = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    let anchor: { anchorId: string; anchorText: string } | undefined;
-    let paragraphId: string | null = null;
-    if (sel) {
-      paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
-      const record = createLinkedAnchor(sel.ed, "cutter-comment");
-      if (record) anchor = { anchorId: record.anchorId, anchorText: record.text };
-    }
-    // Toolbar Cutter button defaults to creating a comment from selection.
-    // Use the +-dropdown in the panel to create a suggestion explicitly.
-    const card = cardCreation.createCutterComment({ paragraphId, anchor, anchorRect });
-    if (sel && anchor) {
-      updateLinkedAnchorCard(sel.ed, anchor.anchorId, "cutter-comment", card.id);
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    if (sel && editorRef.current) {
-      const snippet = archiveContent(sel.text);
-      const result = editorRef.current.archiveSelection(snippet.id);
-      if (result) {
-        if (result.content) updateArchiveSnippet(snippet.id, result.content);
-        if (result.paragraphId) addArchiveParagraphId(snippet.id, result.paragraphId);
-      }
-      popCardAtAnchor("archive", snippet.id, anchorRect);
-    } else {
-      const snippet = archiveContent("");
-      popCardAtAnchor("archive", snippet.id, anchorRect);
-    }
-  }, [readSelection, archiveContent, updateArchiveSnippet, addArchiveParagraphId, popCardAtAnchor]);
-
-  const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {
-    cardCreation.createFootnote({ fromSelection: !!readSelection(), anchorRect });
-  }, [readSelection, cardCreation]);
-
-  const handleToolbarInsertCitation = useCallback((anchorRect: DOMRect | null) => {
-    // Citations don't wrap selected text — a blank unanchored citation
-    // is created and popped; the user types the cite key in the card.
-    // The in-text atom is inserted separately from the panel's builder
-    // flow once the card has a key.
-    cardCreation.createCitation({ anchorRect });
-  }, [cardCreation]);
-
-  const handleToolbarCreateBibEntry = useCallback((_anchorRect: DOMRect | null) => {
-    const placement = prefs.placements.find((p) => p.id === "bibliography");
-    const side = placement?.side ?? "left";
-    if (side === "left") setActiveLeft("bibliography");
-    else setActiveRight("bibliography");
-  }, [prefs.placements, setActiveLeft, setActiveRight]);
-
-  const handleToolbarQuoteSelection = useCallback((anchorRect: DOMRect | null) => {
-    const sel = readSelection();
-    cardCreation.createQuotation({
-      text: sel?.text,
-      paragraphId: sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null,
-      anchorRect,
-    });
-    if (sel) {
-      try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
-    }
-  }, [readSelection, cardCreation]);
-
-  // Callbacks bag shared by the detached Actions toolbar and the per-margin
-  // toolbars shown when Omni-view is docked on a side.
-  const marginToolbarActions = useMemo(() => ({
-    onAddComment: handleToolbarAddComment,
-    onAddNote: handleToolbarAddNote,
-    onAddTodo: handleToolbarAddTodo,
-    onCutSelection: handleToolbarAddCut,
-    onArchive: handleToolbarArchive,
-    onCreateFootnote: handleToolbarCreateFootnote,
-    onInsertCitation: handleToolbarInsertCitation,
-    onCreateBibEntry: handleToolbarCreateBibEntry,
-    onQuoteSelection: handleToolbarQuoteSelection,
-  }), [
-    handleToolbarAddComment,
-    handleToolbarAddNote,
-    handleToolbarAddTodo,
-    handleToolbarAddCut,
-    handleToolbarArchive,
-    handleToolbarCreateFootnote,
-    handleToolbarInsertCitation,
-    handleToolbarCreateBibEntry,
-    handleToolbarQuoteSelection,
-  ]);
+  // Toolbar action handlers (handleToolbarAdd* and the marginToolbarActions
+  // bag) moved into EditorPane along with the toolbar machinery they
+  // serve. EditorLayout no longer needs them.
 
   // ── Sidebar panel-icon drop routing ──────────────────────────────────
   // Maps each drop-accepting panel to the MIME types its icon accepts,
@@ -3757,6 +3389,159 @@ export default function EditorLayout() {
     ],
   );
 
+  // ─── Path A 7.8: editorPaneViewPrefs bundle (post-handleIconDrop) ───
+  // Sits after `handleIconDrop` / `iconDropMimesByPanel` declarations
+  // because the bundle closes over them. The MenuBar bundle (above)
+  // has no such forward references.
+  const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
+    prefs,
+    focusedHalfLeft,
+    focusedHalfRight,
+    isResizingPanels,
+    cardsOffset: { left: omniOffsets.left, right: omniOffsets.right },
+    cardsSilent: { left: omniSilent.left, right: omniSilent.right },
+    focusState: focusMode.state,
+    activeSectionPath: currentSectionPath,
+    activeParTitleIndex: currentParTitleIndex,
+    mirrorSectionPath,
+    mirrorParTitleIndex,
+    setFocusedHalfLeft,
+    setFocusedHalfRight,
+    setIsResizingPanels,
+    syncPanelPrefsToRendered,
+    getPanelWidth,
+    setPanelWidth,
+    setSplitRatio,
+    setEditorLeftMargin,
+    setEditorRightMargin,
+    topGutter: prefs.topGutter,
+    bottomGutter: prefs.bottomGutter,
+    setEditorTopGutter: setTopGutter,
+    setEditorBottomGutter: setBottomGutter,
+    zenMode: zenModeOn,
+    zenLeftMargin,
+    zenRightMargin,
+    setZenLeftMargin,
+    setZenRightMargin,
+    setActiveLeft,
+    setActiveRight,
+    setActiveHalf,
+    togglePanel,
+    movePanel,
+    closePopout,
+    setFloatPosition,
+    undockPanel,
+    redockPanel,
+    toggleCardPopout,
+    setCardFloatPosition,
+    getOmniEnabled,
+    getOmniHideAll,
+    orphanedFootnotes,
+    onEditOrphan: handleEditOrphan,
+    onDeleteOrphan: handleDeleteOrphan,
+    onEditOrphanTitle: handleEditOrphanTitle,
+    onScrollToHeading: handleScrollToHeading,
+    onReorderBlocks: handleReorderBlocks,
+    onRenameHeading: handleRenameHeading,
+    onRenameParTitle: handleRenameParTitle,
+    onUpdateLabel: handleUpdateLabel,
+    isLabelTaken: checkLabelTaken,
+    onFocusActivate: handleFocusActivate,
+    onFocusDeactivate: focusMode.deactivate,
+    onFocusToggleLock: focusMode.toggleLock,
+    onFocusMoveTo: handleFocusMoveTo,
+    onFocusExpandTo: handleFocusExpandTo,
+    onFocusSnapBoundary: handleFocusSnapBoundary,
+    focusFloating,
+    // ── Icon strip ─────────────────────────────────────────────────
+    collapseLeft,
+    collapseRight,
+    expandLeft,
+    expandRight,
+    setBlank,
+    toggleSplit,
+    openPanelDocked,
+    iconDropMimesByPanel,
+    handleIconDrop,
+    toggleOmniCategory,
+    setOmniSideToDefault,
+    categorySides,
+  }), [
+    prefs,
+    focusedHalfLeft,
+    focusedHalfRight,
+    isResizingPanels,
+    omniOffsets.left,
+    omniOffsets.right,
+    omniSilent.left,
+    omniSilent.right,
+    focusMode.state,
+    focusMode.deactivate,
+    focusMode.toggleLock,
+    currentSectionPath,
+    currentParTitleIndex,
+    mirrorSectionPath,
+    mirrorParTitleIndex,
+    setFocusedHalfLeft,
+    setFocusedHalfRight,
+    syncPanelPrefsToRendered,
+    getPanelWidth,
+    setPanelWidth,
+    setSplitRatio,
+    setEditorLeftMargin,
+    setEditorRightMargin,
+    prefs.topGutter,
+    prefs.bottomGutter,
+    setTopGutter,
+    setBottomGutter,
+    zenModeOn,
+    zenLeftMargin,
+    zenRightMargin,
+    setZenLeftMargin,
+    setZenRightMargin,
+    setActiveLeft,
+    setActiveRight,
+    setActiveHalf,
+    togglePanel,
+    movePanel,
+    closePopout,
+    setFloatPosition,
+    undockPanel,
+    redockPanel,
+    toggleCardPopout,
+    setCardFloatPosition,
+    getOmniEnabled,
+    getOmniHideAll,
+    orphanedFootnotes,
+    handleEditOrphan,
+    handleDeleteOrphan,
+    handleEditOrphanTitle,
+    handleScrollToHeading,
+    handleReorderBlocks,
+    handleRenameHeading,
+    handleRenameParTitle,
+    handleUpdateLabel,
+    checkLabelTaken,
+    handleFocusActivate,
+    handleFocusMoveTo,
+    handleFocusExpandTo,
+    handleFocusSnapBoundary,
+    focusFloating,
+    setIsResizingPanels,
+    collapseLeft,
+    collapseRight,
+    expandLeft,
+    expandRight,
+    setBlank,
+    toggleSplit,
+    openPanelDocked,
+    iconDropMimesByPanel,
+    handleIconDrop,
+    toggleOmniCategory,
+    setOmniSideToDefault,
+    categorySides,
+  ]);
+
   const {
     handleDocPermissionGranted,
     handleNativeOpen,
@@ -3765,6 +3550,54 @@ export default function EditorLayout() {
     setDocPermState,
     refetchDoc,
   });
+
+  // Spawn a fresh Virgil window. The new window boots with no
+  // sessionStorage carried over, so it generates its own windowId
+  // and hydrates an empty tab set.
+  //
+  // Window features matter for PWA UX: a bare window.open(url) from
+  // inside an installed PWA defaults to a browser tab (with the
+  // annoying "Open in app" prompt). Passing `popup` plus explicit
+  // dimensions signals "new top-level window", and Chromium honours
+  // this by opening the new window in PWA chrome when the caller is
+  // already a PWA. In a normal browser tab the same call opens a
+  // standard tab — no degradation.
+  //
+  // `noopener` is safe here — peer windows talk to each other via
+  // BroadcastChannel, which is same-origin and does not require an
+  // opener relationship.
+  const openNewVirgilWindow = useCallback(() => {
+    try {
+      const url = window.location.pathname + window.location.search;
+      const features = [
+        "popup",
+        "noopener",
+        "noreferrer",
+        `width=${Math.round(window.innerWidth * 0.9)}`,
+        `height=${Math.round(window.innerHeight * 0.9)}`,
+      ].join(",");
+      window.open(url, "_blank", features);
+    } catch (err) {
+      console.error("Failed to open new window:", err);
+    }
+  }, []);
+
+  // Cmd-Shift-N → new window. Distinct from Cmd-N (browser default)
+  // and Cmd-Shift-P / Cmd-P (used by Print + paragraph nav).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isNew =
+        (e.metaKey || e.ctrlKey) &&
+        e.shiftKey &&
+        !e.altKey &&
+        e.key.toLowerCase() === "n";
+      if (!isNew) return;
+      e.preventDefault();
+      openNewVirgilWindow();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [openNewVirgilWindow]);
 
 
   const switchToCodeView = useCallback(() => {
@@ -3852,6 +3685,23 @@ export default function EditorLayout() {
   const switchFromPdfView = useCallback(() => {
     setPdfView(false);
   }, []);
+
+  // Memoized toggles for the EditorPane mount — without these, inline
+  // arrows (`() => setPdfView((v) => !v)`) would get a fresh identity
+  // every render, propagating through EditorPane's `onTogglePdfView`
+  // prop into VirgilEditor's `[onEditorReady]` effect, retriggering
+  // `setEditor` on every parent render and infinite-looping.
+  const togglePdfView = useCallback(() => {
+    if (pdfView) switchFromPdfView();
+    else void switchToPdfView();
+  }, [pdfView, switchFromPdfView, switchToPdfView]);
+  const toggleCodeView = useCallback(() => {
+    if (codeView) switchToVisualView();
+    else switchToCodeView();
+  }, [codeView, switchToVisualView, switchToCodeView]);
+  const handleEditorPaneActivate = useCallback(() => {
+    if (currentDocId) activateDocPane(currentDocId);
+  }, [currentDocId, activateDocPane]);
 
   const selectionsForStrip = useMemo(
     () => ({
@@ -4366,9 +4216,9 @@ export default function EditorLayout() {
     const meta = MARKER_META[markerType];
     const key = MARKER_KIND_TO_THEME_KEY[activeAnchorKind];
     if (key && isPanelColorOverridden(key)) {
-      return deriveMarkerPalette(getPanelColor(key)).selectedBg;
+      return deriveMarkerPalette(getPanelColor(key)).border;
     }
-    return meta.selectedBg;
+    return meta.border;
   })();
 
   // Re-apply linked-anchor marks on load. Each sidecar stores (anchorId, anchorText);
@@ -4477,451 +4327,11 @@ export default function EditorLayout() {
   const bibliographyPanelSide: "left" | "right" | null =
     activeLeft === "bibliography" ? "left" : activeRight === "bibliography" ? "right" : null;
 
-  // Wrap a rendered panel in the PanelChrome context so its PanelHeader
-  // can render the close button bound to this panel id. In the always-
-  // float model panels are never docked, so close always means "close
-  // the float". (Pop-out button is gone — panels open as floats from
-  // strip clicks already.)
-  const renderPanelWithChrome = (panelId: PanelId, side: Side, _half?: "top" | "bottom"): React.ReactNode => {
-    const inner = renderPanelInner(panelId, side);
-    if (panelId === "blank" || panelId === "omni") return inner;
-    return (
-      <PanelChromeProvider
-        value={{
-          isPoppedOut: true,
-          side,
-          onClose: () => closePopout(panelId),
-        }}
-      >
-        {inner}
-      </PanelChromeProvider>
-    );
-  };
-
-  // Render the inner JSX for a panel by id, without any column wrapper.
-  // The caller is responsible for wrapping in <PanelColumn> (or rendering
-  // it inside a split half).
-  function renderPanelInner(panelId: PanelId, side: Side): React.ReactNode {
-    if (!(panelId in PANEL_ICONS)) return null;
-
-    if (panelId === "blank") {
-      return <div className="w-full h-full bg-[var(--background)]" />;
-    }
-
-    if (panelId === "todo") {
-      return (
-        <TodoHost
-          side={side}
-          panelSide={todoPanelSide}
-          todoItems={todoItems}
-          addTodo={addTodo}
-          toggleTodo={toggleTodo}
-          updateTodo={updateTodo}
-          updateTodoNotes={updateTodoNotes}
-          setTodoAiRequest={setTodoAiRequest}
-          deleteTodo={deleteTodo}
-          archiveTodos={archiveTodos}
-          discardPristine={discardPristineTodos}
-          onDropSelection={handleDropSelectionOnTodo}
-          onDropParagraph={handleDropParagraphOnTodo}
-        />
-      );
-    }
-
-    if (panelId === "outline") {
-      return (
-        <OutlineHost
-          content={latestDoc || content}
-          onScrollTo={handleScrollToHeading}
-          onReorderBlocks={handleReorderBlocks}
-          onRenameHeading={handleRenameHeading}
-          onRenameParTitle={handleRenameParTitle}
-          onUpdateLabel={handleUpdateLabel}
-          isLabelTaken={checkLabelTaken}
-          activeSectionPath={currentSectionPath}
-          activeParTitleIndex={currentParTitleIndex}
-          editorSplit={editorSplit}
-          mirrorSectionPath={mirrorSectionPath}
-          mirrorParTitleIndex={mirrorParTitleIndex}
-          focusState={focusMode.state}
-          onFocusActivate={handleFocusActivate}
-          onFocusDeactivate={focusMode.deactivate}
-          onFocusToggleLock={focusMode.toggleLock}
-          onFocusMoveTo={handleFocusMoveTo}
-          onFocusExpandTo={handleFocusExpandTo}
-          onFocusSnapBoundary={handleFocusSnapBoundary}
-        />
-      );
-    }
-
-    if (panelId === "notes") {
-      return (
-        <NotesHost
-          side={side}
-          panelSide={notesPanelSide}
-          notes={notes}
-          addNote={addNote}
-          updateNote={updateNote}
-          updateNoteTitle={updateNoteTitle}
-          deleteNote={deleteNote}
-          discardPristine={discardPristineNotes}
-          onDropSelection={handleDropSelectionOnNotes}
-          onDropParagraph={handleDropParagraphOnNotes}
-        />
-      );
-    }
-
-    if (panelId === "revisions") {
-      return (
-        <RevisionsHost
-          side={side}
-          panelSide={revisionsPanelSide}
-          cards={revisionCards}
-          tracker={revisionsTracker}
-          setTrackerTarget={setRevisionsTrackerTarget}
-          updateCommentText={updateRevisionCommentText}
-          setCommentAiRequest={setRevisionCommentAiRequest}
-          updateSuggestionField={updateRevisionSuggestionField}
-          setSuggestionStatus={setRevisionSuggestionStatus}
-          deleteCard={deleteRevisionCard}
-          discardPristine={discardRevisionPristineCards}
-          onDropSelection={handleDropSelectionOnRevisions}
-          onDropParagraph={handleDropParagraphOnRevisions}
-        />
-      );
-    }
-
-    if (panelId === "archive") {
-      return (
-        <ArchiveHost
-          side={side}
-          sortedArchiveSnippets={sortedArchiveSnippets}
-          archiveSnippets={archiveSnippets}
-          updateArchiveSnippet={updateArchiveSnippet}
-          updateArchiveSnippetTitle={updateArchiveSnippetTitle}
-          onInsert={handleInsertArchive}
-          onRestore={handleRestoreArchive}
-          onDelete={handleDeleteArchive}
-          anchoredIds={anchoredIds}
-          onCapture={handleArchiveCapture}
-        />
-      );
-    }
-
-    if (panelId === "footnotes") {
-      return (
-        <FootnotesHost
-          side={side}
-          footnotes={footnotes}
-          orphanedFootnotes={orphanedFootnotes}
-          onEdit={handleEditFootnote}
-          onEditTitle={handleEditFootnoteTitle}
-          onDelete={handleDeleteFootnote}
-          onAdd={handleAddFootnote}
-          onDeleteOrphan={handleDeleteOrphan}
-          onEditOrphan={handleEditOrphan}
-          onEditOrphanTitle={handleEditOrphanTitle}
-        />
-      );
-    }
-
-    if (panelId === "citations") {
-      return (
-        <CitationsHost
-          side={side}
-          citations={citations}
-          bibEntries={bibEntries}
-          citationStyle={citationStyle}
-          bibPackage={bibPackage}
-          bibPath={bibPath}
-          citationOrder={citationOrder}
-          addCitation={addCitation}
-          updateCitation={updateCitation}
-          deleteCitation={deleteCitation}
-          setCitationStyle={setCitationStyle}
-          setBibPackage={setBibPackage}
-          updateBibEntry={updateBibEntry}
-          updateBibKeyAndType={updateBibKeyAndType}
-          getFormattedBib={getFormattedBib}
-          getAnnotation={getAnnotation}
-          setAnnotation={setAnnotation}
-          requestBibReview={requestBibReview}
-          cancelBibReview={cancelBibReview}
-          getBibReviewStatus={getBibReviewStatus}
-          citationPositionMap={citationPositionMap}
-          pendingCitationCreate={pendingCitationCreate}
-          setPendingCitationCreate={setPendingCitationCreate}
-          pendingCitationMode={pendingCitationMode}
-          setPendingCitationMode={setPendingCitationMode}
-        />
-      );
-    }
-
-    if (panelId === "bibliography") {
-      return (
-        <BibliographyHost
-          side={side}
-          panelSide={bibliographyPanelSide}
-          citations={citations}
-          bibEntries={bibEntries}
-          bibPackage={bibPackage}
-          addBibEntry={addBibEntry}
-          updateBibEntry={updateBibEntry}
-          updateBibKeyAndType={updateBibKeyAndType}
-          getFormattedBib={getFormattedBib}
-          getAnnotation={getAnnotation}
-          setAnnotation={setAnnotation}
-          requestBibReview={requestBibReview}
-          cancelBibReview={cancelBibReview}
-          getBibReviewStatus={getBibReviewStatus}
-          allEditorCitations={allEditorCitations}
-          citationPositionMap={citationPositionMap}
-          setBibActiveCitationId={setBibActiveCitationId}
-          currentDocId={currentDocId}
-          generalBibPath={generalBibPath}
-          setGeneralBibPath={setGeneralBibPath}
-          entryRequests={entryRequests}
-          addEntryRequest={addEntryRequest}
-          removeEntryRequest={removeEntryRequest}
-        />
-      );
-    }
-
-    if (panelId === "wordcount") {
-      return <WordCountPanel counts={wordCounts} selection={wordSelection} focusCounts={focusWordCount} />;
-    }
-
-    if (panelId === "quotations") {
-      return (
-        <QuotationsHost
-          side={side}
-          quotationGroups={quotationGroups}
-          bibEntries={bibEntries}
-          bibPackage={bibPackage}
-          citationStyle={citationStyle}
-          addQuotationGroup={addQuotationGroup}
-          deleteQuotationGroup={deleteQuotationGroup}
-          updateQuotationGroupTitle={updateQuotationGroupTitle}
-          addQuotationReference={addQuotationReference}
-          deleteQuotationReference={deleteQuotationReference}
-          updateQuotationReferenceCiteKey={updateQuotationReferenceCiteKey}
-          addQuotationQuote={addQuotationQuote}
-          updateQuotationQuote={updateQuotationQuote}
-          deleteQuotationQuote={deleteQuotationQuote}
-          updateQuotationNotes={updateQuotationNotes}
-        />
-      );
-    }
-
-    if (panelId === "examples") {
-      return (
-        <ExamplesPanel
-          examples={examples}
-          selectedId={selectedExampleId}
-          onSelect={setSelectedExampleId}
-          onJump={(id, sourceEl) => editorRef.current?.scrollToExample(id, sourceEl)}
-          onAdd={() => {
-            const res = editorRef.current?.insertExample("single");
-            if (res) setSelectedExampleId(res.exampleId);
-          }}
-          onUpdateLatex={(id, latex) =>
-            editorRef.current?.replaceExampleLatex(id, latex) ?? false
-          }
-        />
-      );
-    }
-
-    if (panelId === "search") {
-      return (
-        <SearchHost
-          footnotes={footnotes}
-          orphanedFootnotes={orphanedFootnotes}
-          notes={notes}
-          citations={citations}
-          allEditorCitations={allEditorCitations}
-          todoItems={todoItems}
-          archiveSnippets={archiveSnippets}
-          cutterCards={cutterCards}
-          quotationGroups={quotationGroups}
-          comments={comments}
-          bibEntries={bibEntries}
-          openItemInPanel={openItemInPanel}
-          searchState={searchState}
-          setSearchState={setSearchState}
-          setSearchHighlightRange={setSearchHighlightRange}
-        />
-      );
-    }
-
-    if (panelId === "errors") {
-      return (
-        <ErrorsHost
-          errors={allLatexErrors}
-          selectedId={selectedErrorId}
-          onSelect={setSelectedErrorId}
-          dismissedIds={dismissedErrorIds}
-          onDismiss={dismissError}
-          onJump={jumpToError}
-          snippets={errorSnippets}
-          paragraphByErrorId={paragraphByErrorId}
-        />
-      );
-    }
-
-    if (panelId === "omni") {
-      return (
-        <OmniHost
-          side={side}
-          footnotes={footnotes}
-          orphanedFootnotes={orphanedFootnotes}
-          handleEditFootnote={handleEditFootnote}
-          handleDeleteFootnote={handleDeleteFootnote}
-          handleEditFootnoteTitle={handleEditFootnoteTitle}
-          handleEditOrphan={handleEditOrphan}
-          handleDeleteOrphan={handleDeleteOrphan}
-          handleEditOrphanTitle={handleEditOrphanTitle}
-          citations={citations}
-          citationPositionMap={citationPositionMap}
-          bibEntries={bibEntries}
-          bibPackage={bibPackage}
-          updateCitation={updateCitation}
-          getFormattedBib={getFormattedBib}
-          updateBibEntry={updateBibEntry}
-          updateBibKeyAndType={updateBibKeyAndType}
-          getAnnotation={getAnnotation}
-          setAnnotation={setAnnotation}
-          requestBibReview={requestBibReview}
-          cancelBibReview={cancelBibReview}
-          getBibReviewStatus={getBibReviewStatus}
-          quotationGroups={quotationGroups}
-          deleteQuotationGroup={deleteQuotationGroup}
-          updateQuotationGroupTitle={updateQuotationGroupTitle}
-          addQuotationReference={addQuotationReference}
-          deleteQuotationReference={deleteQuotationReference}
-          updateQuotationReferenceCiteKey={updateQuotationReferenceCiteKey}
-          addQuotationQuote={addQuotationQuote}
-          updateQuotationQuote={updateQuotationQuote}
-          deleteQuotationQuote={deleteQuotationQuote}
-          updateQuotationNotes={updateQuotationNotes}
-          notes={notes}
-          updateNote={updateNote}
-          updateNoteTitle={updateNoteTitle}
-          deleteNote={deleteNote}
-          sortedArchiveSnippets={sortedArchiveSnippets}
-          anchoredIds={anchoredIds}
-          updateArchiveSnippet={updateArchiveSnippet}
-          updateArchiveSnippetTitle={updateArchiveSnippetTitle}
-          handleDeleteArchive={handleDeleteArchive}
-          todoItems={todoItems}
-          toggleTodo={toggleTodo}
-          updateTodo={updateTodo}
-          updateTodoNotes={updateTodoNotes}
-          setTodoAiRequest={setTodoAiRequest}
-          deleteTodo={deleteTodo}
-          examples={examples}
-          revisionCards={revisionCards}
-          updateRevisionCommentText={updateRevisionCommentText}
-          setRevisionCommentAiRequest={setRevisionCommentAiRequest}
-          updateRevisionSuggestionField={updateRevisionSuggestionField}
-          setRevisionSuggestionStatus={setRevisionSuggestionStatus}
-          deleteRevisionCard={deleteRevisionCard}
-          latexErrors={allLatexErrors}
-          paragraphByErrorId={paragraphByErrorId}
-          errorSnippets={errorSnippets}
-          dismissedErrorIds={dismissedErrorIds}
-          dismissError={dismissError}
-          jumpToError={jumpToError}
-          selectedErrorId={selectedErrorId}
-          setSelectedErrorId={setSelectedErrorId}
-          cutterCards={cutterCards}
-          updateCutterCommentText={updateCutterCommentText}
-          setCutterCommentAiRequest={setCutterCommentAiRequest}
-          updateCutterSuggestionField={updateCutterSuggestionField}
-          setCutterSuggestionStatus={setCutterSuggestionStatus}
-          deleteCutterCard={deleteCutterCard}
-          getOmniEnabled={getOmniEnabled}
-          getOmniHideAll={getOmniHideAll}
-          cardsOffset={omniOffsets[side]}
-          cardsSilent={omniSilent[side]}
-        />
-      );
-    }
-
-    if (panelId === "cutter") {
-      return (
-        <CutterHost
-          side={side}
-          panelSide={cutterPanelSide}
-          cards={cutterCards}
-          goal={cutterGoal}
-          setGoal={setCutterGoal}
-          clearGoal={clearCutterGoal}
-          updateCommentText={updateCutterCommentText}
-          setCommentAiRequest={setCutterCommentAiRequest}
-          updateSuggestionField={updateCutterSuggestionField}
-          setSuggestionStatus={setCutterSuggestionStatus}
-          deleteCard={deleteCutterCard}
-          discardPristine={discardPristineCards}
-          onDropSelection={handleDropSelectionOnCutter}
-          onDropParagraph={handleDropParagraphOnCutter}
-        />
-      );
-    }
-
-    return <PlaceholderPanel title={panelLabel(panelId)} />;
-  }
-
-  // Render a side's panel column, or null when the side is collapsed so
-  // the editor runs flush to the icon strip (the editor column's flex
-  // basis flips to grow in that case — see the main-area JSX below).
-  //
-  // Omni-view is mounted persistently inside every slot (`slot.omni`) so
-  // closing a specific panel just drops its overlay and reveals the
-  // already-live omni — no re-render flash.
-  function renderPanelColumn(side: Side): React.ReactNode {
-    // Each side's column hosts the Omni-view as the backdrop. Docked
-    // panels (per prefs.dockSlots) portal into the slot anchors via
-    // `<FloatingPanel mode="docked">`; floating panels portal to body.
-    // Slot anchors are sized/positioned by PanelColumn itself.
-    const toolbarOverlay = (
-      <MarginActionToolbar
-        side={side}
-        actions={marginToolbarActions}
-        placements={prefs.placements}
-      />
-    );
-    const isSplit =
-      side === "left"
-        ? prefs.activeLeftBottom != null
-        : prefs.activeRightBottom != null;
-    const dockOccupancy = isSplit
-      ? {
-          top: prefs.dockSlots[`${side}-top`],
-          bottom: prefs.dockSlots[`${side}-bottom`],
-        }
-      : { full: prefs.dockSlots[`${side}-full`] };
-    return (
-      <PanelColumn
-        side={side}
-        panelPref={getPanelWidth(side, "omni")}
-        onPanelPrefChange={(w) => setPanelWidth(side, "omni", w)}
-        isResizing={isResizingPanels}
-        onResizingChange={setIsResizingPanels}
-        onSyncBeforeDrag={syncPanelPrefsToRendered}
-        topPanelId="omni"
-        topOverlay={toolbarOverlay}
-        dockOccupancy={dockOccupancy}
-      >
-        {{ omni: renderPanelInner("omni", side), overlay: null }}
-      </PanelColumn>
-    );
-  }
-
-  // Build strip icon list.
-  // The Errors panel lives in the strip on both sides — its cards (with
-  // jump-to, margin markers, etc.) are useful in the rich-text view too.
-  const leftStripItems = leftItems.filter((p) => p.id !== "blank");
-  const rightStripItems = rightItems.filter((p) => p.id !== "blank");
+  // Render helpers (renderPanelWithChrome / renderPanelInner / renderPanelColumn)
+  // moved into EditorPane along with the panel mount itself. The icon
+  // strip (and its `leftStripItems` / `rightStripItems` derivation) also
+  // moved into EditorPane's `IconStrip` — it now derives its items
+  // directly from `visiblePanels` via `placementSideByKind`.
 
   if (!fsaSupported) {
     return <UnsupportedBrowserNotice />;
@@ -4944,82 +4354,45 @@ export default function EditorLayout() {
       }
       toggleCardPopout(key);
     },
+    popOutAtRect: (key: string, rect: { x: number; y: number; width: number; height: number }) => {
+      // Drag-out handoff: the caller already chose the cursor-anchored
+      // spawn rect, so write it through verbatim and flip to popped.
+      // No-op if already popped (a stray re-trigger shouldn't move it).
+      if (prefsRef.current.poppedOutCards.includes(key)) return;
+      setCardFloatPosition(key, rect);
+      toggleCardPopout(key);
+    },
     close: closeCardPopout,
     getFloatPosition: (key: string) => prefs.cardFloatPositions[key],
     setFloatPosition: setCardFloatPosition,
     recordFocus: (key: string) => focusFloating({ kind: "card", key }),
   };
 
-  // Paragraph popout: click the gutter button in the editor to toggle a
-  // floating paragraph card. Keyed as `paragraph:${uuid}` in poppedCards.
-  // Anchor (when supplied) seeds a quadrant-aware spawn position so the
-  // float appears near the gutter button it came from.
-  const handleToggleParagraphPopout = (uuid: string, anchor?: DOMRect | null) => {
-    const key = `paragraph:${uuid}`;
-    if (!prefsRef.current.poppedOutCards.includes(key) && anchor) {
-      const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
-      setCardFloatPosition(key, pos);
-    }
-    toggleCardPopout(key);
-  };
-  paragraphIsPoppedRef.current = (uuid: string) =>
-    prefs.poppedOutCards.includes(`paragraph:${uuid}`);
-  // Same for headings (chapters/sections/subsections etc.). Keyed as
-  // `heading:${uuid}` in poppedCards.
-  const handleToggleHeadingPopout = (uuid: string) => {
-    toggleCardPopout(`heading:${uuid}`);
-  };
-  headingIsPoppedRef.current = (uuid: string) =>
-    prefs.poppedOutCards.includes(`heading:${uuid}`);
-  // Same for example blocks. Anchor seeds the spawn position so the
-  // float appears near the gutter button. Keyed as `example:${uuid}` in
-  // poppedCards — paired with the `case "example"` renderer in
-  // floating-cards.tsx.
-  const handleToggleExamplePopout = (uuid: string, anchor?: DOMRect | null) => {
-    const key = `example:${uuid}`;
-    if (!prefsRef.current.poppedOutCards.includes(key) && anchor) {
-      const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
-      setCardFloatPosition(key, pos);
-    }
-    toggleCardPopout(key);
-  };
-  exampleIsPoppedRef.current = (uuid: string) =>
-    prefs.poppedOutCards.includes(`example:${uuid}`);
+  // Paragraph / heading / example popout handlers and their is-popped
+  // predicates now live inside EditorPane (which owns the gutter buttons
+  // and the popouts mount). EditorLayout retains only the
+  // `*PoppedKeys` memo + refresh effects above so the editor refreshes
+  // its node-view glyphs when prefs change.
 
-  // Popped-out card rendering lives in ./editor-layout/floating-cards.tsx —
-  // the deps bundle below is the contract for what a popped card needs.
-  const poppedCardDeps = {
-    notes, footnotes, archiveSnippets, cutterCards, todoItems, bibEntries,
-    citations, citationPositionMap, allEditorCitations,
-    comments,
-    quotationGroups, aiRequests, anchoredIds, examples,
-    selectedNoteId, selectedFootnoteId, selectedArchiveId, selectedCutterCardId,
-    selectedTodoId, selectedBibKey, selectedCitationId, selectedCommentId,
-    selectedQuotationGroupId, selectedExampleId,
-    setSelectedNoteId, setSelectedFootnoteId, setSelectedArchiveId,
-    setSelectedCutterCardId, setSelectedTodoId, setSelectedBibKey,
-    setSelectedCitationId, setSelectedCommentId, setSelectedQuotationGroupId,
-    setSelectedExampleId,
-    editorRef,
-    setOverrideEditor, getCitationDisplayText, handleCitationCreated,
-    bibPackage,
-    updateNote, updateNoteTitle, deleteNote,
-    handleEditFootnote, handleDeleteFootnote, handleEditFootnoteTitle,
-    updateArchiveSnippet, updateArchiveSnippetTitle, handleDeleteArchive,
-    updateCutterCommentContent, updateCutterCommentText, setCutterCommentAiRequest,
-    updateCutterSuggestionField, setCutterSuggestionStatus, deleteCutterCard,
-    toggleTodo, updateTodo, updateTodoNotes, deleteTodo, setTodoAiRequest,
-    getFormattedBib, getAnnotation, setAnnotation,
-    requestBibReview, cancelBibReview, getBibReviewStatus,
-    updateBibEntry, updateBibKeyAndType,
-    updateCitation,
-    updateRevisionCommentContent, updateRevisionCommentText,
-    setRevisionCommentAiRequest, updateRevisionSuggestionField,
-    setRevisionSuggestionStatus, deleteRevisionCard,
-    deleteQuotationGroup, updateQuotationGroupTitle,
-    addQuotationReference, deleteQuotationReference, updateQuotationReferenceCiteKey,
-    addQuotationQuote, updateQuotationQuote, deleteQuotationQuote, updateQuotationNotes,
-    updateAiRequestText, deleteAiRequest,
+  // Virgil-bar right-cluster source: post-7.8 the bar reads per-doc
+  // state from `paneState`, populated by EditorPane via
+  // `onPaneStateChange`. EditorLayout's own per-doc hooks (compile,
+  // ai-requests) feed dialogs and other shell-only consumers; the
+  // bar's view of them comes through here.
+  const vbar = {
+    aiDot: paneState?.aiDot ?? null,
+    aiRequests: paneState?.aiRequests ?? [],
+    addStyleMergeRequest: paneState?.addStyleMergeRequest ?? stubAddStyleMergeRequest,
+    compilePdf: paneState?.compilePdf ?? noop,
+    isCompiling: paneState?.isCompiling ?? false,
+    pdfStale: paneState?.pdfStale ?? false,
+    pdfBlobUrl: paneState?.pdfBlobUrl ?? null,
+    pdfView: paneState?.pdfView ?? false,
+    codeView: paneState?.codeView ?? false,
+    switchToPdfView: paneState?.switchToPdfView ?? noop,
+    switchFromPdfView: paneState?.switchFromPdfView ?? noop,
+    switchToCodeView: paneState?.switchToCodeView ?? noop,
+    switchToVisualView: paneState?.switchToVisualView ?? noop,
   };
 
   return (
@@ -5045,7 +4418,6 @@ export default function EditorLayout() {
     <PristineCardsProvider value={pristineManager}>
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
-    <CardCreationProvider value={cardCreation}>
     <CollabProvider value={collab}>
     <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
@@ -5081,9 +4453,70 @@ export default function EditorLayout() {
         {zenModeOn ? (
           <div className="flex-1" />
         ) : (
-        <div className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-end">
-          {/* VIRGIL logo as first "tab-like" item */}
-          <div className="flex items-center gap-1.5 px-3 shrink-0">
+        <div
+          ref={tabStripRef}
+          className="flex items-end flex-1 min-w-0 gap-0.5 px-2 self-stretch relative"
+          onDragOver={(e) => {
+            const types = e.dataTransfer.types;
+            let acceptable = false;
+            for (let i = 0; i < types.length; i++) {
+              if (types[i] === PAPER_DT_TYPE || types[i] === LIBRARY_DT_TYPE) {
+                acceptable = true;
+                break;
+              }
+            }
+            if (!acceptable) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            // Insertion index = first outer-tab whose midpoint is right of cursor.
+            let idx = outerOrder.length;
+            for (let i = 0; i < outerOrder.length; i++) {
+              const el = outerTabRefs.current.get(outerOrder[i]);
+              if (!el) continue;
+              const r = el.getBoundingClientRect();
+              if (e.clientX < r.left + r.width / 2) { idx = i; break; }
+            }
+            if (paperDropIndex !== idx) setPaperDropIndex(idx);
+          }}
+          onDragLeave={(e) => {
+            const next = e.relatedTarget as Node | null;
+            if (next && tabStripRef.current?.contains(next)) return;
+            setPaperDropIndex(null);
+          }}
+          onDrop={(e) => {
+            const citekey = e.dataTransfer.getData(PAPER_DT_TYPE);
+            const libId = e.dataTransfer.getData(LIBRARY_DT_TYPE);
+            if (!citekey && !libId) return;
+            e.preventDefault();
+            const dropIdx = paperDropIndex ?? outerOrder.length;
+            setPaperDropIndex(null);
+            if (citekey) {
+              // Paper tearout (move): close the donor inner tab first so
+              // the paper exists in only one place. The LibraryView
+              // listener writes its panel state to localStorage on the
+              // next render. We defer activating the new outer paper tab
+              // to the next macrotask so React processes the inner-tab
+              // close + persist BEFORE switching activePane to "paper"
+              // (which unmounts LibraryView and would otherwise drop the
+              // queued persist).
+              window.dispatchEvent(
+                new CustomEvent("virgil-library-close-paper-tab", {
+                  detail: { citekey },
+                }),
+              );
+              setTimeout(() => openPaperTab(citekey, dropIdx), 0);
+              return;
+            }
+            // Library copy: donor inner tab stays put. Just spawn the
+            // outer tab synchronously and activate it.
+            openLibraryOuterTab(libId, dropIdx);
+          }}
+        >
+          {/* VIRGIL logo — vertically centered in the bar to match the
+              "+" menu and the right-cluster buttons. The tab strip
+              itself is items-end (tabs hang from the bottom), so we opt
+              the logo out with self-center. */}
+          <div className="flex items-center self-center gap-1.5 pl-1 pr-2 shrink-0">
             <h1
               className="text-base font-semibold tracking-widest"
               style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
@@ -5091,31 +4524,321 @@ export default function EditorLayout() {
               VIRGIL
             </h1>
           </div>
-          {openTabs.map((doc) => {
-            const isCurrentDoc = doc.id === currentDocId;
-            const isDocPaneActive = isCurrentDoc && activePane === "doc";
-            const isLibraryPaneActive = isCurrentDoc && activePane === "library";
-            return (
-              <div key={doc.id} className="flex items-end shrink-0 -space-x-3">
-                {(() => {
-                  const composedDefault = `${doc.folderName}: ${doc.texFilename}`;
-                  const displayName =
-                    doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
-                  const isEditing = editingTabId === doc.id;
-                  const commit = () => {
-                    const next = nameInput.trim();
-                    if (next && next !== displayName) renameFile(doc.id, next);
-                    setEditingTabId(null);
-                  };
-                  return (
+          <TabPlusMenu
+            docs={docs}
+            openTabIds={openTabs.map((t) => t.id)}
+            onOpenRecent={openFile}
+            onOpenFolder={handleNativeOpen}
+            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
+            onOpenNewWindow={openNewVirgilWindow}
+            devStorage={devStorage}
+          />
+          {(() => {
+            // Outer-tab strip render. Library root + the currently active
+            // entry render as full DocumentFolderTab silhouettes; every
+            // other entry collapses to a flat InlineTabLabel. A vertical
+            // separator slot sits between every pair of non-Library tabs
+            // and is only painted when both neighbors are inline — when
+            // one side is the active folder, the silhouette's edge takes
+            // the divider's job and we hide the line via `visibility`
+            // (without removing it from layout, so promoting/demoting a
+            // tab leaves the surrounding layout pixel-stable). Click an
+            // inline label to promote it; the previously active tab
+            // demotes back to inline. Order in `outerOrder` is preserved.
+            const tabNodes: ReactNode[] = [];
+            type PrevKind = "inline" | "folder" | null;
+            let prevKind: PrevKind = null;
+            const pushSeparator = (currentKind: "inline" | "folder", entryId: string) => {
+              if (prevKind !== null) {
+                const visible = prevKind === "inline" && currentKind === "inline";
+                tabNodes.push(<TabSeparator key={`sep-${entryId}`} visible={visible} />);
+              }
+            };
+            for (const entryId of outerOrder) {
+              if (entryId === OUTER_LIBRARY_ROOT_ID) {
+                const isActive =
+                  activePane === "library-outer" &&
+                  currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID;
+                if (isActive) {
+                  pushSeparator("folder", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="flex items-end shrink-0"
+                    >
+                      <DocumentFolderTab
+                        active
+                        fill="var(--library-bg)"
+                        dataPrefs="libraryBg,topbarBorder"
+                        title="Library"
+                        onClick={() => {}}
+                      >
+                        <IconLibrary />
+                        <span className="text-[13px] leading-4 mr-2.5">Library</span>
+                      </DocumentFolderTab>
+                    </div>,
+                  );
+                  prevKind = "folder";
+                } else {
+                  pushSeparator("inline", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="self-center shrink-0"
+                    >
+                      <InlineTabLabel
+                        icon={<IconLibrary />}
+                        label="Library"
+                        title="Library"
+                        variant="library-pinned"
+                        onClick={() =>
+                          activateLibraryOuterPane(OUTER_LIBRARY_ROOT_ID)
+                        }
+                      />
+                    </div>,
+                  );
+                  prevKind = "inline";
+                }
+                continue;
+              }
+
+              if (entryId.startsWith(OUTER_PAPER_PREFIX)) {
+                const citekey = entryId.slice(OUTER_PAPER_PREFIX.length);
+                const isActive =
+                  activePane === "paper" && currentPaperCitekey === citekey;
+                if (isActive) {
+                  pushSeparator("folder", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="flex items-end shrink-0"
+                      style={{
+                        marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
+                        marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
+                      }}
+                    >
+                      <DocumentFolderTab
+                        active
+                        fill="var(--background)"
+                        dataPrefs="background,topbarBorder"
+                        title={citekey}
+                        onClick={() => {}}
+                      >
+                        <span
+                          className="text-[13px] leading-4 truncate min-w-0"
+                          style={{ fontFamily: "var(--mono)" }}
+                        >
+                          {citekey}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closePaperTab(citekey);
+                          }}
+                          className="topbarbtn topbarbtn-icon"
+                          title="Close tab"
+                          data-helper="Close tab"
+                        >
+                          <IconX />
+                        </button>
+                      </DocumentFolderTab>
+                    </div>,
+                  );
+                  prevKind = "folder";
+                } else {
+                  pushSeparator("inline", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="self-center shrink-0"
+                    >
+                      <InlineTabLabel
+                        label={citekey}
+                        title={citekey}
+                        monospace
+                        onClick={() => activatePaperPane(citekey)}
+                        onClose={() => closePaperTab(citekey)}
+                      />
+                    </div>,
+                  );
+                  prevKind = "inline";
+                }
+                continue;
+              }
+
+              if (entryId.startsWith(OUTER_LIBRARY_PREFIX)) {
+                const libId = entryId.slice(OUTER_LIBRARY_PREFIX.length);
+                const isActive =
+                  activePane === "library-outer" && currentLibraryOuterId === libId;
+                const lib = libraryRegistry.get(libId);
+                const label = lib?.label ?? libId;
+                // Entry drops are accepted on custom libraries only —
+                // Central / Project / paper compute their membership and
+                // can't be appended to. (Mirrors useLibraryTabs's
+                // addEntryToLibrary guard.)
+                const acceptsEntryDrop = lib?.kind === "custom";
+                const isEntryDropTarget =
+                  acceptsEntryDrop && entryDropOuterLibId === libId;
+                const dropHandlers = {
+                  onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
+                    if (!acceptsEntryDrop) return;
+                    const types = e.dataTransfer.types;
+                    let hasEntry = false;
+                    for (let i = 0; i < types.length; i++) {
+                      if (types[i] === ENTRY_DT_TYPE) { hasEntry = true; break; }
+                    }
+                    if (!hasEntry) return;
+                    e.preventDefault();
+                    e.stopPropagation(); // beat the strip-level paper-tab handler
+                    e.dataTransfer.dropEffect = "copy";
+                    if (entryDropOuterLibId !== libId) setEntryDropOuterLibId(libId);
+                  },
+                  onDragLeave: (e: React.DragEvent<HTMLDivElement>) => {
+                    const next = e.relatedTarget as Node | null;
+                    if (next && (e.currentTarget as HTMLElement).contains(next)) return;
+                    if (entryDropOuterLibId === libId) setEntryDropOuterLibId(null);
+                  },
+                  onDrop: (e: React.DragEvent<HTMLDivElement>) => {
+                    if (!acceptsEntryDrop) return;
+                    const entryKey = e.dataTransfer.getData(ENTRY_DT_TYPE);
+                    if (!entryKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEntryDropOuterLibId(null);
+                    addEntryToLibraryGlobal(libId, entryKey);
+                  },
+                };
+                const dropStyle = {
+                  outline: isEntryDropTarget
+                    ? "2px solid var(--accent)"
+                    : undefined,
+                  outlineOffset: isEntryDropTarget ? -2 : undefined,
+                  borderRadius: isEntryDropTarget ? 8 : undefined,
+                  background: isEntryDropTarget
+                    ? "var(--accent-light)"
+                    : undefined,
+                };
+                if (isActive) {
+                  pushSeparator("folder", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="flex items-end shrink-0"
+                      {...dropHandlers}
+                      style={{
+                        ...dropStyle,
+                        marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
+                        marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
+                      }}
+                    >
+                      <DocumentFolderTab
+                        active
+                        fill="var(--library-bg)"
+                        dataPrefs="libraryBg,topbarBorder"
+                        title={label}
+                        onClick={() => {}}
+                      >
+                        <IconLibrary />
+                        <span className="text-[13px] leading-4 truncate min-w-0">
+                          {label}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            closeLibraryOuterTab(libId);
+                          }}
+                          className="topbarbtn topbarbtn-icon"
+                          title="Close tab"
+                          data-helper="Close tab"
+                        >
+                          <IconX />
+                        </button>
+                      </DocumentFolderTab>
+                    </div>,
+                  );
+                  prevKind = "folder";
+                } else {
+                  pushSeparator("inline", entryId);
+                  tabNodes.push(
+                    <div
+                      key={entryId}
+                      ref={(el) => {
+                        if (el) outerTabRefs.current.set(entryId, el);
+                        else outerTabRefs.current.delete(entryId);
+                      }}
+                      className="self-center shrink-0"
+                      {...dropHandlers}
+                      style={dropStyle}
+                    >
+                      <InlineTabLabel
+                        icon={<IconLibrary />}
+                        label={label}
+                        title={label}
+                        onClick={() => activateLibraryOuterPane(libId)}
+                        onClose={() => closeLibraryOuterTab(libId)}
+                      />
+                    </div>,
+                  );
+                  prevKind = "inline";
+                }
+                continue;
+              }
+
+              const doc = docs.find((d) => d.id === entryId);
+              if (!doc) continue;
+              const isCurrentDoc = doc.id === currentDocId;
+              const isDocPaneActive = isCurrentDoc && activePane === "doc";
+              const composedDefault = `${doc.folderName}: ${doc.texFilename}`;
+              const displayName =
+                doc.name && doc.name !== doc.folderName ? doc.name : composedDefault;
+              if (isDocPaneActive) {
+                const isEditing = editingTabId === doc.id;
+                const commit = () => {
+                  const next = nameInput.trim();
+                  if (next && next !== displayName) renameFile(doc.id, next);
+                  setEditingTabId(null);
+                };
+                pushSeparator("folder", doc.id);
+                tabNodes.push(
+                  <div
+                    key={doc.id}
+                    ref={(el) => {
+                      if (el) outerTabRefs.current.set(doc.id, el);
+                      else outerTabRefs.current.delete(doc.id);
+                    }}
+                    className="flex items-end shrink-0"
+                    style={{
+                      marginLeft: -ACTIVE_TAB_LEFT_SHIFT_PX,
+                      marginRight: -ACTIVE_TAB_RIGHT_SHIFT_PX,
+                    }}
+                  >
                     <DocumentFolderTab
-                      active={isDocPaneActive}
+                      active
                       fill="var(--main-tab-bg)"
                       dataPrefs="backgroundColor,topbarBorder"
                       title={displayName}
                       onClick={() => {
                         if (isEditing) return;
-                        if (!isDocPaneActive) activateDocPane(doc.id);
                       }}
                     >
                       {isEditing ? (
@@ -5160,39 +4883,68 @@ export default function EditorLayout() {
                         <IconX />
                       </button>
                     </DocumentFolderTab>
-                  );
-                })()}
-                <DocumentFolderTab
-                  active={isLibraryPaneActive}
-                  fill="var(--library-bg)"
-                  dataPrefs="libraryBg,topbarBorder"
-                  title="Library"
-                  onClick={() => { if (!isLibraryPaneActive) activateLibraryPane(doc.id); }}
-                >
-                  <IconLibrary />
-                  <span className="text-[13px] leading-4">Library</span>
-                </DocumentFolderTab>
-              </div>
-            );
-          })}
-          <TabPlusMenu
-            docs={docs}
-            openTabIds={openTabs.map((t) => t.id)}
-            onOpenRecent={openFile}
-            onOpenFolder={handleNativeOpen}
-            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
-            devStorage={devStorage}
-          />
+                  </div>,
+                );
+                prevKind = "folder";
+              } else {
+                pushSeparator("inline", doc.id);
+                tabNodes.push(
+                  <div
+                    key={doc.id}
+                    ref={(el) => {
+                      if (el) outerTabRefs.current.set(doc.id, el);
+                      else outerTabRefs.current.delete(doc.id);
+                    }}
+                    className="self-center shrink-0"
+                  >
+                    <InlineTabLabel
+                      label={displayName}
+                      title={displayName}
+                      onClick={() => activateDocPane(doc.id)}
+                      onClose={() => closeTab(doc.id)}
+                    />
+                  </div>,
+                );
+                prevKind = "inline";
+              }
+            }
+            return tabNodes;
+          })()}
+          {paperDropIndex !== null && (
+            <PaperDropIndicator
+              stripEl={tabStripRef.current}
+              tabRefs={outerTabRefs.current}
+              order={outerOrder}
+              index={paperDropIndex}
+            />
+          )}
           {/* Zero-width sentinel marking the end of the top-bar's left
               content (tabs + logo + "+" button). The floating MenuBar's
               home position uses this x-coordinate as its left clamp —
               measuring the flex-1 parent's right edge would be wrong
               because flex-1 expands to fill the whole middle gap. */}
-          <div ref={topbarLeftRefCb} aria-hidden className="shrink-0 self-stretch" style={{ width: 0 }} />
         </div>
         )}
 
-        <div ref={topbarRightRefCb} className="shrink-0 flex items-center px-2">
+        <div className="shrink-0 flex items-center px-2">
+          {!prefs.topbarRightCollapsed && (<>
+          {/* ── Zen mode toggle ────────────────────────────────────────
+              Render-gates editor chrome (icon strips, panel columns,
+              floating MenuBar, marginalia, popped-out panels/cards) so
+              the document area stands alone. Top bar stays visible so
+              this button is always reachable. Pinned to the far left of
+              the right cluster — sits outside the !zenModeOn gate so it
+              stays visible in both states; when zen is on it's the only
+              button visible alongside the collapse chevron on the right. */}
+          <button
+            onClick={handleToggleZen}
+            className="topbarbtn"
+            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
+            aria-pressed={zenModeOn}
+            data-helper="Zen mode"
+          >
+            Zen
+          </button>
           {/* ── Modes / views section ──────────────────────────────────
               Left of the divider. Shows the *active state* of system-wide
               modes (focus view, helper mode, collaborator mode). Each
@@ -5200,7 +4952,7 @@ export default function EditorLayout() {
               an exit/action affordance leaves the mode or moves the
               workflow forward. Stays empty when nothing is active. */}
           {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
-            <div className="flex items-center gap-2 mr-3">
+            <div className="flex items-center">
               {focusMode.state.active && (
                 <button
                   onClick={focusMode.deactivate}
@@ -5238,7 +4990,7 @@ export default function EditorLayout() {
               Gives the modes section its own gravity well, separated from
               the menu-icon cluster on the right. */}
           {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
-            <span className="self-center h-5 w-px bg-edge-subtle mr-3" aria-hidden />
+            <span className="self-center h-5 w-px bg-edge-subtle mx-2" aria-hidden />
           )}
           {!zenModeOn && (<>
           {/* ── Preference Mode toggle ─────────────────────────────────
@@ -5261,7 +5013,7 @@ export default function EditorLayout() {
           {collabIconBtn}
           <button
             onClick={() => setPreferencesOpen(true)}
-            className="topbarbtn topbarbtn-icon"
+            className="topbarbtn"
             title="Preferences"
             data-helper="Preferences"
           >
@@ -5275,7 +5027,7 @@ export default function EditorLayout() {
           <div className="relative">
             <button
               onClick={(e) => { e.stopPropagation(); setHelperMenuOpen((v) => !v); }}
-              className="topbarbtn topbarbtn-icon"
+              className="topbarbtn"
               title="Help"
               data-helper="Help"
             >
@@ -5346,8 +5098,8 @@ export default function EditorLayout() {
               virtualized rendering doesn't paginate cleanly). */}
           <button
             onClick={() => setPrintOpen(true)}
-            disabled={!currentDocId || codeView || pdfView}
-            className="topbarbtn topbarbtn-icon"
+            disabled={!currentDocId || vbar.codeView || vbar.pdfView}
+            className="topbarbtn"
             title="Print…"
             data-helper="Print"
           >
@@ -5362,7 +5114,7 @@ export default function EditorLayout() {
               diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
           <button
             onClick={() => setAiWindowOpen(true)}
-            className="topbarbtn topbarbtn-icon relative"
+            className="topbarbtn relative"
             aria-pressed={aiWindowOpen}
             title="AI requests"
             data-helper="AI requests"
@@ -5377,13 +5129,13 @@ export default function EditorLayout() {
                 <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
               </g>
             </svg>
-            {aiDot && (
+            {vbar.aiDot && (
               <span
                 className="absolute top-0 right-0 w-1.5 h-1.5 rounded-full"
                 style={{
                   backgroundColor:
-                    aiDot === "red" ? "#ef4444"
-                    : aiDot === "green" ? "#22c55e"
+                    vbar.aiDot === "red" ? "#ef4444"
+                    : vbar.aiDot === "green" ? "#22c55e"
                     : "#eab308",
                 }}
               />
@@ -5394,14 +5146,18 @@ export default function EditorLayout() {
               the bytes before \begin{document} in the active doc's .tex
               file (see useDocumentStyle). Sits just left of Code/Compile
               so it reads as part of the doc-action cluster. */}
-          <DocStyleDropdown docId={currentDocId} />
+          <DocStyleDropdown
+            docId={currentDocId}
+            aiRequests={vbar.aiRequests}
+            addStyleMergeRequest={vbar.addStyleMergeRequest}
+          />
           <button
-            onClick={codeView ? switchToVisualView : switchToCodeView}
-            className="topbarbtn ml-1"
-            title={codeView ? "Visual Editor" : "Code Editor"}
-            data-helper={codeView ? "Visual editor" : "Code editor"}
+            onClick={vbar.codeView ? vbar.switchToVisualView : vbar.switchToCodeView}
+            className="topbarbtn"
+            title={vbar.codeView ? "Visual Editor" : "Code Editor"}
+            data-helper={vbar.codeView ? "Visual editor" : "Code editor"}
           >
-            {codeView ? (
+            {vbar.codeView ? (
               <>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -5420,33 +5176,17 @@ export default function EditorLayout() {
               </>
             )}
           </button>
-          <button
-            onClick={pdfView ? switchFromPdfView : switchToPdfView}
-            disabled={!currentDocId}
-            className="topbarbtn ml-1"
-            title={pdfView ? "Back to editor" : "View PDF"}
-            data-helper={pdfView ? "Back to editor" : "View PDF"}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            PDF
-            {pdfStale && pdfView && (
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" title="PDF is out of date" />
-            )}
-          </button>
           {/* Compile — runs SwiftLaTeX's pdfTeX over the paper folder and
               saves the resulting PDF to the paper folder. Disabled while a
               compile is in flight; spinner replaces the play-triangle. */}
           <button
-            onClick={compilePdf}
-            disabled={!currentDocId || isCompiling}
-            className="topbarbtn ml-1"
-            title={isCompiling ? "Compiling…" : "Compile to PDF"}
+            onClick={vbar.compilePdf}
+            disabled={!currentDocId || vbar.isCompiling}
+            className="topbarbtn"
+            title={vbar.isCompiling ? "Compiling…" : "Compile to PDF"}
             data-helper="Compile"
           >
-            {isCompiling ? (
+            {vbar.isCompiling ? (
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
                 <path d="M21 12a9 9 0 1 1-6.219-8.56" />
               </svg>
@@ -5457,25 +5197,51 @@ export default function EditorLayout() {
             )}
             Compile
           </button>
-          </>)}
-          {/* ── Zen mode toggle ────────────────────────────────────────
-              Render-gates editor chrome (icon strips, panel columns,
-              floating MenuBar, marginalia, popped-out panels/cards) so
-              the document area stands alone. Top bar stays visible so
-              this button is always reachable. State is render-only —
-              layout prefs are untouched, so toggling off restores the
-              exact prior layout. Pinned to the far right of the right
-              cluster so its screen position is identical in both
-              modes — when zen is on, the !zenModeOn block above
-              collapses and Zen is the only non-pill button left. */}
           <button
-            onClick={handleToggleZen}
+            onClick={vbar.pdfView ? vbar.switchFromPdfView : vbar.switchToPdfView}
+            disabled={!currentDocId}
             className="topbarbtn"
-            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
-            aria-pressed={zenModeOn}
-            data-helper="Zen mode"
+            title={vbar.pdfView ? "Back to editor" : "View PDF"}
+            data-helper={vbar.pdfView ? "Back to editor" : "View PDF"}
           >
-            Zen
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            PDF
+            {vbar.pdfStale && vbar.pdfView && (
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" title="PDF is out of date" />
+            )}
+          </button>
+          </>)}
+          </>)}
+          {/* Collapse toggle — always rendered. Hides everything to its
+              left in this cluster (modes section, divider, icon/text
+              buttons, Zen) so the document area can breathe. State is
+              per-window via useViewPrefs. The chevron flips direction so
+              the button reads as "collapse to right" or "expand from
+              right" depending on state. */}
+          <button
+            onClick={() => setTopbarRightCollapsed((v) => !v)}
+            className="topbarbtn"
+            title={prefs.topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+            aria-pressed={prefs.topbarRightCollapsed}
+            aria-label={prefs.topbarRightCollapsed ? "Expand toolbar" : "Collapse toolbar"}
+            data-helper="Collapse toolbar"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {prefs.topbarRightCollapsed ? (
+                <>
+                  <polyline points="11 17 6 12 11 7" />
+                  <polyline points="18 17 13 12 18 7" />
+                </>
+              ) : (
+                <>
+                  <polyline points="13 17 18 12 13 7" />
+                  <polyline points="6 17 11 12 6 7" />
+                </>
+              )}
+            </svg>
           </button>
         </div>
       </div>
@@ -5496,11 +5262,32 @@ export default function EditorLayout() {
       {/* Path bar removed — podification */}
 
       {/* Main area */}
-      {currentDoc && docPermState !== "granted" ? null : activePane === "library" && currentDocId ? (
-        <div className="flex flex-1 overflow-hidden bg-[var(--library-bg)]">
-          <LibraryTabView />
+      {activePane === "paper" && currentPaperCitekey ? (
+        <div className="flex flex-1 overflow-hidden bg-[var(--background)]">
+          <PaperOuterView citekey={currentPaperCitekey} />
         </div>
-      ) : codeView && currentDocId ? (
+      ) : activePane === "library-outer" &&
+        currentLibraryOuterId === OUTER_LIBRARY_ROOT_ID ? (
+        <div className="flex flex-1 overflow-hidden bg-[var(--library-bg)]">
+          <LibraryTabView
+            key={currentDocId ?? "no-doc"}
+            openTabs={openTabs}
+            currentDocId={currentDocId}
+            currentDoc={currentDoc}
+            focusDoc={focusDoc}
+          />
+        </div>
+      ) : activePane === "library-outer" && currentLibraryOuterId ? (
+        <div className="flex flex-1 overflow-hidden bg-[var(--library-bg)]">
+          <LibraryOuterView
+            libId={currentLibraryOuterId}
+            openTabs={openTabs}
+            currentDocId={currentDocId}
+            currentDoc={currentDoc}
+            focusDoc={focusDoc}
+          />
+        </div>
+      ) : currentDoc && docPermState !== "granted" ? null : codeView && currentDocId ? (
         <div
           className="flex flex-1 overflow-hidden"
           style={{
@@ -5614,763 +5401,67 @@ export default function EditorLayout() {
             )}
           </div>
         </div>
+      ) : currentDocId ? (
+        <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
+          <EditorPane
+            ref={editorRef}
+            docId={currentDocId}
+            editable={collab.canEditMainText}
+            chrome={FULL_CHROME}
+            onUpdate={handleUpdate}
+            onEditorReady={setEditorInstance}
+            onActivate={handleEditorPaneActivate}
+            onPaneStateChange={setPaneState}
+            pdfView={pdfView}
+            onTogglePdfView={togglePdfView}
+            codeView={codeView}
+            onToggleCodeView={toggleCodeView}
+            placements={prefs.placements}
+            viewPrefs={editorPaneViewPrefs}
+            menuBar={editorPaneMenuBar}
+            aiWindowOpen={aiWindowOpen}
+            onAiWindowClose={() => setAiWindowOpen(false)}
+            highlightText={highlightText}
+            highlightRange={effectiveHighlightRange}
+            onDocumentClassMismatch={promptDocClassMismatch}
+          />
+        </div>
       ) : (
-      <div ref={mainAreaRefCb} data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto items-start relative" style={{ ['--page-preferred' as string]: `${prefs.pageWidth}px`, overscrollBehavior: 'none' }}>
-        {/* ── Linking lines suppressed (may re-enable later) ──
-        {archivePanelSide && selectedArchiveId && anchoredIds.has(selectedArchiveId) && (
-          <ArchiveConnectors
-            editor={editorInstance}
-            selectedId={selectedArchiveId}
-            panelSide={archivePanelSide}
-            mainRef={mainAreaRef}
-          />
-        )}
-        {footnotePanelSide && selectedFootnoteId && (
-          <LinkConnector
-            editor={editorInstance}
-            linkId={selectedFootnoteId}
-            linkKind="footnote"
-            targetCard={{ kind: "footnote", id: selectedFootnoteId }}
-            panelSide={footnotePanelSide}
-            mainRef={mainAreaRef}
-            docVersion={latestDoc}
-          />
-        )}
-        {citationPanelSide && selectedCitationId && (
-          <LinkConnector
-            editor={editorInstance}
-            linkId={selectedCitationId}
-            linkKind="citation"
-            targetCard={{ kind: "citation", id: selectedCitationId }}
-            panelSide={citationPanelSide}
-            mainRef={mainAreaRef}
-          />
-        )}
-        {citationPanelSide && getPanelViewMode("citations") === "in-text" && selectedCitationId && (
-          <LinkConnector
-            editor={editorInstance}
-            linkId={selectedCitationId}
-            linkKind="citation"
-            targetCard={{ kind: "citation", id: selectedCitationId }}
-            panelSide={citationPanelSide}
-            mainRef={mainAreaRef}
-            variant="in-text"
-          />
-        )}
-        {bibliographyPanelSide && bibActiveCitationId && selectedBibKey && (
-          <LinkConnector
-            editor={editorInstance}
-            linkId={bibActiveCitationId}
-            linkKind="citation"
-            targetCard={{ kind: "citation", id: bibActiveCitationId }}
-            panelSide={bibliographyPanelSide}
-            mainRef={mainAreaRef}
-            panelEntrySelector={`[data-bib-entry="${selectedBibKey}"]`}
-          />
-        )}
-        ── end suppressed linking lines ── */}
-
-
-        {/* Left icon strip — hidden in Zen mode */}
-        {!zenModeOn && (
-        <div data-strip-side="left" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-10" style={{ maxHeight: '100dvh' }}>
-          {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
-              is being reworked in the always-float model — buttons remain here
-              as placeholders for the next iteration of behavior. */}
-          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
-            {/* Sidebar toggle — panel-left icon indicates the left sidebar */}
-            <button
-              onClick={() => { activeLeft ? collapseLeft() : expandLeft(); }}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={!!activeLeft}
-              title={activeLeft ? "Collapse panel" : "Expand panel"}
-              data-helper="Toggle sidebar"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="1.5" />
-                {activeLeft && <rect x="4" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
-                <line x1="9" y1="4" x2="9" y2="20" />
-              </svg>
-            </button>
-            {/* Blank — hide all cards in omni-view (mode toggle, per side) */}
-            <button
-              onClick={() => toggleOmniHideAllCards("left")}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={omniHideAllCards.left}
-              title={omniHideAllCards.left ? "Show cards in omni-view" : "Hide all cards in omni-view"}
-              data-helper="Hide cards"
-            >
-              <IconBlank active={omniHideAllCards.left} />
-            </button>
-            {/* Split panel toggle — placeholder; will be redefined */}
-            <button
-              onClick={() => toggleSplit("left")}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={prefs.activeLeftBottom != null}
-              title={prefs.activeLeftBottom != null ? "Unsplit panel" : "Split panel horizontally"}
-              data-helper="Split panel"
-            >
-              <IconSplit
-                active={prefs.activeLeftBottom != null}
-                focusedHalf={prefs.activeLeftBottom != null ? focusedHalfLeft : undefined}
-              />
-            </button>
-          </div>
-          {leftStripItems.map((p) => (
-            <StripButton
-              key={p.id}
-              panelId={p.id}
-              active={prefs.poppedOutPanels.includes(p.id) || Object.values(prefs.dockSlots).includes(p.id)}
-              onClick={() => handleStripClick(p.id, "left")}
-              onMove={handleMove}
-              side="left"
-              stripRef={null as any}
-              iconDropMimes={iconDropMimesByPanel[p.id]}
-              onIconDrop={(dt) => handleIconDrop(p.id, dt)}
-            />
-          ))}
-          <div className="mt-auto">
-            <OmniFilterMenu
-              side="left"
-              enabled={getOmniEnabled("left")}
-              onToggle={(cat) => toggleOmniCategory("left", cat)}
-              onSelectDefault={() => setOmniSideToDefault("left")}
-              categorySides={categorySides}
-              defaultCategories={DEFAULT_OMNI_CATEGORIES.left}
-            />
-          </div>
-        </div>
-        )}
-
-        {/* Left panel column. In Zen mode this position becomes an empty
-            adjustable margin; when the side is collapsed the column is
-            simply absent so the editor runs flush to the icon strip. */}
-        {zenModeOn ? (
-          <ZenMargin side="left" marginPref={zenLeftMargin} onMarginPrefChange={setZenLeftMargin} isResizing={isResizingPanels} onResizingChange={setIsResizingPanels} onSyncBeforeDrag={syncPanelPrefsToRendered} />
-        ) : (
-          renderPanelColumn("left")
-        )}
-
-        {/* Editor column. Flex behavior flips on panel collapse state:
-            both open → fixed at --page-preferred (panels absorb leftover);
-            one collapsed → grows from --page-preferred up to --page-max
-            (the open panel absorbs past-max leftover);
-            both collapsed → grows uncapped so the right strip stays
-            flush to the window edge. */}
-        <div ref={editorColRefCb} data-editor-col="true" className={`flex flex-col min-h-0 relative ${showParTitles ? "" : "hide-par-titles "}${showLatexComments ? "" : "hide-latex-comments "}${showHeadingLabels ? "" : "hide-heading-labels "}${dividerClassName ? dividerClassName + " " : ""}dividers-width-${dividerWidth}`} style={{
-          // Grow 1000 vs panel grow 1 → window-upsize feeds the text
-          // area almost entirely until it hits page-max, then panels
-          // absorb the leftover. Shrink 1 vs panel shrink 100 → window-
-          // downsize pulls from panels first, then the text area shrinks
-          // toward its 400 min. Basis is dynamic (state): it captures
-          // the intended editor width given current panel prefs, so
-          // window-resize flex-shrink math yields "panels first" until
-          // they hit their min, only then does the editor give way.
-          flex: `1000 1 ${editorBasis}px`,
-          minWidth: 400,
-          maxWidth: (activeLeft != null || activeRight != null) ? 'var(--page-max)' : undefined,
-          // Top padding is provided by the sticky upper-tool-strip wrapper
-          // below; setting it here too would create a jump between resting
-          // and pinned states.
-          paddingTop: 0,
-          // In zen mode, match the top chrome (4 px column padding +
-          // 4 px drag gap = 8 px) at the bottom too — so the lowest
-          // possible point of the page lines up symmetrically with
-          // its highest possible point.
-          paddingBottom: zenModeOn ? 4 : 'var(--pod-gap)',
-          paddingLeft: 4,
-          paddingRight: 4,
-        }}>
-          {menuPortalReady && detachedActions.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-actions-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "actions", id: tb.id })}
-            >
-              <DetachedActionsToolbar
-                actions={{
-                  onAddComment: handleToolbarAddComment,
-                  onAddNote: handleToolbarAddNote,
-                  onAddTodo: handleToolbarAddTodo,
-                  onCutSelection: handleToolbarAddCut,
-                  onArchive: handleToolbarArchive,
-                  onCreateFootnote: handleToolbarCreateFootnote,
-                  onInsertCitation: handleToolbarInsertCitation,
-                  onQuoteSelection: handleToolbarQuoteSelection,
-                }}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-actions-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedActions(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedActions(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
-          {menuPortalReady && (overrideEditor ?? editorInstance) && detachedFormatting.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-formatting-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "formatting", id: tb.id })}
-            >
-              <DetachedFormattingToolbar
-                editor={(overrideEditor ?? editorInstance)!}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-formatting-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedFormatting(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedFormatting(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
-          {menuPortalReady && (overrideEditor ?? editorInstance) && detachedMenus.map(tb => createPortal(
-            <div
-              key={tb.id}
-              data-menu-id={tb.id}
-              className="fixed z-[9999] pointer-events-auto"
-              style={{ left: tb.pos.left, top: tb.pos.top }}
-              onMouseDownCapture={() => focusFloating({ kind: "toolbar", bucket: "menus", id: tb.id })}
-            >
-              <DetachedMenuToolbar
-                menuProps={{
-                  editor: (overrideEditor ?? editorInstance)!,
-                  onAddComment: handleToolbarAddComment,
-                  onArchive: handleToolbarArchive,
-                  onCreateFootnote: handleToolbarCreateFootnote,
-                  onQuoteSelection: handleToolbarQuoteSelection,
-                  onAddNote: handleToolbarAddNote,
-                  onAddTodo: handleToolbarAddTodo,
-                  onCutSelection: handleToolbarAddCut,
-                  onInsertCitation: handleToolbarInsertCitation,
-                  showParTitles,
-                  onToggleParTitles: () => setShowParTitles((p) => !p),
-                  showLatexComments,
-                  onToggleLatexComments: () => setShowLatexComments((p) => !p),
-                  showHeadingLabels,
-                  onToggleHeadingLabels: toggleHeadingLabels,
-                  showSectionIndicator,
-                  onToggleSectionIndicator: toggleSectionIndicator,
-                  onOpenPreferences: () => setPreferencesOpen(true),
-                  editorSplit,
-                  onToggleEditorSplit: () => setEditorSplit((s) => !s),
-                  activeSplitPane: editorSplit ? activeSplitPane : undefined,
-                  showMarginalia,
-                  onToggleMarginalia: toggleMarginalia,
-                  hiddenMarginaliaTypes,
-                  onToggleMarginaliaType: toggleMarginaliaType,
-                  showHighlights: prefs.showHighlights,
-                  onToggleHighlights: () => setShowHighlights((v) => !v),
-                  hiddenHighlightTypes,
-                  onToggleHighlightType: toggleHighlightType,
-                  availableDividerLevels,
-                  dividerLevels: activeDividerLevels,
-                  onToggleDividerLevel: toggleDividerLevel,
-                  dividerWidth,
-                  onSetDividerWidth: setDividerWidth,
-                  onParaNavBack: paraNavBack,
-                  onParaNavForward: paraNavForward,
-                  paraNavBackDisabled: paraHistoryRef.current.idx <= 0,
-                  paraNavForwardDisabled: paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1,
-                  onCloseAllPanels: closeAllPanels,
-                  onOpenFontsDialog: () => setFontsOpen(true),
-                  onActionsDetach: handleActionsDetach,
-                  onFormatDetach: handleFormatDetach,
-                }}
-                onGrabStart={(e) => {
-                  e.preventDefault();
-                  beginToolbarDrag({
-                    clientX: e.clientX, clientY: e.clientY,
-                    podLeft: tb.pos.left, podTop: tb.pos.top,
-                    getWrapper: () => document.querySelector<HTMLElement>(`[data-menu-id="${tb.id}"]`),
-                    onUpdatePos: (pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x)),
-                  });
-                }}
-                onReattach={() => setDetachedMenus(prev => prev.filter(x => x.id !== tb.id))}
-                pos={tb.pos}
-                onSetPos={(pos) => setDetachedMenus(prev => prev.map(x => x.id === tb.id ? { ...x, pos } : x))}
-              />
-            </div>,
-            document.body,
-          ))}
-          {/* Docked MenuBar — sits at the very top of the editor
-              column, centered over the text window so it tracks the
-              column as panels open and close. Hidden in zen mode so
-              the page can extend to the top of the window. */}
-          {!zenModeOn && (overrideEditor ?? editorInstance) && (
-            <div
-              data-tool-strip="text"
-              className="flex justify-center items-start shrink-0 sticky z-20"
-              style={{
-                // Solid manilla band sized to the MenuBar exactly. The
-                // pod-top cap rendered immediately below pins the editor
-                // pod's top border to the bottom of this strip.
-                background: 'var(--background)',
-                top: 0,
-                height: 32,
-                paddingTop: 4,
-                // Bleed past the editor column's 4px horizontal padding
-                // so the band butts against the panel columns' action-button
-                // strips on either side — no gap for content to scroll through.
-                marginLeft: -4,
-                marginRight: -4,
-                pointerEvents: 'none',
-              }}
-            >
-              <div className="pointer-events-auto">
-              <MenuBar
-                editor={overrideEditor ?? editorInstance}
-                onAddComment={handleToolbarAddComment}
-                onArchive={handleToolbarArchive}
-                onCreateFootnote={handleToolbarCreateFootnote}
-                onQuoteSelection={handleToolbarQuoteSelection}
-                onAddNote={handleToolbarAddNote}
-                onAddTodo={handleToolbarAddTodo}
-                onCutSelection={handleToolbarAddCut}
-                onInsertCitation={handleToolbarInsertCitation}
-                showParTitles={showParTitles}
-                onToggleParTitles={() => setShowParTitles((p) => !p)}
-                showLatexComments={showLatexComments}
-                onToggleLatexComments={() => setShowLatexComments((p) => !p)}
-                showSectionIndicator={showSectionIndicator}
-                onToggleSectionIndicator={toggleSectionIndicator}
-                showHeadingLabels={showHeadingLabels}
-                onToggleHeadingLabels={toggleHeadingLabels}
-                onOpenPreferences={() => setPreferencesOpen(true)}
-                editorSplit={editorSplit}
-                onToggleEditorSplit={() => setEditorSplit((s) => !s)}
-                activeSplitPane={editorSplit ? activeSplitPane : undefined}
-                showMarginalia={showMarginalia}
-                onToggleMarginalia={toggleMarginalia}
-                hiddenMarginaliaTypes={hiddenMarginaliaTypes}
-                onToggleMarginaliaType={toggleMarginaliaType}
-                showHighlights={prefs.showHighlights}
-                onToggleHighlights={() => setShowHighlights((v) => !v)}
-                hiddenHighlightTypes={hiddenHighlightTypes}
-                onToggleHighlightType={toggleHighlightType}
-                availableDividerLevels={availableDividerLevels}
-                dividerLevels={activeDividerLevels}
-                onToggleDividerLevel={toggleDividerLevel}
-                dividerWidth={dividerWidth}
-                onSetDividerWidth={setDividerWidth}
-                onParaNavBack={paraNavBack}
-                onParaNavForward={paraNavForward}
-                paraNavBackDisabled={paraHistoryRef.current.idx <= 0}
-                paraNavForwardDisabled={paraHistoryRef.current.idx >= paraHistoryRef.current.stack.length - 1}
-                onCloseAllPanels={closeAllPanels}
-                onOpenFontsDialog={() => setFontsOpen(true)}
-                orientation="horizontal"
-                onSetOrientation={() => {}}
-                onActionsDetach={handleActionsDetach}
-                onFormatDetach={handleFormatDetach}
-                atHome
-              />
-              </div>
-            </div>
-          )}
-          {/* Sticky pod-top cap — paints the editor pod's top edge (white
-              surface, 1px border, rounded top corners) at top:32 always, so
-              the pod's top reads as pinned beneath the toolbar regardless of
-              scroll position. The outer wrapper bleeds past the editor
-              column's 4px padding and into the drag-gap on each side with a
-              manilla background, so the pod's lateral shadow and top-edge
-              border don't peek out beside the cap. The inner div is sized to
-              match the actual pod (column-content width) and renders the
-              white rounded top. height equals --pod-radius so the curve is
-              fully visible; marginBottom: -8 negates the cap's flow space so
-              the real pod below stays at its natural position and overlaps
-              the inner cap exactly at scrollTop=0. */}
-          {!zenModeOn && (overrideEditor ?? editorInstance) && (
-            <div
-              data-editor-pod-cap
-              className="sticky z-30 shrink-0 pointer-events-none flex"
-              style={{
-                top: 32,
-                height: 8,
-                marginBottom: -8,
-                marginLeft: 'calc(-4px - var(--pod-gap))',
-                marginRight: 'calc(-4px - var(--pod-gap))',
-                background: 'var(--background)',
-              }}
-            >
-              <div
-                style={{
-                  flex: 1,
-                  marginLeft: 'calc(4px + var(--pod-gap))',
-                  marginRight: 'calc(4px + var(--pod-gap))',
-                  background: 'var(--pod-editor)',
-                  borderTop: 'var(--pod-border)',
-                  borderLeft: 'var(--pod-border)',
-                  borderRight: 'var(--pod-border)',
-                  borderTopLeftRadius: 'var(--pod-radius)',
-                  borderTopRightRadius: 'var(--pod-radius)',
-                  // Ambient shadow on the cap's OUTER (top) edge, cast
-                  // upward onto the toolbar's manilla band. Matches the
-                  // pod's --pod-shadow (y-offset inverted) so it's the
-                  // same size as the lateral shadows.
-                  boxShadow: '0 -1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06)',
-                  clipPath: 'inset(-20px 0 0 0)',
-                }}
-              />
-            </div>
-          )}
-          {/* Sticky section-path lozenge — pinned right below the pod cap.
-              The wrapper has height: 0 so it takes no flow space; the pill
-              inside renders downward from the wrapper's top edge into the
-              first line or two of editor content with a translucent
-              backdrop-blur so body text reads through. */}
-          {!zenModeOn && showSectionIndicator && (overrideEditor ?? editorInstance) && (
-            <div
-              className="sticky z-20 shrink-0 flex justify-center pointer-events-none"
-              style={{ top: 40, height: 0 }}
-            >
-              <SectionLozenge sectionPath={currentSectionPath} />
-            </div>
-          )}
-          {/* Sticky expand-all / collapse-all controls — pinned right below
-              the pod cap, fade in on hover anywhere in the 24px band. The
-              wrapper takes no flow space (marginBottom: -24 negates its
-              height) so the editor content stays at its natural top. */}
-          {!zenModeOn && (overrideEditor ?? editorInstance) && (
-            <div
-              className="sticky z-20 shrink-0 group"
-              style={{ top: 40, height: 24, marginBottom: -24 }}
-            >
-              <div className="absolute top-2 left-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150">
-                <button
-                  onClick={() => editorRef.current?.expandAllSections()}
-                  className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                  title="Expand all sections"
-                >
-                  <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2 1 L7 4.5 L12 1" />
-                    <path d="M2 5.5 L7 9 L12 5.5" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => editorRef.current?.collapseAllSections()}
-                  className="text-[var(--muted)] hover:text-ink-body transition-colors"
-                  title="Collapse all sections"
-                >
-                  <svg width="11" height="8" viewBox="0 0 14 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M2 4.5 L7 1 L12 4.5" />
-                    <path d="M2 9 L7 5.5 L12 9" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-          {/* Page wrapper — naturally tall under unified row scroll.
-              min-height keeps an empty doc from collapsing the chrome. */}
-          <div
-            data-editor-page="true"
-            className="flex flex-col relative"
-            style={{
-              minHeight: 'calc(100svh - var(--topbar-h, 56px) - 2 * var(--pod-gap))',
-            }}
-          >
-          {currentDocId && content && !docLoading ? (
-            editorSplit ? (
-              /* When split, each pane is its own pod so the gap reveals the canvas */
-              <SplitEditorPanes
-                editorInstance={editorInstance}
-                ratio={editorSplitRatio}
-                onRatioChange={setEditorSplitRatio}
-                onClose={() => setEditorSplit(false)}
-                onMirrorFocus={() => setActiveSplitPane("bottom")}
-                onMirrorViewReady={(v) => { mirrorViewRef.current = v; setMirrorViewGen((n) => n + 1); }}
-                sectionPath={currentSectionPath}
-                mirrorSectionPath={mirrorSectionPath}
-                showSectionIndicator={showSectionIndicator}
-                canonical={
-                  <>
-                    <VirgilEditor
-                      ref={editorRef}
-                      initialContent={content}
-                      onUpdate={handleUpdate}
-                      highlightText={highlightText}
-                      highlightRange={effectiveHighlightRange}
-                      onAddComment={handleAddComment}
-                      onArchive={handleArchive}
-                      onEditorReady={setEditorInstance}
-                      onCitationDrop={handleCitationDrop}
-                      onConfirmFootnoteMove={confirmFootnoteMove}
-                      onConfirmLabelRename={confirmLabelRename}
-                      isLabelTaken={checkLabelTaken}
-                      anchoredUuidsRef={anchoredUuidsRef}
-                      activeAnchorId={effectiveAnchorId}
-                      activeAnchorColor={effectiveAnchorColor}
-                      onToggleParagraphPopout={handleToggleParagraphPopout}
-                      paragraphIsPoppedRef={paragraphIsPoppedRef}
-                      onToggleHeadingPopout={handleToggleHeadingPopout}
-                      headingIsPoppedRef={headingIsPoppedRef}
-                      onToggleExamplePopout={handleToggleExamplePopout}
-                      exampleIsPoppedRef={exampleIsPoppedRef}
-                    />
-                    {!zenModeOn && (
-                      <Marginalia
-                        editor={editorInstance}
-                        markers={visibleMarginaliaMarkers}
-                        panelSides={marginaliaPanelSides}
-                      />
-                    )}
-                  </>
-                }
-              />
+        <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
+          <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
+            {docs.length > 0 ? (
+              <RecentPapersList docs={docs} onOpen={openFile} />
             ) : (
-              /* Single editor — one white pod.
-                 Preference-mode: the pod uses --pod-editor which is locked
-                 to --surface (see globals.css), and the text inside uses
-                 editor typography tokens. Annotating the pod means any
-                 ctrl+click on the "paper" area — including body text that
-                 doesn't set its own data-prefs — surfaces these controls. */
-              <div
-                data-prefs="surfaceColor,editorTextColor,editorFontSize,editorLineHeight"
-                data-marginalia-host
-                className="flex-1 flex flex-col relative" style={{
-                  background: 'var(--pod-editor)',
-                  borderRadius: 'var(--pod-radius)',
-                  border: 'var(--pod-border)',
-                  boxShadow: 'var(--pod-shadow)',
-                  // Clip the box-shadow at top and bottom so it doesn't
-                  // bleed into the upper tool strip's manilla band or past
-                  // the bottom cap into the column's padding region. The
-                  // top and bottom caps now carry their own ambient
-                  // shadows; the pod's shadow only extends laterally.
-                  clipPath: 'inset(0 -20px 0 -20px)',
-                }}>
-                <VirgilEditor
-                  ref={editorRef}
-                  initialContent={content}
-                  onUpdate={handleUpdate}
-                  highlightText={highlightText}
-                  highlightRange={effectiveHighlightRange}
-                  onAddComment={handleAddComment}
-                  onArchive={handleArchive}
-                  onEditorReady={setEditorInstance}
-                  onCitationDrop={handleCitationDrop}
-                  onConfirmFootnoteMove={confirmFootnoteMove}
-                  onConfirmLabelRename={confirmLabelRename}
-                  isLabelTaken={checkLabelTaken}
-                  activeAnchorId={effectiveAnchorId}
-                  activeAnchorColor={effectiveAnchorColor}
-                  onToggleParagraphPopout={handleToggleParagraphPopout}
-                  paragraphIsPoppedRef={paragraphIsPoppedRef}
-                  onToggleHeadingPopout={handleToggleHeadingPopout}
-                  headingIsPoppedRef={headingIsPoppedRef}
-                  onToggleExamplePopout={handleToggleExamplePopout}
-                  exampleIsPoppedRef={exampleIsPoppedRef}
-                />
-                {!zenModeOn && (
-                  <Marginalia
-                    editor={editorInstance}
-                    markers={visibleMarginaliaMarkers}
-                    panelSides={marginaliaPanelSides}
-                  />
-                )}
-              </div>
-            )
-          ) : (
-            <div className="flex-1 flex flex-col min-h-0 overflow-hidden" style={{ background: 'var(--pod-editor)', borderRadius: 'var(--pod-radius)', border: 'var(--pod-border)', boxShadow: 'var(--pod-shadow)' }}>
-              <div className="flex-1 flex items-center justify-center">
-                {docLoading ? (
-                  <div className="text-[var(--muted)] text-sm">Loading...</div>
-                ) : (
-                  <div className="flex flex-col items-center gap-6 px-6 py-8 w-full max-w-md">
-                    {docs.length > 0 ? (
-                      <RecentPapersList docs={docs} onOpen={openFile} />
-                    ) : (
-                      <div className="text-ink-subtle text-sm">No document open</div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setNewDocModal({ mode: "fresh" })}
-                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 5v14" />
-                          <path d="M5 12h14" />
-                        </svg>
-                        Create new document
-                      </button>
-                      {!devStorage && (
-                        <button
-                          type="button"
-                          onClick={openExistingFile}
-                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-                          </svg>
-                          Open existing folder
-                        </button>
-                      )}
-                    </div>
-                    <InstallPwaPrompt />
-                  </div>
-                )}
-              </div>
+              <div className="text-ink-subtle text-sm">No document open</div>
+            )}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setNewDocModal({ mode: "fresh" })}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[var(--accent)] rounded-md hover:opacity-90 transition-opacity"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 5v14" />
+                  <path d="M5 12h14" />
+                </svg>
+                Create new document
+              </button>
+              {!devStorage && (
+                <button
+                  type="button"
+                  onClick={openExistingFile}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-ink-body bg-surface border border-edge-hover rounded-md hover-on-light"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                  </svg>
+                  Open existing folder
+                </button>
+              )}
             </div>
-          )}
-          {/* Print appendices — hidden in live UI (`.print-only`),
-              revealed by the @media print rules. Mounted inside
-              [data-editor-page] so the visibility-trick includes them. */}
-          <PrintAppendices
-            options={prefs.printOptions}
-            renderPanel={(kind: PrintPanelKey) =>
-              renderPanelWithChrome(kind, "left")
-            }
-          />
-          </div>
-          {/* Sticky pod-bottom cap — mirror of the top cap. The outer is
-              flex-col with manilla bg; it pins to the very bottom of the
-              scroll container (sticky bottom: 0) and covers the pod-gap
-              region beneath the cap so editor content scrolling past the
-              cap's white edge can't bleed into the column's bottom padding.
-              Inner row holds the 8px white pod-bottom (rounded BOTTOM
-              corners + bottom/left/right borders) sitting above a 10px
-              manilla band — equivalent to how the top toolbar's solid
-              manilla sits above the top cap. marginTop: -(8 + pod-gap)
-              negates total flow space so the page-wrapper isn't pushed
-              up. */}
-          {!zenModeOn && (overrideEditor ?? editorInstance) && (
-            <div
-              data-editor-pod-cap-bottom
-              className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
-              style={{
-                bottom: 0,
-                height: 'calc(8px + var(--pod-gap))',
-                marginTop: 'calc(-8px - var(--pod-gap))',
-                marginLeft: 'calc(-4px - var(--pod-gap))',
-                marginRight: 'calc(-4px - var(--pod-gap))',
-                background: 'var(--background)',
-              }}
-            >
-              <div className="flex" style={{ flex: '0 0 8px' }}>
-                <div
-                  style={{
-                    flex: 1,
-                    marginLeft: 'calc(4px + var(--pod-gap))',
-                    marginRight: 'calc(4px + var(--pod-gap))',
-                    background: 'var(--pod-editor)',
-                    borderBottom: 'var(--pod-border)',
-                    borderLeft: 'var(--pod-border)',
-                    borderRight: 'var(--pod-border)',
-                    borderBottomLeftRadius: 'var(--pod-radius)',
-                    borderBottomRightRadius: 'var(--pod-radius)',
-                    // Ambient shadow on the cap's OUTER (bottom) edge,
-                    // cast downward onto the manilla canvas below. Uses
-                    // var(--pod-shadow) directly so it matches the pod's
-                    // lateral shadow size exactly.
-                    boxShadow: 'var(--pod-shadow)',
-                    clipPath: 'inset(0 0 -20px 0)',
-                  }}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Right panel column. In Zen mode this position becomes an empty
-            adjustable margin; when the side is collapsed the column is
-            simply absent so the editor runs flush to the icon strip. */}
-        {zenModeOn ? (
-          <ZenMargin side="right" marginPref={zenRightMargin} onMarginPrefChange={setZenRightMargin} isResizing={isResizingPanels} onResizingChange={setIsResizingPanels} onSyncBeforeDrag={syncPanelPrefsToRendered} />
-        ) : (
-          renderPanelColumn("right")
-        )}
-
-        {/* Right icon strip — hidden in Zen mode */}
-        {!zenModeOn && (
-        <div data-strip-side="right" data-prefs="backgroundColor" className="flex flex-col items-center pt-2 pb-3 px-1.5 bg-[var(--background)] shrink-0 gap-2.5 sticky top-0 z-10" style={{ maxHeight: '100dvh' }}>
-          {/* Presentation-tools pod: collapse/expand, blank, split. Functionality
-              is being reworked in the always-float model — buttons remain here
-              as placeholders for the next iteration of behavior. */}
-          <div className="flex flex-col items-center gap-0.5 p-1 rounded-md bg-surface/70 border border-edge-hover">
-            {/* Sidebar toggle — panel-right icon indicates the right sidebar */}
-            <button
-              onClick={() => { activeRight ? collapseRight() : expandRight(); }}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={!!activeRight}
-              title={activeRight ? "Collapse panel" : "Expand panel"}
-              data-helper="Toggle sidebar"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="4" width="16" height="16" rx="1.5" />
-                {activeRight && <rect x="15" y="4" width="5" height="16" fill="currentColor" opacity="0.25" stroke="none" />}
-                <line x1="15" y1="4" x2="15" y2="20" />
-              </svg>
-            </button>
-            {/* Blank — hide all cards in omni-view (mode toggle, per side) */}
-            <button
-              onClick={() => toggleOmniHideAllCards("right")}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={omniHideAllCards.right}
-              title={omniHideAllCards.right ? "Show cards in omni-view" : "Hide all cards in omni-view"}
-              data-helper="Hide cards"
-            >
-              <IconBlank active={omniHideAllCards.right} />
-            </button>
-            {/* Split panel toggle — placeholder; will be redefined */}
-            <button
-              onClick={() => toggleSplit("right")}
-              className="iconbtn-md iconbtn-toggle"
-              aria-pressed={prefs.activeRightBottom != null}
-              title={prefs.activeRightBottom != null ? "Unsplit panel" : "Split panel horizontally"}
-              data-helper="Split panel"
-            >
-              <IconSplit
-                active={prefs.activeRightBottom != null}
-                focusedHalf={prefs.activeRightBottom != null ? focusedHalfRight : undefined}
-              />
-            </button>
-          </div>
-          {rightStripItems.map((p) => (
-            <StripButton
-              key={p.id}
-              panelId={p.id}
-              active={prefs.poppedOutPanels.includes(p.id) || Object.values(prefs.dockSlots).includes(p.id)}
-              onClick={() => handleStripClick(p.id, "right")}
-              onMove={handleMove}
-              side="right"
-              stripRef={null as any}
-              iconDropMimes={iconDropMimesByPanel[p.id]}
-              onIconDrop={(dt) => handleIconDrop(p.id, dt)}
-            />
-          ))}
-          <div className="mt-auto">
-            <OmniFilterMenu
-              side="right"
-              enabled={getOmniEnabled("right")}
-              onToggle={(cat) => toggleOmniCategory("right", cat)}
-              onSelectDefault={() => setOmniSideToDefault("right")}
-              categorySides={categorySides}
-              defaultCategories={DEFAULT_OMNI_CATEGORIES.right}
-            />
+            <InstallPwaPrompt />
           </div>
         </div>
-        )}
-        <EditorScrollbar rowRef={mainAreaRef} editorColRef={editorColRef} />
-      </div>
       )}
       <PrintDialog
         open={printOpen}
@@ -6399,27 +5490,9 @@ export default function EditorLayout() {
           onDeletePreset={deletePreset}
         />
       )}
-      <AIWindow
-        open={aiWindowOpen}
-        onClose={() => setAiWindowOpen(false)}
-        bibReviewRequests={bibReviewRequests}
-        bibEntryRequests={entryRequests}
-        comments={comments}
-        bibEntries={bibEntries}
-        panelAiRequests={aiRequests}
-        addPanelAiRequest={addAiRequest}
-        deletePanelAiRequest={deleteAiRequest}
-        requestBibReview={requestBibReview}
-        cancelBibReview={cancelBibReview}
-        addEntryRequest={addEntryRequest}
-        removeEntryRequest={removeEntryRequest}
-        addComment={(opts) => addRevisionComment(null, opts.text ? undefined : undefined)}
-        refreshAll={() => {
-          refreshBibReview();
-          refreshBibSettings();
-          refreshRevisions();
-        }}
-      />
+      {/* AIWindow now mounts inside EditorPane (which holds the per-doc
+          hooks the modal reads). EditorLayout owns only the open-state
+          and the trigger button in the Virgil bar. */}
       {confirmDialog}
       {identityDialog}
       {docClassDialog}
@@ -6476,84 +5549,14 @@ export default function EditorLayout() {
           }}
         />
       )}
-      {/* Floating (popped-out) cards — rendered at the EditorLayout root so
-          they survive closing the source panel. Each wrapper card receives
-          `isPoppedOut={true}`, which makes it wrap itself in a FloatCard
-          (portal to document.body). The wrapper-internal null-return for
-          in-list renders prevents double-mounting when the source panel
-          is also open. Hidden in Zen mode — prefs state is retained. */}
-      {!zenModeOn && prefs.poppedOutCards.map((key) => renderPoppedCard(key, poppedCardDeps))}
-      {/* Open panels — both docked and floating modes flow through the
-          same FloatingPanel shell. Docked panels portal into the dock-
-          slot anchor inside their gutter PanelColumn; floating panels
-          portal to document.body. The shell preserves its component
-          instance across mode flips so drag-to-undock is one continuous
-          gesture. Hidden in Zen mode. */}
-      {!zenModeOn && (() => {
-        // Build a unified list of "open" panels: anything in dockSlots
-        // OR poppedOutPanels. A panel can be in only one of these at a
-        // time; we de-dupe by id just in case state is in flux.
-        const open: Array<{ pid: PanelId; mode: "docked" | "floating"; slotKey: DockSlotKey | null }> = [];
-        const seen = new Set<PanelId>();
-        for (const slotKey of Object.keys(prefs.dockSlots) as DockSlotKey[]) {
-          const pid = prefs.dockSlots[slotKey];
-          if (!pid || seen.has(pid)) continue;
-          seen.add(pid);
-          open.push({ pid, mode: "docked", slotKey });
-        }
-        for (const pid of prefs.poppedOutPanels) {
-          if (seen.has(pid)) continue;
-          seen.add(pid);
-          open.push({ pid, mode: "floating", slotKey: null });
-        }
-        return open.map(({ pid, mode, slotKey }, i) => {
-          const placement = prefs.placements.find((pl) => pl.id === pid);
-          const side: Side = placement?.side ?? "right";
-          const saved = prefs.floatPositions[pid];
-          const initialX = saved?.x ?? Math.max(
-            FLOATING_PANEL_VIEWPORT_MARGIN,
-            window.innerWidth / 2 - FLOATING_PANEL_WIDTH / 2 + i * FLOATING_PANEL_STACK_OFFSET,
-          );
-          const initialY = saved?.y ?? Math.max(
-            FLOATING_PANEL_VIEWPORT_MARGIN,
-            window.innerHeight / 2 - FLOATING_PANEL_HEIGHT / 2 + i * FLOATING_PANEL_STACK_OFFSET,
-          );
-          const initialWidth = saved?.width ?? FLOATING_PANEL_WIDTH;
-          const initialHeight = saved?.height ?? FLOATING_PANEL_HEIGHT;
-          return (
-            <FloatingPanel
-              key={pid}
-              panelId={pid}
-              mode={mode}
-              slotKey={slotKey}
-              initialX={initialX}
-              initialY={initialY}
-              initialWidth={initialWidth}
-              initialHeight={initialHeight}
-              zIndex={FLOATING_PANEL_Z_BASE + i}
-              onChange={(pos) => setFloatPosition(pid, pos)}
-              onUndock={(rect) => undockPanel(pid, rect)}
-              getSplitState={() => ({
-                left: prefs.activeLeftBottom != null,
-                right: prefs.activeRightBottom != null,
-              })}
-              onMaybeRedock={(slotKey) => redockPanel(pid, slotKey)}
-              onFocus={() => focusFloating({ kind: "panel", id: pid })}
-            >
-              {renderPanelWithChrome(pid, side)}
-            </FloatingPanel>
-          );
-        });
-      })()}
-      {/* Body-portaled hard-black outline that marks the active dock
-          target during drag — both undock-from-dock and redock-from-
-          float gestures share it. Sits above floating panels so it's
-          never occluded. */}
-      {!zenModeOn && <DockOutline />}
+      {/* Per-card popouts now mount inside EditorPane — see EditorPane.tsx
+          for the `viewPrefs && !zenMode` gate and the `popoutsDeps` bag.
+          The DockOutline / CardLiftOutline / FloatingPanel surfaces moved
+          earlier in 7.8; this entry was the last shell-rooted bit of
+          per-doc rendering. */}
     </div>
     </PoppedCardsContext.Provider>
     </CollabProvider>
-    </CardCreationProvider>
     </RecentlyAddedProvider>
     </PristineCardsProvider>
     </SelectionsProvider>
@@ -6561,5 +5564,60 @@ export default function EditorLayout() {
     </AiRequestsProvider>
     </EditorRefProvider>
     </EditorLayoutProvider>
+  );
+}
+
+/**
+ * Vertical line marking the insertion point during a paper-tab drag
+ * onto the Virgil bar. Mirrors the inner library strip's drop indicator
+ * shape (2px accent line) but positioned inside the outer tab strip.
+ */
+function PaperDropIndicator({
+  stripEl,
+  tabRefs,
+  order,
+  index,
+}: {
+  stripEl: HTMLDivElement | null;
+  tabRefs: Map<string, HTMLElement>;
+  order: string[];
+  index: number;
+}) {
+  if (!stripEl) return null;
+  const stripRect = stripEl.getBoundingClientRect();
+  let x: number;
+  if (order.length === 0) {
+    x = 4;
+  } else if (index <= 0) {
+    const first = tabRefs.get(order[0]);
+    x = first ? first.getBoundingClientRect().left - stripRect.left - 1 : 4;
+  } else if (index >= order.length) {
+    const last = tabRefs.get(order[order.length - 1]);
+    x = last ? last.getBoundingClientRect().right - stripRect.left + 1 : 4;
+  } else {
+    const left = tabRefs.get(order[index - 1]);
+    const right = tabRefs.get(order[index]);
+    if (left && right) {
+      const lr = left.getBoundingClientRect();
+      const rr = right.getBoundingClientRect();
+      x = (lr.right + rr.left) / 2 - stripRect.left - 1;
+    } else {
+      x = 4;
+    }
+  }
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 4,
+        bottom: 0,
+        left: x,
+        width: 2,
+        background: "var(--accent)",
+        borderRadius: 1,
+        pointerEvents: "none",
+        zIndex: 30,
+      }}
+    />
   );
 }

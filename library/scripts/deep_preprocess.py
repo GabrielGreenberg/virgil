@@ -1,4 +1,4 @@
-"""Deterministic cleanup passes for rich indexing.
+"""Deterministic cleanup passes for deep indexing.
 
 Transforms raw-extracted main.tex into cleaner LaTeX by removing
 extraction artifacts: repeating headers/footers, leaked page numbers,
@@ -7,7 +7,9 @@ hyphenated line breaks, broken paragraphs, and hard-wrapped lines.
 Runs before the Claude skill applies AI-driven structural improvements.
 
 Usage:
-  python3 rich_preprocess.py papers/<citekey>/main.tex [--dry-run]
+  python3 deep_preprocess.py papers/<citekey>/main.tex [--dry-run]
+
+(Was `rich_preprocess.py` before the rich-index → deep-index rename.)
 """
 
 from __future__ import annotations
@@ -498,7 +500,7 @@ def unwrap_hard_breaks(tex: str) -> tuple[str, int]:
     return "\n".join(result), count
 
 
-def rich_preprocess(tex: str) -> tuple[str, dict]:
+def deep_preprocess(tex: str) -> tuple[str, dict]:
     """Apply all deterministic cleanup passes.
 
     Returns (cleaned_tex, stats_dict).
@@ -536,7 +538,7 @@ def rich_preprocess(tex: str) -> tuple[str, dict]:
 
 
 def main() -> int:
-    p = argparse.ArgumentParser(description="Deterministic preprocessing for rich indexing.")
+    p = argparse.ArgumentParser(description="Deterministic preprocessing for deep indexing.")
     p.add_argument("texfile", help="Path to main.tex")
     p.add_argument("--dry-run", action="store_true",
                    help="Print diff without writing")
@@ -548,7 +550,7 @@ def main() -> int:
         return 1
 
     original = path.read_text(encoding="utf-8")
-    cleaned, stats = rich_preprocess(original)
+    cleaned, stats = deep_preprocess(original)
 
     total = sum(stats.values())
     stat_parts = [f"{v} {k.replace('_', ' ')}" for k, v in stats.items() if v > 0]

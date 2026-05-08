@@ -46,21 +46,25 @@ import {
   LinkedAnchorGuard,
   ExampleBlock,
   ExampleItem,
+  ExampleItemList,
   ExampleGloss,
   AlignedGlossRow,
   ProseGlossRow,
   GlossCell,
+  TabIndent,
 } from "@/lib/tiptap-extensions";
 
 import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
+import { useEditorChrome } from "./editor-layout/chrome-context";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
-const TYPE_NAMES = ["Chapter", "Section", "Subsection", "Subsubsection"];
+// Indexed by heading level 0..6 (Part..Subparagraph).
+const TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
 
 export function HeadingFloat({
   cardKey,
@@ -72,6 +76,7 @@ export function HeadingFloat({
   editorRef: RefObject<EditorHandle | null>;
 }) {
   const popped = usePoppedCards();
+  const chrome = useEditorChrome();
   const mainEditor = editorRef.current?.getEditor() ?? null;
 
   // Read the section once — heading + every block in its range. We seed
@@ -126,12 +131,15 @@ export function HeadingFloat({
       // during initial parse.
       ExampleBlock,
       ExampleItem,
+      ExampleItemList,
       ExampleGloss,
       AlignedGlossRow,
       ProseGlossRow,
       GlossCell,
+      TabIndent,
     ],
     content: initial.doc,
+    editable: chrome.showHeadingFloatLabelEdit,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -196,7 +204,7 @@ export function HeadingFloat({
     }
   }
 
-  const typeName = TYPE_NAMES[Math.min(initial.level - 1, 3)];
+  const typeName = TYPE_NAMES[Math.max(0, Math.min(initial.level, 6))];
 
   return (
     <FloatCard cardKey={cardKey}>

@@ -75,6 +75,21 @@ export function isHeadingFolded(state: EditorState, uuid: string): boolean {
   return getSectionFoldingState(state).folded.has(uuid);
 }
 
+const EMPTY_HIDDEN_INDICES: ReadonlySet<number> = new Set<number>();
+
+/**
+ * Set of top-level doc child indices that are currently hidden because they
+ * sit under a folded heading. Reference-stable empty set when nothing is
+ * folded, suitable for use as a memo dependency.
+ */
+export function getHiddenTopLevelIndices(
+  state: EditorState,
+): ReadonlySet<number> {
+  const { folded } = getSectionFoldingState(state);
+  if (folded.size === 0) return EMPTY_HIDDEN_INDICES;
+  return computeFoldedChildIndices(state.doc, folded);
+}
+
 /** Are there any headings currently folded? */
 export function hasFolded(state: EditorState): boolean {
   return getSectionFoldingState(state).folded.size > 0;

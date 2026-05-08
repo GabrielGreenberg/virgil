@@ -6,18 +6,47 @@
 // Bridges Virgil's editor state into the Library subsystem via
 // ProjectLibraryProvider so the built-in "Project Library" inner tab can
 // show the open document's bib (with an optional cited-only filter).
+//
+// IMPORTANT: this component is fully CONTROLLED. The active doc-state
+// must be passed in by the parent. There used to be an uncontrolled
+// fallback that called `useFiles()` locally — but `useFiles` is not a
+// singleton context, so a second instance got its own `currentDocId`
+// and drifted away from the EditorLayout's instance. That was the
+// "tab panels don't update on doc switch" bug. Always pass props.
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import LibraryApp from "@library/components/LibraryApp";
+import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import {
   ProjectLibraryProvider,
   type ProjectBibMeta,
 } from "@library/lib/project-library-context";
-import { useFiles } from "@/hooks/useFiles";
+import type { BibEntry } from "@library/lib/types";
 import { useCitations } from "@/hooks/useCitations";
+import { addEntriesToProjectBib, removeEntryFromProjectBib } from "@/lib/project-bib";
+import type { FsaDocMeta } from "@/lib/doc-index";
 
-export function LibraryTabView() {
-  const { currentDocId, currentDoc } = useFiles();
+interface Props {
+  /** Optional scope/seed for the inner `useLibraryTabs`. Library outer
+   *  tabs pass their own scope so panel state is isolated per outer tab. */
+  tabsOptions?: UseLibraryTabsOptions;
+  /** Authoritative open-tab list from EditorLayout's `useFiles`. */
+  openTabs: FsaDocMeta[];
+  /** Authoritative active docId from EditorLayout's `useFiles`. */
+  currentDocId: string | null;
+  /** Authoritative active doc meta from EditorLayout's `useFiles`. */
+  currentDoc: FsaDocMeta | null;
+  /** Switch the active doc without leaving the Library pane. */
+  focusDoc: (docId: string) => void;
+}
+
+export function LibraryTabView({
+  tabsOptions,
+  openTabs,
+  currentDocId,
+  currentDoc,
+  focusDoc,
+}: Props) {
   const { bibEntries, citations } = useCitations(currentDocId);
 
   const bibKeys = useMemo(() => bibEntries.map((e) => e.key), [bibEntries]);
@@ -53,6 +82,59 @@ export function LibraryTabView() {
     return Array.from(out);
   }, [citations]);
 
+  // Drag one or more entries onto a Project library tab → append them
+  // to the doc's references.bib. The library subsystem can't import
+  // `@/lib/storage`, so it dispatches a window event with the resolved
+  // BibEntry list; the listener here owns the file write.
+  // `addEntriesToProjectBib` does ONE read-modify-write per event, so
+  // multi-row drops can't race against themselves. The function is
+  // idempotent on key, so multiple LibraryTabView mounts (one per
+  // scoped outer library tab) seeing the same event redundantly is
+  // safe — the second call sees the entries already present and no-ops.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ docId?: string; bibEntries?: BibEntry[] }>)
+        .detail;
+      if (!detail?.docId || !detail.bibEntries?.length) return;
+      void addEntriesToProjectBib(detail.docId, detail.bibEntries);
+    };
+    window.addEventListener("virgil-library-add-to-project-bib", handler);
+    return () =>
+      window.removeEventListener("virgil-library-add-to-project-bib", handler);
+  }, []);
+
+  // Three-dots menu in a Project library tab → remove the entry from
+  // the doc's references.bib. The library subsystem dispatches the
+  // event after a user-confirm; this listener owns the file write.
+  // Idempotent across racing scoped LibraryTabView mounts.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ docId?: string; citekey?: string }>)
+        .detail;
+      if (!detail?.docId || !detail?.citekey) return;
+      void removeEntryFromProjectBib(detail.docId, detail.citekey);
+    };
+    window.addEventListener("virgil-library-remove-from-project-bib", handler);
+    return () =>
+      window.removeEventListener("virgil-library-remove-from-project-bib", handler);
+  }, []);
+
+  // The singleton (unscoped) Library outer tab projects every open Virgil
+  // doc as a per-doc Project library inner tab. Tear-out scoped instances
+  // pass their own tabsOptions and ignore openDocs.
+  const mergedTabsOptions = useMemo<UseLibraryTabsOptions | undefined>(() => {
+    if (tabsOptions?.scope) return tabsOptions;
+    return {
+      ...tabsOptions,
+      openDocs: openTabs.map((d) => ({
+        id: d.id,
+        label: docDisplayLabel(d),
+      })),
+      currentDocId,
+      onActivateDoc: focusDoc,
+    };
+  }, [tabsOptions, openTabs, currentDocId, focusDoc]);
+
   return (
     <ProjectLibraryProvider
       hasDoc={!!currentDocId}
@@ -61,7 +143,13 @@ export function LibraryTabView() {
       citedKeys={citedKeys}
       bibMeta={bibMeta}
     >
-      <LibraryApp />
+      <LibraryApp tabsOptions={mergedTabsOptions} />
     </ProjectLibraryProvider>
   );
+}
+
+function docDisplayLabel(doc: { name?: string; folderName?: string; texFilename?: string }): string {
+  if (doc.name && doc.name !== doc.folderName) return doc.name;
+  if (doc.folderName) return doc.folderName;
+  return doc.texFilename ?? "Untitled";
 }

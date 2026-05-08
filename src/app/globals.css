@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @import "../../library/styles/library.css";
 
 :root {
@@ -71,6 +72,15 @@
   --h2h3-color: var(--editor-text-color);
   --par-title-size: 0.78rem;
   --par-title-color: #c45a5a;
+  /* Inter-block vertical rhythm. Owned by each block's margin-top
+     (margin-bottom: 0 on every block) so the gap is predictable
+     regardless of margin-collapse. The .par-title-annotation overlays
+     this slot via position: absolute; bottom: 100%, so the +T affordance
+     needs to fit cleanly within it — the annotation row is ~17px
+     (line-height 1.4 × 0.78rem font), so 1.2em ≈ 19.2px gives ~2px
+     clearance above the preceding block's edge (matters for blocks
+     with hard borders like code/math/comments). */
+  --editor-block-gap: 1.2em;
   --heading-annotation-color: #6b9ac4;
   --heading-annotation-border: #a8c4de;
   --blockquote-border: #d4cfc8;
@@ -172,6 +182,15 @@
      "edit this" hint. Kept separate from --accent so the two roles can
      diverge later if needed. Default: same as --drag-highlight. */
   --pref-mode-accent: var(--drag-highlight);
+
+  /* Library-wide editing fonts. Pinned to the Virgil editor display fonts
+     so every indexed paper renders in one consistent face regardless of
+     what the source PDF/DOCX used. Indexed .tex files carry no font info;
+     the renderer alone owns this. Honors the FontsDialog overrides
+     (--font-serif-override, --font-mono-override) so changing the editor
+     body font also changes how indexed papers render. */
+  --library-editing-font: var(--font-serif-override, var(--font-serif));
+  --library-editing-mono-font: var(--font-mono-override, var(--font-mono));
 }
 
 /* Zen mode (enhanced): unify window canvas with topbar background so the
@@ -377,7 +396,7 @@ body[data-zen-mode="on"] {
   align-items: center;
   gap: 3px;
   height: 24px;
-  padding: 0 6px;
+  padding: 0 8px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 500;
@@ -405,7 +424,7 @@ body[data-zen-mode="on"] {
   pointer-events: none;
   cursor: not-allowed;
 }
-.topbarbtn.topbarbtn-icon { padding: 0 8px; }
+.topbarbtn.topbarbtn-icon { padding: 0 4px; }
 
 .topbarbtn[aria-pressed="true"] {
   color: var(--accent);
@@ -452,15 +471,74 @@ body {
   color: var(--editor-text-color, #2a2a2a);
 }
 
+/* Render literal '\t' (inserted by TabIndent / useTabIndent) as a visible
+ * 4-char-wide indent in every prose-editing surface. */
+.tiptap,
+textarea,
+.annotation-editor {
+  tab-size: 4;
+  -moz-tab-size: 4;
+}
+
+/* ── Unified inter-block vertical rhythm ──────────────────────────
+ *
+ * Every block-level child of the editor owns its top gap as
+ * margin-top: var(--editor-block-gap), with margin-bottom: 0. This
+ * keeps the gap predictable (no margin-collapse surprises between
+ * unlike blocks) and gives the .par-title-annotation (which sits at
+ * bottom: 100% of its wrapper) a guaranteed slot above every paragraph
+ * for the +T affordance, no matter what kind of block precedes it.
+ *
+ * Wrapped in :where() so specificity is 0; per-block overrides
+ * (headings, hr, the consecutive-cmd-only collapse rule, list-internal
+ * paragraphs) all win without needing !important. Direct-child
+ * scoping (> ) keeps this out of nested contexts (paragraphs inside
+ * <li>, paragraphs inside <blockquote>, expex-internal paragraphs,
+ * footnote mini-editor).
+ */
+:where(.tiptap) > :where(
+  .par-title-wrapper,
+  .list-title-wrapper,
+  .heading-wrapper,
+  p,
+  pre,
+  blockquote,
+  hr,
+  ul,
+  ol,
+  .display-math,
+  .latex-comment,
+  .title-field-wrapper,
+  .expex-par-wrapper
+) {
+  margin-top: var(--editor-block-gap);
+  margin-bottom: 0;
+}
+
+:where(.tiptap) > :first-child {
+  margin-top: 0;
+}
+
+/* Inter-paragraph spacing in nested multi-paragraph contexts (blockquote
+ * bodies, expex bodies). Direct-children of .tiptap already get their
+ * gap from the universal inter-block rule above; this preserves rhythm
+ * one level down where the universal rule's `> ` scoping doesn't reach.
+ * List items explicitly null this via !important on `.tiptap li > p`. */
+.tiptap p + p,
+.tiptap .par-title-wrapper + .par-title-wrapper,
+.tiptap .par-title-wrapper + p,
+.tiptap p + .par-title-wrapper {
+  margin-top: var(--editor-block-gap);
+}
+
 .tiptap p {
-  margin-bottom: 1.1em;
   line-height: var(--editor-line-height, 1.8);
   font-size: var(--editor-font-size, 1.05rem);
 }
 
 .tiptap h1 {
   font-size: var(--font-headers-h1-size, 1.75rem);
-  font-weight: 700;
+  font-weight: var(--font-headers-h1-weight, 700);
   margin-top: 1.5em;
   margin-bottom: 0.15em;
   color: var(--h1-color, #1a1a1a);
@@ -469,7 +547,7 @@ body {
 
 .tiptap h2 {
   font-size: var(--font-headers-h2-size, 1.35rem);
-  font-weight: 600;
+  font-weight: var(--font-headers-h2-weight, 600);
   margin-top: 1.25em;
   margin-bottom: 0.15em;
   color: var(--h2h3-color, #2a2a2a);
@@ -478,9 +556,40 @@ body {
 
 .tiptap h3 {
   font-size: var(--font-headers-h3-size, 1.15rem);
-  font-weight: 600;
+  font-weight: var(--font-headers-h3-weight, 600);
   margin-top: 1em;
   margin-bottom: 0.15em;
+  color: var(--h2h3-color, #2a2a2a);
+  font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
+}
+
+/* \part — heaviest, above \chapter. h0 isn't a valid HTML element, so
+   we style it via the wrapper-class descendant selector. */
+.tiptap .heading-wrapper-l0 > h0 {
+  display: block;
+  font-size: var(--font-headers-h0-size, 2.1rem);
+  font-weight: var(--font-headers-h0-weight, 700);
+  margin-top: 1.5em;
+  margin-bottom: 0.15em;
+  color: var(--h1-color, #1a1a1a);
+  font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
+}
+
+/* \paragraph and \subparagraph — small inline-style heads; render as
+   body-size bold runs that nonetheless sit on their own line. */
+.tiptap h5 {
+  font-size: var(--font-headers-h5-size, 1rem);
+  font-weight: var(--font-headers-h5-weight, 700);
+  margin-top: 0.9em;
+  margin-bottom: 0.1em;
+  color: var(--h2h3-color, #2a2a2a);
+  font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
+}
+.tiptap h6 {
+  font-size: var(--font-headers-h6-size, 0.95rem);
+  font-weight: var(--font-headers-h6-weight, 600);
+  margin-top: 0.8em;
+  margin-bottom: 0.1em;
   color: var(--h2h3-color, #2a2a2a);
   font-family: var(--font-headers-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
 }
@@ -488,7 +597,10 @@ body {
 .tiptap h1[data-section-number]::before,
 .tiptap h2[data-section-number]::before,
 .tiptap h3[data-section-number]::before,
-.tiptap h4[data-section-number]::before {
+.tiptap h4[data-section-number]::before,
+.tiptap h5[data-section-number]::before,
+.tiptap h6[data-section-number]::before,
+.tiptap .heading-wrapper-l0 > h0[data-section-number]::before {
   content: attr(data-section-number) "\00a0\00a0";
   color: var(--muted, #8a8580);
   font-weight: inherit;
@@ -500,12 +612,12 @@ body {
   margin-top: 1.8em;
 }
 
-/* Folding chevron — sits at the far left edge of the text column, outside
-   the marginalia gutter. Default state (expanded) points down; folded
-   state rotates the chevron so it faces into the heading. */
+/* Folding chevron — sits in the gutter just to the left of the heading
+   drag handle, with a small breathing gap. Default state (expanded) points
+   down; folded state rotates the chevron so it faces into the heading. */
 .heading-fold-chevron {
   position: absolute;
-  left: -84px;
+  left: -36px;
   top: 0.5em;
   width: 14px;
   height: 14px;
@@ -554,20 +666,30 @@ body {
   filter: brightness(0.85);
 }
 
-/* Vertical alignment tweaks per heading level — larger headings have more
-   leading, so the chevron needs to drop a bit to sit on the baseline. */
+/* Vertical centering — half the heading's line-box minus half the
+   chevron's height (14px). Assumes the inherited line-height of 1.5,
+   so half-line = font-size × 0.75. */
+.heading-wrapper-l0 .heading-fold-chevron {
+  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.75 - 7px);
+}
 .heading-wrapper h1 ~ .heading-fold-chevron,
 .heading-wrapper:has(h1) .heading-fold-chevron {
-  top: 0.85em;
+  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.75 - 7px);
 }
 .heading-wrapper:has(h2) .heading-fold-chevron {
-  top: 0.75em;
+  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.75 - 7px);
 }
 .heading-wrapper:has(h3) .heading-fold-chevron {
-  top: 0.6em;
+  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.75 - 7px);
 }
 .heading-wrapper:has(h4) .heading-fold-chevron {
-  top: 0.5em;
+  top: calc(1rem * 0.75 - 7px);
+}
+.heading-wrapper:has(h5) .heading-fold-chevron {
+  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px);
+}
+.heading-wrapper:has(h6) .heading-fold-chevron {
+  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px);
 }
 
 /* Blocks hidden by section folding — ProseMirror decoration applies this
@@ -578,7 +700,8 @@ body {
 
 .heading-wrapper h1,
 .heading-wrapper h2,
-.heading-wrapper h3 {
+.heading-wrapper h3,
+.heading-wrapper-l0 > h0 {
   margin-top: 0.2em;
   margin-bottom: -0.1em;
 }
@@ -664,7 +787,7 @@ body {
   display: block;
   position: relative;
   font-size: var(--par-title-size, 0.78rem);
-  font-weight: 500;
+  font-weight: var(--font-partitle-weight, 500);
   color: var(--par-title-color, #c45a5a);
   font-family: var(--font-partitle-family, var(--font-sans-override, var(--font-sans))), Inter, sans-serif;
   letter-spacing: 0.02em;
@@ -741,7 +864,7 @@ body {
    Sticks slightly into the margin gutter but stays clear of marginalia icons. */
 .par-drag-handle {
   position: absolute;
-  left: -14px;
+  left: -18px;
   top: 0;
   display: flex;
   align-items: center;
@@ -777,6 +900,37 @@ body {
 .par-title-wrapper.has-text:hover .par-drag-handle {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* Card grip — squeeze pattern. Triggered both by direct :active on the
+   handle and by `.is-pressed` toggled on the handle from PanelCard's lift
+   gesture, so pressing anywhere on the header (including outside the
+   grip) makes the grip visually squeeze. The `!important` flags defeat
+   the Tailwind `transition-colors` utility on the grip, which would
+   otherwise lag the bg/color change behind the press. */
+.card-drag-handle:active,
+.card-drag-handle.is-pressed {
+  color: var(--ink, #3a362f) !important;
+  background: rgba(0, 0, 0, 0.14) !important;
+  border-radius: 3px !important;
+  transform: translateY(2px) scale(0.9) !important;
+  cursor: grabbing !important;
+  transition: none !important;
+}
+
+/* Card header — pressed-state treatment so the whole header reads as
+   "grabbed" while the lift gesture is held. The is-pressed class is also
+   used on the grip itself; this selector scopes to the header only by
+   targeting the direct child of [data-card]. The grip is nested deeper, so
+   it doesn't match. Filter brightness avoids fighting with the inline
+   backgroundColor that per-panel themes set on the header. user-select
+   suppresses text-selection while the press is held — otherwise the
+   browser flips the cursor to I-beam mid-press. */
+[data-card] > .is-pressed {
+  filter: brightness(0.92);
+  cursor: grabbing;
+  user-select: none;
+  transition: filter 80ms ease-out;
 }
 
 /* Paragraph popout button — sits in the left margin immediately to the
@@ -827,7 +981,7 @@ body {
 }
 .heading-drag-handle {
   position: absolute;
-  left: -14px;
+  left: -18px;
   top: 0;
   display: flex;
   align-items: center;
@@ -863,9 +1017,11 @@ body {
   top: 0;
   opacity: 0;
   pointer-events: auto;
-  transition: opacity 0.15s;
+  transition: opacity 0.15s, color 0.15s;
   z-index: 2;
+  color: var(--muted-light, #b5b0aa);
 }
+.heading-popout-btn:hover { color: var(--muted, #8a8580); }
 .heading-wrapper:has(h1) .heading-popout-btn { top: calc(0.85em - 2px); }
 .heading-wrapper:has(h2) .heading-popout-btn { top: calc(0.75em - 2px); }
 .heading-wrapper:has(h3) .heading-popout-btn { top: calc(0.6em - 2px); }
@@ -946,7 +1102,6 @@ body {
 /* Title field blocks */
 .title-field-wrapper {
   display: block;
-  margin: 0.3em 0;
 }
 
 .title-field-annotation {
@@ -966,6 +1121,7 @@ body {
 .title-field-content {
   font-family: var(--font-maketitle-family, var(--font-serif-override, var(--font-serif))), "Source Serif 4", Georgia, serif;
   font-size: var(--font-maketitle-meta-size, 1.05rem);
+  font-weight: var(--font-maketitle-meta-weight, 400);
   line-height: 1.6;
   color: var(--editor-text-color, #2a2a2a);
   min-height: 1.2em;
@@ -973,7 +1129,7 @@ body {
 
 .title-field-title {
   font-size: var(--font-maketitle-title-size, 1.75rem);
-  font-weight: 700;
+  font-weight: var(--font-maketitle-title-weight, 700);
   line-height: 1.3;
 }
 
@@ -991,7 +1147,6 @@ body {
 }
 
 .tiptap blockquote {
-  margin: 1em 0;
   color: var(--blockquote-text, #6b6560);
 }
 
@@ -1024,13 +1179,22 @@ body {
 .tiptap ul {
   list-style-type: disc;
   padding-left: 1.5em;
-  margin: 0.6em 0;
 }
 
 .tiptap ol {
   list-style-type: decimal;
   padding-left: 1.5em;
-  margin: 0.6em 0;
+}
+
+/* Nested lists (lists within list items): tight spacing — they should
+ * tuck under the parent li's text without the full inter-block gap that
+ * top-level lists get from the universal rule. The .tiptap li { margin: 0 }
+ * rule handles inter-li spacing within a list; this rule handles the gap
+ * between a parent li's content and the nested sub-list. */
+.tiptap li > ul,
+.tiptap li > ol {
+  margin-top: 0.3em;
+  margin-bottom: 0.3em;
 }
 
 .tiptap li {
@@ -1053,7 +1217,6 @@ body {
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
-  margin: 1em 0;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.875rem;
   overflow-x: auto;
@@ -1070,7 +1233,7 @@ body {
 .tiptap hr {
   border: none;
   border-top: 1px solid var(--border);
-  margin: 1.5em 0;
+  margin-top: 1.5em;
 }
 
 /* Math nodes */
@@ -1102,7 +1265,6 @@ body {
   border: 1px solid var(--border);
   border-radius: 0.375rem;
   padding: 0.75em 1em;
-  margin: 1em 0;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   text-align: center;
   cursor: pointer;
@@ -1140,6 +1302,41 @@ body {
 .linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
 .linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
+
+/* Per-kind --link-anchor-color on panel cards. Mirrors the linked-anchor
+ * map above so the card, the margin icon, and the linked text all paint
+ * in one kind color across resting/hover/selected. The card's own
+ * data-card-key carries the kind prefix; values are loosely aligned with
+ * DEFAULT_PANEL_COLORS in src/lib/panel-theme.ts. Cards without a hover
+ * relationship (bib, ai, error, example) fall through to the
+ * `.linked-anchor`-default amber and don't matter here.
+ *
+ * Note: data-card-key prefixes do not always equal the CardKind name
+ * (CARD_KEY_PREFIXES in src/panels/panel-registry.ts is authoritative).
+ * In particular, the "comment" CardKind uses prefix "revision:". */
+[data-card-key^="note:"]                { --link-anchor-color: #15803d; }
+[data-card-key^="cutter-comment:"],
+[data-card-key^="cutter-suggestion:"]   { --link-anchor-color: #b45757; }
+[data-card-key^="revision:"],
+[data-card-key^="revision-suggestion:"],
+[data-card-key^="suggestion:"]          { --link-anchor-color: #9333ea; }
+[data-card-key^="archive:"]             { --link-anchor-color: #5a7a99; }
+[data-card-key^="quotation:"]           { --link-anchor-color: #a16207; }
+[data-card-key^="todo:"]                { --link-anchor-color: #44403c; }
+[data-card-key^="footnote:"]            { --link-anchor-color: #b45757; }
+[data-card-key^="citation:"]            { --link-anchor-color: #d4a843; }
+
+/* Per-kind --link-anchor-color on Mode A paragraph anchors. The
+ * useCardSelectionHighlight / useCardHoverHighlight hooks write
+ * data-paragraph-kind onto the paragraph wrapper alongside
+ * data-card-{selected,hovered}="paragraph". These rules paint that
+ * paragraph in the right kind color. */
+[data-paragraph-kind="note"]      { --link-anchor-color: #15803d; }
+[data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
+[data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
+[data-paragraph-kind="archive"]   { --link-anchor-color: #5a7a99; }
+[data-paragraph-kind="quotation"] { --link-anchor-color: #a16207; }
+[data-paragraph-kind="todo"]      { --link-anchor-color: #44403c; }
 
 [data-show-hl-quotation="true"] .linked-anchor[data-link-card^="quotation:"],
 [data-show-hl-note="true"]      .linked-anchor[data-link-card^="note:"],
@@ -1193,71 +1390,126 @@ body {
  * highlight: atoms get a box-shadow ring so their chip background is
  * preserved; paragraphs and text ranges get a background tint. */
 
-/* Inline atoms (footnote, citation) — ring. */
+/* Marginalia interaction layer.
+ *
+ * Three-state vocabulary used everywhere: resting → hover → selected.
+ * Each state uses the card's kind color (via --link-anchor-color) and
+ * differs from the others only in INTENSITY — never in color, never via
+ * fill changes. Mode A (paragraph) and Mode B (text-range) targets get
+ * the same treatment at the same intensities so the system reads as one.
+ *
+ * Tuning targets:
+ *   hover    : ~22% bg wash + 50% / 1.5px ring
+ *   selected : ~40% bg wash + 80% / 2px ring + (Mode A only) inset stripe
+ */
+
+/* SELECTED ─────────────────────────────────────────────────────────── */
+
+/* Inline atoms (footnote, citation) — ring only (chip background
+ * preserved). Stronger than hover. */
 .footnote-marker[data-card-selected="true"],
 [data-type="citation"][data-card-selected="true"] {
-  box-shadow: 0 0 0 2px var(--ring-drag-target);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
   border-radius: 3px;
 }
 
-/* Mode B text-range spans — tint the range background. Uses the
- * card-kind color inherited from `.linked-anchor[data-link-card^=...]`
- * so notes stay green, cuts stay red, etc. Stronger than the
- * `[data-link-highlight="active"]` tint below. */
+/* Mode B text-range spans — wash + ring. */
 .linked-anchor[data-card-selected="true"] {
   background: color-mix(in oklab, var(--link-anchor-color) 40%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
-/* Mode A paragraph anchors — subtle left-border stripe so the body
- * text stays readable. Applied to the paragraph wrapper element. */
-[data-card-selected="paragraph"] {
-  background: color-mix(in oklab, var(--ring-drag-target) 10%, transparent);
-  box-shadow: inset 3px 0 0 0 color-mix(in oklab, var(--ring-drag-target) 85%, transparent);
-  border-radius: 2px;
+/* Mode A paragraph anchors — show a kind-colored vertical line on the
+ * same side as the margin marker (data-margin-side="left|right"), with
+ * NO background wash. The whole-paragraph fill from the previous version
+ * was visually heavier than the anchor relationship warranted; the line
+ * alone is enough. The inset puts the line at the paragraph's edge,
+ * inside its layout box but adjacent to the gutter where the marker and
+ * grab handle live — naturally reading as "between the text and the
+ * grab handle" on the left side. */
+/* Left side: bar sits fully in the gutter, 4px to the left of the
+ * paragraph's text edge. Uses a pseudo-element so the bar can be
+ * positioned independently of paragraph dimensions and stays at a
+ * fixed width regardless of box-shadow geometry constraints.
+ * Reads as a vertical highlight in the gutter between the text and
+ * the grab handle (handle sits at left: -14px). */
+[data-card-selected="paragraph"][data-margin-side="left"],
+[data-card-selected="paragraph"]:not([data-margin-side]) {
+  position: relative;
+}
+[data-card-selected="paragraph"][data-margin-side="left"]::before,
+[data-card-selected="paragraph"]:not([data-margin-side])::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
+  pointer-events: none;
+}
+[data-card-selected="paragraph"][data-margin-side="right"] {
+  box-shadow: inset -3px 0 0 0 color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
 }
 
-/* Card-hover highlight — written by useCardHoverHighlight onto the same
- * surfaces as data-card-selected (inline atoms, Mode B spans, paragraphs)
- * AND onto the panel card itself (via data-card-key). Visually weaker
- * than selection so the two states are distinguishable when hover passes
- * over a non-selected card.
- *
- * Selection wins by default — these rules use `:not([data-card-selected])`
- * so selected elements aren't double-painted. */
+/* HOVER ────────────────────────────────────────────────────────────── */
+/* Selection wins — these rules use `:not([data-card-selected])`. */
 
 /* Inline atoms — softer ring than the selected variant. */
 .footnote-marker[data-card-hovered="true"]:not([data-card-selected="true"]),
 [data-type="citation"][data-card-hovered="true"]:not([data-card-selected="true"]) {
-  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--ring-drag-target) 50%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   border-radius: 3px;
 }
 
-/* Mode B text-range spans — softer tint than selection. */
+/* Mode B text-range spans — softer wash. */
 .linked-anchor[data-card-hovered="true"]:not([data-card-selected="true"]) {
   background: color-mix(in oklab, var(--link-anchor-color) 22%, transparent);
 }
 
-/* Mode A paragraphs — very subtle background, no border stripe. */
-[data-card-hovered="paragraph"]:not([data-card-selected="paragraph"]) {
-  background: color-mix(in oklab, var(--ring-drag-target) 5%, transparent);
-  border-radius: 2px;
+/* Mode A paragraphs — softer line than selected, on the same side as
+ * the margin marker. Left side uses the same pseudo-element approach
+ * as selected, just thinner (2px) and lower opacity (50%). Bar at
+ * x=-4..-2 relative to paragraph edge. */
+[data-card-hovered="paragraph"][data-margin-side="left"]:not([data-card-selected="paragraph"]),
+[data-card-hovered="paragraph"]:not([data-margin-side]):not([data-card-selected="paragraph"]) {
+  position: relative;
+}
+[data-card-hovered="paragraph"][data-margin-side="left"]:not([data-card-selected="paragraph"])::before,
+[data-card-hovered="paragraph"]:not([data-margin-side]):not([data-card-selected="paragraph"])::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
+  pointer-events: none;
+}
+[data-card-hovered="paragraph"][data-margin-side="right"]:not([data-card-selected="paragraph"]) {
+  box-shadow: inset -2px 0 0 0 color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
 
-/* Panel card — outline ring, kept inset so it doesn't shift layout.
- * CSS :hover gives immediate, reliable feedback on the card itself;
- * data-card-hovered handles the reverse direction (text→card).
- *
- * The outline-color is pre-set on every card so when :hover toggles
- * outline-style on, Tailwind's transition-colors (which includes
- * outline-color) doesn't flash from its default near-black to amber. */
+/* PANEL CARDS ─────────────────────────────────────────────────────── */
+
+/* Resting accent — small kind-colored stripe so cards are identifiable
+ * without their margin icon. Inset so it doesn't shift layout. */
 [data-card-key] {
-  outline-color: color-mix(in oklab, var(--ring-drag-target) 45%, transparent);
+  outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
-[data-card-key][data-card-hovered="true"],
-[data-card-key]:hover {
-  outline: 1.5px solid color-mix(in oklab, var(--ring-drag-target) 45%, transparent);
+
+/* Hover — outline at 50% (matches the other channels' hover ring). */
+[data-card-key][data-card-hovered="true"]:not([data-card-selected="true"]),
+[data-card-key]:hover:not([data-card-selected="true"]) {
+  outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
+  border-radius: 4px;
+}
+
+/* Selected — outline at 80% (matches the other channels' selected ring). */
+[data-card-key][data-card-selected="true"] {
+  outline: 2px solid color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
+  outline-offset: -2px;
   border-radius: 4px;
 }
 
@@ -1503,7 +1755,6 @@ body {
   color: var(--latex-comment-color, #7191b0);
   background: var(--latex-comment-bg, #f0f5fa);
   border-radius: 2px;
-  margin: 0.5em 0;
   font-family: var(--font-mono-override, var(--font-mono)), monospace;
   font-size: 0.85em;
   font-style: italic;
@@ -1886,7 +2137,6 @@ body {
  * the left for the drag handle (which sits outside the number column). */
 .expex-par-wrapper {
   position: relative;
-  margin: 1em 0;
 }
 
 .expex-par-wrapper > .par-title-annotation {
@@ -2204,18 +2454,24 @@ body {
    heading-wrapper, drawn as a positioned pseudo-element so it can extend
    beyond the text column into the editor's px-20 padding without shifting
    the heading text. */
+.show-dividers-0 .tiptap .heading-wrapper-l0,
 .show-dividers-1 .tiptap .heading-wrapper-l1,
 .show-dividers-2 .tiptap .heading-wrapper-l2,
 .show-dividers-3 .tiptap .heading-wrapper-l3,
-.show-dividers-4 .tiptap .heading-wrapper-l4 {
+.show-dividers-4 .tiptap .heading-wrapper-l4,
+.show-dividers-5 .tiptap .heading-wrapper-l5,
+.show-dividers-6 .tiptap .heading-wrapper-l6 {
   position: relative;
   padding-top: 1.4em;
   margin-top: 2.6em;
 }
+.show-dividers-0 .tiptap .heading-wrapper-l0::before,
 .show-dividers-1 .tiptap .heading-wrapper-l1::before,
 .show-dividers-2 .tiptap .heading-wrapper-l2::before,
 .show-dividers-3 .tiptap .heading-wrapper-l3::before,
-.show-dividers-4 .tiptap .heading-wrapper-l4::before {
+.show-dividers-4 .tiptap .heading-wrapper-l4::before,
+.show-dividers-5 .tiptap .heading-wrapper-l5::before,
+.show-dividers-6 .tiptap .heading-wrapper-l6::before {
   content: "";
   position: absolute;
   top: 0px;
@@ -2241,6 +2497,14 @@ body {
   --divider-inset-left: 0px;
   --divider-inset-right: 0px;
 }
+.show-dividers-0 .tiptap .heading-wrapper-l0 {
+  padding-top: 3em;
+  margin-top: 5em;
+}
+.show-dividers-0 .tiptap .heading-wrapper-l0::before {
+  height: 4px;
+  background-color: #6e6a62;
+}
 .show-dividers-1 .tiptap .heading-wrapper-l1 {
   padding-top: 2.4em;
   margin-top: 4em;
@@ -2250,21 +2514,75 @@ body {
   background-color: #8a857d;
 }
 
-/* Keep the fold chevron aligned with the heading text row even when
-   dividers push a padding-top onto the wrapper. Each rule adds the
-   wrapper's padding-top back onto the chevron's existing offset;
-   the small px nudges account for em-basis differences between the
-   chevron's inherited font-size and the wrapper's. */
+/* Keep the fold chevron centered in the heading line even when
+   dividers push a padding-top onto the wrapper. Adds (a) the wrapper's
+   padding-top and (b) the heading's 0.2em margin-top — which normally
+   collapses with the wrapper's margin, but is exposed by the padding. */
+.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-fold-chevron {
+  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.95 - 7px + 3em);
+}
 .show-dividers-1 .tiptap .heading-wrapper-l1 .heading-fold-chevron {
-  top: calc(0.85em + 2.4em + 6px);
+  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.95 - 7px + 2.4em);
 }
 .show-dividers-2 .tiptap .heading-wrapper-l2 .heading-fold-chevron {
-  top: calc(0.75em + 1.4em + 4px);
+  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.95 - 7px + 1.4em);
 }
 .show-dividers-3 .tiptap .heading-wrapper-l3 .heading-fold-chevron {
-  top: calc(0.6em + 1.4em + 4px);
+  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.95 - 7px + 1.4em);
 }
 .show-dividers-4 .tiptap .heading-wrapper-l4 .heading-fold-chevron {
+  top: calc(1rem * 0.75 - 7px + 1.4em);
+}
+.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-fold-chevron {
+  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px + 1.4em);
+}
+.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-fold-chevron {
+  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px + 1.4em);
+}
+/* Same compensation for the heading pop-out button and drag handle —
+   their `top` is measured from the wrapper's padding edge, so the
+   divider's padding-top would otherwise leave them stranded a row
+   above the heading text. */
+.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-popout-btn {
+  top: calc(0.95em - 2px + 3em);
+}
+.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-popout-btn {
+  top: calc(0.85em - 2px + 2.4em);
+}
+.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-popout-btn {
+  top: calc(0.75em - 2px + 1.4em);
+}
+.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-popout-btn {
+  top: calc(0.6em - 2px + 1.4em);
+}
+.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-popout-btn {
+  top: calc(0.5em - 2px + 1.4em);
+}
+.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-popout-btn {
+  top: calc(0.5em - 2px + 1.4em);
+}
+.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-popout-btn {
+  top: calc(0.5em - 2px + 1.4em);
+}
+.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-drag-handle {
+  top: calc(0.95em + 3em);
+}
+.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-drag-handle {
+  top: calc(0.85em + 2.4em);
+}
+.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-drag-handle {
+  top: calc(0.75em + 1.4em);
+}
+.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-drag-handle {
+  top: calc(0.6em + 1.4em);
+}
+.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-drag-handle {
+  top: calc(0.5em + 1.4em);
+}
+.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-drag-handle {
+  top: calc(0.5em + 1.4em);
+}
+.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-drag-handle {
   top: calc(0.5em + 1.4em);
 }
 .show-dividers-2 .tiptap .heading-wrapper-l2::before {
@@ -2278,6 +2596,14 @@ body {
 .show-dividers-4 .tiptap .heading-wrapper-l4::before {
   height: 1px;
   background-color: #d8d4cd;
+}
+.show-dividers-5 .tiptap .heading-wrapper-l5::before {
+  height: 1px;
+  background-color: #e4e0d9;
+}
+.show-dividers-6 .tiptap .heading-wrapper-l6::before {
+  height: 1px;
+  background-color: #ece8e1;
 }
 
 /* Panel font size preferences */

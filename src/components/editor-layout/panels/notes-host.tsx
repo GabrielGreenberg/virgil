@@ -20,6 +20,7 @@ export interface NotesHostProps {
   addNote: NotesHook["addNote"];
   updateNote: NotesHook["updateNote"];
   updateNoteTitle: NotesHook["updateNoteTitle"];
+  setNoteAiRequest: NotesHook["setNoteAiRequest"];
   deleteNote: NotesHook["deleteNote"];
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
@@ -30,7 +31,7 @@ export interface NotesHostProps {
 export function NotesHost(p: NotesHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedNoteId, setSelectedNoteId } = useSelectionsContext();
-  const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const { createNote } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("note");
@@ -43,6 +44,7 @@ export function NotesHost(p: NotesHostProps) {
       onAdd={() => createNote({})}
       onUpdate={p.updateNote}
       onUpdateTitle={p.updateNoteTitle}
+      onSetAiRequest={p.setNoteAiRequest}
       onDelete={p.deleteNote}
       onSelectNote={setSelectedNoteId}
       selectedNoteId={selectedNoteId}
@@ -50,7 +52,6 @@ export function NotesHost(p: NotesHostProps) {
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       aiRequests={aiRequests}
-      onAddAiRequest={() => addAiRequest("note")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       onEditorFocus={setOverrideEditor}

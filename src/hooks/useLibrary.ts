@@ -20,7 +20,7 @@ import type {
 function mapStatus(s: IndexedState): LibraryItemStatus {
   switch (s) {
     case "indexed":
-    case "richIndexed":
+    case "deepIndexed":
       return "ready";
     case "running":
       return "extracting";

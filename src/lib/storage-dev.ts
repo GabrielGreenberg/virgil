@@ -15,7 +15,9 @@ import {
   assignUuids,
   extractSidecarData,
 } from "@/lib/latex-serializer";
-import { getStyle, DEFAULT_STYLE_ID, type DocumentStyleId } from "@/lib/document-styles";
+import { DEFAULT_STYLE_ID } from "@/lib/document-styles";
+import { resolveStyle } from "@/lib/style-library";
+import { migrateDocumentSettings } from "@/lib/document-settings";
 import type { FsaDocMeta } from "@/lib/doc-index";
 import type { FolderPickResult } from "@/lib/storage-fsa";
 
@@ -29,6 +31,11 @@ import {
   DOCUMENT_TEMPLATES,
   DEFAULT_TEMPLATE_ID,
 } from "@/lib/document-templates";
+import {
+  assertActive,
+  assertNotSuperseded,
+  type DocWriteHandle,
+} from "@/lib/multi-window/doc-pipeline";
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
@@ -41,6 +48,39 @@ export { detectBibPackage };
 // ---------------------------------------------------------------------------
 
 const API = "/api/dev";
+const LIBRARY_API = "/api/dev-library";
+
+/**
+ * Library Reader docId convention: `library-paper:<citekey>` resolves
+ * to a paper folder under `~/Virgil-Library/papers/<citekey>/`. In
+ * the dev preview, the corresponding HTTP route is
+ * `/api/dev-library/papers/<citekey>/...` (handled by the
+ * `dev-library` API). The synthetic `library-paper:` IDs are NOT in
+ * the dev index — they're created on the fly by the Reader's mount
+ * layer. Mirrors the synthetic-meta path in `storage-fsa.ts`.
+ */
+const LIBRARY_PAPER_PREFIX = "library-paper:";
+
+function isLibraryPaper(docId: string): boolean {
+  return docId.startsWith(LIBRARY_PAPER_PREFIX);
+}
+
+function libraryPaperCitekey(docId: string): string {
+  return docId.slice(LIBRARY_PAPER_PREFIX.length);
+}
+
+/**
+ * Build the API URL for a doc's file. Library papers route through
+ * the dev-library endpoint; main-app docs use the regular dev API.
+ * `path` is the file path relative to the doc folder (e.g.
+ * "main.tex", "virgil/notes.json", "references.bib").
+ */
+function docFileUrl(docId: string, path: string): string {
+  if (isLibraryPaper(docId)) {
+    return `${LIBRARY_API}/papers/${libraryPaperCitekey(docId)}/${path}`;
+  }
+  return `${API}/doc/${docId}/${path}`;
+}
 
 interface DevIndexEntry {
   id: string;
@@ -130,15 +170,16 @@ export async function readSidecar<T>(
   filename: string,
   defaultValue: T,
 ): Promise<T> {
-  return fetchJson<T>(`${API}/doc/${docId}/virgil/${filename}`, defaultValue);
+  return fetchJson<T>(docFileUrl(docId, `virgil/${filename}`), defaultValue);
 }
 
 export async function writeSidecar<T>(
-  docId: string,
+  h: DocWriteHandle,
   filename: string,
   data: T,
 ): Promise<void> {
-  await putText(`${API}/doc/${docId}/virgil/${filename}`, JSON.stringify(data, null, 2));
+  assertActive(h);
+  await putText(docFileUrl(h.docId, `virgil/${filename}`), JSON.stringify(data, null, 2));
 }
 
 // ---------------------------------------------------------------------------
@@ -146,17 +187,23 @@ export async function writeSidecar<T>(
 // ---------------------------------------------------------------------------
 
 export async function readTex(docId: string): Promise<string> {
+  // Library papers always use main.tex; main-app docs look up their
+  // texFilename in the dev index.
+  if (isLibraryPaper(docId)) {
+    return (await fetchText(docFileUrl(docId, "main.tex"))) ?? DEFAULT_LATEX;
+  }
   const docs = await getDevIndex();
   const entry = findEntry(docs, docId);
   const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
   return (await fetchText(`${API}/doc/${docId}/${filename}`)) ?? DEFAULT_LATEX;
 }
 
-export async function writeTex(docId: string, latex: string): Promise<void> {
+export async function writeTex(h: DocWriteHandle, latex: string): Promise<void> {
+  assertActive(h);
   const docs = await getDevIndex();
-  const entry = findEntry(docs, docId);
+  const entry = findEntry(docs, h.docId);
   const filename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
-  await putText(`${API}/doc/${docId}/${filename}`, latex);
+  await putText(`${API}/doc/${h.docId}/${filename}`, latex);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,17 +241,18 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
 }
 
 export async function writeDocBundle(
-  docId: string,
+  h: DocWriteHandle,
   content: JSONContent,
   editorState: EditorStateData,
 ): Promise<void> {
+  assertActive(h);
   const docs = await getDevIndex();
-  const entry = findEntry(docs, docId);
+  const entry = findEntry(docs, h.docId);
   const texFilename = entry ? texFilenameFromPath(entry.sourcePath) : "document.tex";
 
   // Same sidecar/uuid logic as the FSA version.
   const existingSidecar = await fetchJson<VirgilSidecar>(
-    `${API}/doc/${docId}/virgil/virgil.json`,
+    `${API}/doc/${h.docId}/virgil/virgil.json`,
     DEFAULT_SIDECAR,
   );
   // recoverOrphanedUuids disabled — fingerprint matching causes UUID collisions.
@@ -214,7 +262,7 @@ export async function writeDocBundle(
   // Preserve the user's preamble/postamble by re-reading the existing
   // .tex file. The editor never sees these chunks, so the disk is the
   // only source of truth for them.
-  const existingLatex = (await fetchText(`${API}/doc/${docId}/${texFilename}`)) ?? "";
+  const existingLatex = (await fetchText(`${API}/doc/${h.docId}/${texFilename}`)) ?? "";
   const delimiters = extractPreambleAndPostamble(existingLatex);
 
   const newSidecar = extractSidecarData(content);
@@ -222,19 +270,24 @@ export async function writeDocBundle(
   // doc's selected style; existing docs keep their verbatim preamble.
   let serializeOpts: { preamble?: string } | undefined = delimiters ?? undefined;
   if (!delimiters) {
-    const settings = await fetchJson<{ style?: DocumentStyleId }>(
-      `${API}/doc/${docId}/virgil/document-settings.json`,
-      { style: DEFAULT_STYLE_ID },
+    const rawSettings = await fetchJson<unknown>(
+      `${API}/doc/${h.docId}/virgil/document-settings.json`,
+      { styleId: DEFAULT_STYLE_ID },
     );
-    serializeOpts = { preamble: getStyle(settings.style).preamble };
+    const settings = migrateDocumentSettings(rawSettings);
+    serializeOpts = { preamble: resolveStyle(settings.styleId).preamble };
   }
   const latex = serializeToLatex(content, serializeOpts);
 
+  // Re-check before the actual writes — a doc switch could have
+  // landed between the awaits above. Lenient: an ended-cleanly pipeline
+  // is still safe to write to, only a SUPERSEDED one would corrupt.
+  assertNotSuperseded(h);
   await Promise.all([
-    putText(`${API}/doc/${docId}/${texFilename}`, latex),
-    putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+    putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
+    putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
     putText(
-      `${API}/doc/${docId}/virgil/editor-state.json`,
+      `${API}/doc/${h.docId}/virgil/editor-state.json`,
       JSON.stringify({ ...editorState, lastModified: new Date().toISOString() }, null, 2),
     ),
   ]);
@@ -254,20 +307,22 @@ export async function readBib(docId: string): Promise<BibReadResult> {
     bibFilename = m[1].trim();
     if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
   }
-  const bibText = (await fetchText(`${API}/doc/${docId}/${bibFilename}`)) ?? "";
+  const bibText = (await fetchText(docFileUrl(docId, bibFilename))) ?? "";
   const detectedPackage = detectBibPackage(tex);
   return { bibText, bibFilename, detectedPackage };
 }
 
-export async function writeBib(docId: string, bibText: string): Promise<void> {
-  const tex = await readTex(docId);
+export async function writeBib(h: DocWriteHandle, bibText: string): Promise<void> {
+  assertActive(h);
+  const tex = await readTex(h.docId);
   const m = tex.match(BIB_DECL_RE);
   let bibFilename = "references.bib";
   if (m) {
     bibFilename = m[1].trim();
     if (!bibFilename.endsWith(".bib")) bibFilename += ".bib";
   }
-  await putText(`${API}/doc/${docId}/${bibFilename}`, bibText);
+  assertNotSuperseded(h);
+  await putText(docFileUrl(h.docId, bibFilename), bibText);
 }
 
 // ---------------------------------------------------------------------------
@@ -285,9 +340,11 @@ export async function getPdfFilename(docId: string): Promise<string> {
   return pdfFilenameFromTex(texFilename);
 }
 
-export async function writePdf(docId: string, pdfBytes: Uint8Array): Promise<void> {
-  const filename = await getPdfFilename(docId);
-  await fetch(`${API}/doc/${docId}/${filename}`, {
+export async function writePdf(h: DocWriteHandle, pdfBytes: Uint8Array): Promise<void> {
+  assertActive(h);
+  const filename = await getPdfFilename(h.docId);
+  assertNotSuperseded(h);
+  await fetch(`${API}/doc/${h.docId}/${filename}`, {
     method: "PUT",
     body: pdfBytes.buffer as ArrayBuffer,
     headers: { "Content-Type": "application/octet-stream" },

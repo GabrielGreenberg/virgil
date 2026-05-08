@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf, pdfFilenameFromTex } from "@/lib/storage";
+import { useCallback, useMemo, useState } from "react";
+import { drainDoc, flushDoc, getTexFilename, readPaperFolder, writeTex, writePdf, pdfFilenameFromTex } from "@/lib/storage";
 import { getPdfTeXEngine, writeEngineFile } from "@/lib/swiftlatex";
+import {
+  getActiveHandle,
+  isStalePipelineError,
+} from "@/lib/multi-window/doc-pipeline";
 import {
   detectDocumentClassMismatch,
   rewriteDocumentClass,
@@ -69,6 +73,10 @@ export function useLatexCompile(
     onCompileSuccess?: (pdfBytes: Uint8Array) => void;
   },
 ): UseLatexCompileResult {
+  const handle = useMemo(
+    () => (docId ? getActiveHandle(docId) : null),
+    [docId],
+  );
   const onDocumentClassMismatch = opts?.onDocumentClassMismatch;
   const onCompileSuccess = opts?.onCompileSuccess;
   const systemDialog = useSystemDialog();
@@ -87,8 +95,9 @@ export function useLatexCompile(
     if (!docId || isCompiling) return;
     setIsCompiling(true);
     try {
-      // Flush any queued writes so the engine sees the latest .tex on disk.
-      await flushDoc(docId);
+      // Flush any pending React debounce + queued writes so the engine
+      // sees the user's latest edits, even if they hit Compile mid-edit.
+      await drainDoc(docId);
 
       const [initialFiles, texFilename] = await Promise.all([
         readPaperFolder(docId),
@@ -109,7 +118,13 @@ export function useLatexCompile(
             if (resolution.kind === "cancel") return;
             if (resolution.kind === "switch") {
               const rewritten = rewriteDocumentClass(mainTexText, resolution.newClass);
-              await writeTex(docId, rewritten);
+              if (!handle) return;
+              try {
+                await writeTex(handle, rewritten);
+              } catch (err) {
+                if (isStalePipelineError(err)) return;
+                throw err;
+              }
               await flushDoc(docId);
               files = await readPaperFolder(docId);
             }
@@ -188,7 +203,18 @@ export function useLatexCompile(
       if (result.status === 0 && result.pdf) {
         setCompileErrors([]);
         const pdfBytes = new Uint8Array(result.pdf);
-        await writePdf(docId, pdfBytes);
+        if (handle) {
+          try {
+            await writePdf(handle, pdfBytes);
+          } catch (err) {
+            if (isStalePipelineError(err)) {
+              // Pipeline ended mid-compile — drop the .pdf write
+              // silently. The compile log + UI state already updated.
+            } else {
+              throw err;
+            }
+          }
+        }
         onCompileSuccess?.(pdfBytes);
       } else {
         const parsed = parseTexLog(result.log ?? "");
@@ -212,7 +238,7 @@ export function useLatexCompile(
     } finally {
       setIsCompiling(false);
     }
-  }, [docId, isCompiling, onDocumentClassMismatch, onCompileSuccess, systemDialog]);
+  }, [docId, handle, isCompiling, onDocumentClassMismatch, onCompileSuccess, systemDialog]);
 
   return { compile, isCompiling, lastLog, lastStatus, compileErrors, clearCompileErrors };
 }

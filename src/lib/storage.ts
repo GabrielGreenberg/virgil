@@ -16,6 +16,7 @@
 
 export { isDevStorage } from "@/lib/storage-mode";
 import { isDevStorage } from "@/lib/storage-mode";
+import { flushPendingForDoc } from "@/lib/multi-window/pending-saves";
 
 // Pick the right backend at module load. On the client this runs after
 // `window` is defined, so the runtime capability check above is honored.
@@ -42,6 +43,19 @@ export const listDocs = backend.listDocs;
 export const renameDoc = backend.renameDoc;
 export const deleteDocFromIndex = backend.deleteDocFromIndex;
 export const flushDoc = backend.flushDoc;
+
+/**
+ * Full drain: fire any pending React-debounced save (if useDocument has
+ * one registered), then wait for the storage write queue to empty.
+ * Prefer over `flushDoc` at every boundary that requires the doc's
+ * latest edits to be on disk — doc switch, tab close, compile, delete.
+ * `flushDoc` alone has no visibility into un-fired React debounces, so
+ * an edit made within the autosave debounce window would be missed.
+ */
+export async function drainDoc(docId: string): Promise<void> {
+  await flushPendingForDoc(docId);
+  await backend.flushDoc(docId);
+}
 export const detectBibPackage = backend.detectBibPackage;
 export const readPaperFolder = backend.readPaperFolder;
 export const getTexFilename = backend.getTexFilename;
@@ -52,3 +66,7 @@ export const pdfFilenameFromTex = backend.pdfFilenameFromTex;
 
 // Re-export types (these are the same in both backends).
 export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult, PaperFile } from "@/lib/storage-fsa";
+
+// Re-export the pipeline handle type so storage callers don't need to
+// import from the multi-window subdirectory.
+export type { DocWriteHandle } from "@/lib/multi-window/doc-pipeline";

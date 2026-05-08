@@ -3,9 +3,10 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import type { BibEntry } from "@/lib/types";
 import { formatMinimalCitation } from "@/lib/bib-parser";
-import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton } from "./panel-primitives";
+import { PanelCard, PANEL, Chevron, TargetIcon, Button, CardPopoutButton, CardDragHandle } from "./panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
 import { MIME_CITATION } from "@/lib/marginalia";
@@ -107,6 +108,7 @@ function AnnotationEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [focused, setFocused] = useState(false);
+  const onKeyDown = useTabIndent<HTMLDivElement>();
 
   useEffect(() => {
     if (editorRef.current && editorRef.current.innerHTML !== content) {
@@ -133,6 +135,7 @@ function AnnotationEditor({
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
         className="annotation-editor px-3 py-2 text-sm text-ink-body leading-relaxed focus:outline-none min-h-[2.5rem]"
         data-placeholder="Write an annotation for this reference..."
       />
@@ -432,7 +435,13 @@ export default function BibEntryCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(popKey, anchor)
       : undefined);
 
-  const showCluster = !!onToggleFromCtx || showTargetIcon;
+  // Docked cards no longer render a pop-out button (drag the card header
+  // out instead). The X close button on a popped float is rendered
+  // manually below — see the cluster block — because BibEntryCard's
+  // top-right slot is already occupied by the target/occurrence cluster
+  // and we don't want PanelCard's auto-positioned X to fight it.
+  const showCluster = (!!onToggleFromCtx && isPoppedOut) || showTargetIcon;
+  const compressed = !isSelected && !isPoppedOut;
 
   const card = (
     <PanelCard
@@ -441,6 +450,8 @@ export default function BibEntryCard({
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
+      cardKey={popKey}
+      isCollapsed={compressed}
       extraCardClass={`cursor-pointer${draggable ? " cursor-grab active:cursor-grabbing" : ""}${!isCited ? " opacity-60" : ""}`}
       draggable={draggable}
       onDragStart={draggable ? handleDragStart : undefined}
@@ -453,6 +464,7 @@ export default function BibEntryCard({
         className="flex items-center gap-2 pl-3 pr-14 py-1.5"
         style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
       >
+        <CardDragHandle />
         <div
           data-panel-kind="bib"
           className="flex-1 min-w-0 leading-snug"
@@ -523,8 +535,10 @@ export default function BibEntryCard({
                   />
                 </div>
               )}
-              {onToggleFromCtx && (
-                <CardPopoutButton isPoppedOut={!!isPoppedOut} onClick={onToggleFromCtx} />
+              {/* X close button only on the popped-out float — docked
+                  cards lift off via the header drag gesture instead. */}
+              {onToggleFromCtx && isPoppedOut && (
+                <CardPopoutButton isPoppedOut onClick={onToggleFromCtx} />
               )}
             </div>
           )}
@@ -548,16 +562,20 @@ export default function BibEntryCard({
         </div>
       )}
 
-      {/* Separator */}
-      <div
-        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
+      {!compressed && (
+        <>
+          {/* Separator */}
+          <div
+            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
+          />
 
-      {/* Body */}
-      <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
-        {bodyContent}
-      </div>
+          {/* Body */}
+          <div className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}>
+            {bodyContent}
+          </div>
+        </>
+      )}
     </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={popKey}>{card}</FloatCard>;

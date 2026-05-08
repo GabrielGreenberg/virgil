@@ -5,7 +5,10 @@ import {
   CARD_THEMES,
   PanelCard,
   CardTargetIcon,
+  CardTypeLabel,
+  CardDragHandle,
 } from "@/components/panel-primitives";
+import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
@@ -109,32 +112,35 @@ export function ErrorCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
+  const inOmni = useInOmni() != null;
+  const compressed = !selected && !isPoppedOut;
 
-  // Grab handle drags a text representation of the error so the user can
-  // drop it into notes / ai-request cards / etc.
-  const handleDragStart = useCallback(
-    (e: React.DragEvent) => {
-      e.stopPropagation();
-      const plain = `${title}${err.line > 0 ? ` (line ${err.line})` : ""}: ${err.message}`;
-      e.dataTransfer.setData("text/plain", plain);
-      e.dataTransfer.setData(
-        MIME_TEXT_INSERT,
-        JSON.stringify({
-          content: {
-            type: "doc",
-            content: [
-              { type: "paragraph", content: [{ type: "text", text: plain }] },
-            ],
-          },
-        }),
-      );
-      e.dataTransfer.effectAllowed = "copy";
-      if (cardRef.current) {
-        e.dataTransfer.setDragImage(cardRef.current, 20, -10);
-      }
-    },
-    [title, err.line, err.message],
-  );
+  // TODO(grip-redesign): drop-into-document via the grip is disabled
+  // during the unified header redesign. Re-introduce thoughtfully via a
+  // separate body-level affordance, not the grip. Original helper:
+  // const handleDragStart = useCallback(
+  //   (e: React.DragEvent) => {
+  //     e.stopPropagation();
+  //     const plain = `${title}${err.line > 0 ? ` (line ${err.line})` : ""}: ${err.message}`;
+  //     e.dataTransfer.setData("text/plain", plain);
+  //     e.dataTransfer.setData(
+  //       MIME_TEXT_INSERT,
+  //       JSON.stringify({
+  //         content: {
+  //           type: "doc",
+  //           content: [
+  //             { type: "paragraph", content: [{ type: "text", text: plain }] },
+  //           ],
+  //         },
+  //       }),
+  //     );
+  //     e.dataTransfer.effectAllowed = "copy";
+  //     if (cardRef.current) {
+  //       e.dataTransfer.setDragImage(cardRef.current, 20, -10);
+  //     }
+  //   },
+  //   [title, err.line, err.message],
+  // );
 
   const card = (
     <PanelCard
@@ -145,6 +151,8 @@ export function ErrorCard({
       selected={selected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
+      cardKey={cardKey}
+      isCollapsed={compressed}
       onTrashClick={() => onDismiss(err.id)}
       extraCardClass=""
       className="focus:outline-none"
@@ -171,26 +179,11 @@ export function ErrorCard({
           borderLeft: `3px solid ${SEVERITY_COLOR[err.severity]}`,
         }}
       >
-        <div
-          draggable
-          onDragStart={handleDragStart}
-          onClick={(e) => e.stopPropagation()}
-          className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-          title="Drag error text"
-          data-helper="Drag"
-          data-helper-pos="above"
-        >
-          <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-            <circle cx="3" cy="2" r="1.2" />
-            <circle cx="7" cy="2" r="1.2" />
-            <circle cx="3" cy="7" r="1.2" />
-            <circle cx="7" cy="7" r="1.2" />
-            <circle cx="3" cy="12" r="1.2" />
-            <circle cx="7" cy="12" r="1.2" />
-          </svg>
-        </div>
+        <CardDragHandle />
 
         <ErrorBadge severity={err.severity} />
+
+        {inOmni && <CardTypeLabel kind="error" />}
 
         <div
           className="flex-1 min-w-0 truncate text-[0.78rem] font-medium"
@@ -218,6 +211,17 @@ export function ErrorCard({
         style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
       />
 
+      {compressed ? (
+        <div className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate">
+          {err.line > 0 && (
+            <span className="text-ink-muted mr-1">
+              line {err.line}
+              {err.column ? `:${err.column}` : ""} —
+            </span>
+          )}
+          {err.message}
+        </div>
+      ) : (
       <div
         className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
       >
@@ -260,6 +264,7 @@ export function ErrorCard({
           </div>
         )}
       </div>
+      )}
     </PanelCard>
   );
 
