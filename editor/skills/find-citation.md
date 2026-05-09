@@ -40,6 +40,20 @@ card so the user can drag it into the document.
    python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=2
    ```
 
+   **Disambiguation rule for "different from `<existing-citekey>`"
+   requests.** When the request describes the desired work *in
+   contrast to* an existing entry ("different from grafton1997",
+   "another Drucker paper", "something other than what jones2020
+   covers"), read the existing entry's `title` field as the canonical
+   ground truth for what the user thinks that entry is — not the
+   `@type` or `journal`. Users see titles in rendered bibliographies;
+   BibTeX type/journal metadata is invisible to them. Don't pick a
+   candidate whose title matches or near-matches the existing
+   entry's title even if its BibTeX type differs. (The existing
+   entry may be malformed — type-vs-title mismatch is a real failure
+   mode in the wild — but that's `answer-bib-review` territory; this
+   skill only reads the existing entry, never repairs it.)
+
 2. **Search.** Use Crossref + OpenAlex + Semantic Scholar (in that
    order of preference) to find a real, citable paper that matches the
    request's description. Try the library's authentication helper
@@ -78,6 +92,31 @@ card so the user can drag it into the document.
    can't be satisfied but a fallback is implied, use the failure-mode
    path with a note explaining what was checked.
 
+   **Verification quality wins ties on soft preferences.** When a
+   soft preference points at a less-verifiable candidate and a
+   more-verifiable alternative satisfies the request's *hard*
+   requirements, prefer the more-verifiable work. A less-verifiable
+   citation is a worse citation, even when it sits closer to the
+   user's stated preference. Note the tradeoff in the op `summary`
+   so the user can re-route if they want — e.g.,
+   `"Added grafton-wq1997 to bibliography (chose Wilson Quarterly
+   over Lingua Franca for verifiability)"`.
+
+   The acceptance bar is **hard**, not a soft preference. If the
+   soft-preferred candidate *fails* the acceptance bar (e.g. only
+   one independent source for a non-DOI work), this is not a tie —
+   pick the more-verifiable alternative outright. Soft preferences
+   cannot override the acceptance bar.
+
+   **What counts as "independent" sources.** An article scan or PDF
+   reproduction on a scholarly aggregator (academia.edu, JSTOR,
+   ResearchGate, etc.) counts as independent of an author-curated or
+   institutional bibliography *listing* for the same article — the
+   scan is direct evidence of the article's existence with the
+   claimed metadata, not a derived listing. A list-only aggregator
+   entry without the scan is derived (counts as one with the
+   bibliography).
+
 3. **Generate a citekey.** `<LastNameYear>` lowercased
    (e.g. `mcgrenere2022`). On collision in `references.bib`, suffix
    with `a`, `b`, …. Do **not** modify the colliding entry, even if it
@@ -95,7 +134,12 @@ card so the user can drag it into the document.
    - **`@article`**: `journal`, `volume` always; `number` and `pages`
      only if the publication has them. For article-number-only
      journals (Frontiers, PLOS, eLife, MDPI, etc.) set
-     `pages = {<article-number>}` and omit `number`.
+     `pages = {<article-number>}` and omit `number`. For non-journal
+     periodicals (magazines, weeklies, quarterlies, alumni magazines
+     — *Wilson Quarterly*, *Lingua Franca*, *Atlantic*, etc.), use
+     `@article` with `journal = {<magazine name>}`; magazines
+     reliably have volume + number + paginated pages, so apply the
+     standard `@article` field policy unmodified.
    - **`@book`**: `publisher`, `address` always. ISBN/LCCN/OCLC may
      be included as `isbn = {...}`, `lccn = {...}`, `oclc = {...}` if
      known — never put them in `doi`.
