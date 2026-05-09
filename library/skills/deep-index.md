@@ -103,6 +103,11 @@ Walk the entire document and correct `\section` / `\subsection` /
 > deep-index (it would re-extract page boundaries, which belongs to
 > `/index-paper`). The validator in §3i will pass trivially in this
 > case (zero markers ⇒ no scope violations, no continuity gaps).
+>
+> Note: §2's PDF reading rule (read the first ~8 pages of any
+> available PDF for structural reference) **still applies** — it's a
+> read-only structural cross-check, not a pgmark-synthesis step.
+> Only the per-marker alignment work in §3c is short-circuited.
 
 Verify that `\pgmark{N}` appears **above** the first line of content
 from printed page N. After header/footer removal, some markers may
@@ -162,15 +167,66 @@ leave the comment in place.
 > pass on this.
 >
 > **How to derive `<count>` (must be deterministic across re-runs).**
-> Use the highest distinct footnote number that appears as a
-> standalone integer at the foot of a page in `pdftotext` output of
-> the PDF alternate. In practice: extract every line that is a
-> bare positive integer ≤ 200, take the maximum, and use that as the
-> count. Footnote numbers that appear inline in body prose (as
-> superscript markers) are not in `pdftotext` output as standalone
-> integers, so this filter is robust. Do **not** count occurrences of
-> each integer — count once. If the PDF has no footnotes (no bare
-> integer lines), the count is 0 and you emit no warning at all.
+> Run `pdfinfo papers/$ARGUMENTS/$ARGUMENTS.pdf | grep '^Pages:'` to
+> get the page count K. Then extract every line of `pdftotext` output
+> that is a bare positive integer ≤ 200, **filter out integers ≤ K**
+> (those are page numbers, not footnotes), and take the maximum of
+> what remains. That maximum is the footnote count. Footnote numbers
+> that appear inline in body prose (as superscript markers) are not
+> in `pdftotext` output as standalone integers, so this filter is
+> robust. Do **not** count occurrences of each integer — count once.
+> If no integer > K exists in the bare-integer set (or the PDF has no
+> bare integer lines at all), the count is 0 and you emit no warning.
+>
+> **Why filter by page count.** `pdftotext` emits page numbers as
+> bare integers at page boundaries — for a K-page PDF, integers
+> 1..K are almost always page numbers. Without the filter, papers
+> whose footnote count is ≤ page count would silently report the
+> page count as the footnote count, masking a real recovery gap.
+> The filter is conservative — it underreports rather than overreports
+> (a paper with footnotes only in the 1..K range would report 0,
+> which is the safe default — no false-positive recovery warning).
+
+> **PDF-native sources with footnote bodies leaked as paragraph prose.**
+> Many PDF extractors (pymupdf in particular) emit footnote bodies as
+> ordinary paragraphs at the page-bottom, with no `% orphan footnote`
+> marker — the prose just sits there as a paragraph beginning with a
+> bare or superscript footnote number (e.g. `1Not absent some extra
+> information…`, `7See e.g., Hobbs [1979, 1990]…`). When the source
+> is the PDF itself (not a DOCX with a PDF alternate), and the body
+> text contains corresponding inline superscript markers (or
+> bracketed numbers like `[1]`), **do** re-attach the leaked
+> paragraphs as `\footnote{…}` at their call sites. The mapping is
+> determined by the leading footnote number on the leaked paragraph
+> matching an inline marker in the body text earlier on or near the
+> same page. Strip the leading number from the footnote body, escape
+> internal braces if needed, and place the `\footnote{…}` inline at
+> the call-site superscript position. If a leaked paragraph has no
+> matching inline marker (or the mapping is ambiguous because two
+> markers share a number), leave it as prose and emit one
+> `footnote-recovery-needed: <count> footnote bodies extracted as
+> paragraph prose, not yet re-attached` warning (count = number of
+> unmatched leaked paragraphs). Footnote-internal citations get
+> rewritten per §3g just like body citations.
+>
+> This rule is **distinct from the DOCX-native case above**. There,
+> footnotes were dropped entirely; here they leak as prose. The
+> DOCX-native rule forbids synthesis from the PDF (because re-extraction
+> is `/index-paper`'s job); the PDF-native rule permits re-attachment
+> from prose already in `main.tex` (no re-extraction, just
+> repositioning). The two paths cover disjoint extractor failure
+> modes.
+>
+> **Update `entry.indexed.footnoteCount` after re-attachment.** When
+> step 5 writes the catalog row, recompute `footnoteCount` as the
+> number of `\footnote{` occurrences in the post-deep-index
+> `main.tex` (one shell pass: `grep -o '\\footnote{' main.tex | wc
+> -l`). The pre-deep-index value (typically 0 for PDF-native leaked
+> sources) reflects the extractor's output, which is now stale.
+> Updating it gives downstream readers and the future paper-counts
+> UI an accurate picture of how many footnotes the document actually
+> carries. Skip this re-count when the deep-index pass made no
+> footnote re-attachments — preserve the prior value.
 
 **e. Bibliography / references formatting**
 
@@ -186,8 +242,11 @@ leave the comment in place.
 The references section is typically the last `\section` of the paper
 (headings like "References", "Bibliography", "Works Cited"). After
 extraction it usually arrives as one giant run-on paragraph with all
-entries concatenated. Reformat it as a LaTeX list with bold author
-names:
+entries concatenated. (Sometimes the preprocessor or the source
+already paragraph-separates entries; in that case the split is given
+to you. Apply the same per-entry shaping below — bold author, single
+line per entry — without further re-paragraphing.) Reformat it as a
+LaTeX list with bold author names:
 
 1. Locate the references section heading.
 2. Replace the run-on paragraph(s) with `\begin{itemize}` ... `\end{itemize}`.
@@ -247,6 +306,20 @@ Citekey rules (matches the project convention from
   the 4-digit year, then the first significant title word (skip articles
   like *a/an/the/of/on/in/and*). E.g. `bach2002giorgione`,
   `burge1973reference`.
+- **Multi-word surnames** (`Graf Fara`, `de Saussure`, `van der Sandt`,
+  `de Beauvoir`): concatenate the surname tokens into a single
+  lowercase string with non-letters stripped — `graffara2002shifting`,
+  `desaussure1916cours`, `vandersandt1992projection`. Use whatever
+  the bibliography lists as the surname-position field (typically
+  the form before the comma in `Graf Fara, D.`). When the inline
+  citation prose mentions the same author by the full surname (e.g.
+  `Graf Fara [2002]`), this concatenated form ensures the body's
+  `\cite{graffara2002shifting}` resolves cleanly.
+- **Same surname, different person** (David K. Lewis vs. Karen S.
+  Lewis): year alone disambiguates if the years differ. Use plain
+  `lewis1979scorekeeping`, `lewis2020speaker` — no alphabetic suffix
+  needed. Reserve `a`/`b`/`c` for genuinely-same-author same-year
+  collisions.
 - "Same author dash" entries (`———. 1969.`): reuse the previous entry's
   last name with the new year + titleword, e.g. `burge1977belief`.
 - Collisions (two distinct works → same key): append `a`, `b`, `c` in
@@ -269,6 +342,9 @@ Pick the BibTeX **entry type** that fits each source:
   usually `editor`).
 - `@inproceedings` — conference paper (has a "Proceedings of …"
   booktitle).
+- `@techreport` — institutional tech report or working paper
+  (CSLI-NN-NN, MIT-AITR-NNNN, etc.). Has `institution` instead of
+  `publisher`, optional `number` for the report ID.
 - `@misc` — fallback for anything that doesn't fit (theses, web pages,
   unpublished work).
 
@@ -424,6 +500,17 @@ Constraints:
     per unique author/year pair) for step 5 to merge into
     `entry.indexed.warnings` in `.virgil/catalog.json`. This makes the gap
     durable rather than buried.
+- **Ambiguous unsuffixed citation** — if prose has `(Author Year)`
+  with no letter suffix but `references.bib` has multiple matching
+  entries (`author<year>a`, `author<year>b`, `author<year>c`),
+  leave the prose unchanged AND emit
+  `"ambiguous-citation: <Author> <Year> (matches: <key1>, <key2>, …)"`
+  to `entry.indexed.warnings` (recomputed-prefix on re-runs, same
+  shape as `missing-bib-entry:`). Do not try to resolve via
+  context heuristics — the user can choose the right suffix
+  manually after triage. (Treat this as a fourth recomputed-prefix
+  alongside `missing-bib-entry:`, `footnote-recovery-needed:`, and
+  `examples-not-converted:` in step 5's drop-and-recompute list.)
 - For **multi-author textual citations that include given names**
   ("Barbara Grosz and Candace Sidner (1986)"), leave the prose alone.
   `\citet{}` would render only surnames and silently drop the inner
@@ -580,13 +667,33 @@ Every farmer who owns a donkey beats it.
 ```
 
 *Variant D — PDF-extracted prose with manual numbering.* Detect: a
-paragraph-start line matching `^\(\d+\)\s+\S` or `^\(\d+[a-z]\)\s+\S`,
-with two or more such lines within ~30 lines of each other. Strong
-companion signal: prose nearby that says "consider the following
-examples", "(N) below", or "see (N) above". Convert and **strip the
-source numbering** from the body text. Sub-items take two equivalent
-shapes after PDF/DOCX extraction; both convert to a single `\pex`
-with `\a` items:
+paragraph-start line matching one of these patterns, with two or more
+such lines within ~30 lines of each other:
+
+- `^\(\d+\)\s+\S` — standard `(7) text`.
+- `^\(\d+[a-z]\)\s+\S` — sub-letter form `(3a) text`.
+- `^\(\d+[a-z]?[''′`'*]+\)\s+\S` — primed variants common in
+  linguistics/philosophy: `(4')`, `(4'')`, `(4a')`, `(4*)`, with the
+  prime/apostrophe used to mark a transformed or related variant of
+  the base example. Treat each primed variant as its **own** example
+  (unique `[exno=4']` shape) — but see "Cross-reference repeats"
+  below: if a primed marker `(4')` re-appears later for back-
+  reference, leave it as prose. **Note:** expex's `[exno=…]` accepts
+  brace-quoted strings, so use `[exno={4'}]` to preserve the prime.
+- `^\d+\.\s+\S` — bare-number form `7. text` (no parens). Only
+  convert when **both** of these hold: (i) ≥2 such lines appear in
+  close proximity (within ~30 lines), AND (ii) introductory prose
+  signals example shape ("Consider the following:", "the examples
+  below", a colon-terminated lead-in). Without the introductory
+  signal, bare-number paragraphs are usually procedural lists or
+  enumerated arguments — leave them as prose. The
+  `\begin{enumerate}` exclusion below still applies.
+
+Strong companion signal across all four detection patterns: prose
+nearby that says "consider the following examples", "(N) below", or
+"see (N) above". Convert and **strip the source numbering** from the
+body text. Sub-items take two equivalent shapes after PDF/DOCX
+extraction; both convert to a single `\pex` with `\a` items:
 
 - *Independent-numbered:* `(3a) …  (3b) …  (3c) …` — each sub-item
   carries its own outer number and inner letter.
@@ -679,10 +786,57 @@ John was disappointed in Tim.
   the same number.
 - The list is inside the references / bibliography section.
 - The numbering pattern is genuinely ambiguous.
+- **Cross-reference repeats.** A candidate `(N)` or `(N-x)` (or
+  `(Na)`, `(N.a)`, etc.) whose number matches an example you have
+  *already* emitted earlier in the file. These are back-references —
+  the author is re-displaying example N (or its sub-item) for
+  exposition, not introducing a new example. The body prose nearby
+  typically reads as a discussion of the prior example ("recall
+  (2-b) above…", or just bare repetition for emphasis). Leave the
+  fragment as prose. If converted, you would double-emit `\ex` /
+  `\pex` blocks for the same example number, polluting the
+  example registry and breaking `[exno=N]` uniqueness. Detection:
+  before emitting any `\ex` / `\pex`, check whether `[exno=N]` has
+  already been used. If so, the second occurrence is almost always
+  a back-reference. (Exception: a paper that legitimately reuses
+  numbers via `\setcounter` resets across sections — rare. When in
+  doubt, leave as prose and emit `examples-not-converted: candidate
+  (N) appears to be a back-reference to earlier example near pgmark
+  <P>`.)
+- **Sub-item continuations** (e.g. `(26) c.` appearing after an
+  earlier `(26) a-b`). The author is extending example 26 with a
+  new sub-item at a non-contiguous location. Do **not** emit a
+  second `\pex[exno=26]` block (would collide on the exno) and do
+  **not** insert a stray `\a item` at body scope (invalid — `\a`
+  must live inside `\pex` or `\begin{xlist}`). Leave the
+  continuation as prose AND emit
+  `examples-not-converted: sub-item continuation of <N> at
+  non-contiguous location near pgmark <P>`. The original
+  `\pex[exno=N]` block stays as it was; the loss of fidelity (one
+  sub-item left as prose) is acceptable until v2 schema supports
+  cross-block continuations. (Folding the continuation into the
+  original `\pex` is only valid if there is no intervening prose
+  between the original block and the continuation — otherwise body
+  text would silently be relocated, which is out of scope.)
 
 In any of those cases, leave the region alone and emit a warning of the
 form `examples-not-converted: <reason> near pgmark <N>` for step 5 to
 merge into `entry.indexed.warnings`.
+
+> **Locator fallback for pgmark-less papers.** When the catalog row
+> has `indexed.pgmarkCount == 0` (DOCX-native, plain-text imports,
+> etc.), the "near pgmark <N>" suffix has no meaningful value — the
+> file has no `\pgmark` anchors. Use one of these alternative
+> locators instead, in order of preference: (a) `near §<section
+> heading>` if the candidate region falls under a `\section{…}` /
+> `\subsection{…}` heading; (b) `at line ~<N>` using the candidate's
+> line number in the post-deep-index `main.tex`; (c) `in <first 6
+> words of the candidate region's prose>` as a last resort. Pick
+> exactly one locator per warning, and apply the same fallback
+> consistently across all `examples-not-converted:`,
+> `missing-bib-entry:`, and `ambiguous-citation:` warnings emitted
+> for the same paper. The §8 log section follows the same fallback
+> rule.
 
 **Do NOT convert `\begin{enumerate}` blocks.** Even when the prose
 treats them as examples, the false-positive risk on procedural
@@ -815,8 +969,11 @@ boundary truly cuts mid-gloss in the source, split the gloss into two
 
 - Do **not** introduce `\ex`, `\pex`, or `\begingl` inside math
   (`\[…\]`, `$…$`, `equation`, `align`, etc.), inside other command
-  arguments (`\textbf{…}`, `\section{…}`, `\title{…}`, etc.), or in
-  the preamble. Mirror 3c's scope discipline.
+  arguments (`\textbf{…}`, `\section{…}`, `\title{…}`, `\footnote{…}`,
+  etc.), or in the preamble. Mirror 3c's scope discipline. If a
+  footnote body itself contains a numbered example (a `(i)`, `(1)`,
+  etc. inside the footnote prose), leave that example as plain text
+  inside the `\footnote{…}` argument — `\ex…\xe` cannot live there.
 - Do **not** convert numbered lists inside the references / bibliography
   section.
 - Do **not** synthesize examples from text that wasn't numbered in the
@@ -880,24 +1037,29 @@ entry["updatedAt"] = "<same ISO timestamp>"
 
 Also recompute `entry["indexed"]["exampleCount"]` — count the
 top-level `\ex` / `\pex` blocks in the final body (single + multi
-combined). **Do not count `\a` items, `\begin{xlist}` sub-items, or
-nested gloss tiers** — only the outer `\ex` / `\pex` envelopes.
-Frontends ignore unknown fields, so this addition ships without a UI
-change; a future Library badge can surface it.
+combined, including unnumbered tagged examples like `\ex<*>`). **Do
+not count `\a` items, `\begin{xlist}` sub-items, or nested gloss
+tiers** — only the outer `\ex` / `\pex` envelopes. Examples skipped
+per §3.h₂'s "Bias toward not converting" rules do not contribute to
+this count (they live as prose; the corresponding
+`examples-not-converted:` warning logs them). Frontends ignore
+unknown fields, so this addition ships without a UI change; a future
+Library badge can surface it.
 
 Preserve all other fields in the `indexed` object (`extractor`,
 `pgmarkCount`, `footnoteCount`, `exampleCount`).
 
-The `warnings` array is **append-only across passes, except for three
+The `warnings` array is **append-only across passes, except for four
 recomputed prefixes: `missing-bib-entry:`, `footnote-recovery-needed:`,
-and `examples-not-converted:`**. Read existing warnings, **drop any
-prior lines starting with any of those three prefixes** (they're
-recomputed by this pass), then concatenate the fresh lines from step
-3g (`missing-bib-entry: <Author> <Year>`, one per unique pair), step
-3d (`footnote-recovery-needed: <count> ...`, at most one), and step
-3.h₂ (`examples-not-converted: <reason> near pgmark <N>`, one per
-skipped region). Other warning kinds (from earlier indexing) are
-preserved untouched. This keeps idempotency clean: re-running
+`examples-not-converted:`, and `ambiguous-citation:`**. Read existing
+warnings, **drop any prior lines starting with any of those four
+prefixes** (they're recomputed by this pass), then concatenate the
+fresh lines from step 3g (`missing-bib-entry: <Author> <Year>` and
+`ambiguous-citation: <Author> <Year> (matches: ...)`, one per unique
+pair each), step 3d (`footnote-recovery-needed: <count> ...`, at
+most one), and step 3.h₂ (`examples-not-converted: <reason> ...`,
+one per skipped region). Other warning kinds (from earlier indexing)
+are preserved untouched. This keeps idempotency clean: re-running
 deep-index on the same paper produces the same warnings array (no
 duplicates, no ghost entries from a previous run that have since been
 resolved).
@@ -1013,11 +1175,11 @@ just spurious re-formatting — the latter signals a bug in the rewrite
 heuristics.
 
 The catalog `indexed.warnings` array is recomputed per pass for the
-`missing-bib-entry:`, `footnote-recovery-needed:`, and
-`examples-not-converted:` prefixes (step 5). Other warning kinds are
-preserved verbatim. If a missing entry from a prior pass has since been
-added to `references.bib` (e.g. by a manual edit), the rerun drops it
-from warnings.
+`missing-bib-entry:`, `footnote-recovery-needed:`,
+`examples-not-converted:`, and `ambiguous-citation:` prefixes (step 5).
+Other warning kinds are preserved verbatim. If a missing entry from a
+prior pass has since been added to `references.bib` (e.g. by a manual
+edit), the rerun drops it from warnings.
 
 For numbered examples specifically: on a second pass, the `\vexid{…}`
 markers from the first pass identify each canonical example, and §3.h₂
