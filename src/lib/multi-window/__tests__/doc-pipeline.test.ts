@@ -14,13 +14,23 @@ beforeEach(() => {
   __resetForTests();
 });
 
+/** Run all queued microtasks so deferred-end side-effects land. */
+const flushMicrotasks = () => new Promise<void>((r) => queueMicrotask(r));
+
 describe("doc-pipeline", () => {
   describe("beginDocPipeline / endDocPipeline / assertActive", () => {
-    it("active immediately after begin, inactive after end", () => {
+    it("active immediately after begin; end is deferred to a microtask", async () => {
       const h = beginDocPipeline("doc-A");
       expect(isActive(h)).toBe(true);
       assertActive(h); // does not throw
       endDocPipeline(h);
+      // Deferred-delete: the pipeline survives synchronously until the
+      // next microtask. This is the StrictMode/HMR-safe behavior — a
+      // remount within the same tick can revive the pipeline, and an
+      // unmount-flush save with the OLD handle can land before the
+      // entry is cleared.
+      expect(isActive(h)).toBe(true);
+      await flushMicrotasks();
       expect(isActive(h)).toBe(false);
       expect(() => assertActive(h)).toThrow(StalePipelineError);
     });
@@ -39,9 +49,26 @@ describe("doc-pipeline", () => {
       assertActive(h2);
     });
 
-    it("explicit end then begin creates a fresh pipeline that supersedes the old handle", () => {
+    it("end-then-immediate-begin (StrictMode/HMR remount) revives the same pipeline", () => {
+      // The architectural wall: a component that unmounts and remounts
+      // synchronously (StrictMode dev double-invoke, Fast Refresh) must
+      // observe the SAME pipeline across the cycle, otherwise every
+      // closure captured in the first mount becomes stale on remount
+      // and silently loses the user's pending edits.
       const h1 = beginDocPipeline("doc-A");
       endDocPipeline(h1);
+      const h2 = beginDocPipeline("doc-A");
+      expect(h2.pipelineId).toBe(h1.pipelineId);
+      assertActive(h1);
+      assertActive(h2);
+    });
+
+    it("end then microtask-flush then begin creates a fresh pipeline", async () => {
+      const h1 = beginDocPipeline("doc-A");
+      endDocPipeline(h1);
+      // After the deferred delete actually fires (real close, no remount
+      // within the same tick), a subsequent begin opens a fresh pipeline.
+      await flushMicrotasks();
       const h2 = beginDocPipeline("doc-A");
       expect(h2.pipelineId).not.toBe(h1.pipelineId);
       assertActive(h2);
@@ -49,26 +76,30 @@ describe("doc-pipeline", () => {
       expect(() => assertActive(h1)).toThrow(StalePipelineError);
     });
 
-    it("endDocPipeline only clears the registration when the handle matches", () => {
+    it("endDocPipeline only clears the registration when the handle matches", async () => {
       const h1 = beginDocPipeline("doc-A");
       endDocPipeline(h1);
+      await flushMicrotasks(); // P1 actually ends
       const h2 = beginDocPipeline("doc-A"); // fresh pipeline after explicit end
       // Ending h1 again (already stale) must NOT clear h2's registration.
       endDocPipeline(h1);
+      await flushMicrotasks();
       assertActive(h2);
-      // Ending h2 actually removes the registration.
+      // Ending h2 actually removes the registration after the microtask.
       endDocPipeline(h2);
+      await flushMicrotasks();
       expect(isActive(h2)).toBe(false);
       // Idempotent.
       endDocPipeline(h2);
     });
 
-    it("different docIds run independent pipelines", () => {
+    it("different docIds run independent pipelines", async () => {
       const a = beginDocPipeline("doc-A");
       const b = beginDocPipeline("doc-B");
       assertActive(a);
       assertActive(b);
       endDocPipeline(a);
+      await flushMicrotasks();
       expect(() => assertActive(a)).toThrow(StalePipelineError);
       // B is unaffected.
       assertActive(b);
@@ -89,17 +120,23 @@ describe("doc-pipeline", () => {
       assertActive(fetched!);
     });
 
-    it("returns null after endDocPipeline", () => {
+    it("returns null after endDocPipeline + microtask flush", async () => {
       const h = beginDocPipeline("doc-A");
       endDocPipeline(h);
+      // Deferred delete: synchronously after end, the handle still
+      // resolves (StrictMode/HMR safety). Only after the microtask
+      // fires does the entry actually clear.
+      expect(getActiveHandle("doc-A")).not.toBeNull();
+      await flushMicrotasks();
       expect(getActiveHandle("doc-A")).toBeNull();
     });
   });
 
   describe("isStalePipelineError", () => {
-    it("recognizes thrown StalePipelineError instances", () => {
+    it("recognizes thrown StalePipelineError instances", async () => {
       const h = beginDocPipeline("doc-A");
       endDocPipeline(h);
+      await flushMicrotasks(); // ensure pipeline actually ended
       try {
         assertActive(h);
         expect.fail("assertActive should have thrown");
@@ -117,39 +154,39 @@ describe("doc-pipeline", () => {
   });
 
   describe("integration with storage queue (the bug we're fixing)", () => {
-    it("simulates the autosave race: write authored under pipeline P1, P1 ends mid-flight, write is rejected", async () => {
-      // P1 is opened for doc A; user types something — simulated by an
-      // async task that captures h1 in its closure.
+    it("an in-flight write with handle h1 lands successfully when end+begin merely end the pipeline (no supersession)", async () => {
+      // The architectural rule: if a closure captured a handle, and by
+      // the time it tries to write the pipeline has ENDED but no NEWER
+      // pipeline took over, the write is allowed. (assertNotSuperseded
+      // captures this; a stricter assertActive would reject.)
       const h1 = beginDocPipeline("doc-A");
-
-      // Simulate a debounced save that's already in flight when the user
-      // switches docs. The save callback closes over h1.
       const inFlight = (async () => {
-        // Inside the save body we'd normally call writeDocBundle which
-        // calls assertActive(h). Mimic that here.
-        // ... pretend some async I/O happened ...
         await Promise.resolve();
-        assertActive(h1); // throws if pipeline ended
+        // Lenient check — passes when pipeline ended cleanly.
+        const { assertNotSuperseded } = await import("../doc-pipeline");
+        assertNotSuperseded(h1);
+        return "wrote";
       })();
-
-      // Meanwhile, the user closes doc A.
       endDocPipeline(h1);
-
-      // The in-flight save now lands and detects the stale handle.
-      await expect(inFlight).rejects.toBeInstanceOf(StalePipelineError);
+      await expect(inFlight).resolves.toBe("wrote");
     });
 
-    it("supersede mid-flight: rapid close/reopen of the same docId rejects writes from the older pipeline", async () => {
+    it("supersede: a NEWER pipeline for the same docId invalidates an old handle's write", async () => {
+      const { assertNotSuperseded } = await import("../doc-pipeline");
       const h1 = beginDocPipeline("doc-A");
-      const inFlight = (async () => {
-        await Promise.resolve();
-        assertActive(h1);
-      })();
-      // P1 explicitly ended, then P2 opened — e.g. doc closed and
-      // immediately reopened. The closure capturing h1 is now stale.
+      // Real reopen: end + flush + begin ⇒ a fresh pipeline that
+      // supersedes the old one. The deferred delete must have actually
+      // landed for begin to mint a new pipeline; otherwise begin would
+      // revive h1 (the StrictMode-safe path).
       endDocPipeline(h1);
+      await flushMicrotasks();
       const h2 = beginDocPipeline("doc-A");
-      await expect(inFlight).rejects.toBeInstanceOf(StalePipelineError);
+      expect(h2.pipelineId).not.toBe(h1.pipelineId);
+      // Any in-flight write under h1 — even the lenient
+      // `assertNotSuperseded` check — is rejected, because a strictly
+      // newer pipeline is now in charge. This is the wall against
+      // cross-pipeline writes after a supersede.
+      expect(() => assertNotSuperseded(h1)).toThrow(StalePipelineError);
       // P2 is still active.
       assertActive(h2);
     });

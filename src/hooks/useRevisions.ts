@@ -18,11 +18,13 @@ import {
 import {
   addParagraphLink,
   clearTextAnchorLink,
+  getLinkedParagraphIds,
   getTextAnchor,
   removeParagraphLink,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
@@ -257,14 +259,29 @@ export function useRevisions(
   const setCommentAiRequest = useCallback(
     (id: string, value: boolean) => {
       pristine.markDirty(id);
+      const card = state.cards.find(
+        (c) => c.id === id && c.kind === "comment",
+      ) as RevisionCommentCard | undefined;
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
+      if (card) {
+        void bridgeCardAiRequestFlag(
+          docId,
+          { panel: "revisions", cardId: id },
+          value,
+          {
+            text: card.text || "<revision comment>",
+            paragraphIds: getLinkedParagraphIds(card),
+            selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+          },
+        );
+      }
     },
-    [update, pristine],
+    [update, pristine, docId, state.cards],
   );
 
   const updateSuggestionField = useCallback(

@@ -72,7 +72,7 @@ directory).
    independent sources to agree, or one authoritative one.
 
    **Tier 3 — document inference.** If the source file exists at
-   `pdfs/<citekey>.*`, check first/last pages for publisher city,
+   `papers/<citekey>/<citekey>.*`, check first/last pages for publisher city,
    dates, edition. Append `[inferred from source]` to `note` for any
    value obtained this way.
 
@@ -93,7 +93,7 @@ directory).
    '
    ```
 
-6. **Update catalog.json** — derive top-level fields from master.bib so
+6. **Update .virgil/catalog.json** — derive top-level fields from master.bib so
    they can't drift:
    ```bash
    python3 -c '
@@ -102,23 +102,23 @@ directory).
    from index_paper import _sync_catalog_entry_from_master
    bib_status = <bib_status_dict_from_step_2>
    _sync_catalog_entry_from_master(Path("."), "<citekey>", bib_status)
-   print("catalog.json synced from master.bib")
+   print(".virgil/catalog.json synced from master.bib")
    '
    ```
    The `bib_status` dict must include: `state`, `fieldChanges` (append to
    existing), `sources`, `doiVerified`, and `authenticatedAt` (if
    authenticated).
 
-7. **Bump** `catalog-version.txt` and append an `authenticated` notification.
+7. **Bump** `.virgil/catalog-version.txt` and append an `authenticated` notification.
 
 7. **Remove from pending-reviews manifest.** Read
-   `queue/pending-reviews.json`, remove the entry for this citekey, and
+   `.virgil/queue/pending-reviews.json`, remove the entry for this citekey, and
    write back. This keeps the manifest in sync so subsequent skill runs
    don't re-process it.
    ```bash
    python3 -c '
    import json; from pathlib import Path
-   p = Path("queue/pending-reviews.json")
+   p = Path(".virgil/queue/pending-reviews.json")
    if p.exists():
        d = json.loads(p.read_text())
        d["pendingReviews"] = [r for r in d.get("pendingReviews", []) if r["citekey"] != "<citekey>"]

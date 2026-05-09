@@ -2,7 +2,7 @@
 //
 // The frontend never writes master.bib directly (cowork constraint). Edits
 // land in queue/ as JSON intent files; the matching skill drains them and
-// applies the changes to master.bib + catalog.json + bumps the version
+// applies the changes to master.bib + .virgil/catalog.json + bumps the version
 // counter so other clients reload.
 
 import {
@@ -77,10 +77,10 @@ export async function queuePaperReview(
 }
 
 /** Enqueue a delete request. The handling skill is expected to remove the
- *  source file (pdfs/<citekey>.{pdf,docx}), the indexed paper folder
- *  (papers/<citekey>/), the bib block in master.bib, and the catalog row
- *  — then bump catalog-version.txt. The frontend never deletes those
- *  itself (cowork constraint). */
+ *  paper folder (papers/<citekey>/, which now contains both the source
+ *  file and the derived artifacts), the bib block in master.bib, and the
+ *  catalog row — then bump .virgil/catalog-version.txt. The frontend never
+ *  deletes those itself (cowork constraint). */
 export async function queueDelete(
   root: FileSystemDirectoryHandle,
   citekey: string,

@@ -127,7 +127,7 @@ async function scanLatestNotifAt(
 ): Promise<Map<string, string>> {
   const inbox = await readJsonFile<NotificationInbox>(
     handle,
-    "notifications/inbox.json",
+    `${SUBDIRS.notifications}/inbox.json`,
   );
   const out = new Map<string, string>();
   if (!inbox?.items) return out;

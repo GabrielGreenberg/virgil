@@ -1,0 +1,23 @@
+{
+  "citations": [
+    {
+      "id": "1be5",
+      "command": "\\cite{genette1997}",
+      "keys": [
+        "genette1997"
+      ],
+      "createdAt": "2026-05-08T22:20:09.628Z"
+    },
+    {
+      "id": "328d",
+      "command": "\\cite{grafton2020}",
+      "keys": [
+        "grafton2020"
+      ],
+      "createdAt": "2026-05-08T22:20:09.628Z"
+    }
+  ],
+  "bibPath": "",
+  "citationStyle": "apa",
+  "bibPackage": "biblatex"
+}

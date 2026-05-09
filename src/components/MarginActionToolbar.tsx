@@ -1,13 +1,14 @@
 "use client";
 
 import {
-  ActionButton,
+  ActionChipButton,
   ACTION_BUTTON_DEFS,
   type ActionToolbarCallbacks,
 } from "./MenuBar";
 import type { PanelPlacement } from "@/hooks/useViewPrefs";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import { isActionCallbackVisible } from "./editor-layout/chrome-config";
+import { MARGINALIA_COL_GAP } from "@/lib/marginalia";
 
 interface Props {
   side: "left" | "right";
@@ -48,17 +49,18 @@ export function MarginActionToolbar({ side, actions, placements }: Props) {
       data-margin-toolbar-side={side}
       className="flex items-center px-5"
     >
-      <div className="flex items-center gap-0.5">
+      <div
+        className="flex items-center"
+        style={{ gap: MARGINALIA_COL_GAP }}
+      >
         {defs.map((def) => {
           const cb = actions[def.callbackKey]!;
           return (
-            <ActionButton
+            <ActionChipButton
               key={def.callbackKey}
               onClick={(rect) => cb(rect)}
               title={def.title}
-              color={def.color}
-              hoverBg={def.hoverBg}
-              hoverColor={def.hoverColor}
+              themeKey={def.themeKey}
               icon={def.icon}
             />
           );

@@ -1,12 +1,19 @@
 ---
-description: Index a single source (PDF or DOCX) in the Virgil Library — produces papers/<citekey>/main.tex with \pgmark{} anchors, a single-entry references.bib, empty Virgil sidecars, and an authenticated catalog row. Args: <citekey>.
+description: Index a single source (PDF, DOCX, or .tex) in the Virgil Library — produces papers/<citekey>/main.tex (with \pgmark{} anchors for PDFs), a single-entry references.bib, empty Virgil sidecars, and an authenticated catalog row. Args: <citekey>.
 ---
 
 # /index-paper $ARGUMENTS
 
 Index ONE paper in `~/Virgil-Library/`. The citekey is the first argument.
-The source can be a PDF or a Word document (`.docx`); the orchestrator
-auto-detects which is present at `pdfs/<citekey>.<ext>`.
+The source can be a PDF, a Word document (`.docx`), or a LaTeX manuscript
+(`.tex`); the orchestrator auto-detects which is present at
+`papers/<citekey>/<citekey>.<ext>`. Format priority is `tex > docx > pdf`
+when more than one is present.
+
+> **Where any memo you write goes.** Dev memos (skill retros, ideas for
+> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> Paper-specific analyses or reports → `papers/<citekey>/notes/<slug>.md`.
+> Never drop a markdown file at the library root.
 
 ## What this skill does
 
@@ -17,10 +24,10 @@ you to disambiguate something.
 ## Steps
 
 1. **Confirm setup.** Check that:
-   - `~/Virgil-Library/pdfs/<citekey>.pdf` **or** `~/Virgil-Library/pdfs/<citekey>.docx` exists
+   - `~/Virgil-Library/papers/<citekey>/<citekey>.pdf` **or** `~/Virgil-Library/papers/<citekey>/<citekey>.docx` exists
    - `<citekey>` appears in `~/Virgil-Library/master.bib`
 
-   If either is missing, write a `failed` entry to `notifications/inbox.json`
+   If either is missing, write a `failed` entry to `.virgil/notifications/inbox.json`
    and stop.
 
 2. **Confirm Python deps.** Run:
@@ -29,14 +36,14 @@ you to disambiguate something.
    ```
    If pymupdf is missing, run:
    ```bash
-   pip3 install --user --break-system-packages -r scripts/requirements.txt
+   pip3 install --user --break-system-packages -r .virgil/scripts/requirements.txt
    ```
    `python-docx` is also installed by that command — it's required only for
    `.docx` sources.
 
 3. **Run the orchestrator.** From the library root:
    ```bash
-   python3 scripts/index_paper.py <citekey>
+   python3 .virgil/scripts/index_paper.py <citekey>
    ```
    For PDF sources, this:
    - classifies scanned vs digital (OCRs scanned PDFs if `ocrmypdf` is installed)
@@ -48,12 +55,18 @@ you to disambiguate something.
    paragraph styles already carry the structure. The emitted `main.tex`
    contains no `\pgmark{}` lines (DOCX has no printed-page anchors).
 
+   For `.tex` sources, the extraction stages are skipped entirely: the
+   `.tex` is already LaTeX, so `index_paper.py` copies it verbatim to
+   `papers/<citekey>/main.tex` (the catalog records
+   `indexed.extractor = "tex-passthrough"`). No pgmark detection, no
+   OCR. Bib auth still runs.
+
    In both cases:
    - writes single-entry `references.bib` mirror
    - initializes empty `virgil/{virgil,notes,footnotes}.json` sidecars
    - authenticates the .bib entry against Crossref/OpenAlex/Semantic Scholar/arXiv
-   - updates `catalog.json` (`pdf.format` records the source format) and bumps `catalog-version.txt`
-   - appends a row to `notifications/inbox.json`
+   - updates `.virgil/catalog.json` (`pdf.format` records the source format) and bumps `.virgil/catalog-version.txt`
+   - appends a row to `.virgil/notifications/inbox.json`
 
    **DOI fallback.** If `bib.state` from the orchestrator is `failed`
    AND the `master.bib` entry has a `doi` field, fetch
@@ -71,7 +84,7 @@ you to disambiguate something.
    - `message.publisher` → `publisher`
 
    Write the updated fields to `master.bib`, set `bib.state =
-   "authenticated"` and `bib.doiVerified = true` in `catalog.json`,
+   "authenticated"` and `bib.doiVerified = true` in `.virgil/catalog.json`,
    and continue to step 4 with the enriched entry. This is a
    skill-level backstop for when `bib_auth.py`'s title-fuzz search
    missed the correct record but the DOI was already known.
@@ -115,7 +128,7 @@ you to disambiguate something.
 
    **Tier 3 — document-internal inference.** For fields still missing
    (especially `address`, `month`, `edition`), check the first/last
-   pages of the source at `pdfs/<citekey>.<ext>`. Publisher city often
+   pages of the source at `papers/<citekey>/<citekey>.<ext>`. Publisher city often
    appears on the title page or copyright notice; month in a "received
    / accepted" line; edition in the front matter. If you infer a value
    this way, append `[inferred from source]` to the `note` field so the
@@ -128,7 +141,7 @@ you to disambiguate something.
    - Read `papers/<citekey>/main.tex` and skim it. If you spot obvious
      extraction failures (missing sections, garbled paragraphs, footnotes
      dangling without bodies), report them in your reply.
-   - Read the latest `logs/<citekey>/*-index.summary.md` and quote the
+   - Read the latest `.virgil/logs/<citekey>/*-index.summary.md` and quote the
      extractor + counts.
    - If `bib.state` is `unverified` or `failed`, mention it so the user
      can decide whether to manually accept.

@@ -6,18 +6,21 @@ type DocPermState = "loading" | "granted" | "needs-grant" | "no-handle";
  * Document-lifecycle action handlers: opening an existing file via the
  * native picker, and promoting the permission gate to "granted" once
  * the user clicks through.
+ *
+ * Promoting `docPermState` to "granted" causes the EditorPane branch
+ * to render and the surrounding `<DocPipeline>` to mount, which in
+ * turn fires `useDocument`'s load effect — no explicit refetch is
+ * needed.
  */
 export function useFileActions(deps: {
   openExistingFile: () => Promise<unknown>;
   setDocPermState: Dispatch<SetStateAction<DocPermState>>;
-  refetchDoc: () => void;
 }) {
-  const { openExistingFile, setDocPermState, refetchDoc } = deps;
+  const { openExistingFile, setDocPermState } = deps;
 
   const handleDocPermissionGranted = useCallback(() => {
     setDocPermState("granted");
-    refetchDoc();
-  }, [setDocPermState, refetchDoc]);
+  }, [setDocPermState]);
 
   const handleNativeOpen = useCallback(async () => {
     try {

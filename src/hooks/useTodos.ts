@@ -3,8 +3,13 @@
 import { useCallback } from "react";
 import { generateEntityId } from "@/lib/uuid";
 import type { TodoState, TodoItem } from "@/lib/types";
-import { addParagraphLink, removeParagraphLink } from "@/links/links";
+import {
+  addParagraphLink,
+  getLinkedParagraphIds,
+  removeParagraphLink,
+} from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -78,10 +83,22 @@ export function useTodos(docId: string | null, externalPristine?: PristineKindAp
 
   const setAiRequest = useCallback((id: string, value: boolean) => {
     pristine.markDirty(id);
+    const todo = state.items.find((i) => i.id === id);
     update((prev) => ({
       items: prev.items.map((i) => i.id === id ? { ...i, aiRequest: value } : i),
     }));
-  }, [update, pristine]);
+    if (todo) {
+      void bridgeCardAiRequestFlag(
+        docId,
+        { panel: "todos", cardId: id },
+        value,
+        {
+          text: todo.text || "<todo>",
+          paragraphIds: getLinkedParagraphIds(todo),
+        },
+      );
+    }
+  }, [update, pristine, docId, state.items]);
 
   const deleteItem = useCallback((id: string) => {
     pristine.markDirty(id);

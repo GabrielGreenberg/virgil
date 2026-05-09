@@ -13,16 +13,17 @@ import { findEditorScrollFor } from "../layout-scroll";
  * open and the bottom pane is focused; otherwise delegates to the main
  * editor's scrollToHeading.
  *
- * `handleUpdate` forwards to the document's `onUpdate`, then debounces a
- * `setLatestDoc(doc)` so outline / word-count subscribers don't re-derive
- * on every keystroke.
+ * `handleUpdate` debounces `setLatestDoc(doc)` so outline / word-count
+ * subscribers don't re-derive on every keystroke. The autosave is
+ * driven by `useDocument` inside EditorPane (its `onUpdate` is wired
+ * directly to TipTap there); this hook only feeds the shell's own
+ * derived state.
  */
 export function useEditorOps(deps: {
   editorRef: RefObject<EditorHandle | null>;
   mirrorViewRef: RefObject<EditorView | null>;
   editorSplit: boolean;
   activeSplitPane: "top" | "bottom";
-  onUpdate: (doc: JSONContent) => void;
   setLatestDoc: (doc: JSONContent | null) => void;
 }) {
   const {
@@ -30,7 +31,6 @@ export function useEditorOps(deps: {
     mirrorViewRef,
     editorSplit,
     activeSplitPane,
-    onUpdate,
     setLatestDoc,
   } = deps;
 
@@ -38,11 +38,10 @@ export function useEditorOps(deps: {
 
   const handleUpdate = useCallback(
     (doc: JSONContent) => {
-      onUpdate(doc);
       if (latestDocTimerRef.current) clearTimeout(latestDocTimerRef.current);
       latestDocTimerRef.current = setTimeout(() => setLatestDoc(doc), 300);
     },
-    [onUpdate, setLatestDoc],
+    [setLatestDoc],
   );
 
   const handleScrollToHeading = useCallback(

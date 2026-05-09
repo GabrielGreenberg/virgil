@@ -24,7 +24,14 @@ export function useLibraryHandle() {
   const syncedHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
 
   const becameReady = useCallback(async (handle: FileSystemDirectoryHandle) => {
-    await ensureLibraryStructure(handle);
+    try {
+      await ensureLibraryStructure(handle);
+    } catch (err) {
+      // Don't gate library load on bootstrap. The handle is permissioned;
+      // give the user a usable view (degraded if seeds are missing) rather
+      // than stranding them on an unhandled rejection.
+      console.error("[library] ensureLibraryStructure failed; loading anyway", err);
+    }
     setState({ kind: "ready", handle });
     if (syncedHandleRef.current === handle) return;
     syncedHandleRef.current = handle;

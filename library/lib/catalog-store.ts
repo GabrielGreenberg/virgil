@@ -9,10 +9,10 @@
  *   2. Lets the Library tab read the same store rather than spawning a
  *      second polling loop. (`useCatalog` inside the LibraryView still
  *      maintains its own focus/visibility-aware reload; that's fine
- *      since both end up pulling from `catalog.json` on disk.)
+ *      since both end up pulling from `.virgil/catalog.json` on disk.)
  *
- * Polling: every 6s we re-read `catalog-version.txt` (1 byte). When the
- * version changes, we re-read `catalog.json`. Same tactic the LibraryView
+ * Polling: every 6s we re-read `.virgil/catalog-version.txt` (1 byte). When
+ * the version changes, we re-read `.virgil/catalog.json`. Same tactic the LibraryView
  * uses — keeps cost near-zero in the steady state.
  */
 

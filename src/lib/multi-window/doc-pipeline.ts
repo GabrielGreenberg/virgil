@@ -23,6 +23,30 @@
 const active = new Map<string, string>();
 
 /**
+ * Pipelines pending end. React StrictMode (dev) and Fast Refresh (HMR)
+ * synchronously unmount then remount the same component — if we deleted
+ * the pipeline immediately on `endDocPipeline`, the remount would create
+ * a NEW pipeline, and any closure captured between unmount-cleanup and
+ * remount would write under a stale handle.
+ *
+ * Instead we DEFER the delete to a microtask. If the same pipelineId is
+ * begun again within that window (the common StrictMode/HMR case), we
+ * cancel the deferred delete and the pipeline survives — same handle,
+ * same pipelineId, no closure invalidation. When the microtask actually
+ * fires (real unmount, no remount), we drop the entry. The microtask
+ * also re-checks the current active value before deleting, so a real
+ * doc switch (different docId → new pipeline → original pipeline ends)
+ * still cleans up correctly.
+ *
+ * The deferred-delete also makes the unmount-flush-on-doc-switch path
+ * robust: when EditorLayout's old `useDocument` fires its pending save
+ * via `[save]` cleanup with the OLD handle, the OLD pipeline is still
+ * in `active` (delete is scheduled, not yet fired) so `assertActive`
+ * passes and the user's pending edit lands in the right doc's file.
+ */
+const pendingEnd = new Set<string>();
+
+/**
  * An opaque token bundling the destination doc with the pipeline it was
  * authored under. Storage writers accept this in place of a bare docId.
  * Treat as immutable; pass through props/Context, never reconstruct.
@@ -70,19 +94,39 @@ function newPipelineId(): string {
  */
 export function beginDocPipeline(docId: string): DocWriteHandle {
   const existing = active.get(docId);
-  if (existing !== undefined) return { docId, pipelineId: existing };
+  if (existing !== undefined) {
+    // Same docId already has an active pipeline. Idempotent: return its
+    // handle. If a deferred end was scheduled (StrictMode unmount about
+    // to remount), cancel it so the pipeline keeps living.
+    pendingEnd.delete(docId + "::" + existing);
+    return { docId, pipelineId: existing };
+  }
   const pipelineId = newPipelineId();
   active.set(docId, pipelineId);
   return { docId, pipelineId };
 }
 
 /**
- * End a pipeline. Idempotent and tolerant of races: only deletes the
- * registration if it still matches our pipelineId, so a newer pipeline
- * for the same docId isn't accidentally cleared.
+ * End a pipeline. Defers the actual delete to a microtask so a same-
+ * tick remount (React StrictMode dev double-invoke, Fast Refresh /
+ * HMR component remount, doc-switch flush firing under an OLD handle
+ * after the matching DocPipeline already unmounted) can either revive
+ * the pipeline (`beginDocPipeline` for the same docId) or land its
+ * pending write before the entry is actually removed from `active`.
+ *
+ * Idempotent and tolerant of races: only deletes the registration if
+ * it still matches our pipelineId at the time the microtask fires, so
+ * a newer pipeline for the same docId isn't accidentally cleared.
  */
 export function endDocPipeline(h: DocWriteHandle): void {
-  if (active.get(h.docId) === h.pipelineId) active.delete(h.docId);
+  if (active.get(h.docId) !== h.pipelineId) return;
+  const token = h.docId + "::" + h.pipelineId;
+  pendingEnd.add(token);
+  queueMicrotask(() => {
+    if (!pendingEnd.has(token)) return; // cancelled by a same-tick begin
+    pendingEnd.delete(token);
+    if (active.get(h.docId) === h.pipelineId) active.delete(h.docId);
+  });
 }
 
 /** Throws StalePipelineError if `h` is no longer the active pipeline. */
@@ -134,4 +178,5 @@ export function getActiveHandle(docId: string): DocWriteHandle | null {
  */
 export function __resetForTests(): void {
   active.clear();
+  pendingEnd.clear();
 }

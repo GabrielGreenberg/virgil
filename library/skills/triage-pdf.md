@@ -1,12 +1,23 @@
 ---
-description: Triage one source file (PDF or DOCX) in pdfs/unsorted/ — propose a citekey, rename the file, and emit an index queue entry. Args: <filename> (relative to pdfs/unsorted/).
+description: Triage one source file (PDF, DOCX, .tex, or .bib) in unsorted/ — propose a citekey, move the file into its paper folder, and emit an index or authenticate queue entry. Args: <filename> (relative to unsorted/).
 ---
 
 # /triage-pdf $ARGUMENTS
 
-Take a freshly-dropped source file in `~/Virgil-Library/pdfs/unsorted/<filename>`
-(currently `.pdf` or `.docx`) and turn it into a properly-named
-`pdfs/<citekey>.<ext>` with a queued index request.
+Take a freshly-dropped source file in `~/Virgil-Library/unsorted/<filename>`
+and turn it into a properly-located paper folder + queue request.
+
+Supported source kinds:
+
+- **`.pdf`** — full PDF/DOCX-style indexing (extraction → `main.tex` with `\pgmark{N}`).
+- **`.docx`** — same flow, structured extraction (no pgmark).
+- **`.tex`** — already LaTeX. Passthrough copy into `papers/<citekey>/main.tex`; queue index. Defaults to `@unpublished` unless a DOI is present.
+- **`.bib`** — multi-entry fan-out. Each entry becomes a **bib-only catalog row** (no source file, `pdf.present=false`, `indexed.state="none"`, `bib.state="unverified"`); the apply step queues `kind: "authenticate"` per entry. The source `.bib` is deleted from `unsorted/` after fan-out (or parked under `_pending/` on parse failure). The library viewer already handles bib-only entries natively (PDF view shows "No PDF on disk", text view stays dormant).
+
+> **Where any memo you write goes.** Dev memos (skill retros, ideas for
+> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> Paper-specific notes → `papers/<citekey>/notes/<slug>.md`.
+> Never drop a markdown file at the library root.
 
 ## Steps
 
@@ -17,7 +28,7 @@ directory).
 
    For `.pdf`:
    ```bash
-   pdftotext -f 1 -l 4 pdfs/unsorted/<filename> -
+   pdftotext -f 1 -l 4 unsorted/<filename> -
    ```
    (Read pages 1–4 — we need more than page 1 for the year/DOI check
    in step 3.)
@@ -25,16 +36,30 @@ directory).
    For `.docx` (Word documents have explicit core properties + paragraph
    styles, so we read both):
    ```bash
-   python3 -c "import sys; sys.path.insert(0, 'scripts'); from extract_docx import core_properties; import json; print(json.dumps(core_properties('pdfs/unsorted/<filename>'), indent=2))"
+   python3 -c "import sys; sys.path.insert(0, 'scripts'); from extract_docx import core_properties; import json; print(json.dumps(core_properties('unsorted/<filename>'), indent=2))"
    ```
    This returns `{title, author, created, modified, first_paragraphs}`. Use
    the core properties first; fall back to scanning the first paragraphs if
    they're empty.
 
+   For `.tex` (LaTeX manuscript): parse `\title{...}`, `\author{...}`,
+   `\date{...}`, plus the first ~2000 characters of the body for DOI /
+   ISBN / year detection. The shared helper is in `triage_batch.py`'s
+   `_read_tex_meta()`. A `.tex` source without a DOI defaults to
+   `@unpublished`; with a DOI, treat as `@article` and let
+   `/authenticate-bib` confirm.
+
+   For `.bib` (BibTeX file with one or more entries): parse the file
+   into a list of entries via `_bib_parse.read_bib_file()`. Each entry
+   is its own triage row — fan out per entry, do NOT treat the file as
+   a single document. There is no source PDF to move; instead each
+   entry produces a **bib-only paper folder** (`references.bib` +
+   empty `virgil/` sidecars) and an `authenticate` queue request.
+
 2. **Propose a citekey** from the title + first author + year. Convention:
    `<LastName><Year>` (e.g. `Smith2020`). If the year is missing, use
    `<LastName><LastName2>`. If a collision exists in `master.bib` or
-   `pdfs/`, append `a`, `b`, etc.
+   `papers/`, append `a`, `b`, etc.
 
 3. **Sanity-check filename against source pages.** The filename convention
    `<YYYY>-<LastName>.pdf` uses acquisition date, not publication year,
@@ -88,15 +113,16 @@ directory).
    }
    ```
 
-4. **Check for existing entry.** Look at `master.bib` and the `pdfs/`
+4. **Check for existing entry.** Look at `master.bib` and the `papers/`
    directory.
 
    **First, check for a variant copy.** If the filename matches the
    pattern `<base>.<N>.<ext>` (where `<N>` is a numeric suffix like
-   `.1`, `.2`) AND `pdfs/<base>.<ext>` already exists, this is a
-   duplicate scan/offprint of an already-indexed paper:
+   `.1`, `.2`) AND `unsorted/<base>.<ext>` or `papers/<base>/<base>.<ext>`
+   already exists, this is a duplicate scan/offprint of an already-indexed
+   paper:
 
-   1. Read `catalog.json` and find the entry whose `pdf.filename ==
+   1. Read `.virgil/catalog.json` and find the entry whose `pdf.filename ==
       "<base>.<ext>"` (or whose alternates list contains it).
    2. If found, the variant belongs to that citekey. Move the file to
       `papers/<existing-citekey>/variants/<filename>` (mkdir variants/
@@ -109,7 +135,7 @@ directory).
         "at": "<ISO>"
       }
       ```
-      Then bump `catalog-version.txt` and stop.
+      Then bump `.virgil/catalog-version.txt` and stop.
    3. If `<base>.<ext>` exists on disk but no catalog entry maps to
       it, fall through to the four cases below (mint a new citekey
       with `a`/`b` suffix as needed).
@@ -124,16 +150,16 @@ directory).
       skip step 5, move the file, enqueue `kind: "index"`.
 
    c. **Bib entry exists AND a same-format source exists at
-      `pdfs/<citekey>.<ext>`** → genuine collision. Append `a`/`b`/...
+      `papers/<citekey>/<citekey>.<ext>`** → genuine collision. Append `a`/`b`/...
       to the citekey and restart from step 2.
 
    d. **Bib entry exists AND a *different-format* source exists at
-      `pdfs/<citekey>.<other-ext>`** → this is a **supersede**. Format
+      `papers/<citekey>/<citekey>.<other-ext>`** → this is a **supersede**. Format
       priority is `docx > pdf` (DOCX carries explicit structure that
       beats the PDF heuristics). Decide which to do:
       - If the new file is *higher* priority than the existing one
         (e.g., new=docx, existing=pdf) → skip step 5, place the new
-        file at `pdfs/<citekey>.<new-ext>` *alongside* the existing
+        file at `papers/<citekey>/<citekey>.<new-ext>` *alongside* the existing
         one (don't delete the old source), and enqueue **`kind:
         "reindex"`** instead of `"index"` in step 8. The existing
         lower-priority source is preserved as an archive — the indexer
@@ -205,7 +231,7 @@ directory).
    When triggered, the file is the whole book — minting a stub for
    `<filename-author>2024` would produce a wrong-bib entry. Instead:
 
-   1. Move file to `pdfs/unsorted/_pending/<filename>` (mkdir if
+   1. Move file to `unsorted/_pending/<filename>` (mkdir if
       needed) so it's not re-triaged on the next scan.
    2. Append a notification:
       ```json
@@ -237,12 +263,12 @@ directory).
    its DOI field — the DOI may point to the published version, which
    `/authenticate-bib` will reconcile later.
 
-8. **Move the source file** from `pdfs/unsorted/<filename>` to
-   `pdfs/<citekey>.<ext>` — preserve the original extension. Do *not*
+8. **Move the source file** from `unsorted/<filename>` to
+   `papers/<citekey>/<citekey>.<ext>` — preserve the original extension. Do *not*
    overwrite or delete a same-citekey source of a different format
    (case 4d) — both files coexist on disk.
 
-9. **Enqueue indexing**: write `queue/<citekey>.json`. Use
+9. **Enqueue indexing**: write `.virgil/queue/<citekey>.json`. Use
    `kind: "index"` for new papers (cases 4a, 4b) and `kind: "reindex"`
    for supersede (case 4d, higher-priority new source). Skip enqueueing
    entirely for case 4d when the new source is lower-priority.
@@ -256,9 +282,9 @@ directory).
    }
    ```
 
-10. **Delete** the old triage queue entry (`queue/_triage-*.json`).
+10. **Delete** the old triage queue entry (`.virgil/queue/_triage-*.json`).
 
-11. **Bump** `catalog-version.txt` and append a `triaged` notification.
+11. **Bump** `.virgil/catalog-version.txt` and append a `triaged` notification.
 
 ## Reply format
 
@@ -266,3 +292,39 @@ One line: `Triaged <filename> → <citekey>; queued for indexing`
 
 If the citekey is uncertain (multiple plausible candidates), pick one and
 note the alternatives in your reply.
+
+## `.tex` handling (passthrough)
+
+When `<filename>` ends with `.tex`:
+
+1. Read `\title{}`, `\author{}`, `\date{}` from the source. Use
+   `_read_tex_meta()` in `triage_batch.py` if you want a one-shot helper.
+2. Propose citekey from author + year + first significant title word.
+3. Append a `% bib.state = unverified` + `@unpublished{<citekey>, …}`
+   stub in `master.bib` (or `@article{}` if a DOI was found in the body).
+4. Move `unsorted/<filename>` → `papers/<citekey>/<citekey>.tex`.
+5. Enqueue `kind: "index"`. The indexer (`/index-paper`) will copy the
+   `.tex` source verbatim into `papers/<citekey>/main.tex` —
+   `index_paper.py` has a `tex-passthrough` extractor branch.
+6. Bib auth runs as part of indexing — auto-detection of a published
+   version flips `bib.state` to `authenticated`/`unverified`/`manuscript`.
+
+## `.bib` handling (multi-entry fan-out)
+
+When `<filename>` ends with `.bib`, do NOT treat it as one document.
+Instead, defer to the batch pipeline:
+
+```bash
+python3 scripts/triage_batch.py --library . --output /tmp/bib-triage.jsonl
+# (review/edit the JSONL if desired — each line is one bib entry)
+python3 scripts/triage_apply.py --input /tmp/bib-triage.jsonl --library .
+```
+
+The apply step:
+
+- For each entry, decides on collision (existing `bib.state == authenticated|manuscript` → ignore; existing unverified/failed/none → merge fields, preferring the incoming value on conflict).
+- Upserts into `master.bib` with `% bib.state = unverified`.
+- Creates `papers/<citekey>/references.bib` + empty `virgil/` sidecars (no source file, no `main.tex`).
+- Inserts a bib-only catalog row (`pdf.present: false`, `indexed.state: "none"`, `bib.state: "unverified"`).
+- Queues `kind: "authenticate"` for each entry that isn't a manuscript.
+- Deletes the source `.bib` from `unsorted/` after all entries succeed (parks it under `_pending/` on partial parse failure).

@@ -1,13 +1,15 @@
 # Virgil Library — Claude Code workspace
 
 This folder is a self-contained Claude Code workspace for indexing and managing
-academic source documents (PDF and Word `.docx` files). The Virgil Library web
-app keeps `CLAUDE.md`, `.claude/commands/`, and `scripts/` in sync — **don't
-hand-edit them**, they get overwritten on the next app launch.
+academic source documents — PDFs, Word `.docx`, LaTeX `.tex` manuscripts, and
+loose `.bib` files (each entry becomes a bib-only catalog row, no source file
+required). The Virgil Library web app keeps `.claude/CLAUDE.md` (this file),
+`.claude/commands/`, and `.virgil/scripts/` in sync — **don't hand-edit them**,
+they get overwritten on the next app launch.
 
-User-owned files (the app never touches these): `master.bib`, `catalog.json`,
-`papers/`, `pdfs/`, `queue/`, `logs/`, `notifications/`, and any
-`papers/<citekey>/virgil/notes.json` you write into.
+User-owned: `master.bib`, `papers/`, `unsorted/`. Skill-managed runtime state
+lives under `.virgil/` (catalog, queue, notifications, logs, memos). User
+notes per paper at `papers/<citekey>/virgil/notes.json` are also user-owned.
 
 ---
 
@@ -18,7 +20,7 @@ Do this, in order:
 1. **Check setup.** Run `python3 -c "import fitz, requests" 2>&1`. If pymupdf or
    requests are missing, run the install command from the **Setup** section
    below and tell the user.
-2. **Inspect the queue.** List `queue/*.json` (skip `_*.lock` and `*.done`).
+2. **Inspect the queue.** List `.virgil/queue/*.json` (skip `_*.lock` and `*.done`).
 3. **Process pending work:**
    - If any entry is `kind: "triage"` and `status: "requested"` → run `/triage-pdf`.
    - If any entry is `kind: "index"` and `status: "requested"` → run `/index-paper`.
@@ -37,19 +39,23 @@ new entries as they appear.
 ## Available commands
 
 - **`/index-paper <citekey>`** — full pipeline for one paper. Reads
-  `pdfs/<citekey>.pdf` or `pdfs/<citekey>.docx`, writes
-  `papers/<citekey>/main.tex` (with `\pgmark{N}` printed-page anchors for
-  PDFs; DOCX has none), initializes Virgil sidecars, authenticates the `.bib`
-  entry against external sources, updates `catalog.json`.
-- **`/triage-pdf <filename>`** — for a freshly-dropped source file (PDF or
-  DOCX) in `pdfs/unsorted/`, proposes a citekey, renames the file to
-  `pdfs/<citekey>.<ext>`, adds a `master.bib` stub if needed, and queues an
-  indexing request.
+  `papers/<citekey>/<citekey>.{pdf,docx,tex}` (priority `tex > docx > pdf`),
+  writes `papers/<citekey>/main.tex` (with `\pgmark{N}` printed-page anchors
+  for PDFs; DOCX and TEX have none — TEX is a passthrough copy of the source),
+  initializes Virgil sidecars, authenticates the `.bib` entry against external
+  sources, updates `.virgil/catalog.json`.
+- **`/triage-pdf <filename>`** — for a freshly-dropped source file (PDF, DOCX,
+  `.tex`, or `.bib`) in `unsorted/`, proposes a citekey, moves the file to
+  `papers/<citekey>/<citekey>.<ext>`, adds a `master.bib` stub if needed, and
+  queues an indexing request. For `.bib` files (multi-entry fan-out), each
+  entry produces a bib-only catalog row and queues `kind: "authenticate"`
+  instead of `index`; the source `.bib` is deleted from `unsorted/` after
+  successful fan-out.
 - **`/authenticate-bib <citekey>`** — verifies a `.bib` entry against
   Crossref / OpenAlex / Semantic Scholar / arXiv. Standalone-callable when a
   user adds a `.bib` entry by hand and wants it cleaned up.
 - **`/apply-bib-edit <citekey>`** — drains a manual bib edit queued by the
-  frontend's "Edit" button. Reads `queue/<citekey>-bibedit.json`,
+  frontend's "Edit" button. Reads `.virgil/queue/<citekey>-bibedit.json`,
   rewrites the `master.bib` block, re-emits `references.bib`, and bumps
   the catalog version.
 - **`/deep-index <citekey>`** — applies structural cleanup to an
@@ -64,7 +70,7 @@ new entries as they appear.
 - **`/ai-requests`** — drains user-authored AI requests only (entries
   with a `note` field, plus all `paper-review` entries). Surfaces the
   user's note verbatim and acts on it. Skips general indexing/triage.
-- **`/triage-pending`** — batch-triages every file in `pdfs/unsorted/`.
+- **`/triage-pending`** — batch-triages every file in `unsorted/`.
 - **`/index-pending`** — drains every queued request once, then exits.
 
 All commands operate on the current working directory as the library root.
@@ -72,11 +78,27 @@ Always run them from inside the library folder (`cd ~/Virgil-Library`).
 
 ---
 
+## Where to put files you create
+
+Skills sometimes need to write a memo or a report. Use these conventions:
+
+- **Dev memos** — suggestions for improving a skill, retros on what went
+  wrong this run, ideas for future passes — go to
+  `.virgil/memos/<YYYY-MM-DD>-<slug>.md`. These are **about the pipeline**,
+  not about a specific paper. Never drop a dev memo at the library root.
+- **Paper-specific reports** — written analyses, extracted summaries,
+  anything *about* one citekey's content — go to
+  `papers/<citekey>/notes/<slug>.md`. Co-located with the paper so the user
+  finds them when browsing the paper folder.
+- When in doubt, ask the user before writing a file you can't classify.
+
+---
+
 ## Setup (first time only)
 
 ```bash
 brew install poppler
-pip3 install --user --break-system-packages -r scripts/requirements.txt
+pip3 install --user --break-system-packages -r .virgil/scripts/requirements.txt
 ```
 
 Optional, for higher-quality output:
@@ -99,21 +121,28 @@ is the always-on fallback for digital-native PDFs.
 
 ```
 ~/Virgil-Library/
-├── CLAUDE.md                  # this file (app-managed)
-├── .claude/commands/*.md      # skill prompts (app-managed)
-├── scripts/*.py               # Python pipeline (app-managed)
-├── master.bib                 # canonical bibliography (you own)
-├── catalog.json               # frontend state-of-the-world (skill-managed)
-├── catalog-version.txt        # 1-byte counter, frontend polls it
-├── pdfs/<citekey>.{pdf,docx}  # one source file per citekey (PDF or Word)
-├── pdfs/unsorted/             # raw drops awaiting triage
-├── papers/<citekey>/          # indexed paper folder (Virgil-compatible)
-│   ├── main.tex
-│   ├── references.bib
-│   └── virgil/{virgil,notes,footnotes}.json
-├── queue/                     # {triage,index,authenticate,reindex} requests
-├── logs/<citekey>/            # per-run logs + summary.md
-└── notifications/inbox.json   # toast feed for the frontend
+├── master.bib                       # canonical bibliography (you own)
+├── unsorted/                        # raw drops awaiting triage (you own)
+├── papers/<citekey>/                # one folder per paper (you own)
+│   ├── <citekey>.{pdf,docx}         # the source file
+│   ├── main.tex                     # extracted LaTeX
+│   ├── references.bib               # single-entry mirror of master.bib row
+│   ├── virgil/{virgil,notes,footnotes}.json   # editor sidecars
+│   ├── variants/                    # alternate sources from triage
+│   ├── notes/                       # paper-specific AI reports / analyses
+│   └── <user supplementary>         # extra files the user drops
+├── .claude/                         # Claude Code config (app-managed)
+│   ├── CLAUDE.md                    # this file
+│   └── commands/library/*.md        # skill prompts
+└── .virgil/                         # runtime state (app-managed)
+    ├── catalog.json                 # frontend state-of-the-world
+    ├── catalog-version.txt          # 1-byte counter, frontend polls it
+    ├── queue/                       # {triage,index,authenticate,...} requests
+    ├── notifications/inbox.json     # toast feed for the frontend
+    ├── logs/<citekey>/              # per-run logs + summary.md
+    ├── memos/                       # dev memos (skill-improvement notes)
+    ├── scripts/*.py                 # Python pipeline
+    └── .skill-bundle-version.json   # version stamp
 ```
 
 ---
@@ -125,6 +154,6 @@ is the always-on fallback for digital-native PDFs.
 - A queue entry that has failed three times has its `status` set to
   `"poisoned"` and is surfaced in the frontend with an "open log" link. Don't
   re-process poisoned entries unless the user explicitly asks.
-- The orchestrator handles `catalog.json`, `catalog-version.txt`, and
-  `notifications/inbox.json` updates itself — you don't write to them
-  directly.
+- The orchestrator handles `.virgil/catalog.json`, `.virgil/catalog-version.txt`,
+  and `.virgil/notifications/inbox.json` updates itself — you don't write to
+  them directly.

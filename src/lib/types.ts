@@ -173,21 +173,52 @@ export type AiRequestPayload =
       currentPreamble: string;
     };
 
+/** Origin card when a request was emitted by toggling a card-level
+ *  `aiRequest: true` flag (notes / todos / cutter-comments / revision-comments).
+ *  Lets a fulfillment skill load the source card and update it on completion. */
+export interface AiRequestLink {
+  panel: "notes" | "todos" | "cutter" | "revisions";
+  cardId: string;
+}
+
 export interface AiRequest {
   id: string;
   kind: AiRequestKind;
   text: string;
   createdAt: string;
   status: "draft" | "submitted" | "complete";
-  // Reserved for the AI fulfillment follow-up. Unused in this PR.
   resultId?: string;
   /** Kind-specific structured payload. Set for `style-merge` (and any
    *  future kind that needs more than free-form `text`). */
   payload?: AiRequestPayload;
+  /** Paragraph UUID(s) (`%!v:xxxx` markers) the request anchors to. Set on
+   *  creation so a fulfillment skill can load the surrounding .tex without
+   *  re-deriving from the source card. */
+  paragraphIds?: string[];
+  /** Text the user had selected (Mode B) when filing the request. */
+  selectedText?: string;
+  /** Origin card if this request was bridged from a card-level flag. */
+  linkedTo?: AiRequestLink;
 }
 
 export interface AiRequestsState {
   requests: AiRequest[];
+}
+
+// --- Doc-scoped notifications (skill completions) ---
+
+/** One item Claude appends to the doc's `virgil/notifications.json` inbox
+ *  when an AI request completes (or fails). The frontend polling hook
+ *  toasts every new entry. */
+export interface DocNotification {
+  kind: "ai-request-complete" | "ai-request-failed";
+  at: string;
+  summary: string;
+  requestId?: string;
+}
+
+export interface DocNotificationsInbox {
+  items: DocNotification[];
 }
 
 // --- Citations ---

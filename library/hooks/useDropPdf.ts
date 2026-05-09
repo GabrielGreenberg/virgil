@@ -7,7 +7,7 @@ export function useDropPdf(handle: FileSystemDirectoryHandle | null) {
   return useCallback(
     async (files: File[]) => {
       if (!handle) return [];
-      const sources = files.filter((f) => /\.(pdf|docx)$/i.test(f.name));
+      const sources = files.filter((f) => /\.(pdf|docx|tex|bib)$/i.test(f.name));
       const results = [];
       for (const f of sources) {
         try {

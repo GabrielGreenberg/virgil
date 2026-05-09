@@ -25,6 +25,9 @@ import {
 } from "./editor-layout/floating-toolbar-shell";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import { isActionCallbackVisible } from "./editor-layout/chrome-config";
+import type { PanelThemeKey } from "@/lib/panel-theme";
+import { usePanelMarkerPalette } from "@/hooks/usePanelTheme";
+import { MARGINALIA_ICON_SIZE, MARGINALIA_COL_GAP } from "@/lib/marginalia";
 
 export { type ToolbarOrientation };
 
@@ -837,6 +840,70 @@ export function ActionButton({
   );
 }
 
+/**
+ * Marginalia-style chip variant of {@link ActionButton}. Renders the panel
+ * icon inside the same colored chip frame the gutter uses (size, bg, border
+ * via `usePanelMarkerPalette`) so the floating action toolbar reads as
+ * "create one of these" and visually matches the markers it produces.
+ *
+ * Used by `MarginActionToolbar` (the top-of-omni-view action bar). The bare
+ * `ActionButton` continues to render the legacy icon-only style for the
+ * MenuBar's Actions popover and the detached floating toolbar.
+ */
+export function ActionChipButton({
+  onClick,
+  title,
+  themeKey,
+  icon,
+}: {
+  onClick: ActionToolbarCallback;
+  title: string;
+  themeKey: PanelThemeKey;
+  icon: React.ReactNode;
+}) {
+  const palette = usePanelMarkerPalette(themeKey);
+  return (
+    <button
+      onClick={(e) => {
+        const pod = (e.currentTarget as HTMLElement).closest<HTMLElement>("[data-action-pod]");
+        onClick(pod?.getBoundingClientRect() ?? null);
+      }}
+      title={title}
+      data-helper={title}
+      className="rounded flex items-center justify-center transition-shadow focus:outline-none"
+      style={{
+        width: MARGINALIA_ICON_SIZE,
+        height: MARGINALIA_ICON_SIZE,
+        color: palette.color,
+        background: palette.bg,
+        border: `1.5px solid ${palette.border}`,
+        padding: 0,
+        lineHeight: 1,
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.boxShadow = `0 0 0 1.5px ${palette.border}`;
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.boxShadow = "";
+        e.currentTarget.style.transform = "";
+      }}
+      onMouseDown={(e) => {
+        e.currentTarget.style.background = palette.color;
+        e.currentTarget.style.color = "#ffffff";
+        e.currentTarget.style.transform = "translateY(0.5px)";
+      }}
+      onMouseUp={(e) => {
+        e.currentTarget.style.background = palette.bg;
+        e.currentTarget.style.color = palette.color;
+        e.currentTarget.style.transform = "";
+        e.currentTarget.style.boxShadow = `0 0 0 1.5px ${palette.border}`;
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
 /** Static registry for every user-creatable item surfaced by the Actions
  *  toolbar. Each entry pairs a callback key with its source panel (used
  *  to look up side placement in viewPrefs) and its visual identity.
@@ -846,6 +913,10 @@ export function ActionButton({
 export interface ActionButtonDef {
   callbackKey: keyof ActionToolbarCallbacks;
   panelId: "revisions" | "notes" | "todo" | "cutter" | "archive" | "footnotes" | "citations" | "bibliography" | "quotations" | "examples";
+  /** Panel-theme accent key — drives the marginalia-style chip palette
+   *  (color/bg/border) used by the floating action toolbar, and honors
+   *  user color overrides via `usePanelMarkerPalette`. */
+  themeKey: PanelThemeKey;
   title: string;
   color: string;
   hoverBg: string;
@@ -855,15 +926,15 @@ export interface ActionButtonDef {
 }
 
 export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
-  { callbackKey: "onAddComment", panelId: "revisions", title: "Add revision", color: "#9333ea", hoverBg: "#faf5ff", hoverColor: "#7e22ce", icon: <IconRevisions size={16} />, dataAttr: "data-add-comment-button" },
-  { callbackKey: "onAddNote", panelId: "notes", title: "Add note", color: "#15803d", hoverBg: "#f0fdf4", hoverColor: "#166534", icon: <IconNotes size={16} />, dataAttr: "data-add-note-button" },
-  { callbackKey: "onAddTodo", panelId: "todo", title: "Add todo", color: "#44403c", hoverBg: "#f5f4f1", hoverColor: "#1c1917", icon: <IconTodo size={16} />, dataAttr: "data-add-todo-button" },
-  { callbackKey: "onCutSelection", panelId: "cutter", title: "Add cut", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconCutter size={16} />, dataAttr: "data-cut-selection-button" },
-  { callbackKey: "onArchive", panelId: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
-  { callbackKey: "onCreateFootnote", panelId: "footnotes", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote size={16} /> },
-  { callbackKey: "onInsertCitation", panelId: "citations", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation size={16} />, dataAttr: "data-insert-citation-button" },
-  { callbackKey: "onCreateBibEntry", panelId: "bibliography", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography size={16} /> },
-  { callbackKey: "onQuoteSelection", panelId: "quotations", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
+  { callbackKey: "onAddComment", panelId: "revisions", themeKey: "revision", title: "Add revision", color: "#9333ea", hoverBg: "#faf5ff", hoverColor: "#7e22ce", icon: <IconRevisions size={16} />, dataAttr: "data-add-comment-button" },
+  { callbackKey: "onAddNote", panelId: "notes", themeKey: "note", title: "Add note", color: "#15803d", hoverBg: "#f0fdf4", hoverColor: "#166534", icon: <IconNotes size={16} />, dataAttr: "data-add-note-button" },
+  { callbackKey: "onAddTodo", panelId: "todo", themeKey: "todo", title: "Add todo", color: "#44403c", hoverBg: "#f5f4f1", hoverColor: "#1c1917", icon: <IconTodo size={16} />, dataAttr: "data-add-todo-button" },
+  { callbackKey: "onCutSelection", panelId: "cutter", themeKey: "cut", title: "Add cut", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconCutter size={16} />, dataAttr: "data-cut-selection-button" },
+  { callbackKey: "onArchive", panelId: "archive", themeKey: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
+  { callbackKey: "onCreateFootnote", panelId: "footnotes", themeKey: "footnote", title: "Add footnote", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconFootnote size={16} /> },
+  { callbackKey: "onInsertCitation", panelId: "citations", themeKey: "citation", title: "Add citation", color: "#d4a843", hoverBg: "#fdf8e1", hoverColor: "#a07d26", icon: <IconCitation size={16} />, dataAttr: "data-insert-citation-button" },
+  { callbackKey: "onCreateBibEntry", panelId: "bibliography", themeKey: "bib", title: "Add bibliography entry", color: "#b8a968", hoverBg: "#faf6e8", hoverColor: "#8a7c4a", icon: <IconBibliography size={16} /> },
+  { callbackKey: "onQuoteSelection", panelId: "quotations", themeKey: "quote", title: "Add quotation", color: "#a16207", hoverBg: "#fffbeb", hoverColor: "#854d0e", icon: <IconQuotations size={16} /> },
 ];
 
 /** Renders the full row of Actions buttons shared by the attached

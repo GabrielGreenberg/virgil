@@ -1,0 +1,33 @@
+{
+  "version": "4e28cf0c085b",
+  "syncedAt": "2026-05-09T05:47:03.989Z",
+  "files": [
+    "CLAUDE.md",
+    "claude-commands/ai-requests.md",
+    "claude-commands/apply-bib-edit.md",
+    "claude-commands/authenticate-bib.md",
+    "claude-commands/deep-index.md",
+    "claude-commands/fuse-alternate.md",
+    "claude-commands/index-paper.md",
+    "claude-commands/index-pending.md",
+    "claude-commands/iterate-skill.md",
+    "claude-commands/triage-pdf.md",
+    "claude-commands/triage-pending.md",
+    "scripts/_bib_parse.py",
+    "scripts/_tools.py",
+    "scripts/backfill_auth.py",
+    "scripts/bib_auth.py",
+    "scripts/deep_preprocess.py",
+    "scripts/drain_queue.py",
+    "scripts/extract.py",
+    "scripts/extract_docx.py",
+    "scripts/fuse_alternate.py",
+    "scripts/index_paper.py",
+    "scripts/pgmark.py",
+    "scripts/pgmark_validate.py",
+    "scripts/requirements.txt",
+    "scripts/tex_emit.py",
+    "scripts/triage_apply.py",
+    "scripts/triage_batch.py"
+  ]
+}

@@ -73,7 +73,16 @@ export function EditorScrollbar({
     // the row scroll). This makes the browser's native scroll top out at
     // the editor's bottom.
     const syncRowBoundCss = () => {
-      row.style.setProperty("--row-bound-h", `${ec.scrollHeight}px`);
+      // Floor at the row's own clientHeight so the editor column
+      // never collapses below the scroll port for short documents.
+      // The column's `min-height: max(var(--row-bound-h, 100%), 100%)`
+      // also enforces a 100%-of-parent floor, but percentage
+      // min-heights only resolve when the containing block has a
+      // definite size — and in some flex layouts that resolution
+      // doesn't fire reliably. Pinning the floor here in pixel terms
+      // makes the guarantee independent of percentage resolution.
+      const h = Math.max(ec.scrollHeight, row.clientHeight);
+      row.style.setProperty("--row-bound-h", `${h}px`);
     };
     syncRowBoundCss();
     row.addEventListener("scroll", refresh, { passive: true });

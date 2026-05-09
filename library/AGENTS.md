@@ -62,25 +62,61 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
 - **IndexedDB**: shared `"virgil"` DB / `"kv"` store, key `"library-folder-handle"` (consolidated with the rest of Virgil's persistence — see `library/lib/library-folder.ts`).
 - **localStorage**: `virgil-library-*` prefix (registry, panel tabs, column widths, row-viewed state). No collision with Virgil's own keys.
 - **FSA disk** (`~/Virgil-Library/`):
-  - `catalog.json`, `catalog-version.txt`, `master.bib`
-  - `pdfs/<citekey>.{pdf,docx}`, `pdfs/unsorted/`
-  - `papers/<citekey>/main.tex`, `references.bib`, `virgil/{virgil,notes,footnotes}.json`
-  - `queue/<citekey>.json`, `queue/<citekey>-bibedit.json`, `queue/<citekey>-deepindex.json` (legacy `-richindex.json` accepted on read), `queue/pending-reviews.json`
-  - `logs/<citekey>/*.log`, `notifications/inbox.json`
-  - After first skill-bundle sync: `.claude/commands/*.md`, `scripts/*.py`, `CLAUDE.md`
+
+  Visible at the library root (the only things a casual browser sees):
+  - `master.bib` — canonical bibliography
+  - `unsorted/<filename>` — top-level inbox for files awaiting a citekey
+  - `papers/<citekey>/` — one folder per paper, containing:
+    - `<citekey>.{pdf,docx}` — the source file
+    - `main.tex`, `references.bib`, `virgil/{virgil,notes,footnotes}.json`
+    - `variants/` — alternate sources from triage (e.g. duplicate scans)
+    - `notes/` — paper-specific AI reports / analyses (memo discipline; see below)
+    - `<anything else>` — user-supplied supplementary files
+
+  Hidden under `.claude/` (auto-discovered by Claude Code):
+  - `.claude/CLAUDE.md` — workspace guide for the Claude operator
+  - `.claude/commands/library/*.md` — skill prompts
+
+  Hidden under `.virgil/` (runtime/infra state):
+  - `.virgil/catalog.json`, `.virgil/catalog-version.txt`
+  - `.virgil/queue/<citekey>.json`, `.virgil/queue/<citekey>-bibedit.json`, `.virgil/queue/<citekey>-deepindex.json` (legacy `-richindex.json` accepted on read), `.virgil/queue/pending-reviews.json`
+  - `.virgil/notifications/inbox.json`
+  - `.virgil/logs/<citekey>/*.log`
+  - `.virgil/memos/<YYYY-MM-DD>-<slug>.md` — dev memos (see below)
+  - `.virgil/scripts/*.py` — Python pipeline (after first skill-bundle sync)
+  - `.virgil/.skill-bundle-version.json`
+
+  > **Layout migration.** Earlier libraries lived under `pdfs/<citekey>.{pdf,docx}` + `pdfs/unsorted/` with `catalog.json`, `queue/`, `logs/`, etc. at the root. `ensureLibraryStructure()` runs idempotent migrations that (1) move source files into `papers/<citekey>/<citekey>.<ext>` and promote `unsorted/` to the root, and (2) tuck `catalog.json`, `catalog-version.txt`, `queue/`, `notifications/`, `logs/`, `scripts/`, and `.skill-bundle-version.json` under `.virgil/`, with `CLAUDE.md` moved to `.claude/CLAUDE.md`. Each step is wrapped in try/catch so a single failure doesn't gate library load.
+
+## Memo discipline
+
+Skills that write markdown memos as part of their work follow a fixed convention:
+
+- **Dev memos** (skill retros, ideas for improving the pipeline, notes about
+  what went wrong this run) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`. These
+  are *about the system*, not about a paper.
+- **Paper-specific reports / analyses** → `papers/<citekey>/notes/<slug>.md`.
+  Co-located with the paper so the user finds them when browsing.
+- Never drop a markdown file at the library root or directly inside
+  `papers/<citekey>/` (that level is reserved for source + extracted artifacts).
+
+Skills that explicitly carry this reminder in their prompts: `/library/index-paper`, `/library/deep-index`, `/library/triage-pdf`, `/library/triage-pending`, `/library/ai-requests`. The convention also lives in the workspace `CLAUDE.md` template at [library/scripts/skill-bundle-template/CLAUDE.md](library/scripts/skill-bundle-template/CLAUDE.md).
+
+Skill-development memos (the per-citekey critique memos written by `/library/iterate-skill` subagents) are a separate channel and do **not** go to `~/Virgil-Library/.virgil/memos/`. They land under `library/dev/iterations/<YYYY-MM-DD>-<skill>/<citekey>.md` in the repo (gitignored). Those memos are about the skill markdown, not about the library; keeping them in the repo lets `iterate-skill` correlate them with skill versions via git history.
 
 ## Skills
 
-Eight markdown skills, mirrored at build time from `library/skills/*.md` to `.claude/commands/library/*.md`. Invoked as `/library/<name>` from any session opened in this repo:
+Nine markdown skills, mirrored at build time from `library/skills/*.md` to `.claude/commands/library/*.md`. Invoked as `/library/<name>` from any session opened in this repo:
 
 - `/library/index-pending` — drain the queue in one pass (use `/loop /library/index-pending` for steady-state polling)
 - `/library/index-paper <citekey>` — index a single source
 - `/library/triage-pdf <filename>` — triage one unsorted file
-- `/library/triage-pending [auto]` — batch triage `pdfs/unsorted/`
+- `/library/triage-pending [auto]` — batch triage `unsorted/`
 - `/library/authenticate-bib <citekey>` — auth via Crossref / OpenAlex / Semantic Scholar / arXiv
 - `/library/apply-bib-edit <citekey>` — apply a queued manual bib edit
 - `/library/deep-index <citekey>` — structural cleanup (deterministic preprocess + AI pass)
 - `/library/ai-requests` — drain user-authored AI review requests
+- `/library/iterate-skill <skill-name> <citekey...>` — closed-loop iteration on `index-paper` / `deep-index` / `authenticate-bib` (dev tool: spawns subagents that execute the skill on real papers, writes critique memos to `library/dev/iterations/`, edits the skill markdown between rounds)
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
 
@@ -123,6 +159,8 @@ Every catalog entry's `bib.state` is one of four values, set by the auth pipelin
 The `manuscript` state distinguishes a properly-marked preprint from a `failed` lookup of a paper that genuinely should be in Crossref but isn't. Don't conflate them in summaries.
 
 ## Reader inheritance from the main editor
+
+> **Debugging a Reader regression?** Read [READER_INHERITANCE.md](READER_INHERITANCE.md) first. It defines the architectural pattern, the three legitimate fix locations (shared component / `READER_CHROME` / `useReaderViewPrefs` shim), the triage flow, and the vocabulary the user expects you to use. **Do not write Reader-specific render code under `library/components/`** — channel the fix through the shared layer or its declarative knobs. The user typically reports Reader bugs by pointing at that doc; treat it as a hard constraint, not a suggestion.
 
 Library papers render through the **canonical `<EditorPane>`** (`@/components/EditorPane`) — the same component the main app's doc branch mounts. The entry point is `library/components/PaperRender.tsx`, which mounts `<EditorPane editable={false} chrome={READER_CHROME} />`. Every UX change to EditorPane — new TipTap extensions, paragraph/heading floats, popouts, marginalia, the panel rail — automatically flows through. Reader-specific suppressions live in `READER_CHROME` at `src/components/editor-layout/chrome-config.ts` (currently: `actionToolbarKinds=["note"]`, `showFormattingToolbar=false`, `showMenuBarEditItems=false`, `visiblePanelKinds=[outline, footnotes, examples, citations, bibliography, notes]`, `editableCardKinds=["note"]`).
 

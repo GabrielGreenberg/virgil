@@ -1,5 +1,5 @@
 ---
-description: Drain ~/Virgil-Library/queue/ in one pass — process every queued indexing request, then exit. For batch backlogs use this; for steady-state polling use /loop /index-pending.
+description: Drain ~/Virgil-Library/.virgil/queue/ in one pass — process every queued indexing request, then exit. For batch backlogs use this; for steady-state polling use /loop /index-pending.
 ---
 
 # /index-pending
@@ -8,7 +8,7 @@ Drain the queue to empty in **one turn**. Designed for the catch-up
 case (a backlog after `/triage-pending`); for steady-state polling,
 wrap with `/loop /index-pending`.
 
-The bulk of the work is delegated to `scripts/drain_queue.py`, which
+The bulk of the work is delegated to `.virgil/scripts/drain_queue.py`, which
 shells out to `index_paper.py` per entry. This avoids the per-file
 skill-invocation overhead that would otherwise burn through context
 for any non-trivial queue.
@@ -20,10 +20,10 @@ directory).
 
 1. **Drain native kinds in batch.** Run:
    ```bash
-   python3 scripts/drain_queue.py
+   python3 .virgil/scripts/drain_queue.py
    ```
    This processes every `kind=index` and `kind=reindex` entry in
-   `queue/*.json`, grouped by citekey and ordered:
+   `.virgil/queue/*.json`, grouped by citekey and ordered:
    1. `bib-edit`
    2. `authenticate`
    3. `index` / `reindex`
@@ -42,7 +42,7 @@ directory).
      normally produced only by the legacy per-file flow. Invoke
      `/triage-pdf <filename>` for each.
 
-   **Tip:** `queue/pending-reviews.json` lists all pending authenticate
+   **Tip:** `.virgil/queue/pending-reviews.json` lists all pending authenticate
    requests as a flat manifest. Use it as a quick check for outstanding
    AI review requests instead of scanning individual queue files.
 
@@ -51,7 +51,7 @@ directory).
    Run them sequentially — most queues will have at most a handful.
 
 3. **If `bib-edit` or `authenticate` skill runs produced changes**,
-   re-run `python3 scripts/drain_queue.py` once more so any
+   re-run `python3 .virgil/scripts/drain_queue.py` once more so any
    newly-eligible `index`/`reindex` entries get picked up. Skip if
    step 2 was a no-op.
 

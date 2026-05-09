@@ -10,8 +10,8 @@ interface Props {
 
 /**
  * Renders the source PDF for a paper inline via the browser's native PDF
- * viewer. Loads `pdfs/<citekey>.pdf` from FSA, builds an object URL, and
- * embeds it in an iframe filling the available space.
+ * viewer. Loads `papers/<citekey>/<citekey>.pdf` from FSA, builds an object
+ * URL, and embeds it in an iframe filling the available space.
  *
  * If no PDF exists on disk (e.g., a paper indexed from a .docx with no
  * PDF alternate), shows a friendly message instead of an empty frame.
@@ -27,7 +27,7 @@ export default function PdfView({ handle, citekey }: Props) {
     let cancelled = false;
     let createdUrl: string | null = null;
     (async () => {
-      const file = await readFile(handle, `pdfs/${citekey}.pdf`);
+      const file = await readFile(handle, `papers/${citekey}/${citekey}.pdf`);
       if (cancelled) return;
       if (!file) {
         setMissing(true);

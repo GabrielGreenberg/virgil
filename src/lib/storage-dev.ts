@@ -34,6 +34,8 @@ import {
 import {
   assertActive,
   assertNotSuperseded,
+  getActiveHandle,
+  isActive,
   type DocWriteHandle,
 } from "@/lib/multi-window/doc-pipeline";
 
@@ -224,19 +226,33 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
   const content = parseLatex(latex, sidecar);
   // Assign UUIDs immediately on load so every paragraph is addressable
   // from the moment the editor opens (no waiting for the first save).
-  // Also persist back to disk so the .tex file stays in sync.
+  // Persist back to disk so the .tex file stays in sync — but only
+  // when (a) we're inside an active pipeline for this docId and (b)
+  // that pipeline is still the active one when the writeback fires.
+  // Without those guards, a read kicked off during a doc switch could
+  // race a newer pipeline's load and write stale-derived content to
+  // the wrong file (the pipeline guard is normally what catches this).
   assignUuids(content);
   const newSidecar = extractSidecarData(content);
-  // Preserve the user's preamble/postamble — the parser strips them, so
-  // without this the fire-and-forget write below would overwrite the
-  // user's .tex header with the default preamble.
   const delimiters = extractPreambleAndPostamble(latex);
   const newLatex = serializeToLatex(content, delimiters ?? undefined);
-  // Fire-and-forget write — don't block the editor from opening.
-  Promise.all([
-    putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
-    putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
-  ]).catch(() => {});
+  const writebackHandle = getActiveHandle(docId);
+  if (writebackHandle) {
+    // Fire-and-forget — don't block the editor from opening. The
+    // `isActive` re-check inside the closure rejects the writeback if
+    // the pipeline was superseded between read and write.
+    void (async () => {
+      try {
+        if (!isActive(writebackHandle)) return;
+        await Promise.all([
+          putText(`${API}/doc/${docId}/${texFilename}`, newLatex),
+          putText(`${API}/doc/${docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
+        ]);
+      } catch {
+        // Silent — this is an opportunistic UUID-stamp, not a save.
+      }
+    })();
+  }
   return { content, editorState };
 }
 

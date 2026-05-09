@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { listDir, readFile, SUBDIRS } from "@library/lib/library-storage";
 
 const POLL_MS = 6000;
-const UNSORTED_PATH = `${SUBDIRS.pdfs}/${SUBDIRS.unsorted}`;
+const UNSORTED_PATH = SUBDIRS.unsorted;
 
 export function useUnsortedPdfs(handle: FileSystemDirectoryHandle | null) {
   const [files, setFiles] = useState<string[]>([]);
@@ -20,7 +20,12 @@ export function useUnsortedPdfs(handle: FileSystemDirectoryHandle | null) {
       .filter((e) => {
         if (e.kind !== "file") return false;
         const lower = e.name.toLowerCase();
-        return lower.endsWith(".pdf") || lower.endsWith(".docx");
+        return (
+          lower.endsWith(".pdf") ||
+          lower.endsWith(".docx") ||
+          lower.endsWith(".tex") ||
+          lower.endsWith(".bib")
+        );
       })
       .map((e) => e.name);
     // Sort by mtime descending so freshly-dropped files float to the top

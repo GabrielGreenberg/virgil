@@ -1,18 +1,18 @@
 ---
-description: Apply a queued manual bib edit to master.bib and references.bib. Args: <citekey>. Reads queue/<citekey>-bibedit.json for the new entry type + field map.
+description: Apply a queued manual bib edit to master.bib and references.bib. Args: <citekey>. Reads .virgil/queue/<citekey>-bibedit.json for the new entry type + field map.
 ---
 
 # /apply-bib-edit $ARGUMENTS
 
 Apply a manual bib edit that the frontend wrote to
-`queue/<citekey>-bibedit.json`. The frontend never writes `master.bib`
+`.virgil/queue/<citekey>-bibedit.json`. The frontend never writes `master.bib`
 itself (cowork constraint) — this skill is the drain.
 
 All paths below are relative to the library root.
 
 ## Steps
 
-1. **Read the queue entry** at `queue/<citekey>-bibedit.json`. It has
+1. **Read the queue entry** at `.virgil/queue/<citekey>-bibedit.json`. It has
    shape:
    ```json
    {
@@ -32,7 +32,7 @@ All paths below are relative to the library root.
 2. **Replace the entry block in `master.bib`.** Locate the existing
    `@<oldType>{<citekey>, ... }` block (brace-balanced — entries can
    contain `{}`-wrapped values). Replace it verbatim with a freshly
-   emitted block. Format identical to `scripts/index_paper.py`'s
+   emitted block. Format identical to `.virgil/scripts/index_paper.py`'s
    `_emit_bib_entry`:
    ```
    @<type>{<citekey>,
@@ -52,7 +52,7 @@ All paths below are relative to the library root.
    (legitimate: the user may have edited a hand-added bib entry that has
    no indexed paper folder yet).
 
-4. **Update `catalog.json`.** Find the row whose `citekey` matches:
+4. **Update `.virgil/catalog.json`.** Find the row whose `citekey` matches:
    - Set `bib.manuallyEditedAt = <now ISO>`.
    - Append to `bib.fieldChanges` one entry per field that changed value
      between the old and new entry, in the same shape Python uses:
@@ -65,11 +65,11 @@ All paths below are relative to the library root.
    - Update top-level `title`, `authors`, `year`, `doi` if those fields
      changed (these are the columns the frontend index uses).
 
-5. **Bump `catalog-version.txt`** by writing a new monotonic counter
+5. **Bump `.virgil/catalog-version.txt`** by writing a new monotonic counter
    value. The frontend polls this 1-byte file every 6s and reloads the
    catalog + master.bib when it changes.
 
-6. **Append a notification** to `notifications/inbox.json`:
+6. **Append a notification** to `.virgil/notifications/inbox.json`:
    ```json
    { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>", "summary": "Applied manual edit (<N> field changes)" }
    ```
@@ -77,7 +77,7 @@ All paths below are relative to the library root.
    neutral toast and we don't want to expand the kind enum just for this.)
 
 7. **Mark the queue entry done** by renaming
-   `queue/<citekey>-bibedit.json` → `queue/<citekey>-bibedit.done`
+   `.virgil/queue/<citekey>-bibedit.json` → `.virgil/queue/<citekey>-bibedit.done`
    (or deleting it — both are fine).
 
 ## Reply format

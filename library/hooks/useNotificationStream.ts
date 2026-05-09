@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { readJsonFile } from "@library/lib/library-storage";
+import { readJsonFile, SUBDIRS } from "@library/lib/library-storage";
 import type { NotificationInbox, NotificationItem } from "@library/lib/queue";
 
 const POLL_MS = 6000;
@@ -27,7 +27,7 @@ export function useNotificationStream(handle: FileSystemDirectoryHandle | null) 
       if (stopped) return;
       const inbox = await readJsonFile<NotificationInbox>(
         handle,
-        "notifications/inbox.json",
+        `${SUBDIRS.notifications}/inbox.json`,
       );
       if (!inbox) return;
       const newest = inbox.items[inbox.items.length - 1]?.at ?? "";

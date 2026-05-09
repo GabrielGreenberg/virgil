@@ -1,24 +1,36 @@
 // FSA boundary for the library folder. Every disk read/write goes through
 // this module — no other code touches `FileSystemDirectoryHandle` directly.
 //
-// Mirrors the boundary pattern in
-// /Users/gabriel/Programming/virgil/src/lib/storage-fsa.ts but scoped to
-// the library's directory shape (catalog.json + master.bib + papers/ + pdfs/
-// + queue/ + notifications/ + logs/).
+// Layout (user-facing tidiness):
+//   master.bib                        — bibliography (visible at root)
+//   unsorted/                         — pre-triage inbox (visible at root)
+//   papers/<citekey>/                 — one folder per paper (visible at root)
+//   .claude/CLAUDE.md                 — workspace guide (auto-loaded by Claude Code)
+//   .claude/commands/library/*.md     — slash commands
+//   .virgil/                          — all other runtime/infra state, hidden:
+//     catalog.json, catalog-version.txt, queue/, notifications/, logs/,
+//     scripts/, memos/, .skill-bundle-version.json
+//
+// The user only sees `master.bib`, `papers/`, `unsorted/` when browsing the
+// library folder in Finder. Everything else is tucked away in dot-folders.
+
+export const VIRGIL_DIR = ".virgil";
+export const CLAUDE_DIR = ".claude";
 
 export const ROOT_FILES = {
-  catalog: "catalog.json",
-  catalogVersion: "catalog-version.txt",
+  catalog: `${VIRGIL_DIR}/catalog.json`,
+  catalogVersion: `${VIRGIL_DIR}/catalog-version.txt`,
   masterBib: "master.bib",
 } as const;
 
 export const SUBDIRS = {
-  pdfs: "pdfs",
-  unsorted: "unsorted", // under pdfs/
+  unsorted: "unsorted", // top-level inbox for files awaiting a citekey
   papers: "papers",
-  queue: "queue",
-  notifications: "notifications",
-  logs: "logs",
+  queue: `${VIRGIL_DIR}/queue`,
+  notifications: `${VIRGIL_DIR}/notifications`,
+  logs: `${VIRGIL_DIR}/logs`,
+  memos: `${VIRGIL_DIR}/memos`,
+  scripts: `${VIRGIL_DIR}/scripts`,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -221,17 +233,31 @@ export async function fileExists(
 // ---------------------------------------------------------------------------
 
 /** Create the standard subdirectories and seed empty catalog/master.bib if
- *  the folder is brand new. Idempotent. */
+ *  the folder is brand new. Idempotent. Also runs migrations to consolidate
+ *  source files into papers/<citekey>/ and tuck infra into .virgil/ + .claude/. */
 export async function ensureLibraryStructure(
   root: FileSystemDirectoryHandle,
 ): Promise<void> {
-  await ensureDir(root, SUBDIRS.pdfs);
-  const pdfs = await ensureDir(root, SUBDIRS.pdfs);
-  await pdfs.getDirectoryHandle(SUBDIRS.unsorted, { create: true });
+  try {
+    await migrateLayoutIfNeeded(root);
+  } catch (err) {
+    // A migration failure must not gate library load. Log and continue —
+    // unmigrated entries stay readable from their old locations until the
+    // next attempt clears the blocker.
+    // eslint-disable-next-line no-console
+    console.warn("[library] layout migration failed; continuing", err);
+  }
   await ensureDir(root, SUBDIRS.papers);
-  await ensureDir(root, SUBDIRS.queue);
-  await ensureDir(root, SUBDIRS.notifications);
-  await ensureDir(root, SUBDIRS.logs);
+  await ensureDir(root, SUBDIRS.unsorted);
+  // Bootstrap .virgil/ and its children.
+  await ensureDir(root, VIRGIL_DIR);
+  await ensureNestedDir(root, SUBDIRS.queue);
+  await ensureNestedDir(root, SUBDIRS.notifications);
+  await ensureNestedDir(root, SUBDIRS.logs);
+  await ensureNestedDir(root, SUBDIRS.memos);
+  // Bootstrap .claude/ for skill commands. The workspace CLAUDE.md is
+  // written by skill-sync; we just create the parent.
+  await ensureDir(root, CLAUDE_DIR);
 
   // Seed catalog.json if absent.
   if (!(await fileExists(root, ROOT_FILES.catalog))) {
@@ -254,7 +280,268 @@ export async function ensureLibraryStructure(
     );
   }
   // Seed notifications/inbox.json if absent.
-  if (!(await fileExists(root, "notifications/inbox.json"))) {
-    await writeJsonFile(root, "notifications/inbox.json", { items: [] });
+  const inboxPath = `${SUBDIRS.notifications}/inbox.json`;
+  if (!(await fileExists(root, inboxPath))) {
+    await writeJsonFile(root, inboxPath, { items: [] });
+  }
+}
+
+/** Create a multi-segment subdirectory like ".virgil/queue", recursing
+ *  through every parent. Idempotent. */
+async function ensureNestedDir(
+  root: FileSystemDirectoryHandle,
+  path: string,
+): Promise<FileSystemDirectoryHandle> {
+  const parts = path.split("/").filter(Boolean);
+  let cur: FileSystemDirectoryHandle = root;
+  for (const p of parts) {
+    cur = await cur.getDirectoryHandle(p, { create: true });
+  }
+  return cur;
+}
+
+// ---------------------------------------------------------------------------
+// Layout migration: pdfs/ → papers/<citekey>/<citekey>.<ext> + unsorted/
+// ---------------------------------------------------------------------------
+
+async function moveFile(
+  src: FileSystemDirectoryHandle,
+  srcName: string,
+  dst: FileSystemDirectoryHandle,
+  dstName: string,
+): Promise<void> {
+  const fh = await src.getFileHandle(srcName);
+  const file = await fh.getFile();
+  const outFh = await dst.getFileHandle(dstName, { create: true });
+  const writable = await outFh.createWritable();
+  await writable.write(file);
+  await writable.close();
+  try {
+    await src.removeEntry(srcName);
+  } catch {
+    // Best effort — the copy succeeded; leave the original if removal fails.
+  }
+}
+
+/** Two idempotent migrations, run in order:
+ *  1. `pdfs/<citekey>.{pdf,docx}` + `pdfs/unsorted/` → `papers/<citekey>/<citekey>.<ext>` + top-level `unsorted/`
+ *  2. Root infra files/folders → `.virgil/` (and `CLAUDE.md` → `.claude/CLAUDE.md`)
+ *  Either step is a no-op if its source state isn't present. */
+export async function migrateLayoutIfNeeded(
+  root: FileSystemDirectoryHandle,
+): Promise<void> {
+  await migratePdfsIntoPapersIfNeeded(root);
+  await migrateRootIntoVirgilIfNeeded(root);
+}
+
+async function migratePdfsIntoPapersIfNeeded(
+  root: FileSystemDirectoryHandle,
+): Promise<void> {
+  let pdfsDir: FileSystemDirectoryHandle;
+  try {
+    pdfsDir = await root.getDirectoryHandle("pdfs");
+  } catch {
+    return; // Already migrated or never existed.
+  }
+
+  const papersDir = await ensureDir(root, SUBDIRS.papers);
+  const unsortedDir = await ensureDir(root, SUBDIRS.unsorted);
+
+  // Snapshot entries first; mutating during async iteration is unreliable.
+  const entries: { name: string; kind: "file" | "directory" }[] = [];
+  for await (const [name, h] of pdfsDir.entries()) {
+    entries.push({ name, kind: h.kind });
+  }
+
+  for (const e of entries) {
+    try {
+      if (e.kind === "file") {
+        const m = /^(.+)\.(pdf|docx)$/i.exec(e.name);
+        if (!m) continue;
+        const citekey = m[1];
+        const ext = m[2].toLowerCase();
+        const paperDir = await papersDir.getDirectoryHandle(citekey, { create: true });
+        await moveFile(pdfsDir, e.name, paperDir, `${citekey}.${ext}`);
+      } else if (e.kind === "directory" && e.name === "unsorted") {
+        const oldUnsorted = await pdfsDir.getDirectoryHandle("unsorted");
+        const childEntries: { name: string; kind: "file" | "directory" }[] = [];
+        for await (const [n, h] of oldUnsorted.entries()) {
+          childEntries.push({ name: n, kind: h.kind });
+        }
+        for (const c of childEntries) {
+          try {
+            if (c.kind === "file") {
+              await moveFile(oldUnsorted, c.name, unsortedDir, c.name);
+            } else if (c.kind === "directory" && c.name === "_pending") {
+              const oldPending = await oldUnsorted.getDirectoryHandle("_pending");
+              const dstPending = await unsortedDir.getDirectoryHandle("_pending", {
+                create: true,
+              });
+              const pendingEntries: { name: string; kind: "file" | "directory" }[] = [];
+              for await (const [n, h] of oldPending.entries()) {
+                pendingEntries.push({ name: n, kind: h.kind });
+              }
+              for (const p of pendingEntries) {
+                if (p.kind === "file") {
+                  try {
+                    await moveFile(oldPending, p.name, dstPending, p.name);
+                  } catch (err) {
+                    // eslint-disable-next-line no-console
+                    console.warn(`[library] migrate: failed to move pdfs/unsorted/_pending/${p.name}`, err);
+                  }
+                }
+              }
+              try {
+                await oldUnsorted.removeEntry("_pending");
+              } catch {
+                // Leave behind if non-empty or platform refuses.
+              }
+            }
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.warn(`[library] migrate: failed to move pdfs/unsorted/${c.name}`, err);
+          }
+        }
+        try {
+          await pdfsDir.removeEntry("unsorted");
+        } catch {
+          // Leave behind if non-empty or platform refuses.
+        }
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[library] migrate: failed on pdfs/${e.name}`, err);
+    }
+  }
+
+  // Try to remove the now-empty pdfs/ folder. Some FSA implementations don't
+  // support `recursive: true`; if removal fails, the empty directory is
+  // harmless — no read paths point at it post-migration.
+  try {
+    await root.removeEntry("pdfs", { recursive: true });
+  } catch {
+    try {
+      await root.removeEntry("pdfs");
+    } catch {
+      // Leave behind.
+    }
+  }
+
+  // Bump catalog-version.txt so the UI re-reads after migration.
+  // Use the legacy path here because catalog-version.txt may not yet have
+  // been moved to .virgil/ — the root-tidy migration runs separately.
+  const legacyCatalogVersion = "catalog-version.txt";
+  const newCatalogVersion = ROOT_FILES.catalogVersion;
+  const cur =
+    (await readTextFile(root, legacyCatalogVersion))?.trim() ??
+    (await readTextFile(root, newCatalogVersion))?.trim();
+  const next = String((parseInt(cur ?? "0", 10) || 0) + 1);
+  // Write to whichever location currently exists; the root-tidy pass below
+  // will move it to .virgil/ if it's still at the root.
+  if (await fileExists(root, legacyCatalogVersion)) {
+    await writeTextFile(root, legacyCatalogVersion, next);
+  } else {
+    await writeTextFile(root, newCatalogVersion, next);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Root-cleanup migration: tuck infra files/folders into .virgil/ + .claude/
+// ---------------------------------------------------------------------------
+
+/** Recursively copy the contents of `src` into `dst`, then remove `src`.
+ *  Best-effort: if any single child fails, the failure is logged but other
+ *  children continue. Idempotent: re-running over a partially-moved dir
+ *  resumes where it left off. */
+async function moveDir(
+  parentSrc: FileSystemDirectoryHandle,
+  srcName: string,
+  parentDst: FileSystemDirectoryHandle,
+  dstName: string,
+): Promise<void> {
+  let src: FileSystemDirectoryHandle;
+  try {
+    src = await parentSrc.getDirectoryHandle(srcName);
+  } catch {
+    return; // Source doesn't exist — nothing to move.
+  }
+  const dst = await parentDst.getDirectoryHandle(dstName, { create: true });
+  const entries: { name: string; kind: "file" | "directory" }[] = [];
+  for await (const [name, h] of src.entries()) {
+    entries.push({ name, kind: h.kind });
+  }
+  for (const e of entries) {
+    try {
+      if (e.kind === "file") {
+        await moveFile(src, e.name, dst, e.name);
+      } else {
+        await moveDir(src, e.name, dst, e.name);
+      }
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[library] moveDir: failed on ${srcName}/${e.name}`, err);
+    }
+  }
+  // Remove the now-empty source. Try recursive first in case macOS left a
+  // .DS_Store behind that we don't want to surface again.
+  try {
+    await parentSrc.removeEntry(srcName, { recursive: true });
+  } catch {
+    try {
+      await parentSrc.removeEntry(srcName);
+    } catch {
+      // Leave behind if non-empty or platform refuses.
+    }
+  }
+}
+
+/** Tuck all non-user-facing files and folders at the library root into
+ *  `.virgil/` (or `.claude/` for CLAUDE.md). Runs idempotently — any source
+ *  that's already absent is a no-op. */
+async function migrateRootIntoVirgilIfNeeded(
+  root: FileSystemDirectoryHandle,
+): Promise<void> {
+  const virgilDir = await ensureNestedDir(root, VIRGIL_DIR);
+  const claudeDir = await ensureNestedDir(root, CLAUDE_DIR);
+
+  // Files that move into .virgil/ at the root.
+  const fileMoves: { src: string; dst: FileSystemDirectoryHandle; dstName: string }[] = [
+    { src: "catalog.json", dst: virgilDir, dstName: "catalog.json" },
+    { src: "catalog-version.txt", dst: virgilDir, dstName: "catalog-version.txt" },
+    { src: ".skill-bundle-version.json", dst: virgilDir, dstName: ".skill-bundle-version.json" },
+    { src: "CLAUDE.md", dst: claudeDir, dstName: "CLAUDE.md" },
+  ];
+  for (const m of fileMoves) {
+    try {
+      // Only move if the source exists at the root.
+      let exists = false;
+      try {
+        await root.getFileHandle(m.src);
+        exists = true;
+      } catch {
+        // Not present.
+      }
+      if (!exists) continue;
+      await moveFile(root, m.src, m.dst, m.dstName);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[library] migrate-root: failed on file ${m.src}`, err);
+    }
+  }
+
+  // Directories that move wholesale into .virgil/.
+  const dirMoves: { src: string; dstName: string }[] = [
+    { src: "queue", dstName: "queue" },
+    { src: "notifications", dstName: "notifications" },
+    { src: "logs", dstName: "logs" },
+    { src: "scripts", dstName: "scripts" },
+  ];
+  for (const m of dirMoves) {
+    try {
+      await moveDir(root, m.src, virgilDir, m.dstName);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`[library] migrate-root: failed on dir ${m.src}`, err);
+    }
   }
 }

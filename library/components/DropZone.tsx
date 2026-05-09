@@ -40,7 +40,7 @@ export default function DropZone({ dragActive, children }: Props) {
             fontFamily: "var(--serif)",
           }}
         >
-          Drop PDF or Word files to add to the library
+          Drop PDF, Word, .tex, or .bib files to add to the library
         </div>
       )}
     </div>

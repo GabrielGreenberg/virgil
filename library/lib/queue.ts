@@ -1,5 +1,6 @@
-// queue/ writers. The frontend writes here to enqueue work for Claude
-// skills. The skill drains queue/, processes, then rewrites catalog.json.
+// .virgil/queue/ writers. The frontend writes here to enqueue work for
+// Claude skills. The skill drains the queue, processes, then rewrites
+// .virgil/catalog.json.
 
 import { readJsonFile, writeJsonFile, writeBinaryFile, SUBDIRS } from "./library-storage";
 
@@ -28,7 +29,7 @@ export interface QueueEntry {
   kind: QueueKind;
   status: QueueStatus;
   citekey?: string;          // present for index/authenticate/reindex/bib-edit/paper-review
-  filename?: string;         // present for triage (pdfs/unsorted/<filename>)
+  filename?: string;         // present for triage (unsorted/<filename>)
   requestedAt: string;
   attempts: number;
   lastError?: string;
@@ -115,14 +116,14 @@ export function sanitizeFilename(name: string): string {
   return s;
 }
 
-/** Drop a source file (.pdf or .docx) into pdfs/unsorted/ then enqueue
- *  triage for it. Returns the unsorted filename and the queue filename. */
+/** Drop a source file (.pdf or .docx) into unsorted/ then enqueue triage
+ *  for it. Returns the unsorted filename and the queue filename. */
 export async function dropUnsortedSource(
   root: FileSystemDirectoryHandle,
   file: File,
 ): Promise<{ unsortedFilename: string; queueFilename: string }> {
   const safe = sanitizeFilename(file.name);
-  const unsortedFilename = await writeUnique(root, `${SUBDIRS.pdfs}/${SUBDIRS.unsorted}`, safe, file);
+  const unsortedFilename = await writeUnique(root, SUBDIRS.unsorted, safe, file);
   const entry: QueueEntry = {
     kind: "triage",
     status: "requested",

@@ -8,10 +8,12 @@
 //   4. write the new manifest as .skill-bundle-version.json
 //
 // Bundle paths use `claude-commands/...` (no leading dot) because some
-// static hosts skip hidden directories under public/. We rewrite to
-// `.claude/commands/...` when writing into the library folder.
+// static hosts skip hidden directories under public/. The on-disk
+// destinations are rewritten when writing into the library folder so the
+// user's library root stays clean (only master.bib / papers/ / unsorted/
+// remain visible). See PREFIX_REWRITE / FILE_REWRITE below.
 
-import { readJsonFile, writeBinaryFile, writeJsonFile, writeTextFile } from "./library-storage";
+import { readJsonFile, writeBinaryFile, writeJsonFile, writeTextFile, VIRGIL_DIR, CLAUDE_DIR } from "./library-storage";
 
 interface BundleManifest {
   version: string;
@@ -25,10 +27,16 @@ interface OnDiskVersion {
   files: string[];
 }
 
-const VERSION_PATH = ".skill-bundle-version.json";
+const VERSION_PATH = `${VIRGIL_DIR}/.skill-bundle-version.json`;
+// Bundle path → on-disk path. Order matters; first match wins.
 const PREFIX_REWRITE: Array<[string, string]> = [
-  ["claude-commands/", ".claude/commands/"],
+  ["claude-commands/", `${CLAUDE_DIR}/commands/`],
+  ["scripts/", `${VIRGIL_DIR}/scripts/`],
 ];
+// Exact-match rewrites for individual files at the bundle root.
+const FILE_REWRITE: Record<string, string> = {
+  "CLAUDE.md": `${CLAUDE_DIR}/CLAUDE.md`,
+};
 
 function bundleUrl(path: string): string {
   // Resolve relative to the deployed app origin so this works under both
@@ -42,6 +50,7 @@ function bundleUrl(path: string): string {
 }
 
 function diskPathForBundlePath(bundlePath: string): string {
+  if (FILE_REWRITE[bundlePath]) return FILE_REWRITE[bundlePath];
   for (const [from, to] of PREFIX_REWRITE) {
     if (bundlePath.startsWith(from)) {
       return to + bundlePath.slice(from.length);

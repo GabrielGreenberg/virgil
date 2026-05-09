@@ -18,11 +18,13 @@ import {
 import {
   addParagraphLink,
   clearTextAnchorLink,
+  getLinkedParagraphIds,
   getTextAnchor,
   removeParagraphLink,
   setTextAnchorLink,
 } from "@/links/links";
 import { migrateCardLinks } from "@/links/migrate-card";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import type { CardKind } from "@/panels/_shared/types";
 import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
@@ -289,14 +291,29 @@ export function useCutter(
   const setCommentAiRequest = useCallback(
     (id: string, value: boolean) => {
       pristine.markDirty(id);
+      const card = state.cards.find(
+        (c) => c.id === id && c.kind === "comment",
+      ) as CutterCommentCard | undefined;
       update((prev) => ({
         ...prev,
         cards: prev.cards.map((c) =>
           c.id === id && c.kind === "comment" ? { ...c, aiRequest: value } : c,
         ),
       }));
+      if (card) {
+        void bridgeCardAiRequestFlag(
+          docId,
+          { panel: "cutter", cardId: id },
+          value,
+          {
+            text: card.text || "<cutter comment>",
+            paragraphIds: getLinkedParagraphIds(card),
+            selectedText: card.selectedText ?? getTextAnchor(card)?.anchorText,
+          },
+        );
+      }
     },
-    [update, pristine],
+    [update, pristine, docId, state.cards],
   );
 
   const updateSuggestionField = useCallback(

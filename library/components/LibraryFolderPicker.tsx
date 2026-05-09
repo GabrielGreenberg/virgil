@@ -23,9 +23,9 @@ export default function LibraryFolderPicker({ onPick }: Props) {
       <p style={{ color: "var(--muted)", maxWidth: 480, textAlign: "center" }}>
         Pick a folder to use as your library root. The recommended location is{" "}
         <code style={{ fontFamily: "var(--mono)" }}>~/Virgil-Library/</code>.
-        Virgil Library will create <code>catalog.json</code>, <code>master.bib</code>,
-        and the <code>pdfs/</code>, <code>papers/</code>, <code>queue/</code> subdirectories
-        if they don&apos;t exist.
+        Virgil Library will create <code>master.bib</code>, the <code>papers/</code> and
+        {" "}<code>unsorted/</code> folders, plus hidden <code>.claude/</code> and
+        {" "}<code>.virgil/</code> folders for skill commands and runtime state.
       </p>
       <button
         onClick={onPick}

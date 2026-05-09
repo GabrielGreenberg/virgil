@@ -1,5 +1,5 @@
 ---
-description: Drain only user-authored AI requests in ~/Virgil-Library/queue/ — entries with a `note` field, plus all `paper-review` entries. Skips general indexing/triage. Pair with /loop for steady-state polling.
+description: Drain only user-authored AI requests in ~/Virgil-Library/.virgil/queue/ — entries with a `note` field, plus all `paper-review` entries. Skips general indexing/triage. Pair with /loop for steady-state polling.
 ---
 
 # /ai-requests
@@ -12,31 +12,36 @@ a queue drain.
 All paths are relative to the library root (the current working
 directory).
 
+> **Where any memo you write goes.** Dev memos (skill retros, ideas for
+> improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
+> Paper-specific analyses or reports → `papers/<citekey>/notes/<slug>.md`.
+> Never drop a markdown file at the library root.
+
 ## What counts as an AI request
 
 A queue entry is an AI request when **any** of these is true:
 
 1. `kind == "paper-review"` — produced by the AI request button in the
-   paper text view. File: `queue/<citekey>-paperreview.json`.
+   paper text view. File: `.virgil/queue/<citekey>-paperreview.json`.
    Always has a `note`.
 2. `kind == "authenticate"` and the entry has a non-empty `note` field
    — produced by the AI request button on the bib card when the user
-   typed a note before submitting. File: `queue/<citekey>.json`.
+   typed a note before submitting. File: `.virgil/queue/<citekey>.json`.
    (`authenticate` entries **without** a note are vanilla auth requests
    and should be left for `/index-pending` / `/authenticate-bib` to
    handle on the regular path. Skip them here.)
 3. `kind == "deepIndex"` (or legacy `"richIndex"`) and the entry has a
    non-empty `note` field — produced by the deep-index button with a
    user note.
-   File: `queue/<citekey>-deepindex.json` (legacy:
-   `queue/<citekey>-richindex.json`).
+   File: `.virgil/queue/<citekey>-deepindex.json` (legacy:
+   `.virgil/queue/<citekey>-richindex.json`).
    Dispatch to `/deep-index <citekey>` (the skill reads the note from
    the queue file). `deepIndex` entries **without** a note are standard
    deep-index requests — leave them for `/index-pending` to handle.
 
 ## Procedure
 
-1. **Find the candidates.** List `queue/*.json`, read each, and select
+1. **Find the candidates.** List `.virgil/queue/*.json`, read each, and select
    the ones matching the criteria above. Build a working list with
    citekey, kind, scope (`bib` or `paper`), and note.
 
@@ -48,7 +53,7 @@ A queue entry is an AI request when **any** of these is true:
    ════════════════════════════════════════════════════════════
    AI REQUEST · <citekey>
    Scope: <bib | paper>
-   Queue file: queue/<filename>
+   Queue file: .virgil/queue/<filename>
    ────────────────────────────────────────────────────────────
    <full verbatim user note>
    ════════════════════════════════════════════════════════════
@@ -72,13 +77,13 @@ A queue entry is an AI request when **any** of these is true:
      section/element the note refers to, and fix it. If the request
      requires re-running the linearization pipeline (e.g. "re-extract
      section 3" or "this paper has a two-column layout"), invoke the
-     relevant scripts (`scripts/index_paper.py`, `scripts/extract.py`)
+     relevant scripts (`.virgil/scripts/index_paper.py`, `.virgil/scripts/extract.py`)
      scoped as narrowly as you can. Save the updated `main.tex`. Bump
-     `catalog-version.txt` so the frontend reloads.
+     `.virgil/catalog-version.txt` so the frontend reloads.
 
 3. **Mark done.** Once the request is handled, delete its queue file.
    For `authenticate` entries, also remove the matching record from
-   `queue/pending-reviews.json` via the same logic
+   `.virgil/queue/pending-reviews.json` via the same logic
    `/authenticate-bib` uses.
 
 4. **Report.** Print a final summary of what you did per request:
@@ -95,7 +100,7 @@ A queue entry is an AI request when **any** of these is true:
   `kind=bib-edit` entries.
 - Does **not** run vanilla `authenticate` entries (those without a
   note). They stay in the queue for `/index-pending` to pick up.
-- Does **not** invoke `scripts/drain_queue.py` — that's the general
+- Does **not** invoke `.virgil/scripts/drain_queue.py` — that's the general
   indexing path and is the wrong tool for AI requests.
 
 ## When the candidate list is empty

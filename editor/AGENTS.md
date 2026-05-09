@@ -1,0 +1,254 @@
+# Agent guide to /editor/
+
+`editor/` is the home for the **editor-side skill set** — the Claude
+slash commands that act on AI requests inside a Virgil paper folder.
+Self-contained: skill markdown, Python helpers, and the bundle build
+all live here. Pair with [library/AGENTS.md](../library/AGENTS.md);
+the Library subsystem is the older sibling and the architectural
+template.
+
+## What the editor cowork does
+
+The editor (the main Virgil app) lets users file three kinds of "I want
+Claude to do something" signals while they write:
+
+1. **`virgil/ai-requests.json`** — unified queue. Kinds: `footnote`,
+   `note`, `quotation`, `citation`, `todo`, `suggestion`,
+   `style-merge`. Status `draft | submitted | complete`.
+2. **Card-level `aiRequest: boolean` flags** on notes, todos,
+   cutter-comments, revision-comments. Bridged into the unified queue
+   on toggle (see *Bridge* below).
+3. **`virgil/bib-review-requests.json`** — per-bib-key reviews
+   (`type: "fields" | "notes"`). Stays separate because it's
+   per-bib-key, not per-paragraph.
+
+The skill set turns those signals into responses:
+
+- `/editor/review [<docPath>]` — umbrella drain, dispatches per-kind
+  subskills.
+- `/editor/draft-footnote`, `/editor/find-citation`,
+  `/editor/draft-quotation` — direct creates.
+- `/editor/answer-note-request`, `/editor/answer-todo-request`,
+  `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
+  `/editor/draft-suggestion` — responders that emit suggestion cards
+  by default.
+- `/editor/answer-bib-review` — verifies/fills bibliography fields or
+  drafts annotations.
+- `/editor/style-merge` — preamble-merge rewrite (existing behavior).
+
+## Folder layout
+
+```
+editor/
+├── skills/                     markdown skill SOURCES (mirrored to
+│                               .claude/commands/editor/ by build)
+│   ├── review.md
+│   ├── draft-footnote.md
+│   ├── find-citation.md
+│   ├── draft-quotation.md
+│   ├── answer-note-request.md
+│   ├── answer-todo-request.md
+│   ├── answer-cutter-comment.md
+│   ├── answer-revision-comment.md
+│   ├── draft-suggestion.md
+│   ├── answer-bib-review.md
+│   └── style-merge.md
+├── scripts/                    Python helpers (stdlib-only, py3.10+)
+│   ├── _common.py              shared paths/JSON/regex/notification helpers
+│   ├── list_requests.py        emits unified open-request JSONL
+│   ├── get_para_context.py     paragraph at %!v:<uuid> + neighbors
+│   ├── cards_for_paragraph.py  every card anchored to <uuid> across panels
+│   ├── apply_response.py       atomic writeback (card + ai-requests + notif)
+│   └── bib_resolve.py          parse references.bib entry + annotation
+├── build/
+│   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
+└── AGENTS.md                   ← this file
+```
+
+The build script runs via `npm run build:editor-bundle` (and on
+predev/prebuild alongside the library bundle). Output is just the
+mirror to `.claude/commands/editor/`; we don't yet emit a
+`public/skill-bundle/` for end-user folder sync (see *Future work*).
+
+## Cowork pattern
+
+Same broker shape as the library:
+
+```
+Editor frontend                 Claude (separate session)
+  │                               │
+  │ writes intent ─────►          │
+  │ ai-requests.json              │
+  │ bib-review-requests.json      │
+  │ aiRequest flags               │
+  │   ↓ (bridge)                  │
+  │ ai-requests.json              │
+  │                               ◄ /editor/review reads
+  │                               │
+  │                               ◄ Claude writes back:
+  │ notes.json / footnotes.json   │  via apply_response.py:
+  │ ai-requests.json (status)     │   • new card
+  │ notifications.json            │   • status flip
+  │ version.txt                   │   • notification
+  │                               │   • version bump
+  ◄ polls notifications + version
+    via useDocNotificationStream
+```
+
+The frontend never invokes Claude directly. It writes intent files;
+Claude drains; the frontend polls for completion notifications and
+reloads sidecars.
+
+## Bridge: card flags → ai-requests.json
+
+When a user toggles `aiRequest: true` on a note/todo/cutter-comment/
+revision-comment, the React hook calls
+[bridgeCardAiRequestFlag()](../src/lib/ai-request-bridge.ts) which
+adds an entry to `ai-requests.json` with `linkedTo: { panel, cardId }`.
+Toggling off removes the entry; toggling back on re-adds it (with
+fresh paragraph context). This collapses three discovery paths into
+two so `/editor/review` only needs to walk two files.
+
+For papers created before the bridge landed, card-level flags exist
+without matching `ai-requests.json` entries.
+[list_requests.py](scripts/list_requests.py) handles those by emitting
+a virtual id `virtual:<panel>:<cardId>` so the umbrella can still
+process them. `apply_response.py` recognizes the virtual prefix and
+clears the source flag without touching `ai-requests.json`.
+
+## Path resolution for skills
+
+Skills take an optional `<docPath>` arg (positional). Resolution order:
+
+1. Explicit arg.
+2. `cwd` if it has a `virgil/` subdir.
+3. Error.
+
+For dev (running Claude Code in `/Users/gabriel/Programming/virgil/`),
+pass the doc path explicitly:
+
+```
+/editor/review samples/annotation-history
+/editor/review virgil-data/doc_devtest
+```
+
+For end users running Claude Code in their paper folder, omit the
+arg and it picks up `cwd`.
+
+The Python helpers all take `<docPath>` as `argv[1]` — relative or
+absolute, both work.
+
+## Skill conventions (mirrored from library)
+
+- One-line `Done: <action> for <id>. Output: <files>.` reply on
+  success. Library precedent: see `library/skills/index-paper.md`.
+- Idempotent: re-running a skill on a `status: "complete"` request is
+  a no-op.
+- Suggestion-card default: ambiguous responders emit a
+  `RevisionSuggestionCard` (or `CutterSuggestionCard`) with `author:
+  "ai"`, `status: "pending"` instead of editing in place.
+- Direct-create kinds (footnote, citation, quotation) insert without
+  a suggestion wrapper — the user can delete if unwanted.
+- Memo discipline: dev memos under `<docPath>/.virgil/memos/<YYYY-MM-DD>-<slug>.md`,
+  paper-specific reports under `<docPath>/notes/<slug>.md`. Only
+  write a memo when something flagged a real ambiguity worth surfacing.
+
+## Plumbing in `src/`
+
+Three modifications + two new files in the main app:
+
+| File | Change |
+|---|---|
+| [src/lib/types.ts](../src/lib/types.ts) | Extended `AiRequest` with `paragraphIds`, `selectedText`, `linkedTo`. Added `DocNotification`, `DocNotificationsInbox`. |
+| [src/lib/ai-request-bridge.ts](../src/lib/ai-request-bridge.ts) | New. `bridgeCardAiRequestFlag()` keeps `ai-requests.json` in sync with card-level flags. |
+| [src/hooks/useNotes.ts](../src/hooks/useNotes.ts), [useTodos.ts](../src/hooks/useTodos.ts), [useCutter.ts](../src/hooks/useCutter.ts), [useRevisions.ts](../src/hooks/useRevisions.ts) | Each `setXAiRequest` callback now invokes the bridge. |
+| [src/hooks/useDocNotificationStream.ts](../src/hooks/useDocNotificationStream.ts) | New. 6-second poll of `<docPath>/virgil/notifications.json`; emits new items for the consumer to toast. Not yet wired to a UI host — toasting is a follow-up. |
+
+## Helper script boundary
+
+Use a Python script when the operation:
+- Touches `.tex` lines (paragraph extraction, footnote insertion).
+- Walks more than one sidecar atomically.
+- Requires multi-file writes that must succeed-together-or-fail-together.
+
+Inline `jq` in the skill markdown is fine for one-field reads or
+simple status filters. Don't reimplement the paragraph-UUID regex in a
+skill — call `get_para_context.py`.
+
+## Future work (intentionally deferred)
+
+- **End-user folder sync.** Today the build only mirrors to
+  `.claude/commands/editor/` in the repo. For end users running
+  Claude Code in their own paper folder, we need a sync mechanism
+  paralleling `library/lib/skill-sync.ts`. The build would emit a
+  `public/skill-bundle/editor/` and the editor would copy it into the
+  doc's `.claude/` and `.virgil/scripts/` on first open.
+- **Notification toaster UI.** `useDocNotificationStream` polls and
+  surfaces items but isn't wired to a host. The host should be
+  per-doc (Editor.tsx or EditorPane.tsx); see how `LibraryView.tsx`
+  consumes the library version for the precedent.
+- **Workspace template `<docPath>/.claude/CLAUDE.md`.** Per-doc
+  workspace guide so a fresh Claude Code session opened in a paper
+  folder loads the right context.
+- **Suggestion card with `aiOriginRequestId` UI affordances.** Result
+  cards can carry `aiOriginRequestId` so the editor surfaces Accept /
+  Reject / Redo buttons; today the field is set but the UI doesn't
+  yet read it.
+- **`apply_response.py` `update` op.** Skills that update an existing
+  card (notably `/editor/answer-revision-comment`, which appends a
+  turn) currently fall back to direct-Edit on the sidecar. Add an
+  `update` op so the writeback stays centralized.
+
+## Verification path
+
+The canonical fixture is [samples/annotation-history/](../samples/annotation-history/),
+which has 3 open AI requests (footnote, note, citation), 2 bib reviews
+(grafton1997 fields, vannevar1945 notes), and 1 todo with `aiRequest:
+true` (the "tighten the closing paragraph" task).
+
+```bash
+# unified inbox
+python3 editor/scripts/list_requests.py samples/annotation-history
+# expect: 6 open
+
+# paragraph context
+python3 editor/scripts/get_para_context.py samples/annotation-history f1c5
+
+# adjacent cards
+python3 editor/scripts/cards_for_paragraph.py samples/annotation-history f1c5
+
+# bib resolution
+python3 editor/scripts/bib_resolve.py samples/annotation-history grafton1997
+```
+
+End-to-end, `/editor/review samples/annotation-history` should drain
+all six (creating cards or filing follow-up requests), bumping
+`samples/annotation-history/virgil/version.txt` and appending entries
+to `notifications.json`. **Do not run `/editor/review` directly
+against `samples/annotation-history`** — it would mutate the canonical
+fixture. Use `virgil-data/doc_devtest` (or any fresh clone) for
+end-to-end tries.
+
+## Iterating the skill set
+
+`/editor/iterate-virgil-editor [<skill-name>] [<max-attempts>]` is the
+dev meta-skill for stress-testing and refining the editor skills. It
+synthesizes representative AI requests, clones
+`samples/annotation-history` into a per-attempt sandbox under
+`editor/dev/sandboxes/`, spawns a fresh runner subagent that executes
+the target skill against the sandbox, reads a structured critique
+memo from `editor/dev/iterations/`, edits the skill markdown, and
+re-runs the same test case until it produces zero `[block]` items.
+Both dev dirs are gitignored. See
+[skills/iterate-virgil-editor.md](skills/iterate-virgil-editor.md).
+
+## Don't
+
+- Don't write to `document.tex` from a Python helper. Skills do .tex
+  edits with the Edit tool so they go through the same write-queue
+  surface as user edits.
+- Don't bypass `apply_response.py` for the writeback — even when the
+  op shape isn't a perfect fit, route through it (or extend it). It
+  centralizes the notification/version-bump path.
+- Don't add a backend. The cowork pattern is load-bearing, just like
+  in the library.

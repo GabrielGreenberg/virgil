@@ -51,6 +51,16 @@ next-env.d.ts
 /library/scripts/__pycache__/
 *.pyc
 
+# library/dev/iterations — scratch memos from /library/iterate-skill runs
+/library/dev/iterations/*
+!/library/dev/iterations/.gitkeep
+
+# editor/dev — scratch memos and sandbox clones from /editor/iterate-virgil-editor runs
+/editor/dev/iterations/*
+!/editor/dev/iterations/.gitkeep
+/editor/dev/sandboxes/*
+!/editor/dev/sandboxes/.gitkeep
+
 # library-data — keep the static dev sample (catalog/master.bib/papers/),
 # but ignore the runtime artifacts the live app writes back into the folder
 # during a dev session (skill-bundle sync output, queue intent files, logs).

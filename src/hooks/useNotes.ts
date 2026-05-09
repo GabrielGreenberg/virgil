@@ -8,10 +8,12 @@ import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
 import {
   addParagraphLink,
   clearTextAnchorLink,
+  getLinkedParagraphIds,
   getTextAnchor,
   removeParagraphLink,
   setTextAnchorLink,
 } from "@/links/links";
+import { bridgeCardAiRequestFlag } from "@/lib/ai-request-bridge";
 import { migrateCardLinks } from "@/links/migrate-card";
 import { nextCardTitle } from "@/panels/panel-registry";
 import { usePersistentState } from "./usePersistentState";
@@ -139,11 +141,24 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const setNoteAiRequest = useCallback(
     (id: string, value: boolean) => {
       pristine.markDirty(id);
+      const note = state.notes.find((n) => n.id === id);
       update((prev) => ({
         notes: prev.notes.map((n) => (n.id === id ? { ...n, aiRequest: value } : n)),
       }));
+      if (note) {
+        void bridgeCardAiRequestFlag(
+          docId,
+          { panel: "notes", cardId: id },
+          value,
+          {
+            text: note.title || "<note>",
+            paragraphIds: getLinkedParagraphIds(note),
+            selectedText: getTextAnchor(note)?.anchorText,
+          },
+        );
+      }
     },
-    [update, pristine],
+    [update, pristine, docId, state.notes],
   );
 
   const addNoteParagraphId = useCallback(

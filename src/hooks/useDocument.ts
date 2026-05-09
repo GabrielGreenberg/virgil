@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { JSONContent } from "@tiptap/react";
 import { readDocBundle, writeDocBundle } from "@/lib/storage";
-import {
-  beginDocPipeline,
-  isStalePipelineError,
-} from "@/lib/multi-window/doc-pipeline";
+import { isStalePipelineError } from "@/lib/multi-window/doc-pipeline";
+import { useDocWriteHandle } from "@/components/editor-layout/DocPipeline";
 import {
   registerPendingFlusher,
   unregisterPendingFlusher,
@@ -19,10 +17,16 @@ const DEFAULT_EDITOR_STATE = { cursorPosition: 0, selection: null, lastModified:
 /**
  * Document load + autosave for the active doc.
  *
- * The write handle is pinned to the docId's active pipeline. When the
- * user switches docs, the pipeline ends; any in-flight or debounced
- * write that fires after that point is rejected by the storage layer
- * with StalePipelineError and silently dropped.
+ * Architecturally requires a `<DocPipeline key={docId} docId={docId}>`
+ * ancestor: the handle (and therefore the docId) is read from context
+ * via `useDocWriteHandle()`. That ancestor's `key={docId}` forces the
+ * subtree to fully remount on every doc switch — TipTap, save closures,
+ * pending-edit refs, all of it. Stale content from the previous doc
+ * cannot survive into the next one.
+ *
+ * If a future caller mounts this hook outside a DocPipeline, the
+ * `useDocWriteHandle()` call throws synchronously with a directive to
+ * add the wrap. That throw IS the architectural wall.
  *
  * Pending edits sit in a 1500 ms React-local debounce. We expose that
  * debounce via the per-doc pending-saves registry so external callers
@@ -32,7 +36,9 @@ const DEFAULT_EDITOR_STATE = { cursorPosition: 0, selection: null, lastModified:
  * storage-layer `flushDoc` only drains writes that already entered the
  * queue, not the un-fired React debounce.
  */
-export function useDocument(docId: string | null) {
+export function useDocument() {
+  const handle = useDocWriteHandle();
+  const docId = handle.docId;
   const [content, setContent] = useState<JSONContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -40,23 +46,8 @@ export function useDocument(docId: string | null) {
   const latestContentRef = useRef<JSONContent | null>(null);
   const lastSavedRef = useRef<JSONContent | null>(null);
 
-  // Pin the write handle to the docId's CURRENT pipeline. We call
-  // `beginDocPipeline` directly during render (idempotent: returns the
-  // existing pipelineId if one is active, otherwise creates one) — so
-  // the handle is non-null from the very first render, before any
-  // `useEffect` has had a chance to start the pipeline. Reading via
-  // `getActiveHandle` here was racy: useMemo runs synchronously during
-  // render, but the canonical pipeline-start effect in EditorLayout
-  // runs *after* commit, so the first render's handle was always null
-  // and saves silently no-op'd until a doc switch eventually happened.
-  const handle = useMemo(
-    () => (docId ? beginDocPipeline(docId) : null),
-    [docId],
-  );
-
   const save = useCallback(
     async (doc: JSONContent) => {
-      if (!handle) return;
       setSaveStatus("saving");
       try {
         await writeDocBundle(handle, doc, DEFAULT_EDITOR_STATE);
@@ -71,9 +62,9 @@ export function useDocument(docId: string | null) {
           // write landed. Expected when reopening the same doc rapidly;
           // the newer pipeline will load fresh content and our stale
           // write would have corrupted it. Log so the case is visible.
-          console.warn("Stale save dropped — pipeline superseded before write", {
-            docId: handle.docId,
-          });
+          console.warn(
+            `[useDocument] Stale save dropped — pipeline ${handle.pipelineId.slice(0, 8)} for "${handle.docId}" was superseded before write landed`,
+          );
           return;
         }
         console.error("Failed to save document:", err);
@@ -100,30 +91,12 @@ export function useDocument(docId: string | null) {
     await save(pending);
   }, [save]);
 
-  // Reset and load when docId changes. The previous doc's pending edit
-  // is flushed by two cooperating mechanisms outside this effect:
-  //   1. `useFiles.flushOutgoing` awaits `flushPendingForDoc(prevId)`
-  //      before changing the docId state — covers user-driven switches.
-  //   2. The unmount-flush effect below fires the OLD `save` closure
-  //      (with the OLD handle) when its `[save]` dep changes — covers
-  //      programmatic switches that bypass `flushOutgoing`.
-  // Don't fire a save here: by the time this effect runs, `handle` has
-  // already been recomputed for the new docId, so writing the prior
-  // doc's content would land in the wrong file.
+  // Load the doc on mount. The `<DocPipeline key={docId}>` ancestor
+  // forces a full remount when the docId changes, so this effect runs
+  // exactly once per (docId, mount) — no doc-switch race to handle here.
+  // The `cancelled` flag is still load-bearing for StrictMode's
+  // double-invoke and for unmount-during-load.
   useEffect(() => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
-    }
-    latestContentRef.current = null;
-    lastSavedRef.current = null;
-    if (!docId) {
-      setContent(null);
-      setLoading(false);
-      setSaveStatus("idle");
-      return;
-    }
-
     let cancelled = false;
     setLoading(true);
     setSaveStatus("idle");
@@ -146,17 +119,17 @@ export function useDocument(docId: string | null) {
   // Register the flusher so external callers (doc-switch barrier,
   // pagehide) can fire the pending debounce before the pipeline ends.
   useEffect(() => {
-    if (!docId) return;
     registerPendingFlusher(docId, flushPending);
     return () => unregisterPendingFlusher(docId, flushPending);
   }, [docId, flushPending]);
 
-  // Flush pending edits whenever `save` changes (i.e. on docId/handle
-  // change) or on unmount. Cleanup closes over the OLD `save` — and
-  // thus the OLD handle — so a pending edit for the previous doc lands
-  // in the correct files. Storage's queued task uses the lenient
-  // `assertNotSuperseded` check, so a write that races the pipeline-end
-  // cleanup is allowed through if no newer pipeline took over.
+  // Flush pending edits on unmount. With the DocPipeline `key={docId}`
+  // boundary, unmount IS the doc-switch event — the cleanup closes over
+  // this mount's save closure (and its handle), so any pending edit
+  // lands in the correct doc's files. Storage's queued task uses the
+  // lenient `assertNotSuperseded` check, so a write that races the
+  // pipeline-end cleanup is allowed through if no newer pipeline took
+  // over.
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) {
@@ -174,7 +147,6 @@ export function useDocument(docId: string | null) {
   // `beforeunload` only to prompt the user when there are unsaved
   // edits, buying the in-flight write time to land.
   useEffect(() => {
-    if (!docId) return;
     const onPageHide = () => {
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
@@ -208,7 +180,7 @@ export function useDocument(docId: string | null) {
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [docId, save]);
+  }, [save]);
 
   const debouncedSave = useCallback(
     (doc: JSONContent) => {
@@ -237,7 +209,6 @@ export function useDocument(docId: string | null) {
   );
 
   const refetch = useCallback(() => {
-    if (!docId) return;
     setLoading(true);
     readDocBundle(docId)
       .then((bundle) => {
