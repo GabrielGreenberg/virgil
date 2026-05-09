@@ -214,6 +214,7 @@ export interface FootnoteInfo {
   number: number;
   pos: number;
   title?: string;
+  thanks?: boolean;
 }
 
 export interface ExampleSubItem {
@@ -2439,6 +2440,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             number: node.attrs.number || 0,
             pos,
             title: node.attrs.title || undefined,
+            thanks: !!node.attrs.thanks,
           });
         }
         return true;

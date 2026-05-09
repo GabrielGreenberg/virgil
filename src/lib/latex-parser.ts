@@ -342,6 +342,28 @@ function parseInlineContent(text: string): JSONContent[] {
         }
       }
 
+      // \thanks{...} — title-page acknowledgement; reuses the footnote node
+      // with thanks=true so it threads through the footnote panel/omni-view.
+      const thanksMatch = rest.match(/^\\thanks\{/);
+      if (thanksMatch) {
+        flush();
+        const inner = extractBraced(text, i + "\\thanks".length);
+        if (inner !== null) {
+          nodes.push({
+            type: "footnote",
+            attrs: {
+              content: richLatexToJson(inner.content),
+              number: 0,
+              footnoteId: pendingFootnoteId || generateShortId(),
+              thanks: true,
+            },
+          });
+          pendingFootnoteId = null;
+          i = inner.end;
+          continue;
+        }
+      }
+
       // \archivemarker{id}{preview}
       const amMatch = rest.match(/^\\archivemarker\{/);
       if (amMatch) {

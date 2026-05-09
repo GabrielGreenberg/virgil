@@ -1369,6 +1369,11 @@ textarea,
   font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
 }
 
+.footnote-marker[data-thanks="true"] {
+  font-size: 0.55em;
+  padding: 0 2px;
+}
+
 .footnote-marker:hover {
   background: #fde8e8;
 }
@@ -2770,7 +2775,10 @@ body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
    drag-gap element itself. Nudge the ::after highlight toward the
    editor so it lands at the actual center of that gutter, and extend
    an invisible ::before hit area across the full gutter so users can
-   grab anywhere in that visible gap — not just the 10px centered strip. */
+   grab anywhere in that visible gap — not just the 10px centered strip.
+   The EditorScrollbar overlay is pinned inside the pod's right
+   padding (`outset: -10`) so it doesn't collide with the right
+   drag-gap line — the line can stay at its natural inboard position. */
 .drag-gap-v.drag-gap-toward-editor-right::after {
   left: calc(50% + 4px);
 }

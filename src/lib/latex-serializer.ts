@@ -254,7 +254,8 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     case "footnote": {
       const fid = node.attrs?.footnoteId as string | undefined;
       const idMarker = fid ? `\\vfid{${fid}}` : "";
-      return `${idMarker}\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+      const cmd = node.attrs?.thanks ? "thanks" : "footnote";
+      return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
     }
 
     case "latexComment": {
@@ -455,7 +456,8 @@ function serializeInline(node: JSONContent): string {
   if (node.type === "footnote") {
     const fid = node.attrs?.footnoteId as string | undefined;
     const idMarker = fid ? `\\vfid{${fid}}` : "";
-    return `${idMarker}\\footnote{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
+    const cmd = node.attrs?.thanks ? "thanks" : "footnote";
+    return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
   }
   if (node.type === "archiveMarker") {
     const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");

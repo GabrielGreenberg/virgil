@@ -40,6 +40,11 @@ export const Footnote = Node.create<FootnoteOptions>({
       linkId: { default: "", renderHTML: () => ({}) },
       linkKind: { default: "footnote", renderHTML: () => ({}) },
       linkCard: { default: "", renderHTML: () => ({}) },
+      // True when this footnote originated from a `\thanks{...}` (typically
+      // inside `\author{...}`) rather than a `\footnote{...}`. Drives the
+      // serializer to round-trip back to `\thanks{...}` and the panel/omni
+      // card to overline as ACKNOWLEDGEMENT instead of FOOTNOTE.
+      thanks: { default: false, renderHTML: () => ({}) },
     };
   },
 
@@ -63,8 +68,9 @@ export const Footnote = Node.create<FootnoteOptions>({
         "data-link-id": footnoteId,
         "data-link-kind": "footnote",
         "data-link-card": linkCard,
+        ...(node.attrs.thanks ? { "data-thanks": "true" } : {}),
       }),
-      String(node.attrs.number || "1"),
+      node.attrs.thanks ? "A" : String(node.attrs.number || "1"),
     ];
   },
 
@@ -113,7 +119,14 @@ export const Footnote = Node.create<FootnoteOptions>({
             let counter = 1;
             trFixed.doc.descendants((node, pos) => {
               if (node.type.name === "footnote") {
-                trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: counter++ });
+                if (node.attrs.thanks) {
+                  // Acknowledgements don't consume the footnote counter.
+                  if (node.attrs.number !== 0) {
+                    trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
+                  }
+                } else {
+                  trFixed.setNodeMarkup(pos, undefined, { ...node.attrs, number: counter++ });
+                }
               }
               return true;
             });
@@ -166,8 +179,14 @@ export const Footnote = Node.create<FootnoteOptions>({
           let needsRenumber = false;
           newState.doc.descendants((node) => {
             if (node.type.name === "footnote") {
-              if (node.attrs.number !== counter) needsRenumber = true;
-              counter++;
+              if (node.attrs.thanks) {
+                // Acknowledgements don't consume the counter; they're
+                // pinned to number 0 (rendered as "A" in the marker/badge).
+                if (node.attrs.number !== 0) needsRenumber = true;
+              } else {
+                if (node.attrs.number !== counter) needsRenumber = true;
+                counter++;
+              }
             }
             return true;
           });
@@ -178,10 +197,16 @@ export const Footnote = Node.create<FootnoteOptions>({
           let num = 1;
           newState.doc.descendants((node, pos) => {
             if (node.type.name === "footnote") {
-              if (node.attrs.number !== num) {
-                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
+              if (node.attrs.thanks) {
+                if (node.attrs.number !== 0) {
+                  tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
+                }
+              } else {
+                if (node.attrs.number !== num) {
+                  tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
+                }
+                num++;
               }
-              num++;
             }
             return true;
           });
@@ -201,7 +226,8 @@ export const Footnote = Node.create<FootnoteOptions>({
       dom.contentEditable = "false";
       dom.draggable = true;
       dom.style.cursor = "grab";
-      dom.textContent = String(node.attrs.number || "1");
+      if (node.attrs.thanks) dom.dataset.thanks = "true";
+      dom.textContent = node.attrs.thanks ? "A" : String(node.attrs.number || "1");
       dom.title = richJsonToPlainText(node.attrs.content);
 
       // Click on the marker just routes the user to the side panel — the
@@ -225,7 +251,9 @@ export const Footnote = Node.create<FootnoteOptions>({
         update(updatedNode) {
           if (updatedNode.type.name !== "footnote") return false;
           dom.dataset.footnoteId = updatedNode.attrs.footnoteId || "";
-          dom.textContent = String(updatedNode.attrs.number || "1");
+          if (updatedNode.attrs.thanks) dom.dataset.thanks = "true";
+          else delete dom.dataset.thanks;
+          dom.textContent = updatedNode.attrs.thanks ? "A" : String(updatedNode.attrs.number || "1");
           dom.title = richJsonToPlainText(updatedNode.attrs.content);
           return true;
         },

@@ -230,12 +230,20 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
  *  Visible always for Comment/Suggestion families; visible elsewhere only
  *  when rendered inside OmniView (the consumer gates this with
  *  `useInOmni()`). Matches the style first introduced on Comment cards. */
-export function CardTypeLabel({ kind, className }: { kind: CardKind; className?: string }) {
+export function CardTypeLabel({
+  kind,
+  labelOverride,
+  className,
+}: {
+  kind: CardKind;
+  labelOverride?: string;
+  className?: string;
+}) {
   return (
     <span
       className={`text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium${className ? ` ${className}` : ""}`}
     >
-      {cardTypeLabel(kind)}
+      {labelOverride ?? cardTypeLabel(kind)}
     </span>
   );
 }
@@ -417,6 +425,11 @@ export interface EditableCardProps {
    *  uppercase "Note" / "Footnote" / etc. label is added between the
    *  badge and the title. */
   typeLabelKind?: CardKind;
+  /** Override for the type-label text. When set, replaces the registry
+   *  lookup (`cardTypeLabel(typeLabelKind)`) — used for sub-kinds that
+   *  share a panel/card kind but want a distinct overline (e.g. a
+   *  `\thanks` footnote rendered as ACKNOWLEDGEMENT). */
+  typeLabelOverride?: string;
 }
 
 /**
@@ -436,7 +449,7 @@ export function EditableCard({
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
   onTogglePopout, isPoppedOut, cardKey,
-  compressed, compressedSummary, typeLabelKind,
+  compressed, compressedSummary, typeLabelKind, typeLabelOverride,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -584,7 +597,7 @@ export function EditableCard({
       >
         <CardDragHandle />
         {badge}
-        {showTypeLabel && <CardTypeLabel kind={typeLabelKind!} />}
+        {showTypeLabel && <CardTypeLabel kind={typeLabelKind!} labelOverride={typeLabelOverride} />}
         {headerContent}
         {!hideToolbar && !compressed && (
           <div ref={setToolbarTarget} className="flex items-center" />

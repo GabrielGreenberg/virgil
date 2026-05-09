@@ -113,7 +113,7 @@ export function FootnoteCard({
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={<BadgeLabel label={fn.number} theme={theme} />}
+      badge={<BadgeLabel label={fn.thanks ? "A" : fn.number} theme={theme} />}
       headerContent={
         <CardTitleInput
           defaultValue={fn.title}
@@ -155,6 +155,7 @@ export function FootnoteCard({
       compressed={compressed}
       compressedSummary={compressedSummary}
       typeLabelKind="footnote"
+      typeLabelOverride={fn.thanks ? "Acknowledgement" : undefined}
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
