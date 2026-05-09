@@ -62,6 +62,7 @@ export function PanelColumn({
   bottomPanelId,
   topOverlay,
   dockOccupancy,
+  tail,
 }: {
   side: "left" | "right";
   panelPref: number;
@@ -88,6 +89,12 @@ export function PanelColumn({
    *  pod element gets `data-dock-slot="${side}-${half}"` so the
    *  panel-shell portal can find it. */
   dockOccupancy?: DockOccupancy;
+  /** Optional adornment rendered inside the inner flex row, adjacent
+   *  to the drag-gap on the editor-facing side (between the panel
+   *  content and the drag-gap). The Library Reader uses this to mount
+   *  its `PageScrollStrip` so the drag-gap line sits just inboard of
+   *  the page-mark navigator. */
+  tail?: React.ReactNode;
 }) {
   const startX = useRef(0);
   const startPanel = useRef(0);
@@ -256,7 +263,7 @@ export function PanelColumn({
       data-panel-column-side={side}
       className="relative flex flex-col"
       style={{
-        flex: isResizing ? `0 0 ${panelPref}px` : `1 100 ${panelPref}px`,
+        flex: `0 0 ${panelPref}px`,
         minWidth: isResizing ? 0 : 'var(--panel-min)',
         // Cap height at the editor column's scrollHeight (set on the row
         // as `--row-bound-h` by EditorScrollbar). Unanchored cards can
@@ -309,10 +316,10 @@ export function PanelColumn({
       )}
       <div className="flex flex-1 min-h-0 w-full">
       {collapsed ? (
-        <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-2"}`} />
+        <div className={`flex-1 min-w-0 ${side === "left" ? "order-1" : "order-3"}`} />
       ) : split && isSplitChildren(children) ? (
         <div
-          className={`relative flex-1 min-w-0 panel-container ${side === "left" ? "order-1" : "order-2"}`}
+          className={`relative flex-1 min-w-0 panel-container ${side === "left" ? "order-1" : "order-3"}`}
           style={{
             // Always normal-flow so omni scrolls with the page, regardless
             // of whether a panel is docked. The sticky dock overlay below
@@ -479,7 +486,7 @@ export function PanelColumn({
         </div>
       ) : (
         <div
-          className={`relative flex-1 min-w-0 panel-container ${(isChromeless(topPanelId) && !fullSlot) || fullSlot ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-2"}`}
+          className={`relative flex-1 min-w-0 panel-container ${(isChromeless(topPanelId) && !fullSlot) || fullSlot ? "" : "overflow-hidden"} ${side === "left" ? "order-1" : "order-3"}`}
           style={(() => {
             // Three cases:
             // 1. Chromeless + empty slot: no styling (canvas/strip only).
@@ -514,9 +521,23 @@ export function PanelColumn({
           {renderSlot(children as PanelSlot, !!fullSlot)}
         </div>
       )}
+      {tail && (
+        <div
+          className="shrink-0 order-[2]"
+          style={{
+            // Pull the drag-gap close to the tail content. The line
+            // inside the gap renders ~8.5px from its inboard edge;
+            // -7px marginRight lands the line ~1.5px past the tail's
+            // right edge.
+            marginRight: -7,
+          }}
+        >
+          {tail}
+        </div>
+      )}
       <div
         ref={gapRef}
-        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-2 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />

@@ -25,6 +25,7 @@
   --citation-border: #e0d5a8;
 }
 
+
 /* ── Paper-file body — white pod sitting on the warm Virgil canvas ─── */
 
 /* The .paper-render-pod wraps <EditorContent> and gives the editor its
@@ -106,70 +107,10 @@
 }
 [data-virgil-library-reader] .paper-render .tiptap li { margin-bottom: 0.3em; }
 
-/* Inline math */
-[data-virgil-library-reader] .paper-render .tiptap .inline-math {
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  color: var(--math-color);
-  background: var(--math-bg);
-  padding: 0 4px;
-  border-radius: 3px;
-  font-size: 0.92em;
-}
-
-/* Display math */
-[data-virgil-library-reader] .paper-render .tiptap .display-math {
-  display: block;
-  text-align: center;
-  background: var(--math-bg);
-  color: var(--math-color);
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  padding: 8px 12px;
-  margin: 0.8em 0;
-  border-radius: 4px;
-  font-size: 0.95em;
-  white-space: pre-wrap;
-}
-
-/* LaTeX comments */
-[data-virgil-library-reader] .paper-render .tiptap .latex-comment {
-  color: var(--latex-comment-color);
-  background: var(--latex-comment-bg);
-  padding: 4px 8px;
-  border-radius: 3px;
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  font-size: 0.88em;
-  margin: 0.4em 0;
-}
-
-/* Citations */
-[data-virgil-library-reader] .paper-render .tiptap .citation-node {
-  color: var(--citation-color);
-  background: var(--citation-bg);
-  border: 1px solid var(--citation-border);
-  padding: 0 4px;
-  border-radius: 3px;
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  font-size: 0.88em;
-}
-
-/* Footnote superscript markers */
-[data-virgil-library-reader] .paper-render .tiptap span.footnote-marker {
-  color: var(--footnote-color);
-  background: var(--footnote-bg);
-  font-size: 0.7em;
-  vertical-align: super;
-  padding: 0 4px;
-  border-radius: 999px;
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  cursor: pointer;
-}
-
-/* Generic LaTeX commands */
-[data-virgil-library-reader] .paper-render .tiptap .latex-cmd {
-  font-family: var(--library-editing-mono-font), ui-monospace, monospace;
-  color: var(--latex-cmd-color);
-  font-size: 0.9em;
-}
+/* Inline math, display math, latex-comment, footnote-marker, latex-cmd,
+   citation-node — Reader inherits canonical styling from globals.css.
+   Don't add Reader-only overrides for content nodes the editor already
+   styles; honor the inheritance pattern. */
 
 /* \pgmark{N} margin chip */
 [data-virgil-library-reader] .paper-render .tiptap .pgmark-chip {

@@ -6,6 +6,7 @@ import type { JSONContent } from "@tiptap/react";
 import EditorPane from "@/components/EditorPane";
 import type { EditorHandle } from "@/components/Editor";
 import { READER_CHROME } from "@/components/editor-layout/chrome-config";
+import { DocPipeline } from "@/components/editor-layout/DocPipeline";
 import { useReaderViewPrefs } from "@/components/editor-layout/reader-view-prefs";
 import { setDocHandle, deleteDocHandle } from "@/lib/doc-index";
 import { readTextFile } from "@library/lib/library-storage";
@@ -226,28 +227,32 @@ function PaperReader({ citekey, tex, parseError, onParseError }: PaperReaderProp
         minHeight: 0,
         overflow: "auto",
         background: "var(--background)",
-        padding: "16px 0",
         display: "flex",
-        flexDirection: "row",
+        flexDirection: "column",
         alignItems: "stretch",
-        gap: 2,
       }}
     >
-      {/* Left: page-mark scroll strip. The editor pod + right-side
-       *  panel rail are now both inside `<EditorPane>` — the rail
-       *  renders only when `chrome.visiblePanelKinds` is non-empty
-       *  (Reader's whitelist is `outline`, `footnotes`, `examples`,
-       *  `citations`, `bibliography`, `notes`). */}
-      <PageScrollStrip editor={editor} scrollContainer={scrollEl} />
-      <EditorPane
-        ref={editorRef}
-        docId={docId}
-        initialContent={content as JSONContent}
-        editable={false}
-        chrome={READER_CHROME}
-        viewPrefs={readerViewPrefs}
-        onEditorReady={setEditor}
-      />
+      {/* `<DocPipeline key={docId}>` wraps EditorPane so `useDocument`
+          (which the canonical EditorPane mounts unconditionally) can
+          read its handle from context. The Reader is read-only so the
+          handle is never used for writes, but `useDocument` will throw
+          without an ancestor — this wrap satisfies the architectural
+          contract and gives the Reader the same `key=`-driven remount
+          on docId change as the main app. */}
+      <DocPipeline key={docId} docId={docId}>
+        <EditorPane
+          ref={editorRef}
+          docId={docId}
+          initialContent={content as JSONContent}
+          editable={false}
+          chrome={READER_CHROME}
+          viewPrefs={readerViewPrefs}
+          onEditorReady={setEditor}
+          leftGutterPrelude={
+            <PageScrollStrip editor={editor} scrollContainer={scrollEl} />
+          }
+        />
+      </DocPipeline>
     </div>
   );
 }

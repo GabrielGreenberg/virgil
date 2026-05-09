@@ -148,6 +148,7 @@ import MenuBar, {
   DetachedFormattingToolbar,
   DetachedMenuToolbar,
   type MarginaliaType,
+  type ActionToolbarCallbacks,
 } from "./MenuBar";
 import { resolveDragPosition, type SnapGrid } from "./editor-layout/snap-grid";
 import { useDragGap } from "@/hooks/useDragGap";
@@ -453,10 +454,10 @@ export interface EditorPaneProps {
 
   /**
    * Initial TipTap JSON to seed the editor. When provided, takes
-   * precedence over `useDocument(docId)` — the Library Reader uses
+   * precedence over `useDocument().content` — the Library Reader uses
    * this because its parse path differs (it owns UUID assignment +
    * sidecar-aware `parseLatex` ahead of mount). Main-app callers omit
-   * it; EditorPane falls back to `useDocument(docId).content`.
+   * it; EditorPane falls back to `useDocument().content`.
    */
   initialContent?: JSONContent;
 
@@ -537,6 +538,15 @@ export interface EditorPaneProps {
   viewPrefs?: EditorPaneViewPrefs;
 
   /**
+   * Optional adornment rendered just inboard of the left `PaneRail`,
+   * directly outboard of the editor column. The Library Reader uses
+   * this slot to mount its `PageScrollStrip` (the page-mark navigator)
+   * so it sits flush against the editor pod's left side rather than
+   * at the far edge of the manila canvas.
+   */
+  leftGutterPrelude?: React.ReactNode;
+
+  /**
    * Bundle of MenuBar/toolbar shell state. Reader omits — its chrome
    * hides every affordance these fields drive (no menu bar edit items,
    * no formatting toolbar, no detached toolbars). Main app post-7.8
@@ -584,6 +594,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onToggleCodeView,
     placements,
     viewPrefs,
+    leftGutterPrelude,
     menuBar,
     aiWindowOpen = false,
     onAiWindowClose,
@@ -693,13 +704,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const recentlyAdded = useRecentlyAddedTracker();
 
   // ── Document load + compile state ─────────────────────────────────
-  // `useDocument` runs unconditionally so `beginDocPipeline` is pinned
-  // for this docId from first render (idempotent — coexists with the
-  // shell's own `beginDocPipeline` for the main app). Its `content` is
-  // used as the editor seed only when `initialContent` isn't supplied;
-  // the Reader supplies its own (UUID-tagged + sidecar-aware parse) so
-  // that path stays unchanged.
-  const docHook = useDocument(docId);
+  // `useDocument` reads its docId+pipeline from the surrounding
+  // `<DocPipeline>` ancestor (mandatory — it throws otherwise). The
+  // ancestor's `key={docId}` forces a full remount on doc switch, so
+  // every closure here closes over a single doc's worth of state. Its
+  // `content` is used as the editor seed only when `initialContent`
+  // isn't supplied; the Reader supplies its own (UUID-tagged +
+  // sidecar-aware parse) so that path stays unchanged.
+  const docHook = useDocument();
 
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `lastEditTime`
   // live here so they bubble up via `paneState` for the shell's Virgil
@@ -759,6 +771,36 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     getCitationDisplayText: citationsHook.getDisplayText,
     addCitation: citationsHook.addCitation,
   });
+
+  // Fill `displayText` on every citation node once `bibEntries` load,
+  // so chips render as "Author Year" instead of falling back to the
+  // raw `\cite{...}` command. Lives here (shared layer) so the Reader
+  // — which mounts EditorPane without EditorLayout — inherits it.
+  useEffect(() => {
+    if (!editor || citationsHook.bibEntries.length === 0) return;
+    const cits = innerRef.current?.getCitations() ?? [];
+    for (const c of cits) {
+      const display = citationsHook.getDisplayText(c.command);
+      if (display !== c.displayText) {
+        innerRef.current?.updateCitationDisplay(c.citationId, display);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [citationsHook.bibEntries, editor, citationsHook.getDisplayText]);
+
+  // Sync citation nodes from the editor into `citationsHook.citations`
+  // (the sidecar-backed CitationRef list the Citations / Bibliography
+  // panels read). Editor regenerates citation ids on each parse, so
+  // prev anchored ids never match — only entries flagged unanchored
+  // survive the merge (handled inside `syncFromEditor`). Runs once per
+  // editor mount; subsequent add / delete go through the imperative
+  // hooks and don't need a re-sync.
+  useEffect(() => {
+    if (!editor) return;
+    const editorCits = innerRef.current?.getCitations() ?? [];
+    citationsHook.syncFromEditor(editorCits);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
 
   // ── CardCreation auxiliary callbacks ─────────────────────────────
   // Footnotes live in the editor (not a sidecar), so the pristine flow
@@ -1651,6 +1693,26 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
     }
   }, [readSelection, cardCreation]);
+
+  const actionsBundle = useMemo<ActionToolbarCallbacks>(() => ({
+    onAddComment: handleToolbarAddComment,
+    onAddNote: handleToolbarAddNote,
+    onAddTodo: handleToolbarAddTodo,
+    onCutSelection: handleToolbarAddCut,
+    onArchive: handleToolbarArchive,
+    onCreateFootnote: handleToolbarCreateFootnote,
+    onInsertCitation: handleToolbarInsertCitation,
+    onQuoteSelection: handleToolbarQuoteSelection,
+  }), [
+    handleToolbarAddComment,
+    handleToolbarAddNote,
+    handleToolbarAddTodo,
+    handleToolbarAddCut,
+    handleToolbarArchive,
+    handleToolbarCreateFootnote,
+    handleToolbarInsertCitation,
+    handleToolbarQuoteSelection,
+  ]);
 
   // Editor-derived citations: BibliographyHost wants `keys` (parsed
   // from the LaTeX `\cite{a,b}` / `\cites{a}{b}` command) plus the
@@ -2728,6 +2790,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 setSearchHighlightRange={setSearchHighlightRange}
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
+                tail={leftGutterPrelude}
+                topOverlay={
+                  <MarginActionToolbar
+                    side="left"
+                    actions={actionsBundle}
+                    placements={effectivePlacements}
+                  />
+                }
               />
             )}
             {/* Column wrapper — sits between the two PaneRails. Holds the
@@ -2765,8 +2835,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // descendants drift after a few hundred px of scroll.
                 // `--row-bound-h` is set on the row scroll container
                 // by EditorScrollbar (= editor's scrollHeight); falls
-                // back to 100% before first measurement.
-                minHeight: 'var(--row-bound-h, 100%)',
+                // back to 100% before first measurement. The
+                // `max(…, 100%)` floor guarantees the pod (flex:1000
+                // inside this column) extends at least to the scroll
+                // port bottom even when the doc is shorter than the
+                // viewport, so a short document doesn't end before
+                // the sticky bottom cap and create a "double bottom
+                // edge" (pod's own border + cap).
+                minHeight: 'max(var(--row-bound-h, 100%), 100%)',
                 // In-editor text margins. Read by the prose class in
                 // Editor.tsx via pl-[var(--editor-pl,88px)] /
                 // pr-[var(--editor-pr,72px)]. Driven by persisted
@@ -2872,32 +2948,37 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 </div>
               </div>
             )}
-            {/* Sticky pod-top cap — paints the editor pod's top edge
-                (white surface, 1px border, rounded top corners) at
-                top:32 (just below the docked MenuBar's 32px band) so
-                the pod's top reads as pinned beneath the toolbar
-                regardless of scroll position. The wrapper bleeds
-                past the pod's lateral edges so the manilla bg fills
-                the column gutters; the inner div renders the white
-                rounded top with its own border + ambient shadow.
-                marginBottom: -8 negates the cap's flow space so the
-                pod below stays at its natural position. */}
-            {menuBar && (overrideEditor ?? editor) && (
+            {/* Sticky pod-top cap. Container is 16px tall (8 of
+                manilla band at top + 8 for the white cap-inner at
+                bottom) with marginBottom: -16 negating its flow
+                contribution. Mirror image of the bottom cap. The
+                manilla band above the inner cap is essential: it's
+                the canvas the inner cap's upward ambient shadow
+                renders into, and it masks the editor content
+                scrolling past in the top 8px of the viewport, so
+                only manilla is visible there. The cap container's
+                lateral bleed (calc(-4px - var(--pod-gap))) extends
+                the manilla into the column gutters too. Sticks at
+                top:32 below the docked MenuBar's 32px band when
+                present (main editor); top:0 otherwise (Reader, which
+                keeps the dock dormant). */}
+            {(overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
-                className="sticky z-30 shrink-0 pointer-events-none flex"
+                className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  top: 32,
-                  height: 8,
-                  marginBottom: -8,
+                  top: menuBar ? 32 : 0,
+                  height: 16,
+                  marginBottom: -16,
                   marginLeft: 'calc(-4px - var(--pod-gap))',
                   marginRight: 'calc(-4px - var(--pod-gap))',
                   background: 'var(--background)',
+                  justifyContent: 'flex-end',
                 }}
               >
                 <div
                   style={{
-                    flex: 1,
+                    height: 8,
                     marginLeft: 'calc(4px + var(--pod-gap))',
                     marginRight: 'calc(4px + var(--pod-gap))',
                     background: 'var(--pod-editor)',
@@ -2933,8 +3014,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               />
             )}
             {/* Top drag gap — 4px grab handle pinned just below the
-                sticky chrome above (docked MenuBar 32 + pod cap 8 = 40
-                in main editor; 0 in Reader). z-31 puts it above the
+                sticky chrome above (docked MenuBar 32 + pod cap 16 = 48
+                in main editor; 16 in Reader). z-31 puts it above the
                 pod (z-auto) so it remains hit-testable. marginBottom:
                 -4 negates flow space so the pod stays at its natural
                 position. */}
@@ -2946,7 +3027,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 style={{
                   position: 'sticky',
                   height: 4,
-                  top: menuBar ? 40 : 0,
+                  top: menuBar ? 48 : 16,
                   zIndex: 31,
                   marginBottom: -4,
                 }}
@@ -3102,31 +3183,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     </>
                   );
                 })()}
-                {/* Action toolbar — chrome-filtered. The Reader's
-                 *  `actionToolbarKinds: ["note"]` whitelist activates
-                 *  the existing chrome-aware filter inside
-                 *  `MarginActionToolbar` so only the Note button
-                 *  surfaces. The toolbar mounts at the top of the
-                 *  editor pod when `chrome.showActionToolbar` is true
-                 *  AND at least one action is allowed. */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    padding: "4px 8px 0",
-                    minHeight: 32,
-                  }}
-                >
-                  <MarginActionToolbar
-                    side="right"
-                    actions={{
-                      onAddNote: (rect) => {
-                        cardCreation.createNote({ anchorRect: rect });
-                      },
-                    }}
-                    placements={effectivePlacements}
-                  />
-                </div>
                 {(initialContent ?? docHook.content) != null && (
                   <VirgilEditor
                     ref={innerRef}
@@ -3249,7 +3305,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 style={{
                   position: 'sticky',
                   height: 4,
-                  bottom: menuBar ? 'calc(8px + var(--pod-gap))' : 0,
+                  bottom: menuBar ? 16 : 0,
                   zIndex: 31,
                   marginTop: -4,
                 }}
@@ -3267,44 +3323,54 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 }}
               />
             )}
-            {/* Sticky pod-bottom cap — mirror of the top cap. Pinned
-                at the very bottom of the scroll container so editor
-                content scrolling past the cap's white edge can't
-                bleed into the column's bottom padding. The inner row
-                holds the 8px white pod-bottom (rounded BOTTOM corners
-                + bottom/left/right borders) sitting above a small
-                manilla band. marginTop negates total flow space so
-                the page-wrapper isn't pushed up. */}
-            {menuBar && (overrideEditor ?? editor) && (
+            {/* 8px breathing spacer between the gutter and the cap.
+                Grows the column's flow by 8 so the cap container's
+                natural-position bottom lands 8 below the pod, which
+                puts the cap-inner (sitting at the top of the 16px
+                cap container) flush with the pod's natural bottom
+                edge — no doubling. Combined with the cap's full-width
+                manilla bg, gives a consistent 8px manilla band
+                between the pod and the window bottom. Caps-mode
+                only. */}
+            {(overrideEditor ?? editor) && (
+              <div className="shrink-0" style={{ height: 8 }} />
+            )}
+            {/* Sticky pod-bottom cap. Container is 16px tall (8 for
+                the white cap-inner at top + 8 of manilla band below)
+                with marginTop: -16 negating its flow contribution.
+                The manilla band is essential: it masks the editor
+                content scrolling past in the bottom 8px of the
+                viewport, so only manilla is visible there. The cap
+                container's lateral bleed (calc(-4px - var(--pod-gap)))
+                extends the manilla into the column gutters too. */}
+            {(overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap-bottom
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
                   bottom: 0,
-                  height: 'calc(8px + var(--pod-gap))',
-                  marginTop: 'calc(-8px - var(--pod-gap))',
+                  height: 16,
+                  marginTop: -16,
                   marginLeft: 'calc(-4px - var(--pod-gap))',
                   marginRight: 'calc(-4px - var(--pod-gap))',
                   background: 'var(--background)',
                 }}
               >
-                <div className="flex" style={{ flex: '0 0 8px' }}>
-                  <div
-                    style={{
-                      flex: 1,
-                      marginLeft: 'calc(4px + var(--pod-gap))',
-                      marginRight: 'calc(4px + var(--pod-gap))',
-                      background: 'var(--pod-editor)',
-                      borderBottom: 'var(--pod-border)',
-                      borderLeft: 'var(--pod-border)',
-                      borderRight: 'var(--pod-border)',
-                      borderBottomLeftRadius: 'var(--pod-radius)',
-                      borderBottomRightRadius: 'var(--pod-radius)',
-                      boxShadow: 'var(--pod-shadow)',
-                      clipPath: 'inset(0 0 -20px 0)',
-                    }}
-                  />
-                </div>
+                <div
+                  style={{
+                    height: 8,
+                    marginLeft: 'calc(4px + var(--pod-gap))',
+                    marginRight: 'calc(4px + var(--pod-gap))',
+                    background: 'var(--pod-editor)',
+                    borderBottom: 'var(--pod-border)',
+                    borderLeft: 'var(--pod-border)',
+                    borderRight: 'var(--pod-border)',
+                    borderBottomLeftRadius: 'var(--pod-radius)',
+                    borderBottomRightRadius: 'var(--pod-radius)',
+                    boxShadow: 'var(--pod-shadow)',
+                    clipPath: 'inset(0 0 -20px 0)',
+                  }}
+                />
               </div>
             )}
             </div>
@@ -3386,6 +3452,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 setSearchHighlightRange={setSearchHighlightRange}
                 openItemInPanel={openItemInPanel}
                 wordCountHook={wordCountHook}
+                topOverlay={
+                  <MarginActionToolbar
+                    side="right"
+                    actions={actionsBundle}
+                    placements={effectivePlacements}
+                  />
+                }
               />
             )}
           </div>
@@ -3397,7 +3470,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               wrapper both designate the scroll container; the
               `rowScrollRef` resolves to whichever is closest. */}
           {viewPrefs && (
-            <EditorScrollbar rowRef={rowScrollRef} editorColRef={editorColRef} />
+            <EditorScrollbar
+              rowRef={rowScrollRef}
+              editorColRef={editorColRef}
+              outset={-10}
+            />
           )}
         </CollabProvider>
         </SelectionsProvider>
@@ -3504,6 +3581,15 @@ interface PaneRailProps {
   // Step 7.5 sub-pass 2 — opt-in canonical PanelColumn / FloatingPanel
   // / OmniHost / OutlineHost surface. Reader omits.
   viewPrefs?: EditorPaneViewPrefs;
+  /** Optional adornment rendered inside the panel column's inner row,
+   *  adjacent to the drag-gap on the editor-facing side. Reader passes
+   *  its `PageScrollStrip` here so the drag-gap line lands just inboard
+   *  of the page-mark navigator. */
+  tail?: React.ReactNode;
+  /** Sticky overlay rendered at the top of the panel column — the
+   *  per-side `MarginActionToolbar`. Forwarded as `topOverlay` to
+   *  `PanelColumn`. */
+  topOverlay?: React.ReactNode;
 }
 
 /**
@@ -3695,6 +3781,8 @@ function PaneRail({
   openItemInPanel,
   wordCountHook,
   viewPrefs,
+  tail,
+  topOverlay,
 }: PaneRailProps) {
   const isLeft = side === "left";
 
@@ -3850,6 +3938,8 @@ function PaneRail({
         split
         focusedHalf={focusedHalf}
         onFocusHalf={onFocusHalf}
+        tail={tail}
+        topOverlay={topOverlay}
       >
         {{
           top: omniSlot,
@@ -3868,6 +3958,8 @@ function PaneRail({
         onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
         topPanelId="omni"
         dockOccupancy={dockOccupancy}
+        tail={tail}
+        topOverlay={topOverlay}
       >
         {omniSlot}
       </PanelColumn>

@@ -11,12 +11,8 @@ import { type MarginaliaType, type DividerLevel, type DividerWidth } from "./Men
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
-import {
-  beginDocPipeline,
-  endDocPipeline,
-} from "@/lib/multi-window/doc-pipeline";
+import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
-import { useDocument } from "@/hooks/useDocument";
 import { useCollab, CollabProvider } from "@/hooks/useCollab";
 import CollabStatusPill from "./CollabStatusPill";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
@@ -776,20 +772,14 @@ export default function EditorLayout() {
   const docIdForHooks: string | null =
     docPermState === "granted" ? currentDocId : null;
 
-  // Open the per-doc write pipeline for the active doc and close it on
-  // switch / unmount. Storage writers (writeDocBundle, writeSidecar,
-  // writeBib, writeTex, writePdf) check that their handle's pipelineId
-  // is still the registered pipelineId for the docId — if not, they
-  // throw StalePipelineError and the write is dropped. This is what
-  // mathematically prevents a stale debounced autosave from ever
-  // writing one doc's content into another doc's files.
-  useEffect(() => {
-    if (!docIdForHooks) return;
-    const handle = beginDocPipeline(docIdForHooks);
-    return () => endDocPipeline(handle);
-  }, [docIdForHooks]);
-
-  const { content, loading: docLoading, onUpdate, saveStatus, refetch: refetchDoc } = useDocument(docIdForHooks);
+  // Per-doc write pipeline lifecycle is now owned by the `<DocPipeline
+  // key={currentDocId}>` boundary that wraps the EditorPane mount below
+  // (search this file for "<DocPipeline"). That boundary's `key=` is
+  // the architectural wall against the cross-doc autosave bug — every
+  // doc switch fully remounts EditorPane, useDocument, and TipTap, so
+  // no stale closure or editor state can carry the prior doc's content
+  // into the next doc's save.
+  //
   // Mismatch prompt: fired by the compile hook when the source's
   // `\documentclass` doesn't define one of the sectioning commands used
   // (e.g. `\chapter` inside `article`). Mount `docClassDialog` near the
@@ -929,7 +919,6 @@ export default function EditorLayout() {
     setBibPackage,
     addBibEntry,
     getDisplayText: getCitationDisplayText,
-    syncFromEditor: syncCitationsFromEditor,
   } = useCitations(docIdForHooks, citationPristine);
 
   const collab = useCollab(docIdForHooks);
@@ -2209,31 +2198,6 @@ export default function EditorLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [latestDoc, editorInstance]);
 
-  // Update citation display text when bib entries or style changes
-  useEffect(() => {
-    if (!editorInstance || bibEntries.length === 0) return;
-    const cits = editorRef.current?.getCitations() ?? [];
-    for (const c of cits) {
-      const display = getCitationDisplayText(c.command);
-      if (display !== c.displayText) {
-        editorRef.current?.updateCitationDisplay(c.citationId, display);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bibEntries, editorInstance, getCitationDisplayText]);
-
-  // Sync citation nodes from editor into citations state on load.
-  // Editor is source of truth (IDs are regenerated each parse), so we
-  // always run sync — even when there are zero editor citations — so
-  // stale anchored ids from a previous session get dropped (only
-  // explicitly-unanchored entries survive the merge).
-  useEffect(() => {
-    if (!editorInstance) return;
-    const editorCits = editorRef.current?.getCitations() ?? [];
-    syncCitationsFromEditor(editorCits);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editorInstance]);
-
   // Highlight citation nodes in editor when a bib key is selected in Bibliography panel
   useEffect(() => {
     if (!selectedBibKey) return;
@@ -2589,12 +2553,13 @@ export default function EditorLayout() {
   }, [editorSplit, mirrorViewGen, editorInstance]);
 
   // Derive footnotes list from editor state (sorted by document position).
-  // Depends on `content` as well so the list populates on initial hydration,
-  // not only after the first user edit (which is what drives `latestDoc`).
+  // Recomputes on `editorInstance` change (initial mount + doc-switch
+  // remount via the DocPipeline boundary) and on `latestDoc` (debounced
+  // post-edit), which together cover hydration and ongoing edits.
   const footnotes = useMemo(() => {
     return editorRef.current?.getFootnotes() ?? [];
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [latestDoc, content, editorInstance]);
+  }, [latestDoc, editorInstance]);
 
   // Snippets sorted: anchored first (by paragraph position in doc), orphaned after
   const sortedArchiveSnippets = useMemo(() => {
@@ -2714,12 +2679,11 @@ export default function EditorLayout() {
     mirrorViewRef,
     editorSplit,
     activeSplitPane,
-    onUpdate,
     setLatestDoc,
   });
 
   // ── Focus mode helpers ─────────────────────────────────────────────
-  const docForOutline = latestDoc || content;
+  const docForOutline = latestDoc;
   const outlineHeadings = useMemo(() => extractHeadings(docForOutline).headings, [docForOutline]);
   const outlineTotalBlocks = useMemo(() => docForOutline?.content?.length ?? 0, [docForOutline]);
   const availableDividerLevels = useMemo(() => {
@@ -3548,7 +3512,6 @@ export default function EditorLayout() {
   } = useFileActions({
     openExistingFile,
     setDocPermState,
-    refetchDoc,
   });
 
   // Spawn a fresh Virgil window. The new window boots with no
@@ -3605,12 +3568,14 @@ export default function EditorLayout() {
     const paraId = editorRef.current?.getActiveParagraphId() ?? null;
     setCodeViewParagraphId(paraId);
 
-    // Fallback: compute line number from text matching
+    // Fallback: compute line number from text matching against the
+    // live editor doc (the same JSON the code editor will reserialize
+    // from disk; close enough for a line lookup).
     let line: number | undefined;
-    if (!paraId) {
+    if (!paraId && latestDoc) {
       try {
         const editor = editorRef.current?.getEditor();
-        if (editor && content) {
+        if (editor) {
           const scrollEl = findEditorScrollFor(editor.view.dom);
           const topPos = editor.view.posAtCoords({
             left: editor.view.dom.getBoundingClientRect().left + 50,
@@ -3622,7 +3587,7 @@ export default function EditorLayout() {
           const snippet = editor.state.doc.textBetween(start, end, " ").trim();
           const words = snippet.split(/\s+/).filter((w) => w.length > 3);
           if (words.length >= 2) {
-            const latex = serializeToLatex(content);
+            const latex = serializeToLatex(latestDoc);
             for (let len = Math.min(words.length, 6); len >= 2; len--) {
               const phrase = words.slice(0, len).join(".*?");
               const re = new RegExp(phrase, "s");
@@ -3640,7 +3605,7 @@ export default function EditorLayout() {
     setEditorInstance(null);
     setPdfView(false);
     setCodeView(true);
-  }, [content]);
+  }, [latestDoc]);
 
   const switchToVisualView = useCallback(() => {
     // Capture text around visible area before destroying code editor
@@ -3657,10 +3622,13 @@ export default function EditorLayout() {
       }
     }
     codeEditorHandleRef.current = null;
+    // No explicit refetch needed: setCodeView(false) re-enters the
+    // visual branch, EditorPane (and its `<DocPipeline>` boundary)
+    // remount, and useDocument's load effect reads the latest .tex
+    // from disk on remount.
     setCodeView(false);
     setPdfView(false);
-    refetchDoc();
-  }, [refetchDoc]);
+  }, []);
 
   const switchToPdfView = useCallback(async () => {
     if (latestPdfBytes.current) {
@@ -5275,6 +5243,11 @@ export default function EditorLayout() {
             currentDocId={currentDocId}
             currentDoc={currentDoc}
             focusDoc={focusDoc}
+            docs={docs}
+            onOpenRecent={openFile}
+            onOpenFolder={handleNativeOpen}
+            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
+            devStorage={devStorage}
           />
         </div>
       ) : activePane === "library-outer" && currentLibraryOuterId ? (
@@ -5403,28 +5376,37 @@ export default function EditorLayout() {
         </div>
       ) : currentDocId ? (
         <div data-virgil-row-scroll className="flex flex-1 min-h-0 overflow-x-auto overflow-y-auto">
-          <EditorPane
-            ref={editorRef}
-            docId={currentDocId}
-            editable={collab.canEditMainText}
-            chrome={FULL_CHROME}
-            onUpdate={handleUpdate}
-            onEditorReady={setEditorInstance}
-            onActivate={handleEditorPaneActivate}
-            onPaneStateChange={setPaneState}
-            pdfView={pdfView}
-            onTogglePdfView={togglePdfView}
-            codeView={codeView}
-            onToggleCodeView={toggleCodeView}
-            placements={prefs.placements}
-            viewPrefs={editorPaneViewPrefs}
-            menuBar={editorPaneMenuBar}
-            aiWindowOpen={aiWindowOpen}
-            onAiWindowClose={() => setAiWindowOpen(false)}
-            highlightText={highlightText}
-            highlightRange={effectiveHighlightRange}
-            onDocumentClassMismatch={promptDocClassMismatch}
-          />
+          {/* `<DocPipeline key={currentDocId}>` is the architectural
+              wall against the cross-doc autosave bug: every doc switch
+              fully unmounts EditorPane, useDocument, and TipTap, so no
+              stale closure / editor state can carry the prior doc's
+              content into the next doc's save. The boundary also opens
+              the per-doc write pipeline used by writeDocBundle's
+              assertActive check. */}
+          <DocPipeline key={currentDocId} docId={currentDocId}>
+            <EditorPane
+              ref={editorRef}
+              docId={currentDocId}
+              editable={collab.canEditMainText}
+              chrome={FULL_CHROME}
+              onUpdate={handleUpdate}
+              onEditorReady={setEditorInstance}
+              onActivate={handleEditorPaneActivate}
+              onPaneStateChange={setPaneState}
+              pdfView={pdfView}
+              onTogglePdfView={togglePdfView}
+              codeView={codeView}
+              onToggleCodeView={toggleCodeView}
+              placements={prefs.placements}
+              viewPrefs={editorPaneViewPrefs}
+              menuBar={editorPaneMenuBar}
+              aiWindowOpen={aiWindowOpen}
+              onAiWindowClose={() => setAiWindowOpen(false)}
+              highlightText={highlightText}
+              highlightRange={effectiveHighlightRange}
+              onDocumentClassMismatch={promptDocClassMismatch}
+            />
+          </DocPipeline>
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center bg-[var(--background)]">
