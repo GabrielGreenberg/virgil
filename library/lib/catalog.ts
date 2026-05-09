@@ -1,6 +1,6 @@
-// catalog.json types and reader. The skill-side rebuilds this file after
-// every run; the frontend never writes it (drag-drop only writes to
-// pdfs/unsorted/ and queue/).
+// .virgil/catalog.json types and reader. The skill-side rebuilds this file
+// after every run; the frontend never writes it (drag-drop only writes to
+// unsorted/ and .virgil/queue/).
 
 import { readJsonFile, ROOT_FILES, readTextFile } from "./library-storage";
 
@@ -23,7 +23,7 @@ export type BibAuthState =
   | "manuscript"
   | "failed";
 
-export type SourceFormat = "pdf" | "docx";
+export type SourceFormat = "pdf" | "docx" | "tex";
 
 export interface PdfStatus {
   present: boolean;
@@ -34,15 +34,15 @@ export interface PdfStatus {
   // .docx support shipped won't have this field).
   format?: SourceFormat;
   // Lower-priority same-citekey source files kept on disk as archives.
-  // Filenames only (relative to pdfs/). e.g., when a .docx supersedes a
-  // .pdf, alternates = ["<citekey>.pdf"].
+  // Filenames only (relative to papers/<citekey>/). e.g., when a .docx
+  // supersedes a .pdf, alternates = ["<citekey>.pdf"].
   alternates?: string[];
 }
 
 export interface IndexedStatus {
   state: IndexedState;
   lastIndexedAt?: string;
-  extractor?: "marker" | "pymupdf" | "docx-native" | "docling" | "pdftotext-fallback";
+  extractor?: "marker" | "pymupdf" | "docx-native" | "docling" | "pdftotext-fallback" | "tex-passthrough";
   pgmarkCount?: number;
   // Where this document prints its page numbers — determined during
   // pgmark detection. Tells downstream tools which margin band to trust
@@ -52,6 +52,12 @@ export interface IndexedStatus {
   //   "mixed"   — front matter and body use different bands
   //   "unknown" — no clean signal (DOCX sources, scanned PDFs, etc.)
   pgmarkPosition?: "header" | "footer" | "mixed" | "unknown";
+  // Filename of the source the pgmarks were derived from. Set when
+  // pgmarks came from a PDF alternate via fusion (see /library/fuse-alternate
+  // and the auto-step inside index_paper.py). Absent on rows from before
+  // fusion shipped: pgmarks (if any) came from the primary source named in
+  // pdf.filename.
+  pgmarkSource?: string;
   footnoteCount?: number;
   warnings?: string[];
 }

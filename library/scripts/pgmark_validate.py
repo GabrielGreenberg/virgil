@@ -193,6 +193,189 @@ def _detect_unclosed_cmd_arg(prefix: str) -> str | None:
     return None
 
 
+# ── Multi-line scope walker (for fusion / pgmark injection) ─────────────
+#
+# The original _scan_scope below is a per-line walker whose
+# _detect_unclosed_cmd_arg query only inspects the same-line prefix —
+# correct for the validator's purpose (every pgmark we've ever emitted
+# was on its own line) but blind to multi-line `\\footnote{... \\n ...}`
+# braces. The injection step in fuse_alternate.py needs a stricter
+# check: "if I splice a fresh line in here, will it land at body scope
+# considering everything above it?"
+#
+# ScopeWalker walks the whole document once, snapshotting state at the
+# start of every line. is_body_scope_at_line(N) answers the injection
+# query without re-scanning. _scan_scope is left untouched so the
+# validate() contract stays byte-identical for every existing caller.
+
+
+@dataclass
+class ScopeState:
+    in_preamble: bool = True
+    math_depth: int = 0
+    env_stack: list[str] = field(default_factory=list)
+    # Cross-line command-argument stack. Each entry is the cmd name (or
+    # None for an anonymous brace group). Tracks unclosed `\\<cmd>{` that
+    # span multiple lines.
+    cmd_arg_stack: list[str | None] = field(default_factory=list)
+
+    def is_body_scope(self) -> bool:
+        if self.in_preamble:
+            return False
+        if self.math_depth > 0:
+            return False
+        for cmd in self.cmd_arg_stack:
+            if cmd and cmd not in SAFE_OUTER_CMDS:
+                return False
+        return True
+
+    def clone(self) -> "ScopeState":
+        return ScopeState(
+            in_preamble=self.in_preamble,
+            math_depth=self.math_depth,
+            env_stack=list(self.env_stack),
+            cmd_arg_stack=list(self.cmd_arg_stack),
+        )
+
+
+def _cmd_name_before(line: str, brace_pos: int) -> str | None:
+    """If `{` at line[brace_pos] follows `\\<cmd>` (possibly past `[opt]`),
+    return cmd. Else None. Mirrors _detect_unclosed_cmd_arg's heuristic."""
+    j = brace_pos - 1
+    if j >= 0 and line[j] == "]":
+        k = j - 1
+        while k >= 0 and line[k] != "[":
+            k -= 1
+        if k >= 0:
+            j = k - 1
+    if j >= 0 and (line[j].isalpha() or line[j] == "*"):
+        end = j + 1
+        while j >= 0 and (line[j].isalpha() or line[j] == "*"):
+            j -= 1
+        if j >= 0 and line[j] == "\\":
+            return line[j + 1:end]
+    return None
+
+
+class ScopeWalker:
+    """Walks a LaTeX document and snapshots ScopeState at the start of every
+    line. Use is_body_scope_at_line(N) to decide whether splicing a fresh
+    `\\pgmark{N}` line in front of line N would land at body scope.
+
+    Inline math `$...$` is intentionally NOT tracked across lines (it
+    can't span lines in well-formed LaTeX, and the line-resetting logic
+    in _scan_scope reflects that). Display math `\\[...\\]`, math envs,
+    and command-arg braces ARE tracked across lines.
+
+    Line numbers are 1-indexed, matching LaTeX / editor convention.
+    """
+
+    def __init__(self, tex: str) -> None:
+        self._lines = tex.split("\n")
+        self._state_before: list[ScopeState] = []
+        self._compute()
+
+    def _compute(self) -> None:
+        st = ScopeState()
+        for raw in self._lines:
+            self._state_before.append(st.clone())
+            line = _strip_comments(raw)
+
+            if st.in_preamble and (
+                "\\begin{document}" in line or "\\maketitle" in line
+            ):
+                st.in_preamble = False
+
+            # Walk the line with two parallel iterators:
+            #   • brace events (chars `{` / `}` respecting `\\{` / `\\}`)
+            #   • environment / display-math events (regex-based)
+            # We compute the env events upfront and step them in
+            # position order alongside the char walk so brace and env
+            # state stay consistent.
+            events: list[tuple[int, str, str]] = []
+            for m in DISP_OPEN_RE.finditer(line):
+                events.append((m.start(), "disp_open", ""))
+            for m in DISP_CLOSE_RE.finditer(line):
+                events.append((m.start(), "disp_close", ""))
+            for m in BEGIN_RE.finditer(line):
+                events.append((m.start(), "begin", m.group(1)))
+            for m in END_RE.finditer(line):
+                events.append((m.start(), "end", m.group(1)))
+            events.sort()
+
+            ev_idx = 0
+            i = 0
+            n = len(line)
+            while i < n:
+                while ev_idx < len(events) and events[ev_idx][0] == i:
+                    _, kind, payload = events[ev_idx]
+                    if kind == "disp_open":
+                        st.math_depth += 1
+                    elif kind == "disp_close":
+                        st.math_depth = max(0, st.math_depth - 1)
+                    elif kind == "begin":
+                        st.env_stack.append(payload)
+                        if payload in MATH_BEGIN_ENVS:
+                            st.math_depth += 1
+                    elif kind == "end":
+                        if st.env_stack and st.env_stack[-1] == payload:
+                            st.env_stack.pop()
+                        if payload in MATH_BEGIN_ENVS:
+                            st.math_depth = max(0, st.math_depth - 1)
+                    ev_idx += 1
+                c = line[i]
+                if c == "\\" and i + 1 < n:
+                    i += 2
+                    continue
+                if c == "{":
+                    st.cmd_arg_stack.append(_cmd_name_before(line, i))
+                    i += 1
+                    continue
+                if c == "}":
+                    if st.cmd_arg_stack:
+                        st.cmd_arg_stack.pop()
+                    i += 1
+                    continue
+                i += 1
+            # Drain trailing events past end-of-line (defensive — regex
+            # event positions should always be ≤ n).
+            while ev_idx < len(events):
+                _, kind, payload = events[ev_idx]
+                if kind == "disp_open":
+                    st.math_depth += 1
+                elif kind == "disp_close":
+                    st.math_depth = max(0, st.math_depth - 1)
+                elif kind == "begin":
+                    st.env_stack.append(payload)
+                    if payload in MATH_BEGIN_ENVS:
+                        st.math_depth += 1
+                elif kind == "end":
+                    if st.env_stack and st.env_stack[-1] == payload:
+                        st.env_stack.pop()
+                    if payload in MATH_BEGIN_ENVS:
+                        st.math_depth = max(0, st.math_depth - 1)
+                ev_idx += 1
+
+    def state_at_line(self, line_no: int) -> ScopeState:
+        """State at the START of `line_no` (1-indexed)."""
+        idx = max(0, line_no - 1)
+        if idx >= len(self._state_before):
+            return (
+                self._state_before[-1] if self._state_before else ScopeState()
+            )
+        return self._state_before[idx]
+
+    def is_body_scope_at_line(self, line_no: int) -> bool:
+        return self.state_at_line(line_no).is_body_scope()
+
+
+def is_body_scope_at_line(tex: str, line_no: int) -> bool:
+    """One-shot helper: True iff splicing a fresh line at `line_no`
+    (1-indexed) would land at body scope. For many queries on the same
+    `tex`, instantiate ScopeWalker(tex) once and call its method instead."""
+    return ScopeWalker(tex).is_body_scope_at_line(line_no)
+
+
 def _scan_scope(tex: str) -> list[ScopeViolation]:
     """Find all \\pgmark{} occurrences in disallowed scopes."""
     violations: list[ScopeViolation] = []
@@ -390,7 +573,7 @@ def main() -> int:
         try:
             citekey = tex_path.parent.name
             library = tex_path.parent.parent.parent
-            baseline = _baseline_kinds_from_catalog(library / "catalog.json", citekey)
+            baseline = _baseline_kinds_from_catalog(library / ".virgil" / "catalog.json", citekey)
         except Exception:
             baseline = None
 

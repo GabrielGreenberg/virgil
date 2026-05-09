@@ -3,7 +3,8 @@
 Usage:
   python index_paper.py <citekey> [--library ~/Virgil-Library]
 
-Reads `pdfs/<citekey>.pdf` or `pdfs/<citekey>.docx`, runs the pipeline, writes:
+Reads `papers/<citekey>/<citekey>.pdf` or `papers/<citekey>/<citekey>.docx`,
+runs the pipeline, writes:
   papers/<citekey>/main.tex
   papers/<citekey>/references.bib   (single-entry mirror of master.bib row)
   papers/<citekey>/virgil/{virgil,notes,footnotes}.json   (initialized empty)
@@ -32,6 +33,7 @@ import traceback
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 # Make sibling scripts importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -43,6 +45,7 @@ from extract import extract_to_json, _ocr_if_needed
 import extract_docx
 from tex_emit import emit
 from bib_auth import authenticate, assert_title_clean
+from fuse_alternate import fuse_pgmarks_into, FuseResult
 
 
 # Source-format priority. When more than one source file exists for a
@@ -51,25 +54,23 @@ from bib_auth import authenticate, assert_title_clean
 # (paragraph styles, headings, tables) that the PDF pipeline has to
 # reverse-engineer with heuristics, so a Word source produces cleaner
 # output and supersedes the PDF.
-FORMAT_PRIORITY = ("docx", "pdf")
+FORMAT_PRIORITY = ("tex", "docx", "pdf")
 SUPPORTED_EXTS = FORMAT_PRIORITY
 
 
 def _resolve_source(library: Path, citekey: str) -> tuple[Path, str]:
     """Find the source file for `citekey` and return (path, ext).
 
-    Scans `pdfs/<citekey>.<ext>` in FORMAT_PRIORITY order; first hit wins.
-    Lower-priority sources for the same citekey are left on disk as
-    archives but are not used for indexing.
-
-    The `pdfs/` directory keeps its name for backward compat — see CLAUDE.md.
+    Scans `papers/<citekey>/<citekey>.<ext>` in FORMAT_PRIORITY order; first
+    hit wins. Lower-priority sources for the same citekey are left on disk
+    as archives but are not used for indexing.
     """
     for ext in FORMAT_PRIORITY:
-        p = library / "pdfs" / f"{citekey}.{ext}"
+        p = library / "papers" / citekey / f"{citekey}.{ext}"
         if p.exists():
             return p, ext
     raise FileNotFoundError(
-        f"No source for {citekey} at pdfs/{citekey}.{{{','.join(FORMAT_PRIORITY)}}}"
+        f"No source for {citekey} at papers/{citekey}/{citekey}.{{{','.join(FORMAT_PRIORITY)}}}"
     )
 
 
@@ -81,7 +82,7 @@ def _alternate_sources(library: Path, citekey: str, primary_ext: str) -> list[st
     for ext in FORMAT_PRIORITY:
         if ext == primary_ext:
             continue
-        p = library / "pdfs" / f"{citekey}.{ext}"
+        p = library / "papers" / citekey / f"{citekey}.{ext}"
         if p.exists():
             alts.append(p.name)
     return alts
@@ -292,7 +293,7 @@ def _sync_catalog_entry_from_master(library: Path, citekey: str,
 
 
 def _append_notification(library: Path, item: dict) -> None:
-    inbox_path = library / "notifications" / "inbox.json"
+    inbox_path = library / ".virgil" / "notifications" / "inbox.json"
     inbox = {"items": []}
     if inbox_path.exists():
         try:
@@ -307,7 +308,7 @@ def _append_notification(library: Path, item: dict) -> None:
 
 
 def _bump_catalog_version(library: Path) -> None:
-    p = library / "catalog-version.txt"
+    p = library / ".virgil" / "catalog-version.txt"
     cur = 0
     if p.exists():
         try:
@@ -318,7 +319,7 @@ def _bump_catalog_version(library: Path) -> None:
 
 
 def _read_catalog(library: Path) -> dict:
-    p = library / "catalog.json"
+    p = library / ".virgil" / "catalog.json"
     if p.exists():
         try:
             return json.loads(p.read_text())
@@ -329,7 +330,7 @@ def _read_catalog(library: Path) -> dict:
 
 def _write_catalog(library: Path, catalog: dict) -> None:
     catalog["generatedAt"] = _now()
-    (library / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")
+    (library / ".virgil" / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")
 
 
 def _upsert_entry(catalog: dict, citekey: str, **fields) -> dict:
@@ -377,8 +378,49 @@ def _page_count(pdf: Path) -> int:
 # ── Main pipeline ───────────────────────────────────────────────────────
 
 
+def _fuse_pgmark_from_alternate(
+    citekey: str,
+    library: Path,
+    primary_format: str,
+    alternates: list[str],
+    *,
+    log_fn,
+) -> Optional["FuseResult"]:
+    """Step 5c (auto-fusion). Run after primary extraction (DOCX/TEX)
+    and main.tex emit, BEFORE the catalog write, so fusion results
+    propagate into indexed.pgmarkCount / pgmarkSource. Returns None when
+    not applicable; returns a FuseResult when the fuser ran (success or
+    fail). Caller inspects .success."""
+    if primary_format not in ("docx", "tex"):
+        return None
+    pdf_alts = [a for a in alternates if a.lower().endswith(".pdf")]
+    if not pdf_alts:
+        return None
+    if len(pdf_alts) > 1:
+        # Pick the largest by page count.
+        pdf_alts.sort(
+            key=lambda f: _page_count(library / "papers" / citekey / f),
+            reverse=True,
+        )
+    pdf_path = library / "papers" / citekey / pdf_alts[0]
+    main_tex_path = library / "papers" / citekey / "main.tex"
+    log_fn(f"Step 5c: fuse pgmarks from PDF alternate {pdf_path.name}")
+    result = fuse_pgmarks_into(main_tex_path, pdf_path, log_fn=log_fn)
+    if result.success and result.pgmarks_inserted > 0:
+        log_fn(
+            f"  Fused {result.pgmarks_inserted} pgmarks "
+            f"(aligned {result.aligned_count}/{result.page_count} pages)"
+        )
+    elif result.success and result.aborted_reason == "already-fused":
+        log_fn("  Fusion no-op (already fused)")
+    else:
+        log_fn(f"  Fusion aborted: {result.aborted_reason}")
+    return result
+
+
 def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
-                authenticate_bib: bool = True) -> dict:
+                authenticate_bib: bool = True,
+                fuse_pgmarks: bool = True) -> dict:
     log_lines: list[str] = []
 
     def log(msg: str) -> None:
@@ -409,7 +451,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     if source_ext == "pdf":
         # 1. Classify scanned vs digital, OCR if needed.
         log("Step 1: classify scanned vs digital")
-        backup_dir = library / "pdfs" / ".originals"
+        backup_dir = library / "papers" / citekey / ".originals"
         if tools.ocrmypdf:
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / f"{citekey}.pdf"
@@ -429,6 +471,12 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         # 3. Extract structural blocks (uses layout for asymmetric stripping).
         log(f"Step 3: structural extraction (prefer={prefer_extractor})")
         extracted = extract_to_json(str(source_path), page_map, layout=layout_position)
+    elif source_ext == "tex":
+        # TeX source: it's already LaTeX. The "extraction" is a passthrough
+        # copy at step 5 below — no structural extractor runs and the
+        # extractor field on the catalog row is set to "tex-passthrough".
+        log("Step 1-3: skipped (.tex source — passthrough indexing)")
+        extracted = {"extractor": "tex-passthrough", "blocks": []}
     else:
         # DOCX path: paragraph styles already carry structure, so OCR and
         # printed-page detection are skipped. There are no printed-page
@@ -452,26 +500,57 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     log(f"  title={title!r}, authors={authors[:60]!r}, year={year!r}")
 
     # 5. Emit main.tex.
-    log("Step 5: emit main.tex")
-    tex = emit(
-        extracted["blocks"],
-        title=title,
-        authors=authors,
-        year=year,
-        page_map=page_map,
-    )
     paper_dir = library / "papers" / citekey
     paper_dir.mkdir(parents=True, exist_ok=True)
-    (paper_dir / "main.tex").write_text(tex)
-
-    # 5b. Validate pgmark placement & continuity (non-gating).
-    log("Step 5b: validate pgmark placement & continuity")
-    pgmark_report = pgmark_validate(tex)
-    pgmark_warnings: list[str] = pgmark_report.to_warnings()
-    if pgmark_warnings:
-        log(f"  pgmark validation: {pgmark_report.summary_line()}")
+    pgmark_warnings: list[str] = []
+    pgmark_report = None
+    if source_ext == "tex":
+        log("Step 5: copy .tex source as main.tex (passthrough)")
+        shutil.copyfile(source_path, paper_dir / "main.tex")
+        tex = (paper_dir / "main.tex").read_text(errors="replace")
     else:
-        log("  pgmark validation: clean")
+        log("Step 5: emit main.tex")
+        tex = emit(
+            extracted["blocks"],
+            title=title,
+            authors=authors,
+            year=year,
+            page_map=page_map,
+        )
+        (paper_dir / "main.tex").write_text(tex)
+
+        # 5b. Validate pgmark placement & continuity (non-gating).
+        log("Step 5b: validate pgmark placement & continuity")
+        pgmark_report = pgmark_validate(tex)
+        pgmark_warnings = pgmark_report.to_warnings()
+        if pgmark_warnings:
+            log(f"  pgmark validation: {pgmark_report.summary_line()}")
+        else:
+            log("  pgmark validation: clean")
+
+    # 5c. Auto-fuse pgmarks from a PDF alternate when primary is DOCX/TEX
+    # and a PDF alternate exists. Failure here NEVER gates the index —
+    # we record a warning and proceed.
+    fuse_result: Optional[FuseResult] = None
+    alts_for_fusion = _alternate_sources(library, citekey, source_ext)
+    if fuse_pgmarks and source_ext in ("docx", "tex"):
+        try:
+            fuse_result = _fuse_pgmark_from_alternate(
+                citekey, library, source_ext, alts_for_fusion, log_fn=log,
+            )
+        except Exception as e:
+            log(f"  pgmark-fusion FAILED with exception: {e}")
+            pgmark_warnings.append(f"pgmark-fusion-failed: {e}")
+        if fuse_result and fuse_result.success and fuse_result.pgmarks_inserted > 0:
+            # Re-read main.tex (fusion wrote it) and re-validate.
+            tex = (paper_dir / "main.tex").read_text()
+            post_fuse_report = pgmark_validate(tex)
+            pgmark_warnings = post_fuse_report.to_warnings()
+            pgmark_report = post_fuse_report
+        elif fuse_result and not fuse_result.success:
+            pgmark_warnings.append(
+                f"pgmark-fusion-failed: {fuse_result.aborted_reason}"
+            )
 
     # 6. Initialize empty Virgil sidecars.
     virgil_dir = paper_dir / "virgil"
@@ -564,8 +643,18 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         page_count = _page_count(source_path)
         pgmark_count = len(set(p["print_page"] for p in page_map))
     else:
-        page_count = 0  # DOCX: paragraph count is not equivalent to "pages"
+        # DOCX & TEX: no page metric and no printed-page anchors.
+        page_count = 0
         pgmark_count = 0
+
+    # If fusion injected pgmarks from a PDF alternate, override the
+    # pgmark counters with the fusion result so the catalog row reflects
+    # post-fusion reality.
+    pgmark_source: Optional[str] = None
+    if fuse_result and fuse_result.success and fuse_result.pgmarks_inserted > 0:
+        pgmark_count = fuse_result.pgmarks_inserted
+        layout_position = fuse_result.pgmark_position or layout_position
+        pgmark_source = fuse_result.pgmark_source_filename
 
     source_status: dict = {
         "present": True,
@@ -575,7 +664,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     }
     if page_count:
         source_status["pageCount"] = page_count
-    alts = _alternate_sources(library, citekey, source_ext)
+    alts = alts_for_fusion if source_ext in ("docx", "tex") else _alternate_sources(library, citekey, source_ext)
     if alts:
         source_status["alternates"] = alts
         log(f"  Lower-priority sources kept on disk: {alts}")
@@ -594,6 +683,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             "extractor": extractor_used,
             "pgmarkCount": pgmark_count,
             "pgmarkPosition": layout_position,
+            **({"pgmarkSource": pgmark_source} if pgmark_source else {}),
             "footnoteCount": sum(1 for b in extracted["blocks"] if b.get("kind") == "footnote"),
             "warnings": pgmark_warnings,
         },
@@ -602,7 +692,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     _write_catalog(library, catalog)
 
     # 10. Logs + notifications + version bump.
-    log_dir = library / "logs" / citekey
+    log_dir = library / ".virgil" / "logs" / citekey
     log_dir.mkdir(parents=True, exist_ok=True)
     slug = _slug()
     (log_dir / f"{slug}-index.log").write_text("\n".join(log_lines) + "\n")
@@ -619,7 +709,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         f"- Output: `papers/{citekey}/main.tex`\n"
     )
     (log_dir / f"{slug}-index.summary.md").write_text(summary)
-    if pgmark_warnings:
+    if pgmark_warnings and pgmark_report is not None:
         (log_dir / f"{slug}-pgmark-continuity.md").write_text(
             pgmark_report.to_markdown()
         )
@@ -638,12 +728,15 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
 
 def main() -> int:
     p = argparse.ArgumentParser(description="Index a single source (PDF or DOCX) in the Virgil Library.")
-    p.add_argument("citekey", help="Citation key, matches pdfs/<citekey>.pdf or pdfs/<citekey>.docx")
+    p.add_argument("citekey", help="Citation key, matches papers/<citekey>/<citekey>.pdf or papers/<citekey>/<citekey>.docx")
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
     p.add_argument("--extractor", choices=["auto", "marker", "pymupdf"], default="auto")
     p.add_argument("--no-bib-auth", action="store_true",
                    help="Skip the .bib authentication HTTP calls")
+    p.add_argument("--no-fuse-pgmarks", action="store_true",
+                   help="Skip auto-fusion of pgmarks from a PDF alternate "
+                        "when the primary source is DOCX or TEX.")
     args = p.parse_args()
     try:
         index_paper(
@@ -651,6 +744,7 @@ def main() -> int:
             Path(args.library).expanduser(),
             prefer_extractor=args.extractor,
             authenticate_bib=not args.no_bib_auth,
+            fuse_pgmarks=not args.no_fuse_pgmarks,
         )
         return 0
     except Exception as e:
