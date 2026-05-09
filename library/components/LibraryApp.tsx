@@ -4,6 +4,7 @@
 // (handle picker → permission gate → view) and renders the appropriate
 // child. Equivalent to virgil-library/src/components/App.tsx.
 
+import type { ReactNode } from "react";
 import { useLibraryHandle } from "@library/hooks/useLibraryHandle";
 import type { UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import LibraryFolderPicker from "./LibraryFolderPicker";
@@ -14,9 +15,14 @@ interface Props {
   /** Optional scope/seed for the inner `useLibraryTabs`. Passed through
    *  by library outer tabs so each one has its own panel state. */
   tabsOptions?: UseLibraryTabsOptions;
+  /** Forward to LibraryView. Defaults to true; tear-out outer-tab callers
+   *  pass false to render the focused 2-column layout. */
+  showNavigator?: boolean;
+  /** Slot rendered as a sibling pod beneath the LibrariesNavigator. */
+  belowNavigator?: ReactNode;
 }
 
-export default function LibraryApp({ tabsOptions }: Props = {}) {
+export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator }: Props = {}) {
   const { state, pick, grant, reset, lastSync } = useLibraryHandle();
 
   if (state.kind === "loading") {
@@ -47,6 +53,8 @@ export default function LibraryApp({ tabsOptions }: Props = {}) {
       onReset={reset}
       lastSync={lastSync}
       tabsOptions={tabsOptions}
+      showNavigator={showNavigator}
+      belowNavigator={belowNavigator}
     />
   );
 }

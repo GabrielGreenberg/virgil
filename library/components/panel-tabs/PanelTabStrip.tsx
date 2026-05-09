@@ -25,9 +25,10 @@ export type TabDef = {
   /** When set, a vertical-dots trigger renders inside the tab on the left,
    *  opening a per-tab dropdown of the given items. */
   menu?: PanelMenuItem[];
-  /** Pinned state for paper-kind tabs. When defined, a pin toggle is
-   *  rendered on the tab; clicking it calls onTogglePin. Pinned paper tabs
-   *  are not auto-replaced when another paper is opened. */
+  /** Pinned state. When defined, a pin toggle renders on the tab; clicking
+   *  it calls onTogglePin. Pinned tabs are not replaced when another tab
+   *  opens into the same panel. Applies to every kind (Central, custom,
+   *  paper); per-doc project tabs don't surface a pin toggle. */
   pinned?: boolean;
   onTogglePin?: () => void;
   /** Citekey for paper-kind tabs. When set, the dragstart handler also
@@ -72,6 +73,12 @@ type Props = {
    * whole library with it, preserving the bond between tab and content.
    */
   panelRef?: RefObject<HTMLDivElement | null>;
+  /** Render the trailing "+" button + add-tab popup. False when an outer
+   *  navigator owns library creation; true for legacy 2-column callers. */
+  showAddTab?: boolean;
+  /** Surface closed customs/projects in the AddTabMenu's "Recent" section.
+   *  Only meaningful when showAddTab is also true. */
+  showRecent?: boolean;
 };
 
 export function PanelTabStrip({
@@ -87,6 +94,8 @@ export function PanelTabStrip({
   onMoveTab,
   onDropEntries,
   panelRef,
+  showAddTab = false,
+  showRecent = false,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState("");
@@ -379,6 +388,13 @@ export function PanelTabStrip({
                   },
                 }}
               >
+                {tab.onTogglePin && !isEditing && (
+                  <PinButton
+                    pinned={!!tab.pinned}
+                    onClick={tab.onTogglePin}
+                    muted={false}
+                  />
+                )}
                 {tab.icon}
                 {isEditing ? (
                   <TabTitleInput
@@ -416,16 +432,12 @@ export function PanelTabStrip({
                     pushRight
                   />
                 )}
-                {tab.onTogglePin && !isEditing && (
-                  <PinButton
-                    pinned={!!tab.pinned}
-                    onClick={tab.onTogglePin}
+                {tab.closable && !isEditing && (
+                  <CloseButton
+                    onClick={() => onClose(tab.id)}
                     muted={false}
                     pushRight={!tab.menu}
                   />
-                )}
-                {tab.closable && !isEditing && (
-                  <CloseButton onClick={() => onClose(tab.id)} muted={false} />
                 )}
               </PanelFolderTab>
             </Fragment>
@@ -455,17 +467,19 @@ export function PanelTabStrip({
           />
         );
       })}
-      <div style={{ position: "relative", flexShrink: 0 }}>
-        <AddTabButton onClick={() => setMenuOpen((v) => !v)} />
-        {menuOpen && (
-          <AddTabMenu
-            recent={recentLibraries}
-            onNewLibrary={handleNewLibrary}
-            onOpenRecent={handleOpenRecent}
-            onClose={() => setMenuOpen(false)}
-          />
-        )}
-      </div>
+      {showAddTab && (
+        <div style={{ position: "relative", flexShrink: 0 }}>
+          <AddTabButton onClick={() => setMenuOpen((v) => !v)} />
+          {menuOpen && (
+            <AddTabMenu
+              recent={showRecent ? recentLibraries : []}
+              onNewLibrary={handleNewLibrary}
+              onOpenRecent={handleOpenRecent}
+              onClose={() => setMenuOpen(false)}
+            />
+          )}
+        </div>
+      )}
       {dragOverIndex !== null && (
         <DropIndicator
           stripEl={stripRef.current}
@@ -521,7 +535,7 @@ const BackgroundTab = forwardRef<
 ) {
   const hasMenu = !!menu && menu.length > 0;
   const hasPin = !!onTogglePin;
-  const hasTrailing = closable || hasMenu || hasPin;
+  const hasTrailing = closable || hasMenu;
   return (
     <div
       ref={ref}
@@ -538,9 +552,13 @@ const BackgroundTab = forwardRef<
         outlineOffset: isEntryDropTarget ? -2 : 0,
         borderRadius: isEntryDropTarget ? 6 : 0,
         background: isEntryDropTarget ? "var(--accent-light)" : "transparent",
-        paddingRight: hasTrailing && !closable ? 4 : 0,
+        paddingLeft: hasPin ? 4 : 0,
+        paddingRight: hasTrailing ? 4 : 0,
       }}
     >
+      {hasPin && (
+        <PinButton pinned={!!pinned} onClick={onTogglePin!} muted />
+      )}
       <button
         type="button"
         onClick={onClick}
@@ -548,7 +566,9 @@ const BackgroundTab = forwardRef<
         style={{
           background: "transparent",
           border: "none",
-          padding: hasTrailing ? "0 4px 0 14px" : "0 14px",
+          padding: hasPin
+            ? (hasTrailing ? "0 4px 0 0" : "0 14px 0 0")
+            : (hasTrailing ? "0 4px 0 14px" : "0 14px"),
           height: 32,
           fontSize: 13,
           lineHeight: "16px",
@@ -569,9 +589,6 @@ const BackgroundTab = forwardRef<
           muted
         />
       )}
-      {hasPin && (
-        <PinButton pinned={!!pinned} onClick={onTogglePin!} muted />
-      )}
       {closable && <CloseButton onClick={onClose} muted />}
     </div>
   );
@@ -586,14 +603,10 @@ function PinButton({
   pinned,
   onClick,
   muted,
-  pushRight,
 }: {
   pinned: boolean;
   onClick: () => void;
   muted: boolean;
-  /** When true (active tab without a menu), push to the right edge so the
-   *  pin lands next to the close button instead of next to the title. */
-  pushRight?: boolean;
 }) {
   const idleColor = muted ? "var(--muted-light)" : "var(--muted)";
   const activeColor = pinned ? PIN_ACTIVE_COLOR : idleColor;
@@ -605,7 +618,7 @@ function PinButton({
         onClick();
       }}
       onMouseDown={(e) => e.stopPropagation()}
-      title={pinned ? "Unpin tab — opening another paper will replace it" : "Pin tab — keep open when another paper is opened"}
+      title={pinned ? "Unpin tab — opening another tab will replace it" : "Pin tab — keep open when another tab is opened"}
       aria-label={pinned ? "Unpin tab" : "Pin tab"}
       aria-pressed={pinned}
       style={{
@@ -614,7 +627,10 @@ function PinButton({
         border: "none",
         width: 18,
         height: 18,
-        marginLeft: pushRight ? "auto" : 2,
+        // Pin always sits at the left of the tab content with a small
+        // gap before the title.
+        marginLeft: 0,
+        marginRight: 4,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -647,9 +663,13 @@ function PinButton({
 function CloseButton({
   onClick,
   muted,
+  pushRight,
 }: {
   onClick: () => void;
   muted: boolean;
+  /** When true (active tab without a menu), use marginLeft: auto so the
+   *  close hugs the right edge instead of sitting next to the title. */
+  pushRight?: boolean;
 }) {
   return (
     <button
@@ -658,6 +678,7 @@ function CloseButton({
         e.stopPropagation();
         onClick();
       }}
+      onMouseDown={(e) => e.stopPropagation()}
       title="Close tab"
       aria-label="Close tab"
       style={{
@@ -666,8 +687,8 @@ function CloseButton({
         border: "none",
         width: 18,
         height: 18,
+        marginLeft: pushRight ? "auto" : muted ? 4 : 2,
         marginRight: 0,
-        marginLeft: muted ? 4 : "auto",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",

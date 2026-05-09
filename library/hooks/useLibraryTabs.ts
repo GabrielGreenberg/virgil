@@ -6,8 +6,6 @@ import {
   REGISTRY_CHANGED_EVENT,
   docIdFromProjectLibraryId,
   isBuiltin,
-  isPaper,
-  isPaperId,
   isProjectDocId,
   loadPanelTabs,
   loadRegistry,
@@ -55,6 +53,11 @@ export type LibraryTabsApi = {
   leftTabs: PanelTabsState;
   rightTabs: PanelTabsState;
   libraryById: Map<string, Library>;
+  /** Synthetic per-doc project libraries derived from `openDocs`, in
+   *  doc order. Empty when `projectsEnabled` is false (scoped tear-out
+   *  instances). Exposed so the navigator can list project libraries
+   *  alongside the registered ones. */
+  projectLibraries: Library[];
   activate: (id: string, panel: PanelKey) => void;
   close: (id: string, panel: PanelKey) => void;
   rename: (id: string, label: string) => void;
@@ -82,13 +85,21 @@ export type LibraryTabsApi = {
    * paper viewer. The destination panel is the opposite of `fromPanel`
    * (so clicking from the left opens on the right). If the paper is
    * already open in either panel, that tab is activated. Otherwise,
-   * if the destination's currently active tab is an unpinned paper,
-   * the new paper *replaces* it; if pinned (or non-paper), the new
-   * paper is appended as a sibling tab.
+   * the destination's active tab is replaced when unpinned, or the new
+   * paper appends when the active tab is pinned (or the panel is empty).
    */
   openPaper: (citekey: string, fromPanel: PanelKey) => void;
-  /** Toggle the pinned flag on a paper-kind library. No-op otherwise. */
-  togglePinPaper: (libId: string) => void;
+  /**
+   * Open a non-paper library (Central / project / custom) into `panel`,
+   * with the same replace-or-append semantics as openPaper. Project ids
+   * route through the doc-activation path so the corresponding Virgil
+   * doc tab also comes forward.
+   */
+  openLibrary: (libId: string, panel: PanelKey) => void;
+  /** Toggle the pinned flag on any registered library (Central, custom,
+   *  paper). No-op for synthetic per-doc project libraries — they are
+   *  not in the registry. */
+  togglePinLibrary: (libId: string) => void;
   /**
    * Close the paper-kind tab whose citekey matches, in whichever panel
    * holds it. Used by the tearout flow when a paper inner tab is
@@ -121,6 +132,31 @@ export interface UseLibraryTabsOptions {
   onActivateDoc?: (docId: string) => void;
 }
 
+const PROJECT_HIDDEN_KEY = "virgil-library-project-hidden";
+const PROJECT_PINNED_KEY = "virgil-library-project-pinned";
+
+function loadIdSet(key: string): Set<string> {
+  if (typeof localStorage === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((x): x is string => typeof x === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveIdSet(key: string, set: Set<string>): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.from(set)));
+  } catch {
+    // ignore
+  }
+}
+
 export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi {
   const { scope, seed, openDocs, currentDocId, onActivateDoc } = opts;
   // Project-doc projection only applies to the singleton (unscoped) Library
@@ -142,6 +178,19 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
   const [leftPinnedActiveId, setLeftPinnedActiveId] = useState<string | null>(
     null,
   );
+  // Project library tabs the user has explicitly closed. The underlying
+  // Virgil doc stays open — closing the inner tab just hides it from the
+  // middle column. Re-clicking the project library in the navigator (or
+  // activating its doc) clears the hidden flag.
+  const [hiddenProjectIds, setHiddenProjectIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  // Project library tabs the user has pinned. Persisted alongside hidden
+  // ids so the pin/unpin state survives reloads even though project libs
+  // themselves are synthetic (not in the registry).
+  const [projectPinnedIds, setProjectPinnedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Mirror latest state in refs so synchronous handlers (drag/drop) can
   // read it without going through the setState-updater dance — those
@@ -162,6 +211,10 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     setRightTabs(
       loadPanelTabs("right", { scope, fallback: seed?.right }),
     );
+    if (projectsEnabled) {
+      setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
+      setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
+    }
     setHydrated(true);
     // Hydrate once per mount; scope/seed are treated as initial-mount-only
     // configuration (changing them would require a remount of the consumer).
@@ -198,9 +251,19 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     if (!hydrated) return;
     savePanelTabs("right", rightTabs, { scope });
   }, [rightTabs, hydrated, scope]);
+  useEffect(() => {
+    if (!hydrated || !projectsEnabled) return;
+    saveIdSet(PROJECT_HIDDEN_KEY, hiddenProjectIds);
+  }, [hiddenProjectIds, hydrated, projectsEnabled]);
+  useEffect(() => {
+    if (!hydrated || !projectsEnabled) return;
+    saveIdSet(PROJECT_PINNED_KEY, projectPinnedIds);
+  }, [projectPinnedIds, hydrated, projectsEnabled]);
 
   // Synthetic Library entries for the per-doc project inner tabs. Not
-  // persisted in the registry — derived per-render from `openDocs`.
+  // persisted in the registry — derived per-render from `openDocs`. The
+  // `pinned` flag IS persisted (see PROJECT_PINNED_KEY) and rehydrates
+  // even though the underlying lib is synthetic.
   const projectLibsByDocId = useMemo(() => {
     const m = new Map<string, Library>();
     if (!projectsEnabled || !openDocs) return m;
@@ -212,10 +275,11 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
         createdAt: 0,
         kind: "project",
         docId: d.id,
+        pinned: projectPinnedIds.has(id),
       });
     }
     return m;
-  }, [projectsEnabled, openDocs]);
+  }, [projectsEnabled, openDocs, projectPinnedIds]);
 
   const libraryById = useMemo(() => {
     const m = new Map<string, Library>();
@@ -224,15 +288,32 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     return m;
   }, [registry, projectLibsByDocId]);
 
+  // Per-doc project libraries in doc order (matches the openDocs list).
+  // Exposed so the navigator can list them under a Project section without
+  // re-deriving from the openDocs prop.
+  const projectLibraries = useMemo<Library[]>(() => {
+    if (!openDocs || openDocs.length === 0) return [];
+    const out: Library[] = [];
+    for (const d of openDocs) {
+      const lib = projectLibsByDocId.get(d.id);
+      if (lib) out.push(lib);
+    }
+    return out;
+  }, [openDocs, projectLibsByDocId]);
+
   // Public leftTabs: persisted `leftTabs` state holds Central + any
   // user-added extras (custom/paper). Per-doc project tabs are spliced
   // in right after Central. activeId follows currentDocId unless the
   // user has explicitly pinned a non-project tab.
   const displayedLeftTabs = useMemo<PanelTabsState>(() => {
     if (!projectsEnabled) return leftTabs;
-    const projectIds = (openDocs ?? []).map((d) =>
-      projectLibraryIdForDoc(d.id),
-    );
+    // Project ids the user explicitly closed are hidden from the strip
+    // (the underlying doc is still open — it just doesn't surface a
+    // project library tab here until the user re-opens it via the
+    // navigator).
+    const projectIds = (openDocs ?? [])
+      .map((d) => projectLibraryIdForDoc(d.id))
+      .filter((id) => !hiddenProjectIds.has(id));
     const persisted = leftTabs.openIds.filter(
       (id) => !isProjectDocId(id),
     );
@@ -257,6 +338,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     openDocs,
     currentDocId,
     leftPinnedActiveId,
+    hiddenProjectIds,
   ]);
 
   // Pin (or clear pin) for the left panel of the singleton instance.
@@ -275,11 +357,23 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [projectsEnabled],
   );
 
+  // Helper: when the user activates or re-opens a project library, also
+  // un-hide it (so its tab returns to the strip).
+  const unhideProject = useCallback((id: string) => {
+    setHiddenProjectIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
+
   const activate = useCallback(
     (id: string, panel: PanelKey) => {
       if (panel === "left" && projectsEnabled && isProjectDocId(id)) {
         const docId = docIdFromProjectLibraryId(id);
         if (docId && onActivateDoc) onActivateDoc(docId);
+        unhideProject(id);
         setLeftPinnedActiveId(null);
         return;
       }
@@ -287,14 +381,29 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       setter((t) => (t.activeId === id ? t : { ...t, activeId: id }));
       pinIfLeft(panel, id);
     },
-    [projectsEnabled, onActivateDoc, pinIfLeft],
+    [projectsEnabled, onActivateDoc, pinIfLeft, unhideProject],
   );
 
   const close = useCallback((id: string, panel: PanelKey) => {
-    if (isBuiltin(id)) return;
-    // Per-doc project tabs are derived from open docs — closing happens
-    // when the doc tab itself closes. Ignore any direct close attempts.
-    if (isProjectDocId(id)) return;
+    // Per-doc project tabs are synthetic, so we can't simply remove them
+    // from openIds (they're spliced in by `displayedLeftTabs`). Instead,
+    // mark the id as hidden — the synthesizer skips hidden ids and the
+    // tab disappears from the strip until the user re-opens it via the
+    // navigator (or activates the underlying doc). The doc itself is
+    // untouched.
+    if (isProjectDocId(id)) {
+      setHiddenProjectIds((prev) => {
+        if (prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.add(id);
+        return next;
+      });
+      return;
+    }
+    // Central, customs, and papers all remove from openIds. Central
+    // remains in the registry (and the navigator); the user can re-open
+    // it any time. Customs/papers stay in the registry for "recent"
+    // recall via the navigator (customs) or the catalog (papers).
     const setter = panel === "left" ? setLeftTabs : setRightTabs;
     setter((t) => {
       const idx = t.openIds.indexOf(id);
@@ -465,7 +574,9 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
         return { libraries: [...r.libraries, lib] };
       });
 
-      // Replace-or-append in the destination panel.
+      // Replace-or-append in the destination panel. Any unpinned active
+      // tab is replaceable now (paper or library) — the same mechanic
+      // that drives navigator clicks via openLibrary.
       const destSetter = destPanel === "left" ? setLeftTabs : setRightTabs;
       const libsRef = registryRef.current.libraries;
       destSetter((t) => {
@@ -475,9 +586,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
             ? libsRef.find((l) => l.id === t.openIds[activeIdx])
             : undefined;
         const replaceTarget =
-          activeLib && activeLib.kind === "paper" && !activeLib.pinned
-            ? activeLib.id
-            : null;
+          activeLib && !activeLib.pinned ? activeLib.id : null;
         if (replaceTarget) {
           const next = t.openIds.map((id) => (id === replaceTarget ? newId : id));
           return { openIds: next, activeId: newId };
@@ -489,11 +598,68 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [pinIfLeft],
   );
 
-  const togglePinPaper = useCallback((libId: string) => {
-    if (!isPaperId(libId)) return;
+  // Open a non-paper library into `panel` with the same replace-or-append
+  // contract as openPaper. Project ids route through the doc-activation
+  // path (the project tab is already spliced into displayedLeftTabs from
+  // openDocs, so we just bring its doc forward).
+  const openLibrary = useCallback(
+    (libId: string, panel: PanelKey) => {
+      if (!libId) return;
+
+      if (panel === "left" && projectsEnabled && isProjectDocId(libId)) {
+        const docId = docIdFromProjectLibraryId(libId);
+        if (docId && onActivateDoc) onActivateDoc(docId);
+        unhideProject(libId);
+        setLeftPinnedActiveId(null);
+        return;
+      }
+
+      const leftHas = leftTabsRef.current.openIds.includes(libId);
+      const rightHas = rightTabsRef.current.openIds.includes(libId);
+      if (leftHas || rightHas) {
+        const inPanel: PanelKey = leftHas ? "left" : "right";
+        const setter = inPanel === "left" ? setLeftTabs : setRightTabs;
+        setter((t) => (t.activeId === libId ? t : { ...t, activeId: libId }));
+        pinIfLeft(inPanel, libId);
+        return;
+      }
+
+      const setter = panel === "left" ? setLeftTabs : setRightTabs;
+      const libsRef = registryRef.current.libraries;
+      setter((t) => {
+        const activeIdx = t.openIds.indexOf(t.activeId);
+        const activeLib =
+          activeIdx >= 0
+            ? libsRef.find((l) => l.id === t.openIds[activeIdx])
+            : undefined;
+        const replaceTarget =
+          activeLib && !activeLib.pinned ? activeLib.id : null;
+        if (replaceTarget) {
+          const next = t.openIds.map((id) => (id === replaceTarget ? libId : id));
+          return { openIds: next, activeId: libId };
+        }
+        return { openIds: [...t.openIds, libId], activeId: libId };
+      });
+      pinIfLeft(panel, libId);
+    },
+    [projectsEnabled, onActivateDoc, pinIfLeft, unhideProject],
+  );
+
+  const togglePinLibrary = useCallback((libId: string) => {
+    // Project libs aren't in the registry — pin state lives in a
+    // separate persisted set keyed by project library id.
+    if (isProjectDocId(libId)) {
+      setProjectPinnedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(libId)) next.delete(libId);
+        else next.add(libId);
+        return next;
+      });
+      return;
+    }
     setRegistry((r) => ({
       libraries: r.libraries.map((l) =>
-        l.id === libId && isPaper(l) ? { ...l, pinned: !l.pinned } : l,
+        l.id === libId ? { ...l, pinned: !l.pinned } : l,
       ),
     }));
   }, []);
@@ -513,6 +679,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     leftTabs: displayedLeftTabs,
     rightTabs,
     libraryById,
+    projectLibraries,
     activate,
     close,
     rename,
@@ -522,7 +689,8 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     addEntryToLibrary,
     removeEntryFromLibrary,
     openPaper,
-    togglePinPaper,
+    openLibrary,
+    togglePinLibrary,
     closePaperByCitekey,
   };
 }

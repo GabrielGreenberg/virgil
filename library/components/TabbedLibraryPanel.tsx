@@ -62,11 +62,17 @@ interface Props {
    *  project-library writes (which read-modify-write references.bib)
    *  don't race. Callers pass `[key]` for single-row drops. */
   onAddEntriesToLibrary: (libId: string, entryKeys: readonly string[]) => void;
-  onTogglePinPaper: (libId: string) => void;
+  /** Toggle pin on any registered library — paper, custom, or Central. */
+  onTogglePinLibrary: (libId: string) => void;
   entryActions: EntryActions;
+  /** Render the strip's trailing "+" button + recent-libraries dropdown.
+   *  False in 3-column layouts where the navigator owns those affordances;
+   *  true in tear-out 2-column layouts for back-compat. */
+  showAddTab?: boolean;
+  showRecent?: boolean;
   /** FSA handle for the library root. Used by the request-state dot hook
-   *  to scan queue/ and notifications/inbox.json on a 6s poll, and by
-   *  paper-kind tabs to read main.tex / references.bib / pdfs/. */
+   *  to scan .virgil/queue/ and .virgil/notifications/inbox.json on a 6s poll, and by
+   *  paper-kind tabs to read main.tex / references.bib / source PDF. */
   handle: FileSystemDirectoryHandle;
   /** Reload master.bib after a save lands inside a paper-kind tab. */
   onBibChanged?: () => void;
@@ -94,11 +100,13 @@ export default function TabbedLibraryPanel({
   onOpenRecent,
   onMoveTab,
   onAddEntriesToLibrary,
-  onTogglePinPaper,
+  onTogglePinLibrary,
   entryActions,
   handle,
   onBibChanged,
   onChangeFolder,
+  showAddTab = false,
+  showRecent = false,
 }: Props) {
   const { toneFor: dotToneFor, markViewed } = useRowDotState(handle);
   const project = useProjectLibrary();
@@ -113,10 +121,14 @@ export default function TabbedLibraryPanel({
           return {
             id: l.id,
             label: l.label,
-            closable: !isBuiltin(l.id),
+            // Every tab gets a close button now — Central removes itself
+            // from the strip (it stays in the registry / navigator);
+            // project tabs route through the underlying doc-close path
+            // (handled in useLibraryTabs.close).
+            closable: true,
             renamable: !isBuiltin(l.id) && !paper,
-            pinned: paper ? !!l.pinned : undefined,
-            onTogglePin: paper ? () => onTogglePinPaper(l.id) : undefined,
+            pinned: !!l.pinned,
+            onTogglePin: () => onTogglePinLibrary(l.id),
             paperCitekey: paper ? l.citekey : undefined,
             // Custom libraries are draggable to the Virgil bar to spawn
             // their own outer tab. Central, paper-kind, and per-doc
@@ -132,7 +144,7 @@ export default function TabbedLibraryPanel({
                 : undefined,
           } satisfies TabDef;
         }),
-    [tabs.openIds, libraryById, onChangeFolder, onTogglePinPaper],
+    [tabs.openIds, libraryById, onChangeFolder, onTogglePinLibrary],
   );
 
   const recentLibraries: RecentLibrary[] = useMemo(() => {
@@ -376,6 +388,8 @@ export default function TabbedLibraryPanel({
         onMoveTab={onMoveTab}
         onDropEntries={onAddEntriesToLibrary}
         panelRef={panelRef}
+        showAddTab={showAddTab}
+        showRecent={showRecent}
       />
       {activeLibrary ? (
         <div
@@ -487,7 +501,7 @@ function EmptyPanelBody() {
         textAlign: "center",
       }}
     >
-      Open a library or paper from the other panel, or use “+” above to add a tab.
+      Open a library or paper to view it here.
     </div>
   );
 }

@@ -25,11 +25,15 @@ import type { BibEntry } from "@library/lib/types";
 import { useCitations } from "@/hooks/useCitations";
 import { addEntriesToProjectBib, removeEntryFromProjectBib } from "@/lib/project-bib";
 import type { FsaDocMeta } from "@/lib/doc-index";
+import MyPapersPod from "./MyPapersPod";
 
 interface Props {
   /** Optional scope/seed for the inner `useLibraryTabs`. Library outer
    *  tabs pass their own scope so panel state is isolated per outer tab. */
   tabsOptions?: UseLibraryTabsOptions;
+  /** Forward to LibraryView. Defaults to true (inline Library tab);
+   *  tear-out callers pass false. */
+  showNavigator?: boolean;
   /** Authoritative open-tab list from EditorLayout's `useFiles`. */
   openTabs: FsaDocMeta[];
   /** Authoritative active docId from EditorLayout's `useFiles`. */
@@ -38,14 +42,32 @@ interface Props {
   currentDoc: FsaDocMeta | null;
   /** Switch the active doc without leaving the Library pane. */
   focusDoc: (docId: string) => void;
+  /** Every known Virgil doc — feeds the My Papers pod's "Recent" popup
+   *  and is excluded from the recent list when already open. */
+  docs?: FsaDocMeta[];
+  /** Open a known doc by id (mirrors the Virgil-bar `+` behavior). */
+  onOpenRecent?: (id: string) => void;
+  /** Trigger the native folder picker (FSA `showDirectoryPicker`). */
+  onOpenFolder?: () => void;
+  /** Open the "create new document" modal. */
+  onCreateNew?: () => void;
+  /** True when the dev-storage backend is in use (no FSA permission
+   *  re-grant required when re-opening a recent doc). */
+  devStorage?: boolean;
 }
 
 export function LibraryTabView({
   tabsOptions,
+  showNavigator,
   openTabs,
   currentDocId,
   currentDoc,
   focusDoc,
+  docs,
+  onOpenRecent,
+  onOpenFolder,
+  onCreateNew,
+  devStorage,
 }: Props) {
   const { bibEntries, citations } = useCitations(currentDocId);
 
@@ -135,6 +157,23 @@ export function LibraryTabView({
     };
   }, [tabsOptions, openTabs, currentDocId, focusDoc]);
 
+  // Render the My Papers pod only when the inline (unscoped) Library
+  // tab is active AND the host has wired the picker callbacks. Tear-out
+  // outer tabs (showNavigator=false) skip the navigator column entirely
+  // so they also skip this pod.
+  const myPapersPod =
+    showNavigator !== false && onOpenRecent && onOpenFolder && onCreateNew ? (
+      <MyPapersPod
+        docs={docs ?? []}
+        openTabs={openTabs}
+        currentDocId={currentDocId}
+        onOpenRecent={onOpenRecent}
+        onOpenFolder={onOpenFolder}
+        onCreateNew={onCreateNew}
+        devStorage={!!devStorage}
+      />
+    ) : null;
+
   return (
     <ProjectLibraryProvider
       hasDoc={!!currentDocId}
@@ -143,7 +182,11 @@ export function LibraryTabView({
       citedKeys={citedKeys}
       bibMeta={bibMeta}
     >
-      <LibraryApp tabsOptions={mergedTabsOptions} />
+      <LibraryApp
+        tabsOptions={mergedTabsOptions}
+        showNavigator={showNavigator}
+        belowNavigator={myPapersPod}
+      />
     </ProjectLibraryProvider>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCatalog } from "@library/hooks/useCatalog";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
@@ -16,6 +16,7 @@ import DropZone from "./DropZone";
 
 import Toaster from "./Toaster";
 import TabbedLibraryPanel, { type EntryActions } from "./TabbedLibraryPanel";
+import LibrariesNavigator from "./LibrariesNavigator";
 import { queueBibReview, queueDelete, queuePaperReview } from "@library/lib/bib-edit";
 
 interface Props {
@@ -26,22 +27,57 @@ interface Props {
    *  passes nothing (default unscoped keys); each library outer tab
    *  passes its own scope so its panel state is isolated. */
   tabsOptions?: UseLibraryTabsOptions;
+  /** Render the leftmost "Libraries" navigator column. Defaults to true
+   *  (inline Library tab); tear-out outer-tab callers pass false to keep
+   *  the focused 2-column layout. */
+  showNavigator?: boolean;
+  /** Optional content rendered as a sibling pod underneath the
+   *  LibrariesNavigator in the leftmost column. Used by `LibraryTabView`
+   *  to inject a "My Papers" pod that depends on src/-side data
+   *  (FsaDocMeta, openFile, etc.) the library subsystem can't reach. */
+  belowNavigator?: ReactNode;
 }
 
+// Persisted column widths. The middle-column key is named "left" for
+// back-compat with the pre-3-column persisted state; treat it as the
+// "library file" column going forward (the column with library tabs +
+// entry list).
 const LEFT_WIDTH_KEY = "virgil-library-left-width";
 const LEFT_MIN = 220;
 const LEFT_DEFAULT = 360;
 
-export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: Props) {
+const NAV_WIDTH_KEY = "virgil-library-nav-width";
+const NAV_MIN = 180;
+const NAV_DEFAULT = 220;
+
+// Height of the My Papers pod in the navigator column. The Libraries pod
+// above takes the remaining space; both stay at least 100px tall so the
+// drag bar can't smash either pod into invisibility.
+const PAPERS_HEIGHT_KEY = "virgil-library-papers-height";
+const PAPERS_MIN = 100;
+const PAPERS_DEFAULT = 240;
+
+export default function LibraryView({
+  handle,
+  onReset,
+  lastSync,
+  tabsOptions,
+  showNavigator = true,
+  belowNavigator,
+}: Props) {
   const { catalog, reload } = useCatalog(handle);
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
   const { files: unsortedFiles, reload: reloadUnsorted } = useUnsortedPdfs(handle);
   const dropPdf = useDropPdf(handle);
   const notifications = useNotificationStream(handle);
 
-  // Resizable left panel — width persisted in localStorage so it
-  // survives reloads.
+  // Resizable middle panel — width persisted in localStorage so it
+  // survives reloads. (Key is named "left" for back-compat with the
+  // pre-3-column layout; semantically this is the middle column now.)
   const [leftWidth, setLeftWidth] = useState<number>(LEFT_DEFAULT);
+  const [navWidth, setNavWidth] = useState<number>(NAV_DEFAULT);
+  const [papersHeight, setPapersHeight] = useState<number>(PAPERS_DEFAULT);
+  const navColumnRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     try {
       const saved = parseInt(localStorage.getItem(LEFT_WIDTH_KEY) ?? "", 10);
@@ -49,37 +85,106 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
         const maxW = window.innerWidth - 200;
         setLeftWidth(Math.max(LEFT_MIN, Math.min(maxW, saved)));
       }
+      const navSaved = parseInt(
+        localStorage.getItem(NAV_WIDTH_KEY) ?? "",
+        10,
+      );
+      if (!Number.isNaN(navSaved)) {
+        const maxW = window.innerWidth - 300;
+        setNavWidth(Math.max(NAV_MIN, Math.min(maxW, navSaved)));
+      }
+      const papersSaved = parseInt(
+        localStorage.getItem(PAPERS_HEIGHT_KEY) ?? "",
+        10,
+      );
+      if (!Number.isNaN(papersSaved)) {
+        setPapersHeight(Math.max(PAPERS_MIN, papersSaved));
+      }
     } catch {
       // localStorage unavailable — fall back to default.
     }
   }, []);
-  const startResize = useCallback(
+  const makeResizeHandler = useCallback(
+    (
+      currentWidth: number,
+      setWidth: (next: number | ((w: number) => number)) => void,
+      minWidth: number,
+      maxOffset: number,
+      storageKey: string,
+    ) =>
+      (e: React.PointerEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startWidth = currentWidth;
+        const onMove = (ev: PointerEvent) => {
+          const next = Math.max(
+            minWidth,
+            Math.min(
+              window.innerWidth - maxOffset,
+              startWidth + (ev.clientX - startX),
+            ),
+          );
+          setWidth(next);
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          document.body.style.cursor = "";
+          document.body.style.userSelect = "";
+          try {
+            setWidth((w) => {
+              try {
+                localStorage.setItem(storageKey, String(Math.round(w)));
+              } catch {
+                // ignore
+              }
+              return w;
+            });
+          } catch {
+            // ignore
+          }
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+      },
+    [],
+  );
+  const startResize = useMemo(
+    () => makeResizeHandler(leftWidth, setLeftWidth, LEFT_MIN, 200, LEFT_WIDTH_KEY),
+    [leftWidth, makeResizeHandler],
+  );
+  // Vertical resizer between Libraries (top) and My Papers (bottom).
+  // Dragging up grows the My Papers pod; dragging down shrinks it.
+  // Both pods clamp to at least PAPERS_MIN so neither disappears.
+  const startPapersResize = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
-      const startX = e.clientX;
-      const startWidth = leftWidth;
+      const startY = e.clientY;
+      const startHeight = papersHeight;
       const onMove = (ev: PointerEvent) => {
+        const colH = navColumnRef.current?.getBoundingClientRect().height ?? 0;
+        const maxH = Math.max(PAPERS_MIN, colH - PAPERS_MIN - 6);
         const next = Math.max(
-          LEFT_MIN,
-          Math.min(window.innerWidth - 200, startWidth + (ev.clientX - startX)),
+          PAPERS_MIN,
+          Math.min(maxH, startHeight - (ev.clientY - startY)),
         );
-        setLeftWidth(next);
+        setPapersHeight(next);
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
-        // Persist the final value.
         try {
-          // Use the latest setter callback to grab the current width.
-          setLeftWidth((w) => {
+          setPapersHeight((h) => {
             try {
-              localStorage.setItem(LEFT_WIDTH_KEY, String(Math.round(w)));
+              localStorage.setItem(PAPERS_HEIGHT_KEY, String(Math.round(h)));
             } catch {
               // ignore
             }
-            return w;
+            return h;
           });
         } catch {
           // ignore
@@ -87,10 +192,14 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
-      document.body.style.cursor = "col-resize";
+      document.body.style.cursor = "row-resize";
       document.body.style.userSelect = "none";
     },
-    [leftWidth],
+    [papersHeight],
+  );
+  const startNavResize = useMemo(
+    () => makeResizeHandler(navWidth, setNavWidth, NAV_MIN, 300, NAV_WIDTH_KEY),
+    [navWidth, makeResizeHandler],
   );
 
   // Surface the most recent skill-bundle sync as a transient toast so the
@@ -201,7 +310,7 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
   // everything visible on disk, even before the skills run:
   //   1. master.bib keys without a catalog entry — freshly-typed bib lines
   //      become browsable immediately with all three pills gray.
-  //   2. PDFs/DOCX sitting in pdfs/unsorted/ that the triage skill hasn't
+  //   2. PDFs/DOCX sitting in unsorted/ that the triage skill hasn't
   //      picked up yet — these show as raw filenames with citekey
   //      "(triaging)". They appear at the TOP of the merged list (newest
   //      mtime first, courtesy of useUnsortedPdfs) so freshly-dropped
@@ -376,13 +485,39 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
       onOpenRecent={libraryTabs.openRecent}
       onMoveTab={libraryTabs.moveTab}
       onAddEntriesToLibrary={handleAddEntriesToLibrary}
-      onTogglePinPaper={libraryTabs.togglePinPaper}
+      onTogglePinLibrary={libraryTabs.togglePinLibrary}
       entryActions={entryActions}
       handle={handle}
       onBibChanged={reloadBib}
       onChangeFolder={panel === "left" ? onReset : undefined}
+      // 2-column tear-out mode keeps the strip's "+" and recent dropdown.
+      // 3-column inline mode hides them — the navigator owns those affordances.
+      showAddTab={!showNavigator}
+      showRecent={!showNavigator}
     />
   );
+
+  // Set of library ids currently open in either panel. Used by the
+  // navigator to render a small "open" dot next to non-active rows.
+  const openLibraryIds = useMemo<Set<string>>(() => {
+    const s = new Set<string>();
+    for (const id of libraryTabs.leftTabs.openIds) s.add(id);
+    for (const id of libraryTabs.rightTabs.openIds) s.add(id);
+    return s;
+  }, [libraryTabs.leftTabs.openIds, libraryTabs.rightTabs.openIds]);
+
+  const navigator = showNavigator ? (
+    <LibrariesNavigator
+      registry={libraryTabs.registry}
+      projectLibraries={libraryTabs.projectLibraries}
+      activeMiddleId={libraryTabs.leftTabs.activeId}
+      openLibraryIds={openLibraryIds}
+      onOpenLibrary={(id) => libraryTabs.openLibrary(id, "left")}
+      onCreateLibrary={() => libraryTabs.create("left")}
+      onAddEntriesToLibrary={handleAddEntriesToLibrary}
+      onRenameLibrary={libraryTabs.rename}
+    />
+  ) : null;
 
   return (
     <div
@@ -404,7 +539,12 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: `${leftWidth}px 6px 1fr`,
+            // Three columns when the navigator is shown; two when it's
+            // hidden (tear-out outer-tab mode). Each column is followed
+            // by a 6px resizer except the last.
+            gridTemplateColumns: showNavigator
+              ? `${navWidth}px 6px ${leftWidth}px 6px 1fr`
+              : `${leftWidth}px 6px 1fr`,
             // Without an explicit row track, the implicit row sizes to
             // `auto` (content), which lets a tall paper push the grid
             // past its container — making the whole page scroll instead
@@ -415,6 +555,89 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
             background: "var(--background)",
           }}
         >
+          {showNavigator && (
+            <>
+              <div
+                ref={navColumnRef}
+                style={{
+                  overflow: "hidden",
+                  minHeight: 0,
+                  minWidth: 0,
+                  position: "relative",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: 6,
+                  background: "var(--library-bg)",
+                }}
+              >
+                {/* Libraries pod takes the remaining space; My Papers
+                    pod (when present) gets an explicit pixel height the
+                    user can drag via the horizontal separator. */}
+                <div
+                  style={{
+                    flex: 1,
+                    minHeight: PAPERS_MIN,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {navigator}
+                </div>
+                {belowNavigator && (
+                  <>
+                    <div
+                      role="separator"
+                      aria-orientation="horizontal"
+                      aria-label="Resize My Papers pod"
+                      onPointerDown={startPapersResize}
+                      style={{
+                        height: 6,
+                        cursor: "row-resize",
+                        background: "var(--library-bg)",
+                        transition: "background 120ms",
+                        touchAction: "none",
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLDivElement).style.background = "var(--library-bg)";
+                      }}
+                    />
+                    <div
+                      style={{
+                        flex: `0 0 ${papersHeight}px`,
+                        minHeight: PAPERS_MIN,
+                        display: "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      {belowNavigator}
+                    </div>
+                  </>
+                )}
+              </div>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize Libraries navigator"
+                onPointerDown={startNavResize}
+                style={{
+                  cursor: "col-resize",
+                  background: "var(--library-bg)",
+                  transition: "background 120ms",
+                  touchAction: "none",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background = "var(--accent)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLDivElement).style.background = "var(--library-bg)";
+                }}
+              />
+            </>
+          )}
           <div
             style={{
               overflow: "hidden",
@@ -429,7 +652,7 @@ export default function LibraryView({ handle, onReset, lastSync, tabsOptions }: 
           <div
             role="separator"
             aria-orientation="vertical"
-            aria-label="Resize left panel"
+            aria-label="Resize library file panel"
             onPointerDown={startResize}
             style={{
               cursor: "col-resize",

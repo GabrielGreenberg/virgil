@@ -57,6 +57,7 @@ export default function LibraryOuterView({
     <LibraryTabView
       key={currentDocId ?? "no-doc"}
       tabsOptions={tabsOptions}
+      showNavigator={false}
       openTabs={openTabs}
       currentDocId={currentDocId}
       currentDoc={currentDoc}

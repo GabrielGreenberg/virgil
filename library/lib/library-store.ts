@@ -86,9 +86,11 @@ export type Library = {
   /** Citekey backing a "paper" tab. Absent for non-paper kinds. */
   citekey?: string;
   /**
-   * Pinned paper tabs survive the replace-on-open behavior — opening
-   * another paper from a sibling library opens a new tab instead of
-   * overwriting this one. Only meaningful when kind === "paper".
+   * When true, opening another library or paper in the panel APPENDS as
+   * a sibling tab instead of REPLACING this one. Applies to every kind:
+   * Central, custom, and paper tabs all use the same mechanic. Per-doc
+   * project tabs ignore the flag (they are synthesized per-render and
+   * not registered).
    */
   pinned?: boolean;
 };
