@@ -1,4 +1,4 @@
-<!-- last-verified: a293e60 2026-05-07 -->
+<!-- last-verified: 7a2355e 2026-05-09 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -36,7 +36,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 
 | Name | Kind | LaTeX | File |
 |---|---|---|---|
-| `footnote` | atom node | `\footnote{…}` | `footnote.ts` |
+| `footnote` | atom node | `\footnote{…}` (also `\thanks{…}` via the `thanks: true` attr — round-trips through the same node, surfaces as an "ACKNOWLEDGEMENT" card in the Footnotes panel/omni with badge "A", and does **not** consume the footnote counter) | `footnote.ts` |
 | `citation` | atom node | `\citep{…}` etc. | `citation.ts` |
 | `inlineMath` | atom node | `$…$` | `math.ts` |
 | `displayMath` | atom node | `$$…$$` | `math.ts` |

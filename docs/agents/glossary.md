@@ -1,4 +1,4 @@
-<!-- last-verified: a293e60 2026-05-07 -->
+<!-- last-verified: 7a2355e 2026-05-09 -->
 
 # Glossary
 
@@ -150,7 +150,10 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 |---|---|---|
 | **Library tab** / **manila tab** (the "shadow" tab paired with each DocTab in the Virgil bar, in `--library-bg` warm tan) | Rendered alongside `DocumentFolderTab` per open doc — see double-tab pattern in [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) "Library tab" section | [src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx) tab strip; library pane body in [library/components/LibraryApp.tsx](../../library/components/LibraryApp.tsx) |
 | **Library pane** (body of the Library tab once activated) | `LibraryApp` → `LibraryView` | [library/components/LibraryApp.tsx](../../library/components/LibraryApp.tsx); [library/components/LibraryView.tsx](../../library/components/LibraryView.tsx) |
-| **Inner library tabs** / **Central + curated libraries** (the second layer of tabs inside the library pane: Central catalog plus user-spawned curated slices) | `TabbedLibraryPanel` + `useLibraryTabs` | [library/components/TabbedLibraryPanel.tsx](../../library/components/TabbedLibraryPanel.tsx); [library/hooks/useLibraryTabs.ts](../../library/hooks/useLibraryTabs.ts) |
+| **Inner library tabs** / **Central + curated libraries** (the second layer of tabs inside the library pane: Central catalog plus user-spawned curated slices) | `TabbedLibraryPanel` + `useLibraryTabs` | [library/components/TabbedLibraryPanel.tsx](../../library/components/TabbedLibraryPanel.tsx); [library/hooks/useLibraryTabs.ts](../../library/hooks/useLibraryTabs.ts). The inner strip's "+" / recent-libraries dropdown moved to the navigator pod (below); per-tab pin and close × are now uniform across Central / Project / Custom |
+| **Libraries navigator** (leftmost rounded pod inside the library pane: lists Central, Project libraries, and My libraries with a "+" to spawn customs and entry-drop targets on custom rows) | `LibrariesNavigator` (435 lines); `openLibrary` action on `useLibraryTabs` (paper-style replace-or-append for navigator clicks); `togglePinLibrary` (renamed from `togglePinPaper`) | [library/components/LibrariesNavigator.tsx](../../library/components/LibrariesNavigator.tsx); [library/hooks/useLibraryTabs.ts](../../library/hooks/useLibraryTabs.ts) |
+| **My Papers pod** (pod below the navigator listing currently-open Virgil docs; "+ Add paper" trigger opens a popup mirroring the Virgil-bar `TabPlusMenu` — recent docs + Open folder + Create new) | `MyPapersPod`; rendered into the `belowNavigator` slot of `LibraryView` | [src/components/library/MyPapersPod.tsx](../../src/components/library/MyPapersPod.tsx) |
+| **Nav pod** (shared shape for the stacked Libraries + My Papers pods, with a draggable horizontal resizer between them; height persisted to `virgil-library-papers-height`, both clamped to 100px floor) | `NavPod` | [library/components/NavPod.tsx](../../library/components/NavPod.tsx) |
 | **Catalog** (master `catalog.json` on disk + `master.bib`) | `CatalogStore` + `useCatalog` + `useMasterBib` | [library/lib/catalog-store.ts](../../library/lib/catalog-store.ts); [library/hooks/useCatalog.ts](../../library/hooks/useCatalog.ts) |
 | **Bib card** (single-entry bib display in the right detail pane) | `BibCard` | [library/components/BibCard.tsx](../../library/components/BibCard.tsx) |
 | **Bib edit modal** (full-form edit dialog for a `.bib` entry) | `BibEditModal` | [library/components/BibEditModal.tsx](../../library/components/BibEditModal.tsx) |
@@ -174,6 +177,8 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 | **Cutter goal** | Per-document word-count cutting target | Stored on `CutterState.goal` in `cutter.json`; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts); UI in [src/panels/Cutter/CutterGoalStrip.tsx](../../src/panels/Cutter/CutterGoalStrip.tsx) |
 | **Collab** / **collaborator mode** | Turn-taking collaboration via sidecar; no co-editing — single-pen coordination for `.tex`, per-card focus claims for sidecars | `collab.json`; [src/lib/collab.ts](../../src/lib/collab.ts); [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts) |
 | **AI requests** | Queued requests for an agent to resolve | `ai-requests.json` |
+| **AI request bridge** (collapses per-card sticky `aiRequest:true` flags on notes/todos/cutter-comments/revision-comments into a single drainable `ai-requests.json` queue with `linkedTo`; fulfillment skill clears the flag and marks the request `complete`) | `bridgeCardFlagsToAiRequests` etc. | [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts) |
+| **Doc notifications inbox** (per-doc `notifications.json` sidecar that editor-side skills append completion entries to; the app polls and toasts unseen items, tracking last-seen per doc in localStorage) | `useDocNotificationStream`; `DocNotification`/`DocNotificationsInbox` types | [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts); types in [src/lib/types.ts](../../src/lib/types.ts) |
 | **Bib review requests** | Per-entry bibliography field/notes reviews | `bib-review-requests.json` |
 | **FSA** (File System Access API) | Disk boundary — only place disk is touched | [src/lib/storage-fsa.ts](../../src/lib/storage-fsa.ts) |
 

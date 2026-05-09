@@ -1,4 +1,4 @@
-<!-- last-verified: a293e60 2026-05-07 -->
+<!-- last-verified: 7a2355e 2026-05-09 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -46,6 +46,7 @@ All in `src/hooks/`. Full list (46 files) is large; these are the ones most ofte
 | `useCollab` | Turn-taking collaboration state machine: pen ownership, heartbeat, polling of `collab.json` sidecar, per-card focus claims, cursor-paragraph presence broadcast |
 | `useRecentlyAddedTracker` | One-slot-per-kind tracker for just-created cards so panels can sort them to the top; auto-cleared when selection moves away |
 | `useLatexCompile` | SwiftLaTeX pdfTeX compile + parsed-error extraction. On success, persists the resulting PDF next to the `.tex` (`pdfFilenameFromTex`) so the in-app PDF view (`library/components/PdfView.tsx`) can re-render without recompiling |
+| `useDocNotificationStream` | Polls `<doc>/virgil/notifications.json` for completion entries written by editor-side skills; returns items appended since the doc-keyed last-seen timestamp in localStorage, for the consumer to toast |
 
 ## Persistence layers
 
@@ -71,7 +72,8 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `virgil.json` | Per-paragraph metadata: titles, fingerprints | Omni view, search breadcrumbs |
 | `suggestions.json` | AI line-edit proposals | **Revisions panel** (suggestion cards beside comments; `y`/`n`/`s` keyboard controls); progress bar lives in the Revisions panel header |
 | `revisions.json` | Comment threads (anchored or paper-wide); legacy `GeneralRevision`/`TextRevision` shapes fold forward to one `Comment` type on read | Revisions panel |
-| `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo) |
+| `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo). Also fed by the **AI request bridge** ([src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)), which collapses per-card sticky `aiRequest:true` flags on notes/todos/cutter-comments/revision-comments into a single drainable queue with `linkedTo`. Editor-side skills under `editor/` (see [editor/AGENTS.md](../../editor/AGENTS.md)) drain it |
+| `notifications.json` | Per-doc inbox of completion entries written by editor-side skills | [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) polls and toasts unseen items |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
 | `editor-state.json` | Cursor position, selection, misc editor state | Restored on reopen |
 | `cutter.json` | Cutter cards (comments + suggestions) and optional word-count goal | Cutter panel; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
@@ -170,5 +172,6 @@ From the existing memory: the File System Access folder picker doesn't work insi
 - Editor content → `main-text.md`
 - User vocabulary → `glossary.md`
 - Library subsystem → [library/AGENTS.md](../../library/AGENTS.md) (sibling tree under `library/`, with its own components/hooks/lib/tiptap/scripts/skills)
+- Editor skill bundle → [editor/AGENTS.md](../../editor/AGENTS.md) (`/editor/review` umbrella + per-kind subskills that fulfill `ai-requests.json` entries; bridged via [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts))
 - Project README → [README.md](../../README.md)
 - Style guide → [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md)

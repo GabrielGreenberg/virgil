@@ -1,4 +1,4 @@
-<!-- last-verified: a293e60 2026-05-07 -->
+<!-- last-verified: 7a2355e 2026-05-09 -->
 
 # Virgil Overview
 
@@ -38,6 +38,10 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Sibling subsystem: `library/`
 
 The Library tab is its own self-contained tree at the repo root, sibling to `src/`. It has its own components, hooks, lib (parser/serializer/store), Python skill scripts, and `library/styles/library.css`. Path A 7.8 deleted the parallel `library/tiptap/` extension set; the Library Reader now mounts the canonical `<EditorPane>` and shares Virgil's TipTap extensions (PgMarkChip moved to [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts)). Cross-tree imports go through the `@library/*` path alias (see `tsconfig.json`, `vitest.config.ts`). Detailed map in [library/AGENTS.md](../../library/AGENTS.md). The static dev sample lives in `library-data/`.
+
+## Sibling subsystem: `editor/`
+
+Editor-side skill bundle (companion to `library/`): the `/editor/review` umbrella plus per-kind subskills that fulfill `ai-requests.json` entries. Self-contained under `editor/` (skills, Python helpers, build script). Wired into the Virgil app via [src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts) (collapses per-card `aiRequest:true` flags into the unified queue) and [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) (toasts skill completions). Built into `public/skill-bundle/` at `predev`/`prebuild` alongside the library bundle. Detailed map in [editor/AGENTS.md](../../editor/AGENTS.md).
 
 ## Core user-facing concepts
 

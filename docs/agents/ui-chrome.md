@@ -1,4 +1,4 @@
-<!-- last-verified: a293e60 2026-05-07 -->
+<!-- last-verified: 7a2355e 2026-05-09 -->
 
 # UI Chrome
 
@@ -178,7 +178,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## MarginActionToolbar
 
-[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Mounted inside `EditorPane.tsx` (~line 3113) via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Shares `ActionButton` + `ActionButtonsRow` styling with the main/detached toolbars. The Reader chrome (`READER_CHROME.actionToolbarKinds = ["note"]`) limits which buttons appear in the paper-rendering surface.
+[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Mounted inside `EditorPane.tsx` (~line 3113) via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Renders each button via `ActionChipButton` (the marginalia-style chip variant of `ActionButton`, defined in `MenuBar.tsx` ~line 853) so the toolbar visually matches the gutter markers it produces — chip palette comes from `usePanelMarkerPalette(themeKey)` and honors per-panel color overrides. The bare `ActionButton` continues to render the legacy icon-only style for the MenuBar's Actions popover and the detached floating toolbar. The Reader chrome (`READER_CHROME.actionToolbarKinds = ["note"]`) limits which buttons appear in the paper-rendering surface.
 
 ## Panel icons
 
