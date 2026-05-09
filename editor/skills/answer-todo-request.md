@@ -37,27 +37,48 @@ matters" (write a note). Read the todo and dispatch.
      "check the dataset"): mark complete with a note explaining the
      limit; don't pretend.
 
-3. **Build the result card** per the chosen shape (see
-   `/editor/draft-suggestion` for revision-suggestion shape;
-   `/editor/answer-note-request` for note shape).
+3. **Build the result card** per the chosen shape:
+   - Suggestion card → see `/editor/draft-suggestion`. Required:
+     `kind`, `id`, `createdAt`, `author: "ai"`, `original_text`,
+     `suggested_text`, `explanation`, `user_text: ""`,
+     `instructions: "<request.text>"`,
+     `status: "pending"`, `links[]`, plus `aiOriginRequestId: <requestId>`
+     when `<requestId>` doesn't start with `virtual:`. Exclude the
+     trailing `%!v:<uuid>` paragraph anchor from `original_text` —
+     the accept-time replacement must not delete the marker.
+   - Sibling note → see `/editor/answer-note-request`.
 
 4. **Apply.**
    ```bash
    python3 editor/scripts/apply_response.py <docPath> '<op-json>'
    ```
    `clearSourceFlag: true` so the todo's `aiRequest` flag flips off.
-   On a successful response, also flip the todo's `done: true` (this
-   is part of the same `apply_response.py` write).
 
-   *(If `done` flip isn't supported by the current `apply_response.py`
-   op shape, do the source-card edit yourself by Editing
-   `<docPath>/virgil/todos.json` directly after `apply_response.py`
-   returns.)*
+   **Whether to flip the source todo's `done: true`:**
+   - **Suggestion card** path: leave `done: false`. The user reviews
+     the suggestion before accepting; the accept flow flips `done`.
+   - **Sibling note** / **complete-only with limit-explanation** path:
+     flip `done: true` directly — Edit `<docPath>/virgil/todos.json`
+     after `apply_response.py` returns (the script doesn't yet
+     support a `flipDone` op).
 
-5. **Reply.**
-   ```
-   Done: <action> for todo <cardId> request <requestId>. Output: <files>.
-   ```
+5. **Reply.** Use the path-specific template:
+   - Suggestion card path:
+     ```
+     Done: drafted suggestion <newId> for todo <cardId>, request <requestId>. Output: revisions.json (+ ai-requests.json, todos.json aiRequest cleared, notifications, version).
+     ```
+   - Sibling note path:
+     ```
+     Done: drafted note <newId> for todo <cardId>, request <requestId>. Output: notes.json (+ ai-requests.json, todos.json done+aiRequest, notifications, version).
+     ```
+   - Follow-up filed (footnote/citation/quotation):
+     ```
+     Done: filed follow-up <kind> request <newRequestId> for todo <cardId>. Output: ai-requests.json (+ todos.json aiRequest cleared, notifications, version).
+     ```
+   - Limit-explanation:
+     ```
+     Skipped <requestId>: <reason>. Source todo <cardId> marked done with note.
+     ```
 
 ## Safety
 

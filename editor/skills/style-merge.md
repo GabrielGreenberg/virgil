@@ -79,17 +79,44 @@ Skip everything else.
    - `\documentclass{...}` from current, since the target style
      already declares one (and the user picked the new style
      deliberately — let it own the document class).
+   - **Bib-system shadow.** If current has `\usepackage{natbib}` and
+     target has `\usepackage{biblatex}` (or vice versa): drop the
+     current bib package and its companions —
+     `\bibliographystyle{...}`, `\setcitestyle{...}` for natbib;
+     `\addbibresource{...}` for biblatex. The body's
+     `\bibliography{...}` (natbib) and `\printbibliography`
+     (biblatex) are mutually exclusive — the merge preserves body
+     bytes verbatim, so a bib-system swap produces a non-compiling
+     .tex until the user manually swaps these body markers. **Flag
+     this loudly in the per-request summary** so the user knows a
+     manual body fix is required.
+   - **Other shadowed packages.** If current and target both load
+     packages that conflict (e.g. `cite` shadowed by `natbib`), drop
+     the current one.
 
 5. **Compose merged preamble.** Start from `payload.targetPreamble`.
    Splice your selections in at sensible insertion points:
 
-   - Extra `\usepackage` lines: after the last `\usepackage` line in
-     the target preamble.
-   - Custom macros: after the package block, before the
+   - **Extra `\usepackage` lines.** Find the last package-block line
+     in the target — that is, the last `\usepackage{...}` line *plus*
+     any immediately-following same-package setup directives
+     (`\addbibresource{...}`, `\geometry{...}`, `\hypersetup{...}`).
+     Insert carried-forward `\usepackage` lines on the next line
+     **after** that whole block. E.g., if the target ends its package
+     block with:
+     ```
+     \usepackage{biblatex}
+     \addbibresource{references.bib}
+     ```
+     carried lines `\usepackage{microtype}` go *after* the
+     `\addbibresource` line — not between.
+   - **Custom macros.** After the package block, before the
      `\providecommand{\vfid}` block (or before `\begin{document}` if
-     no Virgil markers in target).
-   - `\setlength` / `\setcounter`: same region as macros.
-   - Font-config: same region.
+     no Virgil markers in target). Separate from the Virgil-marker
+     comment block by a blank line so the marker block stays a single
+     visually-coherent unit.
+   - **`\setlength` / `\setcounter`**: same region as macros.
+   - **Font-config**: same region.
 
    Preserve original whitespace where reasonable. The merged blob
    must end with `\begin{document}\n\n` exactly — same shape as the
