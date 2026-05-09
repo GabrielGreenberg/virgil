@@ -49,6 +49,11 @@
 /* ── TipTap rendering for indexed papers ──────────────────────────── */
 
 [data-virgil-library-reader] .paper-render { padding: 28px 32px; }
+/* Reader inserts 32px of horizontal padding via .paper-render between
+   the editor-pane-column and the prose. The column's min-width calc
+   in EditorPane.tsx subtracts this to keep the text-width floor at
+   300px in Reader mode. */
+[data-virgil-library-reader] { --editor-wrapper-inset: 64px; }
 
 [data-virgil-library-reader] .paper-render .tiptap {
   outline: none;

@@ -2746,7 +2746,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // column gets the rest. Mirrors the old EditorLayout's
                 // `flex: 1000 1 ${editorBasis}px` editor-column rule.
                 flex: "1000 1 0",
-                minWidth: 0,
+                // Text-width floor: ensure the prose column never collapses
+                // below 300px on narrow windows. Subtract `--editor-pl` /
+                // `--editor-pr` (set just below; consumed by Editor.tsx's
+                // prose padding), the pod's 2px horizontal border (1px each
+                // side from `--pod-border`), and any wrapper inset
+                // (`--editor-wrapper-inset`, set by Reader's `.paper-render`
+                // padding via library.css; 0 in Editor mode).
+                minWidth: 'calc(300px + var(--editor-pl, 88px) + var(--editor-pr, 72px) + 2px + var(--editor-wrapper-inset, 0px))',
                 display: "flex",
                 flexDirection: "column",
                 // Span the full editor scroll height so the sticky
