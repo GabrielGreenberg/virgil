@@ -32,15 +32,42 @@ export async function clearLibraryHandle(): Promise<void> {
   await del(HANDLE_KEY, store);
 }
 
-/** Must be called from inside a user gesture (FSA spec). */
-export async function pickLibraryFolder(): Promise<FileSystemDirectoryHandle> {
+export type PickFolderResult =
+  | { kind: "ok"; handle: FileSystemDirectoryHandle }
+  | { kind: "cancelled" }
+  | { kind: "locked"; message: string }
+  | { kind: "error"; message: string };
+
+/** Must be called from inside a user gesture (FSA spec). Returns a
+ *  discriminated result so the caller can surface a "picker locked"
+ *  state to the UI instead of silently no-op'ing on a stuck lock. */
+export async function pickLibraryFolder(): Promise<PickFolderResult> {
   if (isDevStorage) {
     // No picker in dev mode — just hand back the synthetic root.
-    return devLibraryRootHandle();
+    return { kind: "ok", handle: devLibraryRootHandle() };
   }
-  const handle = await window.showDirectoryPicker({ mode: "readwrite" });
+  let handle: FileSystemDirectoryHandle;
+  try {
+    console.log("[library] pickLibraryFolder: calling showDirectoryPicker");
+    handle = await window.showDirectoryPicker({ mode: "readwrite" });
+    console.log("[library] pickLibraryFolder: picker resolved", { name: handle.name });
+  } catch (err) {
+    const name = (err as DOMException)?.name;
+    const message = (err as Error)?.message ?? String(err);
+    console.warn("[library] pickLibraryFolder: picker rejected", { name, message });
+    if (name === "AbortError") return { kind: "cancelled" };
+    if (name === "NotAllowedError") {
+      return {
+        kind: "locked",
+        message:
+          "The browser file picker is already active (or stuck from a previous attempt). " +
+          "Dismiss any open file/save dialog, then try again. If nothing visible is open, fully quit and reopen the app window.",
+      };
+    }
+    return { kind: "error", message };
+  }
   await setLibraryHandle(handle);
-  return handle;
+  return { kind: "ok", handle };
 }
 
 /** Query and request FSA permission for a stored handle. */

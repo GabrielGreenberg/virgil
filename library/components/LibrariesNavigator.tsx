@@ -34,6 +34,10 @@ interface Props {
   /** Create a new custom library, open it in the middle column, and
    *  return its id so the navigator can enter rename mode immediately. */
   onCreateLibrary: () => string;
+  /** Open the system file picker for a `.bib` file, write it into
+   *  `unsorted/`, and create a new custom library populated with the
+   *  parsed citekeys. Async: the parent runs the FSA work. */
+  onCreateLibraryFromBib: () => void | Promise<void>;
   /** Add entries (resolved citekeys / triage keys) to a custom library
    *  via drag-drop. Always batched. */
   onAddEntriesToLibrary: (libId: string, entryKeys: readonly string[]) => void;
@@ -50,6 +54,7 @@ export default function LibrariesNavigator({
   openLibraryIds,
   onOpenLibrary,
   onCreateLibrary,
+  onCreateLibraryFromBib,
   onAddEntriesToLibrary,
   onRenameLibrary,
 }: Props) {
@@ -111,6 +116,7 @@ export default function LibrariesNavigator({
       )}
 
       <SectionHeader onAdd={handleCreate}>My libraries</SectionHeader>
+      <AddFromBibRow onClick={() => void onCreateLibraryFromBib()} />
       {customs.length === 0 ? (
         <EmptyHint>No custom libraries</EmptyHint>
       ) : (
@@ -364,6 +370,54 @@ function SectionHeader({
           +
         </button>
       ) : null}
+    </div>
+  );
+}
+
+/** Static "+ Add from .bib" row rendered just below the My libraries
+ *  header. Click → host triggers the file-picker → import flow in
+ *  `LibraryView.handleCreateLibraryFromBib`. Styled like a NavRow but
+ *  muted (no accent bar, no drop target, no editing affordance). */
+function AddFromBibRow({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      title="Pick a .bib file and import it as a new custom library"
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "0 12px 0 14px",
+        height: 26,
+        cursor: "pointer",
+        background: hovered ? "rgba(0, 0, 0, 0.04)" : "transparent",
+      }}
+    >
+      <span
+        style={{
+          flex: 1,
+          fontSize: 12,
+          lineHeight: "16px",
+          color: "var(--muted)",
+          fontStyle: "italic",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        + Add from .bib
+      </span>
     </div>
   );
 }

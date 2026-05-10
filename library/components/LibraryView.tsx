@@ -6,8 +6,16 @@ import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
 import { useNotificationStream } from "@library/hooks/useNotificationStream";
 import { useUnsortedPdfs } from "@library/hooks/useUnsortedPdfs";
+import { useUnsortedBibEntries } from "@library/hooks/useUnsortedBibEntries";
 import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
 import { docIdFromProjectLibraryId, isProjectDocId } from "@library/lib/library-store";
+import {
+  fileExists,
+  pickBibFile,
+  SUBDIRS,
+  writeTextFile,
+} from "@library/lib/library-storage";
+import { parseBibFile } from "@library/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { SyncResult } from "@library/lib/skill-sync";
@@ -68,6 +76,8 @@ export default function LibraryView({
   const { catalog, reload } = useCatalog(handle);
   const { entries: bibEntries, reload: reloadBib } = useMasterBib(handle);
   const { files: unsortedFiles, reload: reloadUnsorted } = useUnsortedPdfs(handle);
+  const { byFile: unsortedBibByFile, reload: reloadUnsortedBib } =
+    useUnsortedBibEntries(handle);
   const dropPdf = useDropPdf(handle);
   const notifications = useNotificationStream(handle);
 
@@ -234,7 +244,10 @@ export default function LibraryView({
     () => new Set(),
   );
   const [anchorKey, setAnchorKey] = useState<string | null>(null);
-  const libraryTabs = useLibraryTabs(tabsOptions);
+  // Pass the FSA handle so the disk-libraries hook (consumed inside
+  // useLibraryTabs) can read/write `.virgil/libraries/<slug>.json`.
+  // Custom-library state is durable on disk, not localStorage.
+  const libraryTabs = useLibraryTabs({ ...tabsOptions, handle });
 
   // Listen for `virgil-open-library` events dispatched by Bibliography
   // chips. The outer bridge (src/components/editor-layout/event-bridges/
@@ -306,7 +319,7 @@ export default function LibraryView({
     [bibByKey, libraryTabs.addEntryToLibrary],
   );
 
-  // Synthesize catalog rows from two extra sources so the list reflects
+  // Synthesize catalog rows from three extra sources so the list reflects
   // everything visible on disk, even before the skills run:
   //   1. master.bib keys without a catalog entry — freshly-typed bib lines
   //      become browsable immediately with all three pills gray.
@@ -315,6 +328,12 @@ export default function LibraryView({
   //      "(triaging)". They appear at the TOP of the merged list (newest
   //      mtime first, courtesy of useUnsortedPdfs) so freshly-dropped
   //      files are visible without scrolling.
+  //   3. Citation entries inside `.bib` files sitting in unsorted/ — the
+  //      product of "+ Add from .bib" imports. These render as bib-only
+  //      rows with the citekey from the source file. After the triage
+  //      skill merges the entries into master.bib and deletes the source,
+  //      branch (1) takes over — citekey unchanged, library membership
+  //      unchanged, no UI flicker.
   const mergedEntries = useMemo<CatalogEntry[]>(() => {
     const rows: CatalogEntry[] = catalog?.entries ?? [];
     const seenKeys = new Set(rows.map((e) => e.citekey).filter(Boolean) as string[]);
@@ -351,9 +370,37 @@ export default function LibraryView({
         indexed: { state: "none" },
         bib: { state: "unverified" },
       });
+      seenKeys.add(b.key);
     }
-    return [...unsortedSynthetic, ...rows, ...bibOnlySynthetic];
-  }, [catalog, bibEntries, unsortedFiles]);
+    const unsortedBibSynthetic: CatalogEntry[] = [];
+    for (const entries of unsortedBibByFile.values()) {
+      for (const b of entries) {
+        if (!b.key || seenKeys.has(b.key)) continue;
+        const authorField = b.fields.author;
+        unsortedBibSynthetic.push({
+          citekey: b.key,
+          title: b.fields.title,
+          authors: authorField
+            ? authorField.split(/\s+and\s+/).map((a) => a.trim()).filter(Boolean)
+            : undefined,
+          year: b.fields.year ? Number(b.fields.year) : undefined,
+          doi: b.fields.doi,
+          addedAt: "",
+          updatedAt: "",
+          pdf: { present: false },
+          indexed: { state: "none" },
+          bib: { state: "unverified" },
+        });
+        seenKeys.add(b.key);
+      }
+    }
+    return [
+      ...unsortedSynthetic,
+      ...rows,
+      ...bibOnlySynthetic,
+      ...unsortedBibSynthetic,
+    ];
+  }, [catalog, bibEntries, unsortedFiles, unsortedBibByFile]);
 
   const onFiles = useCallback(
     async (files: File[]) => {
@@ -402,6 +449,86 @@ export default function LibraryView({
     }),
     [handle, libraryTabs.removeEntryFromLibrary],
   );
+
+  // "+ Add from .bib" — open the system file picker, parse the chosen
+  // .bib, write it into unsorted/ (so a triage skill can later merge its
+  // entries into master.bib), and create a new custom library populated
+  // with the parsed citekeys. Until the skill drains the file, the
+  // synthesis branch in `mergedEntries` (above) renders bib-only rows
+  // for those citekeys; afterward the same citekeys resolve through the
+  // master.bib path and the library transitions seamlessly.
+  const handleCreateLibraryFromBib = useCallback(async () => {
+    const picked = await pickBibFile();
+    if (!picked) return; // user cancelled or environment lacks the API
+
+    let parsed: BibEntry[] = [];
+    try {
+      parsed = parseBibFile(picked.text);
+    } catch (err) {
+      console.warn("[library] failed to parse picked .bib", err);
+    }
+    if (parsed.length === 0) {
+      console.warn(
+        `[library] no entries found in ${picked.filename} — skipping import`,
+      );
+      return;
+    }
+
+    // Pick a unique on-disk filename in unsorted/ so re-imports of the
+    // same source file don't clobber each other. `foo.bib` → `foo-2.bib`,
+    // `foo-3.bib`, etc.
+    const dotIdx = picked.filename.lastIndexOf(".");
+    const base =
+      dotIdx > 0 ? picked.filename.slice(0, dotIdx) : picked.filename;
+    const ext = dotIdx > 0 ? picked.filename.slice(dotIdx) : ".bib";
+    let attempt = 1;
+    let onDiskName = picked.filename;
+    while (
+      await fileExists(handle, `${SUBDIRS.unsorted}/${onDiskName}`)
+    ) {
+      attempt += 1;
+      onDiskName = `${base}-${attempt}${ext}`;
+      if (attempt > 999) break; // pathological safety valve
+    }
+    try {
+      await writeTextFile(
+        handle,
+        `${SUBDIRS.unsorted}/${onDiskName}`,
+        picked.text,
+      );
+    } catch (err) {
+      console.error("[library] failed to write picked .bib to unsorted/", err);
+      return;
+    }
+
+    // De-duplicate citekeys against existing custom-library labels for
+    // the navigator label. The on-disk filename uniqueness is independent
+    // of the label uniqueness — both can drift ("foo (2)" vs "foo-2.bib").
+    const existingLabels = new Set(
+      libraryTabs.registry.libraries
+        .filter((l) => l.kind === "custom")
+        .map((l) => l.label),
+    );
+    let label = base;
+    let labelAttempt = 1;
+    while (existingLabels.has(label)) {
+      labelAttempt += 1;
+      label = `${base} (${labelAttempt})`;
+      if (labelAttempt > 999) break;
+    }
+
+    const entryKeys = parsed.map((e) => e.key).filter(Boolean);
+    libraryTabs.createFromBib({
+      label,
+      sourceBibFile: onDiskName,
+      entryKeys,
+      panel: "left",
+    });
+    // Trigger an immediate poll instead of waiting for the 6 s tick so
+    // the synthesized rows show up the moment the user clicks the new
+    // library tab.
+    void reloadUnsortedBib();
+  }, [handle, libraryTabs, reloadUnsortedBib]);
 
   // Container-scoped drag tracking. Two responsibilities:
   //   1. Maintain `dragActive` so the lozenge in TopBar and the dashed
@@ -514,6 +641,7 @@ export default function LibraryView({
       openLibraryIds={openLibraryIds}
       onOpenLibrary={(id) => libraryTabs.openLibrary(id, "left")}
       onCreateLibrary={() => libraryTabs.create("left")}
+      onCreateLibraryFromBib={handleCreateLibraryFromBib}
       onAddEntriesToLibrary={handleAddEntriesToLibrary}
       onRenameLibrary={libraryTabs.rename}
     />

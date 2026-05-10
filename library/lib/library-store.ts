@@ -93,6 +93,14 @@ export type Library = {
    * not registered).
    */
   pinned?: boolean;
+  /**
+   * Filename of the source `.bib` in `unsorted/`, when this custom
+   * library was created via "+ Add from .bib". The frontend renders
+   * synthesized rows from this file's parsed entries until a triage
+   * skill merges them into `master.bib` and deletes the source file.
+   * Cleared on next mount once the file is gone from `unsorted/`.
+   */
+  sourceBibFile?: string;
 };
 
 export type Registry = {
@@ -214,27 +222,64 @@ export function saveRegistry(registry: Registry): void {
 export const REGISTRY_CHANGED_EVENT = "virgil-library-registry-changed";
 
 /**
- * Idempotently append `entryKey` to a library's `entryKeys`. Used by
- * the outer Virgil bar's drop handler to add a paper to a library
- * without owning a `useLibraryTabs` instance. No-ops on Central /
- * Project / paper-kind libraries, which all derive membership from
- * other sources (catalog / doc bib / single citekey).
+ * Idempotently append `entryKey` to a library's membership. Used by
+ * the outer Virgil bar's drop handler to add a paper to a custom
+ * library without owning a `useLibraryTabs` instance.
+ *
+ * Sync-from-the-caller's-view: the disk read-modify-write fires in
+ * the background. After the disk write succeeds, the function
+ * dispatches `REGISTRY_CHANGED_EVENT` so every in-window consumer
+ * re-reads. No-ops when the FSA handle isn't available, when the
+ * target id is built-in / project / paper-kind, or when the disk
+ * doesn't have a matching manifest (a stale tab id from another
+ * folder).
+ *
+ * Errors are logged but never thrown — drop handlers expect a void
+ * sync API.
  */
 export function addEntryToLibraryGlobal(libId: string, entryKey: string): void {
   if (!libId || !entryKey) return;
-  const r = loadRegistry();
-  let changed = false;
-  const next: Registry = {
-    libraries: r.libraries.map((l) => {
-      if (l.id !== libId) return l;
-      if (l.kind !== "custom") return l;
-      const cur = l.entryKeys ?? [];
-      if (cur.includes(entryKey)) return l;
-      changed = true;
-      return { ...l, entryKeys: [...cur, entryKey] };
-    }),
-  };
-  if (changed) saveRegistry(next);
+  if (isBuiltin(libId) || isPaperId(libId) || isProjectDocId(libId)) return;
+  void (async () => {
+    try {
+      // Lazy imports to avoid a circular dep between library-store
+      // (sync, localStorage-only by convention) and library-storage /
+      // library-folder (FSA-aware). The bridge is intentional: this
+      // one function is the only place library-store reaches into the
+      // FSA layer.
+      const { getLibraryHandle, queryReadWritePermission } = await import(
+        "./library-folder"
+      );
+      const { listLibraryManifests, writeLibraryManifest } = await import(
+        "./library-storage"
+      );
+      const handle = await getLibraryHandle();
+      if (!handle) return;
+      const perm = await queryReadWritePermission(handle);
+      if (perm !== "granted") return;
+      const list = await listLibraryManifests(handle);
+      const match = list.find((item) => item.manifest.id === libId);
+      if (!match) return;
+      const cur = match.manifest.citekeys;
+      if (cur.includes(entryKey)) return;
+      const updated = {
+        ...match.manifest,
+        citekeys: [...cur, entryKey],
+        updatedAt: Date.now(),
+      };
+      await writeLibraryManifest(handle, match.filename, updated);
+      try {
+        window.dispatchEvent(new CustomEvent(REGISTRY_CHANGED_EVENT));
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      console.error(
+        "[library] addEntryToLibraryGlobal: failed to write manifest",
+        err,
+      );
+    }
+  })();
 }
 
 /** Build the localStorage key for a panel's tab record. When `scope` is
@@ -308,4 +353,43 @@ export function isProject(id: string): boolean {
 
 export function newLibraryId(): string {
   return `lib-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Filesystem-safe slug for a library's label. Used as the `<slug>` in
+ * `.virgil/libraries/<slug>.json`. Lowercases ASCII, replaces every
+ * non-alphanumeric run with `-`, and trims edge dashes. Falls back to
+ * `library` when the input collapses to empty (e.g. a label that's
+ * only emoji), and never returns longer than 80 chars so paths stay
+ * sane on every platform.
+ */
+export function slugifyLibraryLabel(label: string): string {
+  const slug = (label || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || "library";
+}
+
+/**
+ * Append `-2`, `-3`, … to `slug` until it doesn't appear in
+ * `existing`. Used at write time to keep manifest filenames unique
+ * within `.virgil/libraries/`. The first attempt is the bare slug;
+ * the suffix only kicks in on collision so single-library folders
+ * stay tidy.
+ */
+export function dedupeSlug(slug: string, existing: ReadonlySet<string>): string {
+  if (!existing.has(slug)) return slug;
+  let n = 2;
+  while (existing.has(`${slug}-${n}`)) {
+    n += 1;
+    if (n > 9999) break; // pathological safety valve
+  }
+  return `${slug}-${n}`;
+}
+
+/** Build the canonical filename for a library manifest. */
+export function libraryManifestFilename(slug: string): string {
+  return `${slug}.json`;
 }

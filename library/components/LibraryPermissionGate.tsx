@@ -3,9 +3,12 @@
 interface Props {
   onGrant: () => void;
   onReset: () => void;
+  /** Latest picker-flow error (e.g. Chrome's "permission prompt
+   *  already active" lock). Surfaced under the buttons. */
+  pickerError?: string | null;
 }
 
-export default function LibraryPermissionGate({ onGrant, onReset }: Props) {
+export default function LibraryPermissionGate({ onGrant, onReset, pickerError }: Props) {
   return (
     <div
       style={{
@@ -34,6 +37,7 @@ export default function LibraryPermissionGate({ onGrant, onReset }: Props) {
             padding: "8px 16px",
             borderRadius: 6,
             border: "none",
+            cursor: "pointer",
           }}
         >
           Grant access
@@ -46,11 +50,27 @@ export default function LibraryPermissionGate({ onGrant, onReset }: Props) {
             padding: "8px 16px",
             borderRadius: 6,
             border: "1px solid var(--border-light)",
+            cursor: "pointer",
           }}
         >
           Pick a different folder
         </button>
       </div>
+      {pickerError ? (
+        <p
+          role="alert"
+          style={{
+            color: "var(--error, #b00020)",
+            maxWidth: 460,
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.4,
+            margin: 0,
+          }}
+        >
+          {pickerError}
+        </p>
+      ) : null}
     </div>
   );
 }

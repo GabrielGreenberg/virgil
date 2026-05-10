@@ -31,7 +31,38 @@ export const SUBDIRS = {
   logs: `${VIRGIL_DIR}/logs`,
   memos: `${VIRGIL_DIR}/memos`,
   scripts: `${VIRGIL_DIR}/scripts`,
+  libraries: `${VIRGIL_DIR}/libraries`,
 } as const;
+
+/**
+ * On-disk manifest for a custom library. Stored at
+ * `.virgil/libraries/<slug>.json`, with `<slug>` derived from `label`
+ * (and dedupe-suffixed on collision). The frontend is the sole writer;
+ * skills may read these files but never mutate them. `master.bib`
+ * remains the canonical source of entry data — `citekeys` here just
+ * names the membership.
+ */
+export interface LibraryManifest {
+  schemaVersion: 1;
+  /** Stable id, kept across renames. localStorage panel-tabs state and
+   *  every in-memory consumer key off this id, not the filename. */
+  id: string;
+  label: string;
+  /** Epoch ms. Set on creation; never overwritten thereafter. */
+  createdAt: number;
+  /** Epoch ms. Bumped on every write so cross-window pollers can
+   *  detect a stale local cache. */
+  updatedAt: number;
+  /** Membership. Each value is either a citekey (resolves against
+   *  master.bib) or `__triage__<filename>` for unsorted-file refs. */
+  citekeys: string[];
+  pinned?: boolean;
+  /** Filename of the source `.bib` in `unsorted/` when this library
+   *  was created via "+ Add from .bib". Cleared once the source file
+   *  is gone (the triage skill deletes it after merging entries into
+   *  master.bib). */
+  sourceBibFile?: string;
+}
 
 // ---------------------------------------------------------------------------
 // Directory helpers
@@ -166,6 +197,58 @@ export async function writeJsonFile(
 }
 
 // ---------------------------------------------------------------------------
+// File picker (system "Open File" dialog)
+// ---------------------------------------------------------------------------
+
+/**
+ * Show the system file-open dialog for a single `.bib` file and return its
+ * filename + text contents. Returns `null` if the user cancels, the
+ * environment lacks `showOpenFilePicker` (non-Chromium browsers, SSR), or
+ * Chrome's per-origin picker lock is stuck (a stranded picker from a
+ * prior page state). The caller treats null as "no-op" — never crash.
+ *
+ * Must be called from inside a user gesture (click handler).
+ */
+export async function pickBibFile(): Promise<{ filename: string; text: string } | null> {
+  if (typeof window === "undefined") return null;
+  const w = window as unknown as {
+    showOpenFilePicker?: (opts: unknown) => Promise<FileSystemFileHandle[]>;
+  };
+  if (typeof w.showOpenFilePicker !== "function") return null;
+  try {
+    const [handle] = await w.showOpenFilePicker({
+      multiple: false,
+      types: [
+        {
+          description: "BibTeX file",
+          accept: { "text/x-bibtex": [".bib"], "application/x-bibtex": [".bib"] },
+        },
+      ],
+      excludeAcceptAllOption: false,
+    });
+    if (!handle) return null;
+    const file = await handle.getFile();
+    return { filename: handle.name, text: await file.text() };
+  } catch (err) {
+    const name = (err as DOMException)?.name;
+    // AbortError — user cancelled. NotAllowedError — Chrome's "file
+    // picker already active" lock; surfacing it as an unhandled
+    // rejection would crash the React tree, so we log + return null
+    // and let the caller no-op. The user can usually recover by
+    // dismissing the orphaned picker (or reloading).
+    if (name === "AbortError" || name === "NotAllowedError") {
+      if (name === "NotAllowedError") {
+        console.warn(
+          "[library] pickBibFile: file picker already active — dismiss any open browser file dialog (or reload) and try again",
+        );
+      }
+      return null;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Listing
 // ---------------------------------------------------------------------------
 
@@ -229,6 +312,116 @@ export async function fileExists(
 }
 
 // ---------------------------------------------------------------------------
+// Custom library manifests (.virgil/libraries/<slug>.json)
+// ---------------------------------------------------------------------------
+
+/** Create the libraries directory if missing. Called from
+ *  `ensureLibraryStructure`; safe to call repeatedly. */
+export async function ensureLibrariesDir(
+  root: FileSystemDirectoryHandle,
+): Promise<FileSystemDirectoryHandle> {
+  return ensureNestedDir(root, SUBDIRS.libraries);
+}
+
+/** List every `<slug>.json` manifest in `.virgil/libraries/` along
+ *  with its parsed contents. Hidden files (starting with `.`) are
+ *  skipped — that's how the migration sentinel `.migrated` is
+ *  excluded. Files that fail to parse are reported via console.warn
+ *  and skipped (so a single corrupt file doesn't block the rest). */
+export async function listLibraryManifests(
+  root: FileSystemDirectoryHandle,
+): Promise<{ filename: string; manifest: LibraryManifest }[]> {
+  const entries = await listDir(root, SUBDIRS.libraries);
+  if (!entries) return [];
+  const out: { filename: string; manifest: LibraryManifest }[] = [];
+  for (const e of entries) {
+    if (e.kind !== "file") continue;
+    if (e.name.startsWith(".")) continue;
+    if (!e.name.toLowerCase().endsWith(".json")) continue;
+    const manifest = await readLibraryManifest(root, e.name);
+    if (!manifest) continue;
+    out.push({ filename: e.name, manifest });
+  }
+  return out;
+}
+
+export async function readLibraryManifest(
+  root: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<LibraryManifest | undefined> {
+  const text = await readTextFile(root, `${SUBDIRS.libraries}/${filename}`);
+  if (text === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(text) as Partial<LibraryManifest>;
+    if (
+      typeof parsed?.id !== "string" ||
+      typeof parsed?.label !== "string" ||
+      !Array.isArray(parsed?.citekeys)
+    ) {
+      console.warn(
+        `[library] readLibraryManifest: malformed manifest at ${SUBDIRS.libraries}/${filename}`,
+      );
+      return undefined;
+    }
+    // Normalise the few optional fields so consumers don't have to.
+    return {
+      schemaVersion: 1,
+      id: parsed.id,
+      label: parsed.label,
+      createdAt: typeof parsed.createdAt === "number" ? parsed.createdAt : 0,
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : 0,
+      citekeys: parsed.citekeys.filter(
+        (k): k is string => typeof k === "string",
+      ),
+      pinned: parsed.pinned === true ? true : undefined,
+      sourceBibFile:
+        typeof parsed.sourceBibFile === "string"
+          ? parsed.sourceBibFile
+          : undefined,
+    };
+  } catch (err) {
+    console.warn(
+      `[library] readLibraryManifest: parse failed for ${SUBDIRS.libraries}/${filename}`,
+      err,
+    );
+    return undefined;
+  }
+}
+
+/** Write a manifest at `.virgil/libraries/<filename>`. The platform's
+ *  `createWritable` → `write` → `close` semantics make this atomic on
+ *  Chromium FSA; consumers can rely on never seeing a partial write. */
+export async function writeLibraryManifest(
+  root: FileSystemDirectoryHandle,
+  filename: string,
+  manifest: LibraryManifest,
+): Promise<void> {
+  await writeJsonFile(root, `${SUBDIRS.libraries}/${filename}`, manifest);
+}
+
+export async function deleteLibraryManifest(
+  root: FileSystemDirectoryHandle,
+  filename: string,
+): Promise<void> {
+  await deleteFile(root, `${SUBDIRS.libraries}/${filename}`);
+}
+
+/** Rename a manifest file. FSA has no native rename, so this is a
+ *  read → write-new → delete-old sequence. Returns silently if
+ *  `oldFilename` is missing or `oldFilename === newFilename`. */
+export async function renameLibraryManifest(
+  root: FileSystemDirectoryHandle,
+  oldFilename: string,
+  newFilename: string,
+): Promise<void> {
+  if (!oldFilename || !newFilename || oldFilename === newFilename) return;
+  const manifest = await readLibraryManifest(root, oldFilename);
+  if (!manifest) return;
+  await writeLibraryManifest(root, newFilename, manifest);
+  await deleteLibraryManifest(root, oldFilename);
+}
+
+// ---------------------------------------------------------------------------
 // Bootstrapping a freshly-picked library folder
 // ---------------------------------------------------------------------------
 
@@ -255,6 +448,7 @@ export async function ensureLibraryStructure(
   await ensureNestedDir(root, SUBDIRS.notifications);
   await ensureNestedDir(root, SUBDIRS.logs);
   await ensureNestedDir(root, SUBDIRS.memos);
+  await ensureNestedDir(root, SUBDIRS.libraries);
   // Bootstrap .claude/ for skill commands. The workspace CLAUDE.md is
   // written by skill-sync; we just create the parent.
   await ensureDir(root, CLAUDE_DIR);
