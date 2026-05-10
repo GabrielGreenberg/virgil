@@ -163,6 +163,23 @@ user reads).
 - It does not commit changes. After iteration, the user inspects
   `git diff library/skills/<skill>.md` and commits when ready.
 
+## Don't synchronously drain queues from inside the loop
+
+If you (the driver) want to drain the index queue as part of a
+session that's also running this loop — e.g. "drain the backlog,
+then iterate the skill on representatives of whatever indexed" — do
+**not** spawn a subagent that synchronously runs
+`/library/index-pending` on a large queue. The subagent's turn
+budget will expire mid-drain, the orphaned `drain_queue.py` child
+will keep running, and the audit/follow-up step will silently never
+run. This is exactly the failure mode that bit us on 2026-05-09.
+
+Use the detach-and-poll pattern from `library/skills/index-pending.md`
+("Large queues / running from inside a subagent") instead: kick off
+the drain in a detached shell, arm a Bash background waiter on the
+empty-queue condition, and only spawn iterate-skill subagents after
+the waiter fires.
+
 ## Reply format
 
 End-of-loop summary as described above. If the loop aborted before

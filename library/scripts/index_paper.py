@@ -23,6 +23,7 @@ Designed to be runnable directly OR called from the /index-paper skill.
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
 import shutil
@@ -30,6 +31,7 @@ import subprocess
 import sys
 import time
 import traceback
+from contextlib import contextmanager
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -187,6 +189,41 @@ def _emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> st
     return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
 
 
+@contextmanager
+def _master_bib_lock(library: Path):
+    """Acquire an exclusive POSIX advisory lock for read-modify-write of
+    master.bib.
+
+    On 2026-05-09 a concurrent drain race truncated master.bib to a
+    single entry: two `index_paper.py` processes each read the file,
+    each computed an updated version against their stale read, and each
+    wrote it back — the later writer's entry-set lost everything the
+    earlier writer had added that turn. This lock makes the
+    read-modify-write critical section in `_update_master_bib_entry`
+    serializable across concurrent invocations.
+
+    The lock is held on a sidecar `master.bib.lock` file (rather than on
+    master.bib itself) because `Path.write_text` does
+    open/truncate/write/close — closing master.bib would release a lock
+    held on its FD before the next reader acquires it. The sidecar's FD
+    stays open across the rewrite.
+
+    Uses `fcntl.flock` (POSIX). Library runs on macOS / Linux; if Virgil
+    ever ports to Windows, this needs `msvcrt.locking` instead.
+    """
+    lock_path = library / "master.bib.lock"
+    lock_path.touch(exist_ok=True)
+    fd = open(lock_path, "r+")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+        finally:
+            fd.close()
+
+
 def _update_master_bib_entry(
     master_path: Path,
     citekey: str,
@@ -199,58 +236,63 @@ def _update_master_bib_entry(
     Finds the @type{citekey, ...} block, replaces it (and any preceding
     '% bib.state = ...' comment line) with a freshly emitted block.
     If the citekey is not found, appends at the end.
+
+    The read-modify-write is serialized via `_master_bib_lock` to
+    prevent the concurrent-drain truncation incident from 2026-05-09.
     """
-    if not master_path.exists():
-        master_path.write_text("")
-    text = master_path.read_text()
+    library = master_path.parent
+    with _master_bib_lock(library):
+        if not master_path.exists():
+            master_path.write_text("")
+        text = master_path.read_text()
 
-    # Locate the @type{citekey, ...} block.
-    import re
-    pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
-    m = pattern.search(text)
+        # Locate the @type{citekey, ...} block.
+        import re
+        pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
+        m = pattern.search(text)
 
-    replacement = ""
-    if bib_state:
-        replacement += f"% bib.state = {bib_state}\n"
-    replacement += _emit_bib_entry(citekey, entry_type, fields)
+        replacement = ""
+        if bib_state:
+            replacement += f"% bib.state = {bib_state}\n"
+        replacement += _emit_bib_entry(citekey, entry_type, fields)
 
-    if m:
-        entry_start = m.start()
-        # Find matching closing brace from the opening brace.
-        brace_pos = text.index("{", m.start())
-        depth = 1
-        j = brace_pos + 1
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        entry_end = j
+        if m:
+            entry_start = m.start()
+            # Find matching closing brace from the opening brace.
+            brace_pos = text.index("{", m.start())
+            depth = 1
+            j = brace_pos + 1
+            while j < len(text) and depth > 0:
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                j += 1
+            entry_end = j
 
-        # Check for a preceding "% bib.state = ..." comment line.
-        # Find the start of the line the @ is on, then check the line before it.
-        at_line_start = text.rfind("\n", 0, entry_start)
-        if at_line_start == -1:
-            at_line_start = 0
+            # Check for a preceding "% bib.state = ..." comment line.
+            # Find the start of the line the @ is on, then check the line before it.
+            at_line_start = text.rfind("\n", 0, entry_start)
+            if at_line_start == -1:
+                at_line_start = 0
+            else:
+                at_line_start += 1
+            prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
+            if prev_line_start == -1:
+                prev_line_start = 0
+            else:
+                prev_line_start += 1
+            prev_line = text[prev_line_start:at_line_start].strip()
+            if prev_line.startswith("% bib.state"):
+                entry_start = prev_line_start
+
+            text = text[:entry_start] + replacement + text[entry_end:]
         else:
-            at_line_start += 1
-        prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
-        if prev_line_start == -1:
-            prev_line_start = 0
-        else:
-            prev_line_start += 1
-        prev_line = text[prev_line_start:at_line_start].strip()
-        if prev_line.startswith("% bib.state"):
-            entry_start = prev_line_start
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += "\n" + replacement
 
-        text = text[:entry_start] + replacement + text[entry_end:]
-    else:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += "\n" + replacement
-
-    master_path.write_text(text)
+        master_path.write_text(text)
 
 
 def _resync_references_bib(library: Path, citekey: str) -> bool:

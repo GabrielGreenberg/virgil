@@ -68,9 +68,10 @@ const INDEXED_RANK: Record<IndexedState, number> = {
 const BIB_RANK: Record<BibAuthState, number> = {
   authenticated: 0,
   manuscript: 1,
-  unverified: 2,
-  failed: 3,
-  none: 4,
+  canonical: 2,
+  unverified: 3,
+  failed: 4,
+  none: 5,
 };
 
 /** Compare two catalog entries for the given sort column. Returns the

@@ -21,6 +21,7 @@ export type BibAuthState =
   | "unverified"
   | "authenticated"
   | "manuscript"
+  | "canonical"
   | "failed";
 
 export type SourceFormat = "pdf" | "docx" | "tex";
