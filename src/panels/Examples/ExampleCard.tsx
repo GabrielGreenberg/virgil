@@ -15,6 +15,8 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 export interface ExampleCardProps {
   example: ExampleInfo;
@@ -56,7 +58,9 @@ export function ExampleCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const inOmni = useInOmni() != null;
-  const compressed = !isSelected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
+  const isSelectedEffective = ac.selected || isSelected;
+  const compressed = !isSelectedEffective && !isPoppedOut;
 
   const [isEditing, setIsEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -111,8 +115,13 @@ export function ExampleCard({
   const card = (
     <PanelCard
       theme={theme}
-      selected={isSelected}
-      onClick={onSelect}
+      selected={isSelectedEffective}
+      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
+      onMouseEnter={() => cardStore.setHover(ac.ref)}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
+      }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       cardKey={cardKey}

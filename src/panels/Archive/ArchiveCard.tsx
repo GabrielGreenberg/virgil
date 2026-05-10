@@ -16,6 +16,8 @@ import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 export function startArchiveDrag(e: React.DragEvent, archiveId: string) {
   e.dataTransfer.setData(
@@ -67,7 +69,9 @@ export function ArchiveCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const compressed = !selected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "archive", id: snippet.id });
+  const isSelected = ac.selected || selected;
+  const compressed = !isSelected && !isPoppedOut;
   const compressedSummary = compressed
     ? (richJsonToPlainText(snippet.content).trim().slice(0, 80) || "")
     : undefined;
@@ -75,7 +79,7 @@ export function ArchiveCard({
     <EditableCard
       id={snippet.id}
       cardKind="archive"
-      selected={selected}
+      selected={isSelected}
       theme={theme}
       hideToolbar
       inlineDelete
@@ -97,7 +101,7 @@ export function ArchiveCard({
       headerTrailing={
         isAnchored && onJump ? (
           <CardTargetIcon
-            selected={selected}
+            selected={isSelected}
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to archive marker"
             data-helper="Jump"
@@ -107,7 +111,8 @@ export function ArchiveCard({
           <CardTargetIcon selected={false} disabled onClick={() => {}} />
         ) : undefined
       }
-      onClick={() => onSelect(selected ? null : snippet.id)}
+      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : snippet.id); }}
+      onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via
       // a separate body-level affordance, not the grip.

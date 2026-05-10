@@ -77,7 +77,14 @@ import { ZenMargin } from "./editor-layout/zen-margin";
 import PrintAppendices from "./PrintAppendices";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
-import { SelectionsProvider } from "./editor-layout/contexts/selections";
+import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
+import { cardStore, useHover } from "@/links/_shared/anchored-card-store";
+import type { EntityKind } from "@/links/_shared/entity-hover";
+import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
+import { useCardHoverHighlight } from "@/links/_shared/useCardHoverHighlight";
+import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
+import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
+import { usePlacement } from "@/links/_shared/usePlacement";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
@@ -643,19 +650,23 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
 
   // ── Per-doc selection state ──────────────────────────────────────
-  // One slot per panel kind that has a selection concept. Local state
-  // here scopes selection per EditorPane instance, so two simultaneous
-  // EditorPanes (e.g. main editor + Library Reader) don't collide.
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
-  const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
-  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
-  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
-  const [selectedCutterCardId, setSelectedCutterCardId] = useState<string | null>(null);
-  const [selectedQuotationGroupId, setSelectedQuotationGroupId] = useState<string | null>(null);
-  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
+  // Anchored selection slots are derived from the global cardStore via
+  // useAnchoredSelectionSlots — same single source of truth as
+  // EditorLayout, so the Library reader (which mounts EditorPane
+  // standalone) gets identical hover/selection plumbing for free.
+  // Bib stays as local useState (it's not an anchored kind).
+  const {
+    selectedNoteId, setSelectedNoteId,
+    selectedFootnoteId, setSelectedFootnoteId,
+    selectedCitationId, setSelectedCitationId,
+    selectedTodoId, setSelectedTodoId,
+    selectedArchiveId, setSelectedArchiveId,
+    selectedCutterCardId, setSelectedCutterCardId,
+    selectedQuotationGroupId, setSelectedQuotationGroupId,
+    selectedCommentId, setSelectedCommentId,
+    selectedExampleId, setSelectedExampleId,
+  } = useAnchoredSelectionSlots();
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
-  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
 
   // ── Pristine card manager (per-pane) ──────────────────────────────
   // Tracks blank-on-create cards across all kinds; a global pointerdown
@@ -985,9 +996,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${g.id}:${pid}`,
           entityId: g.id,
+          entityKind: "quotation",
           type: "quote",
           paragraphId: pid,
-          selected: selectedQuotationGroupId === g.id,
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: () => {
             setSelectedQuotationGroupId(g.id);
@@ -1007,9 +1018,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${n.id}:${pid}`,
           entityId: n.id,
+          entityKind: "note",
           type: "note",
           paragraphId: pid,
-          selected: selectedNoteId === n.id,
           title: n.title || "Note",
           onClick: () => {
             setSelectedNoteId(n.id);
@@ -1033,9 +1044,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${snippet.id}:${pid}`,
           entityId: snippet.id,
+          entityKind: "archive",
           type: "archive",
           paragraphId: pid,
-          selected: selectedArchiveId === snippet.id,
           title: "Archived snippet",
           onClick: () => {
             setSelectedArchiveId(snippet.id);
@@ -1077,9 +1088,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${r.id}:${paragraphId}`,
           entityId: r.id,
+          entityKind: r.kind === "suggestion" ? "revision-suggestion" : "comment",
           type: "revision",
           paragraphId,
-          selected: selectedCommentId === r.id,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: () => {
@@ -1102,9 +1113,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${c.id}:${pid}`,
           entityId: c.id,
+          entityKind: c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment",
           type: "cut",
           paragraphId: pid,
-          selected: selectedCutterCardId === c.id,
           title,
           onClick: () => {
             setSelectedCutterCardId(c.id);
@@ -1128,9 +1139,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         result.push({
           id: `${item.id}:${pid}`,
           entityId: item.id,
+          entityKind: "todo",
           type: "todo",
           paragraphId: pid,
-          selected: selectedTodoId === item.id,
           title: item.text || "Todo",
           muted: item.done,
           onClick: () => {
@@ -1152,7 +1163,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         entityId: err.id,
         type: "error",
         paragraphId: pid,
-        selected: selectedErrorId === err.id,
         title: err.message.length > 80 ? err.message.slice(0, 80) + "…" : err.message,
         muted: err.severity === "info",
         onClick: () => {
@@ -2254,6 +2264,84 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onToggleCodeView,
   ]);
 
+  // ── Anchored-card hover/selection bridges + highlight painters ────
+  // The whole all-for-one model lives here so reader and editor share
+  // identical plumbing (the Library reader mounts EditorPane standalone).
+  // hoveredEntityId/Kind is a thin adapter over cardStore.hover so the
+  // existing per-pair hook signatures keep working through the migration.
+  const _paneHover = useHover();
+  const _hoveredEntityId = _paneHover?.id ?? null;
+  const _hoveredEntityKind = _paneHover?.kind ?? null;
+  const _setHoveredEntity = useCallback(
+    (id: string | null, kind: EntityKind | null) =>
+      cardStore.setHover(id && kind ? { id, kind } : null),
+    [],
+  );
+
+  useCardSelectionHighlight({
+    editor,
+    selectedNoteId,
+    selectedFootnoteId,
+    selectedCitationId,
+    selectedCutterCardId,
+    selectedCommentId,
+    selectedTodoId,
+    selectedArchiveId,
+    selectedQuotationGroupId,
+    notes: notesHook.notes,
+    cutterCards: cutterHook.cards,
+    archiveSnippets: archiveHook.snippets,
+    quotationGroups: quotationsHook.groups,
+    todos: todosHook.items,
+    comments: revisionsHook.cards,
+  });
+
+  // ExampleInfo carries `exampleId`, not `id`; the entity-collections
+  // shape uses `id`. Adapt at the boundary so the entity vocabulary
+  // stays uniform.
+  const _examplesAsEntities = useMemo(
+    () => examples.map((e) => ({ id: e.exampleId })),
+    [examples],
+  );
+  useCardHoverHighlight({
+    editor,
+    hoveredEntityId: _hoveredEntityId,
+    hoveredEntityKind: _hoveredEntityKind,
+    notes: notesHook.notes,
+    cutterCards: cutterHook.cards,
+    archiveSnippets: archiveHook.snippets,
+    quotationGroups: quotationsHook.groups,
+    todos: todosHook.items,
+    comments: revisionsHook.cards,
+    examples: _examplesAsEntities,
+  });
+
+  useTextHoverBridge({
+    editor,
+    notes: notesHook.notes,
+    cutterCards: cutterHook.cards,
+    comments: revisionsHook.cards,
+    setHoveredEntity: _setHoveredEntity,
+  });
+  usePanelCardHoverBridge(_setHoveredEntity);
+
+  // Placement: when a card is selected (via click on the card itself),
+  // scroll the editor so the closest in-doc anchor aligns with the
+  // card's vertical position. Hover never moves anything; the inverse
+  // direction (text → card alignment) is handled by openForCard.
+  usePlacement({
+    editor,
+    collections: {
+      notes: notesHook.notes,
+      cutterCards: cutterHook.cards,
+      comments: revisionsHook.cards,
+      todos: todosHook.items,
+      archiveSnippets: archiveHook.snippets,
+      quotationGroups: quotationsHook.groups,
+      examples: _examplesAsEntities,
+    },
+  });
+
   return (
     <EditorChromeProvider value={chrome}>
       <EditorRefProvider
@@ -2276,30 +2364,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         <PristineCardsProvider value={pristineManager}>
         <RecentlyAddedProvider value={recentlyAdded}>
         <CardCreationProvider value={cardCreation}>
-        <SelectionsProvider
-          value={{
-            selectedNoteId,
-            setSelectedNoteId,
-            selectedFootnoteId,
-            setSelectedFootnoteId,
-            selectedCitationId,
-            setSelectedCitationId,
-            selectedTodoId,
-            setSelectedTodoId,
-            selectedArchiveId,
-            setSelectedArchiveId,
-            selectedCutterCardId,
-            setSelectedCutterCardId,
-            selectedQuotationGroupId,
-            setSelectedQuotationGroupId,
-            selectedCommentId,
-            setSelectedCommentId,
-            selectedBibKey,
-            setSelectedBibKey,
-            selectedExampleId,
-            setSelectedExampleId,
-          }}
-        >
+        {/* SelectionsProvider derives the 9 anchored slots from cardStore;
+            only `selectedBibKey` flows through value. */}
+        <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
         <CollabProvider value={collab}>
           {/* Body-portaled outlines for dock-target / card-lift drag
               affordances. Both read state from module-level singletons

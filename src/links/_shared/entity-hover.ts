@@ -3,31 +3,36 @@
 /**
  * Centralized "linked entity" hover/selection types and helpers.
  *
- * The three linked elements (text passages, margin icons, panel cards) all
+ * The three linked surfaces (text passages, margin icons, panel cards) all
  * resolve to a single underlying *entity*: a card object identified by
- * `(entityId, entityKind)`. This module defines the kind union and a few
- * generic helpers that all three call sites use, so we never write per-kind
- * hover handlers.
+ * `(id, kind)`. This module defines the kind union and a few generic
+ * helpers that all three call sites use, so we never write per-kind hover
+ * handlers.
  *
- * EntityKind matches the per-kind selection slots already in EditorLayout
- * (note, cut, revision, todo, archive, quotation, footnote, citation). It
- * is *not* the same as `CardKind` from `panels/_shared/types.ts` — that
- * union has more variants (suggestion/comment splits, ai, error) and is
- * meant for rendering. EntityKind is the linking-vocabulary subset.
+ * EntityKind enumerates the 11 *anchored* card kinds — the ones whose
+ * three-surface hover/selection rule applies. It is *not* the same as
+ * `CardKind` from `panels/_shared/types.ts`, which has additional
+ * non-anchored variants (bib, error, ai) used only for rendering.
  */
 
 import type { Link } from "./types";
 import { getTextAnchor } from "../links";
 
-export type EntityKind =
-  | "note"
-  | "cut"
-  | "revision"
-  | "todo"
-  | "archive"
-  | "quotation"
-  | "footnote"
-  | "citation";
+export const ANCHORED_CARD_KINDS = [
+  "note",
+  "footnote",
+  "citation",
+  "quotation",
+  "example",
+  "todo",
+  "archive",
+  "comment",
+  "revision-suggestion",
+  "cutter-comment",
+  "cutter-suggestion",
+] as const;
+
+export type EntityKind = (typeof ANCHORED_CARD_KINDS)[number];
 
 export interface EntityRef {
   id: string;
@@ -37,10 +42,11 @@ export interface EntityRef {
 export interface EntityCollections {
   notes: ReadonlyArray<{ id: string; links?: Link[] }>;
   cutterCards: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
-  comments: ReadonlyArray<{ id: string; links?: Link[] }>;
+  comments: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   todos: ReadonlyArray<{ id: string; links?: Link[] }>;
   archiveSnippets: ReadonlyArray<{ id: string; links?: Link[] }>;
   quotationGroups: ReadonlyArray<{ id: string; links?: Link[] }>;
+  examples: ReadonlyArray<{ id: string }>;
 }
 
 export function findEntity(
@@ -48,38 +54,53 @@ export function findEntity(
   c: EntityCollections,
 ): { id: string; kind?: string; links?: Link[] } | undefined {
   switch (ref.kind) {
-    case "note": return c.notes.find((e) => e.id === ref.id);
-    case "cut": return c.cutterCards.find((e) => e.id === ref.id);
-    case "revision": return c.comments.find((e) => e.id === ref.id);
-    case "todo": return c.todos.find((e) => e.id === ref.id);
-    case "archive": return c.archiveSnippets.find((e) => e.id === ref.id);
+    case "note":      return c.notes.find((e) => e.id === ref.id);
+    case "todo":      return c.todos.find((e) => e.id === ref.id);
+    case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
     case "quotation": return c.quotationGroups.find((e) => e.id === ref.id);
+    case "example":   return c.examples.find((e) => e.id === ref.id);
+    case "cutter-comment": {
+      const card = c.cutterCards.find((e) => e.id === ref.id);
+      return card && card.kind !== "suggestion" ? card : undefined;
+    }
+    case "cutter-suggestion": {
+      const card = c.cutterCards.find((e) => e.id === ref.id);
+      return card && card.kind === "suggestion" ? card : undefined;
+    }
+    case "comment": {
+      const card = c.comments.find((e) => e.id === ref.id);
+      return card && card.kind !== "suggestion" ? card : undefined;
+    }
+    case "revision-suggestion": {
+      const card = c.comments.find((e) => e.id === ref.id);
+      return card && card.kind === "suggestion" ? card : undefined;
+    }
     case "footnote":
     case "citation":
       return undefined;
   }
 }
 
-/** `data-card-key` prefix for an entity. Cutter cards split into
- *  comment/suggestion based on the card's own `kind` field. */
+/** `data-card-key` prefix for an entity. One-to-one with EntityKind — no
+ *  polymorphism. The prefixes themselves are owned by `CARD_KEY_PREFIXES`
+ *  in panel-registry; this function exists so callers don't need to import
+ *  the registry just to build a card key. */
 export function cardKeyForEntity(
   ref: EntityRef,
-  c: EntityCollections,
+  _c: EntityCollections,
 ): string | null {
   switch (ref.kind) {
-    case "note": return `note:${ref.id}`;
-    case "todo": return `todo:${ref.id}`;
-    case "archive": return `archive:${ref.id}`;
-    case "quotation": return `quotation:${ref.id}`;
-    case "revision": return `revision:${ref.id}`;
-    case "footnote": return `footnote:${ref.id}`;
-    case "citation": return `citation:${ref.id}`;
-    case "cut": {
-      const card = c.cutterCards.find((e) => e.id === ref.id);
-      return card?.kind === "suggestion"
-        ? `cutter-suggestion:${ref.id}`
-        : `cutter-comment:${ref.id}`;
-    }
+    case "note":                return `note:${ref.id}`;
+    case "todo":                return `todo:${ref.id}`;
+    case "archive":             return `archive:${ref.id}`;
+    case "quotation":           return `quotation:${ref.id}`;
+    case "example":             return `example:${ref.id}`;
+    case "comment":             return `revision:${ref.id}`;
+    case "revision-suggestion": return `revision-suggestion:${ref.id}`;
+    case "cutter-comment":      return `cutter-comment:${ref.id}`;
+    case "cutter-suggestion":   return `cutter-suggestion:${ref.id}`;
+    case "footnote":            return `footnote:${ref.id}`;
+    case "citation":            return `citation:${ref.id}`;
   }
 }
 
@@ -93,18 +114,21 @@ export function entityToAnchorId(
   return entity ? getTextAnchor(entity)?.anchorId ?? null : null;
 }
 
-/** Map an EntityKind (+ the entity itself for cut polymorphism) to the
- *  LinkedAnchorKind used by `useLinkHighlight` for color theming. */
+/** Map an EntityKind to the marker-namespace key used downstream for color
+ *  theming (MARKER_META, MARKER_KIND_TO_THEME_KEY). Cutter splits stay
+ *  separate so each suggestion-vs-comment pair can carry its own anchor
+ *  tint; revisions share one `revision` marker key for both kinds. */
 export function entityKindToAnchorKind(
   ref: EntityRef | null,
-  c: EntityCollections,
+  _c: EntityCollections,
 ): "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null {
   if (!ref) return null;
-  if (ref.kind === "note") return "note";
-  if (ref.kind === "revision") return "revision";
-  if (ref.kind === "cut") {
-    const card = c.cutterCards.find((e) => e.id === ref.id);
-    return card?.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+  switch (ref.kind) {
+    case "note":                return "note";
+    case "comment":
+    case "revision-suggestion": return "revision";
+    case "cutter-comment":      return "cutter-comment";
+    case "cutter-suggestion":   return "cutter-suggestion";
+    default:                    return null;
   }
-  return null;
 }

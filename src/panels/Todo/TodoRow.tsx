@@ -18,6 +18,8 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 const theme = CARD_THEMES.todo;
 
@@ -81,7 +83,9 @@ export function TodoRow({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const inOmni = useInOmni() != null;
-  const compressed = !selected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "todo", id: item.id });
+  const isSelected = ac.selected || selected;
+  const compressed = !isSelected && !isPoppedOut;
 
   const card = (
     <PanelCard
@@ -99,12 +103,18 @@ export function TodoRow({
       onTrashClick={() => onDelete(item.id)}
       extraCardClass=""
       className="focus:outline-none"
-      tabIndex={selected ? 0 : -1}
+      tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(selected ? null : item.id);
+        cardStore.toggleSelection(ac.ref);
+        onSelect(isSelected ? null : item.id);
       }}
-      onFocusCapture={() => { if (!selected) onSelect(item.id); }}
+      onMouseEnter={() => cardStore.setHover(ac.ref)}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
+      }}
+      onFocusCapture={() => { if (!isSelected) onSelect(item.id); }}
       onKeyDown={(e) => {
         if (!selected) return;
         if (e.key === "Delete" || e.key === "Backspace") {

@@ -119,16 +119,23 @@ export interface MarginaliaMarker {
   id: string;
   /** Original entity id (e.g. quotation group id, note id) when id is a composite key */
   entityId: string;
+  /**
+   * Anchored-card kind this marker belongs to. Markers self-subscribe to
+   * the global cardStore via this kind + entityId to compute their own
+   * selected/hovered state — no prop threading from a parent decoration
+   * loop. Optional only because legacy "error" markers (which aren't
+   * anchored cards) don't carry it.
+   */
+  entityKind?:
+    | "note" | "footnote" | "citation" | "quotation" | "example"
+    | "todo" | "archive" | "comment" | "revision-suggestion"
+    | "cutter-comment" | "cutter-suggestion";
   /** Marker category — drives icon/color */
   type: MarkerType;
   /** Paragraph UUID this marker is anchored to */
   paragraphId: string;
   /** Optional: side override. If omitted, uses MARKER_META[type].defaultSide */
   side?: "left" | "right";
-  /** Whether this marker is currently selected/highlighted */
-  selected?: boolean;
-  /** Whether this marker is hovered (from any linked element: text, card, or another marker) */
-  hovered?: boolean;
   /** Click handler — typically opens the panel and selects the item.
    *  `clickY` is the viewport Y of the clicked gutter marker, used by
    *  the panel host to align the opened card next to the source. */
@@ -145,8 +152,6 @@ export interface MarginaliaMarker {
    * hover/click.
    */
   anchorId?: string;
-  /** Hover handler — fires on mouseenter (true) and mouseleave (false). */
-  onHover?: (hovering: boolean) => void;
 }
 
 export interface MarkerMeta {

@@ -24,7 +24,6 @@ export interface ErrorsPanelProps {
   anchoredIds?: Set<string>;
   dismissedIds: Set<string>;
   onDismiss: (id: string) => void;
-  onHover?: (id: string | null) => void;
 }
 
 function ErrorsPanel({
@@ -36,7 +35,6 @@ function ErrorsPanel({
   anchoredIds,
   dismissedIds,
   onDismiss,
-  onHover,
 }: ErrorsPanelProps) {
   const [filter, setFilter] = useState("");
 
@@ -151,9 +149,6 @@ function ErrorsPanel({
           onSelect={onSelect}
           onJump={() => onJump(err)}
           onDismiss={onDismiss}
-          onHoverChange={
-            onHover ? (hovering) => onHover(hovering ? err.id : null) : undefined
-          }
         />
       )}
     />

@@ -31,6 +31,12 @@ import {
   subscribePanelColors,
   type PanelThemeKey,
 } from "@/lib/panel-theme";
+import {
+  cardStore,
+  useIsHovered,
+  useIsSelected,
+  type AnchoredCardRef,
+} from "@/links/_shared/anchored-card-store";
 
 /** Marker type → panel theme key for color overrides. */
 const MARKER_TO_THEME_KEY: Partial<Record<keyof typeof MARKER_META, PanelThemeKey>> = {
@@ -385,6 +391,102 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
   );
 }
 
+/**
+ * Single gutter marker. Self-subscribes to the global cardStore via
+ * `useIsSelected`/`useIsHovered` keyed by the marker's anchored
+ * (kind, entityId) — no prop threading from a parent decoration loop.
+ * Mouse enter/leave write directly to the store; click delegates to the
+ * marker's own onClick (which routes through openForCard for placement).
+ *
+ * Declared before `Gutter` so Turbopack Fast Refresh always sees the
+ * binding when Gutter re-evaluates (function-declaration hoisting works
+ * but bundler module boundaries can be strict in dev).
+ */
+function MarkerButton({ m, dragEnabled }: { m: PositionedMarker; dragEnabled: boolean }) {
+  const ref: AnchoredCardRef | null = m.entityKind
+    ? { kind: m.entityKind, id: m.entityId }
+    : null;
+  const selected = useIsSelected(ref);
+  const hovered = useIsHovered(ref);
+
+  const meta = MARKER_META[m.type];
+  const themeKey = MARKER_TO_THEME_KEY[m.type];
+  const palette =
+    themeKey && isPanelColorOverridden(themeKey)
+      ? deriveMarkerPalette(getPanelColor(themeKey))
+      : { color: meta.color, bg: meta.bg, border: meta.border };
+
+  // Selected = wider ring + soft outer halo; hover = thin ring; resting = none.
+  const interactionShadow = selected
+    ? `0 0 0 2px ${palette.border}, 0 0 0 4px color-mix(in oklab, ${palette.border} 40%, transparent)`
+    : hovered
+      ? `0 0 0 1.5px ${palette.border}`
+      : undefined;
+
+  return (
+    <button
+      type="button"
+      draggable={dragEnabled}
+      data-marginalia-marker={`${m.type}:${m.id}`}
+      data-card-selected={selected ? "true" : undefined}
+      data-card-hovered={hovered ? "true" : undefined}
+      className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none"
+      style={{
+        left: m.cell.x,
+        top: m.cell.y,
+        width: MARGINALIA_ICON_SIZE,
+        height: MARGINALIA_ICON_SIZE,
+        color: palette.color,
+        background: palette.bg,
+        border: `1.5px solid ${palette.border}`,
+        boxShadow: interactionShadow,
+        transition: "box-shadow 120ms ease-out",
+        opacity: m.muted ? 0.4 : undefined,
+        cursor: dragEnabled ? "grab" : "pointer",
+        padding: 0,
+        lineHeight: 1,
+      }}
+      title={m.title || meta.label}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        m.onClick?.(rect.top);
+      }}
+      onMouseEnter={ref ? () => cardStore.setHover(ref) : undefined}
+      onMouseLeave={ref ? () => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ref.kind && h.id === ref.id) cardStore.setHover(null);
+      } : undefined}
+      onKeyDown={(e) => {
+        if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
+          e.preventDefault();
+          e.stopPropagation();
+          m.onDelete();
+          (e.target as HTMLElement).blur();
+        }
+      }}
+      onDragStart={dragEnabled ? (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(
+          MIME_MARGINALIA_MOVE,
+          JSON.stringify({
+            type: m.type,
+            entityId: m.entityId,
+            currentParagraphId: m.paragraphId,
+          })
+        );
+        (e.target as HTMLElement).style.opacity = "0.4";
+      } : undefined}
+      onDragEnd={dragEnabled ? (e) => {
+        (e.target as HTMLElement).style.opacity = "";
+      } : undefined}
+    >
+      {meta.icon}
+    </button>
+  );
+}
+
 function Gutter({
   side,
   markers,
@@ -407,81 +509,9 @@ function Gutter({
       }}
       data-marginalia-gutter={side}
     >
-      {markers.map((m) => {
-        const meta = MARKER_META[m.type];
-        const themeKey = MARKER_TO_THEME_KEY[m.type];
-        const palette =
-          themeKey && isPanelColorOverridden(themeKey)
-            ? deriveMarkerPalette(getPanelColor(themeKey))
-            : { color: meta.color, bg: meta.bg, border: meta.border };
-        // The icon never changes its fill across resting/hover/selected —
-        // the kind color stays put, and the interaction state is conveyed
-        // entirely through ring intensity. Selected = wider ring + soft
-        // outer halo; hover = thin ring; resting = none.
-        const interactionShadow = m.selected
-          ? `0 0 0 2px ${palette.border}, 0 0 0 4px color-mix(in oklab, ${palette.border} 40%, transparent)`
-          : m.hovered
-            ? `0 0 0 1.5px ${palette.border}`
-            : undefined;
-        return (
-          <button
-            key={`${m.type}:${m.id}`}
-            type="button"
-            draggable={dragEnabled}
-            data-marginalia-marker={`${m.type}:${m.id}`}
-            className="marginalia-marker pointer-events-auto absolute flex items-center justify-center rounded focus:outline-none"
-            style={{
-              left: m.cell.x,
-              top: m.cell.y,
-              width: MARGINALIA_ICON_SIZE,
-              height: MARGINALIA_ICON_SIZE,
-              color: palette.color,
-              background: palette.bg,
-              border: `1.5px solid ${palette.border}`,
-              boxShadow: interactionShadow,
-              transition: "box-shadow 120ms ease-out",
-              opacity: m.muted ? 0.4 : undefined,
-              cursor: dragEnabled ? "grab" : "pointer",
-              padding: 0,
-              lineHeight: 1,
-            }}
-            title={m.title || meta.label}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-              m.onClick?.(rect.top);
-            }}
-            onMouseEnter={() => m.onHover?.(true)}
-            onMouseLeave={() => m.onHover?.(false)}
-            onKeyDown={(e) => {
-              if ((e.key === "Delete" || e.key === "Backspace") && m.onDelete) {
-                e.preventDefault();
-                e.stopPropagation();
-                m.onDelete();
-                (e.target as HTMLElement).blur();
-              }
-            }}
-            onDragStart={dragEnabled ? (e) => {
-              e.dataTransfer.effectAllowed = "move";
-              e.dataTransfer.setData(
-                MIME_MARGINALIA_MOVE,
-                JSON.stringify({
-                  type: m.type,
-                  entityId: m.entityId,
-                  currentParagraphId: m.paragraphId,
-                })
-              );
-              (e.target as HTMLElement).style.opacity = "0.4";
-            } : undefined}
-            onDragEnd={dragEnabled ? (e) => {
-              (e.target as HTMLElement).style.opacity = "";
-            } : undefined}
-          >
-            {meta.icon}
-          </button>
-        );
-      })}
+      {markers.map((m) => (
+        <MarkerButton key={`${m.type}:${m.id}`} m={m} dragEnabled={dragEnabled} />
+      ))}
     </div>
   );
 }

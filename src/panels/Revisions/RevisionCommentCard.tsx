@@ -23,6 +23,8 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_REVISION } from "./mime";
 import { FieldTitleRow } from "@/panels/Cutter/CutterSuggestionCard";
 
@@ -77,10 +79,12 @@ export function RevisionCommentCard({
   const [commentExpanded, setCommentExpanded] = useState(!!card.text);
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
-  const compressed = !selected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "comment", id: card.id });
+  const isSelected = ac.selected || selected;
+  const compressed = !isSelected && !isPoppedOut;
   useEffect(() => {
-    if (selected && commentExpanded && !card.text) taRef.current?.focus();
-  }, [selected, commentExpanded, card.text]);
+    if (isSelected && commentExpanded && !card.text) taRef.current?.focus();
+  }, [isSelected, commentExpanded, card.text]);
 
   const cardEl = (
     <PanelCard
@@ -89,23 +93,28 @@ export function RevisionCommentCard({
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
       theme={theme}
-      selected={selected}
+      selected={isSelected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
       onTrashClick={() => onDelete(card.id)}
-      draggable={!selected}
+      draggable={!isSelected}
       onDragStart={(e) => startRevisionCommentDrag(e, card.id)}
-      tabIndex={selected ? 0 : -1}
+      tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(selected ? null : card.id);
+        cardStore.toggleSelection(ac.ref);
+        onSelect(isSelected ? null : card.id);
       }}
-      onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
-      onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
+        onHoverChange?.(false);
+      }}
       onKeyDown={(e) => {
-        if (!selected) return;
+        if (!isSelected) return;
         if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
           onDelete(card.id);

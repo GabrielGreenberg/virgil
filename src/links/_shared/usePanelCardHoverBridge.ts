@@ -15,20 +15,23 @@
 import { useEffect } from "react";
 import type { EntityKind } from "./entity-hover";
 
-/** `data-card-key` prefix → EntityKind. Cutter splits comment vs.
- *  suggestion into two prefixes that both map to "cut". Kinds we don't
- *  participate in linking with (bib, error, ai, example) are absent so
- *  hovering those cards is a no-op. */
+/** `data-card-key` prefix → EntityKind. One-to-one mapping; the registry's
+ *  `revision` prefix maps to the `comment` EntityKind because the card
+ *  kind is named `comment` even though its data-card-key is `revision:…`.
+ *  Non-anchored kinds (bib, error, ai) are absent so hovering those cards
+ *  is a no-op. */
 const PREFIX_TO_KIND: Record<string, EntityKind> = {
   note: "note",
   todo: "todo",
   archive: "archive",
   quotation: "quotation",
-  revision: "revision",
+  example: "example",
+  revision: "comment",
+  "revision-suggestion": "revision-suggestion",
   footnote: "footnote",
   citation: "citation",
-  "cutter-comment": "cut",
-  "cutter-suggestion": "cut",
+  "cutter-comment": "cutter-comment",
+  "cutter-suggestion": "cutter-suggestion",
 };
 
 export function usePanelCardHoverBridge(

@@ -6,10 +6,13 @@ import type { EntityKind } from "@/links/_shared/entity-hover";
 import { openForCard } from "./open-for-card";
 
 /** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
- *  text-range clicks fall into one of these three; inline atoms (footnote,
+ *  text-range clicks fall into one of these; inline atoms (footnote,
  *  citation) and one-shot kinds (archive) use their own dedicated events. */
 const ANCHOR_CLICK_ROUTES: Record<
-  Extract<EntityKind, "note" | "cut" | "revision">,
+  Extract<
+    EntityKind,
+    "note" | "cutter-comment" | "cutter-suggestion" | "comment" | "revision-suggestion"
+  >,
   { panelId: PanelId; cardKind: CardKind; omniPrefix: string; entrySelectorBase: string }
 > = {
   note: {
@@ -18,16 +21,28 @@ const ANCHOR_CLICK_ROUTES: Record<
     omniPrefix: "note",
     entrySelectorBase: "data-note-entry",
   },
-  cut: {
+  "cutter-comment": {
     panelId: "cutter",
     cardKind: "cutter-comment",
     omniPrefix: "cutter-comment",
     entrySelectorBase: "data-card-key",
   },
-  revision: {
+  "cutter-suggestion": {
+    panelId: "cutter",
+    cardKind: "cutter-suggestion",
+    omniPrefix: "cutter-suggestion",
+    entrySelectorBase: "data-card-key",
+  },
+  comment: {
     panelId: "revisions",
     cardKind: "comment",
     omniPrefix: "revision",
+    entrySelectorBase: "data-card-key",
+  },
+  "revision-suggestion": {
+    panelId: "revisions",
+    cardKind: "revision-suggestion",
+    omniPrefix: "revision-suggestion",
     entrySelectorBase: "data-card-key",
   },
 };
@@ -231,8 +246,10 @@ export function useMarkerClickBridges(deps: {
       const id = detail.entityId;
       switch (detail.kind) {
         case "note": setSelectedNoteId(id); break;
-        case "cut": setSelectedCutterCardId(id); break;
-        case "revision": setSelectedCommentId(id); break;
+        case "cutter-comment":
+        case "cutter-suggestion": setSelectedCutterCardId(id); break;
+        case "comment":
+        case "revision-suggestion": setSelectedCommentId(id); break;
       }
 
       const entrySelector =
