@@ -31,6 +31,7 @@ const TABS_WINDOW_PREFIX = "tabs/";
 const WINDOWS_REGISTRY_KEY = "windows-registry";
 const DOC_HANDLE_PREFIX = "doc-handle/";
 const GENERAL_BIB_HANDLE_PREFIX = "general-bib-handle/";
+const MY_PAPERS_KEY = "my-papers";
 
 /**
  * The metadata we keep per paper. Intentionally minimal: anything that
@@ -129,6 +130,24 @@ export async function touchDocAccessed(id: string): Promise<void> {
   if (!doc) return;
   doc.lastAccessedAt = new Date().toISOString();
   await writeIndex(idx);
+}
+
+// --- My Papers (global curated list) ------------------------------------
+
+/** User-curated list of papers added to the Library's "My Papers" pod.
+ *  Global (shared across windows). Insertion order; set semantics on add. */
+export interface MyPapersState {
+  ids: string[];
+}
+
+const EMPTY_MY_PAPERS: MyPapersState = { ids: [] };
+
+export async function readMyPapers(): Promise<MyPapersState> {
+  return (await get<MyPapersState>(MY_PAPERS_KEY, store)) ?? EMPTY_MY_PAPERS;
+}
+
+export async function writeMyPapers(state: MyPapersState): Promise<void> {
+  await set(MY_PAPERS_KEY, state, store);
 }
 
 // --- Tabs ----------------------------------------------------------------

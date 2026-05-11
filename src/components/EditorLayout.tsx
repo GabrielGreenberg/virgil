@@ -11,6 +11,7 @@ import { type MarginaliaType, type DividerLevel, type DividerWidth } from "./Men
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
+import { useMyPapers } from "@/hooks/useMyPapers";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { useCollab, CollabProvider } from "@/hooks/useCollab";
@@ -732,14 +733,19 @@ export default function EditorLayout() {
     activateLibraryOuterPane,
   } = useFiles();
   const libraryRegistry = useLibraryRegistry();
+  const { myPaperIds, addMyPaper, removeMyPaper } = useMyPapers();
 
   useLibraryBridge({ activateLibraryOuterPane });
 
   // "New document" modal state. `mode: "fresh"` uses the OS directory
   // picker; `mode: "inFolder"` writes into the already-picked folder
-  // that's behind the current TexFilePicker modal.
+  // that's behind the current TexFilePicker modal. `onCreated` is fired
+  // with the new doc id after creation — the inline Library tab's
+  // "+ Add paper → Create new…" path uses it to auto-add to My Papers.
   const [newDocModal, setNewDocModal] = useState<
-    { mode: "fresh" } | { mode: "inFolder"; folderName: string } | null
+    | { mode: "fresh"; onCreated?: (id: string) => void }
+    | { mode: "inFolder"; folderName: string; onCreated?: (id: string) => void }
+    | null
   >(null);
 
   // Per-doc permission gate state. We query (without prompting) when
@@ -3425,6 +3431,20 @@ export default function EditorLayout() {
     setDocPermState,
   });
 
+  // "+ Add paper" variants for the Library pod — these wrap the same
+  // folder-pick / new-doc-modal flows used elsewhere, and additionally
+  // add the resulting doc to the user's curated My Papers list. The
+  // Virgil-bar TabPlusMenu deliberately uses the unwrapped versions so
+  // opening a doc from there doesn't touch My Papers.
+  const onOpenFolderAndAdd = useCallback(async () => {
+    const meta = await handleNativeOpen();
+    if (meta) addMyPaper(meta.id);
+  }, [handleNativeOpen, addMyPaper]);
+
+  const onCreateNewAndAdd = useCallback(() => {
+    setNewDocModal({ mode: "fresh", onCreated: addMyPaper });
+  }, [addMyPaper]);
+
   // Spawn a fresh Virgil window. The new window boots with no
   // sessionStorage carried over, so it generates its own windowId
   // and hydrates an empty tab set.
@@ -5140,9 +5160,12 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
             docs={docs}
             onOpenRecent={openFile}
-            onOpenFolder={handleNativeOpen}
-            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
+            onOpenFolder={onOpenFolderAndAdd}
+            onCreateNew={onCreateNewAndAdd}
             devStorage={devStorage}
+            myPaperIds={myPaperIds}
+            addMyPaper={addMyPaper}
+            removeMyPaper={removeMyPaper}
           />
         </div>
       ) : activePane === "library-outer" && currentLibraryOuterId ? (
@@ -5417,11 +5440,11 @@ export default function EditorLayout() {
           }
           onCancel={() => setNewDocModal(null)}
           onCreate={async (name, templateId) => {
-            if (newDocModal.mode === "inFolder") {
-              await createFileInPendingFolder(name, templateId);
-            } else {
-              await createFile(name, templateId);
-            }
+            const meta =
+              newDocModal.mode === "inFolder"
+                ? await createFileInPendingFolder(name, templateId)
+                : await createFile(name, templateId);
+            if (meta) newDocModal.onCreated?.(meta.id);
             setNewDocModal(null);
           }}
         />

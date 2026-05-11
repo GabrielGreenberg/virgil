@@ -43,17 +43,27 @@ interface Props {
   /** Switch the active doc without leaving the Library pane. */
   focusDoc: (docId: string) => void;
   /** Every known Virgil doc — feeds the My Papers pod's "Recent" popup
-   *  and is excluded from the recent list when already open. */
+   *  and is used to resolve curated `myPaperIds` to display metadata. */
   docs?: FsaDocMeta[];
   /** Open a known doc by id (mirrors the Virgil-bar `+` behavior). */
   onOpenRecent?: (id: string) => void;
-  /** Trigger the native folder picker (FSA `showDirectoryPicker`). */
+  /** Trigger the native folder picker (FSA `showDirectoryPicker`).
+   *  The implementation wired in by EditorLayout auto-adds the
+   *  resulting doc to My Papers on success. */
   onOpenFolder?: () => void;
-  /** Open the "create new document" modal. */
+  /** Open the "create new document" modal. The implementation wired
+   *  in by EditorLayout auto-adds the resulting doc to My Papers on
+   *  success. */
   onCreateNew?: () => void;
   /** True when the dev-storage backend is in use (no FSA permission
    *  re-grant required when re-opening a recent doc). */
   devStorage?: boolean;
+  /** Global curated paper-ids — drives the My Papers pod body. */
+  myPaperIds?: string[];
+  /** Add a doc id to the curated list. */
+  addMyPaper?: (id: string) => void;
+  /** Remove a doc id from the curated list. */
+  removeMyPaper?: (id: string) => void;
 }
 
 export function LibraryTabView({
@@ -68,6 +78,9 @@ export function LibraryTabView({
   onOpenFolder,
   onCreateNew,
   devStorage,
+  myPaperIds,
+  addMyPaper,
+  removeMyPaper,
 }: Props) {
   const { bibEntries, citations } = useCitations(currentDocId);
 
@@ -158,14 +171,22 @@ export function LibraryTabView({
   }, [tabsOptions, openTabs, currentDocId, focusDoc]);
 
   // Render the My Papers pod only when the inline (unscoped) Library
-  // tab is active AND the host has wired the picker callbacks. Tear-out
-  // outer tabs (showNavigator=false) skip the navigator column entirely
-  // so they also skip this pod.
+  // tab is active AND the host has wired the picker callbacks AND the
+  // curated-list plumbing. Tear-out outer tabs (showNavigator=false)
+  // skip the navigator column entirely so they also skip this pod.
   const myPapersPod =
-    showNavigator !== false && onOpenRecent && onOpenFolder && onCreateNew ? (
+    showNavigator !== false &&
+    onOpenRecent &&
+    onOpenFolder &&
+    onCreateNew &&
+    myPaperIds !== undefined &&
+    addMyPaper &&
+    removeMyPaper ? (
       <MyPapersPod
         docs={docs ?? []}
-        openTabs={openTabs}
+        myPaperIds={myPaperIds}
+        addMyPaper={addMyPaper}
+        removeMyPaper={removeMyPaper}
         currentDocId={currentDocId}
         onOpenRecent={onOpenRecent}
         onOpenFolder={onOpenFolder}

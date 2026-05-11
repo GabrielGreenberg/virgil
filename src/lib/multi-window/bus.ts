@@ -28,7 +28,8 @@ export type BusEvent =
     }
   | { type: "doc-handoff-released"; docId: string; byWindowId: string }
   | { type: "global-pref-changed"; key: string; value: unknown }
-  | { type: "window-registry-ping"; windowId: string };
+  | { type: "window-registry-ping"; windowId: string }
+  | { type: "my-papers-changed"; windowId: string; ids: string[] };
 
 const CHANNEL_NAME = "virgil";
 
