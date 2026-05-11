@@ -20,7 +20,7 @@
  *    paragraph is one node, so Doc > Paragraph is the whole schema.
  */
 
-import { type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -45,6 +45,9 @@ import { autoSizeInput } from "@/lib/autoSizeInput";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import type { EditorHandle } from "./Editor";
 import { useEditorChrome } from "./editor-layout/chrome-context";
+import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
+import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
+import type { Node as PMNode } from "@tiptap/pm/model";
 
 export function ParagraphFloat({
   cardKey,
@@ -57,14 +60,15 @@ export function ParagraphFloat({
 }) {
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
+  const dragHandleMenu = useDragHandleMenu();
   const mainEditor = editorRef.current?.getEditor() ?? null;
   const [title, setTitle] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
 
-  // Initial content + title are read once from the main doc. The float
-  // editor owns its own state after mount — changes flow float → main
-  // via onUpdate. Main → float sync is out of scope for this pass
-  // (the user typically isn't editing both at once).
+  // Initial content + title are read once from the main doc to seed the
+  // float editor. After mount the float and main stay in sync via
+  // `useFloatMainSync` (main → float) and the float's own `onUpdate`
+  // handler (float → main).
   const initial = useMemo(() => {
     let paragraphContent: JSONContent[] = [];
     let title: string | null = null;
@@ -91,7 +95,6 @@ export function ParagraphFloat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uuid]);
 
-  // Seed the editable title state once we've read the initial doc.
   useEffect(() => {
     setTitle(initial.title);
   }, [initial.title]);
@@ -170,6 +173,8 @@ export function ParagraphFloat({
     ed.view.dispatch(tr);
   }
 
+  const floatId = `par:${uuid}`;
+
   function writeBackToMain(doc: JSONContent) {
     const ed = editorRef.current?.getEditor();
     if (!ed) return;
@@ -178,7 +183,7 @@ export function ParagraphFloat({
     // Find the paragraph by uuid — its position shifts as the doc
     // changes, so re-resolve on every write.
     let pos: number | null = null;
-    let targetNode: NonNullable<ReturnType<typeof ed.state.doc.nodeAt>> | null = null;
+    let targetNode: PMNode | null = null;
     ed.state.doc.descendants((n, p) => {
       if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
         pos = p;
@@ -188,7 +193,7 @@ export function ParagraphFloat({
       return true;
     });
     if (pos == null || !targetNode) return;
-    const found: NonNullable<ReturnType<typeof ed.state.doc.nodeAt>> = targetNode;
+    const found: PMNode = targetNode;
     try {
       // Build a new paragraph node that carries the ORIGINAL attrs
       // (uuid, parTitle, …) and the float's inline content. Replacing
@@ -203,35 +208,81 @@ export function ParagraphFloat({
         fragment,
         found.marks,
       );
-      const tr = ed.state.tr.replaceWith(
-        pos,
-        pos + found.nodeSize,
-        newPar,
-      );
+      const tr = ed.state.tr.replaceWith(pos, pos + found.nodeSize, newPar);
       // Don't push the float's routine updates onto the main undo stack
       // — they'd make Cmd+Z in the main editor jump per-keystroke.
       tr.setMeta("addToHistory", false);
+      // Tag the transaction so useFloatMainSync's listener skips this
+      // float's own echo when main re-dispatches.
+      tr.setMeta(FLOAT_WRITE_META, floatId);
       if (tr.docChanged) ed.view.dispatch(tr);
     } catch {
-      // Schema mismatch or stale uuid: swallow; the float may have been
-      // opened for a paragraph that was since rebuilt.
+      /* schema mismatch / stale uuid — swallow */
     }
   }
 
+  // Main → float: re-read this paragraph from the main doc each time it
+  // changes. Memoized on `uuid` so useFloatMainSync's effect doesn't
+  // resubscribe on every render.
+  const readSource = useCallback(
+    (doc: PMNode) => {
+      let found: PMNode | null = null;
+      let nextTitle: string | null = null;
+      doc.descendants((node) => {
+        if (node.type.name === "paragraph" && node.attrs?.uuid === uuid) {
+          found = node;
+          nextTitle = (node.attrs?.parTitle as string | null) ?? null;
+          return false;
+        }
+        return true;
+      });
+      if (!found) {
+        return {
+          doc: { type: "doc", content: [{ type: "paragraph" }] } as JSONContent,
+          missing: true,
+        };
+      }
+      // Title updates piggy-back on readSource so the header reflects
+      // edits made from elsewhere (e.g. another panel renamed the par).
+      setTitle((prev) => (prev === nextTitle ? prev : nextTitle));
+      const node = found as PMNode;
+      const json = node.toJSON() as JSONContent;
+      return {
+        doc: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: json.content ?? [] },
+          ],
+        } as JSONContent,
+        missing: false,
+      };
+    },
+    [uuid],
+  );
+
+  const { sourceMissing } = useFloatMainSync({
+    mainEditor,
+    floatEditor,
+    floatId,
+    readSource,
+  });
+
   return (
-    <FloatCard cardKey={cardKey}>
-      <div className="flex-1 min-h-0 flex flex-col bg-surface rounded-md border border-edge-subtle overflow-hidden">
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-edge-subtle bg-[var(--header-bg,#e8e5de)] text-xs text-ink-subtle">
-          <span className="truncate">Paragraph</span>
+    <FloatCard cardKey={cardKey} surface="card">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden">
+        <div className="flex items-center gap-1 px-2 h-6 border-b border-edge-subtle bg-[var(--surface-muted-strong)]">
+          <span className="text-[10px] text-[var(--ink-muted)] uppercase tracking-wider font-medium truncate">
+            Paragraph
+          </span>
           <span className="flex-1" />
           <button
             type="button"
             onClick={() => editorRef.current?.scrollToParagraphId(uuid)}
-            className="w-5 h-5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover-on-light"
+            className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
             title="Jump to paragraph"
             aria-label="Jump to paragraph"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 6 15 12 9 18" />
             </svg>
           </button>
@@ -239,9 +290,13 @@ export function ParagraphFloat({
             isPoppedOut
             variant="x"
             labelNoun="paragraph"
+            className="iconbtn-xs"
             onClick={() => popped?.close(cardKey)}
           />
         </div>
+        {sourceMissing ? (
+          <SourceMissingBanner kind="paragraph" onClose={() => popped?.close(cardKey)} />
+        ) : null}
         <div className="par-float-body flex-1 overflow-auto px-8 py-4">
           <div
             className={`par-title-wrapper has-text par-float-paragraph${title ? " has-title" : " has-add-btn"}`}
@@ -267,9 +322,17 @@ export function ParagraphFloat({
               <div
                 className="par-drag-handle"
                 aria-hidden="true"
-                title="Drag paragraph"
+                title="Drag paragraph or click for actions"
                 draggable
                 onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  dragHandleMenu?.open(
+                    { kind: "paragraph", paragraphId: uuid },
+                    rect,
+                  );
+                }}
                 onDragStart={(e) => {
                   e.stopPropagation();
                   const dt = e.dataTransfer;

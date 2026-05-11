@@ -28,7 +28,7 @@
  *    section out of the float to reorder it in the main doc.
  */
 
-import { type RefObject, useMemo } from "react";
+import { type RefObject, useCallback, useMemo } from "react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -59,9 +59,11 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
 import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { useEditorChrome } from "./editor-layout/chrome-context";
+import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
+import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
 
 // Indexed by heading level 0..6 (Part..Subparagraph).
 const TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
@@ -77,6 +79,7 @@ export function HeadingFloat({
 }) {
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
+  const dragHandleMenu = useDragHandleMenu();
   const mainEditor = editorRef.current?.getEditor() ?? null;
 
   // Read the section once — heading + every block in its range. We seed
@@ -152,6 +155,8 @@ export function HeadingFloat({
     },
   });
 
+  const floatId = `hd:${uuid}`;
+
   function writeBackToMain(doc: JSONContent) {
     const ed = editorRef.current?.getEditor();
     if (!ed) return;
@@ -198,28 +203,61 @@ export function HeadingFloat({
       }
       const tr = ed.state.tr.replaceWith(range.start, range.end, newNodes);
       tr.setMeta("addToHistory", false);
+      tr.setMeta(FLOAT_WRITE_META, floatId);
       if (tr.docChanged) ed.view.dispatch(tr);
     } catch {
       /* schema mismatch / stale uuid — swallow */
     }
   }
 
+  const readSource = useCallback(
+    (doc: PMNode) => {
+      const range = getSectionRangeByUuid(doc, uuid);
+      if (!range) {
+        return {
+          doc: {
+            type: "doc",
+            content: [{ type: "heading", attrs: { level: 1 }, content: [] }],
+          } as JSONContent,
+          missing: true,
+        };
+      }
+      return {
+        doc: {
+          type: "doc",
+          content: range.nodes.map((n) => n.toJSON() as JSONContent),
+        } as JSONContent,
+        missing: false,
+      };
+    },
+    [uuid],
+  );
+
+  const { sourceMissing } = useFloatMainSync({
+    mainEditor,
+    floatEditor,
+    floatId,
+    readSource,
+  });
+
   const typeName = TYPE_NAMES[Math.max(0, Math.min(initial.level, 6))];
 
   return (
-    <FloatCard cardKey={cardKey}>
-      <div className="flex-1 min-h-0 flex flex-col bg-surface rounded-md border border-edge-subtle overflow-hidden">
-        <div className="flex items-center gap-1.5 px-2 py-1 border-b border-edge-subtle bg-[var(--header-bg,#e8e5de)] text-xs text-ink-subtle">
-          <span className="truncate">{typeName}</span>
+    <FloatCard cardKey={cardKey} surface="card">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface overflow-hidden">
+        <div className="flex items-center gap-1 px-2 h-6 border-b border-edge-subtle bg-[var(--surface-muted-strong)]">
+          <span className="text-[10px] text-[var(--ink-muted)] uppercase tracking-wider font-medium truncate">
+            {typeName}
+          </span>
           <span className="flex-1" />
           <button
             type="button"
             onClick={() => editorRef.current?.scrollToParagraphId(uuid)}
-            className="w-5 h-5 flex items-center justify-center rounded-md text-ink-muted hover:text-ink-body hover-on-light"
+            className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body hover-on-light"
             title={`Jump to ${typeName.toLowerCase()}`}
             aria-label={`Jump to ${typeName.toLowerCase()}`}
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="9 6 15 12 9 18" />
             </svg>
           </button>
@@ -227,9 +265,13 @@ export function HeadingFloat({
             isPoppedOut
             variant="x"
             labelNoun={typeName.toLowerCase()}
+            className="iconbtn-xs"
             onClick={() => popped?.close(cardKey)}
           />
         </div>
+        {sourceMissing ? (
+          <SourceMissingBanner kind="section" onClose={() => popped?.close(cardKey)} />
+        ) : null}
         <div className="par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative">
           {/* Drag handle for the whole section. Lives at the top-left of
               the float body so the user can grab the section out of the
@@ -239,9 +281,17 @@ export function HeadingFloat({
           <div
             className="heading-drag-handle heading-float-section-handle"
             aria-hidden="true"
-            title={`Drag ${typeName.toLowerCase()}`}
+            title={`Drag ${typeName.toLowerCase()} or click for actions`}
             draggable
             onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              dragHandleMenu?.open(
+                { kind: "heading", paragraphId: uuid },
+                rect,
+              );
+            }}
             onDragStart={(e) => {
               e.stopPropagation();
               const dt = e.dataTransfer;
