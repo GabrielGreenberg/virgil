@@ -13,6 +13,7 @@ import BibEntryCard from "../BibEntryCard";
 import { AiRequestCard } from "../panel-primitives";
 import { ParagraphFloat } from "../ParagraphFloat";
 import { HeadingFloat } from "../HeadingFloat";
+import { SelectionFloat } from "../SelectionFloat";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
 import type {
@@ -466,6 +467,16 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     }
     case "heading": {
       return <HeadingFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    }
+    case "selection": {
+      return (
+        <SelectionFloat
+          key={key}
+          cardKey={key}
+          selectionFloatId={id}
+          editorRef={d.editorRef}
+        />
+      );
     }
     case "example": {
       const ex = d.examples.find((e) => e.exampleId === id);

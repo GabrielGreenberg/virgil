@@ -52,6 +52,7 @@ import type { JSONContent as TipJSON } from "@tiptap/react";
 import MenuBar from "./MenuBar";
 import { createPopoutButtonEl } from "./panel-primitives";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
+import { SelectionDragHandle } from "./SelectionDragHandle";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -385,6 +386,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
+  // Stable ref to the live TipTap editor instance — used by the
+  // SelectionDragHandle to subscribe to selectionUpdate / coords without
+  // re-renders. Populated below via useEffect once `useEditor` returns
+  // the instance.
+  const editorInstanceRef = useRef<Editor | null>(null);
   const onToggleParagraphPopoutRef = useRef(onToggleParagraphPopout);
   onToggleParagraphPopoutRef.current = onToggleParagraphPopout;
   const onLiftParagraphRef = useRef(onLiftParagraph);
@@ -502,6 +508,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const dragHandle = document.createElement("div");
         dragHandle.className = "par-drag-handle";
         dragHandle.setAttribute("data-drag-handle", "");
+        // Carry the paragraph's UUID so SelectionDragHandle's first-line
+        // supersession can address this exact handle via querySelector.
+        const initialParUuid = currentNode.attrs?.uuid as string | null;
+        if (initialParUuid) dragHandle.setAttribute("data-par-uuid", initialParUuid);
         dragHandle.draggable = true;
         const svg = document.createElementNS(SVG_NS, "svg");
         svg.setAttribute("width", "10");
@@ -788,6 +798,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           update(updatedNode) {
             if (updatedNode.type.name !== "paragraph") return false;
             currentNode = updatedNode;
+            const uuidAttr = updatedNode.attrs?.uuid as string | null;
+            if (uuidAttr) {
+              dragHandle.setAttribute("data-par-uuid", uuidAttr);
+            } else {
+              dragHandle.removeAttribute("data-par-uuid");
+            }
             if (!titleAnnot.querySelector("input")) renderAnnot();
             return true;
           },
@@ -3249,9 +3265,21 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     applyHighlight();
   }, [highlightText, highlightRange, activeAnchorId, activeAnchorColor, applyHighlight]);
 
+  // Keep the stable editor ref in sync for SelectionDragHandle and
+  // anything else that needs a non-rerendering handle.
+  useEffect(() => {
+    editorInstanceRef.current = editor;
+    return () => {
+      if (editorInstanceRef.current === editor) {
+        editorInstanceRef.current = null;
+      }
+    };
+  }, [editor]);
+
   return (
     <div className="flex flex-col flex-1 min-w-0">
       <EditorContent editor={editor} />
+      <SelectionDragHandle editorRef={editorInstanceRef} />
     </div>
   );
 });

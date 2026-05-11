@@ -902,6 +902,49 @@ textarea,
   pointer-events: auto;
 }
 
+/* Suppressed paragraph drag handle — set by SelectionDragHandle when a
+   selection's handle lands on this paragraph's first visual line, so the
+   two handles don't visually collide. */
+.par-drag-handle.is-superseded {
+  display: none !important;
+}
+
+/* Floating selection drag handle — visually identical to the paragraph
+   drag handle (same 6-dot grip, same color/cursor), but portaled to the
+   document body and pinned in viewport coords so it tracks the current
+   text selection. Width/height match `.par-drag-handle` so first-line
+   supersession is a clean swap. */
+.selection-drag-handle {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: calc(var(--editor-font-size, 1.05rem) * var(--editor-line-height, 1.8));
+  opacity: 1;
+  pointer-events: auto;
+  cursor: grab;
+  user-select: none;
+  color: var(--muted, #8a8580);
+  z-index: 1000;
+}
+
+.selection-drag-handle:hover {
+  color: var(--ink, #3a362f);
+}
+
+.selection-drag-handle:active {
+  cursor: grabbing;
+}
+
+.selection-drag-handle:active,
+.selection-drag-handle.is-pressed {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
    handle and by `.is-pressed` toggled on the handle from PanelCard's lift
    gesture, so pressing anywhere on the header (including outside the
