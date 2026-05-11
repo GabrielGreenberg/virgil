@@ -36,6 +36,7 @@ import { setCardLiftHandoff } from "./card-lift";
 import { registerSelectionFloat } from "./selection-floats";
 import { generateShortId } from "@/lib/uuid";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 
 const LIFT_THRESHOLD = 5;
 const FLOAT_W = 360;
@@ -314,6 +315,11 @@ export function SelectionDragHandle({
   useEffect(() => {
     poppedRef.current = popped;
   }, [popped]);
+  const dragHandleMenu = useDragHandleMenu();
+  const dragHandleMenuRef = useRef(dragHandleMenu);
+  useEffect(() => {
+    dragHandleMenuRef.current = dragHandleMenu;
+  }, [dragHandleMenu]);
   useEffect(() => {
     const handleEl = handleElRef.current;
     if (!handleEl) return;
@@ -395,6 +401,26 @@ export function SelectionDragHandle({
         cleanup();
       };
       const onUp = () => {
+        // No lift — treat as a click and open the passage-action menu
+        // anchored to the live-selection handle, scoped to the current
+        // selection range.
+        if (!triggered) {
+          const open = dragHandleMenuRef.current?.open;
+          const range = lastRangeRef.current;
+          const paragraphId = lastParagraphIdRef.current;
+          if (open && range && paragraphId) {
+            const rect = handleEl.getBoundingClientRect();
+            open(
+              {
+                kind: "selection",
+                paragraphId,
+                from: range.from,
+                to: range.to,
+              },
+              rect,
+            );
+          }
+        }
         cleanup();
       };
       const cleanup = () => {

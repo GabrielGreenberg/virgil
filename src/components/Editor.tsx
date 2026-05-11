@@ -200,6 +200,19 @@ interface EditorProps {
   /** Same as paragraphIsPoppedRef, but for example blocks. */
   exampleIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
   /**
+   * Callback invoked when the user clicks (without dragging) a
+   * paragraph or heading drag grip. Opens the passage-action menu
+   * anchored to the handle. EditorPane wires this to its own
+   * `openDragHandleMenu`; node-view imperative code stores it through
+   * the standard `Ref` mirror pattern. When omitted, click is a no-op.
+   */
+  onDragHandleClick?: (
+    passage:
+      | { kind: "paragraph"; paragraphId: string }
+      | { kind: "heading"; paragraphId: string },
+    anchorRect: DOMRect,
+  ) => void;
+  /**
    * When `false`, the TipTap editor mounts with `editable: false` and the
    * top-level drop / paste handlers no-op. Defaults to `true`. Used by
    * the Library Reader and by collab read-only mode (when a partner
@@ -372,7 +385,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, editable = true },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, editable = true },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -395,6 +408,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onToggleParagraphPopoutRef.current = onToggleParagraphPopout;
   const onLiftParagraphRef = useRef(onLiftParagraph);
   onLiftParagraphRef.current = onLiftParagraph;
+  // Mirror `onDragHandleClick` for the imperative paragraph/heading
+  // node-view code (see drag-handle mousedown blocks below).
+  const onDragHandleClickRef = useRef(onDragHandleClick);
+  onDragHandleClickRef.current = onDragHandleClick;
   const paragraphIsPoppedPredicateRef = useRef(paragraphIsPoppedRef);
   paragraphIsPoppedPredicateRef.current = paragraphIsPoppedRef;
   // Registry of live paragraph node views. Each node view adds itself on
@@ -624,7 +641,30 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             }
             cleanup();
           };
-          const onUp = () => { cleanup(); };
+          const onUp = () => {
+            // No drag fired — treat as a plain click and open the
+            // passage-action menu for this paragraph.
+            if (!triggered) {
+              const open = onDragHandleClickRef.current;
+              if (open) {
+                let ensuredUuid = currentNode.attrs?.uuid as string | null;
+                if (!ensuredUuid) {
+                  const handlePos = typeof getPos === "function" ? getPos() : null;
+                  if (handlePos != null) {
+                    ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+                  }
+                }
+                if (ensuredUuid) {
+                  const rect = dragHandle.getBoundingClientRect();
+                  open(
+                    { kind: "paragraph", paragraphId: ensuredUuid },
+                    rect,
+                  );
+                }
+              }
+            }
+            cleanup();
+          };
           const cleanup = () => {
             window.removeEventListener("mousemove", onMove);
             window.removeEventListener("mouseup", onUp);
@@ -1244,7 +1284,30 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             }
             cleanup();
           };
-          const onUp = () => { cleanup(); };
+          const onUp = () => {
+            // No drag fired — treat as a plain click and open the
+            // passage-action menu for this section.
+            if (!triggered) {
+              const open = onDragHandleClickRef.current;
+              if (open) {
+                let ensuredUuid = currentNode.attrs?.uuid as string | null;
+                if (!ensuredUuid) {
+                  const handlePos = typeof getPos === "function" ? getPos() : null;
+                  if (handlePos != null) {
+                    ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+                  }
+                }
+                if (ensuredUuid) {
+                  const rect = headingDrag.getBoundingClientRect();
+                  open(
+                    { kind: "heading", paragraphId: ensuredUuid },
+                    rect,
+                  );
+                }
+              }
+            }
+            cleanup();
+          };
           const cleanup = () => {
             window.removeEventListener("mousemove", onMove);
             window.removeEventListener("mouseup", onUp);

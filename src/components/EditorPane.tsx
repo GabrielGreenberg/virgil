@@ -110,6 +110,9 @@ import { CitationDisplayProvider } from "./editor-layout/contexts/citation-displ
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
+import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
+import { DragHandleMenu } from "./DragHandleMenu";
 import { PanelColumn, type PanelSlot } from "./editor-layout/panel-column";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
@@ -1281,6 +1284,43 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [footnotePristine],
   );
 
+  // ─── Drag-handle action menu ────────────────────────────────────
+  // Click on a paragraph / selection / heading drag handle opens a
+  // popover menu of all the things you can do to that passage
+  // (footnote, citation, quotation, note, todo, review, suggest edit,
+  // cutter, archive). The dispatch hook resolves the passage to a doc
+  // range, plants the selection over it, runs the matching create
+  // path with `mode: "omni"`, and ensures the omni-view is showing
+  // on the new card's panel side. Reader mode (no viewPrefs) still
+  // computes a dispatch — the omni activation steps no-op.
+  const dragHandleActions = useDragHandleActions({
+    editorRef: innerRef,
+    cardCreation,
+    archiveContent: archiveHook.archiveContent,
+    updateArchiveSnippet: archiveHook.updateSnippet,
+    addArchiveParagraphId: archiveHook.addParagraphId,
+    setSelectedArchiveId,
+    prefs: viewPrefs?.prefs ?? readerPrefs,
+    expandLeft: viewPrefs?.expandLeft ?? stubSetActive,
+    expandRight: viewPrefs?.expandRight ?? stubSetActive,
+    clearBlankIfSet: viewPrefs?.clearBlankIfSet ?? stubSetActive,
+  });
+  const [dragHandleMenuState, setDragHandleMenuState] = useState<{
+    passage: DragHandlePassage;
+    anchorRect: DOMRect;
+  } | null>(null);
+  const openDragHandleMenu = useCallback(
+    (passage: DragHandlePassage, anchorRect: DOMRect) => {
+      setDragHandleMenuState({ passage, anchorRect });
+    },
+    [],
+  );
+  const closeDragHandleMenu = useCallback(() => setDragHandleMenuState(null), []);
+  const dragHandleMenuApi = useMemo<DragHandleMenuApi>(
+    () => ({ open: openDragHandleMenu }),
+    [openDragHandleMenu],
+  );
+
   // ─── Detached-toolbar machinery (Path A 7.6 finish) ────────────────
   // Per-pane state for the three torn-off floating toolbars (Actions,
   // Formatting, Menu). The corresponding render blocks below gate on
@@ -2298,6 +2338,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         <PristineCardsProvider value={pristineManager}>
         <RecentlyAddedProvider value={recentlyAdded}>
         <CardCreationProvider value={cardCreation}>
+        <DragHandleMenuProvider value={dragHandleMenuApi}>
         <SelectionsProvider
           value={{
             selectedNoteId,
@@ -3230,6 +3271,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onLiftHeading={handleLiftHeading}
                     exampleIsPoppedRef={exampleIsPoppedRef}
                     onToggleExamplePopout={handleToggleExamplePopout}
+                    onDragHandleClick={openDragHandleMenu}
                   />
                 )}
                 {/* Print appendices — hidden in live UI (`.print-only`),
@@ -3498,8 +3540,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               outset={3}
             />
           )}
+          {dragHandleMenuState && (
+            <DragHandleMenu
+              anchorRect={dragHandleMenuState.anchorRect}
+              onSelect={(action) => {
+                const passage = dragHandleMenuState.passage;
+                closeDragHandleMenu();
+                dragHandleActions.dispatch(action, passage);
+              }}
+              onClose={closeDragHandleMenu}
+            />
+          )}
         </CollabProvider>
         </SelectionsProvider>
+        </DragHandleMenuProvider>
         </CardCreationProvider>
         </RecentlyAddedProvider>
         </PristineCardsProvider>

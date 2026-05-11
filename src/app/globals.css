@@ -252,9 +252,12 @@ body[data-zen-mode="on"] {
 }
 
 /* ── Icon-button utilities ────────────────────────────────────────
-   Three locked sizes. Use for any icon-only button.
+   Four locked sizes. Use for any icon-only button.
    The visual SVG inside is smaller than the button: pass width/height
-   14 (sm), 16 (md), 20 (lg) on the SVG. */
+   14 (sm), 16 (md), 20 (lg) on the SVG. iconbtn-xs forces SVGs down to
+   12px via a child-selector override so callers using shared button
+   factories (e.g. PopoutButton) don't need to special-case the size. */
+.iconbtn-xs,
 .iconbtn-sm,
 .iconbtn-md,
 .iconbtn-lg {
@@ -269,26 +272,31 @@ body[data-zen-mode="on"] {
   user-select: none;
   flex-shrink: 0;
 }
+.iconbtn-xs:hover,
 .iconbtn-sm:hover,
 .iconbtn-md:hover,
 .iconbtn-lg:hover {
   background-color: var(--surface-muted-strong);
   color: var(--ink-body);
 }
+.iconbtn-xs:active,
 .iconbtn-sm:active,
 .iconbtn-md:active,
 .iconbtn-lg:active {
   transform: translateY(0.5px);
 }
+.iconbtn-xs:focus-visible,
 .iconbtn-sm:focus-visible,
 .iconbtn-md:focus-visible,
 .iconbtn-lg:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--edge-strong);
 }
+.iconbtn-xs[disabled],
 .iconbtn-sm[disabled],
 .iconbtn-md[disabled],
 .iconbtn-lg[disabled],
+.iconbtn-xs[aria-disabled="true"],
 .iconbtn-sm[aria-disabled="true"],
 .iconbtn-md[aria-disabled="true"],
 .iconbtn-lg[aria-disabled="true"] {
@@ -297,9 +305,11 @@ body[data-zen-mode="on"] {
   cursor: not-allowed;
 }
 
+.iconbtn-xs { width: 16px; height: 16px; padding: 2px; }
 .iconbtn-sm { width: 20px; height: 20px; padding: 3px; }
 .iconbtn-md { width: 24px; height: 24px; padding: 4px; }
 .iconbtn-lg { width: 32px; height: 32px; padding: 6px; }
+.iconbtn-xs > svg { width: 12px; height: 12px; }
 
 /* Per-panel body-typography scope.
  *
@@ -342,6 +352,7 @@ body[data-zen-mode="on"] {
 }
 
 /* Toggle/active state — when an icon button represents an "on" state. */
+.iconbtn-xs[aria-pressed="true"],
 .iconbtn-sm[aria-pressed="true"],
 .iconbtn-md[aria-pressed="true"],
 .iconbtn-lg[aria-pressed="true"] {
@@ -350,10 +361,12 @@ body[data-zen-mode="on"] {
 }
 
 /* Danger variant — used for the card-trash button. */
+.iconbtn-xs.iconbtn-danger,
 .iconbtn-sm.iconbtn-danger,
 .iconbtn-md.iconbtn-danger {
   color: var(--danger);
 }
+.iconbtn-xs.iconbtn-danger:hover,
 .iconbtn-sm.iconbtn-danger:hover,
 .iconbtn-md.iconbtn-danger:hover {
   background-color: var(--danger-soft);
@@ -366,6 +379,7 @@ body[data-zen-mode="on"] {
    parent; this swaps in the same low-alpha black overlay that
    `.hover-on-dark` uses, so the hover reads as a subtle darken on
    whatever color the parent is. */
+.iconbtn-xs.iconbtn-on-dark:hover,
 .iconbtn-sm.iconbtn-on-dark:hover,
 .iconbtn-md.iconbtn-on-dark:hover,
 .iconbtn-lg.iconbtn-on-dark:hover {
@@ -378,6 +392,7 @@ body[data-zen-mode="on"] {
    `aria-pressed="true"`, paint with the brand accent on accent-light bg
    and a thin inset accent ring — the look the topbar/strip toggles
    used pre-codification. */
+.iconbtn-xs.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-sm.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-md.iconbtn-toggle[aria-pressed="true"],
 .iconbtn-lg.iconbtn-toggle[aria-pressed="true"] {
@@ -435,6 +450,7 @@ body[data-zen-mode="on"] {
    accent text on a light parent (Open-folder "+", Preferences,
    Version-info chrome). Pairs with iconbtn-toggle when the same
    button also has an active state. */
+.iconbtn-xs.iconbtn-accent:hover,
 .iconbtn-sm.iconbtn-accent:hover,
 .iconbtn-md.iconbtn-accent:hover,
 .iconbtn-lg.iconbtn-accent:hover {
@@ -880,7 +896,9 @@ textarea,
 }
 
 .par-drag-handle:hover {
-  color: var(--muted, #8a8580);
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
 }
 
 .par-drag-handle:active {
@@ -894,6 +912,14 @@ textarea,
   background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
   transform: translateY(1px);
+}
+
+/* While the click-menu popover is open, keep the handle in its pressed look
+   so the user has a clear visual anchor for the menu. */
+.par-drag-handle.is-menu-open {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 3px;
 }
 
 .par-title-wrapper.has-text.hovered .par-drag-handle,
@@ -931,6 +957,8 @@ textarea,
 
 .selection-drag-handle:hover {
   color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
 }
 
 .selection-drag-handle:active {
@@ -943,6 +971,12 @@ textarea,
   background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
   transform: translateY(1px);
+}
+
+.selection-drag-handle.is-menu-open {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 3px;
 }
 
 /* Card grip — squeeze pattern. Triggered both by direct :active on the
@@ -1038,7 +1072,11 @@ textarea,
   user-select: none;
   color: var(--muted-light, #b5b0aa);
 }
-.heading-drag-handle:hover { color: var(--muted, #8a8580); }
+.heading-drag-handle:hover {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+}
 .heading-drag-handle:active { cursor: grabbing; }
 .heading-drag-handle:active,
 .heading-drag-handle.is-pressed {
@@ -1046,6 +1084,11 @@ textarea,
   background: rgba(0, 0, 0, 0.08);
   border-radius: 3px;
   transform: translateY(1px);
+}
+.heading-drag-handle.is-menu-open {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.10);
+  border-radius: 3px;
 }
 /* Per-level top offsets — match the fold-chevron alignment so all the
    heading chrome lines up. */

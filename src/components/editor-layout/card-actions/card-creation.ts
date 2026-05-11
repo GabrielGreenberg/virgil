@@ -88,55 +88,75 @@ export interface CardCreationDeps {
   recentlyAdded?: RecentlyAddedTracker | null;
 }
 
+/**
+ * Where the new card surfaces for the user:
+ *  - "float" (default): pop as a floating card anchored to the trigger
+ *    (the Actions toolbar path — keeps the user's eye near the click).
+ *  - "omni": leave the panel as-is, just select + pin the card. The
+ *    caller is responsible for ensuring the omni-view is active on the
+ *    panel's side so the card is visible at the top of the omni list.
+ *    Used by the paragraph/selection/heading drag-handle action menu.
+ */
+export type CardCreateMode = "float" | "omni";
+
 export interface CardCreationApi {
   createNote: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => UserNote;
   createCutterComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => CutterCommentCard;
   createCutterSuggestion: (opts: {
     paragraphId?: string | null;
     originalText?: string;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => CutterSuggestionCard;
   createRevisionComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => RevisionCommentCard;
   createRevisionSuggestion: (opts: {
     paragraphId?: string | null;
     originalText?: string;
     anchor?: AnchorRef;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => RevisionSuggestionCard;
   createTodo: (opts: {
     text?: string;
     paragraphId?: string | null;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => TodoItem;
   createFootnote: (opts: {
     fromSelection?: boolean;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => { footnoteId: string } | null;
   createQuotation: (opts: {
     text?: string;
     paragraphId?: string | null;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => QuotationGroup;
   createCitation: (opts: {
     command?: string;
     unanchored?: boolean;
     anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
   }) => CitationRef;
 }
 
@@ -202,6 +222,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       const note = addNote(opts.paragraphId ?? null, opts.content, opts.anchor);
       setSelectedNoteId(note.id);
       pin("note", note.id);
+      if (opts.mode === "omni") return note;
       if (fromToolbar(opts)) popCardAtAnchor("note", note.id, opts.anchorRect!);
       else ensurePanelActive("notes");
       return note;
@@ -218,6 +239,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       );
       setSelectedCutterCardId(card.id);
       pin("cutter", card.id);
+      if (opts.mode === "omni") return card;
       if (fromToolbar(opts))
         popCardAtAnchor("cutter-comment", card.id, opts.anchorRect!);
       else ensurePanelActive("cutter");
@@ -243,6 +265,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       );
       setSelectedCutterCardId(card.id);
       pin("cutter", card.id);
+      if (opts.mode === "omni") return card;
       if (fromToolbar(opts))
         popCardAtAnchor("cutter-suggestion", card.id, opts.anchorRect!);
       else ensurePanelActive("cutter");
@@ -268,6 +291,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       );
       setSelectedCommentId(card.id);
       pin("revision", card.id);
+      if (opts.mode === "omni") return card;
       if (fromToolbar(opts))
         popCardAtAnchor("revision", card.id, opts.anchorRect!);
       else ensurePanelActive("revisions");
@@ -293,6 +317,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       );
       setSelectedCommentId(card.id);
       pin("revision", card.id);
+      if (opts.mode === "omni") return card;
       if (fromToolbar(opts))
         popCardAtAnchor("revision-suggestion", card.id, opts.anchorRect!);
       else ensurePanelActive("revisions");
@@ -314,6 +339,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (opts.paragraphId) addTodoParagraphId(todo.id, opts.paragraphId);
       setSelectedTodoId(todo.id);
       pin("todo", todo.id);
+      if (opts.mode === "omni") return todo;
       if (fromToolbar(opts)) popCardAtAnchor("todo", todo.id, opts.anchorRect!);
       else ensurePanelActive("todo");
       return todo;
@@ -334,6 +360,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       if (!opts.fromSelection) markFootnotePristine(result.footnoteId);
       setSelectedFootnoteId(result.footnoteId);
       pin("footnote", result.footnoteId);
+      if (opts.mode === "omni") return result;
       if (fromToolbar(opts)) popCardAtAnchor("footnote", result.footnoteId, opts.anchorRect!);
       else ensurePanelActive("footnotes");
       return result;
@@ -349,6 +376,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
           : addQuotationGroup();
       setSelectedQuotationGroupId(group.id);
       pin("quotation", group.id);
+      if (opts.mode === "omni") return group;
       if (fromToolbar(opts)) popCardAtAnchor("quotation", group.id, opts.anchorRect!);
       else ensurePanelActive("quotations");
       return group;
@@ -361,6 +389,7 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       const ref = addCitation(opts.command ?? "\\cite{}", undefined, opts.unanchored ?? true);
       setSelectedCitationId(ref.id);
       pin("citation", ref.id);
+      if (opts.mode === "omni") return ref;
       if (fromToolbar(opts)) popCardAtAnchor("citation", ref.id, opts.anchorRect!);
       else ensurePanelActive("citations");
       return ref;
