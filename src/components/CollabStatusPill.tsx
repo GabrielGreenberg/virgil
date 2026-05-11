@@ -6,15 +6,18 @@
  * Renders in two variants:
  *
  * - `variant="icon"` — the always-visible two-person silhouette button in
- *   the topbar's menu-icon cluster. When collab is off, click enters
- *   collab mode. When on, click opens a small menu (Edit identity, Turn
- *   off). The button is `aria-pressed` while collab is on so the
- *   `.topbarbtn` accent-tint styling kicks in.
+ *   the topbar's menu-icon cluster. Behaves as a plain mode toggle: a
+ *   click flips collab on (via the identity-dialog flow) or off (no
+ *   menu — instant disable). The button is `aria-pressed` while collab
+ *   is on so the `.topbarbtn` accent-tint styling kicks in. To edit
+ *   identity, open the kebab on the badge variant.
  *
  * - `variant="badge"` — the pen-state pill (dot + label) and the
- *   next-natural action button (Take / Pass / Request / Take over).
- *   Lives in the topbar's modes/views section, left of the divider.
- *   Renders nothing when collab is off.
+ *   next-natural action button (Take / Pass / Request / Take over),
+ *   plus a kebab that exposes "Edit identity" (the only collab affordance
+ *   that doesn't fit naturally on the icon toggle). Lives in the
+ *   topbar's modes/views section, left of the divider. Renders nothing
+ *   when collab is off.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -78,48 +81,21 @@ export default function CollabStatusPill({
 
   // ── Icon variant ──────────────────────────────────────────────────
   if (variant === "icon") {
-    const handleClick = collab.enabled
-      ? () => setMenuOpen((v) => !v)
-      : onEnableRequest;
+    // Plain mode toggle: click flips state. No dropdown.
+    //  - Off → onEnableRequest opens the identity dialog (first time)
+    //    or re-enables silently if an identity is already saved.
+    //  - On  → onDisable shuts collab off directly.
+    const handleClick = collab.enabled ? onDisable : onEnableRequest;
     return (
-      <div ref={ref} className="relative inline-flex">
-        <button
-          onClick={handleClick}
-          title={collab.enabled ? "Collaborator mode" : "Turn on collaborator mode"}
-          className="topbarbtn"
-          data-helper="Collaborator mode"
-          aria-pressed={collab.enabled || undefined}
-        >
-          <CollaboratorsIcon />
-        </button>
-        {menuOpen && collab.enabled && (
-          <div className="absolute top-full right-0 mt-1 z-[1000] w-44 rounded-md border border-edge-subtle bg-surface shadow-lg py-1">
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                onEditIdentity();
-              }}
-              className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
-            >
-              Edit identity…
-            </button>
-            {collab.pen.requestedBy.length > 0 && collab.iHavePen && (
-              <div className="px-3 py-1 text-[10px] text-ink-faint border-t border-edge-subtle">
-                Pending request: {collab.pen.requestedBy.map((r) => r.name).join(", ")}
-              </div>
-            )}
-            <button
-              onClick={() => {
-                setMenuOpen(false);
-                onDisable();
-              }}
-              className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
-            >
-              Turn off collaborator mode
-            </button>
-          </div>
-        )}
-      </div>
+      <button
+        onClick={handleClick}
+        title={collab.enabled ? "Turn off collaborator mode" : "Turn on collaborator mode"}
+        className="topbarbtn"
+        data-helper="Collaborator mode"
+        aria-pressed={!!collab.enabled}
+      >
+        <CollaboratorsIcon />
+      </button>
     );
   }
 
@@ -169,7 +145,7 @@ export default function CollabStatusPill({
   const dotColor = DOT_COLORS[pen.status] ?? "#888";
 
   return (
-    <div className="flex items-center gap-1">
+    <div ref={ref} className="relative flex items-center gap-1">
       <div
         className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] text-ink-body bg-surface border border-edge-subtle max-w-[260px] truncate"
         style={partnerColor && !iHavePen ? { borderColor: partnerColor } : undefined}
@@ -192,6 +168,43 @@ export default function CollabStatusPill({
         >
           {actionLabel}
         </button>
+      )}
+      {/* Kebab: the only home for "Edit identity" now that the icon
+          button is a pure toggle. Renders next to the pen action.
+          Menu is portaled-style — uses a high z-index and positions
+          itself from the wrapping ref so the topbar's own stacking
+          context doesn't clip it. */}
+      <button
+        onClick={() => setMenuOpen((v) => !v)}
+        title="Collaborator options"
+        aria-label="Collaborator options"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        className="w-5 h-5 inline-flex items-center justify-center rounded hover:bg-surface-muted text-ink-subtle"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+          <circle cx="5" cy="12" r="1.6" />
+          <circle cx="12" cy="12" r="1.6" />
+          <circle cx="19" cy="12" r="1.6" />
+        </svg>
+      </button>
+      {menuOpen && (
+        <div className="absolute top-full right-0 mt-1 z-[1000] w-44 rounded-md border border-edge-subtle bg-surface shadow-lg py-1">
+          <button
+            onClick={() => {
+              setMenuOpen(false);
+              onEditIdentity();
+            }}
+            className="w-full text-left px-3 py-1.5 text-[11px] text-ink-body hover-on-light"
+          >
+            Edit identity…
+          </button>
+          {collab.pen.requestedBy.length > 0 && iHavePen && (
+            <div className="px-3 py-1 text-[10px] text-ink-faint border-t border-edge-subtle">
+              Pending request: {collab.pen.requestedBy.map((r) => r.name).join(", ")}
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -101,7 +101,7 @@ import { useArchive } from "@/hooks/useArchive";
 import { useCutter } from "@/hooks/useCutter";
 import { useRevisions } from "@/hooks/useRevisions";
 import { useSuggestions } from "@/hooks/useSuggestions";
-import { useCollab, CollabProvider } from "@/hooks/useCollab";
+import { useCollab, CollabProvider, type CollabHook } from "@/hooks/useCollab";
 import { useDocumentStyle } from "@/hooks/useDocumentStyle";
 import { useFootnotes } from "@/hooks/useFootnotes";
 import { usePristineCardManager } from "@/hooks/usePristineCardManager";
@@ -444,6 +444,12 @@ export interface PaneState {
   switchToVisualView: () => void;
   codeView: boolean;
   aiDot: "red" | "green" | "yellow" | null;
+  // EditorPane owns the live collab hook because it mounts inside
+  // <DocPipeline> and therefore holds a valid write handle. EditorLayout
+  // reads from here so its topbar collab icon/badge can drive real
+  // mutations (enable/disable/etc.) without standing up a second
+  // useCollab instance outside the pipeline boundary.
+  collab: CollabHook;
 }
 
 export interface EditorPaneProps {
@@ -2298,6 +2304,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         comments: revisionsHook.cards,
         panelAiRequests: aiRequestsHook.requests,
       }),
+      collab,
     });
   }, [
     onPaneStateChange,
@@ -2314,6 +2321,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     codeView,
     onTogglePdfView,
     onToggleCodeView,
+    collab,
   ]);
 
   return (

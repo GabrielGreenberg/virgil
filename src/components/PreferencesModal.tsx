@@ -181,7 +181,14 @@ export default function PreferencesModal({
       if (!mounted) return;
       const handler = (e: MouseEvent) => {
         if (isDraggingRef.current) return;
-        if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        const target = e.target as Element | null;
+        // Skip closing when the click is on the topbar trigger
+        // button (or its SVG children). Without this guard, mousedown
+        // closes the modal and the same gesture's click flips
+        // `preferencesOpen` back to true via the button's toggle —
+        // the modal stays open and the user sees a flicker.
+        if (target && target.closest?.('[data-helper="Preferences"]')) return;
+        if (panelRef.current && !panelRef.current.contains(target as Node)) {
           onClose();
         }
       };

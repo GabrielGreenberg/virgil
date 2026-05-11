@@ -40,6 +40,12 @@ interface FloatingPanelProps {
   mode?: "docked" | "floating";
   /** When mode==='docked', identifies which slot to portal into. */
   slotKey?: DockSlotKey | null;
+  /** Visual treatment when floating. "panel" (default) is the popup
+   *  look — beige pod bg, strong drop shadow. "card" reads as an
+   *  ambient card on the canvas — white surface, gentle ambient
+   *  shadow. Used by text-content floats (paragraph/heading/selection)
+   *  whose chrome should disappear behind the prose. */
+  surface?: "panel" | "card";
   children: ReactNode;
   initialX: number;
   initialY: number;
@@ -83,6 +89,7 @@ function FloatingPanelInner({
   panelId,
   mode = "floating",
   slotKey = null,
+  surface = "panel",
   children,
   initialX,
   initialY,
@@ -491,11 +498,16 @@ function FloatingPanelInner({
           width: pos.width,
           height: pos.height,
           zIndex,
-          background: "var(--pod-panel, #f3f0eb)",
+          background:
+            surface === "card"
+              ? "var(--surface)"
+              : "var(--pod-panel, #f3f0eb)",
           borderRadius: "var(--pod-radius, 8px)",
           border: "var(--pod-border, 1px solid #e5e2dd)",
           boxShadow:
-            "0 10px 30px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
+            surface === "card"
+              ? "var(--card-shadow-ambient)"
+              : "0 10px 30px rgba(0,0,0,0.18), 0 2px 8px rgba(0,0,0,0.10)",
         };
 
   return createPortal(

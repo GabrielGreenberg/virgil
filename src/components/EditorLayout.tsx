@@ -13,7 +13,7 @@ import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHe
 import { useFiles } from "@/hooks/useFiles";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
-import { useCollab, CollabProvider } from "@/hooks/useCollab";
+import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
 import CollabStatusPill from "./CollabStatusPill";
 import { useCollaboratorIdentity } from "./CollaboratorIdentityDialog";
 import { useLatexCompile } from "@/hooks/useLatexCompile";
@@ -31,12 +31,6 @@ import { useAiRequests } from "@/hooks/useAiRequests";
 import type { AiRequest } from "@/lib/types";
 import { useArchive } from "@/hooks/useArchive";
 import { useCitations } from "@/hooks/useCitations";
-import { useDocumentStyle } from "@/hooks/useDocumentStyle";
-import { useStyleLibrary } from "@/hooks/useStyleLibrary";
-import { readTex } from "@/lib/storage";
-import { extractPreambleAndPostamble } from "@/lib/latex-parser";
-import StyleApplyDialog from "./StyleApplyDialog";
-import StyleEditorModal from "./StyleEditorModal";
 import ManageStylesModal from "./ManageStylesModal";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
@@ -238,296 +232,6 @@ import {
 import { ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE } from "@library/lib/dnd-types";
 import { addEntryToLibraryGlobal } from "@library/lib/library-store";
 import { useLibraryRegistry } from "@library/hooks/useLibraryRegistry";
-
-/**
- * "Style" dropdown for the active document, mounted in the Virgil bar.
- * Reads the user's style library (cross-doc, localStorage), shows the
- * doc's currently-selected style, and routes pick / add / manage
- * actions through the appropriate modal.
- *
- *   - Picking a style with no preamble drift  → silent apply.
- *   - Picking a style with drift              → StyleApplyDialog
- *                                               (Hard vs AI-managed).
- *   - "Save current preamble as new style…"   → StyleEditorModal seeded
- *                                               with the doc's preamble.
- *   - "Add new style…"                        → StyleEditorModal blank.
- *   - "Manage styles…"                        → ManageStylesModal.
- *
- * A pending `style-merge` AI request disables apply actions and tags the
- * active label with "· merging…" until the agent runs `/style-merge`.
- */
-interface DocStyleDropdownProps {
-  docId: string | null;
-  aiRequests: AiRequest[];
-  addStyleMergeRequest: (args: {
-    targetStyleId: string;
-    targetStyleName: string;
-    targetPreamble: string;
-    currentPreamble: string;
-    note?: string;
-  }) => AiRequest;
-}
-
-function DocStyleDropdown({
-  docId,
-  aiRequests,
-  addStyleMergeRequest,
-}: DocStyleDropdownProps) {
-  const { styleId, setStyle } = useDocumentStyle(docId);
-  const { styles, addStyle } = useStyleLibrary();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});
-  const [docPreamble, setDocPreamble] = useState<string | null>(null);
-  const [manageOpen, setManageOpen] = useState(false);
-  const [editorMode, setEditorMode] = useState<null | "new" | "fromCurrent">(null);
-  const [applyTarget, setApplyTarget] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, [open]);
-
-  // Load the doc's current preamble whenever the dropdown opens or the
-  // active doc changes. Used for drift detection and as the source for
-  // "save current as new style" / the apply confirmation diff.
-  useEffect(() => {
-    if (!docId) {
-      setDocPreamble(null);
-      return;
-    }
-    let cancelled = false;
-    readTex(docId)
-      .then((latex) => {
-        if (cancelled) return;
-        const d = extractPreambleAndPostamble(latex);
-        setDocPreamble(d?.preamble ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setDocPreamble(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // Re-read when the dropdown opens — the user might have just edited
-    // the preamble in code view.
-  }, [docId, open]);
-
-  const pendingMerge = aiRequests.find(
-    (r) => r.kind === "style-merge" && r.status === "submitted",
-  );
-
-  if (!docId) return null;
-
-  const activeStyle = styles.find((s) => s.id === styleId);
-  const activeName = activeStyle?.name ?? "Style";
-  const drifted =
-    !!activeStyle &&
-    docPreamble != null &&
-    docPreamble !== activeStyle.preamble;
-
-  const handleToggle = () => {
-    if (!open && ref.current) {
-      const r = ref.current.getBoundingClientRect();
-      // Conservative size estimate — list + 3 menu items + separator.
-      const POPUP_H = 24 * (styles.length + 3) + 16;
-      const POPUP_W = 220;
-      const GAP = 4;
-      const flipUp = r.bottom + GAP + POPUP_H > window.innerHeight && r.top > POPUP_H + GAP;
-      const flipLeft = r.left + POPUP_W > window.innerWidth - 4 && window.innerWidth - r.right > POPUP_W;
-      const vertical = flipUp ? { bottom: window.innerHeight - r.top + GAP } : { top: r.bottom + GAP };
-      const horizontal = flipLeft ? { right: window.innerWidth - r.right } : { left: r.left };
-      setPos({ ...vertical, ...horizontal });
-    }
-    setOpen(!open);
-  };
-
-  /** Resolve the doc's current preamble synchronously if cached, else
-   *  fetch it from disk. Used by `pick` to decide drift before showing
-   *  the confirmation. */
-  const ensureDocPreamble = async (): Promise<string> => {
-    if (docPreamble != null) return docPreamble;
-    if (!docId) return "";
-    try {
-      const latex = await readTex(docId);
-      const d = extractPreambleAndPostamble(latex);
-      const p = d?.preamble ?? "";
-      setDocPreamble(p);
-      return p;
-    } catch {
-      return "";
-    }
-  };
-
-  const pick = async (id: string) => {
-    setOpen(false);
-    if (pendingMerge) return;
-    if (id === styleId) return;
-    const target = styles.find((s) => s.id === id);
-    if (!target) return;
-    const current = await ensureDocPreamble();
-    const activeRegistered = activeStyle?.preamble ?? "";
-    if (current === activeRegistered) {
-      // No drift — silent apply.
-      void setStyle(id);
-    } else {
-      setApplyTarget(id);
-    }
-  };
-
-  const onApplyHard = () => {
-    if (!applyTarget) return;
-    void setStyle(applyTarget);
-    setApplyTarget(null);
-  };
-
-  const onApplyAi = async () => {
-    if (!applyTarget) return;
-    const target = styles.find((s) => s.id === applyTarget);
-    if (!target) {
-      setApplyTarget(null);
-      return;
-    }
-    const current = await ensureDocPreamble();
-    addStyleMergeRequest({
-      targetStyleId: target.id,
-      targetStyleName: target.name,
-      targetPreamble: target.preamble,
-      currentPreamble: current,
-    });
-    setApplyTarget(null);
-  };
-
-  const targetEntry = applyTarget
-    ? styles.find((s) => s.id === applyTarget)
-    : null;
-
-  const canSaveCurrent =
-    docPreamble != null &&
-    !!activeStyle &&
-    docPreamble !== activeStyle.preamble;
-
-  return (
-    <div ref={ref} className="relative inline-flex items-center">
-      <button
-        onClick={handleToggle}
-        disabled={!!pendingMerge}
-        className="topbarbtn"
-        title={pendingMerge ? "AI merge in progress…" : "Document style"}
-        data-helper="Document style"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        {pendingMerge ? `${activeName} · merging…` : "Style"}
-        <svg width="8" height="5" viewBox="0 0 8 5" fill="currentColor"><path d="M0 0l4 5 4-5z"/></svg>
-      </button>
-      {open && (
-        <div
-          role="menu"
-          className="fixed bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 z-[60] min-w-[200px]"
-          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, right: pos.right }}
-        >
-          {styles.map((s) => {
-            const active = s.id === styleId;
-            return (
-              <button
-                key={s.id}
-                role="menuitem"
-                onClick={() => void pick(s.id)}
-                className="w-full text-left px-3 py-1 text-sm text-[var(--foreground)] hover-on-light flex items-center gap-2"
-              >
-                <span className="w-3 inline-block text-[var(--accent)]">{active ? "✓" : ""}</span>
-                <span className="flex-1 truncate">{s.name}</span>
-                {active && drifted && (
-                  <span
-                    title="Doc preamble has been edited since this style was applied"
-                    className="inline-block w-1.5 h-1.5 rounded-full bg-[var(--accent)]"
-                  />
-                )}
-              </button>
-            );
-          })}
-          <div className="my-1 border-t border-[var(--border)]" />
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              if (canSaveCurrent) setEditorMode("fromCurrent");
-            }}
-            disabled={!canSaveCurrent}
-            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Save current preamble as new style…
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setEditorMode("new");
-            }}
-            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light"
-          >
-            Add new style…
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              setOpen(false);
-              setManageOpen(true);
-            }}
-            className="w-full text-left px-3 py-1 text-xs text-[var(--foreground)] hover-on-light"
-          >
-            Manage styles…
-          </button>
-        </div>
-      )}
-
-      {targetEntry && docPreamble != null && (
-        <StyleApplyDialog
-          targetStyleName={targetEntry.name}
-          currentPreamble={docPreamble}
-          targetPreamble={targetEntry.preamble}
-          onHard={onApplyHard}
-          onAi={() => void onApplyAi()}
-          onCancel={() => setApplyTarget(null)}
-        />
-      )}
-
-      {editorMode === "new" && (
-        <StyleEditorModal
-          title="New style"
-          subtitle="Define a new preamble. Available across all your documents."
-          takenNames={styles.map((s) => s.name)}
-          onSave={({ name, preamble }) => {
-            addStyle({ name, preamble });
-            setEditorMode(null);
-          }}
-          onCancel={() => setEditorMode(null)}
-        />
-      )}
-
-      {editorMode === "fromCurrent" && docPreamble != null && (
-        <StyleEditorModal
-          title="Save current preamble as new style"
-          subtitle="The current document's preamble is pre-filled below."
-          initialPreamble={docPreamble}
-          takenNames={styles.map((s) => s.name)}
-          onSave={({ name, preamble }) => {
-            addStyle({ name, preamble });
-            setEditorMode(null);
-          }}
-          onCancel={() => setEditorMode(null)}
-        />
-      )}
-
-      {manageOpen && <ManageStylesModal onClose={() => setManageOpen(false)} />}
-    </div>
-  );
-}
 
 /**
  * Negative margins applied to the active folder tab's wrapper so the
@@ -921,7 +625,12 @@ export default function EditorLayout() {
     getDisplayText: getCitationDisplayText,
   } = useCitations(docIdForHooks, citationPristine);
 
-  const collab = useCollab(docIdForHooks);
+  // The live collab hook lives in EditorPane (which mounts inside
+  // <DocPipeline> and therefore holds a valid write handle). We read
+  // it back here so the topbar's collab icon/badge drive real
+  // mutations. Falls back to the inert no-op hook when no doc is
+  // loaded — every action is a safe no-op until paneState bubbles up.
+  const collab: CollabHook = paneState?.collab ?? COLLAB_INERT;
   const { ensureIdentity, dialog: identityDialog } = useCollaboratorIdentity();
 
   const handleEnableCollab = useCallback(async () => {
@@ -1317,6 +1026,10 @@ export default function EditorLayout() {
   const [printOpen, setPrintOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [helperMenuOpen, setHelperMenuOpen] = useState(false);
+  // Open state for ManageStylesModal — lifted from the old
+  // DocStyleDropdown so the Virgil bar's Style mode button can mirror
+  // its aria-pressed state.
+  const [manageStylesOpen, setManageStylesOpen] = useState(false);
 
   // Margin-edit mode (interactive page-margin guides) was deleted with
   // the visual editor JSX; reintroduce inside EditorPane to bring it
@@ -4896,30 +4609,13 @@ export default function EditorLayout() {
 
         <div className="shrink-0 flex items-center px-2">
           {!prefs.topbarRightCollapsed && (<>
-          {/* ── Zen mode toggle ────────────────────────────────────────
-              Render-gates editor chrome (icon strips, panel columns,
-              floating MenuBar, marginalia, popped-out panels/cards) so
-              the document area stands alone. Top bar stays visible so
-              this button is always reachable. Pinned to the far left of
-              the right cluster — sits outside the !zenModeOn gate so it
-              stays visible in both states; when zen is on it's the only
-              button visible alongside the collapse chevron on the right. */}
-          <button
-            onClick={handleToggleZen}
-            className="topbarbtn"
-            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
-            aria-pressed={zenModeOn}
-            data-helper="Zen mode"
-          >
-            Zen
-          </button>
-          {/* ── Modes / views section ──────────────────────────────────
-              Left of the divider. Shows the *active state* of system-wide
-              modes (focus view, helper mode, collaborator mode). Each
-              entry is a passive indicator + its primary action; clicking
-              an exit/action affordance leaves the mode or moves the
-              workflow forward. Stays empty when nothing is active. */}
-          {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
+          {/* ── Status-indicator group (left of divider) ───────────────
+              Passive indicators for system-wide modes that are
+              activated elsewhere (Focus from card actions, Helper from
+              the "?" menu, Collab from the icon button on the right).
+              Each entry doubles as the off-toggle for its mode. Stays
+              empty when nothing's active. Suppressed in zen mode. */}
+          {!zenModeOn && (
             <div className="flex items-center">
               {focusMode.state.active && (
                 <button
@@ -4954,12 +4650,35 @@ export default function EditorLayout() {
               {collab.enabled && collabBadge}
             </div>
           )}
-          {/* Divider — visible only when at least one mode/view is active.
-              Gives the modes section its own gravity well, separated from
-              the menu-icon cluster on the right. */}
+          {/* Divider — only shown when there's at least one status
+              marker on the left, so the line reads as a real
+              boundary between markers and standard buttons. With no
+              markers, the standard cluster simply starts at the
+              edge. Uses the same stronger edge color as the tab
+              separators. Suppressed in zen mode regardless. */}
           {!zenModeOn && (focusMode.state.active || helperMode.on || collab.enabled) && (
-            <span className="self-center h-5 w-px bg-edge-subtle mx-2" aria-hidden />
+            <span
+              aria-hidden
+              className="self-center h-5 w-px mx-2"
+              style={{ background: "var(--edge-strong, #a8a29e)" }}
+            />
           )}
+          {/* Zen mode toggle — render-gates editor chrome (icon
+              strips, panel columns, floating MenuBar, marginalia,
+              popped-out panels/cards) so the document area stands
+              alone. Top bar stays visible so this button is always
+              reachable. Sits at the leftmost of the standard-buttons
+              group (right of the divider) so Zen sequences with the
+              collab icon and other modal toggles. */}
+          <button
+            onClick={handleToggleZen}
+            className="topbarbtn"
+            title={zenModeOn ? "Zen mode: on" : "Zen mode: off"}
+            aria-pressed={zenModeOn}
+            data-helper="Zen mode"
+          >
+            Zen
+          </button>
           {!zenModeOn && (<>
           {/* ── Preference Mode toggle ─────────────────────────────────
               Flips the global preference-mode state. When on, every DOM
@@ -4980,9 +4699,10 @@ export default function EditorLayout() {
               else — always drive it through usePreferenceMode(). */}
           {collabIconBtn}
           <button
-            onClick={() => setPreferencesOpen(true)}
+            onClick={() => setPreferencesOpen((v) => !v)}
             className="topbarbtn"
             title="Preferences"
+            aria-pressed={preferencesOpen}
             data-helper="Preferences"
           >
             {/* Painter's palette icon — solid silhouette with the classic
@@ -5063,12 +4783,15 @@ export default function EditorLayout() {
               elements and panel appendices to include, then hands off
               to the browser's native print sheet. Cmd/Ctrl+P routes to
               the same dialog. Disabled in code view (CodeMirror's
-              virtualized rendering doesn't paginate cleanly). */}
+              virtualized rendering doesn't paginate cleanly). Mode
+              toggle: aria-pressed while the dialog is open; clicking
+              again closes it. */}
           <button
-            onClick={() => setPrintOpen(true)}
-            disabled={!currentDocId || vbar.codeView || vbar.pdfView}
+            onClick={() => setPrintOpen((v) => !v)}
+            disabled={!currentDocId || codeView || pdfView}
             className="topbarbtn"
             title="Print…"
+            aria-pressed={printOpen}
             data-helper="Print"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -5079,9 +4802,10 @@ export default function EditorLayout() {
           </button>
           {/* AI request — sun-star: eight equal-length rays meeting
               at the center. Cardinal lines span 20 units (2→22);
-              diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07. */}
+              diagonals span ~20 units using 12 ± 7.07 ≈ 4.93/19.07.
+              Mode toggle: clicking again closes the window. */}
           <button
-            onClick={() => setAiWindowOpen(true)}
+            onClick={() => setAiWindowOpen((v) => !v)}
             className="topbarbtn relative"
             aria-pressed={aiWindowOpen}
             title="AI requests"
@@ -5109,23 +4833,34 @@ export default function EditorLayout() {
               />
             )}
           </button>
-          {/* ── Document style dropdown ────────────────────────────────
-              Per-doc preamble preset selector. Switching style rewrites
-              the bytes before \begin{document} in the active doc's .tex
-              file (see useDocumentStyle). Sits just left of Code/Compile
-              so it reads as part of the doc-action cluster. */}
-          <DocStyleDropdown
-            docId={currentDocId}
-            aiRequests={vbar.aiRequests}
-            addStyleMergeRequest={vbar.addStyleMergeRequest}
-          />
+          {/* ── Document style ─────────────────────────────────────────
+              Mode toggle: opens ManageStylesModal where the user can
+              apply a style to the active doc, edit/rename/delete
+              library entries, save the current preamble as a new
+              style, and add new entries. aria-pressed mirrors the
+              modal's open state. */}
           <button
-            onClick={vbar.codeView ? vbar.switchToVisualView : vbar.switchToCodeView}
+            onClick={() => setManageStylesOpen((v) => !v)}
+            disabled={!currentDocId}
             className="topbarbtn"
-            title={vbar.codeView ? "Visual Editor" : "Code Editor"}
-            data-helper={vbar.codeView ? "Visual editor" : "Code editor"}
+            title="Document style"
+            aria-pressed={manageStylesOpen}
+            data-helper="Document style"
           >
-            {vbar.codeView ? (
+            Style
+          </button>
+          {/* Code view toggle — reads local `codeView` (not
+              `vbar.codeView`) because EditorPane unmounts in code
+              view, leaving paneState's mirror stale. `toggleCodeView`
+              dispatches to the correct switchTo/switchFrom internally. */}
+          <button
+            onClick={toggleCodeView}
+            className="topbarbtn"
+            title={codeView ? "Visual Editor" : "Code Editor"}
+            aria-pressed={codeView}
+            data-helper={codeView ? "Visual editor" : "Code editor"}
+          >
+            {codeView ? (
               <>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -5165,19 +4900,23 @@ export default function EditorLayout() {
             )}
             Compile
           </button>
+          {/* PDF view toggle — same indirection trap as code view:
+              EditorPane unmounts in PDF view so paneState's mirror
+              goes stale. Read local `pdfView` directly. */}
           <button
-            onClick={vbar.pdfView ? vbar.switchFromPdfView : vbar.switchToPdfView}
+            onClick={togglePdfView}
             disabled={!currentDocId}
             className="topbarbtn"
-            title={vbar.pdfView ? "Back to editor" : "View PDF"}
-            data-helper={vbar.pdfView ? "Back to editor" : "View PDF"}
+            title={pdfView ? "Back to editor" : "View PDF"}
+            aria-pressed={pdfView}
+            data-helper={pdfView ? "Back to editor" : "View PDF"}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
             </svg>
             PDF
-            {vbar.pdfStale && vbar.pdfView && (
+            {vbar.pdfStale && pdfView && (
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 ml-1" title="PDF is out of date" />
             )}
           </button>
@@ -5470,6 +5209,14 @@ export default function EditorLayout() {
           onSavePreset={savePreset}
           onLoadPreset={loadPreset}
           onDeletePreset={deletePreset}
+        />
+      )}
+      {manageStylesOpen && (
+        <ManageStylesModal
+          onClose={() => setManageStylesOpen(false)}
+          docId={currentDocId}
+          aiRequests={vbar.aiRequests}
+          addStyleMergeRequest={vbar.addStyleMergeRequest}
         />
       )}
       {/* AIWindow now mounts inside EditorPane (which holds the per-doc

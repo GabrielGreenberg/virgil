@@ -8,6 +8,15 @@ import { consumeCardLiftHandoff } from "./card-lift";
 const DEFAULT_W = 360;
 const DEFAULT_H = 280;
 
+// Text floats (paragraph/heading/selection) auto-fit their height to content
+// on first mount per session, capped at 40% of viewport height. Tracked here
+// so user resizes after the initial fit aren't overwritten when the float
+// closes and reopens.
+const autoFittedKeys = new Set<string>();
+const TEXT_FLOAT_HEADER_H = 24;
+const TEXT_FLOAT_BORDERS = 2;
+const TEXT_FLOAT_MAX_VH = 0.4;
+
 /**
  * Wraps a popped-out card's JSX in a draggable/resizable `FloatingPanel`,
  * positioned from the shared popped-cards context.
@@ -22,9 +31,11 @@ const DEFAULT_H = 280;
  */
 export function FloatCard({
   cardKey,
+  surface,
   children,
 }: {
   cardKey: string;
+  surface?: "panel" | "card";
   children: ReactNode;
 }) {
   const ctx = usePoppedCards();
@@ -55,6 +66,77 @@ export function FloatCard({
     // drag (consumeCardLiftHandoff already cleared the one-shot signal).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-fit text floats to content on first mount. Tiptap's deferred
+  // mount (immediatelyRender:false) means body.scrollHeight is wrong if
+  // we measure too early — a fixed RAF count can't tell us "content is
+  // ready." So we use ResizeObserver to react whenever the body's natural
+  // size changes during the first ~800ms after mount, and re-measure
+  // each time using the panel's *current* DOM rect (not the stale
+  // closure-captured `rect`). Gated to text floats via the par-float-body
+  // selector — other popouts have no .par-float-body and exit cleanly.
+  // Bounded by 40% of viewport height; if content exceeds the cap, the
+  // body's existing overflow:auto handles the scroll.
+  useEffect(() => {
+    if (autoFittedKeys.has(cardKey)) return;
+    autoFittedKeys.add(cardKey);
+    let attempts = 0;
+    let lastTarget = 0;
+    let ro: ResizeObserver | null = null;
+    let stopTimer: number | null = null;
+    const tryFit = () => {
+      const wrapper = document.querySelector(
+        `[data-pristine-card-id="${pristineId}"]`,
+      );
+      const panel = wrapper?.closest<HTMLElement>(
+        '[data-floating-panel="true"]',
+      );
+      const body = panel?.querySelector<HTMLElement>(".par-float-body");
+      if (!panel || !body) {
+        if (attempts++ < 30) requestAnimationFrame(tryFit);
+        return;
+      }
+      const measure = () => {
+        if (!panel.isConnected || !body.isConnected) {
+          ro?.disconnect();
+          return;
+        }
+        const panelRect = panel.getBoundingClientRect();
+        const currentH = panelRect.height;
+        const natural =
+          body.scrollHeight + TEXT_FLOAT_HEADER_H + TEXT_FLOAT_BORDERS;
+        const cap = Math.floor(window.innerHeight * TEXT_FLOAT_MAX_VH);
+        const target = Math.min(natural, cap);
+        if (target <= currentH + 1) return;
+        if (target === lastTarget) return;
+        lastTarget = target;
+        const maxY = window.innerHeight - target - 20;
+        const adjustedY = Math.max(20, Math.min(panelRect.top, maxY));
+        ctx.setFloatPosition(cardKey, {
+          x: panelRect.left,
+          y: adjustedY,
+          width: panelRect.width,
+          height: target,
+        });
+      };
+      measure();
+      ro = new ResizeObserver(measure);
+      ro.observe(body);
+      // Stop observing after the initial render burst so subsequent user
+      // resizes don't fight us.
+      stopTimer = window.setTimeout(() => ro?.disconnect(), 800);
+    };
+    // Schedule but don't cancel on cleanup — Strict Mode's mount→cleanup→
+    // mount cycle would otherwise abort the work, and the autoFittedKeys
+    // gate prevents the second mount from rescheduling. measure() guards
+    // against the panel/body being detached.
+    requestAnimationFrame(tryFit);
+    return () => {
+      ro?.disconnect();
+      if (stopTimer) clearTimeout(stopTimer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <FloatingPanel
       ref={panelHandleRef}
@@ -63,6 +145,7 @@ export function FloatCard({
       initialWidth={initialWidth}
       initialHeight={initialHeight}
       zIndex={1200 + indexHint}
+      surface={surface}
       onChange={(pos) => ctx.setFloatPosition(cardKey, pos)}
       onFocus={() => ctx.recordFocus?.(cardKey)}
     >

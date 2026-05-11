@@ -27,6 +27,7 @@ import {
 } from "react";
 import { readSidecar, writeSidecar } from "@/lib/storage";
 import {
+  beginDocPipeline,
   getActiveHandle,
   isStalePipelineError,
 } from "@/lib/multi-window/doc-pipeline";
@@ -107,8 +108,12 @@ export interface CollabActions {
 
 export type CollabHook = CollabState & CollabActions;
 
-/** Collab state when no doc is loaded — every action is a no-op. */
-const INERT: CollabHook = {
+/** Collab state when no doc is loaded — every action is a no-op.
+ *  Exported as `COLLAB_INERT` so callers that route the live collab
+ *  hook through props (e.g. EditorLayout reading the EditorPane-owned
+ *  instance via `paneState.collab`) have a safe default while the
+ *  pane hasn't bubbled state yet. */
+export const COLLAB_INERT: CollabHook = {
   enabled: false,
   identity: null,
   sidecar: EMPTY_COLLAB_SIDECAR,
@@ -150,11 +155,6 @@ export function useCollab(docId: string | null): CollabHook {
   const lastSelectionRef = useRef<string>("");
   const lastCursorRef = useRef<string | null>(null);
 
-  const handle = useMemo(
-    () => (docId ? getActiveHandle(docId) : null),
-    [docId],
-  );
-
   /** Read-modify-write under a single in-flight chain.
    *
    *  Re-reads from disk before applying the mutation so we don't stomp
@@ -163,11 +163,30 @@ export function useCollab(docId: string | null): CollabHook {
    *  stale (partner-less) snapshot and lose the partner's presence on
    *  every cycle. The per-file write queue serializes *our* writes; this
    *  pre-read serializes against the disk's current state.
+   *
+   *  The active doc-write handle is resolved *lazily* at call time
+   *  (not memoized into the callback's deps) so that React StrictMode
+   *  / Fast Refresh remounts — which can rotate the underlying
+   *  pipelineId in the doc-pipeline registry mid-flight — don't leave
+   *  every subsequent mutate writing through a stale handle that fails
+   *  `assertActive` and silently drops the change.
    */
   const mutate = useCallback(
     async (fn: (prev: CollabSidecar) => CollabSidecar): Promise<void> => {
       const id = docIdRef.current;
-      if (!id || !handle) return;
+      if (!id) return;
+      // Prefer the pipeline that <DocPipeline> already registered, but
+      // fall back to beginDocPipeline if the registry is empty. The
+      // registry can be empty in two situations: (1) we're running in
+      // a component tree that doesn't mount <DocPipeline> for this
+      // doc (e.g. a sidecar-only consumer), and (2) React StrictMode /
+      // Fast Refresh has rotated through enough mount/unmount cycles
+      // that the queued microtask cleanup deleted the entry before
+      // the matching remount could revive it. beginDocPipeline is
+      // idempotent — when DocPipeline next mounts/remounts, it
+      // reuses this entry rather than creating a fresh pipelineId,
+      // so this fallback doesn't fragment the registry.
+      const handle = getActiveHandle(id) ?? beginDocPipeline(id);
       let base = sidecarRef.current;
       try {
         const fresh = await readSidecar<CollabSidecar>(
@@ -189,7 +208,7 @@ export function useCollab(docId: string | null): CollabHook {
         /* swallow other errors — partner will re-converge on next poll */
       }
     },
-    [handle],
+    [],
   );
 
   /* ── Load + poll the sidecar ─────────────────────────────────── */
@@ -269,7 +288,8 @@ export function useCollab(docId: string | null): CollabHook {
     const handler = () => {
       const id = docIdRef.current;
       const me = identityRef.current?.name;
-      if (!id || !me || !handle) return;
+      if (!id || !me) return;
+      const handle = getActiveHandle(id) ?? beginDocPipeline(id);
       const prev = sidecarRef.current;
       if (!prev.enabled) return;
       let next = prev;
@@ -296,7 +316,7 @@ export function useCollab(docId: string | null): CollabHook {
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [handle]);
+  }, []);
 
   /* ── Actions ─────────────────────────────────────────────────── */
 
@@ -556,32 +576,67 @@ export function useCollab(docId: string | null): CollabHook {
     [sidecar, me],
   );
 
-  if (!docId) return INERT;
+  // Memoize the returned hook so the topbar (which now reads it via
+  // `paneState.collab` and pipes it through `<CollabProvider>`) can
+  // hand the same reference back through context without triggering a
+  // re-render every render. Without this, every EditorPane render
+  // produced a fresh hook object → context value churn → context
+  // consumers re-render → EditorPane re-renders → fresh hook again →
+  // infinite "Maximum update depth exceeded" loop. The deps cover
+  // every field carried by the hook; identity-stable useCallbacks
+  // ensure the memo only re-derives on real state change.
+  const liveHook = useMemo(
+    () => ({
+      enabled: sidecar.enabled,
+      identity,
+      sidecar,
+      pen,
+      canEditMainText,
+      iHavePen,
+      partnerColor,
+      setIdentity,
+      enableCollab,
+      disableCollab,
+      takePen,
+      passPen,
+      requestPen,
+      takeOver,
+      bumpActivity,
+      claimCard,
+      releaseClaim,
+      getCardClaim,
+      updateSelection,
+      updateCursorParagraph,
+      getCardSelections,
+      getCursorSelections,
+    }),
+    [
+      sidecar,
+      identity,
+      pen,
+      canEditMainText,
+      iHavePen,
+      partnerColor,
+      setIdentity,
+      enableCollab,
+      disableCollab,
+      takePen,
+      passPen,
+      requestPen,
+      takeOver,
+      bumpActivity,
+      claimCard,
+      releaseClaim,
+      getCardClaim,
+      updateSelection,
+      updateCursorParagraph,
+      getCardSelections,
+      getCursorSelections,
+    ],
+  );
 
-  return {
-    enabled: sidecar.enabled,
-    identity,
-    sidecar,
-    pen,
-    canEditMainText,
-    iHavePen,
-    partnerColor,
-    setIdentity,
-    enableCollab,
-    disableCollab,
-    takePen,
-    passPen,
-    requestPen,
-    takeOver,
-    bumpActivity,
-    claimCard,
-    releaseClaim,
-    getCardClaim,
-    updateSelection,
-    updateCursorParagraph,
-    getCardSelections,
-    getCursorSelections,
-  };
+  if (!docId) return COLLAB_INERT;
+  return liveHook;
 }
 
 /* ── Context for deep card components ─────────────────────────────── */
@@ -594,7 +649,7 @@ export const CollabProvider = CollabContext.Provider;
  *  provider is mounted, so cards rendered outside an EditorLayout still
  *  work normally. */
 export function useCollabContext(): CollabHook {
-  return useContext(CollabContext) ?? INERT;
+  return useContext(CollabContext) ?? COLLAB_INERT;
 }
 
 /** Per-card claim helper. Returns the partner claim (if any), and stable
