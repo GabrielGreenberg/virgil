@@ -3473,7 +3473,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             <EditorScrollbar
               rowRef={rowScrollRef}
               editorColRef={editorColRef}
-              outset={-10}
+              outset={3}
             />
           )}
         </CollabProvider>

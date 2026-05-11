@@ -2819,13 +2819,25 @@ body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
    editor so it lands at the actual center of that gutter, and extend
    an invisible ::before hit area across the full gutter so users can
    grab anywhere in that visible gap — not just the 10px centered strip.
-   The EditorScrollbar overlay is pinned inside the pod's right
-   padding (`outset: -10`) so it doesn't collide with the right
-   drag-gap line — the line can stay at its natural inboard position. */
+   The EditorScrollbar overlay sits 3px outside the editor column
+   (`outset: 3`), and the right-side drag-gap adds `drag-gap-line-outer`
+   to push the blue line to the panel side (away from the scrollbar).
+   Result, left-to-right: editor | 3px | scrollbar | blue line | panel. */
 .drag-gap-v.drag-gap-toward-editor-right::after {
   left: calc(50% + 4px);
 }
 .drag-gap-v.drag-gap-toward-editor-left::after {
+  left: calc(50% - 4px);
+}
+/* When the EditorScrollbar sits inside this gap on the editor side, push
+   the blue line to the outer side (away from editor, closer to the panel)
+   so the scrollbar can occupy the editor-side half of the gap without
+   colliding with the line. Hit-area direction (::before) is unaffected —
+   the grab area still extends into the editor. */
+.drag-gap-v.drag-gap-line-outer.drag-gap-toward-editor-left::after {
+  left: calc(50% + 4px);
+}
+.drag-gap-v.drag-gap-line-outer.drag-gap-toward-editor-right::after {
   left: calc(50% - 4px);
 }
 .drag-gap-v::before {

@@ -537,7 +537,7 @@ export function PanelColumn({
       )}
       <div
         ref={gapRef}
-        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left"}`}
+        className={`drag-gap drag-gap-v shrink-0 ${side === "left" ? "order-3 drag-gap-toward-editor-right" : "order-1 drag-gap-toward-editor-left drag-gap-line-outer"}`}
         style={{ width: 'var(--pod-gap)' }}
         onMouseDown={onMouseDown}
       />
