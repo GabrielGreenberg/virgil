@@ -30,7 +30,37 @@ _DOI_RE = re.compile(r"\b10\.\d{4,9}/[^\s'\"<>]+")
 _ISBN_RE = re.compile(r"\b(?:ISBN[-:]?\s*)?(97[89])?[-\s]?(\d[-\s]?){9,12}[\dXx]\b")
 _SEP_RE = re.compile(r"plato\.stanford\.edu/(?:archives/[^/]+/)?entries/([a-z0-9-]+)")
 _VARIANT_RE = re.compile(r"^(?P<base>.+?)\.(?P<n>\d+)\.(?P<ext>pdf|docx|tex)$", re.IGNORECASE)
-_FILENAME_RE = re.compile(r"^(?P<year>\d{4})-(?P<lastname>[A-Za-z][A-Za-z'\-]*)\.(?P<ext>pdf|docx|tex)$")
+# Two filename conventions are accepted:
+#   "2003-Bordwell.pdf"                                  — legacy YYYY-Lastname
+#   'bordwell 2008 "poetics of cinema".pdf'              — author + year (+ optional title)
+#   'alikhani and stone 2018 "arrows are the verbs".pdf' — multi-author with "and"
+#   'cumming, greenberg, and kelly 2017 "...".pdf'       — comma-separated authors
+#   'decarlo et al 2003 "suggestive contours".pdf'       — "et al" form
+# Only the FIRST author surname and the year are captured.
+_FILENAME_RE_LEGACY = re.compile(
+    r"^(?P<year>\d{4})-(?P<lastname>[A-Za-z][A-Za-z'\-]*)\.(?P<ext>pdf|docx|tex)$"
+)
+_FILENAME_RE_AUTHOR_YEAR = re.compile(
+    r"^(?P<lastname>[A-Za-z][A-Za-z'\-]*)"
+    r"[\s,]+"               # space or comma after first surname
+    r"(?:[^0-9]*?\s+)?"     # optional middle: "and stone ", "et al ", ", greenberg, "
+    r"(?P<year>\d{4})\b"
+    r".*"                   # optional title / rest
+    r"\.(?P<ext>pdf|docx|tex)$",
+    re.IGNORECASE,
+)
+
+
+def _match_filename(filename: str):
+    """Match against either filename convention. Returns the match or None."""
+    return (
+        _FILENAME_RE_LEGACY.match(filename)
+        or _FILENAME_RE_AUTHOR_YEAR.match(filename)
+    )
+
+
+# Back-compat alias; older call sites may still reference the singular name.
+_FILENAME_RE = _FILENAME_RE_LEGACY
 
 _HANDBOOK_SIGNALS = (
     "cambridge handbook", "oxford handbook", "routledge handbook",
@@ -466,9 +496,9 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
             notes.append("No title candidate extracted; needs manual title entry")
 
     # ── Filename pattern ──────────────────────────────────────────────
-    fm = _FILENAME_RE.match(filename)
+    fm = _match_filename(filename)
     filename_year = fm.group("year") if fm else ""
-    filename_lastname = fm.group("lastname") if fm else ""
+    filename_lastname = fm.group("lastname").lower() if fm else ""
 
     # ── Filename-vs-content author ────────────────────────────────────
     byline = [_sanitize_byline(b) for b in _extract_byline(first_pages_text)]
