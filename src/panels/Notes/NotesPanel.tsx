@@ -33,7 +33,6 @@ interface NotesPanelProps {
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   onEditorFocus?: (editor: any) => void;
-  onHoverNote?: (id: string | null) => void;
   onDropSelection?: (payload: { from: number; to: number; selectedText: string }) => void;
   onDropParagraph?: (paragraphId: string) => void;
   recentlyAddedId?: string | null;
@@ -55,7 +54,6 @@ export default function NotesPanel({
   onUpdateAiRequestText,
   onDeleteAiRequest,
   onEditorFocus,
-  onHoverNote,
   onDropSelection,
   onDropParagraph,
   recentlyAddedId,
@@ -204,11 +202,6 @@ export default function NotesPanel({
           onEditorFocus={onEditorFocus}
           getCitationDisplayText={getCitationDisplayText}
           onCitationCreated={onCitationCreated}
-          onHoverChange={
-            onHoverNote
-              ? (hovering) => onHoverNote(hovering ? note.id : null)
-              : undefined
-          }
         />
       )}
     />

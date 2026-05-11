@@ -28,7 +28,7 @@ the user can accept (which queues the textual replacement).
    that's already the target span. Mode A: pick a coherent subspan
    from the paragraph to address the comment.
 
-3. **Build the CutterSuggestionCard** (see `src/lib/types.ts:314`):
+3. **Build the CutterSuggestionCard** (see `src/lib/types.ts:345`):
    ```json
    { "kind": "suggestion",
      "id": "<new-uuid>",
@@ -38,12 +38,41 @@ the user can accept (which queues the textual replacement).
      "suggested_text": "<your replacement, or empty for a cut>",
      "explanation": "<one or two sentences>",
      "user_text": "",
+     "instructions": "<request.text>",
      "status": "pending",
      "selectedText": "<source comment's selectedText, if any>",
-     "links": [{ ...same anchor as source comment... }],
-     "aiOriginRequestId": "<requestId, if non-virtual>"
+     "links": [{
+        "id": "<new-link-uuid>",
+        "kind": "anchor",
+        "anchor": {
+           "type": "anchor",
+           "paragraphIds": ["...copy from source comment's anchor..."],
+           "margin": {"side": "...copy from source comment..."}
+        },
+        "target": {
+           "type": "card",
+           "ref": {"kind": "suggestion", "id": "<new-uuid>"}
+        },
+        "createdAt": "<ISO now>"
+     }],
+     "aiOriginRequestId": "<requestId, if not virtual:-prefixed>"
    }
    ```
+   `aiOriginRequestId` is forward-looking — the type doesn't yet
+   declare it (see editor/AGENTS.md "Future work"), but emit it so
+   the field is in place when the editor's Accept/Reject/Redo UI
+   lands.
+
+   For the link: copy `anchor.paragraphIds` and `anchor.margin` from
+   the source comment's first link, generate a fresh link id, set
+   `target.ref.kind` to `"suggestion"`, and set `target.ref.id` to
+   the new card's own id (self-target — this is how the editor
+   matches the card to its anchor at render time).
+
+   `instructions` carries the source comment's `text` (the prompt
+   that generated this AI draft) — gives the user a Redo-style replay
+   handle. The type comment in `src/lib/types.ts:363` makes this its
+   intended use.
 
 4. **Apply.**
    ```bash

@@ -31,6 +31,8 @@ import CitationBuilder, {
 } from "@/components/CitationBuilder";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 function lastNameOf(author: string): string {
   const commaParts = author.split(",");
@@ -145,7 +147,9 @@ export function CitationCard({
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
   const inOmni = useInOmni() != null;
-  const compressed = !isSelected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "citation", id: cit.id });
+  const isSelectedEffective = ac.selected || isSelected;
+  const compressed = !isSelectedEffective && !isPoppedOut;
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -365,7 +369,7 @@ export function CitationCard({
       data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
-      selected={isSelected}
+      selected={isSelectedEffective}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
@@ -379,7 +383,12 @@ export function CitationCard({
       onDrop={handleCardDrop}
       className={wrapperClassName}
       style={wrapperStyle}
-      onClick={onSelect}
+      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
+      onMouseEnter={() => cardStore.setHover(ac.ref)}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
+      }}
       title={
         !isAnchored
           ? "Unanchored citation — drag into the editor to anchor it"

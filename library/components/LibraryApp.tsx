@@ -23,7 +23,7 @@ interface Props {
 }
 
 export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator }: Props = {}) {
-  const { state, pick, grant, reset, lastSync } = useLibraryHandle();
+  const { state, pick, grant, reset, lastSync, pickerError } = useLibraryHandle();
 
   if (state.kind === "loading") {
     return (
@@ -41,10 +41,10 @@ export default function LibraryApp({ tabsOptions, showNavigator, belowNavigator 
     );
   }
 
-  if (state.kind === "none") return <LibraryFolderPicker onPick={pick} />;
+  if (state.kind === "none") return <LibraryFolderPicker onPick={pick} pickerError={pickerError} />;
 
   if (state.kind === "needs-permission") {
-    return <LibraryPermissionGate onGrant={grant} onReset={reset} />;
+    return <LibraryPermissionGate onGrant={grant} onReset={reset} pickerError={pickerError} />;
   }
 
   return (

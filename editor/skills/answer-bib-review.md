@@ -30,19 +30,33 @@ review types:
 
 2. **For `type: "fields"`:**
    - Look up the entry against Crossref → OpenAlex → Semantic Scholar
-     → arXiv (in that order). Reuse the library's auth helper if it
-     resolves from `cwd`:
+     → arXiv (in that order). Try the library's auth helper:
      ```bash
      python3 library/scripts/bib_auth.py --citekey <bibKey> \
                                          --title "<existing title>" \
                                          --author "<existing author>" \
                                          --type article
      ```
+     If it errors with `ModuleNotFoundError` (deps not installed) or
+     can't resolve from `cwd`, fall through to direct Crossref /
+     OpenAlex lookups via stdlib `urllib.request` (both expose JSON
+     without auth) or WebSearch + WebFetch. Don't try to `pip install`.
    - Apply the user's `requestNotes` as additional guidance ("Add
      DOI; double-check the page range" → focus DOI lookup, then
      verify the page-range field).
-   - Edit `<docPath>/<bibFilename>` to replace the entry block with
-     the corrected version. Preserve the citekey verbatim.
+   - **If the lookup proves the entry's `@type` is wrong** (e.g.
+     `@article` masking a book, as can happen when the title and
+     metadata diverge): change the type and reshape the field set
+     to match the actual work. Preserve only the citekey verbatim
+     and any field the lookup confirms. Drop fields that don't
+     belong on the new type (e.g. drop `journal`/`volume`/`number`
+     when changing `@article` → `@book`).
+   - Otherwise edit `<docPath>/<bibFilename>` to replace the entry
+     block with the corrected version. Preserve the citekey verbatim.
+   - If the user asked to "Add DOI" but no DOI is registered for the
+     work (common for pre-2000 trade books, many humanities titles):
+     declare this explicitly in the reply rather than leaving the
+     omission silent.
 
 3. **For `type: "notes"`:**
    - Read the entry + the user's `requestNotes`.
@@ -64,8 +78,10 @@ review types:
    version-bump path; the request-id resolution falls through harmlessly
    for bib reviews since they don't live in `ai-requests.json`.)*
 
-   If `apply_response.py --complete-only <bibKey>` errors (because no
-   matching id is in `ai-requests.json`), notify directly by running:
+   **Expected:** `apply_response.py --complete-only <bibKey>` will
+   typically error with `request id not found: <bibKey>` because
+   bib-review keys aren't in `ai-requests.json`. The fallback below
+   is the normal path, not a recovery path:
    ```bash
    python3 -c "from editor.scripts._common import append_notification, bump_version, now_iso, resolve_doc; \
                doc = resolve_doc('<docPath>'); \

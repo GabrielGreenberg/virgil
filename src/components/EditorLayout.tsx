@@ -11,6 +11,7 @@ import { type MarginaliaType, type DividerLevel, type DividerWidth } from "./Men
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
+import { useMyPapers } from "@/hooks/useMyPapers";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
@@ -101,10 +102,6 @@ import {
 } from "@/panels/Omni";
 import { useViewPrefs, PanelId, Side, Half, ALL_HIGHLIGHT_TYPES, HighlightType, type DockSlotKey } from "@/hooks/useViewPrefs";
 import { useLinkHighlight } from "@/links/_shared/useLinkHighlight";
-import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
-import { useCardHoverHighlight } from "@/links/_shared/useCardHoverHighlight";
-import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
-import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import {
   entityToAnchorId,
   entityKindToAnchorKind,
@@ -161,7 +158,8 @@ import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { AiRequestsProvider } from "./editor-layout/contexts/ai-requests";
 import { CitationDisplayProvider } from "./editor-layout/contexts/citation-display";
-import { SelectionsProvider } from "./editor-layout/contexts/selections";
+import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 import { PristineCardsProvider } from "./editor-layout/contexts/pristine-cards";
 import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { RecentlyAddedAutoClear } from "./editor-layout/recently-added-auto-clear";
@@ -439,14 +437,19 @@ export default function EditorLayout() {
     activateLibraryOuterPane,
   } = useFiles();
   const libraryRegistry = useLibraryRegistry();
+  const { myPaperIds, addMyPaper, removeMyPaper } = useMyPapers();
 
   useLibraryBridge({ activateLibraryOuterPane });
 
   // "New document" modal state. `mode: "fresh"` uses the OS directory
   // picker; `mode: "inFolder"` writes into the already-picked folder
-  // that's behind the current TexFilePicker modal.
+  // that's behind the current TexFilePicker modal. `onCreated` is fired
+  // with the new doc id after creation — the inline Library tab's
+  // "+ Add paper → Create new…" path uses it to auto-add to My Papers.
   const [newDocModal, setNewDocModal] = useState<
-    { mode: "fresh" } | { mode: "inFolder"; folderName: string } | null
+    | { mode: "fresh"; onCreated?: (id: string) => void }
+    | { mode: "inFolder"; folderName: string; onCreated?: (id: string) => void }
+    | null
   >(null);
 
   // Per-doc permission gate state. We query (without prompting) when
@@ -575,7 +578,22 @@ export default function EditorLayout() {
     deleteCard: deleteCutterCard,
     discardPristineCards,
   } = useCutter(docIdForHooks, cutPristine);
-  const [selectedCutterCardId, setSelectedCutterCardId] = useState<string | null>(null);
+  // Anchored selection slots (note, footnote, citation, quotation, example,
+  // todo, archive, comment, cutter-comment) are now derived from the global
+  // cardStore via this hook — single source of truth, shared with EditorPane
+  // and any other surface. The legacy useState declarations they replaced
+  // lived here and around line 1403.
+  const {
+    selectedNoteId, setSelectedNoteId,
+    selectedFootnoteId, setSelectedFootnoteId,
+    selectedCitationId, setSelectedCitationId,
+    selectedTodoId, setSelectedTodoId,
+    selectedArchiveId, setSelectedArchiveId,
+    selectedCutterCardId, setSelectedCutterCardId,
+    selectedQuotationGroupId, setSelectedQuotationGroupId,
+    selectedCommentId, setSelectedCommentId,
+    selectedExampleId, setSelectedExampleId,
+  } = useAnchoredSelectionSlots();
   const {
     groups: quotationGroups,
     addGroup: addQuotationGroup,
@@ -1113,16 +1131,10 @@ export default function EditorLayout() {
   const [latestDoc, setLatestDoc] = useState<JSONContent | null>(null);
   const [commentHighlight, setCommentHighlight] = useState<string | null>(null);
   const [pendingCommentText, setPendingCommentText] = useState<string | null>(null);
-  const [selectedCommentId, setSelectedCommentId] = useState<string | null>(null);
-  const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
-  const [selectedQuotationGroupId, setSelectedQuotationGroupId] = useState<string | null>(null);
-  const [selectedArchiveId, setSelectedArchiveId] = useState<string | null>(null);
-  const [selectedTodoId, setSelectedTodoId] = useState<string | null>(null);
-  const [selectedFootnoteId, setSelectedFootnoteId] = useState<string | null>(null);
-  const [selectedExampleId, setSelectedExampleId] = useState<string | null>(null);
+  // Anchored selection slots are declared above near useCutter — derived
+  // from the cardStore via useAnchoredSelectionSlots.
   const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
   const suppressOrphanRef = useRef<Set<string>>(new Set());
-  const [selectedCitationId, setSelectedCitationId] = useState<string | null>(null);
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   // Per-side vertical offset applied to the omni cards as a group. Set by
   // main-text marker clicks: clicking a citation/footnote/etc. shifts the
@@ -1216,15 +1228,18 @@ export default function EditorLayout() {
   // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
   const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
-  const [hoveredEntityId, setHoveredEntityId] = useState<string | null>(null);
-  const [hoveredEntityKind, setHoveredEntityKind] = useState<EntityKind | null>(null);
-  const setHoveredEntity = useCallback(
-    (id: string | null, kind: EntityKind | null) => {
-      setHoveredEntityId(id);
-      setHoveredEntityKind(kind);
-    },
-    [],
+  // Hover state for legacy EditorLayout-side consumers (color-theming for
+  // active anchors, MARKER_KIND_TO_THEME_KEY lookup). Kept synced from the
+  // canonical cardStore.hover via useSyncExternalStore-style subscription
+  // so callers can read it without subscribing themselves. New code should
+  // read cardStore directly via useHover().
+  const _paneHoverState = useSyncExternalStore(
+    cardStore.subscribe,
+    () => cardStore.getState().hover,
+    () => null,
   );
+  const hoveredEntityId = _paneHoverState?.id ?? null;
+  const hoveredEntityKind = _paneHoverState?.kind ?? null;
 
   // CSS-based coupled highlight: the `.linked-anchor` span for the
   // active/hovered link gets `data-link-highlight`, and the editor root
@@ -1252,7 +1267,7 @@ export default function EditorLayout() {
     if (!hoveredEntityId || !hoveredEntityKind) return null;
     return entityToAnchorId(
       { id: hoveredEntityId, kind: hoveredEntityKind },
-      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups },
+      { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups, examples: [] },
     );
   }, [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups]);
 
@@ -1483,57 +1498,11 @@ export default function EditorLayout() {
     setSelectedErrorId((cur) => (cur === id ? null : cur));
   }, []);
 
-  // Single-selection across all marginalia kinds. Today every panel kind
-  // owns its own selection slot (selectedNoteId, selectedTodoId, …) and
-  // the slots are independent — selecting a note doesn't clear the
-  // currently-selected todo. This effect makes the slots behave as one
-  // logical "selected entity" by clearing every other slot whenever a
-  // new one is set. Identifies "new" by comparing against the last known
-  // singleton; handles the case where two slots are set in the same tick
-  // by falling back to the last in the active list.
-  const lastSingleSelectionRef = useRef<{ kind: string; id: string } | null>(null);
-  useLayoutEffect(() => {
-    const slots: Array<[string, string | null, (id: string | null) => void]> = [
-      ["note", selectedNoteId, setSelectedNoteId],
-      ["cut", selectedCutterCardId, setSelectedCutterCardId],
-      ["revision", selectedCommentId, setSelectedCommentId],
-      ["todo", selectedTodoId, setSelectedTodoId],
-      ["archive", selectedArchiveId, setSelectedArchiveId],
-      ["quotation", selectedQuotationGroupId, setSelectedQuotationGroupId],
-      ["footnote", selectedFootnoteId, setSelectedFootnoteId],
-      ["citation", selectedCitationId, setSelectedCitationId],
-      ["bib", selectedBibKey, setSelectedBibKey],
-      ["example", selectedExampleId, setSelectedExampleId],
-      ["error", selectedErrorId, setSelectedErrorId],
-    ];
-    const active = slots.filter(([, id]) => id != null);
-    if (active.length <= 1) {
-      lastSingleSelectionRef.current = active[0]
-        ? { kind: active[0][0], id: active[0][1] as string }
-        : null;
-      return;
-    }
-    const prev = lastSingleSelectionRef.current;
-    const newest =
-      active.find(
-        ([k, id]) => !prev || prev.kind !== k || prev.id !== id,
-      ) ?? active[active.length - 1];
-    for (const [k, id, setter] of slots) {
-      if (k !== newest[0] && id != null) setter(null);
-    }
-    lastSingleSelectionRef.current = { kind: newest[0], id: newest[1] as string };
-  }, [
-    selectedNoteId, selectedCutterCardId, selectedCommentId, selectedTodoId,
-    selectedArchiveId, selectedQuotationGroupId, selectedFootnoteId,
-    selectedCitationId, selectedBibKey, selectedExampleId, selectedErrorId,
-  ]);
-
-  // Click-away: clear all selection when the user clicks outside any
-  // marginalia surface (panel card, gutter marker, linked-anchor span,
-  // inline atom). Buttons / toolbar / editor body count as "outside".
-  // Uses mousedown so the gesture is felt before focus changes; runs in
-  // bubble phase so the clicked element's own handler can set its slot
-  // first if it's a marginalia surface (we no-op in that case).
+  // Click-away: clear selection when the user clicks outside any anchored
+  // surface. The global cardStore enforces single-selection intrinsically
+  // (setSelection replaces, never merges), so the previous per-slot
+  // enforcer is gone. Bib and error are non-anchored — they get their own
+  // local clear so unrelated selection is cleared too.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target;
@@ -1547,16 +1516,8 @@ export default function EditorLayout() {
       ) {
         return;
       }
-      setSelectedNoteId(null);
-      setSelectedCutterCardId(null);
-      setSelectedCommentId(null);
-      setSelectedTodoId(null);
-      setSelectedArchiveId(null);
-      setSelectedQuotationGroupId(null);
-      setSelectedFootnoteId(null);
-      setSelectedCitationId(null);
+      cardStore.setSelection(null);
       setSelectedBibKey(null);
-      setSelectedExampleId(null);
       setSelectedErrorId(null);
     };
     document.addEventListener("mousedown", onMouseDown);
@@ -1931,56 +1892,12 @@ export default function EditorLayout() {
     };
   }, [selectedBibKey, allEditorCitations]);
 
-  // Persistent in-editor highlight of whatever card is selected — one
-  // hook covers every card kind. Supersedes previously per-kind effects
-  // for footnote/citation and extends the coverage to paragraph (Mode A)
-  // anchors on notes/cuts/todos/archive/quotations/comments, which
-  // previously had no selected-state highlight at all.
-  useCardSelectionHighlight({
-    editor: editorInstance,
-    selectedNoteId,
-    selectedFootnoteId,
-    selectedCitationId,
-    selectedCutterCardId,
-    selectedCommentId,
-    selectedTodoId,
-    selectedArchiveId,
-    selectedQuotationGroupId,
-    notes,
-    cutterCards,
-    archiveSnippets,
-    quotationGroups,
-    todos: todoItems,
-    comments,
-  });
-
-  // Hover counterpart of useCardSelectionHighlight — paints
-  // `data-card-hovered` on anchor elements *and* on the matching panel
-  // card. Single source of truth for all hover visuals across the three
-  // linked surfaces.
-  useCardHoverHighlight({
-    editor: editorInstance,
-    hoveredEntityId,
-    hoveredEntityKind,
-    notes,
-    cutterCards,
-    archiveSnippets,
-    quotationGroups,
-    todos: todoItems,
-    comments,
-  });
-
-  // Delegated listeners — turn text-element mouse events and
-  // panel-card mouse events into entity-level hover/click. No per-kind
-  // wiring; one listener per surface handles every kind.
-  useTextHoverBridge({
-    editor: editorInstance,
-    notes,
-    cutterCards,
-    comments,
-    setHoveredEntity,
-  });
-  usePanelCardHoverBridge(setHoveredEntity);
+  // Anchored-card hover/selection bridges + highlight painters are
+  // mounted inside EditorPane (U3). EditorPane is always rendered
+  // by EditorLayout in editor mode and standalone by the Library
+  // Reader, so both surfaces inherit identical plumbing without
+  // duplication. EditorLayout's local hoveredEntityId/Kind stays
+  // in sync via the cardStore.subscribe effect declared above.
 
   // Clear the toolbar-override editor when the main editor regains focus,
   // so the MenuBar switches back to controlling the document editor.
@@ -3227,6 +3144,20 @@ export default function EditorLayout() {
     setDocPermState,
   });
 
+  // "+ Add paper" variants for the Library pod — these wrap the same
+  // folder-pick / new-doc-modal flows used elsewhere, and additionally
+  // add the resulting doc to the user's curated My Papers list. The
+  // Virgil-bar TabPlusMenu deliberately uses the unwrapped versions so
+  // opening a doc from there doesn't touch My Papers.
+  const onOpenFolderAndAdd = useCallback(async () => {
+    const meta = await handleNativeOpen();
+    if (meta) addMyPaper(meta.id);
+  }, [handleNativeOpen, addMyPaper]);
+
+  const onCreateNewAndAdd = useCallback(() => {
+    setNewDocModal({ mode: "fresh", onCreated: addMyPaper });
+  }, [addMyPaper]);
+
   // Spawn a fresh Virgil window. The new window boots with no
   // sessionStorage carried over, so it generates its own windowId
   // and hydrates an empty tab set.
@@ -3544,13 +3475,12 @@ export default function EditorLayout() {
     void editorDocVersion;
     const result: MarginaliaMarker[] = [];
 
-    // Generic hover props for any marker — single source of truth for the
-    // "hover one → hover all" linkage. Every marker, regardless of type,
-    // writes/reads the same `(hoveredEntityId, hoveredEntityKind)` pair.
-    const hoverPropsFor = (entityId: string, kind: EntityKind) => ({
-      hovered: hoveredEntityId === entityId && hoveredEntityKind === kind,
-      onHover: (hovering: boolean) =>
-        setHoveredEntity(hovering ? entityId : null, hovering ? kind : null),
+    // Tag every marker with its anchored-card kind. Markers self-subscribe
+    // to the cardStore via (entityKind, entityId) — no per-marker hover
+    // wiring or selection threading needed. Replaces the old hoverPropsFor
+    // decoration that wrote per-marker (selected/hovered/onHover) props.
+    const hoverPropsFor = (_entityId: string, kind: EntityKind) => ({
+      entityKind: kind,
     });
 
     // Quotation markers — one marker per paragraphId
@@ -3563,7 +3493,6 @@ export default function EditorLayout() {
           entityId: g.id,
           type: "quote",
           paragraphId: pid,
-          selected: selectedQuotationGroupId === g.id,
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
           onDelete: () => removeQuotationParagraphId(g.id, pid),
@@ -3583,7 +3512,6 @@ export default function EditorLayout() {
           entityId: n.id,
           type: "note",
           paragraphId: pid,
-          selected: selectedNoteId === n.id,
           title: n.title || "Note",
           onClick: (clickY?: number) => handleNoteMarkerClick(n.id, clickY),
           onDelete: () => {
@@ -3612,7 +3540,6 @@ export default function EditorLayout() {
           entityId: snippet.id,
           type: "archive",
           paragraphId: pid,
-          selected: selectedArchiveId === snippet.id,
           title: "Archived snippet",
           onClick: (clickY?: number) => {
             setSelectedArchiveId(snippet.id);
@@ -3684,7 +3611,6 @@ export default function EditorLayout() {
           entityId: r.id,
           type: "revision",
           paragraphId,
-          selected: selectedCommentId === r.id,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: (clickY?: number) => {
@@ -3729,7 +3655,7 @@ export default function EditorLayout() {
               });
             }
           },
-          ...hoverPropsFor(r.id, "revision"),
+          ...hoverPropsFor(r.id, r.kind === "suggestion" ? "revision-suggestion" : "comment"),
         });
       }
     }
@@ -3750,7 +3676,6 @@ export default function EditorLayout() {
           entityId: c.id,
           type: "cut",
           paragraphId: pid,
-          selected: selectedCutterCardId === c.id,
           title,
           onClick: (clickY?: number) => handleCutMarkerClick(c.id, clickY),
           onDelete: () => {
@@ -3763,7 +3688,7 @@ export default function EditorLayout() {
             removeCardParagraphId(c.id, pid);
           },
           anchorId: cardAnchor?.anchorId,
-          ...hoverPropsFor(c.id, "cut"),
+          ...hoverPropsFor(c.id, c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment"),
         });
       }
     }
@@ -3778,7 +3703,6 @@ export default function EditorLayout() {
           entityId: item.id,
           type: "todo",
           paragraphId: pid,
-          selected: selectedTodoId === item.id,
           title: item.text || "Todo",
           muted: item.done,
           onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
@@ -3800,7 +3724,6 @@ export default function EditorLayout() {
         entityId: err.id,
         type: "error",
         paragraphId: pid,
-        selected: selectedErrorId === err.id,
         title:
           err.message.length > 80
             ? err.message.slice(0, 80) + "\u2026"
@@ -3859,7 +3782,6 @@ export default function EditorLayout() {
     dismissError,
     hoveredEntityId,
     hoveredEntityKind,
-    setHoveredEntity,
     setSelectedArchiveId,
     setSelectedCommentId,
     setActiveAnchorId,
@@ -3878,7 +3800,7 @@ export default function EditorLayout() {
         hoveredEntityId && hoveredEntityKind
           ? { id: hoveredEntityId, kind: hoveredEntityKind }
           : null,
-        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups },
+        { notes, cutterCards, comments, todos: todoItems, archiveSnippets, quotationGroups, examples: [] },
       ),
     [hoveredEntityId, hoveredEntityKind, notes, cutterCards, comments, todoItems, archiveSnippets, quotationGroups],
   );
@@ -4084,18 +4006,11 @@ export default function EditorLayout() {
     <EditorRefProvider value={{ editorInstance, editorRef, setOverrideEditor }}>
     <AiRequestsProvider value={{ aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest }}>
     <CitationDisplayProvider value={{ getCitationDisplayText, onCitationCreated: handleCitationCreated }}>
-    <SelectionsProvider value={{
-      selectedNoteId, setSelectedNoteId,
-      selectedFootnoteId, setSelectedFootnoteId,
-      selectedCitationId, setSelectedCitationId,
-      selectedTodoId, setSelectedTodoId,
-      selectedArchiveId, setSelectedArchiveId,
-      selectedCutterCardId, setSelectedCutterCardId,
-      selectedQuotationGroupId, setSelectedQuotationGroupId,
-      selectedCommentId, setSelectedCommentId,
-      selectedBibKey, setSelectedBibKey,
-      selectedExampleId, setSelectedExampleId,
-    }}>
+    {/* SelectionsProvider derives the 9 anchored slots from the cardStore;
+        we only thread the bib slot in through `value` because bib isn't
+        an anchored kind. The other 9 props on the legacy value shape are
+        ignored by the provider. */}
+    <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
     <PristineCardsProvider value={pristineManager}>
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
@@ -4984,9 +4899,12 @@ export default function EditorLayout() {
             focusDoc={focusDoc}
             docs={docs}
             onOpenRecent={openFile}
-            onOpenFolder={handleNativeOpen}
-            onCreateNew={() => setNewDocModal({ mode: "fresh" })}
+            onOpenFolder={onOpenFolderAndAdd}
+            onCreateNew={onCreateNewAndAdd}
             devStorage={devStorage}
+            myPaperIds={myPaperIds}
+            addMyPaper={addMyPaper}
+            removeMyPaper={removeMyPaper}
           />
         </div>
       ) : activePane === "library-outer" && currentLibraryOuterId ? (
@@ -5269,11 +5187,11 @@ export default function EditorLayout() {
           }
           onCancel={() => setNewDocModal(null)}
           onCreate={async (name, templateId) => {
-            if (newDocModal.mode === "inFolder") {
-              await createFileInPendingFolder(name, templateId);
-            } else {
-              await createFile(name, templateId);
-            }
+            const meta =
+              newDocModal.mode === "inFolder"
+                ? await createFileInPendingFolder(name, templateId)
+                : await createFile(name, templateId);
+            if (meta) newDocModal.onCreated?.(meta.id);
             setNewDocModal(null);
           }}
         />

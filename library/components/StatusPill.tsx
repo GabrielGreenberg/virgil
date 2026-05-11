@@ -67,6 +67,7 @@ const bibTone: Record<BibAuthState, Tone> = {
   unverified: "amber",
   authenticated: "green",
   manuscript: "blue",
+  canonical: "blue",
   failed: "red",
 };
 
@@ -75,11 +76,22 @@ const bibLabel: Record<BibAuthState, string> = {
   unverified: "⋯ bib",
   authenticated: "✓ bib",
   manuscript: "MS",
+  canonical: "≈ bib",
   failed: "! bib",
 };
 
+const bibTitle: Record<BibAuthState, string> = {
+  none: "Bib auth: not yet attempted",
+  unverified: "Bib auth: unverified — manual review recommended",
+  authenticated: "Bib auth: authenticated",
+  manuscript: "Bib auth: manuscript (forthcoming / unpublished)",
+  canonical:
+    "Bib auth: canonical (pre-digital classic; no external registry expected)",
+  failed: "Bib auth: failed — try again or fill by hand",
+};
+
 export function BibPill({ state }: { state: BibAuthState }) {
-  return <Pill label={bibLabel[state]} tone={bibTone[state]} title={`Bib auth: ${state}`} />;
+  return <Pill label={bibLabel[state]} tone={bibTone[state]} title={bibTitle[state]} />;
 }
 
 export function StatusPills({

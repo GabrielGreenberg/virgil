@@ -32,6 +32,8 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import { formatMediumCitationParts } from "@/lib/bib-parser";
 import { MIME_QUOTE, MIME_QUOTATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 function useDebouncedCallback<T extends (...args: any[]) => void>(
   fn: T,
@@ -738,7 +740,9 @@ export function QuotationGroupCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const inOmni = useInOmni() != null;
-  const compressed = !selected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "quotation", id: group.id });
+  const isSelected = ac.selected || selected;
+  const compressed = !isSelected && !isPoppedOut;
   const refCount = group.references.length;
   const quoteCount = group.references.reduce((s, r) => s + r.quotes.length, 0);
   const firstRef = group.references[0];
@@ -759,15 +763,21 @@ export function QuotationGroupCard({
       className="focus:outline-none"
       onClick={(e) => {
         e.stopPropagation();
+        cardStore.toggleSelection(ac.ref);
         onSelect();
+      }}
+      onMouseEnter={() => cardStore.setHover(ac.ref)}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
       data-quotation-group-id={group.id}
       data-pristine-card-id={group.id}
       data-card-key={cardKey}
       {...(extraDataAttrs || {})}
-      tabIndex={selected ? 0 : -1}
+      tabIndex={isSelected ? 0 : -1}
       onFocusCapture={() => {
-        if (!selected) onSelect();
+        if (!isSelected) onSelect();
       }}
       onKeyDown={handleKeyDown}
     >

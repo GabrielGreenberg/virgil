@@ -11,7 +11,6 @@ export interface ErrorsHostProps {
   dismissedIds: Set<string>;
   onDismiss: (id: string) => void;
   onJump: (err: LatexError) => void;
-  onHover?: (id: string | null) => void;
   /** Pre-computed `error.id → trimmed source-line` snippet map. */
   snippets: Map<string, string>;
   /** Pre-computed `error.id → paragraphUuid` map. Drives the dimmed
@@ -36,7 +35,6 @@ export function ErrorsHost(p: ErrorsHostProps) {
       anchoredIds={anchoredIds}
       dismissedIds={p.dismissedIds}
       onDismiss={p.onDismiss}
-      onHover={p.onHover}
     />
   );
 }

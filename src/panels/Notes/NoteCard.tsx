@@ -18,6 +18,8 @@ import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 /** Top grab bar: anchor-only drag (no inline text insertion).
  *  NOTE: Do NOT set text/plain here — ProseMirror's default drop handler
@@ -71,9 +73,15 @@ export function NoteCard({
     [note.id, onUpdate],
   );
 
+  const ac = useAnchoredCard({ kind: "note", id: note.id });
+  // ac.selected is the new source of truth; keep the legacy `selected`
+  // prop accepted for API compatibility but prefer ac.selected for
+  // visuals. They stay in sync because the parent's selected*Id is
+  // derived from the same cardStore.
+  const isSelected = ac.selected || selected;
   const isOrphaned = getLinkedParagraphIds(note).length === 0;
   const theme = useCardTheme("note");
-  const compressed = !selected && !isPoppedOut;
+  const compressed = !isSelected && !isPoppedOut;
   const compressedSummary = compressed
     ? (richJsonToPlainText(note.content).trim().slice(0, 80) || "")
     : undefined;
@@ -88,7 +96,7 @@ export function NoteCard({
     <EditableCard
       id={note.id}
       cardKind="note"
-      selected={selected}
+      selected={isSelected}
       theme={theme}
       hideToolbar
       inlineDelete
@@ -110,7 +118,7 @@ export function NoteCard({
       headerTrailing={
         onJump ? (
           <CardTargetIcon
-            selected={selected}
+            selected={isSelected}
             onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
             title="Jump to note anchor"
             data-helper="Jump"
@@ -120,7 +128,7 @@ export function NoteCard({
           <CardTargetIcon selected={false} disabled onClick={() => {}} />
         )
       }
-      onClick={() => onSelect(selected ? null : note.id)}
+      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : note.id); }}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via
       // a separate body-level affordance, not the grip.
@@ -146,7 +154,7 @@ export function NoteCard({
       onCitationCreated={onCitationCreated}
       dataAttr={{ name: "note-entry", value: note.id }}
       extraDataAttrs={{ "data-pristine-card-id": note.id, "data-card-key": cardKey, ...(extraDataAttrs || {}) }}
-      onHoverChange={onHoverChange}
+      onHoverChange={(h) => { cardStore.setHover(h ? ac.ref : null); onHoverChange?.(h); }}
       onTogglePopout={onToggleFromCtx}
       isPoppedOut={isPoppedOut}
       cardKey={cardKey}

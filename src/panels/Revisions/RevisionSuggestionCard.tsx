@@ -18,6 +18,8 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 import { MIME_REVISION } from "./mime";
 import { countWords } from "@/hooks/useWordCount";
 import {
@@ -242,7 +244,9 @@ export function RevisionSuggestionCard({
   const onToggleFromCtx =
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
-  const compressed = !selected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "revision-suggestion", id: card.id });
+  const isSelected = ac.selected || selected;
+  const compressed = !isSelected && !isPoppedOut;
 
   const dot = (
     <span
@@ -258,21 +262,27 @@ export function RevisionSuggestionCard({
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
       theme={theme}
-      selected={selected}
+      selected={isSelected}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       cardKey={cardKey}
       isCollapsed={compressed}
       onTrashClick={() => onDelete(card.id)}
-      draggable={!selected}
+      draggable={!isSelected}
       onDragStart={(e) => startRevisionSuggestionDrag(e, card.id)}
-      tabIndex={selected ? 0 : -1}
+      tabIndex={isSelected ? 0 : -1}
       onClick={(e) => {
         e.stopPropagation();
-        onSelect(selected ? null : card.id);
+        cardStore.toggleSelection(ac.ref);
+        onSelect(isSelected ? null : card.id);
+      }}
+      onMouseEnter={() => cardStore.setHover(ac.ref)}
+      onMouseLeave={() => {
+        const h = cardStore.getState().hover;
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
       onKeyDown={(e) => {
-        if (!selected) return;
+        if (!isSelected) return;
         if (e.key === "Delete" || e.key === "Backspace") {
           e.preventDefault();
           onDelete(card.id);

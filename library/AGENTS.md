@@ -85,8 +85,25 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
   - `.virgil/memos/<YYYY-MM-DD>-<slug>.md` — dev memos (see below)
   - `.virgil/scripts/*.py` — Python pipeline (after first skill-bundle sync)
   - `.virgil/.skill-bundle-version.json`
+  - `.virgil/libraries/<slug>.json` — per-custom-library manifest. Slim
+    JSON listing membership citekeys plus label/createdAt/updatedAt/
+    pinned/sourceBibFile. Each row in the Library tab's "My libraries"
+    section is one of these files. **The frontend is the sole writer**
+    (creates, renames, mutates membership, deletes); skills are free
+    to *read* them when a use case appears (e.g. "authenticate every
+    citekey in <library>"). `master.bib` remains the canonical source
+    of entry data — manifests reference citekeys, never duplicate the
+    bib fields. Filename is `<slug>.json` where `<slug>` is the
+    label slugified (lowercase ASCII + dashes); collisions get a
+    numeric suffix. The migration sentinel `.virgil/libraries/.migrated`
+    contains a one-shot dump of the legacy localStorage registry,
+    written the first time a library folder is opened post-refactor
+    so disk-resident manifests can be safely (re-)created from the
+    pre-existing in-browser registry.
 
   > **Layout migration.** Earlier libraries lived under `pdfs/<citekey>.{pdf,docx}` + `pdfs/unsorted/` with `catalog.json`, `queue/`, `logs/`, etc. at the root. `ensureLibraryStructure()` runs idempotent migrations that (1) move source files into `papers/<citekey>/<citekey>.<ext>` and promote `unsorted/` to the root, and (2) tuck `catalog.json`, `catalog-version.txt`, `queue/`, `notifications/`, `logs/`, `scripts/`, and `.skill-bundle-version.json` under `.virgil/`, with `CLAUDE.md` moved to `.claude/CLAUDE.md`. Each step is wrapped in try/catch so a single failure doesn't gate library load.
+
+  > **Disk-libraries migration (May 2026).** Custom-library membership previously lived only in `localStorage["virgil-library-registry"]`. On the first load with `useDiskLibraries`, when `.virgil/libraries/` is empty and the legacy registry has at least one `kind: "custom"` row, every custom library is written out as a manifest under `.virgil/libraries/<slug>.json`, the source registry is dumped into the sentinel `.virgil/libraries/.migrated`, and the custom rows are stripped from localStorage. The migration is idempotent (sentinel-gated). Panel-tab layout, column widths, and row-viewed state stay in localStorage — those are genuinely per-machine UI preferences, not durable membership.
 
 ## Memo discipline
 
@@ -149,14 +166,15 @@ Queue kind: `"deepIndex"`. Queue file: `queue/<citekey>-deepindex.json`.
 
 ## Bib states
 
-Every catalog entry's `bib.state` is one of four values, set by the auth pipeline and consumed by the frontend's status pill:
+Every catalog entry's `bib.state` is one of five values, set by the auth pipeline and consumed by the frontend's status pill:
 
-- **`authenticated`** — DOI verified against Crossref *or* ≥2 sources agreed with score ≥0.92. Terminal state.
+- **`authenticated`** — DOI verified against Crossref *or* ≥2 sources agreed with score ≥0.92, *or* (for books) Google Books + OpenLibrary both score ≥0.85. Terminal state.
 - **`unverified`** — single source matched at the lower threshold. Fields are best-effort. **Action needed.**
 - **`failed`** — no source produced a match above threshold. **Action needed.** Try `/library/authenticate-bib` again or fill by hand.
 - **`manuscript`** — explicitly unpublished or forthcoming (`@unpublished`). Terminal state. **No action needed.**
+- **`canonical`** — pre-digital classic (book-typed, year < 1950, no DOI/ISBN); no external authority registry will ever index it. Terminal state. **No action needed.** Set as a fallback only after the full search chain has come back empty, so modern works still get the action-needed `failed` signal.
 
-The `manuscript` state distinguishes a properly-marked preprint from a `failed` lookup of a paper that genuinely should be in Crossref but isn't. Don't conflate them in summaries.
+The `manuscript` and `canonical` states distinguish properly-terminal entries from `failed` lookups that genuinely *should* be in Crossref but aren't. Don't conflate them in summaries.
 
 ## Reader inheritance from the main editor
 

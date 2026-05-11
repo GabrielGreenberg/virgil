@@ -34,23 +34,29 @@ two paths:
      ```bash
      python3 editor/scripts/get_para_context.py <docPath> <uuid> --neighbors=2
      ```
-   - Pull adjacent cards for context (other notes/comments anchored to
-     the same paragraph), so you don't repeat what's already there:
+   - Pull cards anchored to the same paragraph(s) — if there's
+     already a **note** making the same point, fold or skip. Cards
+     in other panels (quotations, footnotes, todos, citations) are
+     orthogonal context, not dedupe targets.
      ```bash
      python3 editor/scripts/cards_for_paragraph.py <docPath> <uuid>
      ```
 
-2. **Choose your response shape.**
-   - If the request says "draft a note about X" or there's no source
-     note (linkedTo absent) → emit a **new note** card.
-   - If the request is on an existing note and the user is asking for
-     an edit / rephrasing of *the document text* → emit a **suggestion
-     card** in `revisions.json` instead. Don't mutate the source note;
-     leave it intact as the user's prompt.
-   - If the request is on an existing note and the user is asking for a
-     **reply to the note's content** → emit a sibling note card with a
-     short prefix like "Re: <original title>" anchored to the same
-     paragraph(s).
+2. **Choose your response shape.** The determining axis is: *does
+   resolving this request require a `.tex` mutation?* Decide in
+   order:
+   - **(a)** Does the request ask to *change document prose* — i.e.
+     a `.tex` mutation (rephrase a sentence, tighten a paragraph,
+     fix a claim)? → emit a **suggestion card** in `revisions.json`.
+     Don't mutate the source note; leave it intact as the user's
+     prompt. (Note: a request that asks for a "take" / "reaction" /
+     "pushback" on a note's claim is *not* a `.tex` mutation — it's a
+     conversational reply, route to (b).)
+   - **(b)** Else, is there a source note (`linkedTo` set OR
+     `virtual:notes:<cardId>` id)? → emit a **sibling note** titled
+     `Re: <source title>` anchored to the same paragraph(s).
+   - **(c)** Else (standalone, no `linkedTo`) → emit a **new note**
+     card.
 
 3. **Compose.** Draft the note body as Tiptap JSONContent. The
    simplest valid shape is:
@@ -66,10 +72,18 @@ two paths:
    (academic, conversational — read the source note first to gauge).
 
 4. **Build the result card.** Generate a UUID for the new card. Mode A
-   anchor — link to the same paragraphIds as the request. Schema (see
-   `src/lib/types.ts` UserNote):
-   ```json
+   anchor — link to the same paragraphIds as the request.
+
+   Title:
+   - Path (b) (sibling): `Re: <source-note-title>`.
+   - Path (c) (standalone): a short descriptive subject phrase, no
+     `Re:` prefix. Match the convention of existing notes in
+     `notes.json`.
+
+   Schema (see `src/lib/types.ts` UserNote):
+   ```jsonc
    { "id": "<new-uuid>",
+     // Path (b): "Re: <source title>". Path (c): subject phrase, no "Re:".
      "title": "Re: <source-note-title-if-any>",
      "content": { ...tiptap JSON above },
      "createdAt": "<ISO now>",
@@ -86,8 +100,11 @@ two paths:
      }]
    }
    ```
-   Add `aiOriginRequestId: "<requestId>"` if non-virtual — the editor
-   uses this to surface Accept / Reject / Redo buttons.
+   Add `aiOriginRequestId: "<requestId>"` if `<requestId>` does NOT
+   start with `virtual:` (i.e., a real `ai-requests.json` entry,
+   including bridged-from-card-flag entries that have a real UUID
+   plus `linkedTo`). The editor uses this to surface Accept / Reject /
+   Redo buttons.
 
 5. **Apply atomically.**
    ```bash

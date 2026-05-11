@@ -12,7 +12,13 @@ description: Apply structural cleanup to an already-indexed paper — produces a
 **Structurally improve a paper's `main.tex`** — transform raw extracted
 text into properly structured LaTeX that is useful to a human reader.
 
-All paths are relative to the library root (the current working directory).
+All paths are relative to the **library root**, which is your **current working directory**. The default convention is `~/Virgil-Library`, but the user may have picked a different folder (e.g. `~/Documents/Virgil-Library`). Resolve the library root in this order:
+
+1. `$VIRGIL_LIBRARY_ROOT` if set;
+2. otherwise your current cwd, **iff** it contains both `master.bib` and `.virgil/catalog.json`;
+3. otherwise `~/Virgil-Library`.
+
+`cd` into that directory before running any of the commands below — every relative path (`papers/<citekey>/...`, `.virgil/...`, `master.bib`, `references.bib`) and every helper script under `.virgil/scripts/` resolves against cwd. If none of the three resolutions yields a valid library, abort with a one-line error pointing the user to set up the library first.
 
 > **Where any memo you write goes.** Dev memos (skill retros, ideas for
 > improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
@@ -39,8 +45,15 @@ python3 .virgil/scripts/deep_preprocess.py papers/$ARGUMENTS/main.tex
 
 This applies automated cleanup: strips repeating running headers and
 footers, removes leaked page numbers, rejoins hyphenated line breaks,
-joins broken paragraphs, and unwraps hard-wrapped lines. Capture the
-summary output (e.g. "60 headers removed, 29 page numbers removed").
+joins broken paragraphs, and unwraps hard-wrapped lines. **Capture the
+script's stdout summary line verbatim** — it must be quoted into step
+8's `**Preprocessing:**` field unchanged. Do not paraphrase; the exact
+counts are the only audit trail of what the preprocessor changed. The
+script omits any counter that is zero, so the line you see may have
+2–3 stats (e.g. `"7 headers removed, 9 paragraphs joined."`) or up to
+all five (`"60 headers removed, 29 page numbers removed, 12
+paragraphs joined, 8 hyphenated breaks rejoined, 3 pgmarks inlined."`)
+— quote whatever the script printed.
 
 ### 2. Read inputs
 
@@ -50,11 +63,18 @@ Read all of these:
 - The source PDF for structural reference: if any `.pdf` exists in
   `papers/$ARGUMENTS/` — even when the catalog's primary source is a
   DOCX (a PDF *alternate* counts) — run
-  `pdftotext papers/$ARGUMENTS/$ARGUMENTS.pdf -` and read the first ~8 pages.
-  Skip only when no PDF is present at all. The PDF is structural
+  `pdftotext papers/$ARGUMENTS/$ARGUMENTS.pdf -` and read **the first
+  ~8 pages OR up to and including the first body-text heading,
+  whichever is more**. For journal articles 8 pages is plenty; for
+  books, 8 pages is usually still front-matter (cover, series listing,
+  copyright, dedication, ToC) — keep reading until you hit Chapter 1
+  / Introduction so you have a real heading sample to anchor §3a/§3b
+  on. Skip only when no PDF is present at all. The PDF is structural
   reference material; it does NOT authorize introducing new content
-  (pgmarks, footnotes) that the indexed `main.tex` doesn't already have
-  — see §3c, §3d for scope.
+  (pgmarks, footnotes) that the indexed `main.tex` doesn't already
+  have — see §3c, §3d for scope. (Structural rewrapping of existing
+  prose, e.g. wrapping a leaked footnote body in `\footnote{}`, is
+  not "new content" and is permitted by §3d.)
 - `master.bib` — find the entry for this citekey (authoritative
   title, author, year, journal, etc.)
 - Check for user notes:
@@ -169,23 +189,36 @@ leave the comment in place.
 > **How to derive `<count>` (must be deterministic across re-runs).**
 > Run `pdfinfo papers/$ARGUMENTS/$ARGUMENTS.pdf | grep '^Pages:'` to
 > get the page count K. Then extract every line of `pdftotext` output
-> that is a bare positive integer ≤ 200, **filter out integers ≤ K**
-> (those are page numbers, not footnotes), and take the maximum of
-> what remains. That maximum is the footnote count. Footnote numbers
-> that appear inline in body prose (as superscript markers) are not
-> in `pdftotext` output as standalone integers, so this filter is
-> robust. Do **not** count occurrences of each integer — count once.
-> If no integer > K exists in the bare-integer set (or the PDF has no
-> bare integer lines at all), the count is 0 and you emit no warning.
+> that is a bare positive integer between 1 and 200 (inclusive) —
+> footnote numbers virtually never exceed 200, and this hard cap
+> excludes journal-offset page numbers like 730..756 outright.
+> Then identify and **subtract the page-number set**:
 >
-> **Why filter by page count.** `pdftotext` emits page numbers as
-> bare integers at page boundaries — for a K-page PDF, integers
-> 1..K are almost always page numbers. Without the filter, papers
-> whose footnote count is ≤ page count would silently report the
-> page count as the footnote count, masking a real recovery gap.
-> The filter is conservative — it underreports rather than overreports
-> (a paper with footnotes only in the 1..K range would report 0,
-> which is the safe default — no false-positive recovery warning).
+> 1. Look at your bare-integer set. Find the **longest run of
+>    consecutive integers** in it (e.g. for `{1,2,3,5,7,8,9,10,11,17}`
+>    the longest run is `{7,8,9,10,11}`).
+> 2. If that run has length ≥ `min(K, 8)` — i.e. it covers most of
+>    the printed pages, or at least 8 consecutive pages for very
+>    short papers — treat the entire run as page numbers and remove
+>    it from the set.
+> 3. If no such run exists (e.g. the PDF doesn't surface page numbers
+>    as bare integers at all, or pagination is non-numeric), do
+>    nothing — the bare-integer set is already mostly footnotes.
+>
+> Then take the maximum of what remains. That is the footnote count.
+> Do **not** count occurrences of each integer — count once. If the
+> remaining set is empty, the count is 0 and you emit no warning.
+>
+> **Why this works.** Page numbers in `pdftotext` output appear as a
+> contiguous arithmetic sequence (one per page boundary, in order),
+> whether the article paginates from 1 or from a journal offset like
+> 730. Footnote numbers are also a contiguous arithmetic sequence
+> in principle, but their range stays under 200 in practice (the
+> 200-line cap above already excluded most page-number runs that
+> start at high offsets; the contiguous-run detector handles the
+> rest). The detector is conservative — it underreports rather than
+> overreports (better to miss a footnote-count warning than fire a
+> spurious one).
 
 > **PDF-native sources with footnote bodies leaked as paragraph prose.**
 > Many PDF extractors (pymupdf in particular) emit footnote bodies as
@@ -438,6 +471,37 @@ paper deduplication is a future feature.
 Walk the body text and replace inline parenthetical / textual citation
 prose with `\cite{…}` family commands using the citekey table built in
 step 3e.
+
+> **Citation-style detection (do this first).** Look at how the body
+> text references its bibliography. Two regimes:
+>
+> - **Author-year** (default in linguistics, philosophy, social
+>   science): mentions take the shape `(Author Year)`, `Author
+>   (Year)`, `Author and Author Year`, `Author et al. Year`, etc. Use
+>   the natbib vocabulary and tables below.
+> - **Numeric / Vancouver-style** (default in biology, medicine,
+>   chemistry, much of psychology, Nature/Science journals): mentions
+>   take the shape of bare superscript or bracketed integers — e.g.
+>   `26,27`, `[22-25,28,29]`, `131,134,135,157--159`. The references
+>   list is numbered, and the integers in the body are reference IDs.
+>
+> If the source is **numeric/Vancouver-style**: do NOT apply the
+> author-year vocabulary below. Instead, leave the inline numeric
+> mentions as prose verbatim, and append exactly one warning of the
+> form `numeric-citation-style: source uses Vancouver-style numeric
+> citations; inline rewrite skipped` to `entry.indexed.warnings`
+> (this is a fifth recomputed-prefix kind alongside the four in §5;
+> step 5 must drop any prior `numeric-citation-style:` line and
+> re-emit it). Do NOT emit `missing-bib-entry:` warnings either —
+> the lookup spec keys on author surnames, which numeric prose
+> doesn't carry. The references.bib still gets emitted normally per
+> §3e/§3f, just with citekeys that the body doesn't reference. A
+> later authenticate/cross-link pass can build the numeric→citekey
+> map if/when the renderer's natbib numeric mode gains UX in the
+> Library reader. Skip the rest of §3g for numeric-style papers and
+> proceed to §3.h.
+
+For author-year sources, continue:
 
 Use **natbib** semantics. The vocabulary is richer than just `\cite` and
 `\citet` — pick the form that matches the surface prose so the chip
@@ -1014,6 +1078,36 @@ not blockers — they reflect imperfect detection from the original
 extraction and are fine to leave. Only `**new**` findings gate the
 pass.
 
+> **Empty-baseline case.** When the catalog row has `warnings == []`
+> (typical for papers indexed before continuity-warning emission was
+> added to `index_paper.py`), the validator has no baseline to
+> compare against and will mark **every** continuity gap as "new".
+> To handle this:
+>
+> 1. **Before** running the preprocessor in §1, copy
+>    `papers/$ARGUMENTS/main.tex` to
+>    `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex` (`mkdir -p` the
+>    dir if missing). This is the snapshot of pre-deep-index state.
+> 2. **In §3i**, if the catalog row's `warnings` is empty, run the
+>    validator a **second time** against the baseline file:
+>    `python3 .virgil/scripts/pgmark_validate.py .virgil/baselines/$ARGUMENTS-pre-deepindex.tex --baseline-from-catalog`
+>    The script doesn't need a special flag for this — the file path
+>    is the only required positional. The output is its own gap set
+>    (call it `B`).
+> 3. Re-run on the current `main.tex` to get its gap set (call it
+>    `C`).
+> 4. **Match gaps by `(prev_pgmark, next_pgmark)` pair**, not by
+>    line number (line numbers shift during deep-index). A gap in
+>    `C` is `_pre-existing_` iff a gap in `B` reports the same
+>    `(prev, next)` pgmark pair. Any gap in `C` whose `(prev, next)`
+>    pair has no match in `B` is genuinely **new** and gates the
+>    pass.
+> 5. Scope violations (`pgmark-scope: …`) are always blockers
+>    regardless of baseline — they cannot be pre-existing because
+>    the pre-deep-index file rendered fine.
+>
+> Do not silently dismiss "new" findings without this cross-check.
+
 If three iterations fail to clear all blockers, **abort**: leave
 `indexed.state` unchanged (do not write `deepIndexed`), append a
 notification with `kind: "deep-index-blocked"` (see step 6 for shape,
@@ -1049,22 +1143,55 @@ Library badge can surface it.
 Preserve all other fields in the `indexed` object (`extractor`,
 `pgmarkCount`, `footnoteCount`, `exampleCount`).
 
-The `warnings` array is **append-only across passes, except for four
+The `warnings` array is **append-only across passes, except for five
 recomputed prefixes: `missing-bib-entry:`, `footnote-recovery-needed:`,
-`examples-not-converted:`, and `ambiguous-citation:`**. Read existing
-warnings, **drop any prior lines starting with any of those four
-prefixes** (they're recomputed by this pass), then concatenate the
-fresh lines from step 3g (`missing-bib-entry: <Author> <Year>` and
-`ambiguous-citation: <Author> <Year> (matches: ...)`, one per unique
-pair each), step 3d (`footnote-recovery-needed: <count> ...`, at
-most one), and step 3.h₂ (`examples-not-converted: <reason> ...`,
-one per skipped region). Other warning kinds (from earlier indexing)
-are preserved untouched. This keeps idempotency clean: re-running
+`examples-not-converted:`, `ambiguous-citation:`, and
+`numeric-citation-style:`**. Read existing warnings, **drop any prior
+lines starting with any of those five prefixes** (they're recomputed
+by this pass), then concatenate the fresh lines from step 3g
+(`missing-bib-entry: <Author> <Year>` and `ambiguous-citation:
+<Author> <Year> (matches: ...)`, one per unique pair each, OR a
+single `numeric-citation-style: ...` line for Vancouver-style
+sources), step 3d (`footnote-recovery-needed: <count> ...`, at most
+one), and step 3.h₂ (`examples-not-converted: <reason> ...`, one per
+skipped region). Other warning kinds (from earlier indexing) are
+preserved untouched. This keeps idempotency clean: re-running
 deep-index on the same paper produces the same warnings array (no
 duplicates, no ghost entries from a previous run that have since been
 resolved).
 
-Write `.virgil/catalog.json` back. Bump `.virgil/catalog-version.txt`.
+> **`missing-bib-entry` lookup spec (load-bearing).** Emit a
+> `missing-bib-entry:` line **only when** the inline mention has no
+> matching entry in `references.bib` under this lookup:
+> 1. **Normalize each surname** (NFKD-fold, strip diacritics, lowercase,
+>    drop hyphens / apostrophes / spaces, drop trailing `jr|sr|iii`).
+> 2. **Extract every cited surname** from the mention. Handle:
+>    `Author1 and Author2`; `Author1 & Author2`; `Author1, Author2, and
+>    Author3` (Oxford comma optional); `Author1 et al.` (treat as a
+>    prefix match — first surname only); `Author1, Author2, …, AuthorN`.
+> 3. **Match against `references.bib`** by (a) parsing each entry's
+>    `author = {…}` field into a normalized surname list, then (b)
+>    accepting iff: (i) the cited year matches the entry's year, AND
+>    (ii) for `et al.` mentions, the first surname is among the entry's
+>    first 3 authors; for explicit `Author1 (and|&) Author2` mentions,
+>    every cited surname appears in the entry's author list.
+> 4. **Emit the warning only if no entry matches.** If multiple entries
+>    match (same first author + year), emit `ambiguous-citation:` with
+>    the candidate citekeys, not `missing-bib-entry:`.
+>
+> Heuristic shortcuts that match only on first-author surname + year
+> will produce ~30–50% false-positive `missing-bib-entry` warnings on
+> multi-author corpora — this is the failure mode the spec above
+> exists to prevent. Do **not** emit warnings then post-hoc filter
+> them; implement the lookup correctly the first time, and if the
+> lookup is too expensive to do inline (large bibliography), build
+> the normalized author-list index once at the start of step 3g and
+> reuse it.
+
+Write `.virgil/catalog.json` back. Bump `.virgil/catalog-version.txt`
+(plain-text file containing a single integer; convention is the
+current Unix epoch in seconds — `date +%s`. Frontends only check that
+the value changed, but the epoch convention keeps debugging easier).
 
 ### 6. Notify
 

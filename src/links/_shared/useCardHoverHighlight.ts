@@ -84,16 +84,17 @@ export function useCardHoverHighlight(args: UseCardHoverHighlightArgs): void {
     quotationGroups,
     todos,
     comments,
+    examples,
   } = args;
 
   // Collections are only needed for entity resolution — they shouldn't
   // trigger re-runs of the paint effect. Stash them in a ref so the
   // effect only re-fires when the hovered entity actually changes.
   const collectionsRef = useRef<EntityCollections>({
-    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups,
+    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups, examples,
   });
   collectionsRef.current = {
-    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups,
+    notes, cutterCards, comments, todos, archiveSnippets, quotationGroups, examples,
   };
 
   useLayoutEffect(() => {

@@ -68,11 +68,58 @@ directory).
 `drain_queue.py` exits with `queue empty` and returns 0 — your reply is
 just that single line, no further work needed.
 
+## Large queues / running from inside a subagent
+
+The synchronous `python3 .virgil/scripts/drain_queue.py` in step 1 is
+fine when the queue is small (≤ ~20 entries) **or** when this skill
+runs in a session with no turn-budget cap (a user-driven session that
+can sit idle for hours).
+
+It is **not** fine when you're a subagent invoked from another skill
+(e.g. an `iterate-skill` driver, or a meta-task that spawned you).
+Subagents have a stricter turn budget than user sessions; on a 80-PDF
+backlog (≈ 15–60 min of wallclock work) the budget will run out
+mid-drain, the drain's child process will be orphaned, and the
+caller will see "agent done" with the queue still half-full and no
+audit step run. That's the failure mode that bit us on
+2026-05-09.
+
+Detach-and-poll instead. Two phases:
+
+**Phase A — kick off the drain detached, return immediately.**
+```bash
+cd <library-root>
+nohup python3 .virgil/scripts/drain_queue.py \
+  > /tmp/drain_$(date +%s).log 2>&1 &
+disown
+echo "drain pid=$! log=/tmp/drain_$(date +%s).log"
+```
+The drain now outlives the current shell / agent turn. Capture the
+log path so the next phase can tail it.
+
+**Phase B — wait for the queue to empty, then continue.** From a
+fresh shell context (a follow-up turn, or a sibling Bash background
+command), poll until the queue is empty:
+```bash
+until [ "$(ls <library-root>/.virgil/queue/*.json 2>/dev/null | wc -l | tr -d ' ')" = "0" ]; do
+  sleep 30
+done
+echo "drain queue empty $(date -u +%H:%M:%SZ)"
+```
+Then run step 2 (deferred-kind dispatch) and step 4 (final summary).
+
+If two callers race and start two `drain_queue.py` processes against
+the same library, that's safe — `_process_one` in the drain script
+acquires `.virgil/queue/<citekey>.lock` before processing each entry
+and skips files held by another worker. You'll see a brief overlap
+(both workers pick the same first file before the lock takes hold)
+but no corruption.
+
 ## Why this isn't a `/loop`
 
 `/loop /index-pending` is fine for steady-state polling (new files
 trickle in via the frontend). For a one-time backlog (94 PDFs from a
 bulk drop), the loop is the wrong shape — you want one drain pass to
 finish, not an indefinite poller. `/index-pending` always runs to
-empty in the current turn; the user can wrap it with `/loop` if they
-want recurring polling.
+empty in the current turn (or detached, per above); the user can wrap
+it with `/loop` if they want recurring polling.

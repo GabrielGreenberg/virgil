@@ -21,6 +21,8 @@ import {
 } from "@/lib/footnote-content";
 import { MIME_FOOTNOTE } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
+import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 export function startFootnoteDrag(
   e: React.DragEvent,
@@ -99,7 +101,9 @@ export function FootnoteCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const compressed = !isSelected && !isPoppedOut;
+  const ac = useAnchoredCard({ kind: "footnote", id: fn.footnoteId });
+  const isSelectedEffective = ac.selected || isSelected;
+  const compressed = !isSelectedEffective && !isPoppedOut;
   const compressedSummary = compressed
     ? (richJsonToPlainText(fn.content).trim().slice(0, 80) || "")
     : undefined;
@@ -108,7 +112,7 @@ export function FootnoteCard({
     <EditableCard
       id={fn.footnoteId}
       cardKind="footnote"
-      selected={isSelected}
+      selected={isSelectedEffective}
       theme={theme}
       hideToolbar
       inlineDelete
@@ -123,14 +127,15 @@ export function FootnoteCard({
       }
       headerTrailing={
         <CardTargetIcon
-          selected={isSelected}
+          selected={isSelectedEffective}
           onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
           title="Jump to footnote marker"
           data-helper="Jump"
           data-helper-pos="above"
         />
       }
-      onClick={onSelect}
+      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
+      onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via
       // a separate body-level affordance, not the grip.

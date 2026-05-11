@@ -3,31 +3,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CENTRAL_LIBRARY_ID,
-  REGISTRY_CHANGED_EVENT,
   docIdFromProjectLibraryId,
   isBuiltin,
+  isPaperId,
   isProjectDocId,
   loadPanelTabs,
-  loadRegistry,
-  newLibraryId,
   paperLibraryId,
   projectLibraryIdForDoc,
   savePanelTabs,
-  saveRegistry,
   type Library,
   type PanelTabsState,
   type Registry,
 } from "@library/lib/library-store";
+import { useDiskLibraries } from "@library/hooks/useDiskLibraries";
 
 export type PanelKey = "left" | "right";
-
-function defaultRegistry(): Registry {
-  return {
-    libraries: [
-      { id: CENTRAL_LIBRARY_ID, label: "Central Library", createdAt: 0, kind: "central" },
-    ],
-  };
-}
 
 function defaultLeft(): PanelTabsState {
   return {
@@ -62,6 +52,19 @@ export type LibraryTabsApi = {
   close: (id: string, panel: PanelKey) => void;
   rename: (id: string, label: string) => void;
   create: (panel: PanelKey) => string;
+  /**
+   * Create a custom library pre-populated from a parsed `.bib` file. The
+   * caller is responsible for having already written the source `.bib`
+   * to `unsorted/<sourceBibFile>` so the synthesis path can render rows
+   * before a triage skill merges the entries into `master.bib`. Opens
+   * the new library as the active tab in `panel` (defaults to "left").
+   */
+  createFromBib: (args: {
+    label: string;
+    sourceBibFile: string;
+    entryKeys: readonly string[];
+    panel?: PanelKey;
+  }) => string;
   openRecent: (id: string, panel: PanelKey) => void;
   /**
    * Move a tab to a destination position. toIndex is the index in the
@@ -74,6 +77,12 @@ export type LibraryTabsApi = {
    * library. No-op for Central (already contains everything). Idempotent.
    */
   addEntryToLibrary: (libId: string, entryKey: string) => void;
+  /**
+   * Batched variant of `addEntryToLibrary` — coalesces multiple
+   * citekeys into a single disk write. Use for drag-drop of multiple
+   * rows or any other multi-entry add path.
+   */
+  addEntriesToLibrary: (libId: string, entryKeys: readonly string[]) => void;
   /**
    * Inverse of addEntryToLibrary — removes from a spawned library's
    * membership. No-op for Central (which has no explicit membership;
@@ -109,6 +118,12 @@ export type LibraryTabsApi = {
 };
 
 export interface UseLibraryTabsOptions {
+  /** FSA root handle for the library folder. The custom-library
+   *  manifests live at `<handle>/.virgil/libraries/<slug>.json`. May
+   *  be `null` while the user is still on the picker / permission
+   *  gate; in that state custom libraries are empty and mutations
+   *  are no-ops. */
+  handle?: FileSystemDirectoryHandle | null;
   /** localStorage namespace for this hook's panel state. Empty / undefined
    *  uses the legacy unscoped keys (the singleton Library outer tab).
    *  Scoped callers (each tear-out library outer tab) get isolated keys
@@ -134,6 +149,10 @@ export interface UseLibraryTabsOptions {
 
 const PROJECT_HIDDEN_KEY = "virgil-library-project-hidden";
 const PROJECT_PINNED_KEY = "virgil-library-project-pinned";
+/** Separate persistence for paper-tab pin state. Replaces the legacy
+ *  `pinned` flag on paper-kind rows of `virgil-library-registry`,
+ *  which is no longer read after the disk-libraries refactor. */
+const PAPER_PINNED_KEY = "virgil-library-paper-pinned";
 
 function loadIdSet(key: string): Set<string> {
   if (typeof localStorage === "undefined") return new Set();
@@ -157,12 +176,54 @@ function saveIdSet(key: string, set: Set<string>): void {
   }
 }
 
+const CENTRAL_LIBRARY: Library = {
+  id: CENTRAL_LIBRARY_ID,
+  label: "Central Library",
+  createdAt: 0,
+  kind: "central",
+};
+
+/** Derive paper-kind libraries from the panel-tab state. Paper libs
+ *  are no longer persisted in the registry; they're reconstructed from
+ *  whatever paper IDs appear in either panel's `openIds`, with their
+ *  `pinned` flag read from the dedicated `paperPinnedIds` set. The
+ *  one-time cost of derivation is trivial (a few ids per render). */
+function derivePaperLibraries(
+  leftIds: readonly string[],
+  rightIds: readonly string[],
+  paperPinnedIds: ReadonlySet<string>,
+): Library[] {
+  const seen = new Set<string>();
+  const out: Library[] = [];
+  for (const id of [...leftIds, ...rightIds]) {
+    if (!isPaperId(id) || seen.has(id)) continue;
+    seen.add(id);
+    const citekey = id.slice("paper:".length);
+    out.push({
+      id,
+      label: citekey,
+      createdAt: 0,
+      kind: "paper",
+      citekey,
+      pinned: paperPinnedIds.has(id),
+    });
+  }
+  return out;
+}
+
 export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi {
-  const { scope, seed, openDocs, currentDocId, onActivateDoc } = opts;
+  const { handle = null, scope, seed, openDocs, currentDocId, onActivateDoc } = opts;
   // Project-doc projection only applies to the singleton (unscoped) Library
   // outer tab. Tear-out scoped instances ignore openDocs entirely.
   const projectsEnabled = !scope;
-  const [registry, setRegistry] = useState<Registry>(defaultRegistry);
+  // Custom libraries live on disk via `useDiskLibraries`. Built-in
+  // (Central) is constant; paper libs are derived from panel tabs;
+  // project libs are derived from openDocs. The unified `registry`
+  // returned to consumers is composed below.
+  const diskLibs = useDiskLibraries(handle);
+  const [paperPinnedIds, setPaperPinnedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [leftTabs, setLeftTabs] = useState<PanelTabsState>(
     () => seed?.left ?? defaultLeft(),
   );
@@ -192,6 +253,22 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     () => new Set(),
   );
 
+  // Build the unified registry view: [Central, ...customs, ...papers].
+  // Custom libs come from the disk hook (always sorted by createdAt);
+  // paper libs are reconstructed from open panel tabs.
+  const paperLibraries = useMemo(
+    () =>
+      derivePaperLibraries(leftTabs.openIds, rightTabs.openIds, paperPinnedIds),
+    [leftTabs.openIds, rightTabs.openIds, paperPinnedIds],
+  );
+
+  const registry = useMemo<Registry>(
+    () => ({
+      libraries: [CENTRAL_LIBRARY, ...diskLibs.libraries, ...paperLibraries],
+    }),
+    [diskLibs.libraries, paperLibraries],
+  );
+
   // Mirror latest state in refs so synchronous handlers (drag/drop) can
   // read it without going through the setState-updater dance — those
   // updaters don't run synchronously, so `fromPanel = ...` side effects
@@ -204,7 +281,6 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
   registryRef.current = registry;
 
   useEffect(() => {
-    setRegistry(loadRegistry());
     setLeftTabs(
       loadPanelTabs("left", { scope, fallback: seed?.left }),
     );
@@ -214,6 +290,7 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     if (projectsEnabled) {
       setHiddenProjectIds(loadIdSet(PROJECT_HIDDEN_KEY));
       setProjectPinnedIds(loadIdSet(PROJECT_PINNED_KEY));
+      setPaperPinnedIds(loadIdSet(PAPER_PINNED_KEY));
     }
     setHydrated(true);
     // Hydrate once per mount; scope/seed are treated as initial-mount-only
@@ -221,28 +298,6 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!hydrated) return;
-    saveRegistry(registry);
-  }, [registry, hydrated]);
-
-  // Sync registry across instances. When ANY consumer writes the shared
-  // registry (a sibling `useLibraryTabs`, the Virgil-bar drop handler,
-  // etc.), `saveRegistry` dispatches REGISTRY_CHANGED_EVENT — re-load
-  // and adopt the fresh value if it differs from our cached state.
-  // Comparing the JSON serialisation is good enough at this scale and
-  // avoids feedback loops (each instance fires the event from its own
-  // persist effect, but the comparison short-circuits the no-op cases).
-  useEffect(() => {
-    const handler = () => {
-      const fresh = loadRegistry();
-      setRegistry((prev) =>
-        JSON.stringify(prev) === JSON.stringify(fresh) ? prev : fresh,
-      );
-    };
-    window.addEventListener(REGISTRY_CHANGED_EVENT, handler);
-    return () => window.removeEventListener(REGISTRY_CHANGED_EVENT, handler);
-  }, []);
   useEffect(() => {
     if (!hydrated) return;
     savePanelTabs("left", leftTabs, { scope });
@@ -259,6 +314,10 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     if (!hydrated || !projectsEnabled) return;
     saveIdSet(PROJECT_PINNED_KEY, projectPinnedIds);
   }, [projectPinnedIds, hydrated, projectsEnabled]);
+  useEffect(() => {
+    if (!hydrated || !projectsEnabled) return;
+    saveIdSet(PAPER_PINNED_KEY, paperPinnedIds);
+  }, [paperPinnedIds, hydrated, projectsEnabled]);
 
   // Synthetic Library entries for the per-doc project inner tabs. Not
   // persisted in the registry — derived per-render from `openDocs`. The
@@ -417,26 +476,50 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     });
   }, []);
 
-  const rename = useCallback((id: string, label: string) => {
-    if (isBuiltin(id)) return;
-    setRegistry((r) => ({
-      libraries: r.libraries.map((l) =>
-        l.id === id ? { ...l, label } : l,
-      ),
-    }));
-  }, []);
+  const rename = useCallback(
+    (id: string, label: string) => {
+      if (isBuiltin(id)) return;
+      // Custom libraries → disk hook handles the manifest rewrite +
+      // file rename. Paper libs are read-only labels (= the citekey),
+      // so they ignore renames silently.
+      diskLibs.rename(id, label);
+    },
+    [diskLibs],
+  );
 
   const create = useCallback(
     (panel: PanelKey): string => {
-      const id = newLibraryId();
-      const lib: Library = { id, label: "Untitled", createdAt: Date.now(), kind: "custom" };
-      setRegistry((r) => ({ libraries: [...r.libraries, lib] }));
+      // diskLibs.create is sync from the caller's view — it returns
+      // the new Library immediately and writes to disk in the
+      // background. The id is stable and usable right away.
+      const lib = diskLibs.create("Untitled");
       const setter = panel === "left" ? setLeftTabs : setRightTabs;
-      setter((t) => ({ openIds: [...t.openIds, id], activeId: id }));
-      pinIfLeft(panel, id);
-      return id;
+      setter((t) => ({ openIds: [...t.openIds, lib.id], activeId: lib.id }));
+      pinIfLeft(panel, lib.id);
+      return lib.id;
     },
-    [pinIfLeft],
+    [diskLibs, pinIfLeft],
+  );
+
+  const createFromBib = useCallback(
+    (args: {
+      label: string;
+      sourceBibFile: string;
+      entryKeys: readonly string[];
+      panel?: PanelKey;
+    }): string => {
+      const panel: PanelKey = args.panel ?? "left";
+      const lib = diskLibs.createFromBib({
+        label: args.label,
+        sourceBibFile: args.sourceBibFile,
+        citekeys: args.entryKeys,
+      });
+      const setter = panel === "left" ? setLeftTabs : setRightTabs;
+      setter((t) => ({ openIds: [...t.openIds, lib.id], activeId: lib.id }));
+      pinIfLeft(panel, lib.id);
+      return lib.id;
+    },
+    [diskLibs, pinIfLeft],
   );
 
   const openRecent = useCallback(
@@ -510,16 +593,21 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
       // libraries only.
       if (isBuiltin(libId)) return;
       if (!entryKey) return;
-      setRegistry((r) => ({
-        libraries: r.libraries.map((l) => {
-          if (l.id !== libId) return l;
-          const cur = l.entryKeys ?? [];
-          if (cur.includes(entryKey)) return l;
-          return { ...l, entryKeys: [...cur, entryKey] };
-        }),
-      }));
+      diskLibs.addEntries(libId, [entryKey]);
     },
-    [],
+    [diskLibs],
+  );
+
+  /** Batched plural variant — single disk write per drop, regardless
+   *  of how many keys came in. Use this whenever you have an array;
+   *  prefer it over a `for` loop of `addEntryToLibrary`. */
+  const addEntriesToLibrary = useCallback(
+    (libId: string, entryKeys: readonly string[]) => {
+      if (isBuiltin(libId)) return;
+      if (entryKeys.length === 0) return;
+      diskLibs.addEntries(libId, entryKeys);
+    },
+    [diskLibs],
   );
 
   // Inverse of addEntryToLibrary — only removes from the local membership
@@ -529,16 +617,9 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     (libId: string, entryKey: string) => {
       if (isBuiltin(libId)) return;
       if (!entryKey) return;
-      setRegistry((r) => ({
-        libraries: r.libraries.map((l) => {
-          if (l.id !== libId) return l;
-          const cur = l.entryKeys ?? [];
-          if (!cur.includes(entryKey)) return l;
-          return { ...l, entryKeys: cur.filter((k) => k !== entryKey) };
-        }),
-      }));
+      diskLibs.removeEntry(libId, entryKey);
     },
-    [],
+    [diskLibs],
   );
 
   const openPaper = useCallback(
@@ -560,19 +641,10 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
         return;
       }
 
-      // Ensure the registry has this paper; create on demand.
-      setRegistry((r) => {
-        if (r.libraries.some((l) => l.id === newId)) return r;
-        const lib: Library = {
-          id: newId,
-          label: citekey,
-          createdAt: Date.now(),
-          kind: "paper",
-          citekey,
-          pinned: false,
-        };
-        return { libraries: [...r.libraries, lib] };
-      });
+      // No registry write needed — paper libs are derived from
+      // panel-tab `openIds` via `derivePaperLibraries`. Once `newId`
+      // lands in either panel below, the next render rebuilds the
+      // paper-libs list automatically.
 
       // Replace-or-append in the destination panel. Any unpinned active
       // tab is replaceable now (paper or library) — the same mechanic
@@ -645,24 +717,37 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     [projectsEnabled, onActivateDoc, pinIfLeft, unhideProject],
   );
 
-  const togglePinLibrary = useCallback((libId: string) => {
-    // Project libs aren't in the registry — pin state lives in a
-    // separate persisted set keyed by project library id.
-    if (isProjectDocId(libId)) {
-      setProjectPinnedIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(libId)) next.delete(libId);
-        else next.add(libId);
-        return next;
-      });
-      return;
-    }
-    setRegistry((r) => ({
-      libraries: r.libraries.map((l) =>
-        l.id === libId ? { ...l, pinned: !l.pinned } : l,
-      ),
-    }));
-  }, []);
+  const togglePinLibrary = useCallback(
+    (libId: string) => {
+      // Project libs aren't in the registry — pin state lives in a
+      // separate persisted set keyed by project library id.
+      if (isProjectDocId(libId)) {
+        setProjectPinnedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(libId)) next.delete(libId);
+          else next.add(libId);
+          return next;
+        });
+        return;
+      }
+      // Paper libs: pin state lives in a similar persisted set
+      // (PAPER_PINNED_KEY). Paper libs are derived per-render from
+      // panel-tab openIds, so there's nothing to mutate in any
+      // registry — just flip the membership of the set.
+      if (isPaperId(libId)) {
+        setPaperPinnedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(libId)) next.delete(libId);
+          else next.add(libId);
+          return next;
+        });
+        return;
+      }
+      // Custom libs: disk hook owns persistence.
+      diskLibs.togglePin(libId);
+    },
+    [diskLibs],
+  );
 
   const closePaperByCitekey = useCallback(
     (citekey: string) => {
@@ -684,9 +769,11 @@ export function useLibraryTabs(opts: UseLibraryTabsOptions = {}): LibraryTabsApi
     close,
     rename,
     create,
+    createFromBib,
     openRecent,
     moveTab,
     addEntryToLibrary,
+    addEntriesToLibrary,
     removeEntryFromLibrary,
     openPaper,
     openLibrary,

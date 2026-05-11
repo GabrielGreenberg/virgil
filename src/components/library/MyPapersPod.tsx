@@ -1,11 +1,19 @@
 "use client";
 
 /**
- * "My Papers" pod for the leftmost library column. Lists the user's
- * open Virgil docs and exposes an "+ Add paper" affordance whose popup
- * mirrors the Virgil-bar TabPlusMenu (recent papers + Open folder +
- * Create new), so the user has a second entry point to those actions
- * without leaving the Library view.
+ * "My Papers" pod for the leftmost library column. Renders the user's
+ * curated list of papers (the `myPaperIds` global from `useMyPapers`),
+ * NOT the currently-open Virgil docs — those are independent. The pod
+ * also exposes an "+ Add paper" menu whose paths are the only way to
+ * add to the list:
+ *   - Recent → click adds that doc (no tab opens here).
+ *   - Open folder… / Create new document… → trigger the existing FSA
+ *     flows; the parent (`EditorLayout`) auto-adds the resulting doc to
+ *     `myPaperIds` on success.
+ *
+ * Clicking a row in the body opens that doc as a tab via the existing
+ * `onOpenRecent` callback. Hovering a row reveals a × button that
+ * removes the entry from My Papers but does not close the tab.
  *
  * Lives under src/components/library/ (not /library/components/) so it
  * can import from `@/lib/doc-index`, `@/lib/fsa-permissions`, etc. —
@@ -20,18 +28,24 @@ import { ensureRW } from "@/lib/fsa-permissions";
 import { getDocHandle, type FsaDocMeta } from "@/lib/doc-index";
 
 interface Props {
-  /** Every known Virgil doc — feeds the popup's "Recent" list. */
+  /** Every known Virgil doc — used to resolve `myPaperIds` to display
+   *  metadata and to feed the popup's "Recent" list. */
   docs: FsaDocMeta[];
-  /** Currently-open Virgil docs (rendered in the pod body). */
-  openTabs: FsaDocMeta[];
+  /** Curated paper ids — drives the pod body. */
+  myPaperIds: string[];
+  /** Add a doc id to the curated list. */
+  addMyPaper: (id: string) => void;
+  /** Remove a doc id from the curated list. */
+  removeMyPaper: (id: string) => void;
   /** Active Virgil doc id — drives the pod-row highlight. */
   currentDocId: string | null;
-  /** Activate an existing or recent doc. Reused for both the body row
-   *  click and the popup row click. */
+  /** Activate (open as tab) an existing doc — used on row click. */
   onOpenRecent: (id: string) => void;
-  /** Triggers `showDirectoryPicker()` flow. */
+  /** Triggers `showDirectoryPicker()` flow. The parent wraps this to
+   *  auto-add the resulting doc to My Papers. */
   onOpenFolder: () => void;
-  /** Opens the Virgil "create new document" modal. */
+  /** Opens the Virgil "create new document" modal. The parent wraps
+   *  this to auto-add the resulting doc to My Papers. */
   onCreateNew: () => void;
   /** Skips FSA permission re-grant when true (the dev-storage
    *  back-end has no FSA handles). */
@@ -42,7 +56,9 @@ const ACCENT = "var(--accent)";
 
 export default function MyPapersPod({
   docs,
-  openTabs,
+  myPaperIds,
+  addMyPaper,
+  removeMyPaper,
   currentDocId,
   onOpenRecent,
   onOpenFolder,
@@ -70,42 +86,67 @@ export default function MyPapersPod({
     };
   }, [popupOpen]);
 
+  const docById = useMemo(
+    () => new Map(docs.map((d) => [d.id, d])),
+    [docs],
+  );
+
+  // Resolve curated ids to live FsaDocMeta. Stale ids (doc removed from
+  // index) are silently dropped — no row, no error.
+  const rows = useMemo(() => {
+    const out: FsaDocMeta[] = [];
+    for (const id of myPaperIds) {
+      const m = docById.get(id);
+      if (m) out.push(m);
+    }
+    return out;
+  }, [myPaperIds, docById]);
+
+  // Recent list excludes anything already in My Papers — re-clicking an
+  // entry would be a no-op given set semantics on add.
   const recents = useMemo(() => {
-    const openSet = new Set(openTabs.map((d) => d.id));
+    const addedSet = new Set(myPaperIds);
     return [...docs]
-      .filter((d) => !openSet.has(d.id))
+      .filter((d) => !addedSet.has(d.id))
       .sort(
         (a, b) =>
           new Date(b.lastAccessedAt).getTime() -
           new Date(a.lastAccessedAt).getTime(),
       )
       .slice(0, 5);
-  }, [docs, openTabs]);
+  }, [docs, myPaperIds]);
 
   const handleRecentClick = useCallback(
+    (id: string) => {
+      // "Recent" only adds to My Papers — it does NOT open the doc as
+      // a tab. No FSA re-grant needed since we're not touching the
+      // file system here.
+      addMyPaper(id);
+      setPopupOpen(false);
+    },
+    [addMyPaper],
+  );
+
+  const handleRowClick = useCallback(
     async (id: string) => {
-      // FSA permissions must be re-granted inside the user-gesture stack;
-      // mirrors the TabPlusMenu logic so a recent click survives a
-      // re-prompt when permissions have lapsed.
+      // Row click DOES open the doc as a tab. The doc may have been
+      // sitting in My Papers across a session boundary, so we re-grant
+      // FSA permission inside the user-gesture stack before activating.
       if (!devStorage) {
         const handle = await getDocHandle(id);
         if (handle) {
           const ok = await ensureRW(handle);
-          if (!ok) {
-            setPopupOpen(false);
-            return;
-          }
+          if (!ok) return;
         }
       }
       onOpenRecent(id);
-      setPopupOpen(false);
     },
     [devStorage, onOpenRecent],
   );
 
   return (
     <NavPod title="My papers">
-      {openTabs.length === 0 ? (
+      {rows.length === 0 ? (
         <div
           style={{
             padding: "2px 14px 6px",
@@ -114,17 +155,18 @@ export default function MyPapersPod({
             fontStyle: "italic",
           }}
         >
-          No papers open
+          No papers added
         </div>
       ) : (
-        openTabs.map((doc) => {
+        rows.map((doc) => {
           const active = doc.id === currentDocId;
           return (
             <PaperRow
               key={doc.id}
               label={docDisplayLabel(doc)}
               active={active}
-              onClick={() => onOpenRecent(doc.id)}
+              onClick={() => handleRowClick(doc.id)}
+              onRemove={() => removeMyPaper(doc.id)}
             />
           );
         })
@@ -236,10 +278,12 @@ function PaperRow({
   label,
   active,
   onClick,
+  onRemove,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
+  onRemove: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -251,7 +295,7 @@ function PaperRow({
         position: "relative",
         display: "flex",
         alignItems: "center",
-        padding: "0 12px 0 14px",
+        padding: "0 6px 0 14px",
         height: 28,
         cursor: "pointer",
         background: active
@@ -290,6 +334,46 @@ function PaperRow({
       >
         {label}
       </span>
+      {hovered && (
+        <button
+          type="button"
+          aria-label={`Remove ${label} from My Papers`}
+          title="Remove from My Papers"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRemove();
+          }}
+          style={{
+            width: 18,
+            height: 18,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "transparent",
+            border: "none",
+            color: "var(--muted)",
+            cursor: "pointer",
+            fontSize: 14,
+            lineHeight: 1,
+            padding: 0,
+            borderRadius: 3,
+            fontFamily: "inherit",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background =
+              "rgba(0, 0, 0, 0.08)";
+            (e.currentTarget as HTMLButtonElement).style.color =
+              "var(--foreground)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background =
+              "transparent";
+            (e.currentTarget as HTMLButtonElement).style.color = "var(--muted)";
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }

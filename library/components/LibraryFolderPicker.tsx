@@ -2,9 +2,13 @@
 
 interface Props {
   onPick: () => void;
+  /** Latest picker-flow error (e.g. Chrome's "file picker already
+   *  active" lock). When non-null, surfaced as a small red message
+   *  under the button so the user knows the click wasn't ignored. */
+  pickerError?: string | null;
 }
 
-export default function LibraryFolderPicker({ onPick }: Props) {
+export default function LibraryFolderPicker({ onPick, pickerError }: Props) {
   return (
     <div
       style={{
@@ -37,10 +41,26 @@ export default function LibraryFolderPicker({ onPick }: Props) {
           border: "none",
           fontSize: 14,
           fontWeight: 500,
+          cursor: "pointer",
         }}
       >
         Choose library folder…
       </button>
+      {pickerError ? (
+        <p
+          role="alert"
+          style={{
+            color: "var(--error, #b00020)",
+            maxWidth: 480,
+            textAlign: "center",
+            fontSize: 13,
+            lineHeight: 1.4,
+            margin: 0,
+          }}
+        >
+          {pickerError}
+        </p>
+      ) : null}
     </div>
   );
 }

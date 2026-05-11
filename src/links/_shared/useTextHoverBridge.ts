@@ -60,11 +60,15 @@ export function useTextHoverBridge({
     }
     for (const c of cutterCards) {
       const a = getTextAnchor(c);
-      if (a) m.set(a.anchorId, { entityId: c.id, kind: "cut" });
+      if (!a) continue;
+      const kind: EntityKind = c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment";
+      m.set(a.anchorId, { entityId: c.id, kind });
     }
     for (const r of comments) {
       const a = getTextAnchor(r);
-      if (a) m.set(a.anchorId, { entityId: r.id, kind: "revision" });
+      if (!a) continue;
+      const kind: EntityKind = r.kind === "suggestion" ? "revision-suggestion" : "comment";
+      m.set(a.anchorId, { entityId: r.id, kind });
     }
     return m;
   }, [notes, cutterCards, comments]);

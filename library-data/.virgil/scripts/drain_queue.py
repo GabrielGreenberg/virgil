@@ -164,8 +164,8 @@ def _classify_entry(library: Path, citekey: str) -> tuple[str, str]:
     """Return (symbol, description) classifying the entry's bib state.
 
     Symbols match the index-pending summary table:
-      ' ' indexed OK; 'M' manuscript; '?' unverified-with-DOI;
-      '!' unverified-no-DOI; 'X' failed.
+      ' ' indexed OK; 'M' manuscript; 'C' canonical (pre-digital classic);
+      '?' unverified-with-DOI; '!' unverified-no-DOI; 'X' failed.
     """
     catalog = _read_catalog(library)
     entry = next((e for e in catalog.get("entries", []) if e.get("citekey") == citekey), None)
@@ -178,6 +178,8 @@ def _classify_entry(library: Path, citekey: str) -> tuple[str, str]:
         return " ", "authenticated"
     if state == "manuscript":
         return "M", "manuscript (no DOI expected)"
+    if state == "canonical":
+        return "C", "canonical (pre-digital classic; no external registry)"
     if state == "unverified" and has_doi:
         return "?", "unverified — DOI present, auth conservative"
     if state == "unverified":
