@@ -33,6 +33,9 @@ interface Props {
  * callbacks are wired upstream).
  */
 export function MarginActionToolbar({ side, actions, placements }: Props) {
+  // Temporarily suppressed: omni-view gutter action chips aren't working
+  // reliably yet. Body below is preserved so re-enabling is a one-line revert.
+  return null;
   const chrome = useEditorChrome();
   if (!chrome.showActionToolbar) return null;
   const defs = ACTION_BUTTON_DEFS.filter((def) => {
