@@ -17,28 +17,19 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { EditorPaneViewPrefs } from "@/components/EditorPane";
-import type {
-  PanelId,
-  PanelPlacement,
-  Side,
-  ViewPrefs,
+import {
+  useViewPrefs,
+  dockSlotKey,
+  type PanelId,
+  type Side,
+  type ViewPrefs,
 } from "@/hooks/useViewPrefs";
-import { dockSlotKey } from "@/hooks/useViewPrefs";
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { DEFAULT_PRINT_OPTIONS } from "@/lib/print";
 import {
   PANEL_TO_CATEGORY,
   type OmniCategory,
 } from "@/panels/Omni/OmniViewPanel";
-
-const READER_PLACEMENTS: PanelPlacement[] = [
-  { id: "outline", side: "left" },
-  { id: "footnotes", side: "left" },
-  { id: "citations", side: "left" },
-  { id: "bibliography", side: "left" },
-  { id: "examples", side: "left" },
-  { id: "notes", side: "right" },
-];
 
 // Each OmniCategory → its native side, sourced from PANEL_REGISTRY.
 const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
@@ -52,9 +43,10 @@ const READER_CATEGORY_SIDES: Record<OmniCategory, Side> = (() => {
   return out as Record<OmniCategory, Side>;
 })();
 
-// Default omni categories per side: only those whose panel kinds appear
-// in READER_PLACEMENTS. The OmniHost surfaces the matching cards when
-// the user clicks a strip icon (the click drives `dockSlots` here).
+// Default omni categories per side for the Reader. Mirrors the 6
+// reader-visible panel kinds in `READER_CHROME.visiblePanelKinds`. The
+// OmniHost surfaces the matching cards when the user clicks a strip
+// icon (the click drives `dockSlots` here).
 const DEFAULT_READER_OMNI_LEFT = new Set<OmniCategory>([
   "outline",
   "footnotes",
@@ -71,6 +63,23 @@ const DEFAULT_READER_OMNI_RIGHT = new Set<OmniCategory>(["notes"]);
  * remain inert.
  */
 export function useReaderViewPrefs(): EditorPaneViewPrefs {
+  // Placements + movePanel come from the persistent global pref store,
+  // so dragging a panel-icon in the Reader updates the same value the
+  // main editor reads, and vice versa.
+  const realPrefs = useViewPrefs();
+  const persistentPlacements = realPrefs.prefs.placements;
+  const persistentMovePanel = realPrefs.movePanel;
+
+  const sideForPanel = useCallback(
+    (id: PanelId): Side => {
+      const placed = persistentPlacements.find((p) => p.id === id);
+      return (
+        placed?.side ?? PANEL_REGISTRY[id]?.defaultStripSide ?? "right"
+      );
+    },
+    [persistentPlacements],
+  );
+
   const [activeLeft, setActiveLeft] = useState<PanelId | null>(null);
   const [activeRight, setActiveRight] = useState<PanelId | null>(null);
   const [omniEnabledLeft, setOmniEnabledLeft] = useState(
@@ -112,7 +121,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     if (activeLeft) dockSlots[dockSlotKey("left", "full")] = activeLeft;
     if (activeRight) dockSlots[dockSlotKey("right", "full")] = activeRight;
     return {
-      placements: READER_PLACEMENTS,
+      placements: persistentPlacements,
       activeLeft,
       activeRight,
       activeLeftBottom: null,
@@ -140,16 +149,22 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       printOptions: DEFAULT_PRINT_OPTIONS,
       topbarRightCollapsed: false,
     };
-  }, [activeLeft, activeRight, topGutter, bottomGutter, panelWidths]);
+  }, [
+    persistentPlacements,
+    activeLeft,
+    activeRight,
+    topGutter,
+    bottomGutter,
+    panelWidths,
+  ]);
 
   const openPanelDocked = useCallback(
     (id: PanelId, side?: Side) => {
-      const placement = READER_PLACEMENTS.find((p) => p.id === id);
-      const s = side ?? placement?.side ?? "right";
+      const s = side ?? sideForPanel(id);
       if (s === "left") setActiveLeft(id);
       else setActiveRight(id);
     },
-    [],
+    [sideForPanel],
   );
 
   const closePopout = useCallback((id: PanelId) => {
@@ -159,15 +174,14 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
 
   const togglePanel = useCallback(
     (id: PanelId) => {
-      const placement = READER_PLACEMENTS.find((p) => p.id === id);
-      const s = placement?.side ?? "right";
+      const s = sideForPanel(id);
       if (s === "left") {
         setActiveLeft((cur) => (cur === id ? null : id));
       } else {
         setActiveRight((cur) => (cur === id ? null : id));
       }
     },
-    [],
+    [sideForPanel],
   );
 
   const getOmniEnabled = useCallback(
@@ -226,7 +240,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setActiveRight,
       setActiveHalf: () => {},
       togglePanel,
-      movePanel: () => {},
+      movePanel: persistentMovePanel,
       closePopout,
       setFloatPosition: () => {},
       undockPanel: () => {},
@@ -274,6 +288,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       closePopout,
       getOmniEnabled,
       openPanelDocked,
+      persistentMovePanel,
       toggleOmniCategory,
       setOmniSideToDefault,
       topGutter,

@@ -193,15 +193,18 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
 
 /**
  * Keys whose values are user-level preferences and should mirror across
- * every Virgil window (theme-adjacent: highlights, print options).
- * Everything not listed here is per-window — layout, dock state, popped
- * cards, panel widths, gutters — so a draft window and a reviewer
- * window on different monitors can have totally different shapes.
+ * every Virgil window (theme-adjacent: highlights, print options, and
+ * strip placements so panel-icon order stays consistent everywhere —
+ * editor windows and the Library Reader). Everything not listed here is
+ * per-window — dock state, popped cards, panel widths, gutters — so a
+ * draft window and a reviewer window on different monitors can have
+ * totally different shapes.
  */
 const GLOBAL_PREF_KEYS = [
   "showHighlights",
   "hiddenHighlightTypes",
   "printOptions",
+  "placements",
 ] as const;
 type GlobalPrefKey = (typeof GLOBAL_PREF_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
@@ -210,11 +213,28 @@ function windowStorageKey(): string {
   return WINDOW_STORAGE_PREFIX + getWindowId();
 }
 
+/** Same-window fan-out for global-pref changes. The BroadcastChannel
+ *  bus reaches *other* windows only (its `postMessage` does not echo to
+ *  the sender), so two `useViewPrefs` instances inside the same tab —
+ *  e.g. EditorLayout's and the Library Reader's — would otherwise drift.
+ *  Each instance subscribes here; `persist` fans out after a write. */
+const sameWindowListeners = new Set<() => void>();
+function notifySameWindow() {
+  for (const fn of sameWindowListeners) {
+    try {
+      fn();
+    } catch (err) {
+      console.error("same-window pref listener threw", err);
+    }
+  }
+}
+
 function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
   return {
     showHighlights: p.showHighlights,
     hiddenHighlightTypes: p.hiddenHighlightTypes,
     printOptions: p.printOptions,
+    placements: p.placements,
   };
 }
 
@@ -349,8 +369,7 @@ export function useViewPrefs() {
   // the global slice and merge into local state. Per-window keys are
   // never broadcast — each window's layout is its own.
   useEffect(() => {
-    const onEvent = (e: BusEvent) => {
-      if (e.type !== "global-pref-changed") return;
+    const rereadGlobal = () => {
       try {
         const raw = localStorage.getItem(GLOBAL_STORAGE_KEY);
         if (!raw) return;
@@ -360,7 +379,16 @@ export function useViewPrefs() {
         // ignore parse failures
       }
     };
-    return subscribe(onEvent);
+    const onEvent = (e: BusEvent) => {
+      if (e.type !== "global-pref-changed") return;
+      rereadGlobal();
+    };
+    const unsubBus = subscribe(onEvent);
+    sameWindowListeners.add(rereadGlobal);
+    return () => {
+      unsubBus();
+      sameWindowListeners.delete(rereadGlobal);
+    };
   }, []);
 
   const persist = useCallback(
@@ -374,9 +402,11 @@ export function useViewPrefs() {
         }
         localStorage.setItem(windowStorageKey(), JSON.stringify(windowSlice));
         localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(globalSlice));
-        // Notify peer windows when any global key changed. Cheap shallow
+        // Notify peers when any global key changed. Cheap shallow
         // compare on the global keys is enough — values are JSON-serializable
-        // primitives, arrays, or plain objects.
+        // primitives, arrays, or plain objects. We fan out twice: the bus
+        // for other windows, and the same-window listeners set for sibling
+        // `useViewPrefs` instances in this tab (Reader + EditorLayout).
         const newGlobal = pickGlobal(newPrefs);
         const prevGlobal = pickGlobal(prevPrefs);
         for (const k of GLOBAL_PREF_KEYS) {
@@ -388,6 +418,7 @@ export function useViewPrefs() {
               key: k,
               value: newGlobal[k],
             });
+            notifySameWindow();
             break;
           }
         }

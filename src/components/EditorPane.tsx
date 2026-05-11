@@ -1981,21 +1981,43 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, [effectivePlacements]);
   // Side-resolution fallback: when a panel kind has no explicit
   // placement (fresh localStorage, partial reset, synthetic Reader
-  // placements), fall back to its registry default before defaulting
-  // to right. Without this, the left strip collapses to empty when
-  // placements are missing.
+  // placements), fall back to its registry default. Returns `null` for
+  // presentation-pod panels (registry `defaultStripSide: null`, e.g.
+  // "omni") — those belong in the view-controls pod, not the icon
+  // strip, so the strip-render path filters them out.
   const sideForKind = useCallback(
-    (k: PanelKind): "left" | "right" =>
-      placementSideByKind.get(k) ?? PANEL_REGISTRY[k]?.defaultStripSide ?? "right",
+    (k: PanelKind): "left" | "right" | null =>
+      placementSideByKind.get(k) ?? PANEL_REGISTRY[k]?.defaultStripSide ?? null,
     [placementSideByKind],
   );
+  // Order each side's strip by `effectivePlacements` so drag-reorders
+  // mutating `prefs.placements` show up in the rendered icon order.
+  // Visible-but-unplaced kinds (no entry in placements) keep their
+  // registry-default position as a tail.
+  const orderedSidePanels = useCallback(
+    (target: "left" | "right"): PanelKind[] => {
+      const visible = new Set(
+        visiblePanels.filter((k) => sideForKind(k) === target),
+      );
+      const ordered: PanelKind[] = [];
+      for (const p of effectivePlacements) {
+        if (p.side === target && visible.has(p.id as PanelKind)) {
+          ordered.push(p.id as PanelKind);
+          visible.delete(p.id as PanelKind);
+        }
+      }
+      for (const k of visiblePanels) if (visible.has(k)) ordered.push(k);
+      return ordered;
+    },
+    [visiblePanels, sideForKind, effectivePlacements],
+  );
   const visiblePanelsLeft = useMemo<PanelKind[]>(
-    () => visiblePanels.filter((k) => sideForKind(k) === "left"),
-    [visiblePanels, sideForKind],
+    () => orderedSidePanels("left"),
+    [orderedSidePanels],
   );
   const visiblePanelsRight = useMemo<PanelKind[]>(
-    () => visiblePanels.filter((k) => sideForKind(k) === "right"),
-    [visiblePanels, sideForKind],
+    () => orderedSidePanels("right"),
+    [orderedSidePanels],
   );
   // Initial active kind: Reader auto-shows the first panel (no
   // viewPrefs → user has no other way to open them); main app starts
