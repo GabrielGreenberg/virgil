@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { GlobalTransforms, DEFAULT_TRANSFORMS } from "@/lib/color-transforms";
+import defaultPrefsJson from "./usePreferences.defaults.json";
 
 export interface EditorPreferences {
   // Editor > Body Text
@@ -110,106 +111,9 @@ export interface EditorPreferences {
   fontParTitleWeight: number;       // 100-900
 }
 
-export const DEFAULT_PREFS: EditorPreferences = {
-  // Editor > Body Text
-  editorFontSize: 1.05,
-  editorLineHeight: 1.6,
-  editorTextColor: "#000000",
-
-  // Editor > Paragraph Titles
-  parTitleSize: 0.78,
-  parTitleColor: "#c45a5a",
-
-  // Editor > Heading Annotations
-  headingAnnotationColor: "#6b9ac4",
-  headingAnnotationBorder: "#a8c4de",
-
-  // Editor > Blockquotes
-  blockquoteBorder: "#d4cfc8",
-  blockquoteText: "#6b6560",
-
-  // Editor > Code & Math
-  codeBackground: "#f0eeeb",
-  codeBlockBackground: "#f5f3f0",
-  mathColor: "#6b4fa0",
-  mathPrefixColor: "#a090c0",
-
-  // Editor > Inline Elements
-  accentColor: "#7c5e3c",
-  backgroundColor: "#f8f3ed",
-  commentColor: "#93c5fd",
-  latexCommentColor: "#7191b0",
-  citationColor: "#6b6245",
-  citationBorderColor: "#e0d5a8",
-  footnoteColor: "#b45757",
-  noteColor: "#15803d",
-  noteMarkerBorder: "#86efac",
-
-  // Editor > AI Markers
-  aiMarkerText: "#92400e",
-  aiMarkerBg: "#fef3c7",
-  aiMarkerBorder: "#fcd34d",
-
-  // Editor > Suggestions
-  markBackground: "#fbbf24",
-  markBorder: "#c8960e",
-
-  // Editor > LaTeX Commands
-  latexCmdColor: "#9ca3af",
-
-  // Panels > General
-  panelFontSize: 13,
-  panelHeaderSize: 14,
-  surfaceColor: "#ffffff",
-
-  // Panels > Chrome
-  headerBg: "#e8e5de",
-  podPanel: "#f3f0eb",
-  podToolbar: "#f5f3ef",
-  podDark: "#eae6df",
-  panelAdminTextColor: "#44403c",  // matches --ink-body
-  panelAdminTextFont: "Inter",
-
-  // App Chrome
-  topbarBackground: "#dcdbd7",
-  topbarBackgroundBottom: "#dcdbd7", // equal to top → no gradient by default
-  topbarBorder: "#cbc3b8",
-  tabBg: "#dcdbd7",       // matches topbarBackground so inactive tabs blend in
-  libraryBg: "#eae7e2",   // current hardcoded library-tab fill
-  virgilBarText: "#78716c", // current --ink-subtle
-
-  // Canvas & Layout
-  foreground: "#1a1a1a",
-  borderColor: "#e5e2dd",
-  borderLight: "#c9c5c5",
-  mutedColor: "#8a8580",
-  mutedLight: "#b5b0aa",
-  dragHighlight: "#3b82f6",
-  scrollbarThumb: "#d4cfc8",
-
-  // Fonts
-  fontSerif: "Source Serif 4",
-  fontSans: "Inter",
-  fontDisplay: "Playfair Display",
-  fontLogo: "Cinzel",
-  fontMono: "Geist Mono",
-
-  // Fonts… dialog
-  fontMaketitleFamily: null,
-  fontMaketitleTitleSize: 1.75,
-  fontMaketitleTitleWeight: 700,
-  fontMaketitleMetaSize: 1.05,
-  fontMaketitleMetaWeight: 400,
-  fontHeadersFamily: null,
-  fontHeadersH1Size: 1.75,
-  fontHeadersH1Weight: 700,
-  fontHeadersH2Size: 1.35,
-  fontHeadersH2Weight: 600,
-  fontHeadersH3Size: 1.15,
-  fontHeadersH3Weight: 600,
-  fontParTitleFamily: null,
-  fontParTitleWeight: 500,
-};
+// Shipped defaults are loaded from a JSON sidecar so the personal-prefs
+// promotion pipeline can rewrite them without touching TS source.
+export const DEFAULT_PREFS: EditorPreferences = defaultPrefsJson as EditorPreferences;
 
 // ─── Presets ──────────────────────────────────────────────────────────────────
 

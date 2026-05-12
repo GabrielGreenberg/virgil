@@ -637,7 +637,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 height: wrapperRect.height,
               },
             });
-            window.setTimeout(() => setCardLiftTarget(null), 2000);
+            window.setTimeout(() => setCardLiftTarget(null), 150);
             // Spawn the float centered on the cursor's x, slightly below
             // the cursor's y so the user's grip sits inside the header.
             const spawn = {
@@ -1283,7 +1283,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 height: wrapperRect.height,
               },
             });
-            window.setTimeout(() => setCardLiftTarget(null), 2000);
+            window.setTimeout(() => setCardLiftTarget(null), 150);
             // Spawn the float centered on the cursor's x, slightly below
             // the cursor's y so the user's grip sits inside the header.
             const spawn = {

@@ -39,33 +39,11 @@ export interface PrintOptions {
 export const PRINT_FONT_SIZES = [0.85, 0.95, 1.05, 1.15, 1.25] as const;
 export const PRINT_FONT_LABELS = ["S", "M", "L", "XL", "XXL"] as const;
 
-export const DEFAULT_PRINT_OPTIONS: PrintOptions = {
-  elements: {
-    title: true,
-    sectionNumbers: true,
-    latexComments: false,
-    footnoteMarkers: true,
-    citations: true,
-    examples: true,
-    displayMath: true,
-    marginalia: false,
-    linkedAnchorUnderlines: false,
-  },
-  panels: {
-    notes: false,
-    footnotes: true,
-    citations: false,
-    bibliography: true,
-    quotations: false,
-    examples: false,
-    todo: false,
-    archive: false,
-    revisions: false,
-    cutter: false,
-    errors: false,
-  },
-  fontSizeRem: 1.05,
-};
+// Shipped defaults are loaded from a JSON sidecar so the personal-prefs
+// promotion pipeline can rewrite them without touching TS source.
+import defaultPrintOptionsJson from "./print.defaults.json";
+
+export const DEFAULT_PRINT_OPTIONS: PrintOptions = defaultPrintOptionsJson as PrintOptions;
 
 const kebab = (s: string) => s.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
 

@@ -1,0 +1,27 @@
+{
+  "elements": {
+    "title": true,
+    "sectionNumbers": true,
+    "latexComments": false,
+    "footnoteMarkers": true,
+    "citations": true,
+    "examples": true,
+    "displayMath": true,
+    "marginalia": false,
+    "linkedAnchorUnderlines": false
+  },
+  "panels": {
+    "notes": false,
+    "footnotes": true,
+    "citations": false,
+    "bibliography": true,
+    "quotations": false,
+    "examples": false,
+    "todo": false,
+    "archive": false,
+    "revisions": false,
+    "cutter": false,
+    "errors": false
+  },
+  "fontSizeRem": 1.05
+}

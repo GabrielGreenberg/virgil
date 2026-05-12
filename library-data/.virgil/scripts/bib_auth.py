@@ -711,6 +711,173 @@ def _extract_isbns_from_paper(library: Path, citekey: str) -> list[str]:
     return out
 
 
+# ── Indexed-paper page-range extraction (Phase D2 — DOI fast-path
+#    cross-check). When a bib has a pre-existing DOI, the fast-path
+#    used to trust it unconditionally. The 2026-05-09 audit found 3
+#    cases where prior fuzzy searches had written the wrong DOI to the
+#    bib, then later runs' DOI fast-path stamped them as
+#    `authenticated` at score=1.0. The cross-check below compares the
+#    DOI's resolved Crossref `page` field to the printed page range
+#    recovered by `\pgmark{N}` markers in the indexed PDF.
+
+_PGMARK_BODY_RE = re.compile(r"\\pgmark\{(\d+)\}")
+
+
+def _pgmark_range_from_paper(library: Path, citekey: str) -> Optional[tuple[int, int]]:
+    """Return (min, max) printed page numbers from the indexed
+    `papers/<ck>/main.tex`'s `\\pgmark{N}` markers, or None if the file
+    doesn't exist / has no markers / isn't yet indexed."""
+    p = library / "papers" / citekey / "main.tex"
+    if not p.exists():
+        return None
+    try:
+        text = p.read_text(errors="replace")
+    except Exception:
+        return None
+    nums = [int(m.group(1)) for m in _PGMARK_BODY_RE.finditer(text)]
+    if not nums:
+        return None
+    return (min(nums), max(nums))
+
+
+def _parse_crossref_page_range(pg: str) -> Optional[tuple[int, int]]:
+    """Parse a Crossref `page` value (`'272-277'`, `'243'`, `'1293-1302'`,
+    or various unicode-dash forms) into `(start, end)`. Returns None for
+    non-numeric / malformed values."""
+    if not pg:
+        return None
+    s = " ".join(pg.split())
+    m = re.match(r"^(\d+)\s*[-–—]+\s*(\d+)$", s)
+    if m:
+        return (int(m.group(1)), int(m.group(2)))
+    m = re.match(r"^(\d+)$", s)
+    if m:
+        n = int(m.group(1))
+        return (n, n)
+    return None
+
+
+_TEX_AUTHOR_RE = re.compile(r"\\author\{([^}]+)\}")
+
+
+def _maketitle_author_count(library: Path, citekey: str) -> Optional[int]:
+    """Count distinct authors visible in the indexed PDF's
+    `papers/<ck>/main.tex` `\\maketitle` block (the `\\author{...}`
+    line). Returns None if main.tex doesn't exist or has no
+    `\\author` line.
+
+    Used by the post-search cross-check: when a fuzzy match returns a
+    record with a wildly different author count (single-author book
+    matched to a 7-author journal paper, etc.), the author count from
+    the PDF — extracted at indexing time, before any auth contamination
+    — is a reliable cross-reference."""
+    p = library / "papers" / citekey / "main.tex"
+    if not p.exists():
+        return None
+    try:
+        head = p.read_text(errors="replace")[:8000]
+    except Exception:
+        return None
+    m = _TEX_AUTHOR_RE.search(head)
+    if not m:
+        return None
+    raw = m.group(1)
+    parts = [a.strip() for a in re.split(r"\\and|,| and ", raw) if a.strip()]
+    return len(parts) or None
+
+
+def _record_authors_compatible(
+    rec: dict, library: Optional[Path], citekey: Optional[str],
+) -> tuple[bool, str]:
+    """Cross-check the matched record's author count against the
+    indexed PDF's `\\author{}` line. Reject when the counts diverge
+    by ≥ 3 (a strong signal that the match is for a different paper).
+
+    Returns `(True, "")` when:
+      - library / citekey not provided (caller didn't ask), OR
+      - main.tex has no `\\author{}` line we can count, OR
+      - record has no authors list, OR
+      - counts are within 2 of each other (allowing for "et al"
+        abbreviations and editor lists).
+
+    Note: the bib's `author` field can lie (single-author overwrites
+    happen all the time), but the PDF's `\\author{}` line is set at
+    indexing time from the source title page and is generally honest.
+    """
+    if not (library and citekey):
+        return (True, "")
+    pdf_count = _maketitle_author_count(library, citekey)
+    if pdf_count is None:
+        return (True, "")
+    rec_authors = rec.get("authors") or []
+    rec_count = len([a for a in rec_authors if a and not _is_author_sentinel(a)])
+    if rec_count == 0:
+        return (True, "")
+    if abs(rec_count - pdf_count) >= 3:
+        return (False,
+                f"PDF title page lists {pdf_count} authors but the matched "
+                f"record has {rec_count}; mismatch suggests this is the "
+                f"wrong paper.")
+    return (True, "")
+
+
+def _doi_fast_path_pages_compatible(
+    rec: dict, library: Optional[Path], citekey: Optional[str],
+) -> tuple[bool, str]:
+    """For the DOI fast-path: cross-check the Crossref record's `page`
+    against the indexed PDF's printed page range. Returns
+    `(ok, reason_if_not_ok)`.
+
+    Returns `(True, "")` when:
+      - the library / citekey aren't passed in (caller didn't ask for the
+        check — backward-compatible), OR
+      - the indexed PDF has no pgmarks yet (paper wasn't indexed; we
+        can't verify either way), OR
+      - the pgmark range looks like the page-number detector latched
+        onto the publication year instead of the page numbers (every
+        mark is between 1900 and 2030, range span ≤ 30) — we can't
+        trust the cross-check in that case, so we let the DOI through
+        on the original verification basis, OR
+      - the Crossref record has no parseable `page` field, OR
+      - the ranges overlap (genuine match), OR
+      - the PDF is plausibly an advance-article offprint (PDF starts at
+        0 or 1, Crossref starts somewhere far higher — common for OUP /
+        Springer / T&F online-first PDFs).
+
+    Returns `(False, reason)` when the ranges are clearly disjoint —
+    e.g. PDF prints 491-553 but Crossref's record is 215-239 (the
+    `greenberg2023map` 2026-05-09 case).
+    """
+    if not (library and citekey):
+        return (True, "")
+    pdf_range = _pgmark_range_from_paper(library, citekey)
+    if not pdf_range:
+        return (True, "")
+    pdf_min, pdf_max = pdf_range
+    # Year-as-pgmark suspicion: the pgmark detector occasionally locks
+    # onto a year string in the header/footer (©2007-2023, etc.) and
+    # emits years instead of printed page numbers. When every mark is
+    # in [1900, 2030] AND the span is small (≤ 30, typical for
+    # publication-date ranges), treat the pgmark range as untrustworthy
+    # and skip the cross-check.
+    if 1900 <= pdf_min and pdf_max <= 2030 and (pdf_max - pdf_min) <= 30:
+        return (True, "")
+    cr_pages = _parse_crossref_page_range(rec.get("page", ""))
+    if not cr_pages:
+        return (True, "")
+    cr_start, cr_end = cr_pages
+    # Advance-article carve-out (offprint with reset pagination).
+    if pdf_min in (0, 1) and cr_start > 10:
+        return (True, "")
+    # Disjoint ranges (with a small slop for off-by-one cover-page noise).
+    if cr_start < pdf_min - 5 or cr_start > pdf_max + 5:
+        return (False,
+                f"PDF prints pages {pdf_min}-{pdf_max} but Crossref's record "
+                f"for this DOI spans {cr_start}-{cr_end}; DOI is for a "
+                f"different paper.")
+    return (True, "")
+
+
 # ── Recovery: DOI extraction from indexed paper ────────────────────────
 
 _DOI_BODY_RE = re.compile(r"\b10\.\d{4,9}/[^\s)\}\],;'\"]+")
@@ -1435,6 +1602,15 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
     # P7: DOI fast-path. The DOI is the canonical identifier; if Crossref
     # returns a record for it, that IS the paper, regardless of how junk
     # the bib's title field is. Field changes will replace the junk title.
+    #
+    # Important caveat: the bib's DOI may have been written by a *prior*
+    # fuzzy auth (crossref-search / crossref-journal-author-year), and
+    # the "fast-path" then re-confirms a junk match against itself. The
+    # 2026-05-09 audit caught three such cases (greenberg2023map,
+    # lewis1969convention, zeki1993vision — wildly wrong DOIs accepted
+    # at score=1.0). To prevent this, cross-check the Crossref record's
+    # `page` against the indexed PDF's `\pgmark{N}` page range when the
+    # paper is already indexed. Wildly disjoint ranges → reject.
     existing_doi = (current_fields.get("doi") or "").strip()
     if existing_doi:
         doi_recs = _doi_lookup(existing_doi)
@@ -1442,14 +1618,35 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
             rec = doi_recs[0]
             title_sim = _ratio(seed_title, rec.get("title", ""))
             rec_title = rec.get("title", "")[:80]
-            return _authenticated_from_record(
-                rec, current_fields, entry_type,
-                sources=["crossref-doi"],
-                score=max(title_sim, 0.95),
-                note=f"DOI fast-path: {existing_doi} verified via Crossref (title sim={title_sim:.2f}, record={rec_title!r})",
-                doi_verified=True,
+            page_ok, page_reason = _doi_fast_path_pages_compatible(
+                rec, library, citekey,
             )
+            authors_ok, authors_reason = _record_authors_compatible(
+                rec, library, citekey,
+            )
+            if page_ok and authors_ok:
+                return _authenticated_from_record(
+                    rec, current_fields, entry_type,
+                    sources=["crossref-doi"],
+                    score=max(title_sim, 0.95),
+                    note=f"DOI fast-path: {existing_doi} verified via Crossref (title sim={title_sim:.2f}, record={rec_title!r})",
+                    doi_verified=True,
+                )
+            reject_reason = page_reason or authors_reason
+            # Page mismatch — fall through to title-search recovery.
+            # Don't return failure outright; the title search may find
+            # the correct record. But mark the prior DOI as suspect so
+            # the caller can clear it before applying field changes.
+            seed_title_for_search = seed_title  # keep going
+            doi_rejection_note = (
+                f"DOI fast-path REJECTED: {existing_doi} → "
+                f"{rec_title!r} but {reject_reason}"
+            )
+        else:
+            doi_rejection_note = ""
         time.sleep(0.2)
+    else:
+        doi_rejection_note = ""
 
     # P8: arXiv-ID fast-path. Some bibs bury the arXiv ID in `journal`
     # ("arXiv preprint arXiv:1810.04805"), `note`, `url`, or `eprint`.
@@ -1480,6 +1677,33 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
     result = _authenticate_core(seed_title, seed_authors, current_fields,
                                 entry_type=entry_type)
     if result.state == "authenticated":
+        # Apply the same cross-checks used by the DOI fast-path: when
+        # the bib's title was already corrupted by a prior fuzzy auth
+        # (so the title-search re-confirms the same wrong record), we
+        # still catch it via the printed-page mismatch OR the
+        # author-count mismatch against the PDF's `\maketitle` line.
+        # Downgrade to `unverified` so the operator can review rather
+        # than re-stamping a wrong record as authenticated.
+        if library and citekey and result.matched_record:
+            page_ok, page_reason = _doi_fast_path_pages_compatible(
+                result.matched_record, library, citekey,
+            )
+            authors_ok, authors_reason = _record_authors_compatible(
+                result.matched_record, library, citekey,
+            )
+            if not page_ok or not authors_ok:
+                reject = page_reason or authors_reason
+                result.state = "unverified"
+                # Clear the rejected match's field_changes — callers
+                # shouldn't apply fields from a paper we just rejected
+                # as the wrong record.
+                result.field_changes = []
+                result.matched_record = None
+                result.note = (
+                    f"cross-check rejected: {reject} "
+                    f"Original match: {result.note}"
+                )
+                return result
         return result
 
     # Recovery chain — only if we know where the indexed paper lives.

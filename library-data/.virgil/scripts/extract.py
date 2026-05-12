@@ -162,7 +162,8 @@ def _extract_pymupdf(
         page_h = page.rect.height
         td = page.get_text("dict")
         page_print = (
-            page_map[i - 1]["print_page"] if i - 1 < len(page_map) else str(i)
+            (page_map[i - 1]["print_page"] or "")
+            if i - 1 < len(page_map) else str(i)
         )
 
         # Per-page sub-list so we can tag first/last block on this PDF page.
@@ -265,7 +266,7 @@ def _extract_marker(pdf_path: str, page_map: list[dict]) -> list[Block]:
 
     # Cheap MD parser: split by blank lines, detect # headings.
     page_idx = 0
-    print_page = page_map[0]["print_page"] if page_map else "1"
+    print_page = (page_map[0]["print_page"] or "") if page_map else "1"
     paragraphs = md.split("\n\n")
     for para in paragraphs:
         para = para.strip()

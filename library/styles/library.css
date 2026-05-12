@@ -22,6 +22,7 @@
      for explicitness so library.css can be reasoned about in isolation. */
   --math-bg: #f0eeeb;
   --pgmark-bg: #f5f0ea;
+  --pgmark-color: #856a1c;
   --citation-border: #e0d5a8;
 }
 

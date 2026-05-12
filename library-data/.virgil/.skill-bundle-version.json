@@ -1,6 +1,6 @@
 {
-  "version": "196a5ff37af7",
-  "syncedAt": "2026-05-10T18:08:57.031Z",
+  "version": "997e06643f72",
+  "syncedAt": "2026-05-12T14:27:35.452Z",
   "files": [
     "CLAUDE.md",
     "claude-commands/ai-requests.md",
@@ -15,8 +15,10 @@
     "claude-commands/triage-pending.md",
     "scripts/_bib_parse.py",
     "scripts/_tools.py",
+    "scripts/append_inbox_item.py",
     "scripts/backfill_auth.py",
     "scripts/bib_auth.py",
+    "scripts/bump_catalog_version.py",
     "scripts/deep_preprocess.py",
     "scripts/drain_queue.py",
     "scripts/extract.py",
@@ -25,9 +27,12 @@
     "scripts/index_paper.py",
     "scripts/pgmark.py",
     "scripts/pgmark_validate.py",
+    "scripts/repair_pgmarks.py",
     "scripts/requirements.txt",
     "scripts/tex_emit.py",
     "scripts/triage_apply.py",
-    "scripts/triage_batch.py"
+    "scripts/triage_batch.py",
+    "scripts/update_catalog_entry.py",
+    "scripts/update_master_bib_entry.py"
   ]
 }

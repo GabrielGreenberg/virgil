@@ -218,7 +218,7 @@ export default function PaperHeader({
         display: "flex",
         flexDirection: "column",
         gap: 6,
-        padding: "10px 0",
+        padding: "10px calc(4px + var(--pod-gap))",
         background: "var(--background)",
       }}
     >

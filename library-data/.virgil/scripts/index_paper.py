@@ -38,7 +38,18 @@ from typing import Optional
 # Make sibling scripts importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _tools import detect
+from _tools import (
+    append_inbox_item,
+    bump_catalog_version,
+    detect,
+    emit_bib_entry,
+    lock_catalog,
+    read_catalog,
+    read_master_bib,
+    update_master_bib_entry,
+    upsert_catalog_entry,
+    write_catalog,
+)
 from pgmark import detect_print_pages
 from pgmark_validate import validate as pgmark_validate
 from extract import extract_to_json, _ocr_if_needed
@@ -96,174 +107,17 @@ def _slug() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d-%H%M%S")
 
 
-def _read_master_bib(path: Path) -> dict[str, dict]:
-    """Lightweight bib parser that returns {citekey: {type, fields, raw}}."""
-    if not path.exists():
-        return {}
-    text = path.read_text()
-    entries: dict[str, dict] = {}
-    i = 0
-    while i < len(text):
-        if text[i] != "@":
-            i += 1
-            continue
-        # Find type
-        type_end = text.find("{", i)
-        if type_end == -1:
-            break
-        entry_type = text[i + 1:type_end].strip().lower()
-        # Find citekey
-        key_end = text.find(",", type_end)
-        if key_end == -1:
-            break
-        citekey = text[type_end + 1:key_end].strip()
-        # Find matching closing brace
-        depth = 1
-        j = type_end + 1
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        raw = text[i:j]
-        # Parse fields with a simple state machine.
-        body = text[key_end + 1:j - 1]
-        fields = _parse_fields(body)
-        entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
-        i = j
-    return entries
-
-
-def _parse_fields(body: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    i = 0
-    while i < len(body):
-        # Skip whitespace and commas.
-        while i < len(body) and body[i] in " \t\n\r,":
-            i += 1
-        if i >= len(body):
-            break
-        # Field name = until '='
-        eq = body.find("=", i)
-        if eq == -1:
-            break
-        name = body[i:eq].strip().lower()
-        i = eq + 1
-        # Skip whitespace
-        while i < len(body) and body[i] in " \t\n\r":
-            i += 1
-        if i >= len(body):
-            break
-        # Value: either {…} or "…" or bare-word
-        if body[i] == "{":
-            depth = 1
-            j = i + 1
-            while j < len(body) and depth > 0:
-                if body[j] == "{":
-                    depth += 1
-                elif body[j] == "}":
-                    depth -= 1
-                j += 1
-            out[name] = body[i + 1:j - 1].strip()
-            i = j
-        elif body[i] == '"':
-            j = body.find('"', i + 1)
-            if j == -1:
-                break
-            out[name] = body[i + 1:j].strip()
-            i = j + 1
-        else:
-            j = i
-            while j < len(body) and body[j] not in ",\n":
-                j += 1
-            out[name] = body[i:j].strip()
-            i = j
-    return out
-
-
-def _emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
-    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
-    return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
-
-
-def _update_master_bib_entry(
-    master_path: Path,
-    citekey: str,
-    entry_type: str,
-    fields: dict[str, str],
-    bib_state: str = "",
-) -> None:
-    """Replace one entry in master.bib with updated fields.
-
-    Finds the @type{citekey, ...} block, replaces it (and any preceding
-    '% bib.state = ...' comment line) with a freshly emitted block.
-    If the citekey is not found, appends at the end.
-    """
-    if not master_path.exists():
-        master_path.write_text("")
-    text = master_path.read_text()
-
-    # Locate the @type{citekey, ...} block.
-    import re
-    pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
-    m = pattern.search(text)
-
-    replacement = ""
-    if bib_state:
-        replacement += f"% bib.state = {bib_state}\n"
-    replacement += _emit_bib_entry(citekey, entry_type, fields)
-
-    if m:
-        entry_start = m.start()
-        # Find matching closing brace from the opening brace.
-        brace_pos = text.index("{", m.start())
-        depth = 1
-        j = brace_pos + 1
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        entry_end = j
-
-        # Check for a preceding "% bib.state = ..." comment line.
-        # Find the start of the line the @ is on, then check the line before it.
-        at_line_start = text.rfind("\n", 0, entry_start)
-        if at_line_start == -1:
-            at_line_start = 0
-        else:
-            at_line_start += 1
-        prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
-        if prev_line_start == -1:
-            prev_line_start = 0
-        else:
-            prev_line_start += 1
-        prev_line = text[prev_line_start:at_line_start].strip()
-        if prev_line.startswith("% bib.state"):
-            entry_start = prev_line_start
-
-        text = text[:entry_start] + replacement + text[entry_end:]
-    else:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        text += "\n" + replacement
-
-    master_path.write_text(text)
-
-
 def _resync_references_bib(library: Path, citekey: str) -> bool:
     """Re-emit papers/<citekey>/references.bib from master.bib."""
     paper_dir = library / "papers" / citekey
     if not paper_dir.exists():
         return False
-    master = _read_master_bib(library / "master.bib")
+    master = read_master_bib(library / "master.bib")
     entry = master.get(citekey)
     if not entry:
         return False
     (paper_dir / "references.bib").write_text(
-        _emit_bib_entry(citekey, entry["type"], entry["fields"])
+        emit_bib_entry(citekey, entry["type"], entry["fields"])
     )
     return True
 
@@ -271,85 +125,26 @@ def _resync_references_bib(library: Path, citekey: str) -> bool:
 def _sync_catalog_entry_from_master(library: Path, citekey: str,
                                     bib_status: dict) -> None:
     """Sync catalog.json top-level fields from master.bib so they can't drift."""
-    master = _read_master_bib(library / "master.bib")
+    master = read_master_bib(library / "master.bib")
     entry = master.get(citekey)
     if not entry:
         return
     fields = entry["fields"]
-    catalog = _read_catalog(library)
     authors_str = fields.get("author", "")
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
     year_raw = fields.get("year", "")
     year = int(year_raw) if year_raw.isdigit() else year_raw
-    _upsert_entry(
-        catalog, citekey,
-        title=fields.get("title", ""),
-        authors=authors,
-        year=year,
-        doi=fields.get("doi") or None,
-        bib=bib_status,
-    )
-    _write_catalog(library, catalog)
-
-
-def _append_notification(library: Path, item: dict) -> None:
-    inbox_path = library / ".virgil" / "notifications" / "inbox.json"
-    inbox = {"items": []}
-    if inbox_path.exists():
-        try:
-            inbox = json.loads(inbox_path.read_text())
-        except Exception:
-            pass
-    inbox.setdefault("items", []).append(item)
-    # Cap to last 200 items so it doesn't grow forever.
-    inbox["items"] = inbox["items"][-200:]
-    inbox_path.parent.mkdir(parents=True, exist_ok=True)
-    inbox_path.write_text(json.dumps(inbox, indent=2) + "\n")
-
-
-def _bump_catalog_version(library: Path) -> None:
-    p = library / ".virgil" / "catalog-version.txt"
-    cur = 0
-    if p.exists():
-        try:
-            cur = int(p.read_text().strip() or "0")
-        except Exception:
-            cur = 0
-    p.write_text(str(cur + 1) + "\n")
-
-
-def _read_catalog(library: Path) -> dict:
-    p = library / ".virgil" / "catalog.json"
-    if p.exists():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {"version": 1, "generatedAt": _now(), "entries": []}
-
-
-def _write_catalog(library: Path, catalog: dict) -> None:
-    catalog["generatedAt"] = _now()
-    (library / ".virgil" / "catalog.json").write_text(json.dumps(catalog, indent=2) + "\n")
-
-
-def _upsert_entry(catalog: dict, citekey: str, **fields) -> dict:
-    for e in catalog.get("entries", []):
-        if e.get("citekey") == citekey:
-            e.update(fields)
-            e["updatedAt"] = _now()
-            return e
-    e = {
-        "citekey": citekey,
-        "addedAt": _now(),
-        "updatedAt": _now(),
-        "pdf": {"present": False},
-        "indexed": {"state": "none"},
-        "bib": {"state": "none"},
-        **fields,
-    }
-    catalog.setdefault("entries", []).append(e)
-    return e
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        upsert_catalog_entry(
+            catalog, citekey,
+            title=fields.get("title", ""),
+            authors=authors,
+            year=year,
+            doi=fields.get("doi") or None,
+            bib=bib_status,
+        )
+        write_catalog(library, catalog)
 
 
 def _sha256(p: Path) -> str:
@@ -489,7 +284,7 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
 
     # 4. Read .bib entry to get title/authors/year for emission.
     log("Step 4: read master.bib for metadata")
-    master = _read_master_bib(library / "master.bib")
+    master = read_master_bib(library / "master.bib")
     bib_entry = master.get(citekey)
     if not bib_entry:
         raise KeyError(f"{citekey} not found in master.bib — add an entry before indexing")
@@ -618,8 +413,8 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
                     log(f"  TITLE-SUSPECT: {reason}")
                     bib_status["titleSuspect"] = reason
                     title = fields.get("title", title)
-                _update_master_bib_entry(
-                    library / "master.bib",
+                update_master_bib_entry(
+                    library,
                     citekey,
                     effective_type,
                     fields,
@@ -633,12 +428,11 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
 
     # 8. Single-entry references.bib mirror (post-auth fields).
     (paper_dir / "references.bib").write_text(
-        _emit_bib_entry(citekey, bib_entry["type"], fields)
+        emit_bib_entry(citekey, bib_entry["type"], fields)
     )
 
     # 9. Update catalog.json.
     log("Step 7: update catalog.json")
-    catalog = _read_catalog(library)
     if source_ext == "pdf":
         page_count = _page_count(source_path)
         pgmark_count = len(set(p["print_page"] for p in page_map))
@@ -669,27 +463,33 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         source_status["alternates"] = alts
         log(f"  Lower-priority sources kept on disk: {alts}")
 
-    entry = _upsert_entry(
-        catalog,
-        citekey,
-        title=title,
-        authors=[a.strip() for a in authors.split(" and ") if a.strip()],
-        year=int(year) if year.isdigit() else year,
-        doi=fields.get("doi") or None,
-        pdf=source_status,
-        indexed={
-            "state": "indexed",
-            "lastIndexedAt": _now(),
-            "extractor": extractor_used,
-            "pgmarkCount": pgmark_count,
-            "pgmarkPosition": layout_position,
-            **({"pgmarkSource": pgmark_source} if pgmark_source else {}),
-            "footnoteCount": sum(1 for b in extracted["blocks"] if b.get("kind") == "footnote"),
-            "warnings": pgmark_warnings,
-        },
-        bib=bib_status,
-    )
-    _write_catalog(library, catalog)
+    # Build the row update outside the lock; do the read-mutate-write
+    # under `lock_catalog` so concurrent writers don't clobber each
+    # other's row updates.
+    indexed_block = {
+        "state": "indexed",
+        "lastIndexedAt": _now(),
+        "extractor": extractor_used,
+        "pgmarkCount": pgmark_count,
+        "pgmarkPosition": layout_position,
+        **({"pgmarkSource": pgmark_source} if pgmark_source else {}),
+        "footnoteCount": sum(1 for b in extracted["blocks"] if b.get("kind") == "footnote"),
+        "warnings": pgmark_warnings,
+    }
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        entry = upsert_catalog_entry(
+            catalog,
+            citekey,
+            title=title,
+            authors=[a.strip() for a in authors.split(" and ") if a.strip()],
+            year=int(year) if year.isdigit() else year,
+            doi=fields.get("doi") or None,
+            pdf=source_status,
+            indexed=indexed_block,
+            bib=bib_status,
+        )
+        write_catalog(library, catalog)
 
     # 10. Logs + notifications + version bump.
     log_dir = library / ".virgil" / "logs" / citekey
@@ -714,13 +514,12 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
             pgmark_report.to_markdown()
         )
 
-    _append_notification(library, {
+    append_inbox_item(library, {
         "kind": "indexed",
         "citekey": citekey,
         "at": _now(),
         "summary": f"Indexed {citekey} ({extractor_used}, {len(extracted['blocks'])} blocks)",
     })
-    _bump_catalog_version(library)
 
     log("Done.")
     return entry
@@ -751,13 +550,13 @@ def main() -> int:
         traceback.print_exc()
         # Append failure notification.
         try:
-            _append_notification(Path(args.library).expanduser(), {
+            append_inbox_item(Path(args.library).expanduser(), {
                 "kind": "failed",
                 "citekey": args.citekey,
                 "at": _now(),
                 "summary": f"Index failed: {e}",
             })
-            _bump_catalog_version(Path(args.library).expanduser())
+            bump_catalog_version(Path(args.library).expanduser())
         except Exception:
             pass
         return 1

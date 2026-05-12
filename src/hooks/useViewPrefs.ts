@@ -6,6 +6,7 @@ import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-positio
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
+import defaultPrefsJson from "./useViewPrefs.defaults.json";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 
@@ -138,53 +139,13 @@ export interface ViewPrefs {
   topbarRightCollapsed: boolean;
 }
 
+// Shipped defaults are loaded from a JSON sidecar so the personal-prefs
+// promotion pipeline can rewrite them without touching TS source.
+// printOptions is filled in from DEFAULT_PRINT_OPTIONS (owned by print.ts)
+// rather than duplicated into the JSON.
 const DEFAULT_PREFS: ViewPrefs = {
-  placements: [
-    // Left strip — research / reference tools
-    { id: "search", side: "left" },
-    { id: "outline", side: "left" },
-    { id: "footnotes", side: "left" },
-    { id: "citations", side: "left" },
-    { id: "bibliography", side: "left" },
-    { id: "quotations", side: "left" },
-    { id: "examples", side: "left" },
-    // Right strip — writing / workflow tools
-    { id: "wordcount", side: "right" },
-    { id: "notes", side: "right" },
-    { id: "todo", side: "right" },
-    { id: "revisions", side: "right" },
-    { id: "errors", side: "right" },
-    { id: "cutter", side: "right" },
-    { id: "archive", side: "right" },
-    // NOTE: "omni" and "blank" are presentation-tool pod panels — they
-    // are not placed in the strip and are not part of `placements`.
-  ],
-  activeLeft: "omni",
-  activeRight: "omni",
-  activeLeftBottom: null,
-  activeRightBottom: null,
-  splitLeftRatio: 0.5,
-  splitRightRatio: 0.5,
-  panelWidths: {},
-  editorSplit: false,
-  editorSplitRatio: 0.5,
-  poppedOutPanels: [],
-  poppedOutOrigins: {},
-  floatPositions: {},
-  panelModes: {},
-  dockSlots: {},
-  poppedOutCards: [],
-  cardFloatPositions: {},
-  showHighlights: true,
-  hiddenHighlightTypes: [],
-  menuLocation: { kind: "home" },
-  pageWidth: 880,
-  topGutter: 0,
-  bottomGutter: 0,
-  editorLeftMargin: 88,
-  editorRightMargin: 72,
+  ...(defaultPrefsJson as Omit<ViewPrefs, "printOptions">),
   printOptions: DEFAULT_PRINT_OPTIONS,
-  topbarRightCollapsed: false,
 };
 
 const LEGACY_STORAGE_KEY = "virgil-view-prefs";
@@ -303,6 +264,14 @@ function loadPrefs(): ViewPrefs {
       if (parsed.activeLeft === "suggestions") parsed.activeLeft = "revisions";
       if (parsed.activeRight === "suggestions") parsed.activeRight = "revisions";
     }
+    // Migrate: presentation-pod panels (registry `defaultStripSide: null`,
+    // e.g. "omni") must never have a side placement. A drag in an older
+    // build could leave one persisted, which then leaks the panel back
+    // onto the strip as a stray icon. Strip them on load.
+    placements = placements.filter((p: any) => {
+      const reg = PANEL_REGISTRY[p.id as PanelId];
+      return !reg || reg.defaultStripSide !== null;
+    });
     // Merge with defaults to handle new panels added in updates
     const existingIds = new Set(placements.map((p: PanelPlacement) => p.id));
     const merged = [...placements];
@@ -800,6 +769,87 @@ export function useViewPrefs() {
       : { ...p, splitRightRatio: clamped }));
   }, [update]);
 
+  /** Internal-only ratio setter used by useAutoSplitDock to track a
+   *  single docked panel's natural content height. Functionally
+   *  identical to setSplitRatio today; kept separate so a future
+   *  user-vs-auto override flag can distinguish the call sites. */
+  const setSplitRatioInternal = useCallback((side: Side, ratio: number) => {
+    const clamped = Math.max(0.05, Math.min(0.95, ratio));
+    update((p) => (side === "left"
+      ? { ...p, splitLeftRatio: clamped }
+      : { ...p, splitRightRatio: clamped }));
+  }, [update]);
+
+  /** Atomically engage split mode and set the height ratio in one
+   *  state update. Used by useAutoSplitDock when a single docked panel
+   *  leaves enough leftover space for a second slot. Mirrors the
+   *  "splitting on" branch of toggleSplit: migrates ${side}-full's
+   *  occupant to ${side}-top, sets the bottom slot's marker to "omni",
+   *  and sets the split ratio. No-op if already split. */
+  const engageAutoSplit = useCallback((side: Side, ratio: number) => {
+    const clamped = Math.max(0.05, Math.min(0.95, ratio));
+    update((p) => {
+      const isSplit =
+        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
+      if (isSplit) {
+        return side === "left"
+          ? { ...p, splitLeftRatio: clamped }
+          : { ...p, splitRightRatio: clamped };
+      }
+      const fullKey = dockSlotKey(side, "full");
+      const topKey = dockSlotKey(side, "top");
+      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
+      if (nextDockSlots[fullKey]) {
+        nextDockSlots[topKey] = nextDockSlots[fullKey];
+        delete nextDockSlots[fullKey];
+      }
+      if (side === "left") {
+        const top = p.activeLeft ?? "omni";
+        return {
+          ...p,
+          dockSlots: nextDockSlots,
+          activeLeft: top,
+          activeLeftBottom: "omni",
+          splitLeftRatio: clamped,
+        };
+      }
+      const top = p.activeRight ?? "omni";
+      return {
+        ...p,
+        dockSlots: nextDockSlots,
+        activeRight: top,
+        activeRightBottom: "omni",
+        splitRightRatio: clamped,
+      };
+    });
+  }, [update]);
+
+  /** Disengage an auto-split: revert to non-split mode. Only called
+   *  by useAutoSplitDock when the side has a single docked panel in
+   *  the top slot and an empty bottom. Migrates ${side}-top's
+   *  occupant back to ${side}-full. No float-displacement path
+   *  needed (bottom slot is empty by construction). No-op if not
+   *  split. */
+  const disengageAutoSplit = useCallback((side: Side) => {
+    update((p) => {
+      const isSplit =
+        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
+      if (!isSplit) return p;
+      const fullKey = dockSlotKey(side, "full");
+      const topKey = dockSlotKey(side, "top");
+      const bottomKey = dockSlotKey(side, "bottom");
+      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
+      const topOccupant = nextDockSlots[topKey];
+      delete nextDockSlots[topKey];
+      delete nextDockSlots[bottomKey];
+      if (topOccupant) nextDockSlots[fullKey] = topOccupant;
+      if (side === "left") {
+        return { ...p, dockSlots: nextDockSlots, activeLeftBottom: null };
+      }
+      return { ...p, dockSlots: nextDockSlots, activeRightBottom: null };
+    });
+  }, [update]);
+
   const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
     update((p) => ({ ...p, editorSplit: typeof v === "function" ? v(p.editorSplit) : v }));
   }, [update]);
@@ -1061,6 +1111,9 @@ export function useViewPrefs() {
     setActiveHalf,
     toggleSplit,
     setSplitRatio,
+    setSplitRatioInternal,
+    engageAutoSplit,
+    disengageAutoSplit,
     setEditorSplit,
     setEditorSplitRatio,
     setPageWidth,

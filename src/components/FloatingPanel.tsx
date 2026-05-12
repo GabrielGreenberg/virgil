@@ -478,7 +478,7 @@ function FloatingPanelInner({
           ...(isHalfSlot
             ? { height: "100%" }
             : {
-                minHeight: 200,
+                minHeight: "var(--panel-min-h, 200px)",
                 // Cap at the dock-frame max-height the slot exposes,
                 // so PANEL.list's flex-1 overflow-y-auto can engage when
                 // content overflows. Falls back to none when not docked

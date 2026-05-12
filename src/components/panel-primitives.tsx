@@ -1339,10 +1339,8 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         // it, which won't be cursor-perfect but is at least close.
         onTogglePopout(new DOMRect(spawn.x, spawn.y, spawn.width, spawn.height));
       }
-      // Schedule the highlight's fade-out — it lingers a couple seconds
-      // after lift-off so the user gets a clear, sustained "you've lifted
-      // off" affordance, then fades.
-      window.setTimeout(() => setCardLiftTarget(null), 2000);
+      // Schedule the highlight's fade-out — a brief pulse on lift-off.
+      window.setTimeout(() => setCardLiftTarget(null), 150);
       cleanup();
     };
     const onUp = () => {

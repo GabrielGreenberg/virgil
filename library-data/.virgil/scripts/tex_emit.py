@@ -158,7 +158,11 @@ def emit(
     i = 0
     while i < n:
         blk = blocks[i]
-        print_page = str(blk.get("print_page") or blk.get("pdf_page") or "")
+        # NB: no fallback to pdf_page — pgmark.py sets print_page=None for
+        # pages it couldn't reliably anchor (missing-fallback demoted by
+        # the dedup pass), and we want those skipped, not coerced to a
+        # potentially duplicate label.
+        print_page = str(blk.get("print_page") or "")
         confidence = _confidence_for(blk, page_map)
 
         # Detect page boundary (this block starts a new printed page).

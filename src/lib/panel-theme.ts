@@ -23,19 +23,13 @@ export type PanelThemeKey =
   | "revision"
   | "example";
 
+// Shipped defaults are loaded from a JSON sidecar so the personal-prefs
+// promotion pipeline can rewrite them without touching TS source.
+import defaultPanelColorsJson from "./panel-theme.defaults.json";
+
 /** Base hex used to seed each panel's palette by default. */
-export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> = {
-  citation: "#d4a843",
-  bib:      "#b8a968",
-  footnote: "#b45757",
-  note:     "#15803d",
-  archive:  "#7191b0",
-  quote:    "#a16207",
-  todo:     "#44403c",
-  cut:      "#b45757",
-  revision: "#9333ea",
-  example:  "#0d9488",
-};
+export const DEFAULT_PANEL_COLORS: Record<PanelThemeKey, string> =
+  defaultPanelColorsJson as Record<PanelThemeKey, string>;
 
 /** Curated palette for the color picker. */
 export const PRESET_COLORS: { name: string; hex: string }[] = [

@@ -1,16 +1,63 @@
-"""Detect which extraction tools are available on this machine.
+"""Shared helpers for the Virgil Library Python pipeline.
 
-The indexing pipeline degrades gracefully:
-- digital-native PDFs only need pymupdf + poppler (always required)
-- scanned PDFs need ocrmypdf (optional)
-- layout-heavy PDFs benefit from marker (optional)
+Two concerns live here:
+
+1. **Tool detection** (the original purpose) — `Tools` dataclass + `detect()`,
+   used by the indexing pipeline to degrade gracefully when poppler /
+   marker / ocrmypdf aren't installed.
+2. **Concurrency-safe writes to shared library state** — POSIX advisory
+   locks for `master.bib`, `.virgil/catalog.json`, and
+   `.virgil/notifications/inbox.json`, plus the helpers that grab them.
+
+## Concurrency-safe writes
+
+Three files in a Virgil Library are shared across all skills/scripts:
+`master.bib`, `.virgil/catalog.json`, and `.virgil/notifications/inbox.json`.
+On 2026-05-09 a concurrent drain race truncated master.bib to a single
+entry — two index_paper.py processes each read the file, computed an
+updated version against their stale read, and wrote it back; the later
+writer's set lost everything the earlier had added. The same failure
+mode is latent on the other two files. We protect every read-modify-
+write here with `fcntl.flock` on a sidecar `.lock` file, and write data
+files atomically via temp-file + fsync + rename so concurrent readers
+always see either the old or the new contents.
+
+POSIX `flock` is advisory — the kernel does not enforce it against
+processes that don't ask for the lock. Claude-driven Write/Edit calls
+bypass it unless they go through a Python script that acquires the
+lock. That's why the library skills shell out to
+`update_catalog_entry.py`, `append_inbox_item.py`, and
+`update_master_bib_entry.py` for catalog/inbox/bib edits — those are
+the lock-respecting writers.
+
+Sidecar `.lock` files (rather than locks on the data file itself)
+because `Path.write_text` does open/truncate/write/close — closing the
+data file would release a lock held on its FD before the next reader
+acquires it. The sidecar's FD stays open across the rewrite.
+
+Each helper grabs only its own lock; we never compose locks across
+multiple files in one critical section, so there is no ordering rule
+to remember and no deadlock surface.
+
+Library runs on macOS / Linux. If Virgil ever ports to Windows,
+replace `fcntl.flock` with `msvcrt.locking`.
 """
 
 from __future__ import annotations
 
-import shutil
+import fcntl
 import importlib.util
+import json
+import os
+import re
+import shutil
+from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+# ── tool detection (original purpose) ─────────────────────────────────
 
 
 @dataclass
@@ -59,3 +106,378 @@ def detect() -> Tools:
         tesseract=shutil.which("tesseract") is not None,
         python_docx=importlib.util.find_spec("docx") is not None,
     )
+
+
+# ── small utilities ───────────────────────────────────────────────────
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write `text` to `path` via temp-file + fsync + rename.
+
+    Crash-safe and atomic from a reader's perspective: the file at
+    `path` is either the old contents or the new contents, never a
+    half-written truncation.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+# ── locks ─────────────────────────────────────────────────────────────
+
+
+@contextmanager
+def _flock_path(lock_path: Path):
+    """Acquire an exclusive POSIX advisory lock on `lock_path`.
+
+    Auto-released on FD close (so crashed processes can't leak the
+    lock indefinitely).
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path.touch(exist_ok=True)
+    fd = open(lock_path, "r+")
+    try:
+        fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd.fileno(), fcntl.LOCK_UN)
+        finally:
+            fd.close()
+
+
+@contextmanager
+def lock_master_bib(library: Path):
+    """Hold `<library>/master.bib.lock` for the with-block.
+
+    Required around any read-modify-write of master.bib. The 2026-05-09
+    truncation incident is what this lock prevents.
+    """
+    with _flock_path(library / "master.bib.lock"):
+        yield
+
+
+@contextmanager
+def lock_catalog(library: Path):
+    """Hold `<library>/.virgil/catalog.json.lock` for the with-block.
+
+    Required around any read-modify-write of catalog.json. Catalog
+    writes are full-file rewrites; unlocked concurrent writers will
+    silently drop each other's row updates.
+    """
+    with _flock_path(library / ".virgil" / "catalog.json.lock"):
+        yield
+
+
+@contextmanager
+def lock_inbox(library: Path):
+    """Hold `<library>/.virgil/notifications/inbox.json.lock` for the with-block.
+
+    Required around any append to inbox.json (the notification ring
+    buffer). Same race shape as catalog.json.
+    """
+    with _flock_path(library / ".virgil" / "notifications" / "inbox.json.lock"):
+        yield
+
+
+# ── catalog ──────────────────────────────────────────────────────────
+
+
+def read_catalog(library: Path) -> dict:
+    """Read catalog.json. No lock held — readers see whatever is on disk.
+
+    Atomic writes (`_atomic_write_text`) ensure readers never see a
+    half-written file. Returns the default empty structure if the file
+    is missing or malformed.
+    """
+    p = library / ".virgil" / "catalog.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text())
+        except Exception:
+            pass
+    return {"version": 1, "generatedAt": _now(), "entries": []}
+
+
+def write_catalog(library: Path, catalog: dict) -> None:
+    """Write catalog.json atomically and bump catalog-version.txt.
+    CALLER must hold `lock_catalog`.
+
+    Stamps `generatedAt` to now before writing. Always bumps the
+    version — every catalog change needs to be visible to the frontend
+    poller, and there's no scenario where you want a silent write.
+    """
+    catalog["generatedAt"] = _now()
+    _atomic_write_text(
+        library / ".virgil" / "catalog.json",
+        json.dumps(catalog, indent=2) + "\n",
+    )
+    _bump_version_locked(library)
+
+
+def _bump_version_locked(library: Path) -> None:
+    """Bump catalog-version.txt. CALLER must hold `lock_catalog`."""
+    p = library / ".virgil" / "catalog-version.txt"
+    cur = 0
+    if p.exists():
+        try:
+            cur = int(p.read_text().strip() or "0")
+        except Exception:
+            cur = 0
+    _atomic_write_text(p, str(cur + 1) + "\n")
+
+
+def bump_catalog_version(library: Path) -> None:
+    """Increment `.virgil/catalog-version.txt`. Self-locks via `lock_catalog`.
+
+    The frontend polls this file every 6s and re-reads catalog.json
+    when the number changes. Any change triggers a refresh, so the
+    value just needs to differ — we use a monotonically increasing
+    integer.
+    """
+    with lock_catalog(library):
+        _bump_version_locked(library)
+
+
+def _deep_merge(dst: dict, src: dict) -> None:
+    """Recursively merge `src` into `dst`.
+
+    Nested dicts merge; arrays and scalars replace.
+    """
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict):
+            _deep_merge(dst[k], v)
+        else:
+            dst[k] = v
+
+
+def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
+    """Apply `patch` to the catalog entry for `citekey`. Self-locks.
+
+    Deep-merge semantics: nested objects merge, arrays/scalars replace.
+    Also stamps `updatedAt` on the entry, refreshes `generatedAt` on
+    the catalog, and bumps `.virgil/catalog-version.txt` (via
+    `write_catalog`).
+
+    Raises `KeyError` if the entry is not present — callers update
+    rows that already exist. Use `upsert_catalog_entry` to add new
+    rows.
+    """
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        target = None
+        for e in catalog.get("entries", []):
+            if e.get("citekey") == citekey:
+                target = e
+                break
+        if target is None:
+            raise KeyError(f"catalog.json: no entry for citekey {citekey!r}")
+        _deep_merge(target, patch)
+        target["updatedAt"] = _now()
+        write_catalog(library, catalog)
+
+
+def upsert_catalog_entry(catalog: dict, citekey: str, **fields) -> dict:
+    """In-memory upsert against a catalog dict (no I/O, no lock).
+
+    Caller is responsible for reading + writing the catalog under
+    `lock_catalog`. Used by the indexing pipeline which already has
+    the catalog in hand when it computes new row fields.
+    """
+    for e in catalog.get("entries", []):
+        if e.get("citekey") == citekey:
+            e.update(fields)
+            e["updatedAt"] = _now()
+            return e
+    e = {
+        "citekey": citekey,
+        "addedAt": _now(),
+        "updatedAt": _now(),
+        "pdf": {"present": False},
+        "indexed": {"state": "none"},
+        "bib": {"state": "none"},
+        **fields,
+    }
+    catalog.setdefault("entries", []).append(e)
+    return e
+
+
+# ── inbox ────────────────────────────────────────────────────────────
+
+
+def append_inbox_item(library: Path, item: dict, *, cap: int = 200) -> None:
+    """Append `item` to `.virgil/notifications/inbox.json`. Self-locks.
+
+    Caps the ring buffer at `cap` items so it doesn't grow forever.
+    Tolerates missing/malformed inbox by starting fresh.
+    """
+    with lock_inbox(library):
+        inbox_path = library / ".virgil" / "notifications" / "inbox.json"
+        inbox: dict = {"items": []}
+        if inbox_path.exists():
+            try:
+                inbox = json.loads(inbox_path.read_text())
+            except Exception:
+                pass
+        inbox.setdefault("items", []).append(item)
+        inbox["items"] = inbox["items"][-cap:]
+        _atomic_write_text(
+            inbox_path,
+            json.dumps(inbox, indent=2) + "\n",
+        )
+
+
+# ── master.bib ───────────────────────────────────────────────────────
+
+
+def _parse_bib_fields(body: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    i = 0
+    while i < len(body):
+        while i < len(body) and body[i] in " \t\n\r,":
+            i += 1
+        if i >= len(body):
+            break
+        eq = body.find("=", i)
+        if eq == -1:
+            break
+        name = body[i:eq].strip().lower()
+        i = eq + 1
+        while i < len(body) and body[i] in " \t\n\r":
+            i += 1
+        if i >= len(body):
+            break
+        if body[i] == "{":
+            depth = 1
+            j = i + 1
+            while j < len(body) and depth > 0:
+                if body[j] == "{":
+                    depth += 1
+                elif body[j] == "}":
+                    depth -= 1
+                j += 1
+            out[name] = body[i + 1:j - 1].strip()
+            i = j
+        elif body[i] == '"':
+            j = body.find('"', i + 1)
+            if j == -1:
+                break
+            out[name] = body[i + 1:j].strip()
+            i = j + 1
+        else:
+            j = i
+            while j < len(body) and body[j] not in ",\n":
+                j += 1
+            out[name] = body[i:j].strip()
+            i = j
+    return out
+
+
+def read_master_bib(path: Path) -> dict[str, dict]:
+    """Lightweight bib parser. Returns {citekey: {type, fields, raw}}.
+
+    No lock held — readers see whatever is on disk. Atomic writes
+    (`_atomic_write_text`) ensure readers never see a partially-written
+    file.
+    """
+    if not path.exists():
+        return {}
+    text = path.read_text()
+    entries: dict[str, dict] = {}
+    i = 0
+    while i < len(text):
+        if text[i] != "@":
+            i += 1
+            continue
+        type_end = text.find("{", i)
+        if type_end == -1:
+            break
+        entry_type = text[i + 1:type_end].strip().lower()
+        key_end = text.find(",", type_end)
+        if key_end == -1:
+            break
+        citekey = text[type_end + 1:key_end].strip()
+        depth = 1
+        j = type_end + 1
+        while j < len(text) and depth > 0:
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+            j += 1
+        raw = text[i:j]
+        body = text[key_end + 1:j - 1]
+        fields = _parse_bib_fields(body)
+        entries[citekey] = {"type": entry_type, "fields": fields, "raw": raw}
+        i = j
+    return entries
+
+
+def emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
+    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
+    return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
+
+
+def update_master_bib_entry(
+    library: Path,
+    citekey: str,
+    entry_type: str,
+    fields: dict[str, str],
+    bib_state: str = "",
+) -> None:
+    """Replace (or append) one entry in master.bib. Self-locks.
+
+    Finds the @type{citekey, ...} block, replaces it (and any
+    preceding `% bib.state = ...` comment line) with a freshly emitted
+    block. If the citekey is not found, appends at the end.
+    """
+    master_path = library / "master.bib"
+    with lock_master_bib(library):
+        if not master_path.exists():
+            master_path.write_text("")
+        text = master_path.read_text()
+        pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
+        m = pattern.search(text)
+        replacement = ""
+        if bib_state:
+            replacement += f"% bib.state = {bib_state}\n"
+        replacement += emit_bib_entry(citekey, entry_type, fields)
+        if m:
+            entry_start = m.start()
+            brace_pos = text.index("{", m.start())
+            depth = 1
+            j = brace_pos + 1
+            while j < len(text) and depth > 0:
+                if text[j] == "{":
+                    depth += 1
+                elif text[j] == "}":
+                    depth -= 1
+                j += 1
+            entry_end = j
+            at_line_start = text.rfind("\n", 0, entry_start)
+            if at_line_start == -1:
+                at_line_start = 0
+            else:
+                at_line_start += 1
+            prev_line_start = text.rfind("\n", 0, max(0, at_line_start - 1))
+            if prev_line_start == -1:
+                prev_line_start = 0
+            else:
+                prev_line_start += 1
+            prev_line = text[prev_line_start:at_line_start].strip()
+            if prev_line.startswith("% bib.state"):
+                entry_start = prev_line_start
+            text = text[:entry_start] + replacement + text[entry_end:]
+        else:
+            if text and not text.endswith("\n"):
+                text += "\n"
+            text += "\n" + replacement
+        _atomic_write_text(master_path, text)

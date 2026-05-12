@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent for the personal-prefs promotion pipeline.
+
+  Runs tools/sync-defaults.sh every ~48h. The wrapper reads the latest
+  tools/personal-snapshot.json (kept fresh by the dev preview), folds the
+  changes into the *.defaults.json sidecars + globals.css managed block,
+  and commits + pushes if the diff is real.
+
+  Install:
+    cp tools/com.virgil.promote-defaults.plist ~/Library/LaunchAgents/
+    launchctl load ~/Library/LaunchAgents/com.virgil.promote-defaults.plist
+
+  Inspect:
+    launchctl list | grep virgil
+
+  Stop:
+    launchctl unload ~/Library/LaunchAgents/com.virgil.promote-defaults.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.virgil.promote-defaults</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/gabriel/Programming/virgil/tools/sync-defaults.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/gabriel/Programming/virgil</string>
+
+  <!-- 48 hours in seconds. launchd will coalesce missed runs while the
+       machine is asleep / offline; the next run fires once the system
+       is awake again. -->
+  <key>StartInterval</key>
+  <integer>172800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/gabriel/Library/Logs/virgil-promote-defaults.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/gabriel/Library/Logs/virgil-promote-defaults.log</string>
+</dict>
+</plist>

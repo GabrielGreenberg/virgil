@@ -1,0 +1,87 @@
+{
+  "placements": [
+    {
+      "id": "search",
+      "side": "left"
+    },
+    {
+      "id": "outline",
+      "side": "left"
+    },
+    {
+      "id": "footnotes",
+      "side": "left"
+    },
+    {
+      "id": "citations",
+      "side": "left"
+    },
+    {
+      "id": "bibliography",
+      "side": "left"
+    },
+    {
+      "id": "quotations",
+      "side": "left"
+    },
+    {
+      "id": "examples",
+      "side": "left"
+    },
+    {
+      "id": "wordcount",
+      "side": "right"
+    },
+    {
+      "id": "notes",
+      "side": "right"
+    },
+    {
+      "id": "todo",
+      "side": "right"
+    },
+    {
+      "id": "revisions",
+      "side": "right"
+    },
+    {
+      "id": "errors",
+      "side": "right"
+    },
+    {
+      "id": "cutter",
+      "side": "right"
+    },
+    {
+      "id": "archive",
+      "side": "right"
+    }
+  ],
+  "activeLeft": "omni",
+  "activeRight": "omni",
+  "activeLeftBottom": null,
+  "activeRightBottom": null,
+  "splitLeftRatio": 0.5,
+  "splitRightRatio": 0.5,
+  "panelWidths": {},
+  "editorSplit": false,
+  "editorSplitRatio": 0.5,
+  "poppedOutPanels": [],
+  "poppedOutOrigins": {},
+  "floatPositions": {},
+  "panelModes": {},
+  "dockSlots": {},
+  "poppedOutCards": [],
+  "cardFloatPositions": {},
+  "showHighlights": true,
+  "hiddenHighlightTypes": [],
+  "menuLocation": {
+    "kind": "home"
+  },
+  "pageWidth": 880,
+  "topGutter": 0,
+  "bottomGutter": 0,
+  "editorLeftMargin": 88,
+  "editorRightMargin": 72,
+  "topbarRightCollapsed": false
+}
