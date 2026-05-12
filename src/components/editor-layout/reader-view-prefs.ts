@@ -249,6 +249,7 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setCardFloatPosition: () => {},
       getOmniEnabled,
       getOmniHideAll: () => false,
+      toggleOmniHideAllCards: () => {},
       orphanedFootnotes: [],
       onEditOrphan: () => {},
       onDeleteOrphan: () => {},

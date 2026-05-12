@@ -308,6 +308,7 @@ export interface EditorPaneViewPrefs {
   // ── OmniHost helpers ────────────────────────────────────────────
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
+  toggleOmniHideAllCards: (side: Side) => void;
   /** Footnotes that exist as orphan cards (no in-doc reference). The
    *  Reader has none; main app post-7.8 plumbs `useFootnoteActions`
    *  output through here. */
@@ -3836,19 +3837,13 @@ function IconStrip({
           </svg>
         </button>
         <button
-          onClick={() => {
-            if (activeOnSide === "blank") {
-              isLeft ? viewPrefs.setActiveLeft("omni") : viewPrefs.setActiveRight("omni");
-            } else {
-              viewPrefs.setBlank(side);
-            }
-          }}
+          onClick={() => viewPrefs.toggleOmniHideAllCards(side)}
           className="iconbtn-md iconbtn-toggle"
-          aria-pressed={activeOnSide === "blank"}
-          title={activeOnSide === "blank" ? "Show omni-view" : "Hide omni-view"}
+          aria-pressed={viewPrefs.getOmniHideAll(side)}
+          title={viewPrefs.getOmniHideAll(side) ? "Show cards in omni-view" : "Hide all cards in omni-view"}
           data-helper="Omni view"
         >
-          <IconBlank active={activeOnSide === "blank"} />
+          <IconBlank active={viewPrefs.getOmniHideAll(side)} />
         </button>
         <button
           onClick={() => viewPrefs.toggleSplit(side)}
