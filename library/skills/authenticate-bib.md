@@ -193,8 +193,27 @@ directory).
      work). When picking the ISBN to apply, prefer the one whose
      imprint year matches the bib's `year` (or the citekey's baked-in
      year) — corroborate via Internet Archive when possible.
-   Apply the surviving changes and re-emit the entry. Record only the
-   changes you actually applied in `bib.fieldChanges` (step 6).
+   Apply the surviving changes via the locked CLI shim — do **not**
+   Read/Write `master.bib` directly:
+
+   ```bash
+   cat > /tmp/<citekey>-auth-fields.json <<'EOF'
+   { "title": "...", "author": "...", "year": "...", ... }
+   EOF
+   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+     --entry-type "<entry_type>" \
+     --fields-file /tmp/<citekey>-auth-fields.json \
+     --bib-state "<final_state>"
+   rm /tmp/<citekey>-auth-fields.json
+   ```
+
+   `--bib-state` updates the `% bib.state = <X>` comment preceding the
+   entry to the terminal state (`authenticated` / `unverified` /
+   `canonical` / `failed`) in the same locked write — no separate
+   step-9 marker-comment edit is needed.
+
+   Record only the changes you actually applied in `bib.fieldChanges`
+   (step 6).
 
 5. **Re-emit `references.bib`** from the updated master.bib entry:
    ```bash
@@ -278,16 +297,22 @@ directory).
    block wholesale — the merge with `prior_changes` above is what makes
    `fieldChanges` accumulate across runs.
 
-7. **Bump** `.virgil/catalog-version.txt` and append a notification with
-   `kind` matching the terminal state — one of `"authenticated"`,
+7. **Append a notification** via the locked CLI shim. (No need to bump
+   `catalog-version.txt` separately — step 6's
+   `_sync_catalog_entry_from_master` does it for you.) Pick a `kind`
+   matching the terminal state — one of `"authenticated"`,
    `"unverified"`, `"canonical"`, `"manuscript"`, or `"failed"`:
-   ```python
-   {"kind": "authenticated", "citekey": "<citekey>",
-    "at": "<now ISO>",
-    "summary": "Authenticated <citekey> via <sources> (<N> field changes)"}
+
+   ```bash
+   cat > /tmp/<citekey>-auth-notify.json <<'EOF'
+   { "kind": "<state>", "citekey": "<citekey>",
+     "at": "<now ISO>",
+     "summary": "Authenticated <citekey> via <sources> (<N> field changes)" }
+   EOF
+   python3 .virgil/scripts/append_inbox_item.py \
+     --item-file /tmp/<citekey>-auth-notify.json
+   rm /tmp/<citekey>-auth-notify.json
    ```
-   Use `_append_notification` from `index_paper` (same shape as
-   `apply-bib-edit`'s post-edit notification).
 
 8. **Remove from pending-reviews manifest.** Read
    `.virgil/queue/pending-reviews.json`, remove the entry for this citekey, and
@@ -304,12 +329,9 @@ directory).
    '
    ```
 
-9. **Update the `% bib.state = <X>` marker comment** preceding the
-   entry in `master.bib`, if present (most entries carry one). Set it
-   to the helper's terminal `state` (`authenticated` /
-   `unverified` / `canonical` / `failed`). Skip if no such comment
-   exists. The marker is decorative but tracks the catalog's state for
-   `git diff` readability.
+9. **(No-op.)** The `% bib.state = <X>` marker comment is updated as
+   part of step 4 via `update_master_bib_entry.py --bib-state`. No
+   separate edit needed.
 
 ## Reply format
 

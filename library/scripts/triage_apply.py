@@ -34,48 +34,20 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _tools import (
+    append_inbox_item,
+    bump_catalog_version,
+    emit_bib_entry,
+    lock_catalog,
+    read_catalog,
+    read_master_bib,
+    update_master_bib_entry,
+    write_catalog,
+)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _emit_bib_stub(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
-    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
-    return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
-
-
-def _append_to_master_bib(library: Path, citekey: str, entry_type: str, fields: dict[str, str]) -> None:
-    master = library / "master.bib"
-    text = master.read_text() if master.exists() else ""
-    if text and not text.endswith("\n"):
-        text += "\n"
-    text += "\n% bib.state = unverified\n" + _emit_bib_stub(citekey, entry_type, fields)
-    master.write_text(text)
-
-
-def _append_notification(library: Path, item: dict) -> None:
-    inbox_path = library / ".virgil" / "notifications" / "inbox.json"
-    inbox = {"items": []}
-    if inbox_path.exists():
-        try:
-            inbox = json.loads(inbox_path.read_text())
-        except Exception:
-            pass
-    inbox.setdefault("items", []).append(item)
-    inbox["items"] = inbox["items"][-200:]
-    inbox_path.parent.mkdir(parents=True, exist_ok=True)
-    inbox_path.write_text(json.dumps(inbox, indent=2) + "\n")
-
-
-def _bump_catalog_version(library: Path) -> None:
-    p = library / ".virgil" / "catalog-version.txt"
-    cur = 0
-    if p.exists():
-        try:
-            cur = int(p.read_text().strip() or "0")
-        except Exception:
-            cur = 0
-    p.write_text(str(cur + 1) + "\n")
 
 
 def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> bool:
@@ -96,28 +68,7 @@ def _write_queue_entry(library: Path, citekey: str, kind: str = "index") -> bool
 
 
 def _master_has_citekey(library: Path, citekey: str) -> bool:
-    master = library / "master.bib"
-    if not master.exists():
-        return False
-    text = master.read_text()
-    return bool(re.search(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,", text))
-
-
-def _read_catalog(library: Path) -> dict:
-    p = library / ".virgil" / "catalog.json"
-    if not p.exists():
-        return {"version": 1, "generatedAt": _now(), "entries": []}
-    try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {"version": 1, "generatedAt": _now(), "entries": []}
-
-
-def _write_catalog(library: Path, catalog: dict) -> None:
-    p = library / ".virgil" / "catalog.json"
-    p.parent.mkdir(parents=True, exist_ok=True)
-    catalog["generatedAt"] = _now()
-    p.write_text(json.dumps(catalog, indent=2) + "\n")
+    return citekey in read_master_bib(library / "master.bib")
 
 
 def _bib_state_for_citekey(catalog: dict, citekey: str) -> str:
@@ -125,59 +76,6 @@ def _bib_state_for_citekey(catalog: dict, citekey: str) -> str:
         if e.get("citekey") == citekey:
             return ((e.get("bib") or {}).get("state")) or "none"
     return "none"
-
-
-def _emit_bib_block(citekey: str, entry_type: str, fields: dict[str, str]) -> str:
-    field_lines = ",\n".join(f"  {k} = {{{v}}}" for k, v in fields.items() if v)
-    if field_lines:
-        return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
-    return f"@{entry_type}{{{citekey}\n}}\n"
-
-
-def _upsert_master_bib(
-    library: Path,
-    citekey: str,
-    entry_type: str,
-    fields: dict[str, str],
-    bib_state: str = "unverified",
-) -> None:
-    """Insert or replace one entry in master.bib (and its leading state comment)."""
-    master = library / "master.bib"
-    text = master.read_text() if master.exists() else ""
-    replacement = f"% bib.state = {bib_state}\n" + _emit_bib_block(citekey, entry_type, fields)
-
-    pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
-    m = pattern.search(text)
-    if m:
-        # Find matching closing brace.
-        brace_pos = text.index("{", m.start())
-        depth = 1
-        j = brace_pos + 1
-        while j < len(text) and depth > 0:
-            if text[j] == "{":
-                depth += 1
-            elif text[j] == "}":
-                depth -= 1
-            j += 1
-        entry_start = m.start()
-        entry_end = j
-        # Include a preceding "% bib.state = ..." comment in the span.
-        line_start = text.rfind("\n", 0, entry_start)
-        line_start = line_start + 1 if line_start != -1 else 0
-        prev_line_start = text.rfind("\n", 0, max(0, line_start - 1))
-        prev_line_start = prev_line_start + 1 if prev_line_start != -1 else 0
-        prev_line = text[prev_line_start:line_start].strip()
-        if prev_line.startswith("% bib.state"):
-            entry_start = prev_line_start
-        # Strip a trailing newline so we don't accumulate blank lines.
-        if entry_end < len(text) and text[entry_end] == "\n":
-            entry_end += 1
-        new_text = text[:entry_start] + replacement + text[entry_end:]
-    else:
-        if text and not text.endswith("\n"):
-            text += "\n"
-        new_text = text + "\n" + replacement
-    master.write_text(new_text)
 
 
 def _merge_bib_fields(
@@ -226,7 +124,7 @@ def _virgil_sidecars(paper_dir: Path) -> None:
 
 def _write_references_bib(paper_dir: Path, citekey: str, entry_type: str, fields: dict[str, str]) -> None:
     paper_dir.mkdir(parents=True, exist_ok=True)
-    (paper_dir / "references.bib").write_text(_emit_bib_block(citekey, entry_type, fields))
+    (paper_dir / "references.bib").write_text(emit_bib_entry(citekey, entry_type, fields))
 
 
 def _upsert_catalog_row_bib_only(
@@ -237,11 +135,11 @@ def _upsert_catalog_row_bib_only(
     field_changes: list[dict[str, str]] | None = None,
     bib_state: str = "unverified",
 ) -> None:
-    """Insert or update a bib-only catalog row (no source file, indexed=none)."""
-    catalog = _read_catalog(library)
-    catalog.setdefault("version", 1)
-    catalog.setdefault("entries", [])
+    """Insert or update a bib-only catalog row (no source file, indexed=none).
 
+    Read-modify-write is serialized via `lock_catalog` so concurrent
+    triage runs don't drop each other's row updates.
+    """
     title = fields.get("title", "") or ""
     authors_str = fields.get("author", "") or ""
     authors = [a.strip() for a in authors_str.split(" and ") if a.strip()]
@@ -274,32 +172,35 @@ def _upsert_catalog_row_bib_only(
         "bib": bib_status,
     }
 
-    for i, e in enumerate(catalog["entries"]):
-        if e.get("citekey") == citekey:
-            # Preserve addedAt; only update mutable fields.
-            preserved = {
-                "addedAt": e.get("addedAt", now),
-                "tags": e.get("tags"),
-                "originalFilename": e.get("originalFilename"),
-            }
-            merged_bib = dict(e.get("bib") or {})
-            merged_bib.update(bib_status)
-            existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
-            new_changes = bib_status.get("fieldChanges") or []
-            if existing_changes or new_changes:
-                merged_bib["fieldChanges"] = existing_changes + new_changes
-            updated = dict(base_row)
-            updated["addedAt"] = preserved["addedAt"]
-            updated["bib"] = merged_bib
-            for k, v in preserved.items():
-                if k != "addedAt" and v is not None:
-                    updated[k] = v
-            catalog["entries"][i] = updated
-            _write_catalog(library, catalog)
-            return
-
-    catalog["entries"].append(base_row)
-    _write_catalog(library, catalog)
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        catalog.setdefault("version", 1)
+        catalog.setdefault("entries", [])
+        for i, e in enumerate(catalog["entries"]):
+            if e.get("citekey") == citekey:
+                # Preserve addedAt; only update mutable fields.
+                preserved = {
+                    "addedAt": e.get("addedAt", now),
+                    "tags": e.get("tags"),
+                    "originalFilename": e.get("originalFilename"),
+                }
+                merged_bib = dict(e.get("bib") or {})
+                merged_bib.update(bib_status)
+                existing_changes = (e.get("bib") or {}).get("fieldChanges") or []
+                new_changes = bib_status.get("fieldChanges") or []
+                if existing_changes or new_changes:
+                    merged_bib["fieldChanges"] = existing_changes + new_changes
+                updated = dict(base_row)
+                updated["addedAt"] = preserved["addedAt"]
+                updated["bib"] = merged_bib
+                for k, v in preserved.items():
+                    if k != "addedAt" and v is not None:
+                        updated[k] = v
+                catalog["entries"][i] = updated
+                write_catalog(library, catalog)
+                return
+        catalog["entries"].append(base_row)
+        write_catalog(library, catalog)
 
 
 def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
@@ -324,12 +225,12 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
     incoming_fields = dict(row.get("proposedFields") or {})
     proposed_state = (row.get("proposedBibState") or "unverified").strip().lower()
 
-    catalog = _read_catalog(library)
+    catalog = read_catalog(library)
     existing_state = _bib_state_for_citekey(catalog, citekey)
 
     # ── Authenticated / manuscript winners stay put. ──────────────────
     if existing_state in ("authenticated", "manuscript"):
-        _append_notification(library, {
+        append_inbox_item(library, {
             "kind": "triage-bib-ignored-authenticated" if existing_state == "authenticated"
                     else "triage-bib-ignored-manuscript",
             "filename": filename,
@@ -363,7 +264,7 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
                 entry_type = existing_entry["type"]
 
     final_state = "manuscript" if proposed_state == "manuscript" else "unverified"
-    _upsert_master_bib(library, citekey, entry_type, merged_fields, bib_state=final_state)
+    update_master_bib_entry(library, citekey, entry_type, merged_fields, bib_state=final_state)
 
     # Per-paper folder + sidecars (no source file, no main.tex).
     paper_dir = library / "papers" / citekey
@@ -392,7 +293,7 @@ def apply_bib_row(row: dict[str, Any], library: Path) -> dict[str, str]:
     else:
         summary_bits.append("authenticate already queued")
 
-    _append_notification(library, {
+    append_inbox_item(library, {
         "kind": "triage-bib-imported",
         "filename": filename,
         "citekey": citekey,
@@ -427,7 +328,7 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
         pending = library / "unsorted" / "_pending"
         pending.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(pending / filename))
-        _append_notification(library, {
+        append_inbox_item(library, {
             "kind": "triage-needs-chapter-info",
             "filename": filename,
             "candidateAuthor": row.get("filenameAuthor", ""),
@@ -443,7 +344,7 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
             variants_dir = library / "papers" / existing / "variants"
             variants_dir.mkdir(parents=True, exist_ok=True)
             shutil.move(str(src), str(variants_dir / filename))
-            _append_notification(library, {
+            append_inbox_item(library, {
                 "kind": "triaged",
                 "summary": f"Kept {filename} as variant archive of {existing}",
                 "at": _now(),
@@ -460,7 +361,7 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
         pending = library / "unsorted" / "_pending"
         pending.mkdir(parents=True, exist_ok=True)
         shutil.move(str(src), str(pending / filename))
-        _append_notification(library, {
+        append_inbox_item(library, {
             "kind": "triage-needs-title",
             "filename": filename,
             "proposedCitekey": row.get("proposedCitekey", ""),
@@ -478,7 +379,7 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
 
     # Filename mismatch: append a notification (audit trail).
     if "filename-mismatch" in flags:
-        _append_notification(library, {
+        append_inbox_item(library, {
             "kind": "triage-filename-mismatch",
             "originalFilename": filename,
             "filenameAuthor": row.get("filenameAuthor", ""),
@@ -487,9 +388,15 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
             "at": _now(),
         })
 
-    # Append bib stub if not already in master.bib.
+    # Append bib stub if not already in master.bib. Check-then-write
+    # is fine here: `update_master_bib_entry` is locked, so the worst
+    # case under a race is the stub being written twice with the same
+    # content (idempotent).
     if not _master_has_citekey(library, citekey):
-        _append_to_master_bib(library, citekey, entry_type, proposed_fields)
+        update_master_bib_entry(
+            library, citekey, entry_type, proposed_fields,
+            bib_state="unverified",
+        )
 
     # Move file to papers/<citekey>/<citekey>.<ext>.
     paper_dir = library / "papers" / citekey
@@ -502,7 +409,7 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
 
     # Write queue entry.
     _write_queue_entry(library, citekey, kind="index")
-    _append_notification(library, {
+    append_inbox_item(library, {
         "kind": "triaged",
         "summary": f"Triaged {filename} → {citekey} ({entry_type})",
         "at": _now(),
@@ -571,14 +478,14 @@ def main() -> int:
             try:
                 src.unlink()
             except Exception as e:
-                _append_notification(library, {
+                append_inbox_item(library, {
                     "kind": "triage-bib-cleanup-failed",
                     "filename": fn,
                     "error": str(e),
                     "at": _now(),
                 })
             else:
-                _append_notification(library, {
+                append_inbox_item(library, {
                     "kind": "triage-bib-summary",
                     "filename": fn,
                     "imported": stats["ok"],
@@ -593,7 +500,7 @@ def main() -> int:
                 shutil.move(str(src), str(pending / fn))
             except Exception:
                 pass
-            _append_notification(library, {
+            append_inbox_item(library, {
                 "kind": "triage-bib-parse-failed",
                 "filename": fn,
                 "imported": stats["ok"],
@@ -602,7 +509,7 @@ def main() -> int:
             })
 
     if counts:
-        _bump_catalog_version(library)
+        bump_catalog_version(library)
 
     print(f"\nDone. {len(rows)} rows: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items())))
     return 0

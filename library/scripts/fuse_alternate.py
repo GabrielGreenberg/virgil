@@ -36,6 +36,12 @@ from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _tools import (
+    append_inbox_item,
+    lock_catalog,
+    read_catalog,
+    write_catalog,
+)
 from pgmark import detect_print_pages, HEADER_FRAC, FOOTER_FRAC
 from pgmark_validate import (
     validate as pgmark_validate,
@@ -678,74 +684,59 @@ def update_catalog_for_fusion(
 ) -> None:
     """Write catalog updates for a successful fuse-alternate skill run.
     Auto-step inside index_paper.py uses its own catalog-write path; this
-    helper is for standalone /library/fuse-alternate invocations."""
-    cat = library / ".virgil" / "catalog.json"
-    if not cat.exists():
-        raise FileNotFoundError(cat)
-    catalog = json.loads(cat.read_text())
-    found = False
-    for entry in catalog.get("entries", []):
-        if entry.get("citekey") != citekey:
-            continue
-        found = True
-        indexed = entry.setdefault("indexed", {})
-        # Compute body-pgmark count from main.tex directly (source of truth).
-        main_tex_path = library / "papers" / citekey / "main.tex"
-        if main_tex_path.exists():
-            tex = main_tex_path.read_text()
-            body_count, _ = _count_body_pgmarks(tex)
-            indexed["pgmarkCount"] = body_count
-        indexed["pgmarkPosition"] = result.pgmark_position or "unknown"
-        indexed["pgmarkSource"] = result.pgmark_source_filename
-        indexed["lastIndexedAt"] = _now_iso()
-        # Recompute pgmark-fusion-* prefix warnings
-        existing = [
-            w for w in (indexed.get("warnings") or [])
-            if not (isinstance(w, str) and w.startswith("pgmark-fusion-"))
-        ]
-        new_warnings: list[str] = []
-        skipped = result.page_count - result.aligned_count
-        if skipped > 0:
-            new_warnings.append(
-                f"pgmark-fusion-low-alignment-skipped: {skipped} of "
-                f"{result.page_count} PDF pages did not align above threshold"
-            )
-        if result.validation_report and result.validation_report.continuity_findings:
-            for f in result.validation_report.continuity_findings:
-                new_warnings.append(f"pgmark-fusion-{f.kind}: {f.detail}")
-        indexed["warnings"] = existing + new_warnings
-        entry["updatedAt"] = _now_iso()
-        break
-    if not found:
-        raise KeyError(f"{citekey} not in catalog")
-    cat.write_text(json.dumps(catalog, indent=2) + "\n")
-    _bump_version(library)
+    helper is for standalone /library/fuse-alternate invocations.
+
+    The read-modify-write is serialized via `lock_catalog`.
+    """
+    main_tex_path = library / "papers" / citekey / "main.tex"
+    body_count: Optional[int] = None
+    if main_tex_path.exists():
+        tex = main_tex_path.read_text()
+        body_count, _ = _count_body_pgmarks(tex)
+
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        if not (library / ".virgil" / "catalog.json").exists():
+            raise FileNotFoundError(library / ".virgil" / "catalog.json")
+        found = False
+        for entry in catalog.get("entries", []):
+            if entry.get("citekey") != citekey:
+                continue
+            found = True
+            indexed = entry.setdefault("indexed", {})
+            if body_count is not None:
+                indexed["pgmarkCount"] = body_count
+            indexed["pgmarkPosition"] = result.pgmark_position or "unknown"
+            indexed["pgmarkSource"] = result.pgmark_source_filename
+            indexed["lastIndexedAt"] = _now_iso()
+            existing = [
+                w for w in (indexed.get("warnings") or [])
+                if not (isinstance(w, str) and w.startswith("pgmark-fusion-"))
+            ]
+            new_warnings: list[str] = []
+            skipped = result.page_count - result.aligned_count
+            if skipped > 0:
+                new_warnings.append(
+                    f"pgmark-fusion-low-alignment-skipped: {skipped} of "
+                    f"{result.page_count} PDF pages did not align above threshold"
+                )
+            if result.validation_report and result.validation_report.continuity_findings:
+                for f in result.validation_report.continuity_findings:
+                    new_warnings.append(f"pgmark-fusion-{f.kind}: {f.detail}")
+            indexed["warnings"] = existing + new_warnings
+            entry["updatedAt"] = _now_iso()
+            break
+        if not found:
+            raise KeyError(f"{citekey} not in catalog")
+        write_catalog(library, catalog)
 
 
-def _bump_version(library: Path) -> None:
-    vpath = library / ".virgil" / "catalog-version.txt"
-    try:
-        v = int((vpath.read_text() or "0").strip())
-    except Exception:
-        v = 0
-    vpath.write_text(str(v + 1) + "\n")
-
-
-def _append_notification(
+def _append_fusion_notification(
     library: Path,
     citekey: str,
     result: FuseResult,
 ) -> None:
-    npath = library / ".virgil" / "notifications" / "inbox.json"
-    npath.parent.mkdir(parents=True, exist_ok=True)
-    if npath.exists():
-        try:
-            inbox = json.loads(npath.read_text())
-        except Exception:
-            inbox = {"items": []}
-    else:
-        inbox = {"items": []}
-    inbox.setdefault("items", []).append({
+    append_inbox_item(library, {
         "kind": LOG_TAG_FUSED,
         "citekey": citekey,
         "at": _now_iso(),
@@ -754,7 +745,6 @@ def _append_notification(
             f"{result.pgmark_source_filename}"
         ),
     })
-    npath.write_text(json.dumps(inbox, indent=2) + "\n")
 
 
 def _write_log(
@@ -898,7 +888,7 @@ def main() -> int:
 
     if not args.no_catalog and not args.dry_run:
         update_catalog_for_fusion(library, citekey, result)
-        _append_notification(library, citekey, result)
+        _append_fusion_notification(library, citekey, result)
         log_path = _write_log(library, citekey, result)
         print(f"  Log: {log_path}")
 

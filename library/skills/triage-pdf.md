@@ -127,15 +127,21 @@ directory).
    2. If found, the variant belongs to that citekey. Move the file to
       `papers/<existing-citekey>/variants/<filename>` (mkdir variants/
       if needed). Skip steps 5–10 — no new bib entry, no queue write.
-      Append a notification:
-      ```json
+      Append a notification via the locked CLI shim:
+      ```bash
+      cat > /tmp/variant-notify.json <<'EOF'
       {
         "kind": "triaged",
         "summary": "Kept <filename> as variant archive of <existing-citekey>",
         "at": "<ISO>"
       }
+      EOF
+      python3 .virgil/scripts/append_inbox_item.py \
+        --item-file /tmp/variant-notify.json
+      rm /tmp/variant-notify.json
+      python3 .virgil/scripts/bump_catalog_version.py
       ```
-      Then bump `.virgil/catalog-version.txt` and stop.
+      Then stop.
    3. If `<base>.<ext>` exists on disk but no catalog entry maps to
       it, fall through to the four cases below (mint a new citekey
       with `a`/`b` suffix as needed).
@@ -175,8 +181,21 @@ directory).
    prefixes, etc.) — prefer the existing citekey rather than minting a
    new one for what is plausibly the same paper.
 
-5. **Add a `master.bib` entry** if no matching one exists. First,
-   determine the entry type from the source content:
+5. **Add a `master.bib` entry** if no matching one exists. Use the
+   locked CLI shim — do **not** Read/Write `master.bib` directly:
+
+   ```bash
+   cat > /tmp/<citekey>-triage-fields.json <<'EOF'
+   { "author": "...", "title": "...", "year": "<YYYY>", ... }
+   EOF
+   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+     --entry-type "<type>" \
+     --fields-file /tmp/<citekey>-triage-fields.json \
+     --bib-state unverified
+   rm /tmp/<citekey>-triage-fields.json
+   ```
+
+   First, determine the entry type from the source content:
 
    - **Journal article** → `@article` (default). Fields: `author`,
      `title`, `journal`, `year`, `volume`, `number`, `pages`, `doi`.
@@ -284,7 +303,20 @@ directory).
 
 10. **Delete** the old triage queue entry (`.virgil/queue/_triage-*.json`).
 
-11. **Bump** `.virgil/catalog-version.txt` and append a `triaged` notification.
+11. **Append a `triaged` notification and bump the catalog version**
+    via the locked CLI shims:
+
+    ```bash
+    cat > /tmp/<citekey>-triaged.json <<'EOF'
+    { "kind": "triaged",
+      "summary": "Triaged <filename> → <citekey> (<entry_type>)",
+      "at": "<ISO>" }
+    EOF
+    python3 .virgil/scripts/append_inbox_item.py \
+      --item-file /tmp/<citekey>-triaged.json
+    rm /tmp/<citekey>-triaged.json
+    python3 .virgil/scripts/bump_catalog_version.py
+    ```
 
 ## Reply format
 
@@ -300,8 +332,10 @@ When `<filename>` ends with `.tex`:
 1. Read `\title{}`, `\author{}`, `\date{}` from the source. Use
    `_read_tex_meta()` in `triage_batch.py` if you want a one-shot helper.
 2. Propose citekey from author + year + first significant title word.
-3. Append a `% bib.state = unverified` + `@unpublished{<citekey>, …}`
-   stub in `master.bib` (or `@article{}` if a DOI was found in the body).
+3. Add a `@unpublished{<citekey>, …}` stub in `master.bib` via
+   `update_master_bib_entry.py` (with `--entry-type unpublished` and
+   `--bib-state unverified`), or `@article` if a DOI was found in the
+   body.
 4. Move `unsorted/<filename>` → `papers/<citekey>/<citekey>.tex`.
 5. Enqueue `kind: "index"`. The indexer (`/index-paper`) will copy the
    `.tex` source verbatim into `papers/<citekey>/main.tex` —

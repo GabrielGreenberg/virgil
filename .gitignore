@@ -61,9 +61,15 @@ next-env.d.ts
 /editor/dev/sandboxes/*
 !/editor/dev/sandboxes/.gitkeep
 
+# personal-prefs pipeline — Gabriel's localStorage mirror, regenerated
+# constantly by the dev preview. The promote-defaults cron reads it locally
+# to update the shipped defaults; the snapshot itself stays out of git.
+/tools/personal-snapshot.json
+
 # library-data — keep the static dev sample (catalog/master.bib/papers/),
 # but ignore the runtime artifacts the live app writes back into the folder
-# during a dev session (skill-bundle sync output, queue intent files, logs).
+# during a dev session (skill-bundle sync output, queue intent files, logs,
+# concurrency lock sidecars).
 /library-data/.skill-bundle-version.json
 /library-data/.claude/
 /library-data/scripts/
@@ -72,3 +78,6 @@ next-env.d.ts
 /library-data/queue/*.lock
 /library-data/queue/*.done
 /library-data/logs/
+/library-data/master.bib.lock
+/library-data/.virgil/catalog.json.lock
+/library-data/.virgil/notifications/inbox.json.lock

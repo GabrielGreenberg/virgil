@@ -78,8 +78,11 @@ A queue entry is an AI request when **any** of these is true:
      requires re-running the linearization pipeline (e.g. "re-extract
      section 3" or "this paper has a two-column layout"), invoke the
      relevant scripts (`.virgil/scripts/index_paper.py`, `.virgil/scripts/extract.py`)
-     scoped as narrowly as you can. Save the updated `main.tex`. Bump
-     `.virgil/catalog-version.txt` so the frontend reloads.
+     scoped as narrowly as you can. Save the updated `main.tex`. Then
+     signal the frontend via the locked CLI shim:
+     ```bash
+     python3 .virgil/scripts/bump_catalog_version.py
+     ```
 
 3. **Mark done.** Once the request is handled, delete its queue file.
    For `authenticate` entries, also remove the matching record from

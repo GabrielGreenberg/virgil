@@ -29,22 +29,32 @@ All paths below are relative to the library root.
    ```
    If the file is missing or malformed, stop and report the error.
 
-2. **Replace the entry block in `master.bib`.** Locate the existing
-   `@<oldType>{<citekey>, ... }` block (brace-balanced — entries can
-   contain `{}`-wrapped values). Replace it verbatim with a freshly
-   emitted block. Format identical to `.virgil/scripts/index_paper.py`'s
-   `_emit_bib_entry`:
+2. **Replace the entry block in `master.bib`.** Do **not** Read/Write
+   `master.bib` directly — it's shared across all skills and a
+   concurrent index/auth run could overwrite this skill's edit (or
+   vice versa). Call the locked CLI shim instead:
+
+   ```bash
+   cat > /tmp/$ARGUMENTS-bibedit-fields.json <<'EOF'
+   { "title": "...", "author": "...", "year": "...", ... }
+   EOF
+   python3 .virgil/scripts/update_master_bib_entry.py "$ARGUMENTS" \
+     --entry-type "<type>" \
+     --fields-file /tmp/$ARGUMENTS-bibedit-fields.json
+   rm /tmp/$ARGUMENTS-bibedit-fields.json
    ```
-   @<type>{<citekey>,
-     <field1> = {<value1>},
-     <field2> = {<value2>},
-     ...
-   }
-   ```
-   Omit fields whose value is empty / whitespace-only. Preserve the
-   citekey from the existing block — never let `bibEdit.fields.citekey`
-   override it. If no existing block matches the citekey, append a new
-   block at the end (separated by a blank line).
+
+   The script holds `lock_master_bib`, finds the existing
+   `@<oldType>{<citekey>, ...}` block (brace-balanced) and replaces
+   it verbatim with the freshly emitted block — or appends a new
+   block if none exists. Omit any field whose value is empty /
+   whitespace-only from `--fields-file`. Never include a `citekey`
+   field; the script always uses the positional argument and won't
+   accept it being overridden via the fields map.
+
+   **Do not** pass `--bib-state`: a manual edit doesn't invalidate
+   prior authentication. The existing `% bib.state = ...` comment is
+   preserved when you omit the flag.
 
 3. **Re-emit `papers/<citekey>/references.bib`.** This is a single-entry
    mirror of the master.bib block, byte-identical except for the trailing
@@ -52,27 +62,60 @@ All paths below are relative to the library root.
    (legitimate: the user may have edited a hand-added bib entry that has
    no indexed paper folder yet).
 
-4. **Update `.virgil/catalog.json`.** Find the row whose `citekey` matches:
-   - Set `bib.manuallyEditedAt = <now ISO>`.
-   - Append to `bib.fieldChanges` one entry per field that changed value
-     between the old and new entry, in the same shape Python uses:
-     ```json
-     { "field": "<name>", "from": "<old>", "to": "<new>", "source": "manual", "at": "<now ISO>" }
-     ```
-   - Do NOT clear `bib.state` — a manual edit doesn't invalidate prior
-     authentication. If the user wants to re-authenticate, they'll click
-     "AI review" which queues `kind: "authenticate"` separately.
-   - Update top-level `title`, `authors`, `year`, `doi` if those fields
-     changed (these are the columns the frontend index uses).
+4. **Update `.virgil/catalog.json`** via the locked CLI shim. Compute
+   the field changes first (compare old vs new for each field).
+   Construct a patch:
 
-5. **Bump `.virgil/catalog-version.txt`** by writing a new monotonic counter
-   value. The frontend polls this 1-byte file every 6s and reloads the
-   catalog + master.bib when it changes.
-
-6. **Append a notification** to `.virgil/notifications/inbox.json`:
-   ```json
-   { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>", "summary": "Applied manual edit (<N> field changes)" }
+   ```bash
+   cat > /tmp/$ARGUMENTS-bibedit-patch.json <<'EOF'
+   {
+     "title": "<new title or omit>",
+     "authors": [...],
+     "year": <YYYY>,
+     "doi": "<new doi or null>",
+     "bib": {
+       "manuallyEditedAt": "<now ISO>",
+       "fieldChanges": [
+         { "field": "<name>", "from": "<old>", "to": "<new>",
+           "source": "manual", "at": "<now ISO>" }
+       ]
+     }
+   }
+   EOF
+   python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+     --patch-file /tmp/$ARGUMENTS-bibedit-patch.json
+   rm /tmp/$ARGUMENTS-bibedit-patch.json
    ```
+
+   Include top-level `title`/`authors`/`year`/`doi` only for the
+   fields that changed — the deep-merge preserves untouched fields.
+
+   **Do NOT** clear `bib.state` — a manual edit doesn't invalidate
+   prior authentication. If the user wants to re-authenticate,
+   they'll click "AI review" which queues `kind: "authenticate"`
+   separately.
+
+   Note: `bib.fieldChanges` is an array, and deep-merge **replaces**
+   arrays. If you need to *append* to the existing fieldChanges, read
+   it first (`jq ".entries[] | select(.citekey == \"$ARGUMENTS\") |
+   .bib.fieldChanges" .virgil/catalog.json`) and include the
+   concatenated list in the patch.
+
+5. **Bump `.virgil/catalog-version.txt`** — already done by step 4's
+   script. No additional bump needed.
+
+6. **Append a notification** via the locked CLI shim:
+
+   ```bash
+   cat > /tmp/$ARGUMENTS-bibedit-notify.json <<'EOF'
+   { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>",
+     "summary": "Applied manual edit (<N> field changes)" }
+   EOF
+   python3 .virgil/scripts/append_inbox_item.py \
+     --item-file /tmp/$ARGUMENTS-bibedit-notify.json
+   rm /tmp/$ARGUMENTS-bibedit-notify.json
+   ```
+
    (The `authenticated` kind is reused — the frontend renders it as a
    neutral toast and we don't want to expand the kind enum just for this.)
 

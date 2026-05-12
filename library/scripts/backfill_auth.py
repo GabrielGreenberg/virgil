@@ -21,6 +21,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _tools import read_catalog, read_master_bib, update_master_bib_entry
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -50,16 +54,6 @@ def _parse_citekeys_with_state(master_path: Path) -> dict[str, str]:
                     state = prev[eq + 1:].strip()
         result[citekey] = state
     return result
-
-
-def _read_catalog(library: Path) -> dict:
-    p = library / ".virgil" / "catalog.json"
-    if p.exists():
-        try:
-            return json.loads(p.read_text())
-        except Exception:
-            pass
-    return {"entries": []}
 
 
 def _rotate_stale_done(qdir: Path, citekey: str) -> str:
@@ -96,15 +90,13 @@ def _restamp_from_catalog(library: Path, master_states: dict[str, str],
         for ck in needs_restamp:
             print(f"  [dry-run] would restamp {ck} → % bib.state = {catalog_states[ck]}")
         return len(needs_restamp)
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from index_paper import _read_master_bib, _update_master_bib_entry  # type: ignore
-    master = _read_master_bib(library / "master.bib")
+    master = read_master_bib(library / "master.bib")
     for ck in needs_restamp:
         entry = master.get(ck)
         if not entry:
             continue
-        _update_master_bib_entry(
-            library / "master.bib", ck,
+        update_master_bib_entry(
+            library, ck,
             entry["type"], entry["fields"],
             bib_state=catalog_states[ck],
         )
@@ -133,7 +125,7 @@ def main() -> int:
         return 1
 
     entries = _parse_citekeys_with_state(master)
-    catalog = _read_catalog(library)
+    catalog = read_catalog(library)
     catalog_states: dict[str, str] = {}
     for e in catalog.get("entries", []):
         ck = e.get("citekey", "")

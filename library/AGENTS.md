@@ -37,7 +37,7 @@ library/
 ├── tiptap/              17 LaTeX-specific TipTap extensions
 ├── styles/library.css   Library-only CSS (paper-render, pgmark chips, pill tokens)
 ├── skills/              Markdown skill SOURCES (mirrored to .claude/commands/library/ by build)
-├── scripts/             Python extraction pipeline + skill-bundle template
+├── scripts/             Python extraction pipeline + skill-bundle template + concurrency helpers (`_tools.py`, `update_catalog_entry.py`, `append_inbox_item.py`, `update_master_bib_entry.py`, `bump_catalog_version.py`)
 └── build/               Skill-bundle build script (mirrors skills + scripts to public/skill-bundle/ and .claude/commands/library/)
 ```
 
@@ -104,6 +104,41 @@ Same as Virgil's `ai-requests.json` / `suggestions.json` flow: the frontend writ
   > **Layout migration.** Earlier libraries lived under `pdfs/<citekey>.{pdf,docx}` + `pdfs/unsorted/` with `catalog.json`, `queue/`, `logs/`, etc. at the root. `ensureLibraryStructure()` runs idempotent migrations that (1) move source files into `papers/<citekey>/<citekey>.<ext>` and promote `unsorted/` to the root, and (2) tuck `catalog.json`, `catalog-version.txt`, `queue/`, `notifications/`, `logs/`, `scripts/`, and `.skill-bundle-version.json` under `.virgil/`, with `CLAUDE.md` moved to `.claude/CLAUDE.md`. Each step is wrapped in try/catch so a single failure doesn't gate library load.
 
   > **Disk-libraries migration (May 2026).** Custom-library membership previously lived only in `localStorage["virgil-library-registry"]`. On the first load with `useDiskLibraries`, when `.virgil/libraries/` is empty and the legacy registry has at least one `kind: "custom"` row, every custom library is written out as a manifest under `.virgil/libraries/<slug>.json`, the source registry is dumped into the sentinel `.virgil/libraries/.migrated`, and the custom rows are stripped from localStorage. The migration is idempotent (sentinel-gated). Panel-tab layout, column widths, and row-viewed state stay in localStorage — those are genuinely per-machine UI preferences, not durable membership.
+
+## Concurrency
+
+Library skills are safe to run **in parallel across separate Claude
+Code sessions** (different citekeys, even mixing kinds: one session
+running `/library/deep-index`, another `/library/index-paper`, a
+third `/library/authenticate-bib`). Three shared files — `master.bib`,
+`.virgil/catalog.json`, and `.virgil/notifications/inbox.json` — are
+protected by POSIX `fcntl.flock` on sidecar `.lock` files
+(`master.bib.lock`, `.virgil/catalog.json.lock`,
+`.virgil/notifications/inbox.json.lock`). Locks auto-release on
+process exit so a crashed session can't leak them.
+
+The lock primitives live in [library/scripts/_tools.py](library/scripts/_tools.py)
+as `lock_master_bib`, `lock_catalog`, `lock_inbox`. Every script that
+mutates one of those files acquires the matching lock. **Skill-side
+edits must go through the CLI shims**, because `flock` is advisory —
+a direct `Write` from Claude bypasses the lock:
+
+- `update_catalog_entry.py <citekey> --patch-file <path>` — deep-merges a JSON patch into the entry, bumps `catalog-version.txt`.
+- `upsert_catalog_entry` (Python-only API) — for catalog writes from inside scripts that already hold the in-memory catalog.
+- `bump_catalog_version.py` — version-bump only (frontend-refresh signal).
+- `append_inbox_item.py --item-file <path>` — appends to the notification ring buffer (caps at 200 entries).
+- `update_master_bib_entry.py <citekey> --entry-type <type> --fields-file <path> [--bib-state <state>]` — locked upsert into `master.bib`; updates the leading `% bib.state = …` comment when `--bib-state` is passed.
+
+**Rule for new code touching these files:** Python scripts import the
+helpers from `_tools.py`; skill markdown shells out to the CLI shims.
+Never Read/Write `master.bib`, `.virgil/catalog.json`, or
+`.virgil/notifications/inbox.json` directly from a skill.
+
+Each helper grabs only its own lock — we never compose locks across
+files in a single critical section, so there is no ordering rule to
+remember and no deadlock surface. The atomic write pattern (temp-file
++ fsync + `os.replace`) ensures lock-free readers always see either
+the old or the new contents, never a partially-written file.
 
 ## Memo discipline
 

@@ -97,41 +97,59 @@ On success, the script's standalone CLI updates the catalog itself
 `indexed.pgmarkCount`, `indexed.pgmarkPosition`, bumps timestamps, and
 appends a fused-kind notification.
 
-If you invoked the underlying script with `--no-catalog`, you must do
-the catalog update by hand:
+If you invoked the underlying script with `--no-catalog`, do the
+catalog update via the locked CLI shim — do **not** Read/Write
+`catalog.json` directly:
 
-```python
-entry["indexed"]["pgmarkSource"] = "<pdf-filename>"
-entry["indexed"]["pgmarkCount"] = <count from main.tex>
-entry["indexed"]["pgmarkPosition"] = "<header|footer|mixed|unknown>"
-entry["indexed"]["lastIndexedAt"] = "<ISO now>"
-entry["updatedAt"] = "<same ISO timestamp>"
+```bash
+cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
+{
+  "indexed": {
+    "pgmarkSource": "<pdf-filename>",
+    "pgmarkCount": <count from main.tex>,
+    "pgmarkPosition": "<header|footer|mixed|unknown>",
+    "lastIndexedAt": "<ISO now>",
+    "warnings": [<merged warnings — see below>]
+  }
+}
+EOF
+python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-fuse-patch.json
+rm /tmp/$ARGUMENTS-fuse-patch.json
 ```
 
-**Preserve** `indexed.state` (do NOT downgrade `deepIndexed` →
-`indexed`), `extractor`, `footnoteCount`, `exampleCount`, and any other
-`indexed.*` fields.
+The patch deep-merges, so `indexed.state` (`deepIndexed` /
+`indexed`), `extractor`, `footnoteCount`, `exampleCount`, and other
+`indexed.*` fields are preserved automatically — only the keys you
+include get replaced. The script also bumps
+`.virgil/catalog-version.txt` for you.
 
 The `warnings` array is append-only with **one recomputed prefix
-`pgmark-fusion-`** — drop any prior warnings starting with
-`pgmark-fusion-` and add fresh ones (continuity findings, or
-`pgmark-fusion-low-alignment-skipped: <N>` if some pages didn't align).
-Other warning kinds (from earlier indexing) are preserved untouched.
-
-Write `.virgil/catalog.json` back. Bump `.virgil/catalog-version.txt`.
+`pgmark-fusion-`**. To produce it: read the existing
+`indexed.warnings` (`jq '.entries[] | select(.citekey == "<ck>") |
+.indexed.warnings' .virgil/catalog.json`), drop any entries starting
+with `pgmark-fusion-`, and append fresh ones (continuity findings, or
+`pgmark-fusion-low-alignment-skipped: <N>` if some pages didn't
+align). Other warning kinds are preserved by you when you read and
+include them in the patch — the patch's `warnings` array replaces the
+existing one.
 
 ### 6. Notify
 
-Append to `.virgil/notifications/inbox.json` (inside the `{"items": [...]}`
-wrapper, mirroring deep-index §6):
+Append a notification via the locked CLI shim:
 
-```json
+```bash
+cat > /tmp/$ARGUMENTS-fuse-notify.json <<'EOF'
 {
   "kind": "fused",
   "citekey": "$ARGUMENTS",
   "at": "<ISO>",
   "summary": "Fused <N> pgmarks from <pdf>"
 }
+EOF
+python3 .virgil/scripts/append_inbox_item.py \
+  --item-file /tmp/$ARGUMENTS-fuse-notify.json
+rm /tmp/$ARGUMENTS-fuse-notify.json
 ```
 
 ### 7. Log

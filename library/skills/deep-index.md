@@ -1141,32 +1141,34 @@ Save the improved document back to `papers/$ARGUMENTS/main.tex`.
 
 ### 5. Update catalog
 
-Read `.virgil/catalog.json`, find the entry for this citekey, and update:
+**Do not Read/Write `.virgil/catalog.json` directly** — the catalog is
+shared across all skills and concurrent sessions, and ad-hoc rewrites
+race. Compute the new field values, write them to a patch file, then
+call `update_catalog_entry.py` (which holds `lock_catalog`, applies
+the patch, and bumps `catalog-version.txt`).
 
-```python
-entry["indexed"]["state"] = "deepIndexed"
-entry["indexed"]["lastIndexedAt"] = "<current ISO timestamp>"
-entry["updatedAt"] = "<same ISO timestamp>"
-```
+Compute these field values for the patch:
 
-Also recompute `entry["indexed"]["exampleCount"]` — count the
-top-level `\ex` / `\pex` blocks in the final body (single + multi
-combined, including unnumbered tagged examples like `\ex<*>`). **Do
-not count `\a` items, `\begin{xlist}` sub-items, or nested gloss
-tiers** — only the outer `\ex` / `\pex` envelopes. Examples skipped
-per §3.h₂'s "Bias toward not converting" rules do not contribute to
-this count (they live as prose; the corresponding
-`examples-not-converted:` warning logs them). Frontends ignore
-unknown fields, so this addition ships without a UI change; a future
-Library badge can surface it.
+- `indexed.state` = `"deepIndexed"`
+- `indexed.lastIndexedAt` = current ISO timestamp
+- `indexed.exampleCount` — count the top-level `\ex` / `\pex` blocks
+  in the final body (single + multi combined, including unnumbered
+  tagged examples like `\ex<*>`). **Do not count `\a` items,
+  `\begin{xlist}` sub-items, or nested gloss tiers** — only the outer
+  `\ex` / `\pex` envelopes. Examples skipped per §3.h₂'s "Bias toward
+  not converting" rules do not contribute to this count (they live as
+  prose; the corresponding `examples-not-converted:` warning logs
+  them). Frontends ignore unknown fields, so this addition ships
+  without a UI change; a future Library badge can surface it.
+- `indexed.pgmarkCount` — recompute only if step 1b's
+  `repair_pgmarks.py` removed any spurious anchors. Count the distinct
+  numeric labels in `\pgmark[opt]{N}` after the pass so the catalog
+  stays in sync with the file on disk. If repair removed nothing, omit
+  the field from the patch and the existing count is preserved.
 
-Recompute `entry["indexed"]["pgmarkCount"]` if step 1b's `repair_pgmarks.py`
-removed any spurious anchors — count the distinct numeric labels in
-`\pgmark[opt]{N}` after the pass so the catalog stays in sync with the
-file on disk. If repair removed nothing, leave the existing count.
-
-Preserve all other fields in the `indexed` object (`extractor`,
-`footnoteCount`, `exampleCount`).
+Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and
+top-level `updatedAt` are preserved automatically — the patch script
+deep-merges nested objects and only the keys you include get replaced.
 
 The `warnings` array is **append-only across passes, except for five
 recomputed prefixes: `missing-bib-entry:`, `footnote-recovery-needed:`,
@@ -1213,29 +1215,65 @@ resolved).
 > the normalized author-list index once at the start of step 3g and
 > reuse it.
 
-Write `.virgil/catalog.json` back. Bump `.virgil/catalog-version.txt`
-(plain-text file containing a single integer; convention is the
-current Unix epoch in seconds — `date +%s`. Frontends only check that
-the value changed, but the epoch convention keeps debugging easier).
+Compute the `warnings` array. It's **append-only across passes,
+except for five recomputed prefixes: `missing-bib-entry:`,
+`footnote-recovery-needed:`, `examples-not-converted:`,
+`ambiguous-citation:`, and `numeric-citation-style:`**. To produce it:
+read existing `indexed.warnings` from the catalog (plain `cat
+.virgil/catalog.json | jq …` is fine; no lock needed for reads),
+**drop any prior lines starting with any of those five prefixes**
+(they're recomputed by this pass), then concatenate the fresh lines
+from step 3g (`missing-bib-entry: <Author> <Year>` and
+`ambiguous-citation: <Author> <Year> (matches: ...)`, one per unique
+pair each, OR a single `numeric-citation-style: ...` line for
+Vancouver-style sources), step 3d (`footnote-recovery-needed: <count>
+...`, at most one), and step 3.h₂ (`examples-not-converted: <reason>
+...`, one per skipped region). Other warning kinds (from earlier
+indexing) are preserved untouched. This keeps idempotency clean:
+re-running deep-index on the same paper produces the same warnings
+array (no duplicates, no ghost entries from a previous run that have
+since been resolved).
+
+Then write the patch to a temp JSON file and call the catalog updater:
+
+```bash
+cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
+{
+  "indexed": {
+    "state": "deepIndexed",
+    "lastIndexedAt": "<ISO>",
+    "exampleCount": <N>,
+    "warnings": [<recomputed warnings array>]
+  }
+}
+EOF
+python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+  --patch-file /tmp/$ARGUMENTS-deepindex-patch.json
+rm /tmp/$ARGUMENTS-deepindex-patch.json
+```
+
+The script holds `lock_catalog`, deep-merges the patch into the
+existing entry (so `extractor`, `footnoteCount`, `pgmarkCount`, etc.
+are preserved), and bumps `.virgil/catalog-version.txt` — no manual
+bump needed.
 
 ### 6. Notify
 
-Append to `.virgil/notifications/inbox.json`. The file is wrapped:
-`{"items": [...]}`. Push the new entry onto the `items` array (don't
-replace the wrapper, don't write a bare object at the top level):
+Use `append_inbox_item.py` rather than reading/writing
+`inbox.json` directly (same race-protection reason as catalog):
 
-```json
+```bash
+cat > /tmp/$ARGUMENTS-deepindex-notify.json <<'EOF'
 {
-  "items": [
-    "...existing entries...",
-    {
-      "kind": "indexed",
-      "citekey": "$ARGUMENTS",
-      "at": "<ISO>",
-      "summary": "Deep-indexed $ARGUMENTS"
-    }
-  ]
+  "kind": "indexed",
+  "citekey": "$ARGUMENTS",
+  "at": "<ISO>",
+  "summary": "Deep-indexed $ARGUMENTS"
 }
+EOF
+python3 .virgil/scripts/append_inbox_item.py \
+  --item-file /tmp/$ARGUMENTS-deepindex-notify.json
+rm /tmp/$ARGUMENTS-deepindex-notify.json
 ```
 
 ### 7. Mark done

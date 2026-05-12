@@ -32,8 +32,17 @@ you to disambiguate something.
    - `papers/<citekey>/<citekey>.pdf` **or** `papers/<citekey>/<citekey>.docx` (or `.tex`) exists relative to the library root
    - `<citekey>` appears in `master.bib`
 
-   If either is missing, write a `failed` entry to `.virgil/notifications/inbox.json`
-   and stop.
+   If either is missing, append a `failed` notification via the locked
+   CLI shim and stop:
+   ```bash
+   cat > /tmp/<citekey>-setup-failed.json <<'EOF'
+   { "kind": "failed", "citekey": "<citekey>", "at": "<ISO>",
+     "summary": "Setup check failed: <reason>" }
+   EOF
+   python3 .virgil/scripts/append_inbox_item.py \
+     --item-file /tmp/<citekey>-setup-failed.json
+   rm /tmp/<citekey>-setup-failed.json
+   ```
 
 2. **Confirm Python deps.** Run:
    ```bash
@@ -98,11 +107,34 @@ you to disambiguate something.
      publisher — prefer the publisher printed on the PDF cover
      page; record the aggregator in `note` or skip it)
 
-   Write the updated fields to `master.bib`, set `bib.state =
-   "authenticated"` and `bib.doiVerified = true` in `.virgil/catalog.json`,
-   and continue to step 4 with the enriched entry. This is a
-   skill-level backstop for when `bib_auth.py`'s title-fuzz search
-   missed the correct record but the DOI was already known.
+   Write the updated fields to `master.bib` via the locked CLI shim:
+
+   ```bash
+   cat > /tmp/<citekey>-doiback-fields.json <<'EOF'
+   { "author": "...", "title": "...", "year": "...", "doi": "...", ... }
+   EOF
+   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+     --entry-type "<type>" \
+     --fields-file /tmp/<citekey>-doiback-fields.json \
+     --bib-state authenticated
+   rm /tmp/<citekey>-doiback-fields.json
+   ```
+
+   Then set `bib.state = "authenticated"` and `bib.doiVerified = true`
+   in `.virgil/catalog.json`:
+
+   ```bash
+   cat > /tmp/<citekey>-doiback-catalog.json <<'EOF'
+   { "bib": { "state": "authenticated", "doiVerified": true } }
+   EOF
+   python3 .virgil/scripts/update_catalog_entry.py "<citekey>" \
+     --patch-file /tmp/<citekey>-doiback-catalog.json
+   rm /tmp/<citekey>-doiback-catalog.json
+   ```
+
+   Continue to step 4 with the enriched entry. This is a skill-level
+   backstop for when `bib_auth.py`'s title-fuzz search missed the
+   correct record but the DOI was already known.
 
    **Cross-check before stamping authenticated.** A DOI fast-path
    confirms the bib is internally consistent with that DOI — *not*
@@ -268,13 +300,25 @@ you to disambiguate something.
    this way, append `[inferred from source]` to the `note` field so the
    user can audit.
 
-   After filling fields, update `master.bib`, re-emit the
-   single-entry `papers/<citekey>/references.bib` mirror to match,
-   and patch the `\title{}` / `\author{}` / `\date{}` lines at the
-   top of `papers/<citekey>/main.tex` if any of those changed.
-   `tex_emit.py` only sees the bib at extraction time, so a
-   correction made in step 4 won't propagate to `main.tex`
-   automatically.
+   After filling fields, update `master.bib` via the locked CLI shim:
+
+   ```bash
+   cat > /tmp/<citekey>-tier-fields.json <<'EOF'
+   { "author": "...", "title": "...", "year": "...", ... }
+   EOF
+   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+     --entry-type "<type>" \
+     --fields-file /tmp/<citekey>-tier-fields.json
+   rm /tmp/<citekey>-tier-fields.json
+   ```
+
+   Then re-emit the single-entry `papers/<citekey>/references.bib`
+   mirror to match (use `_resync_references_bib` from `index_paper`,
+   like `/authenticate-bib` step 5), and patch the `\title{}` /
+   `\author{}` / `\date{}` lines at the top of
+   `papers/<citekey>/main.tex` if any of those changed. `tex_emit.py`
+   only sees the bib at extraction time, so a correction made in step 4
+   won't propagate to `main.tex` automatically.
 
 5. **Inspect the output.**
    - Read `papers/<citekey>/main.tex` and skim it. If you spot obvious
