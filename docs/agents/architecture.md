@@ -1,4 +1,4 @@
-<!-- last-verified: 7a2355e 2026-05-09 -->
+<!-- last-verified: 151979b 2026-05-12 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -19,7 +19,7 @@ Before adding a new panel, link kind, or theme, extend the registry instead of c
 
 ## Key hooks
 
-All in `src/hooks/`. Full list (46 files) is large; these are the ones most often touched:
+All in `src/hooks/`. Full list (~50 files) is large; these are the ones most often touched:
 
 | Hook | What it owns |
 |---|---|
@@ -35,18 +35,21 @@ All in `src/hooks/`. Full list (46 files) is large; these are the ones most ofte
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
-| `useLinkHighlight` / `useCardHoverHighlight` / `useCardSelectionHighlight` | Three-surface hover/selection coupling (text, margin icon, panel card). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners |
+| `useLinkHighlight` / `useCardHoverHighlight` / `useCardSelectionHighlight` | Three-surface hover/selection coupling (text, margin icon, panel card). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
 | `useViewPrefs` | Panel visibility, layout state, placements, all user-layout prefs |
 | `usePersistentState` | IndexedDB persistence abstraction |
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
 | `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
+| `useStyleLibrary` | User-curated style entries shown in `ManageStylesModal` (apply / edit / duplicate / delete / save current preamble as a new entry) |
 | `useZenMode` | Zen-mode pref + chrome-hide orchestration. Hides Virgil bar / strips / panels and extends the editor to window edges; restores on exit |
 | `useHelperMode` | Helper-mode toggle — sets `data-helper-mode="on"` on `<body>`, enabling CSS hover callouts on all `[data-helper]` elements |
 | `useCollab` | Turn-taking collaboration state machine: pen ownership, heartbeat, polling of `collab.json` sidecar, per-card focus claims, cursor-paragraph presence broadcast |
 | `useRecentlyAddedTracker` | One-slot-per-kind tracker for just-created cards so panels can sort them to the top; auto-cleared when selection moves away |
 | `useLatexCompile` | SwiftLaTeX pdfTeX compile + parsed-error extraction. On success, persists the resulting PDF next to the `.tex` (`pdfFilenameFromTex`) so the in-app PDF view (`library/components/PdfView.tsx`) can re-render without recompiling |
 | `useDocNotificationStream` | Polls `<doc>/virgil/notifications.json` for completion entries written by editor-side skills; returns items appended since the doc-keyed last-seen timestamp in localStorage, for the consumer to toast |
+| `useAutoSplitDock` | Per-side observer that auto-engages split-dock when a single docked panel doesn't fill the column and there's enough leftover space for a second slot; tracks the split ratio dynamically against the panel's natural content height. Only manages single-panel state — 0 or 2 docked panels stay user-owned |
+| `useMyPapers` | Global "My Papers" list shown in the Library's My Papers pod (IndexedDB single shared record + BroadcastChannel sync). Decoupled from open document tabs: opening a doc anywhere never auto-adds, and removing a row never closes a tab |
 
 ## Persistence layers
 
@@ -128,7 +131,7 @@ Popout key prefixes for cards (DO NOT rename without migration — they're persi
 Two related abstractions, both now mounted inside EditorPane:
 
 - **`cardCreation` context** ([contexts/card-creation.tsx](../../src/components/editor-layout/contexts/card-creation.tsx) + [card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts)) — collapses the historical "create + select + pop-at-anchor" dance into single `cardCreation.createNote/createCut/createTodo/createFootnote/createCitation/createQuotation` calls. Each handler on the Actions toolbar and the Margin toolbar routes through it, so creation behavior stays consistent across entry points. The pop-at-anchor side now flows through `popCardAtAnchor` inside EditorPane (gated on `viewPrefs`).
-- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side (see "Future work" in `master-plan-the-status-buzzing-music.md`).
+- **`pristine-cards` context** + `usePristineCardManager` — tracks cards that were just created but never edited by the user; auto-discards them if the user closes/blurs without typing. Every card-bearing hook (`useNotes`, `useCutter`, `useTodos`, `useQuotations`, `useCitations`, `useFootnotes`) plugs into this. EditorPane owns the manager; EditorLayout still constructs a parallel manager because AIWindow + the click-away mutex effect read selection state on the shell side.
 
 ## System dialog primitive
 

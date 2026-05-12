@@ -1,4 +1,4 @@
-<!-- last-verified: 7a2355e 2026-05-09 -->
+<!-- last-verified: 151979b 2026-05-12 -->
 
 # UI Chrome
 
@@ -10,8 +10,8 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 The orchestrator role is now split across two files:
 
-- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5600 lines) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4438) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts ~line 5473, Margins, NewDoc, TexFilePicker, DocumentClassMismatch), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (multi-copy tear-off state).
-- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~4400 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 2814), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2247) / `CardLiftOutline`.
+- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5250 lines) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts ~line 5091, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles ~line 5112), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (multi-copy tear-off state).
+- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~4750 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3105), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2524) / `CardLiftOutline`.
 
 When anything touches UI layout, chrome, or panel placement: if it's a tab/dialog/Virgil-bar concern → EditorLayout; if it's a per-document chrome / panel / popout / MenuBar concern → EditorPane. The full split is documented in `architecture.md` → "EditorPane vs EditorLayout".
 
@@ -25,8 +25,8 @@ The `chrome` prop ([chrome-config.ts](../../src/components/editor-layout/chrome-
 
 ```
 EditorLayout (shell)
-├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:4438
-├─ Top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, …)
+├─ Virgil bar (DocTab + LibraryTab pairs, menu pod, etc.) — EditorLayout.tsx:4013
+├─ Top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, ManageStyles, …)
 ├─ activePane switch
 │   ├─ doc branch → <EditorPane> (see below)
 │   ├─ paper branch → <PaperRender> → <EditorPane editable={false}>
@@ -39,21 +39,21 @@ EditorPane (canonical editor surface)
 ├─ PaneRail side="left" (icon strip, OmniFilterMenu)
 ├─ PanelColumn side="left" (active panel(s); top/bottom split; MarginActionToolbar overlay)
 ├─ Editor column
-│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:2814
-│   ├─ MarginActionToolbar (left + right action segments)            — ~line 3113
+│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3105
+│   ├─ MarginActionToolbar (left + right action segments)            — ~line 3010
 │   ├─ VirgilEditor (the TipTap editor itself)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatCard portals (popped-out cards)
 │   ├─ FloatingPanel portals (popped-out panels)
 │   ├─ ParagraphFloat / HeadingFloat / example-block portals (popped-out blocks)
-│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:2247
+│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:2524
 ├─ PanelColumn side="right"
 └─ PaneRail side="right" (icon strip, OmniFilterMenu)
 ```
 
 ## Tool strips (left & right)
 
-Rendered by `PaneRail` inside `EditorPane.tsx` (~line 3537 for `data-strip-side`). Identical structure on both sides:
+Rendered by `PaneRail` inside `EditorPane.tsx` (~line 3878 for `data-strip-side`). Identical structure on both sides:
 
 1. **View control pod** (grouped buttons at top):
    - Collapse/expand sidebar
@@ -116,7 +116,7 @@ Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/pa
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 
-Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 2814). No portal. Renders in `atHome` mode — orientation locked horizontal; rotation knob and tab silhouette suppressed; no drop shadow; bare icons sit on the canvas. The home-bar grab handle was dropped in c40d8d2, so the home MenuBar no longer tears off.
+Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3105). No portal. Renders in `atHome` mode — orientation locked horizontal; rotation knob and tab silhouette suppressed; no drop shadow; bare icons sit on the canvas. The home-bar grab handle was dropped in c40d8d2, so the home MenuBar no longer tears off.
 
 Detached copies still spawn from the Format and Actions popovers' grab bars — those become free-floating `DetachedMenuToolbar`/`DetachedFormattingToolbar`/`DetachedActionsToolbar` instances mounted via portals to `document.body`. State arrays still live in the EditorLayout shell (not EditorPane): `detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]` (each `{id, pos}`, multi-instance). Reader passes no `menuBar` bundle, so the docked MenuBar and detached toolbars stay dormant for paper renders.
 
@@ -126,7 +126,7 @@ Detached copies still spawn from the Format and Actions popovers' grab bars — 
 
 Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
 
-A **Document Style** dropdown (`DocStyleDropdown`, defined inline at `EditorLayout.tsx` ~line 263) sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. It exposes the per-document preamble preset selector — see [src/lib/document-styles.ts](../../src/lib/document-styles.ts) for the catalog and [src/hooks/useDocumentStyle.ts](../../src/hooks/useDocumentStyle.ts) for the rewrite mechanics.
+A **Style** mode toggle button sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. Click it to open [ManageStylesModal](../../src/components/ManageStylesModal.tsx) (the inline `DocStyleDropdown` was folded into this modal by `9744b71`) — apply a style to the active doc, edit/duplicate/delete entries, save the current preamble as a new entry, or pick the default for new docs. Drift between the picked style and the doc's preamble routes through [StyleApplyDialog](../../src/components/StyleApplyDialog.tsx). State: per-doc id in [useDocumentStyle](../../src/hooks/useDocumentStyle.ts); user style library in [useStyleLibrary](../../src/hooks/useStyleLibrary.ts); preset catalog in [document-styles.ts](../../src/lib/document-styles.ts). Mount + open state at `EditorLayout.tsx` ~line 4737 / ~line 5112.
 
 A **Print** button (printer icon) lives in the same right cluster. It opens `PrintDialog` ([src/components/PrintDialog.tsx](../../src/components/PrintDialog.tsx)) — a show/hide controls modal for marginalia, footnotes, citations, comments, paragraph titles, etc. — then triggers `window.print()`. Print orchestration + appendix collection in [src/lib/print.ts](../../src/lib/print.ts) and [src/components/PrintAppendices.tsx](../../src/components/PrintAppendices.tsx).
 
@@ -136,7 +136,7 @@ The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedP
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` (at `MenuBar.tsx:852`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:766`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
+`ActionButtonsRow` (at `MenuBar.tsx:953`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:794`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
 
 | Button | Color | Opens/creates |
 |---|---|---|
@@ -153,7 +153,7 @@ Colors are coordinated with each panel's `CARD_THEME`.
 
 ## DetachedActionsToolbar
 
-`DetachedActionsToolbar` at `MenuBar.tsx:974`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
+`DetachedActionsToolbar` at `MenuBar.tsx:1077`. Free-floating pod, separate from MenuBar, appears when user tears the attached actions popover off by its grab bar. **Multi-instance**: each tear-off spawns a new copy, so many can coexist.
 
 State in the EditorLayout shell: `detachedActions[]` (array of `{ id, pos }`, keyed on monotonic id). The close (X) button filters the entry out of the array; dragging routes through `beginActionsDrag(id, …)` which looks up the wrapper by `data-actions-id` and runs snap-grid math ([src/components/editor-layout/snap-grid.ts](../../src/components/editor-layout/snap-grid.ts)) against editor-column and panel-column edges.
 
@@ -164,11 +164,11 @@ Modes (per instance):
 
 ## Formatting popup
 
-Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx` ~line 1401 (inside `MenuBarContent`). Flips above/left when near viewport edges. Escape or outside-click closes.
+Not a dedicated component — `AttachedPopover` anchored to the A-glyph button in `MenuBar.tsx` ~line 1509 (inside `MenuBarContent`). Flips above/left when near viewport edges. Escape or outside-click closes.
 
 ## Shared popover primitive
 
-`AttachedPopover` at `MenuBar.tsx:647`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
+`AttachedPopover` at `MenuBar.tsx:675`. Props: `anchor`, `children: (close) => ReactNode`, `title`, `active`, optional `onGrabStart` (adds a grab handle on the right for tear-off).
 
 Behavior: click anchor toggles; fixed-positioned below-right by default; flips as needed; Escape + outside-click close.
 
@@ -178,7 +178,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## MarginActionToolbar
 
-[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Mounted inside `EditorPane.tsx` (~line 3113) via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Renders each button via `ActionChipButton` (the marginalia-style chip variant of `ActionButton`, defined in `MenuBar.tsx` ~line 853) so the toolbar visually matches the gutter markers it produces — chip palette comes from `usePanelMarkerPalette(themeKey)` and honors per-panel color overrides. The bare `ActionButton` continues to render the legacy icon-only style for the MenuBar's Actions popover and the detached floating toolbar. The Reader chrome (`READER_CHROME.actionToolbarKinds = ["note"]`) limits which buttons appear in the paper-rendering surface.
+[src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx) — a per-column action toolbar rendered above a PanelColumn when it is showing Omni-view. Mounted inside `EditorPane.tsx` (~line 3010) via the `marginToolbarActions` callback bag and passed as the column's `topOverlay` prop. Renders each button via `ActionChipButton` (the marginalia-style chip variant of `ActionButton`, defined in `MenuBar.tsx` ~line 853) so the toolbar visually matches the gutter markers it produces — chip palette comes from `usePanelMarkerPalette(themeKey)` and honors per-panel color overrides. The bare `ActionButton` continues to render the legacy icon-only style for the MenuBar's Actions popover and the detached floating toolbar. The Reader chrome (`READER_CHROME.actionToolbarKinds = ["note"]`) limits which buttons appear in the paper-rendering surface.
 
 ## Panel icons
 
@@ -200,11 +200,11 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## Per-panel text-size stepper
 
-Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1771, inside `ItemMenu` at ~line 1740). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
+Every panel-header three-dot menu auto-injects a compact text-size stepper before any panel-specific items. `PanelTextSizeRow` ([src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx)) is the widget; auto-injection happens in `panel-primitives.tsx` (~line 1875, inside `ItemMenu` at ~line 1844). Available sizes and per-panel-kind defaults live in [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); the panel kind is read from `panel-kind-context.tsx`. Persistence is via `useViewPrefs` keyed by panel kind.
 
 ## Fonts dialog
 
-The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout (the shell) owns the `fontsOpen` state and mounts the dialog (~line 5473).
+The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout (the shell) owns the `fontsOpen` state and mounts the dialog (~line 5091).
 
 ## Dock-target outline
 

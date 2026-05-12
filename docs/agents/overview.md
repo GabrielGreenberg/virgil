@@ -1,8 +1,8 @@
-<!-- last-verified: 7a2355e 2026-05-09 -->
+<!-- last-verified: 151979b 2026-05-12 -->
 
 # Virgil Overview
 
-**Current version:** 0.1.36 (mirrors `package.json`; bumped by `/cleanup-virgil`)
+**Current version:** 0.1.37 (mirrors `package.json`; bumped by `/cleanup-virgil`)
 
 
 ## What it is
@@ -27,9 +27,9 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5600 lines, shell wrapper after Path A 7.8), `EditorPane.tsx` (~4400 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~3257 lines, TipTap wrapper), `panel-primitives.tsx` (~2088 lines, card/panel design system), `MenuBar.tsx` (~1585 lines, floating toolbar). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
-- `src/hooks/` — React hooks for state management (46 files)
-- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (46 files)
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5250 lines, shell wrapper after Path A 7.8), `EditorPane.tsx` (~4750 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~3400 lines, TipTap wrapper), `panel-primitives.tsx` (~2100 lines, card/panel design system), `MenuBar.tsx` (~1650 lines, floating toolbar). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
+- `src/hooks/` — React hooks for state management (~50 files)
+- `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (~50 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards
 - `src/panels/` — Sidebar panel implementations, one folder per panel + `_shared/` + `panel-registry.ts`
 - `src/types/` — Shared type definitions

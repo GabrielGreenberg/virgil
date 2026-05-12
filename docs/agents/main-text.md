@@ -1,4 +1,4 @@
-<!-- last-verified: 7a2355e 2026-05-09 -->
+<!-- last-verified: 151979b 2026-05-12 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3257 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3400 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
 
 After Path A 7.8, the Library Reader mounts the canonical `<EditorPane>` (which wraps `Editor.tsx`), so there is no longer a parallel `library/tiptap/` extension set. PgMarkChip — the only Library-only extension — has been folded into the unified set at [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts); it's harmless on docs without `\pgmark{N}`.
 
@@ -109,8 +109,13 @@ Panel cards carry `data-link-card="<cardKind>:<cardId>"`; multi-anchor cards als
 
 ### Highlight coupling
 
-Hover and selection are unified across the three linked surfaces (text, margin icon, panel card) via a single `(hoveredEntityId, hoveredEntityKind)` state pair in `EditorLayout.tsx`. Hover any one and all three light up; click a card or margin icon and selection propagates. No per-card-kind hover handlers anywhere.
+Hover and selection are unified across the three linked surfaces (text, margin icon, panel card) via a module-level `cardStore` ([src/links/_shared/anchored-card-store.ts](../../src/links/_shared/anchored-card-store.ts)) holding `{ selection: AnchoredCardRef | null, hover: AnchoredCardRef | null }`. Module scope, not React Context — selection has to be visible to EditorLayout, EditorPane (which also mounts in the Library reader), and every popped-out floating card rendered through a portal. `useSyncExternalStore` gives observability without a common ancestor. Hover any one of the three surfaces and all three light up; click a card or margin icon and selection propagates. Selection is *single*: at most one card is selected across the entire UI.
 
+Per-card integration is one line: `const ac = useAnchoredCard({ kind, id }); return <PanelCard {...ac.props} selected={ac.selected} ... />`. The hook returns the `data-card-key`, mouse handlers, and selected/hovered booleans every anchored card needs. No per-card-kind hover handlers anywhere; adding a new anchored card kind is just `ANCHORED_CARD_KINDS` + this 3-line pattern.
+
+- [src/links/_shared/anchored-card-store.ts](../../src/links/_shared/anchored-card-store.ts) — `cardStore` module + `useIsSelected` / `useIsHovered` / `useSelection`.
+- [src/links/_shared/useAnchoredCard.ts](../../src/links/_shared/useAnchoredCard.ts) — the single hook every anchored panel card calls.
+- [src/links/_shared/usePlacement.ts](../../src/links/_shared/usePlacement.ts) — card → text alignment: when `cardStore.selection` changes via a user gesture, scroll the editor so the closest anchor aligns with the selected card's vertical position. (Text/marginalia → card alignment is the inverse and still flows through `openForCard`.)
 - [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) — `EntityKind` union (`note`/`cut`/`revision`/`todo`/`archive`/`quotation`/`footnote`/`citation`) and generic resolvers (`findEntity`, `cardKeyForEntity`, `entityToAnchorId`).
 - [src/links/_shared/useLinkHighlight.ts](../../src/links/_shared/useLinkHighlight.ts) — paints `data-link-highlight="hover" | "active"` on `.linked-anchor` spans (Mode B text ranges).
 - [src/links/_shared/useCardHoverHighlight.ts](../../src/links/_shared/useCardHoverHighlight.ts) — paints `data-card-hovered` on resolved anchor elements *and* on matching panel cards (via `data-card-key`).
