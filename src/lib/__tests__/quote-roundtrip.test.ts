@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseLatex, serializeBodyOnly } from "@/lib/latex-parser";
-import { } from "@/lib/latex-serializer";
-
-// We don't actually use serializeBodyOnly from latex-parser; pull it from the serializer module.
+import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly as serializeBody } from "@/lib/latex-serializer";
 
 function gather(node: any): string {
