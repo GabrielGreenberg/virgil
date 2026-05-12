@@ -46,9 +46,10 @@ function niceStep(raw: number): number {
  *  spaced uniformly between. Click jumps the parent scroll container to
  *  that page's actual position in the doc.
  *
- *  Density: when pages would overlap, only every Nth label renders;
- *  intermediate (thinned) pages render a small notch so they remain
- *  clickable. Labeled pages render the number alone (no notch). */
+ *  Density: ticks thin out so labels never overlap. `step` is computed
+ *  from the strip height and pgmark count and snapped to a "nice" value
+ *  (1, 2, 5, 10, 25, …); only every Nth page renders. The final page,
+ *  the current page, and the hovered page are always shown. */
 export default function PageScrollStrip({ editor, scrollContainer }: Props) {
   const stripRef = useRef<HTMLElement | null>(null);
   const [pages, setPages] = useState<PageMark[]>([]);
@@ -260,7 +261,12 @@ export default function PageScrollStrip({ editor, scrollContainer }: Props) {
         );
       })()}
       {pages.map((p, i) => {
-        const isLabeled = i % step === 0 || i === hoverIdx || i === currentIdx;
+        const isVisible =
+          i % step === 0 ||
+          i === pages.length - 1 ||
+          i === currentIdx ||
+          i === hoverIdx;
+        if (!isVisible) return null;
         const isHover = i === hoverIdx;
         const tone = isHover ? PGMARK_RED : "var(--muted)";
         return (
@@ -293,19 +299,7 @@ export default function PageScrollStrip({ editor, scrollContainer }: Props) {
               opacity: p.isLow && !isHover ? 0.55 : 1,
             }}
           >
-            {isLabeled ? (
-              <span style={{ whiteSpace: "nowrap" }}>{p.label}</span>
-            ) : (
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 10,
-                  height: 1,
-                  background: tone,
-                  flexShrink: 0,
-                }}
-              />
-            )}
+            <span style={{ whiteSpace: "nowrap" }}>{p.label}</span>
           </button>
         );
       })}
