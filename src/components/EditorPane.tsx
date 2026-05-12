@@ -92,6 +92,7 @@ import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useDropActions } from "./editor-layout/card-actions/drops";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { useAutoSplitDock } from "@/hooks/useAutoSplitDock";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
@@ -253,6 +254,10 @@ export interface EditorPaneViewPrefs {
   getPanelWidth: (side: Side, panelId: PanelId) => number;
   setPanelWidth: (side: Side, panelId: PanelId, width: number) => void;
   setSplitRatio: (side: Side, ratio: number) => void;
+  /** Auto-split-dock setters (used by `useAutoSplitDock` only). */
+  setSplitRatioInternal: (side: Side, ratio: number) => void;
+  engageAutoSplit: (side: Side, ratio: number) => void;
+  disengageAutoSplit: (side: Side) => void;
 
   // ── Persisted page margins (driven by margin-edit mode) ────────
   setEditorLeftMargin: (px: number) => void;
@@ -621,6 +626,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
+
+  // Auto-engage split-dock mode when a single docked panel doesn't fill
+  // the column and there's room for a second slot. Per-side observer.
+  useAutoSplitDock({ side: "left", viewPrefs });
+  useAutoSplitDock({ side: "right", viewPrefs });
   // `docVersion` bumps on every editor `create` / `update` so memoized
   // panel data (`getExamples`, `getFootnotes`, `getCitations`) refreshes
   // when the live doc changes. In Reader mode `update` rarely fires —
@@ -2040,10 +2050,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // placements), fall back to its registry default. Returns `null` for
   // presentation-pod panels (registry `defaultStripSide: null`, e.g.
   // "omni") — those belong in the view-controls pod, not the icon
-  // strip, so the strip-render path filters them out.
+  // strip, so the strip-render path filters them out. The registry's
+  // null is authoritative: a stale stored placement (e.g. omni dragged
+  // onto a strip in an old build) must NOT pin it back onto the rail.
   const sideForKind = useCallback(
-    (k: PanelKind): "left" | "right" | null =>
-      placementSideByKind.get(k) ?? PANEL_REGISTRY[k]?.defaultStripSide ?? null,
+    (k: PanelKind): "left" | "right" | null => {
+      const registrySide = PANEL_REGISTRY[k]?.defaultStripSide ?? null;
+      if (registrySide === null) return null;
+      return placementSideByKind.get(k) ?? registrySide;
+    },
     [placementSideByKind],
   );
   // Order each side's strip by `effectivePlacements` so drag-reorders
@@ -2972,16 +2987,22 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // whole document. Without this, sticky's containing
                 // block is the row's ~688px viewport height and
                 // descendants drift after a few hundred px of scroll.
-                // `--row-bound-h` is set on the row scroll container
-                // by EditorScrollbar (= editor's scrollHeight); falls
-                // back to 100% before first measurement. The
-                // `max(…, 100%)` floor guarantees the pod (flex:1000
-                // inside this column) extends at least to the scroll
-                // port bottom even when the doc is shorter than the
-                // viewport, so a short document doesn't end before
-                // the sticky bottom cap and create a "double bottom
-                // edge" (pod's own border + cap).
-                minHeight: 'max(var(--row-bound-h, 100%), 100%)',
+                // `--row-bound-h` is set in pixels on the row scroll
+                // container by EditorScrollbar (= max of editor's
+                // scrollHeight and row's clientHeight); falls back to
+                // 100vh before first measurement so the floor always
+                // resolves. A pixel-or-viewport min-height guarantees
+                // the pod (flex:1000 inside this column) extends to
+                // the scroll port bottom even when the doc is shorter
+                // than the viewport, so a short document doesn't end
+                // before the sticky bottom cap and create a "double
+                // bottom edge" (pod's own border + cap). The earlier
+                // `max(var(--row-bound-h, 100%), 100%)` form failed
+                // here because percentage min-heights don't resolve
+                // against an indefinite-height containing block, and
+                // an unresolvable operand inside `max()` poisons the
+                // whole declaration.
+                minHeight: 'var(--row-bound-h, 100vh)',
                 // In-editor text margins. Read by the prose class in
                 // Editor.tsx via pl-[var(--editor-pl,88px)] /
                 // pr-[var(--editor-pr,72px)]. Driven by persisted
@@ -3494,6 +3515,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   marginLeft: 'calc(-4px - var(--pod-gap))',
                   marginRight: 'calc(-4px - var(--pod-gap))',
                   background: 'var(--background)',
+                  // Hidden when the doc fits within the row's viewport
+                  // (set by EditorScrollbar via `--cap-bottom-display`).
+                  // Suppresses the doubled-bottom-edge visual for short
+                  // docs where the pod's own rounded bottom is already
+                  // at the visible bottom edge.
+                  display: 'var(--cap-bottom-display, flex)',
                 }}
               >
                 <div

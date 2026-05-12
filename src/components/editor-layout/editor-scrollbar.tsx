@@ -73,16 +73,32 @@ export function EditorScrollbar({
     // the row scroll). This makes the browser's native scroll top out at
     // the editor's bottom.
     const syncRowBoundCss = () => {
-      // Floor at the row's own clientHeight so the editor column
-      // never collapses below the scroll port for short documents.
-      // The column's `min-height: max(var(--row-bound-h, 100%), 100%)`
-      // also enforces a 100%-of-parent floor, but percentage
-      // min-heights only resolve when the containing block has a
-      // definite size — and in some flex layouts that resolution
-      // doesn't fire reliably. Pinning the floor here in pixel terms
-      // makes the guarantee independent of percentage resolution.
-      const h = Math.max(ec.scrollHeight, row.clientHeight);
+      // Compute the column's target height. For short docs we want the
+      // column to exactly match the row's clientHeight so the pod's
+      // natural bottom aligns with the sticky cap-inner — no scroll
+      // overflow, no doubled bottom edge. For long docs we want the
+      // column to span the doc's full scroll height so sticky
+      // descendants latch across the whole scroll range.
+      //
+      // We use the paper content's scrollHeight (not the column's,
+      // which self-perpetuates once min-height inflates it) plus the
+      // column's fixed chrome (32 toolbar + 8 breathing). Floor at
+      // row.clientHeight so the column never collapses below the
+      // visible scroll port.
+      const page = ec.querySelector("[data-editor-page]") as HTMLElement | null;
+      const paperH = page ? page.scrollHeight : 0;
+      const required = paperH + 40;
+      const h = Math.max(required, row.clientHeight);
       row.style.setProperty("--row-bound-h", `${h}px`);
+      // When the doc fits within the row's visible viewport, hide the
+      // sticky bottom cap. The cap exists to mask editor content
+      // scrolling past the bottom 8px of the viewport for long docs;
+      // for short docs it just doubles up on the pod's own rounded
+      // bottom, creating a visible second edge with a manilla gap
+      // between. Hiding it eliminates the doubling regardless of any
+      // residual measurement quirks in the column min-height path.
+      const docFits = required <= row.clientHeight;
+      row.style.setProperty("--cap-bottom-display", docFits ? "none" : "flex");
     };
     syncRowBoundCss();
     row.addEventListener("scroll", refresh, { passive: true });
