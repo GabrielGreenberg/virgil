@@ -41,19 +41,39 @@ and stop.
 
 ```bash
 python3 .virgil/scripts/deep_preprocess.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/repair_pgmarks.py papers/$ARGUMENTS/main.tex
 ```
 
-This applies automated cleanup: strips repeating running headers and
+Two deterministic passes:
+
+**a. `deep_preprocess.py`** — strips repeating running headers and
 footers, removes leaked page numbers, rejoins hyphenated line breaks,
-joins broken paragraphs, and unwraps hard-wrapped lines. **Capture the
-script's stdout summary line verbatim** — it must be quoted into step
-8's `**Preprocessing:**` field unchanged. Do not paraphrase; the exact
-counts are the only audit trail of what the preprocessor changed. The
-script omits any counter that is zero, so the line you see may have
-2–3 stats (e.g. `"7 headers removed, 9 paragraphs joined."`) or up to
-all five (`"60 headers removed, 29 page numbers removed, 12
-paragraphs joined, 8 hyphenated breaks rejoined, 3 pgmarks inlined."`)
-— quote whatever the script printed.
+joins broken paragraphs, and unwraps hard-wrapped lines.
+
+**b. `repair_pgmarks.py`** — removes spurious `\pgmark{N}` anchors:
+false-leading sequences from OCR misreads of the front matter,
+duplicate labels emitted by index pages that share printed page
+numbers with body anchors, and trailing out-of-order runs. Keeps the
+longest contiguous non-decreasing run (with small forward jumps
+allowed) and drops the rest. Non-numeric pgmarks (roman / appendix-
+style) are passed through untouched.
+
+**Capture each script's stdout summary line verbatim** — they must be
+quoted into step 8's `**Preprocessing:**` and `**Pgmark repair:**`
+fields unchanged. Do not paraphrase; the exact counts are the only
+audit trail of what the deterministic passes changed.
+
+`deep_preprocess.py` omits any counter that is zero, so the line you
+see may have 2–3 stats (e.g. `"7 headers removed, 9 paragraphs
+joined."`) or up to all five (`"60 headers removed, 29 page numbers
+removed, 12 paragraphs joined, 8 hyphenated breaks rejoined, 3
+pgmarks inlined."`).
+
+`repair_pgmarks.py` prints either `"No spurious pgmarks in <path>."`
+(no changes) or `"Repaired <path>: N spurious pgmarks removed."`
+followed by one indented line per removed pgmark. Quote the
+*Repaired*/*No spurious* summary line; the per-line detail can be
+elided in the log.
 
 ### 2. Read inputs
 
@@ -1140,8 +1160,13 @@ this count (they live as prose; the corresponding
 unknown fields, so this addition ships without a UI change; a future
 Library badge can surface it.
 
+Recompute `entry["indexed"]["pgmarkCount"]` if step 1b's `repair_pgmarks.py`
+removed any spurious anchors — count the distinct numeric labels in
+`\pgmark[opt]{N}` after the pass so the catalog stays in sync with the
+file on disk. If repair removed nothing, leave the existing count.
+
 Preserve all other fields in the `indexed` object (`extractor`,
-`pgmarkCount`, `footnoteCount`, `exampleCount`).
+`footnoteCount`, `exampleCount`).
 
 The `warnings` array is **append-only across passes, except for five
 recomputed prefixes: `missing-bib-entry:`, `footnote-recovery-needed:`,
@@ -1232,7 +1257,8 @@ Write a summary to `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`:
 # Deep-index summary: $ARGUMENTS
 
 **Date:** <ISO>
-**Preprocessing:** <stats from step 1>
+**Preprocessing:** <stats from step 1a>
+**Pgmark repair:** <stats from step 1b>
 **References emitted:** <N> entries → references.bib
 **Inline citations rewritten:** <M> (with <K> ambiguous mentions left as prose)
 **Missing bib entries:** <K> author/year pairs in body without a matching entry — added to `indexed.warnings`.
@@ -1267,6 +1293,7 @@ sub-heading (one line per warning, mirroring the
 ```
 Deep-indexed $ARGUMENTS.
 Preprocessing: <N> headers removed, <M> page numbers removed, ...
+Pgmark repair: <N> spurious pgmarks removed (or "no spurious pgmarks").
 AI fixes: <bulleted list of structural changes>.
 ```
 

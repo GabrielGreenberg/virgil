@@ -168,6 +168,36 @@ def _int_to_roman(n: int) -> str:
     return "".join(out)
 
 
+def _longest_run_indices(values: list[int], max_delta: int = 5) -> set[int]:
+    """Indices of the longest contiguous run where consecutive values
+    don't decrease and don't jump by more than `max_delta`.
+
+    A "run" is broken by either a value drop or a forward jump bigger
+    than `max_delta`. This catches the false-leading-sequence pattern:
+    when the OCR misreads front matter as '99, 101, 103, …, 109' before
+    the real body starts at '2', the +94 jump (5→99) and the −107 drop
+    (109→2) bracket a short false run. The body's monotonic 2-3-4-… run
+    is much longer, so it wins. Ties are broken by keeping the *later*
+    run: false-leading sequences are more common in practice than
+    false-trailing ones, so when an OCR-mangled front matter happens to
+    be the same length as the real body, prefer the body."""
+    n = len(values)
+    if n == 0:
+        return set()
+    best_start = 0
+    best_end = 0
+    start = 0
+    for i in range(1, n):
+        diff = values[i] - values[i - 1]
+        if diff < 0 or diff > max_delta:
+            if i - 1 - start >= best_end - best_start:
+                best_start, best_end = start, i - 1
+            start = i
+    if n - 1 - start >= best_end - best_start:
+        best_start, best_end = start, n - 1
+    return set(range(best_start, best_end + 1))
+
+
 def resolve(pages: list[PageInfo]) -> list[PageInfo]:
     """Second pass: resolve candidates into a coherent printed-page sequence.
 
@@ -237,6 +267,21 @@ def resolve(pages: list[PageInfo]) -> list[PageInfo]:
         last_arabic_val = chosen
         last_arabic_pdf = i
 
+    # ── 1.5. Drop false-leading arabic sequences ────────────────────────
+    # The greedy walk above can lock onto a short early false sequence
+    # (e.g. OCR misreads the front matter as page numbers 99-109) and
+    # never recover. Find the longest contiguous run of non-decreasing,
+    # small-step accepted values and discard everything else. The
+    # extrapolation pass then re-fills from the surviving run.
+    arabic_accepted = [(i, int(accepted[i])) for i in range(n)
+                       if accepted[i] is not None and accepted[i].isdigit()]
+    if len(arabic_accepted) >= 4:
+        keep_pos = _longest_run_indices([v for _, v in arabic_accepted])
+        for pos, (i, _) in enumerate(arabic_accepted):
+            if pos not in keep_pos:
+                accepted[i] = None
+                pages[i].chosen_band = None
+
     # Roman numerals for any unaccepted page that has a roman candidate.
     last_roman_val: Optional[int] = None
     for i, p in enumerate(pages):
@@ -290,6 +335,27 @@ def resolve(pages: list[PageInfo]) -> list[PageInfo]:
         p.print_page = str(p.pdf_page)
         p.confidence = "missing"
         p.missing = True
+
+    # ── 3. Demote duplicate print_page labels ───────────────────────────
+    # The missing-fallback above uses `str(pdf_page)` as a last-resort
+    # label, which can collide with a real body label assigned to a
+    # different pdf_page (e.g. front matter pdf_page 5 → "5" from
+    # fallback, while body pdf_page 18 → "5" from greedy). Keep the
+    # higher-confidence occurrence; demote the loser to print_page=None
+    # so tex_emit.py skips the pgmark.
+    _rank = {"high": 3, "low": 2, "missing": 1}
+    winners: dict[str, int] = {}
+    for i, p in enumerate(pages):
+        if not p.print_page:
+            continue
+        prev = winners.get(p.print_page)
+        if prev is None:
+            winners[p.print_page] = i
+        elif _rank.get(p.confidence, 0) > _rank.get(pages[prev].confidence, 0):
+            pages[prev].print_page = None
+            winners[p.print_page] = i
+        else:
+            p.print_page = None
 
     return pages
 
