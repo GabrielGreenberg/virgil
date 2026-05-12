@@ -263,8 +263,8 @@ export function PanelColumn({
       data-panel-column-side={side}
       className="relative flex flex-col"
       style={{
-        flex: `0 0 ${panelPref}px`,
-        minWidth: isResizing ? 0 : 'var(--panel-min)',
+        flex: collapsed ? '0 0 0px' : `0 0 ${panelPref}px`,
+        minWidth: collapsed ? 0 : (isResizing ? 0 : 'var(--panel-min)'),
         // Cap height at the editor column's scrollHeight (set on the row
         // as `--row-bound-h` by EditorScrollbar). Unanchored cards can
         // stack the column taller than the editor; without this cap the
@@ -287,15 +287,16 @@ export function PanelColumn({
         // owned that space — it's hidden in this state). Otherwise leave
         // padding-top: 0 so the toolbar's sticky positioning controls the
         // top band.
-        paddingTop: extendsOverToolbar ? 'var(--pod-gap)' : 0,
-        paddingBottom: 'var(--pod-gap)',
-        paddingLeft: 4,
-        paddingRight: 4,
+        paddingTop: collapsed ? 0 : (extendsOverToolbar ? 'var(--pod-gap)' : 0),
+        paddingBottom: collapsed ? 0 : 'var(--pod-gap)',
+        paddingLeft: collapsed ? 0 : 4,
+        paddingRight: collapsed ? 0 : 4,
       }}
     >
       {/* Sticky action-buttons slot — hidden when the column has a top-
-          region docked panel that covers the toolbar area. */}
-      {topOverlay && !extendsOverToolbar && (
+          region docked panel that covers the toolbar area, or when the
+          side is fully collapsed. */}
+      {topOverlay && !extendsOverToolbar && !collapsed && (
         <div
           data-tool-strip={side === "left" ? "left-action" : "right-action"}
           className="sticky z-20 flex justify-center items-start"

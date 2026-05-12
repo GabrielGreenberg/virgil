@@ -4166,6 +4166,10 @@ function PaneRail({
       <IconStrip side={side} stripItems={stripItems} viewPrefs={viewPrefs} />
     );
 
+    const isCollapsed = side === "left"
+      ? viewPrefs.prefs.activeLeft == null
+      : viewPrefs.prefs.activeRight == null;
+
     const panelColumnJsx = isSplit ? (
       <PanelColumn
         side={side}
@@ -4178,6 +4182,7 @@ function PaneRail({
         bottomPanelId="omni"
         dockOccupancy={dockOccupancy}
         split
+        collapsed={isCollapsed}
         focusedHalf={focusedHalf}
         onFocusHalf={onFocusHalf}
         tail={tail}
@@ -4200,6 +4205,7 @@ function PaneRail({
         onSyncBeforeDrag={viewPrefs.syncPanelPrefsToRendered}
         topPanelId="omni"
         dockOccupancy={dockOccupancy}
+        collapsed={isCollapsed}
         tail={tail}
         topOverlay={topOverlay}
       >
