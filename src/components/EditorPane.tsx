@@ -1401,6 +1401,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     setMenuPortalReady(true);
   }, []);
 
+  // Track the docked MenuBar's rendered width so the section lozenge can
+  // compute a max-width that keeps it from crossing into the centered
+  // MenuBar's column. Exposed as `--menubar-width` on editor-pane-column.
+  // Read width synchronously on mount so it's set even before the
+  // ResizeObserver's initial async callback (which Strict Mode cleanup
+  // would otherwise cancel).
+  const [menubarWidth, setMenubarWidth] = useState(0);
+  useEffect(() => {
+    const el = dockedMenuBarRef.current;
+    if (!el) {
+      setMenubarWidth(0);
+      return;
+    }
+    setMenubarWidth(el.getBoundingClientRect().width);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setMenubarWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [menuBar]);
+
   // ── In-text margin-edit mode ────────────────────────────────────
   // Entered from ViewMenu → "Margins…". While active, two vertical
   // guides render over the editor column at the live margin
@@ -3011,8 +3034,35 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // margin-edit mode.
                 ['--editor-pl' as string]: `${effectiveLeftMargin}px`,
                 ['--editor-pr' as string]: `${effectiveRightMargin}px`,
+                // Live width of the docked MenuBar, measured by a
+                // ResizeObserver. Consumed by the sticky section-path
+                // lozenge to compute a max-width that keeps it from
+                // crossing into the centered MenuBar's band.
+                ['--menubar-width' as string]: `${menubarWidth}px`,
               }}
             >
+            {/* Section-path indicator — plain text in the chrome strip
+                above the pod, anchored to the pod's left edge. Renders
+                in the same 32px band as the docked MenuBar (z-41 lifts
+                it above the band's background) with a calc'd max-width
+                that prevents it from crossing into the centered
+                MenuBar's column. */}
+            {menuBar?.showSectionIndicator && viewPrefs && (overrideEditor ?? editor) && (
+              <div
+                className="sticky shrink-0 pointer-events-none"
+                style={{ top: 0, height: 0, zIndex: 41 }}
+              >
+                <div
+                  style={{
+                    paddingTop: 10,
+                    maxWidth:
+                      'calc((100% - var(--menubar-width, 0px)) / 2 - 12px)',
+                  }}
+                >
+                  <SectionLozenge sectionPath={viewPrefs.activeSectionPath} />
+                </div>
+              </div>
+            )}
             {menuBar && (overrideEditor ?? editor) && (
               <div
                 data-tool-strip="text"
@@ -3109,28 +3159,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 </div>
               </div>
             )}
-            {/* Sticky pod-top cap. Container is 16px tall (8 of
-                manilla band at top + 8 for the white cap-inner at
-                bottom) with marginBottom: -16 negating its flow
-                contribution. Mirror image of the bottom cap. The
-                manilla band above the inner cap is essential: it's
-                the canvas the inner cap's upward ambient shadow
-                renders into, and it masks the editor content
-                scrolling past in the top 8px of the viewport, so
-                only manilla is visible there. The cap container's
-                lateral bleed (calc(-4px - var(--pod-gap))) extends
-                the manilla into the column gutters too. Sticks at
-                top:32 below the docked MenuBar's 32px band when
-                present (main editor); top:0 otherwise (Reader, which
-                keeps the dock dormant). */}
+            {/* Sticky pod-top cap. Container is 8px tall (just the
+                white cap-inner with rounded top corners) with
+                marginBottom: -8 negating its flow contribution. The
+                cap-inner provides the visible top edge of the pod and
+                masks scrolling content beneath it. Sticks at top:32
+                directly under the docked MenuBar's 32px band when
+                present (main editor); top:0 otherwise (Reader). */}
             {(overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
                   top: menuBar ? 32 : 0,
-                  height: 16,
-                  marginBottom: -16,
+                  height: 8,
+                  marginBottom: -8,
                   marginLeft: 'calc(-4px - var(--pod-gap))',
                   marginRight: 'calc(-4px - var(--pod-gap))',
                   background: 'var(--background)',
@@ -3175,8 +3218,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               />
             )}
             {/* Top drag gap — 4px grab handle pinned just below the
-                sticky chrome above (docked MenuBar 32 + pod cap 16 = 48
-                in main editor; 16 in Reader). z-31 puts it above the
+                sticky chrome above (docked MenuBar 32 + pod cap 8 = 40
+                in main editor; 8 in Reader). z-31 puts it above the
                 pod (z-auto) so it remains hit-testable. marginBottom:
                 -4 negates flow space so the pod stays at its natural
                 position. */}
@@ -3188,7 +3231,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 style={{
                   position: 'sticky',
                   height: 4,
-                  top: menuBar ? 48 : 16,
+                  top: menuBar ? 40 : 8,
                   zIndex: 31,
                   marginBottom: -4,
                 }}
@@ -3222,19 +3265,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 markers={visibleMarginaliaMarkers}
                 panelSides={marginaliaPanelSides}
               />
-              {/* Sticky section-path lozenge — pinned at the top of the
-                  pod so the current section header reads through the
-                  first line of editor content. Wrapper height is 0 so
-                  it takes no flow space; the pill renders downward
-                  with a translucent backdrop-blur. */}
-              {menuBar?.showSectionIndicator && viewPrefs && (overrideEditor ?? editor) && (
-                <div
-                  className="sticky z-20 shrink-0 flex justify-center pointer-events-none"
-                  style={{ top: 0, height: 0 }}
-                >
-                  <SectionLozenge sectionPath={viewPrefs.activeSectionPath} />
-                </div>
-              )}
               {/* Sticky expand-all / collapse-all controls — fade in on
                   hover anywhere in the 24px band. Wrapper takes no flow
                   space (marginBottom: -24) so editor content stays at

@@ -2004,14 +2004,12 @@ export default function EditorLayout() {
       const doc = editorInstance.state.doc;
       // Collect all top-level headings with their text + level + DOM top
       const scrollRect = scrollEl.getBoundingClientRect();
-      // Reference line: the vertical middle of the editor viewport. A
-      // heading/parTitle becomes "active" once it has scrolled past
-      // this midline. Using the middle (instead of just under the top)
-      // matches the natural reading focus and makes click-to-scroll
-      // align cleanly: scrollToHeading uses block:"center", so the
-      // jumped-to heading lands on the reference line and the dot
-      // animates straight to it.
-      const referenceY = scrollRect.top + scrollRect.height / 2;
+      // Reference line: top 25% of the editor viewport. A heading or
+      // parTitle becomes "active" once it has scrolled above this line.
+      // Conservative on purpose — when a doc first opens the user is
+      // typically looking at the title, and we don't want to announce
+      // the first section until they've actually scrolled toward it.
+      const referenceY = scrollRect.top + scrollRect.height * 0.25;
 
       const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
@@ -2129,7 +2127,8 @@ export default function EditorLayout() {
     const compute = () => {
       const doc = mirrorView.state.doc;
       const scrollRect = scrollEl.getBoundingClientRect();
-      const referenceY = scrollRect.top + scrollRect.height / 2;
+      // Same top-25% reference as the canonical pane — see note above.
+      const referenceY = scrollRect.top + scrollRect.height * 0.25;
 
       const stack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
       let lastCrossedStack: { level: number; text: string; index: number; sectionNumber: string | null }[] = [];
