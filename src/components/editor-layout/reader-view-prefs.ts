@@ -73,9 +73,11 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
   const sideForPanel = useCallback(
     (id: PanelId): Side => {
       const placed = persistentPlacements.find((p) => p.id === id);
-      return (
-        placed?.side ?? PANEL_REGISTRY[id]?.defaultStripSide ?? "right"
-      );
+      // PANEL_REGISTRY is keyed by PanelKind; "blank" isn't a registered
+      // panel — the lookup returns undefined for it and the optional
+      // chain handles the fallback to "right".
+      const reg = (PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>)[id];
+      return placed?.side ?? reg?.defaultStripSide ?? "right";
     },
     [persistentPlacements],
   );
@@ -317,6 +319,10 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setBlank: (side) => {
         if (side === "left") setActiveLeft("blank");
         else setActiveRight("blank");
+      },
+      clearBlankIfSet: () => {
+        setActiveLeft((cur) => (cur === "blank" ? null : cur));
+        setActiveRight((cur) => (cur === "blank" ? null : cur));
       },
       toggleSplit: () => {},
       openPanelDocked,

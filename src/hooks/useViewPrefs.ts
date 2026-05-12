@@ -269,7 +269,9 @@ function loadPrefs(): ViewPrefs {
     // build could leave one persisted, which then leaks the panel back
     // onto the strip as a stray icon. Strip them on load.
     placements = placements.filter((p: any) => {
-      const reg = PANEL_REGISTRY[p.id as PanelId];
+      // PANEL_REGISTRY is keyed by PanelKind; "blank" (a PanelId-only
+      // layout slot) and unknown ids return undefined.
+      const reg = (PANEL_REGISTRY as Record<string, { defaultStripSide: Side | null } | undefined>)[p.id];
       return !reg || reg.defaultStripSide !== null;
     });
     // Merge with defaults to handle new panels added in updates

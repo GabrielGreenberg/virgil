@@ -355,6 +355,9 @@ export interface EditorPaneViewPrefs {
   expandRight: () => void;
   /** Suppresses the default omni-view on a side ("blank" mode). */
   setBlank: (side: Side) => void;
+  /** Clears the blank state on whichever side(s) have it set. Used by
+   *  flows that open a new card and need to drop "show nothing" first. */
+  clearBlankIfSet: () => void;
   /** Toggles split panel on a side. */
   toggleSplit: (side: Side) => void;
   /** Force-docks a panel into its gutter slot. Required by `useStripHandlers`. */
