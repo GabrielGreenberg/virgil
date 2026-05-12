@@ -154,6 +154,14 @@ export function useInTextPositions(
 
     raw.sort((a, b) => a.top - b.top);
 
+    // Clamp negative tops to 0. When an unanchored block (e.g. in
+    // OmniViewPanel) sits above panelScrollRef, podRect.top is pushed
+    // down past nodes near the top of the doc (notably titleField).
+    // Without clamping, those cards get a negative `top` and render
+    // upward into the unanchored block — visual overlap. The cascade
+    // below then spaces multiple clamped cards apart.
+    for (const r of raw) if (r.top < 0) r.top = 0;
+
     // Measure rendered entry heights from the DOM for accurate overlap resolution
     const entryHeights = new Map<string, number>();
     for (const r of raw) {
