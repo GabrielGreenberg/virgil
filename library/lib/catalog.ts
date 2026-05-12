@@ -97,7 +97,7 @@ export interface CatalogEntry {
 }
 
 export interface Catalog {
-  version: 1;
+  version: number;
   generatedAt: string;
   entries: CatalogEntry[];
 }
@@ -106,8 +106,15 @@ export async function readCatalog(
   root: FileSystemDirectoryHandle,
 ): Promise<Catalog> {
   const c = await readJsonFile<Catalog>(root, ROOT_FILES.catalog);
-  if (!c || c.version !== 1) {
+  if (!c) {
     return { version: 1, generatedAt: new Date().toISOString(), entries: [] };
+  }
+  if (typeof c.version !== "number" || c.version < 1) {
+    console.warn(`[library] catalog.json has unrecognized version ${c.version}; ignoring`);
+    return { version: 1, generatedAt: new Date().toISOString(), entries: [] };
+  }
+  if (c.version > 1) {
+    console.warn(`[library] catalog.json is version ${c.version}, reader knows version 1 — reading entries optimistically`);
   }
   return { ...c, entries: c.entries.map(normalizeCatalogEntry) };
 }
