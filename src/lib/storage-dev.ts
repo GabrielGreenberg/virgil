@@ -125,6 +125,16 @@ async function fetchJson<T>(url: string, fallback: T): Promise<T> {
   }
 }
 
+async function fetchJsonIfExists<T>(url: string): Promise<T | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function putText(url: string, body: string): Promise<void> {
   await fetch(url, { method: "PUT", body }).catch(() => {});
 }
@@ -173,6 +183,13 @@ export async function readSidecar<T>(
   defaultValue: T,
 ): Promise<T> {
   return fetchJson<T>(docFileUrl(docId, `virgil/${filename}`), defaultValue);
+}
+
+export async function readSidecarIfExists<T>(
+  docId: string,
+  filename: string,
+): Promise<T | null> {
+  return fetchJsonIfExists<T>(docFileUrl(docId, `virgil/${filename}`));
 }
 
 export async function writeSidecar<T>(

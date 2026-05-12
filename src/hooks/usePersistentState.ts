@@ -10,7 +10,7 @@ import {
   type SetStateAction,
   type MutableRefObject,
 } from "react";
-import { readSidecar, writeSidecar } from "@/lib/storage";
+import { readSidecarIfExists, writeSidecar } from "@/lib/storage";
 import {
   getActiveHandle,
   isStalePipelineError,
@@ -86,9 +86,16 @@ export function usePersistentState<S>(
       setState(defaultValue);
       return;
     }
-    readSidecar<S>(docId, filename, defaultValue)
+    // `readSidecarIfExists` returns null when the file doesn't exist on
+    // disk; we skip `setState` in that case so editor-derived state
+    // (e.g. citations populated via `syncFromEditor`) isn't clobbered by
+    // a late-arriving default. Read-only docs like the Library Reader
+    // never persist sidecars, so this branch is the steady state for
+    // them. Persisted-EMPTY values still overwrite — disk remains the
+    // source of truth whenever a sidecar exists.
+    readSidecarIfExists<S>(docId, filename)
       .then((raw) => {
-        if (cancelled) return;
+        if (cancelled || raw === null) return;
         const migrated = migrate ? migrate(raw) : raw;
         setState(migrated);
         if (persistMigrationOnLoad && handle) {

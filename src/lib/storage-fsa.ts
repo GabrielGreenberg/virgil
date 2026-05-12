@@ -183,6 +183,31 @@ export async function readSidecar<T>(
   }
 }
 
+/**
+ * Variant of `readSidecar` that returns `null` when the sidecar file
+ * doesn't exist, so callers can distinguish "no file on disk" from
+ * "file exists with an empty/default value". Used by `usePersistentState`
+ * to avoid clobbering editor-derived state (e.g. citations populated
+ * via `syncFromEditor`) when the sidecar has never been written —
+ * the Library Reader case, where `library-paper:<citekey>` docs never
+ * persist sidecars.
+ */
+export async function readSidecarIfExists<T>(
+  docId: string,
+  filename: string,
+): Promise<T | null> {
+  const docHandle = await requireDocHandle(docId);
+  try {
+    const virgil = await getVirgilSubdir(docHandle);
+    const fileHandle = await virgil.getFileHandle(filename);
+    const text = await readTextFromHandle(fileHandle);
+    return JSON.parse(text) as T;
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
+}
+
 export async function writeSidecar<T>(
   h: DocWriteHandle,
   filename: string,

@@ -81,7 +81,9 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
           setState((prev) => ({ ...prev, bibPackage: data.detectedPackage }));
         }
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn(`readBib failed for ${id}:`, e);
+      });
   }, [setState]);
 
   useEffect(() => {

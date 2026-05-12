@@ -25,6 +25,7 @@ const backend: typeof import("@/lib/storage-fsa") = isDevStorage
   : (require("@/lib/storage-fsa") as any);
 
 export const readSidecar = backend.readSidecar;
+export const readSidecarIfExists = backend.readSidecarIfExists;
 export const writeSidecar = backend.writeSidecar;
 export const readTex = backend.readTex;
 export const writeTex = backend.writeTex;

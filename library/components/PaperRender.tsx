@@ -58,28 +58,16 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
 
   const isIndexed = indexedState === "indexed" || indexedState === "deepIndexed";
 
+  // Register the paper folder under a synthetic `library-paper:<citekey>`
+  // docId FIRST, then load `main.tex` and unblock EditorPane mount.
+  // Sequencing matters: EditorPane's child hooks (useCitations,
+  // usePersistentState) fire bottom-up, so if `setTex` lands before
+  // `setDocHandle` resolves, those hooks call `requireDocHandle` against
+  // an unregistered docId, the read throws, the `.catch(() => {})`
+  // swallows it, and the Bibliography / Citations panels come up empty.
   useEffect(() => {
     setTex(null);
     setParseError(null);
-    if (!handle || !citekey || !isIndexed) return;
-    let cancelled = false;
-    (async () => {
-      const t = await readTextFile(handle, `papers/${citekey}/main.tex`);
-      if (!cancelled) setTex(t ?? "");
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [handle, citekey, isIndexed]);
-
-  // Register the paper folder under a synthetic `library-paper:<citekey>`
-  // docId. Per-doc storage hooks (useDocument, useNotes, useFootnotes,
-  // ...) resolve the folder via this registration; storage-fsa.ts
-  // synthesizes the FsaDocMeta on the fly so the synthetic id never
-  // appears in the doc index. Cleanup deletes the handle on unmount /
-  // citekey change so a stale handle can't be picked up after the user
-  // closes the paper.
-  useEffect(() => {
     if (!handle || !citekey || !isIndexed) return;
     const docId = `library-paper:${citekey}`;
     let cancelled = false;
@@ -89,11 +77,15 @@ export default function PaperRender({ handle, citekey, indexedState }: Props) {
         const paperDir = await papersDir.getDirectoryHandle(citekey);
         if (cancelled) return;
         await setDocHandle(docId, paperDir);
+        const t = await readTextFile(handle, `papers/${citekey}/main.tex`);
+        if (cancelled) return;
+        setTex(t ?? "");
       } catch (e) {
-        // Folder may not exist yet (e.g. mid-indexing); the editor's
-        // own load path will surface the error to the user. Just don't
-        // register a stale handle.
-        console.warn(`Failed to register Library paper handle for ${docId}`, e);
+        // Folder may not exist yet (e.g. mid-indexing). Surface an empty
+        // tex so the "main.tex is empty" branch renders rather than
+        // hanging on the loading state forever.
+        console.warn(`Failed to mount Library paper ${docId}`, e);
+        if (!cancelled) setTex("");
       }
     })();
     return () => {
