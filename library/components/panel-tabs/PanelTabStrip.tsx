@@ -14,6 +14,7 @@ import {
 import { flushSync } from "react-dom";
 import type { PanelKey } from "@library/hooks/useLibraryTabs";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE, LIBRARY_DT_TYPE, PAPER_DT_TYPE, TAB_DT_TYPE } from "@library/lib/dnd-types";
+import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { PanelFolderTab } from "./PanelFolderTab";
 
 export type TabDef = {
@@ -282,41 +283,41 @@ export function PanelTabStrip({
     // event; library tabs simply stay put after the copy).
     e.dataTransfer.effectAllowed =
       tab.paperCitekey || tab.outerDraggableLibraryId ? "copyMove" : "move";
-    const panelEl = panelRef?.current;
-    if (panelEl) {
-      const rect = panelEl.getBoundingClientRect();
-      // Build a "library file" drag image: only the dragged tab's trapezoid
-      // and the pod body — no strip ribbon, no sibling tabs, no "+" button.
-      // Clone the panel, hide everything in the strip except the active tab,
-      // clear the strip's filled background, and use the clone as the snapshot
-      // source. visibility:hidden preserves layout so the active tab keeps its
-      // original X position, which makes the cursor offset still align.
-      const clone = panelEl.cloneNode(true) as HTMLElement;
-      const strip = clone.firstElementChild as HTMLElement | null;
-      if (strip) {
-        strip.style.background = "transparent";
-        for (const child of Array.from(strip.children) as HTMLElement[]) {
-          if (child.getAttribute("data-tab-id") !== libId) {
-            child.style.visibility = "hidden";
+    const wholePanelEl: HTMLElement | null = panelRef?.current ?? null;
+    if (wholePanelEl) {
+      const rect = wholePanelEl.getBoundingClientRect();
+      attachClampedDragGhost({
+        dragStartEvent: e,
+        // Clone the whole panel so the ghost outlines a manila file: the
+        // active tab's trapezoid on top, the rounded body below. Other
+        // tabs are hidden so only the dragged one is visible; the strip
+        // background is cleared so the trapezoid silhouette stays clean.
+        // drop-shadow follows the combined alpha outline (trapezoid +
+        // rounded body), not a bounding square.
+        buildGhost: () => {
+          const clone = wholePanelEl.cloneNode(true) as HTMLElement;
+          const strip = clone.firstElementChild as HTMLElement | null;
+          if (strip) {
+            strip.style.background = "transparent";
+            for (const child of Array.from(strip.children) as HTMLElement[]) {
+              if (child.getAttribute("data-tab-id") !== libId) {
+                child.style.visibility = "hidden";
+              }
+            }
           }
-        }
-      }
-      clone.style.position = "fixed";
-      clone.style.top = "0";
-      clone.style.left = "-10000px";
-      clone.style.width = `${rect.width}px`;
-      clone.style.height = `${rect.height}px`;
-      clone.style.pointerEvents = "none";
-      document.body.appendChild(clone);
-      e.dataTransfer.setDragImage(
-        clone,
-        e.clientX - rect.left,
-        e.clientY - rect.top,
-      );
-      // The browser captures the snapshot synchronously inside setDragImage,
-      // but Firefox defers to the next frame — remove on rAF to cover both.
-      requestAnimationFrame(() => {
-        clone.remove();
+          // The ghost lives for the full drag (not one frame), so drop
+          // iframes / scrollable content rather than carry a live view.
+          for (const iframe of Array.from(clone.querySelectorAll("iframe"))) {
+            iframe.remove();
+          }
+          clone.style.width = `${rect.width}px`;
+          clone.style.height = `${rect.height}px`;
+          clone.style.opacity = "0.92";
+          clone.style.filter = "drop-shadow(0 8px 16px rgba(0,0,0,0.25))";
+          return clone;
+        },
+        cursorOffsetX: e.clientX - rect.left,
+        cursorOffsetY: e.clientY - rect.top,
       });
     }
     setDraggingId(libId);

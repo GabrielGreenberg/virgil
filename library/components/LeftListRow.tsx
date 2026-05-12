@@ -3,6 +3,7 @@
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
+import { attachClampedDragGhost } from "@/lib/drag-ghost";
 import { Dot, StatusPills } from "./StatusPill";
 import RowActionMenu from "./RowActionMenu";
 
@@ -83,6 +84,31 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
         e.dataTransfer.setData(ENTRIES_DT_TYPE, JSON.stringify(keys));
         // copy semantics — drops are additive, the source row stays put.
         e.dataTransfer.effectAllowed = "copy";
+        const rowEl = e.currentTarget as HTMLElement;
+        const rect = rowEl.getBoundingClientRect();
+        attachClampedDragGhost({
+          dragStartEvent: e,
+          buildGhost: () => {
+            const ghost = rowEl.cloneNode(true) as HTMLElement;
+            ghost.style.width = `${rect.width}px`;
+            ghost.style.background = "var(--surface, #ffffff)";
+            ghost.style.border = "1px solid var(--border-light, #d5d3ce)";
+            ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.18)";
+            ghost.style.opacity = "0.92";
+            ghost.style.borderRadius = "3px";
+            if (keys.length > 1) {
+              ghost.style.position = "relative";
+              const badge = document.createElement("div");
+              badge.textContent = String(keys.length);
+              badge.style.cssText =
+                "position:absolute;top:-7px;right:-7px;min-width:18px;height:18px;padding:0 6px;background:var(--accent,#7c5ed4);color:#fff;border-radius:9999px;font-size:10px;font-weight:600;line-height:18px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,0.25);";
+              ghost.appendChild(badge);
+            }
+            return ghost;
+          },
+          cursorOffsetX: e.clientX - rect.left,
+          cursorOffsetY: e.clientY - rect.top,
+        });
       }}
       onClick={onClick}
       onKeyDown={(e) => {
