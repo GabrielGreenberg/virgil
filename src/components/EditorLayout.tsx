@@ -292,15 +292,14 @@ function InlineTabLabel({
 }) {
   const padding =
     variant === "library-pinned" ? "pl-[26px] pr-[26px]" : "pl-2 pr-2";
-  // Tight inline tabs (paper / doc / library outer) keep compact content
-  // padding but render their hover highlight at the active-folder's full
-  // visible extent — extending 18px left and 8px right past the wrapper
-  // (matching the folder's swoop offset on each side after the active
-  // wrapper's negative margins of -18 / -8). The Library-pinned variant
-  // already shares the folder's geometry, so its highlight sits flush
-  // with the wrapper.
+  // Hover lozenge hugs the content with ~8px breathing room on each
+  // side. The tight variant's wrapper already sits at content + 8px,
+  // so `inset-x-0` is correct. The library-pinned wrapper carries 26px
+  // of padding (to keep the inline footprint stable with the active
+  // Library folder silhouette), so the lozenge insets 18px to land at
+  // the same content + 8px feel.
   const hoverBgInsetX =
-    variant === "library-pinned" ? "inset-x-0" : "-left-[18px] -right-[8px]";
+    variant === "library-pinned" ? "inset-x-[18px]" : "inset-x-0";
   return (
     <div
       role="button"
