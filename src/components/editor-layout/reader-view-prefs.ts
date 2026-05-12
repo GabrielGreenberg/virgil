@@ -113,6 +113,43 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     (side: Side, _id: PanelId): number => panelWidths[side] || 320,
     [panelWidths],
   );
+  // Session-only popout state. Reader doesn't persist popouts across
+  // reloads, but the lift-gesture from the paragraph/selection drag
+  // handles needs real state to drive `EditorPane`'s popouts render
+  // block (gated on `viewPrefs.prefs.poppedOutCards`). Mirrors the
+  // contract in `useViewPrefs` (toggle on re-dock wipes the saved
+  // position) so consumers behave identically.
+  const [poppedOutCards, setPoppedOutCards] = useState<string[]>([]);
+  const [cardFloatPositions, setCardFloatPositions] = useState<
+    Record<string, { x: number; y: number; width: number; height: number }>
+  >({});
+  const toggleCardPopout = useCallback((key: string) => {
+    setPoppedOutCards((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      return [...prev, key];
+    });
+    setCardFloatPositions((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _dropped, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+  const closeCardPopout = useCallback((key: string) => {
+    setPoppedOutCards((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : prev,
+    );
+    setCardFloatPositions((prev) => {
+      if (!(key in prev)) return prev;
+      const { [key]: _dropped, ...rest } = prev;
+      return rest;
+    });
+  }, []);
+  const setCardFloatPosition = useCallback(
+    (key: string, rect: { x: number; y: number; width: number; height: number }) => {
+      setCardFloatPositions((prev) => ({ ...prev, [key]: rect }));
+    },
+    [],
+  );
 
   // Build a `ViewPrefs` snapshot. dockSlots reflect the active panels
   // so OmniHost / PanelColumn render their content.
@@ -136,8 +173,8 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       floatPositions: {},
       panelModes: {},
       dockSlots,
-      poppedOutCards: [],
-      cardFloatPositions: {},
+      poppedOutCards,
+      cardFloatPositions,
       showHighlights: true,
       hiddenHighlightTypes: [],
       menuLocation: { kind: "home" },
@@ -156,6 +193,8 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
     topGutter,
     bottomGutter,
     panelWidths,
+    poppedOutCards,
+    cardFloatPositions,
   ]);
 
   const openPanelDocked = useCallback(
@@ -225,6 +264,9 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       getPanelWidth,
       setPanelWidth,
       setSplitRatio: () => {},
+      setSplitRatioInternal: () => {},
+      engageAutoSplit: () => {},
+      disengageAutoSplit: () => {},
       setEditorLeftMargin: () => {},
       setEditorRightMargin: () => {},
       topGutter,
@@ -245,8 +287,9 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setFloatPosition: () => {},
       undockPanel: () => {},
       redockPanel: () => {},
-      toggleCardPopout: () => {},
-      setCardFloatPosition: () => {},
+      toggleCardPopout,
+      closeCardPopout,
+      setCardFloatPosition,
       getOmniEnabled,
       getOmniHideAll: () => false,
       toggleOmniHideAllCards: () => {},
@@ -298,6 +341,9 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setEditorBottomGutter,
       getPanelWidth,
       setPanelWidth,
+      toggleCardPopout,
+      closeCardPopout,
+      setCardFloatPosition,
     ],
   );
 }

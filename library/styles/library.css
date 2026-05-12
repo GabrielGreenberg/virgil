@@ -67,6 +67,17 @@
   color: #2a2a2a;
   line-height: 1.65;
   font-size: 15.5px;
+  /* The Reader mounts the editor with `contenteditable="true"` so PM
+     can sync native drag-to-select into its selection state (the
+     SelectionDragHandle reads from `view.state.selection`). Read-only
+     is enforced by the `readOnlyEnforcer` PM plugin in Editor.tsx —
+     no transactions actually mutate the doc. Suppress the artifacts
+     that contenteditable=true would otherwise show: blinking caret on
+     focus, and red-squiggle spellcheck underlines under prose. */
+  caret-color: transparent;
+}
+[data-virgil-library-reader] .paper-render .tiptap [contenteditable] {
+  caret-color: transparent;
 }
 
 [data-virgil-library-reader] .paper-render .tiptap p { margin-bottom: 1em; }

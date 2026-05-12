@@ -123,7 +123,6 @@ import {
   FLOATING_PANEL_STACK_OFFSET,
   FLOATING_PANEL_Z_BASE,
 } from "./editor-layout/constants";
-import { computeSpawnPosition } from "./editor-layout/spawn-position";
 import {
   alignEntryToY,
   scrollEntryIntoView,
@@ -178,7 +177,6 @@ import { CitationsHost } from "./editor-layout/panels/citations-host";
 import { OmniHost } from "./editor-layout/panels/omni-host";
 import { SearchHost } from "./editor-layout/panels/search-host";
 import ExamplesPanel from "@/panels/Examples";
-import { PoppedCardsContext } from "@/hooks/usePoppedCards";
 import { usePreferences } from "@/hooks/usePreferences";
 // Preference mode — ctrl+click picker for live token editing. See
 // usePreferenceMode.ts for the full architecture / extension guide.
@@ -2786,12 +2784,6 @@ export default function EditorLayout() {
     setPendingCommentText,
   });
 
-  /** Default floating-card popup size (matches FloatingCards.tsx).
-   *  Used by the per-kind paragraph/heading/example popout helpers below;
-   *  the per-card popout dispatcher lives inside EditorPane post-7.8. */
-  const POPUP_W = 360;
-  const POPUP_H = 280;
-
   // Register per-kind discard callbacks. When the click-away watcher in
   // the pristine manager sees a pointerdown outside a pristine card, it
   // calls the kind's registered discard callback to remove the card.
@@ -3025,6 +3017,7 @@ export default function EditorLayout() {
     undockPanel,
     redockPanel,
     toggleCardPopout,
+    closeCardPopout,
     setCardFloatPosition,
     getOmniEnabled,
     getOmniHideAll,
@@ -3102,6 +3095,7 @@ export default function EditorLayout() {
     undockPanel,
     redockPanel,
     toggleCardPopout,
+    closeCardPopout,
     setCardFloatPosition,
     getOmniEnabled,
     getOmniHideAll,
@@ -3940,42 +3934,14 @@ export default function EditorLayout() {
     return <UnsupportedBrowserNotice />;
   }
 
-  const poppedCardsValue = {
-    poppedKeys: prefs.poppedOutCards,
-    isPopped: (key: string) => prefs.poppedOutCards.includes(key),
-    toggle: toggleCardPopout,
-    toggleAtAnchor: (key: string, anchor: DOMRect | null) => {
-      // Going docked → popped: seed a quadrant-aware spawn position so the
-      // float appears near the docked card. Re-dock branch ignores anchor;
-      // toggleCardPopout already wipes the saved position on re-dock.
-      if (!prefsRef.current.poppedOutCards.includes(key)) {
-        const pos = computeSpawnPosition(anchor, {
-          width: POPUP_W,
-          height: POPUP_H,
-        });
-        setCardFloatPosition(key, pos);
-      }
-      toggleCardPopout(key);
-    },
-    popOutAtRect: (key: string, rect: { x: number; y: number; width: number; height: number }) => {
-      // Drag-out handoff: the caller already chose the cursor-anchored
-      // spawn rect, so write it through verbatim and flip to popped.
-      // No-op if already popped (a stray re-trigger shouldn't move it).
-      if (prefsRef.current.poppedOutCards.includes(key)) return;
-      setCardFloatPosition(key, rect);
-      toggleCardPopout(key);
-    },
-    close: closeCardPopout,
-    getFloatPosition: (key: string) => prefs.cardFloatPositions[key],
-    setFloatPosition: setCardFloatPosition,
-    recordFocus: (key: string) => focusFloating({ kind: "card", key }),
-  };
-
   // Paragraph / heading / example popout handlers and their is-popped
   // predicates now live inside EditorPane (which owns the gutter buttons
-  // and the popouts mount). EditorLayout retains only the
-  // `*PoppedKeys` memo + refresh effects above so the editor refreshes
-  // its node-view glyphs when prefs change.
+  // and the popouts mount). EditorPane also owns the
+  // `PoppedCardsContext.Provider` post-7.8.1 so the same provider value
+  // covers both the main app and the Library Reader without EditorLayout
+  // having to know whether the descendant is read-only. EditorLayout
+  // retains only the `*PoppedKeys` memo + refresh effects above so the
+  // editor refreshes its node-view glyphs when prefs change.
 
   // Virgil-bar right-cluster source: post-7.8 the bar reads per-doc
   // state from `paneState`, populated by EditorPane via
@@ -4015,7 +3981,6 @@ export default function EditorLayout() {
     <RecentlyAddedProvider value={recentlyAdded}>
     <RecentlyAddedAutoClear />
     <CollabProvider value={collab}>
-    <PoppedCardsContext.Provider value={poppedCardsValue}>
     <div className="flex flex-col h-screen bg-[var(--background)]">
       {/* Top bar: logo + tabs */}
       <div
@@ -5202,7 +5167,6 @@ export default function EditorLayout() {
           earlier in 7.8; this entry was the last shell-rooted bit of
           per-doc rendering. */}
     </div>
-    </PoppedCardsContext.Provider>
     </CollabProvider>
     </RecentlyAddedProvider>
     </PristineCardsProvider>

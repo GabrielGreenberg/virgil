@@ -118,6 +118,7 @@ import { CitationDisplayProvider } from "./editor-layout/contexts/citation-displ
 import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
+import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
@@ -300,6 +301,9 @@ export interface EditorPaneViewPrefs {
    *  `heading:${uuid}`, `example:${uuid}` — matches `prefs.poppedOutCards`
    *  entries and the kind dispatch in `floating-cards.tsx`. */
   toggleCardPopout: (key: string) => void;
+  /** Pop the card *off* without re-docking. Used by SelectionFloat's
+   *  X button and by the PoppedCardsContext's `close` callback. */
+  closeCardPopout: (key: string) => void;
   setCardFloatPosition: (
     key: string,
     rect: { x: number; y: number; width: number; height: number },
@@ -338,7 +342,8 @@ export interface EditorPaneViewPrefs {
   focusFloating: (
     target:
       | { kind: "panel"; id: PanelId }
-      | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string },
+      | { kind: "toolbar"; bucket: "actions" | "formatting" | "menus"; id: string }
+      | { kind: "card"; key: string },
   ) => void;
 
   // ── Icon strip (view-controls pod + StripButton + OmniFilterMenu) ──
@@ -942,6 +947,37 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     },
     [viewPrefs],
   );
+  // Per-doc PoppedCardsContext value. Built from the `viewPrefs` prop so
+  // both the main app (full `useViewPrefs`) and the Library Reader
+  // (`useReaderViewPrefs` session shim) supply the same shape. Consumers
+  // (panel cards, SelectionDragHandle, paragraph/heading/example floats)
+  // read this via `usePoppedCards()` and tolerate a `null` value when
+  // `viewPrefs` is absent.
+  const poppedCardsValue = useMemo<PoppedCardsValue | null>(() => {
+    if (!viewPrefs) return null;
+    const isPopped = (key: string) => viewPrefs.prefs.poppedOutCards.includes(key);
+    return {
+      poppedKeys: viewPrefs.prefs.poppedOutCards,
+      isPopped,
+      toggle: viewPrefs.toggleCardPopout,
+      toggleAtAnchor: (key, anchor) => {
+        if (!isPopped(key)) {
+          const pos = computeSpawnPosition(anchor, { width: POPUP_W, height: POPUP_H });
+          viewPrefs.setCardFloatPosition(key, pos);
+        }
+        viewPrefs.toggleCardPopout(key);
+      },
+      popOutAtRect: (key, rect) => {
+        if (isPopped(key)) return;
+        viewPrefs.setCardFloatPosition(key, rect);
+        viewPrefs.toggleCardPopout(key);
+      },
+      close: viewPrefs.closeCardPopout,
+      getFloatPosition: (key) => viewPrefs.prefs.cardFloatPositions[key],
+      setFloatPosition: viewPrefs.setCardFloatPosition,
+      recordFocus: (key) => viewPrefs.focusFloating({ kind: "card", key }),
+    };
+  }, [viewPrefs]);
   // Reader has no real `useViewPrefs` (that's per-window shell state).
   // Synthesize a minimal snapshot — `useCardCreation` reads only
   // `prefs.placements`, `prefs.activeLeft`, `prefs.activeRight`. With
@@ -2479,6 +2515,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         <SelectionsProvider value={{ selectedBibKey, setSelectedBibKey }}>
 
         <CollabProvider value={collab}>
+        <PoppedCardsContext.Provider value={poppedCardsValue}>
           {/* Body-portaled outlines for dock-target / card-lift drag
               affordances. Both read state from module-level singletons
               (useDockDragTarget / useCardLiftTarget) — Reader has no
@@ -3685,6 +3722,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               onClose={closeDragHandleMenu}
             />
           )}
+        </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>
         </DragHandleMenuProvider>

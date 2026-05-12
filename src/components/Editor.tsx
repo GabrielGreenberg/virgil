@@ -8,7 +8,7 @@ import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
-import { mergeAttributes } from "@tiptap/core";
+import { Extension, mergeAttributes } from "@tiptap/core";
 import Placeholder from "@tiptap/extension-placeholder";
 import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
@@ -399,6 +399,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
   const onCitationDropRef = useRef(onCitationDrop);
   onCitationDropRef.current = onCitationDrop;
+  // Track the user-facing read-only state in a ref so the inline PM
+  // `filterTransaction` plugin (below) and the imperative drop handler
+  // can read the current value without rebuilding the editor.
+  //
+  // We keep TipTap's `view.editable` at `true` regardless of the prop so
+  // the DOM stays `contenteditable="true"` and PM continues to sync
+  // native drag-to-select to `view.state.selection`. Read-only is
+  // enforced separately by rejecting any transaction that touches the
+  // doc. This is what unblocks the SelectionDragHandle in the Library
+  // Reader — `contenteditable="false"` interferes with how some browsers
+  // route user-initiated selection events to PM, which made the handle
+  // never appear even though the wiring was correct end-to-end.
+  const readOnlyRef = useRef(!editable);
+  readOnlyRef.current = !editable;
   // Stable ref to the live TipTap editor instance — used by the
   // SelectionDragHandle to subscribe to selectionUpdate / coords without
   // re-renders. Populated below via useEffect once `useEditor` returns
@@ -458,7 +472,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const pendingTextCaptureRef = useRef<{ from: number; to: number; paragraphId: string | null; selectedText: string } | null>(null);
 
   const ParagraphWithTitle = Paragraph.extend({
-    draggable: true,
+    // Gate the schema-level draggable on `editable`. In editable mode,
+    // ProseMirror's selection handling owns the initial mousedown-and-drag
+    // so the `draggable=true` attribute is benign. In read-only mode
+    // (`contenteditable="false"`, e.g., the Library Reader) the attribute
+    // wins — Chrome dispatches an HTML5 node-drag on every mousedown on
+    // paragraph text, which prevents the user from ever forming a text
+    // selection. Gating here restores native drag-to-select in the Reader
+    // while leaving paragraph reorder-by-grip working in the main editor.
+    draggable: editable,
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -495,6 +517,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
+        // Mirror the schema-level `draggable` gate (see Paragraph.extend
+        // comment above) directly on the DOM, so PM's DOM renderer can't
+        // reapply `draggable="true"` from cached schema attributes.
+        wrapper.draggable = editable;
 
         // Left-margin hover sensor — covers the gutter strip from the
         // text edge out to where the popout button sits, so the popout
@@ -1773,9 +1799,32 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         : []),
       TabIndent,
       PgMarkChip,
+      // Read-only enforcement plugin: rejects any transaction that
+      // mutates the document when the React `editable` prop is false.
+      // See the `readOnlyRef` comment near the top of this component
+      // for why we keep `view.editable = true` instead of toggling it.
+      Extension.create({
+        name: "readOnlyEnforcer",
+        addProseMirrorPlugins() {
+          return [
+            new Plugin({
+              key: new PluginKey("readOnlyEnforcer"),
+              filterTransaction(tr) {
+                return !(readOnlyRef.current && tr.docChanged);
+              },
+            }),
+          ];
+        },
+      }),
     ],
     content: initialContent,
-    editable,
+    // Always mount PM with `editable: true` so the DOM stays
+    // `contenteditable="true"` and the browser/PM duo continues to sync
+    // native drag-to-select to `view.state.selection`. The user-facing
+    // read-only flag is enforced by the `readOnlyEnforcer` plugin above
+    // (rejects doc-modifying transactions) and the `readOnlyRef` guards
+    // on the imperative drop / drag paths.
+    editable: true,
     editorProps: {
       attributes: {
         // Horizontal padding driven by --editor-pl / --editor-pr (set on
@@ -1788,6 +1837,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // these vars live.
         class:
           "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] py-10",
+        // PM keeps the DOM at `contenteditable="true"` even in Reader
+        // mode (so native drag-to-select reaches `view.state.selection`,
+        // and the SelectionDragHandle / SelectionFloat flow inherits
+        // from the main editor). Suppress the spellcheck underlines
+        // that would otherwise appear under prose in read-only docs.
+        ...(editable ? {} : { spellcheck: "false" }),
       },
       handleDOMEvents: {
         // Only allow node drags that originate from an explicit drag handle.
@@ -1835,13 +1890,14 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         },
       },
       handleDrop(view, event) {
-        // Read-only short-circuit: when the editor is mounted with
-        // `editable=false` (Library Reader, collab read-only), every
-        // drop branch below would mutate the doc — bail out before any
-        // of it fires. TipTap's own contentEditable handling already
-        // rejects native typed input, but custom drop targets need an
-        // explicit gate.
-        if (!view.editable) return false;
+        // Read-only short-circuit: when the React `editable` prop is
+        // false (Library Reader, collab read-only), every drop branch
+        // below would mutate the doc — bail out before any of it fires.
+        // The `readOnlyEnforcer` plugin would also reject the resulting
+        // transaction, but stopping here avoids the custom side-effects
+        // (UUID assignment, capture-stash bookkeeping, etc.) that those
+        // branches perform alongside the dispatch.
+        if (readOnlyRef.current) return false;
         // --- AI request marker drop (from any panel's AiRequestCard) ---
         const aiReqData = event.dataTransfer?.getData(MIME_AI_REQUEST);
         if (aiReqData) {
@@ -2264,17 +2320,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     if (editor && onEditorReady) onEditorReady(editor);
   }, [editor, onEditorReady]);
 
-  // Keep TipTap's editable flag in sync with the prop. Composes with
-  // collab read-only (which calls setEditable(false) imperatively from
-  // useCollab) — whichever side last set the flag wins, which is the
-  // existing behavior. When `editable` flips back to true, the prop
-  // wins; collab will reassert if the partner still holds the pen.
-  useEffect(() => {
-    if (!editor) return;
-    if (editor.isEditable !== editable) {
-      editor.setEditable(editable);
-    }
-  }, [editor, editable]);
+  // No `setEditable` sync: PM stays `editable: true` for the entire
+  // lifetime of the view so native selection always works. Read-only
+  // is enforced by the `readOnlyEnforcer` plugin's `filterTransaction`
+  // (gated on `readOnlyRef`), and external callers (collab, the prop)
+  // flip that ref by re-rendering with a new `editable` value.
 
   // Paragraph drag-handle hover: detect via Y coordinate against each
   // wrapper's bounding rect, scoped to the editor's scroll container.

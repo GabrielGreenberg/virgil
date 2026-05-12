@@ -31,6 +31,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
+import { TextSelection } from "@tiptap/pm/state";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { setCardLiftHandoff } from "./card-lift";
 import { registerSelectionFloat } from "./selection-floats";
@@ -251,8 +252,63 @@ export function SelectionDragHandle({
     poll();
     const onScroll = () => schedule();
     const onResize = () => schedule();
+    // Force PM's `state.selection` to mirror the live DOM selection so
+    // `SelectionDragHandle` (and downstream consumers like the lift
+    // gesture) always have a PM range to work with. The main editor
+    // relies on PM's internal domobserver to sync, but the Reader mounts
+    // with `contenteditable="true"` despite being read-only (so native
+    // drag-to-select works), and in some browsers PM's selectionchange
+    // path skips the sync when the view never receives focus during the
+    // drag — leaving `state.selection` empty even though the DOM shows
+    // a highlighted range. This listener closes that gap: on any
+    // document selection change, if the DOM range is non-empty and
+    // entirely inside the editor, dispatch the equivalent `TextSelection`
+    // so PM stays current. Harmless in the main editor (the dispatched
+    // range matches PM's existing one, so no-op via the equality check).
+    const onDocSelectionChange = () => {
+      const editor = editorRef.current;
+      if (!editor || editor.isDestroyed) return;
+      const view = editor.view;
+      const domSel = window.getSelection();
+      if (!domSel || domSel.rangeCount === 0) {
+        schedule();
+        return;
+      }
+      const range = domSel.getRangeAt(0);
+      if (range.collapsed) {
+        schedule();
+        return;
+      }
+      const dom = view.dom as Node;
+      if (!dom.contains(range.startContainer) || !dom.contains(range.endContainer)) {
+        return;
+      }
+      try {
+        const a = view.posAtDOM(range.startContainer, range.startOffset, 1);
+        const b = view.posAtDOM(range.endContainer, range.endOffset, -1);
+        if (a < 0 || b < 0) return;
+        const pmFrom = Math.min(a, b);
+        const pmTo = Math.max(a, b);
+        if (pmFrom === pmTo) return;
+        const cur = view.state.selection;
+        if (cur.from === pmFrom && cur.to === pmTo) {
+          schedule();
+          return;
+        }
+        const tr = view.state.tr.setSelection(
+          TextSelection.create(view.state.doc, pmFrom, pmTo),
+        );
+        view.dispatch(tr);
+      } catch {
+        /* posAtDOM throws when the DOM position can't be resolved (e.g.
+         * selection inside a node-view's chrome). Fall back to scheduling
+         * a re-read from whatever PM does have. */
+        schedule();
+      }
+    };
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onResize);
+    document.addEventListener("selectionchange", onDocSelectionChange);
     return () => {
       cleanupListeners();
       // Reset on cleanup so the next effect run (HMR remount or strict-
@@ -262,6 +318,7 @@ export function SelectionDragHandle({
       prevEditor = null;
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("selectionchange", onDocSelectionChange);
     };
   }, [editorRef]);
 
