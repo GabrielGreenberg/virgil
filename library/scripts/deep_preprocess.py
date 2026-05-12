@@ -256,6 +256,113 @@ def rejoin_hyphenated_words(tex: str) -> tuple[str, int]:
     return result, count
 
 
+# Continuation words that signal the hyphen is intentional (compound
+# enumeration like "two- and three-dimensional", "left- vs. right-handed").
+# When the token after the dash-space matches one of these, preserve the
+# hyphen — joining would produce nonsense.
+_INTENTIONAL_HYPHEN_CONTINUATIONS = frozenset({
+    "and", "or", "vs", "vs.", "versus", "but", "nor",
+    "to", "by", "of", "for",
+})
+
+
+# Known philosophy/math terms commonly typeset with numeric subscripts
+# (e.g., realism₁ vs. realism₂, content₁ vs. content₂). PDF extractors
+# emit these as a trailing digit fused to the word: `realism2` or
+# `realismi` (OCR garble for subscript-1). When the base word here is
+# followed immediately by `[12]` (or `i` for OCR'd 1), normalize to
+# `\textsubscript{N}` so the rendering reflects the original notation.
+#
+# Extend this list as new papers surface new subscript-bearing terms.
+_SUBSCRIPT_BASE_TERMS = frozenset({
+    "realism", "realistic", "content", "meaning", "reference",
+    "interpretation", "truth", "extension", "intension",
+    "denotation", "depiction",
+})
+
+
+def normalize_subscript_artifacts(tex: str) -> tuple[str, int]:
+    """Convert OCR'd numeric subscripts to `\\textsubscript{N}`.
+
+    PDFs typeset subscripts visually but pdftotext flattens them into
+    inline digits or OCR-garbled letters (`realism2`, `realistici`).
+    Detect a base word from the whitelist followed by `[12]` or `i` and
+    normalize. Conservative: only fires on the whitelisted bases.
+
+    Examples:
+        realism2     -> realism\\textsubscript{2}
+        realistici   -> realistic\\textsubscript{1}
+        Realisni2    -> Realism\\textsubscript{2}    (also handles OCR garbles)
+    """
+    count = 0
+
+    # Step 1: handle specific known OCR garbles for base+subscript
+    # combos (e.g., "Realisni" -> "Realism" before subscript).
+    garbles = {
+        r"\bRealisni([12])\b": r"Realism\\textsubscript{\1}",
+        r"\brealisni([12])\b": r"realism\\textsubscript{\1}",
+    }
+    for pat, repl in garbles.items():
+        tex, n = re.subn(pat, repl, tex)
+        count += n
+
+    # Step 2: clean base+digit and base+'i' (OCR for subscript-1) patterns
+    for base in _SUBSCRIPT_BASE_TERMS:
+        # `realism2` → `realism\textsubscript{2}`
+        pat = rf"\b({base})([12])\b"
+        repl = r"\1\\textsubscript{\2}"
+        tex, n = re.subn(pat, repl, tex)
+        count += n
+        # `realistici` → `realistic\textsubscript{1}` (trailing `i` is OCR for ₁)
+        pat_i = rf"\b({base})i\b"
+        repl_i = r"\1\\textsubscript{1}"
+        tex, n = re.subn(pat_i, repl_i, tex)
+        count += n
+
+    return tex, count
+
+
+def rejoin_inline_hyphenations(tex: str) -> tuple[str, int]:
+    """Rejoin mid-paragraph words split by `word- word` artifacts.
+
+    Many PDF extractors leave word-splits as `re- semble` even after the
+    paragraph has been joined (the hyphen-line-break got collapsed into
+    hyphen-space). This is `rejoin_hyphenated_words`'s sibling for the
+    case where the split survives across paragraph-join passes.
+
+    Matches `[a-z]{2,}- [a-z]{2,}` mid-paragraph (NOT adjacent to a
+    newline — those are caught by `rejoin_hyphenated_words`). Conservative:
+    skips when the second token is a conjunction/preposition that
+    indicates an intentional enumeration ("two- and three-").
+
+    Does NOT operate inside LaTeX commands or comments — only on lines
+    that look like body prose.
+    """
+    pattern = re.compile(r"([a-z]{2,})- ([a-z]{2,})\b")
+    out_lines: list[str] = []
+    count = 0
+
+    def _replace(match: "re.Match[str]") -> str:
+        nonlocal count
+        first, second = match.group(1), match.group(2)
+        if second.lower() in _INTENTIONAL_HYPHEN_CONTINUATIONS:
+            return match.group(0)
+        count += 1
+        return first + second
+
+    for line in tex.split("\n"):
+        stripped = line.strip()
+        # Skip LaTeX commands and comments — only operate on body prose.
+        # (Lines that are pure pgmarks, section commands, etc. don't have
+        # body-prose hyphenation artifacts.)
+        if stripped.startswith("\\") or stripped.startswith("%"):
+            out_lines.append(line)
+            continue
+        out_lines.append(pattern.sub(_replace, line))
+
+    return "\n".join(out_lines), count
+
+
 _PGMARK_CAPTURE_RE = re.compile(r"^\\pgmark(?:\[[a-zA-Z]+\])?\{[^}]+\}$")
 
 
@@ -518,6 +625,12 @@ def deep_preprocess(tex: str) -> tuple[str, dict]:
 
     tex, n = rejoin_hyphenated_words(tex)
     stats["hyphens_rejoined"] = n
+
+    tex, n = rejoin_inline_hyphenations(tex)
+    stats["inline_hyphens_rejoined"] = n
+
+    tex, n = normalize_subscript_artifacts(tex)
+    stats["subscripts_normalized"] = n
 
     tex, n = join_broken_paragraphs(tex)
     stats["paragraphs_joined"] = n

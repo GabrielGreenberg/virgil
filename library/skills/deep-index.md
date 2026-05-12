@@ -1,5 +1,5 @@
 ---
-description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Sets indexed.state to "deepIndexed" (double checkmark). Args: <citekey>
+description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Resumes from prior passes by default; escalates through layout-mode pdftotext → fresh OCR → visual page inspection before bailing on ambiguous calls. Always emits an outstanding-work list + a streamlining memo. Sets indexed.state to "deepIndexed" (double checkmark). Args: <citekey> [--fresh]
 ---
 
 # /deep-index
@@ -27,7 +27,10 @@ All paths are relative to the **library root**, which is your **current working 
 
 ## Arguments
 
-`$ARGUMENTS` is the citekey (e.g. `cumming2008`).
+`$ARGUMENTS` is the citekey (e.g. `cumming2008`), optionally followed
+by `--fresh` to restart from baseline. The default (no flag) is
+**resume mode** — continue from where a prior pass left off if
+`indexed.state == "deepIndexed"`. See the §Preflight section.
 
 ## Prerequisites
 
@@ -36,6 +39,42 @@ exist). If it doesn't, tell the user to run `/index-pending` first
 and stop.
 
 ## Steps
+
+### Preflight: Resume vs. fresh
+
+**Default is resume.** Before doing anything else, check the catalog
+row for this paper. If `indexed.state == "deepIndexed"`, a prior pass
+has run — pick up from where it left off rather than starting over.
+
+Read:
+
+- The most recent `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`
+  — specifically its `## Outstanding work` section (the schema from
+  §9 below) and `**AI changes:**` block. The outstanding-work list
+  becomes the starting agenda for this run.
+- The catalog `indexed.warnings` array — every item still present
+  there is something the prior pass either deferred or couldn't
+  resolve.
+
+The §1 preprocessing scripts are designed to be re-run safely (idempotent
+on already-clean input). Run them again — they'll be no-ops if there
+is nothing new to fix.
+
+**`--fresh` flag.** If the user invokes
+`/library/deep-index $CITEKEY --fresh`, treat `$ARGUMENTS` as the
+citekey and restart from the baseline before doing anything else:
+
+```bash
+cp .virgil/baselines/$CITEKEY-pre-deepindex.tex papers/$CITEKEY/main.tex
+```
+
+…then proceed normally. Only use `--fresh` when the user explicitly
+asks; resume is always the default.
+
+**No prior baseline?** If `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex`
+doesn't exist (paper indexed before baselines were added), copy
+`main.tex` to that path before running step 1's preprocessing. Future
+re-runs can then `--fresh`-restore.
 
 ### 1. Run deterministic preprocessing
 
@@ -48,7 +87,16 @@ Two deterministic passes:
 
 **a. `deep_preprocess.py`** — strips repeating running headers and
 footers, removes leaked page numbers, rejoins hyphenated line breaks,
-joins broken paragraphs, and unwraps hard-wrapped lines.
+joins broken paragraphs, unwraps hard-wrapped lines, cleans
+high-confidence mid-paragraph hyphenation artifacts (`re- semble` →
+`resemble`), and normalizes OCR-flattened numeric subscripts
+(`realism2` → `realism\textsubscript{2}`, `realistici` →
+`realistic\textsubscript{1}`) for a whitelisted set of
+philosophy/math terms. Ambiguous mid-paragraph hyphen cases (compound
+words like `well- known`, `non- trivial`) are left for the AI pass to
+judge in §3. The subscript-term whitelist in
+`normalize_subscript_artifacts()` should be extended whenever a new
+paper surfaces a subscript-bearing term the rule misses.
 
 **b. `repair_pgmarks.py`** — removes spurious `\pgmark{N}` anchors:
 false-leading sequences from OCR misreads of the front matter,
@@ -107,6 +155,18 @@ Read all of these:
 
 Work through the document systematically. Make each improvement
 category in order:
+
+> **Escalation principle (load-bearing).** When a structural call
+> looks ambiguous — a footnote you can't place, a heading you can't
+> classify, a pgmark whose target text you can't find, an inline
+> citation that doesn't obviously match a bib entry — **do not bail.**
+> Escalate through the tier ladder defined in §3d (re-extract page
+> text → fresh OCR → rasterize and visually inspect) before logging
+> the item as unresolved. The ideal is that every section a–i
+> completes; warnings should reflect genuine intractability, not
+> first-tier doubt. If a tier exhausts with no progress, move to the
+> next tier; only log to `## Outstanding work` (step 9) when the
+> ladder is exhausted.
 
 **a. Header / `\maketitle` cleanup**
 
@@ -254,13 +314,129 @@ leave the comment in place.
 > matching an inline marker in the body text earlier on or near the
 > same page. Strip the leading number from the footnote body, escape
 > internal braces if needed, and place the `\footnote{…}` inline at
-> the call-site superscript position. If a leaked paragraph has no
-> matching inline marker (or the mapping is ambiguous because two
-> markers share a number), leave it as prose and emit one
-> `footnote-recovery-needed: <count> footnote bodies extracted as
-> paragraph prose, not yet re-attached` warning (count = number of
-> unmatched leaked paragraphs). Footnote-internal citations get
+> the call-site superscript position. Footnote-internal citations get
 > rewritten per §3g just like body citations.
+>
+> **Escalation ladder when the inline marker is missing or ambiguous.**
+> Do not bail at the first ambiguity. Run through these tiers per
+> unresolved footnote until you find the call site. Only the final
+> tier produces a `footnote-recovery-needed:` warning, and only after
+> all earlier tiers exhaust.
+>
+> **Before invoking any tier: verify the PDF-page → printed-page
+> offset.** Don't assume a fixed offset (e.g. `+10` or `+11`) — the
+> number of PDF pages between the cover and printed page 1 varies per
+> paper. Pin it by finding the PDF page on which the printed
+> page-number footer matches the lowest existing `\pgmark{N}` in
+> `main.tex`:
+>
+> ```bash
+> # Find the PDF page whose footer says <N>; offset = pdf_page - N
+> for p in $(seq $N $((N+30))); do
+>   pdftotext -layout -f $p -l $p papers/$ARGUMENTS/$ARGUMENTS.pdf - 2>/dev/null \
+>     | awk -v n=$N '$0 ~ "^[[:space:]]*"n"[[:space:]]*$" { print p; exit }'
+> done
+> ```
+>
+> (Or call `recover_missing_pgmarks.py` / `recover_page_break_fragments.py`
+> / `extract_pdf_footnotes.py`, which auto-detect the offset.) Mis-typed
+> offsets cause every subsequent tier-1 lookup to land on the wrong
+> page, with no obvious error signal — verify once at the start of the
+> session.
+>
+> **Before placing reconstructed prose: pre-flight a duplicate check.**
+> If you're about to insert a sentence or paragraph reconstructed from
+> the PDF, first grep `main.tex` for the leading 4-6 words. The
+> extractor sometimes preserves a *truncated* version of the text
+> elsewhere (e.g., earlier in the paragraph, or just before the page
+> break), and inserting a fresh copy creates a hard-to-spot duplicate.
+> If a near-match exists, EXTEND the existing truncated location
+> rather than INSERT a fresh copy.
+>
+> **Tier 1 — context re-read with `-layout`.** Many PDF extractors
+> (pymupdf in particular) collapse superscript markers into the
+> baseline text or drop them entirely. Re-run `pdftotext` in layout
+> mode on the page in question (`$N` is the PDF page, computed from
+> the printed page plus the verified offset above):
+>
+> ```bash
+> pdftotext -layout -f $N -l $N papers/$ARGUMENTS/$ARGUMENTS.pdf -
+> ```
+>
+> Layout mode preserves vertical position and often surfaces
+> superscripts that the default mode lost. Compare against the
+> current `main.tex` body to find the call site, then place the
+> `\footnote{…}`.
+>
+> For batch footnote recovery across many pages, prefer the
+> `extract_pdf_footnotes.py` + `reattach_footnotes.py` pipeline:
+>
+> ```bash
+> python3 .virgil/scripts/extract_pdf_footnotes.py \
+>   papers/$ARGUMENTS/$ARGUMENTS.pdf \
+>   papers/$ARGUMENTS/main.tex \
+>   .virgil/work/$ARGUMENTS/footnotes.json
+> python3 .virgil/scripts/reattach_footnotes.py \
+>   papers/$ARGUMENTS/main.tex \
+>   .virgil/work/$ARGUMENTS/footnotes.json
+> ```
+>
+> The first script auto-detects chapter boundaries via `\section{}`
+> headings + nearest `\pgmark{}`, walks each chapter's PDF pages, and
+> parses vertical-format footnote bodies into a per-chapter JSON. The
+> second walks each chapter's body in `main.tex`, finds inline call
+> sites (`<letter-or-punct>N<word-boundary>`), and inserts
+> `\footnote{<body>}`. Run `clean_fn_trailing_pagenum.py` afterward
+> to strip any leaked printed-page-number footers that got swept into
+> footnote bodies. Footnotes the auto-pipeline doesn't place fall
+> through to Tier 2/3.
+>
+> **Tier 2 — fresh OCR.** If `ocrmypdf` is available, generate a
+> fresh OCR layer for just the relevant page(s):
+>
+> ```bash
+> mkdir -p .virgil/work/$ARGUMENTS
+> ocrmypdf --pages $N --force-ocr -O 0 --output-type pdf \
+>   papers/$ARGUMENTS/$ARGUMENTS.pdf \
+>   .virgil/work/$ARGUMENTS/page-$N.pdf
+> pdftotext -layout .virgil/work/$ARGUMENTS/page-$N.pdf -
+> ```
+>
+> Skip silently if `ocrmypdf` is missing (`command -v ocrmypdf` →
+> empty). The Tier 1 result is still useful even if Tier 2 isn't
+> available.
+>
+> **Tier 3 — visual inspection.** Rasterize the page to PNG and read
+> it directly. Claude Code's `Read` tool natively shows PNG/JPEG
+> images, so you can look at the page as a human would and locate
+> the superscript marker by eye:
+>
+> ```bash
+> mkdir -p .virgil/work/$ARGUMENTS
+> python3 -c "import fitz; doc=fitz.open('papers/$ARGUMENTS/$ARGUMENTS.pdf'); doc[$N-1].get_pixmap(matrix=fitz.Matrix(2,2)).save('.virgil/work/$ARGUMENTS/page-$N.png'); doc.close()"
+> ```
+>
+> Then `Read .virgil/work/$ARGUMENTS/page-$N.png` and locate the
+> superscript marker visually. Use the visible word adjacent to the
+> superscript to find the corresponding word in `main.tex` (the OCR
+> text and the indexed body should share most of the lexical content)
+> and place the `\footnote{…}` there.
+>
+> For multi-page ambiguities you can rasterize a range with a single
+> Python invocation — keep the work directory and clean it up at the
+> end of the run (or at the start of the next run).
+>
+> **Tier 4 — log and move on.** Only after all three tiers fail to
+> resolve a particular footnote, leave it as prose and contribute it
+> to the `footnote-recovery-needed:` count. The warning text becomes:
+>
+> `footnote-recovery-needed: <N> footnote bodies extracted as
+> paragraph prose, not yet re-attached (tier-4 escalation exhausted)`
+>
+> Where `<N>` is the count of footnotes that survived all three
+> escalation tiers. Each such footnote also gets a bullet in step 9's
+> `## Outstanding work` with `[footnote-recovery]` category and
+> `tier-4 escalation exhausted` reason.
 >
 > This rule is **distinct from the DOCX-native case above**. There,
 > footnotes were dropped entirely; here they leak as prose. The
@@ -491,6 +667,22 @@ paper deduplication is a future feature.
 Walk the body text and replace inline parenthetical / textual citation
 prose with `\cite{…}` family commands using the citekey table built in
 step 3e.
+
+> **Batch tool (preferred for author-year sources).** Run
+> `python3 .virgil/scripts/rewrite_citations.py
+> papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib`. It
+> parses both `author = {}` AND `editor = {}` fields from
+> `references.bib` (load-bearing for edited collections like
+> `@book{block1981imagery, editor = {Block, Ned}}` and
+> `@book{gregorygombrich1973illusion, editor = {Gregory, R. L. and
+> Gombrich, E. H.}}` — a citation-rewriter that only reads `author`
+> silently misses these), normalizes surnames via NFKD-fold for fuzzy
+> matching, and applies natbib rewrites (`\cite{}` for parenthetical,
+> `\citealt{}` inside footnotes and bare prose, `\citet{}` for
+> `Author (Year)`). It also fixes common OCR year garbles like
+> `i960` → `1960`. The auto-pass handles ~95% of cases; remaining
+> ambiguous mentions get flagged as `missing-bib-entry:` for manual
+> resolution per the spec below.
 
 > **Citation-style detection (do this first).** Look at how the body
 > text references its bibliography. Two regimes:
@@ -1068,6 +1260,79 @@ boundary truly cuts mid-gloss in the source, split the gloss into two
   number** — never trust expex's auto-numbering to coincide with the
   source. See "Numbering preservation" above.
 
+**Pre-validation recovery — run before §3i.** Two recoverable extraction
+gaps the prior /index-paper pass sometimes leaves behind. Both are
+Tier-1 cheap (the bodies are already in the source PDF; we just need to
+locate and inject them):
+
+> **Recovery 1 — pgmark coverage.** If `indexed.pgmarkCount` is
+> significantly smaller than the source PDF's page count (often the
+> front N body pages, e.g. 1-41 of a 218-page book, are silently
+> missing — small-font footnote layout interferes with the
+> header/footer page-number detector in `pgmark.py`), recover them
+> with:
+>
+> ```bash
+> python3 .virgil/scripts/recover_missing_pgmarks.py \
+>   papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/$ARGUMENTS.pdf
+> ```
+>
+> The script auto-pins the PDF-page → printed-page offset by matching
+> the lowest existing `\pgmark{N}` against the corresponding PDF
+> page's printed-footer, then walks the missing printed pages 1..(L-1)
+> where L is the lowest existing pgmark. For each, it extracts the
+> first body words via `pdftotext -layout`, locates them in
+> `main.tex`, and inserts `\pgmark{N}`. Pages whose call site is
+> inside an existing `\footnote{}` argument or at a hyphenated
+> word-break are reported as "couldn't auto-place" and need a manual
+> Edit (often an inline `\pgmark{N}` insertion at the word break).
+>
+> This is **not** out-of-scope for /deep-index, despite the body
+> extraction itself belonging to /index-paper. The PDF text isn't
+> being re-extracted; existing prose is just being annotated with
+> page anchors using `pdftotext` lookups (a Tier-1 operation per §3d).
+>
+> **Recovery 2 — page-break body fragments.** Detect paragraphs that
+> end with a hyphen (`-`) followed by a blank line and a new
+> paragraph that doesn't continue the hyphenated word. Each such case
+> is a silently-dropped body fragment at the page boundary. Run:
+>
+> ```bash
+> python3 .virgil/scripts/recover_page_break_fragments.py \
+>   papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/$ARGUMENTS.pdf
+> ```
+>
+> The script reports each candidate with the recovered fragment text
+> from `pdftotext -layout` and the surrounding pgmark anchor. Apply
+> each manually with the Edit tool — the agent decides whether the
+> fragment continues a hyphenated word inline (e.g. `commit-` +
+> `ment` → `commit\footnote{...}\pgmark{N}ment`) or starts a fresh
+> paragraph after the page break, since that's a context-dependent
+> call the script can't safely make. The pre-flight duplicate-check
+> rule from §3d applies: before inserting, grep for the leading 4-6
+> words to make sure the text isn't already preserved (truncated)
+> elsewhere nearby.
+>
+> **Recovery 3 — opportunistic OCR-artifact cleanup.** If the
+> indices (`\section{Index of names}`, `\section{Index of subjects}`)
+> have already been itemized but still show OCR artifacts
+> (surname-initial concatenation `JoyceJ.`, comma-spacing artifacts
+> `Word,28`, Roman-numeral garbles `ii4` → `114`, em-dash between
+> digits `27—8`), run:
+>
+> ```bash
+> python3 .virgil/scripts/clean_index_ocr.py papers/$ARGUMENTS/main.tex
+> ```
+>
+> If any `\footnote{...}` body ends with a stray printed page-number
+> (`...Convention C unless I say otherwise. 137}`), run:
+>
+> ```bash
+> python3 .virgil/scripts/clean_fn_trailing_pagenum.py papers/$ARGUMENTS/main.tex
+> ```
+>
+> Both scripts are idempotent and safe to run on already-clean input.
+
 **i. Validate pgmark placement & continuity (hard gate)**
 
 Before writing the file out, run the validator:
@@ -1160,32 +1425,47 @@ Compute these field values for the patch:
   prose; the corresponding `examples-not-converted:` warning logs
   them). Frontends ignore unknown fields, so this addition ships
   without a UI change; a future Library badge can surface it.
-- `indexed.pgmarkCount` — recompute only if step 1b's
-  `repair_pgmarks.py` removed any spurious anchors. Count the distinct
+- `indexed.pgmarkCount` — recompute if step 1b's `repair_pgmarks.py`
+  removed any spurious anchors OR the pre-validation Recovery 1 step
+  (§3 pre-validation block) added missing pgmarks. Count the distinct
   numeric labels in `\pgmark[opt]{N}` after the pass so the catalog
-  stays in sync with the file on disk. If repair removed nothing, omit
-  the field from the patch and the existing count is preserved.
+  stays in sync with the file on disk. If neither operation changed
+  the count, omit the field from the patch and the existing count is
+  preserved.
 
 Other `indexed` fields (`extractor`, `footnoteCount`, etc.) and
 top-level `updatedAt` are preserved automatically — the patch script
 deep-merges nested objects and only the keys you include get replaced.
 
-The `warnings` array is **append-only across passes, except for five
+The `warnings` array is **append-only across passes, except for eight
 recomputed prefixes: `missing-bib-entry:`, `footnote-recovery-needed:`,
-`examples-not-converted:`, `ambiguous-citation:`, and
-`numeric-citation-style:`**. Read existing warnings, **drop any prior
-lines starting with any of those five prefixes** (they're recomputed
+`examples-not-converted:`, `ambiguous-citation:`,
+`numeric-citation-style:`, `pgmark-duplicate:`, `pgmark-gap:`, and
+`pgmark-out-of-order:`**. Read existing warnings, **drop any prior
+lines starting with any of those eight prefixes** (they're recomputed
 by this pass), then concatenate the fresh lines from step 3g
 (`missing-bib-entry: <Author> <Year>` and `ambiguous-citation:
 <Author> <Year> (matches: ...)`, one per unique pair each, OR a
 single `numeric-citation-style: ...` line for Vancouver-style
 sources), step 3d (`footnote-recovery-needed: <count> ...`, at most
-one), and step 3.h₂ (`examples-not-converted: <reason> ...`, one per
-skipped region). Other warning kinds (from earlier indexing) are
+one), step 3.h₂ (`examples-not-converted: <reason> ...`, one per
+skipped region), and step 3i (`pgmark-duplicate:`, `pgmark-gap:`,
+`pgmark-out-of-order:` lines emitted by the validator against the
+post-repair file). Other warning kinds (from earlier indexing) are
 preserved untouched. This keeps idempotency clean: re-running
 deep-index on the same paper produces the same warnings array (no
 duplicates, no ghost entries from a previous run that have since been
 resolved).
+
+> **Why the three pgmark-continuity prefixes are recomputed.** Step
+> 1b's `repair_pgmarks.py` removes spurious anchors; afterward, the
+> §3i validator emits a fresh set of continuity findings against the
+> repaired file. Pre-repair `pgmark-duplicate:`, `pgmark-gap:`, and
+> `pgmark-out-of-order:` entries in `indexed.warnings` reflect the
+> pre-repair state and are now stale. Recomputing on every pass keeps
+> the catalog honest. If repair removed nothing AND no new
+> continuity findings surfaced (typical for a resume pass), the net
+> effect is zero diffs.
 
 > **`missing-bib-entry` lookup spec (load-bearing).** Emit a
 > `missing-bib-entry:` line **only when** the inline mention has no
@@ -1216,23 +1496,26 @@ resolved).
 > reuse it.
 
 Compute the `warnings` array. It's **append-only across passes,
-except for five recomputed prefixes: `missing-bib-entry:`,
+except for eight recomputed prefixes: `missing-bib-entry:`,
 `footnote-recovery-needed:`, `examples-not-converted:`,
-`ambiguous-citation:`, and `numeric-citation-style:`**. To produce it:
-read existing `indexed.warnings` from the catalog (plain `cat
+`ambiguous-citation:`, `numeric-citation-style:`, `pgmark-duplicate:`,
+`pgmark-gap:`, and `pgmark-out-of-order:`**. To produce it: read
+existing `indexed.warnings` from the catalog (plain `cat
 .virgil/catalog.json | jq …` is fine; no lock needed for reads),
-**drop any prior lines starting with any of those five prefixes**
+**drop any prior lines starting with any of those eight prefixes**
 (they're recomputed by this pass), then concatenate the fresh lines
 from step 3g (`missing-bib-entry: <Author> <Year>` and
 `ambiguous-citation: <Author> <Year> (matches: ...)`, one per unique
 pair each, OR a single `numeric-citation-style: ...` line for
 Vancouver-style sources), step 3d (`footnote-recovery-needed: <count>
-...`, at most one), and step 3.h₂ (`examples-not-converted: <reason>
-...`, one per skipped region). Other warning kinds (from earlier
-indexing) are preserved untouched. This keeps idempotency clean:
-re-running deep-index on the same paper produces the same warnings
-array (no duplicates, no ghost entries from a previous run that have
-since been resolved).
+...`, at most one), step 3.h₂ (`examples-not-converted: <reason>
+...`, one per skipped region), and step 3i (the pgmark validator's
+fresh `pgmark-duplicate:` / `pgmark-gap:` / `pgmark-out-of-order:`
+findings against the post-repair file). Other warning kinds (from
+earlier indexing) are preserved untouched. This keeps idempotency
+clean: re-running deep-index on the same paper produces the same
+warnings array (no duplicates, no ghost entries from a previous run
+that have since been resolved).
 
 Then write the patch to a temp JSON file and call the catalog updater:
 
@@ -1326,19 +1609,123 @@ sub-heading (one line per warning, mirroring the
 - "(3) The data:" inside \begin{quote} near pgmark 14 — non-body scope
 ```
 
+### 9. Outstanding work (REQUIRED — always emit, even if empty)
+
+Append a `## Outstanding work` section to the SAME summary log file
+from step 8 (i.e., `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`).
+List **every** issue you did not resolve in this pass — be specific,
+not vague. One bullet per item:
+
+```
+- [<category>] <description> — <why deferred>
+```
+
+Allowed `<category>` values:
+
+- `footnote-recovery` — footnote bodies still unattached
+- `structural` — heading hierarchy, section boundaries, fabricated headings
+- `extraction` — content missing or corrupted by the extractor (out of /deep-index scope)
+- `pgmark-continuity` — duplicates, gaps, out-of-order remains
+- `bib` — missing entries, ambiguous mentions, formatting issues
+- `examples` — numbered examples left as prose
+- `formatting` — TOC, indices, lists, captions, fonts
+- `other` — anything else worth flagging
+
+Allowed `<why deferred>` values (be precise — these are auditable):
+
+- `tier-4 escalation exhausted` — you tried §3d's full ladder
+- `extraction bug — out of /deep-index scope` — belongs to /index-paper
+- `requires user judgment` — genuine human-call territory
+- `low-priority, deferred` — saw it, chose not to fix this pass (be explicit, never silent)
+
+**If everything was resolved**, write the section with body:
+
+```markdown
+## Outstanding work
+
+None. Document is fully cleaned.
+```
+
+Do **not** omit the section — its presence (including the "None"
+form) is the contract that downstream readers can rely on. A
+missing `## Outstanding work` section is a skill-protocol violation.
+
+Re-runs should make the outstanding-work list shrink, not grow. If a
+prior pass's outstanding item is now resolved, simply omit it from
+this pass's list (it'll be implicit-resolved by absence).
+
+### 10. Streamlining memo (REQUIRED — always emit, even if empty)
+
+Write a memo to
+`.virgil/memos/<YYYY-MM-DD>-deepindex-streamlining-$ARGUMENTS.md` with
+concrete proposals for streamlining future deep-index runs based on
+what you observed this pass:
+
+```markdown
+# Deep-index streamlining memo: $ARGUMENTS
+
+**Date:** <ISO>
+**Run summary:** [link to `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`]
+
+## Bottlenecks this run
+
+- <one bullet per friction point — where you spent disproportionate effort, where the skill text was unclear, where deterministic preprocessing left avoidable cleanup, where the escalation ladder fired and why>
+
+## Proposed tools / scripts
+
+### Generalizable
+
+- <name + one-line purpose + why it would have helped — applies to many papers>
+
+### Paper-specific
+
+- <name + one-line purpose + why this paper specifically needed it — applies narrowly>
+
+## Suggested skill-text changes
+
+- <bullets referencing line numbers in `library/skills/deep-index.md` with concrete proposed edits>
+```
+
+If nothing surfaced — the run was straightforward, the existing
+scripts and tier ladder handled everything — write:
+
+```markdown
+# Deep-index streamlining memo: $ARGUMENTS
+
+**Date:** <ISO>
+
+No streamlining observations from this run.
+```
+
+…and stop. Short is fine. The memo's *existence* is the contract;
+emptiness is permitted but absence is not. Treat the memo as a chance
+to feed back into the skill set: paper-specific scripts are useful
+even when they only apply once (the user may generalize them later).
+
 ## Output format
 
 ```
-Deep-indexed $ARGUMENTS.
+Deep-indexed $ARGUMENTS (resume | fresh).
 Preprocessing: <N> headers removed, <M> page numbers removed, ...
 Pgmark repair: <N> spurious pgmarks removed (or "no spurious pgmarks").
+Escalation: <N> tier-1, <M> tier-2, <K> tier-3 invocations (omit if zero).
 AI fixes: <bulleted list of structural changes>.
+Outstanding: <N> items (see summary log §9), <K> tier-4 footnote-recovery (or "none").
+Streamlining memo: <path> (or "no observations").
 ```
 
 ## What this command does NOT do
 
-- Does not re-extract from the PDF. The extraction (`index_paper.py`)
-  is assumed complete. This command refines the existing `main.tex`.
+- Does not re-extract the full document from the PDF. The bulk
+  extraction (`index_paper.py`) is assumed complete; this command
+  refines the existing `main.tex`. The §3d tier ladder *does*
+  re-extract individual pages for footnote-recovery purposes (via
+  `pdftotext -layout`, `ocrmypdf`, or PNG rasterization) — those are
+  targeted page-level lookups, not full-document re-extraction. If a
+  paper has systemic extraction problems (e.g. half the body is
+  missing), that's an /index-paper concern; flag it under
+  `[extraction]` in step 9 and stop rather than trying to rebuild
+  the document from scratch here.
 - Does not touch `master.bib` or bib authentication — those are
   separate concerns handled by `/authenticate-bib`. Each paper's
   `references.bib` is self-contained; cross-paper deduplication and
@@ -1368,10 +1755,13 @@ heuristics.
 
 The catalog `indexed.warnings` array is recomputed per pass for the
 `missing-bib-entry:`, `footnote-recovery-needed:`,
-`examples-not-converted:`, and `ambiguous-citation:` prefixes (step 5).
-Other warning kinds are preserved verbatim. If a missing entry from a
-prior pass has since been added to `references.bib` (e.g. by a manual
-edit), the rerun drops it from warnings.
+`examples-not-converted:`, `ambiguous-citation:`,
+`numeric-citation-style:`, `pgmark-duplicate:`, `pgmark-gap:`, and
+`pgmark-out-of-order:` prefixes (step 5). Other warning kinds are
+preserved verbatim. If a missing entry from a prior pass has since
+been added to `references.bib` (e.g. by a manual edit), the rerun
+drops it from warnings. Same for stale pgmark-continuity findings
+that have been resolved by the §1b repair pass.
 
 For numbered examples specifically: on a second pass, the `\vexid{…}`
 markers from the first pass identify each canonical example, and §3.h₂
