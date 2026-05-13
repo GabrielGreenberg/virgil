@@ -1,4 +1,4 @@
-<!-- last-verified: 151979b 2026-05-12 -->
+<!-- last-verified: 5d9aa33 2026-05-13 -->
 
 # UI Chrome
 
@@ -106,7 +106,7 @@ Helper functions: `popKey(panelKind, id)`, `cardPopKey(cardKind, id)`, `getPanel
 
 ### Panel list
 
-See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Both Revisions and Cutter are polymorphic** — each hosts comment + suggestion card kinds. Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null` in registry; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
+See `glossary.md` for the full table. Quick reference: 11 card panels (`notes`, `footnotes`, `citations`, `bibliography`, `quotations`, `examples`, `todo`, `archive`, `revisions`, `cutter`, `errors`) and 4 non-card panels (`outline`, `search`, `wordcount`, `omni`). **Notes, Revisions, and Cutter are all polymorphic.** Notes: `note` + `highlight` (both in `POLYMORPHIC_CARD_PANEL`; registry `card: null`); Revisions: `comment` + `revision-suggestion` (registry `card.kind` is `comment`; `revision-suggestion` in `CARD_KEY_PREFIXES`); Cutter: `cutter-comment` + `cutter-suggestion` (`card: null`; both in `POLYMORPHIC_CARD_PANEL`). The Revisions panel additionally tracks a per-document "revisions accepted" counter (`RevisionsTracker`); the Cutter panel tracks a word-count goal (`CutterGoal`).
 
 Omni-eligible panels (shown in Omni view): notes, footnotes, citations, quotations, examples, todo, archive, **revisions**, **cutter**, **errors**. Bibliography is the only card panel that's *not* omni-eligible.
 
@@ -136,17 +136,19 @@ The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedP
 
 ## Action buttons (the "action toolbar")
 
-`ActionButtonsRow` (at `MenuBar.tsx:953`) renders 8 color-coded buttons. Each uses `ActionButton` (`MenuBar.tsx:794`) which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`.
+`ActionButtonsRow` (at `MenuBar.tsx:960`) renders 10 color-coded buttons. Each uses `ActionButton` which resolves the nearest `[data-action-pod]` ancestor so its popup can be positioned below the toolbar regardless of whether it's attached, detached, or rendered inside a `MarginActionToolbar`. Buttons are declared in `ACTION_BUTTON_DEFS` (`MenuBar.tsx:930`) — add/remove/reorder there.
 
 | Button | Color | Opens/creates |
 |---|---|---|
 | Revision | purple | Revision thread |
 | Note | green | Note card |
+| Highlight | amber/yellow | Highlight card (Adobe-style; requires a live text selection) |
 | Todo | stone | Todo item |
 | Cut | red | Cutter card |
 | Archive | blue-grey | Archive card |
 | Footnote | red | Footnote atom |
 | Citation | amber | Citation atom |
+| Bibliography | warm tan | Bibliography entry |
 | Quotation | orange | Quotation card |
 
 Colors are coordinated with each panel's `CARD_THEME`.
@@ -182,7 +184,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 
 ## Panel icons
 
-[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions.)
+[src/components/editor-layout/panel-icons.tsx](../../src/components/editor-layout/panel-icons.tsx) — `IconNotes`, `IconHighlight` (highlighter-pen marker, used by the new Highlight action button — there is no Highlight panel since highlights live inside the Notes panel), `IconRevisions`, `IconArchive`, `IconFootnote`, `IconCitation`, `IconBibliography`, `IconTodo`, `IconCutter`, `IconQuotations`, `IconOutline`, `IconSearch`, `IconWordCount`, `IconOmni`, `IconBlank`, `IconErrors`, `IconExample`, `IconSplit`, `IconFolder`, `IconPlus`, `IconX`, `IconLibrary`. All use `currentColor`. (`IconSuggestions` was removed when the Suggestions panel folded into Revisions.)
 
 **Topbar icon size: 16px** (`.topbarbtn` is 24px, leaving 4px of padding). Don't ship 14px or 20px topbar icons — see `STYLE_GUIDE.md`.
 

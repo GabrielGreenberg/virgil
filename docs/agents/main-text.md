@@ -1,4 +1,4 @@
-<!-- last-verified: 151979b 2026-05-12 -->
+<!-- last-verified: 5d9aa33 2026-05-13 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -43,7 +43,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `latexComment` | node | `%…` | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |
 | `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
-| `linkedAnchor` | mark | (invisible) | `linked-anchor.ts` |
+| `linkedAnchor` | mark | (invisible by default; a `tintColor` attr makes the mark paint its range with a persistent color — used by Highlight cards for the Adobe-style yellow swatch. The tint survives kind transitions, so spawning a sibling note over a highlight's range keeps the yellow) | `linked-anchor.ts` |
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
@@ -77,7 +77,7 @@ Round-trip files: [src/lib/latex-parser.ts](../../src/lib/latex-parser.ts) (`.te
 |---|---|---|---|---|
 | `footnote` | inline atom (footnote node) | superscript number | 1:1 | footnote |
 | `citation` | inline atom (citation node) | styled pill | 1:1 | citation |
-| `anchor` | paragraph UUID **or** text range (linkedAnchor mark) | gutter icon (+ optional text highlight) | many | note, revision, cut, archive, todo, quotation |
+| `anchor` | paragraph UUID **or** text range (linkedAnchor mark) | gutter icon (+ optional text highlight) | many | note, highlight, revision, cut, archive, todo, quotation |
 
 ### Mode A vs Mode B (anchor kind only)
 
@@ -136,7 +136,7 @@ Margin markers carry a generic `hovered` prop (boxShadow ring) and `onHover` cal
 
 ### Marker types (`MARKER_META`)
 
-`quote`, `note`, `archive`, `revision`, `cut`, `todo`. Each has a color palette (primary, background, border) customizable per-panel via the header color picker (`deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts)).
+`quote`, `note`, `archive`, `revision`, `cut`, `todo`, `error`. Each has a color palette (primary, background, border) customizable per-panel via the header color picker (`deriveCardPalette` in [src/lib/panel-theme.ts](../../src/lib/panel-theme.ts)). Note that **Highlight cards do not appear in the marginalia** — they're a pure text-tint feature (`tintColor` attr on the `linkedAnchor` mark), so there is no `highlight` MarkerType.
 
 ### Per-paragraph MIME drop types
 

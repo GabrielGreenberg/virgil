@@ -1,4 +1,4 @@
-<!-- last-verified: 151979b 2026-05-12 -->
+<!-- last-verified: 5d9aa33 2026-05-13 -->
 
 # Glossary
 
@@ -57,7 +57,7 @@ All panels declared in [src/panels/panel-registry.ts](../../src/panels/panel-reg
 
 | Panel kind | Label | Card kind | Default strip | Theme |
 |---|---|---|---|---|
-| `notes` | Notes | `note` | right | emerald |
+| `notes` | Notes | `note` + `highlight` (polymorphic — both kinds coexist in `NotesState.cards`; selection-drop on the panel defaults to a highlight, the toolbar/header "+" creates a note) | right | emerald (highlight reuses the yellow `--accent` warm-yellow swatch via panel-theme `highlight` key) |
 | `footnotes` | Footnotes | `footnote` | left | red |
 | `citations` | Citations | `citation` | left | warm yellow |
 | `bibliography` | Bibliography | `bib` | left | warm tan |
@@ -104,6 +104,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Card** | `PanelCard` (universal wrapper) or `EditableCard` (rich-text variant) | [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) |
+| **Highlight card** (Adobe-style yellow-tint card in the Notes panel; wraps a text range with a persistent `tintColor` mark attr, no rich-text body. Selection-drop on Notes creates one of these by default; the toolbar's highlighter-pen button does the same from a live selection. "Add note" on a highlight spawns a sibling Note card sharing the same anchor) | `HighlightCard` (component); `HighlightCard` (data type with `kind: "highlight"`); polymorphic siblings of `UserNote` in `NotesState.cards`; addNoteForHighlight + deleteHighlightOrNote on the `cardCreation` context | [src/panels/Notes/HighlightCard.tsx](../../src/panels/Notes/HighlightCard.tsx); `HighlightCard` type in [src/lib/types.ts](../../src/lib/types.ts); creation in [src/components/editor-layout/card-actions/card-creation.ts](../../src/components/editor-layout/card-actions/card-creation.ts) |
 | **Card theme** | `CARD_THEMES` dict (11 themes: footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error) | Same file |
 | **AI request card** | `AiRequestCard` | Same file |
 | **Orphaned card** (no anchor in document) | `BadgeOrphaned` + disabled `CardTargetIcon` | Same file |

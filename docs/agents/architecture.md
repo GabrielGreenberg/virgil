@@ -1,4 +1,4 @@
-<!-- last-verified: 151979b 2026-05-12 -->
+<!-- last-verified: 5d9aa33 2026-05-13 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -10,7 +10,7 @@ Cross-cutting systems that most features touch.
 |---|---|---|
 | Panel/card taxonomy | [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) (`PANEL_REGISTRY`) | Display labels, card kinds, key prefixes, view-mode defaults, omni eligibility, default strip side |
 | Link kinds | [src/links/link-registry.ts](../../src/links/link-registry.ts) (`LINK_REGISTRY`) | Multiplicity, connector style, highlight behavior per link kind |
-| Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) | 11 themes (footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error, quotation falls back to default) |
+| Card themes | `CARD_THEMES` in [src/components/panel-primitives.tsx](../../src/components/panel-primitives.tsx) | footnote, note, archive, todo, bib, citation, comment, aiRequest, cut, error, highlight (yellow tint; defined in `panel-theme.defaults.json` under the `highlight` key, no dedicated `CARD_THEMES` entry — highlights paint via the `tintColor` mark attr, not the card-body theme); quotation falls back to default |
 | Auto-title labels | `CARD_TITLE_LABELS` + `nextCardTitle(kind, count)` in [src/panels/panel-registry.ts](../../src/panels/panel-registry.ts) | Per-CardKind label string (or `null` to opt out — comments / suggestions / citations / ai / bib / error don't auto-title). Used at card creation: `nextCardTitle("note", existingCount)` → `"Note 4"` |
 | Design tokens | [src/app/globals.css](../../src/app/globals.css) + [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) | Semantic CSS variables (`--surface`, `--ink-body`, `--accent`, etc.) |
 | Type definitions | [src/lib/types.ts](../../src/lib/types.ts) | `VirgilSidecar`, `EditorStateData`, `Suggestion`, `ReviewRequest`, `Link`, etc. |
@@ -48,7 +48,6 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useRecentlyAddedTracker` | One-slot-per-kind tracker for just-created cards so panels can sort them to the top; auto-cleared when selection moves away |
 | `useLatexCompile` | SwiftLaTeX pdfTeX compile + parsed-error extraction. On success, persists the resulting PDF next to the `.tex` (`pdfFilenameFromTex`) so the in-app PDF view (`library/components/PdfView.tsx`) can re-render without recompiling |
 | `useDocNotificationStream` | Polls `<doc>/virgil/notifications.json` for completion entries written by editor-side skills; returns items appended since the doc-keyed last-seen timestamp in localStorage, for the consumer to toast |
-| `useAutoSplitDock` | Per-side observer that auto-engages split-dock when a single docked panel doesn't fill the column and there's enough leftover space for a second slot; tracks the split ratio dynamically against the panel's natural content height. Only manages single-panel state — 0 or 2 docked panels stay user-owned |
 | `useMyPapers` | Global "My Papers" list shown in the Library's My Papers pod (IndexedDB single shared record + BroadcastChannel sync). Decoupled from open document tabs: opening a doc anywhere never auto-adds, and removing a row never closes a tab |
 
 ## Persistence layers
@@ -112,7 +111,7 @@ Cards inside a `CardListPanel`:
 The popouts mount lives inside [EditorPane.tsx](../../src/components/EditorPane.tsx) at the editor root, gated on `viewPrefs && !viewPrefs.zenMode`, with a memoized `popoutsDeps: PoppedCardDeps` bag wired from EditorPane's per-doc hooks. The Reader passes no `viewPrefs` so the mount stays dormant. Zen mode hides the floats but retains their state.
 
 Popout key prefixes for cards (DO NOT rename without migration — they're persisted; SSOT in `CARD_KEY_PREFIXES`):
-`note`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
+`note`, `highlight`, `footnote`, `archive`, `todo`, `bib`, `citation`, `revision` (for `comment` cards), `suggestion`, `cutter-comment`, `cutter-suggestion`, `revision-suggestion`, `quotation`, `example`, `ai`, `error`. (The legacy `cut` prefix was retired with the Cutter rebuild.)
 
 **Block popouts** also live in `prefs.poppedOutCards` but use prefixes that are NOT card kinds: `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}` (the in-editor block popout, distinct from the Examples panel's `example` card popout that happens to share the prefix). They render `ParagraphFloat` / `HeadingFloat` / an example float (in `src/components/`) instead of a card; the heading float pulls its body via [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` in [src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts). New floats spawn near their trigger element via `popCardAtAnchor` in EditorPane (which routes through `viewPrefs.toggleCardPopout` + `viewPrefs.setCardFloatPosition`); position helper at [src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts).
 
