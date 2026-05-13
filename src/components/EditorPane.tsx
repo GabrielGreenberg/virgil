@@ -92,7 +92,6 @@ import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useDropActions } from "./editor-layout/card-actions/drops";
 import { isAnchorableNode } from "@/lib/marginalia";
-import { useAutoSplitDock } from "@/hooks/useAutoSplitDock";
 import { useCitations } from "@/hooks/useCitations";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
@@ -255,10 +254,6 @@ export interface EditorPaneViewPrefs {
   getPanelWidth: (side: Side, panelId: PanelId) => number;
   setPanelWidth: (side: Side, panelId: PanelId, width: number) => void;
   setSplitRatio: (side: Side, ratio: number) => void;
-  /** Auto-split-dock setters (used by `useAutoSplitDock` only). */
-  setSplitRatioInternal: (side: Side, ratio: number) => void;
-  engageAutoSplit: (side: Side, ratio: number) => void;
-  disengageAutoSplit: (side: Side) => void;
 
   // ── Persisted page margins (driven by margin-edit mode) ────────
   setEditorLeftMargin: (px: number) => void;
@@ -636,10 +631,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const [editor, setEditor] = useState<Editor | null>(null);
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
 
-  // Auto-engage split-dock mode when a single docked panel doesn't fill
-  // the column and there's room for a second slot. Per-side observer.
-  useAutoSplitDock({ side: "left", viewPrefs });
-  useAutoSplitDock({ side: "right", viewPrefs });
   // `docVersion` bumps on every editor `create` / `update` so memoized
   // panel data (`getExamples`, `getFootnotes`, `getCitations`) refreshes
   // when the live doc changes. In Reader mode `update` rarely fires —
