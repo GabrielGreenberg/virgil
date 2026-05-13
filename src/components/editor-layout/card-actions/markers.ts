@@ -5,7 +5,7 @@ import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
 import { openForCard } from "../event-bridges/open-for-card";
 
-type AnchorKind = "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
+type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
 
 /**
  * Gutter-marker click handlers for the four panel kinds that anchor into

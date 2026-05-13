@@ -266,6 +266,9 @@ function buildRequests(args: BuildArgs): AIRequestVM[] {
   const PANEL_KIND_MAP: Record<PanelAiRequestKind, AIRequestKind> = {
     footnote: "panel-footnote",
     note: "panel-note",
+    // Highlight AI requests render as notes in the AI window — same
+    // Notes-panel home, same composer affordances.
+    highlight: "panel-note",
     citation: "panel-citation",
     quotation: "panel-quotation",
     todo: "panel-todo",

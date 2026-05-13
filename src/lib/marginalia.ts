@@ -127,7 +127,7 @@ export interface MarginaliaMarker {
    * anchored cards) don't carry it.
    */
   entityKind?:
-    | "note" | "footnote" | "citation" | "quotation" | "example"
+    | "note" | "highlight" | "footnote" | "citation" | "quotation" | "example"
     | "todo" | "archive" | "comment" | "revision-suggestion"
     | "cutter-comment" | "cutter-suggestion";
   /** Marker category — drives icon/color */

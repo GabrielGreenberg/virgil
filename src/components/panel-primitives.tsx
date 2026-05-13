@@ -1891,6 +1891,7 @@ function HeaderAddDropdown({
 const AI_REQUEST_KIND_LABEL: Record<AiRequestKind, string> = {
   footnote: "footnote",
   note: "note",
+  highlight: "highlight",
   quotation: "quotation",
   citation: "citation",
   todo: "todo",

@@ -1230,7 +1230,7 @@ export default function EditorLayout() {
   //     of any of the three surfaces, generic across all card kinds
   // Effective anchor for the in-text highlight = hover ?? active.
   const [activeAnchorId, setActiveAnchorId] = useState<string | null>(null);
-  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
+  const [activeAnchorKind, setActiveAnchorKind] = useState<"note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null>(null);
   // Hover state for legacy EditorLayout-side consumers (color-theming for
   // active anchors, MARKER_KIND_TO_THEME_KEY lookup). Kept synced from the
   // canonical cardStore.hover via useSyncExternalStore-style subscription
@@ -3813,11 +3813,14 @@ export default function EditorLayout() {
     if (!activeAnchorKind) return null;
     // LinkedAnchorKind → MarkerType. Both cutter card kinds share the
     // single "cut" marker entry; revisions panel uses the "revision"
-    // marker.
+    // marker; highlights have no marker of their own (pure text-tint),
+    // so they reuse the "note" marker for active-anchor coloring.
     const markerType =
       activeAnchorKind === "cutter-comment" ||
       activeAnchorKind === "cutter-suggestion"
         ? "cut"
+        : activeAnchorKind === "highlight"
+        ? "note"
         : activeAnchorKind;
     const meta = MARKER_META[markerType];
     const key = MARKER_KIND_TO_THEME_KEY[activeAnchorKind];

@@ -20,6 +20,7 @@ import { getTextAnchor } from "../links";
 
 export const ANCHORED_CARD_KINDS = [
   "note",
+  "highlight",
   "footnote",
   "citation",
   "quotation",
@@ -41,6 +42,11 @@ export interface EntityRef {
 
 export interface EntityCollections {
   notes: ReadonlyArray<{ id: string; links?: Link[] }>;
+  /** Highlights live alongside notes in the Notes panel; threaded here so
+   *  `findEntity({ kind: "highlight", ... })` can resolve them. Optional
+   *  so legacy callers (e.g. Reader paths without a highlights hook) still
+   *  compile — a missing list just means highlights resolve to `undefined`. */
+  highlights?: ReadonlyArray<{ id: string; links?: Link[] }>;
   cutterCards: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   comments: ReadonlyArray<{ id: string; kind?: string; links?: Link[] }>;
   todos: ReadonlyArray<{ id: string; links?: Link[] }>;
@@ -55,6 +61,7 @@ export function findEntity(
 ): { id: string; kind?: string; links?: Link[] } | undefined {
   switch (ref.kind) {
     case "note":      return c.notes.find((e) => e.id === ref.id);
+    case "highlight": return c.highlights?.find((e) => e.id === ref.id);
     case "todo":      return c.todos.find((e) => e.id === ref.id);
     case "archive":   return c.archiveSnippets.find((e) => e.id === ref.id);
     case "quotation": return c.quotationGroups.find((e) => e.id === ref.id);
@@ -91,6 +98,7 @@ export function cardKeyForEntity(
 ): string | null {
   switch (ref.kind) {
     case "note":                return `note:${ref.id}`;
+    case "highlight":           return `highlight:${ref.id}`;
     case "todo":                return `todo:${ref.id}`;
     case "archive":             return `archive:${ref.id}`;
     case "quotation":           return `quotation:${ref.id}`;
@@ -121,10 +129,11 @@ export function entityToAnchorId(
 export function entityKindToAnchorKind(
   ref: EntityRef | null,
   _c: EntityCollections,
-): "note" | "revision" | "cutter-comment" | "cutter-suggestion" | null {
+): "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null {
   if (!ref) return null;
   switch (ref.kind) {
     case "note":                return "note";
+    case "highlight":           return "highlight";
     case "comment":
     case "revision-suggestion": return "revision";
     case "cutter-comment":      return "cutter-comment";
