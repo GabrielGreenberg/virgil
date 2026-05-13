@@ -1,24 +1,37 @@
 ---
-description: Resolve one bib-review request — verifies/fills bibliography fields (type=fields) or drafts an annotation note (type=notes). Args - <docPath> <bibKey>.
+description: Resolve one bib-review request — verifies/fills bibliography fields (type=fields), drafts an annotation note (type=notes), or swaps the entry in from the library (--library-sync). Args - <docPath> <bibKey> [--library-sync <libraryCitekey> --library <path>].
 ---
 
 # /editor/answer-bib-review $ARGUMENTS
 
-Resolve one entry in `<docPath>/virgil/bib-review-requests.json`. Two
-review types:
+Three modes:
 
 - `type: "fields"` — the user wants you to verify or fill bibliography
   fields against authoritative sources. Mirror of
   `/library/authenticate-bib`.
 - `type: "notes"` — the user wants you to draft an annotation note for
   the entry, persisted in `annotations.json`.
+- `--library-sync` — replace the paper's entry with the canonical
+  version from `master.bib` in the user's Virgil Library, renaming
+  citekeys throughout the doc if the library's citekey differs.
+  Invoked by `/editor/sync-bib-to-library`. Does **not** require a row
+  in `bib-review-requests.json`.
 
 ## Args
 
 - `<docPath>` — path to the doc folder.
-- `<bibKey>` — the citekey under review.
+- `<bibKey>` — the citekey under review (in the paper's references.bib).
+- `--library-sync <libraryCitekey>` *(library-sync mode only)* — the
+  citekey to pull from the library's `master.bib`. May equal `<bibKey>`.
+- `--library <path>` *(library-sync mode only)* — absolute library
+  root. If omitted, resolved via `editor/scripts/library_path.py --get`.
 
 ## Procedure
+
+> **Library-sync mode short-circuits.** If `--library-sync
+> <libraryCitekey>` is set, jump straight to step 3a — skip steps 1
+> (bib-review-requests load), 2 (fields), 3 (notes), and 4 (request
+> flip). Library-sync writes its own notification and exits.
 
 1. **Load.** Resolve the entry:
    ```bash
@@ -66,6 +79,50 @@ review types:
      `annotations.<bibKey> = { "text": "<your note>" }` (or whatever
      shape `bib_resolve.py` reports — tolerate either flat or nested
      forms).
+
+3a. **For `--library-sync <libraryCitekey>`:**
+   - Resolve the library path. If `--library` was passed, use it; else:
+     ```bash
+     library_root=$(python3 editor/scripts/library_path.py --get)
+     ```
+     If that fails, exit with the error message (the user must set the
+     library path before running this mode).
+   - Read the library entry verbatim:
+     ```bash
+     python3 -c '
+     import sys; from pathlib import Path
+     sys.path.insert(0, "library/scripts")
+     from _bib_parse import find_entry_span
+     text = Path("'"$library_root"'/master.bib").read_text(encoding="utf-8")
+     span = find_entry_span(text, "<libraryCitekey>")
+     if span is None: raise SystemExit("library missing <libraryCitekey>")
+     start, end, _state_start = span
+     print(text[start:end])
+     '
+     ```
+     If the entry isn't found, fail with `library missing <libraryCitekey>`.
+   - Replace the paper's bib entry block: locate `@<type>{<bibKey>,` in
+     `<docPath>/references.bib` (use the same `find_entry_span` helper
+     to determine the byte range), and Edit the file to replace the
+     entire span with the library entry text. Preserve a trailing
+     newline so subsequent entries stay separated.
+   - If `<bibKey> != <libraryCitekey>`, rewrite every `\cite*{...}`
+     command and update `virgil/citations.json`:
+     ```bash
+     python3 editor/scripts/rename_citekey.py <docPath> <bibKey> <libraryCitekey>
+     ```
+   - Skip the bib-review-requests.json flip — library-sync isn't driven
+     by that file. Skip external Crossref/OpenAlex lookups — the
+     library entry is already authoritative.
+   - Append a single notification + bump version (same pattern as the
+     fallback in step 4 below):
+     ```bash
+     python3 -c "from editor.scripts._common import append_notification, bump_version, now_iso, resolve_doc; \
+                 doc = resolve_doc('<docPath>'); \
+                 append_notification(doc, {'kind': 'ai-request-complete', 'at': now_iso(), 'summary': 'library-sync <bibKey> -> <libraryCitekey>'}); \
+                 bump_version(doc)"
+     ```
+   - Reply: `Done: library-sync <bibKey> -> <libraryCitekey>. Output: references.bib, document.tex, virgil/citations.json.` (Omit any file that wasn't actually changed.)
 
 4. **Mark complete.** Edit
    `<docPath>/virgil/bib-review-requests.json` to flip the matching

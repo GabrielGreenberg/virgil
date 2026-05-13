@@ -32,8 +32,14 @@ The skill set turns those signals into responses:
   `/editor/answer-cutter-comment`, `/editor/answer-revision-comment`,
   `/editor/draft-suggestion` — responders that emit suggestion cards
   by default.
-- `/editor/answer-bib-review` — verifies/fills bibliography fields or
-  drafts annotations.
+- `/editor/answer-bib-review` — verifies/fills bibliography fields,
+  drafts annotations, or (via `--library-sync`) swaps a single entry
+  in from the Virgil Library.
+- `/editor/sync-bib-to-library` — tidy a paper's whole bibliography
+  against the library: matched entries are swapped to the library's
+  authoritative form (renaming citekeys throughout the doc); missing
+  entries are added via the library's bib-only triage + authenticate
+  pipeline. Pair with `--dry-run` for a first pass.
 - `/editor/style-merge` — preamble-merge rewrite (existing behavior).
 
 ## Folder layout
@@ -55,11 +61,14 @@ editor/
 │   └── style-merge.md
 ├── scripts/                    Python helpers (stdlib-only, py3.10+)
 │   ├── _common.py              shared paths/JSON/regex/notification helpers
+│   ├── library_path.py         canonical resolver for the library folder
 │   ├── list_requests.py        emits unified open-request JSONL
 │   ├── get_para_context.py     paragraph at %!v:<uuid> + neighbors
 │   ├── cards_for_paragraph.py  every card anchored to <uuid> across panels
 │   ├── apply_response.py       atomic writeback (card + ai-requests + notif)
-│   └── bib_resolve.py          parse references.bib entry + annotation
+│   ├── bib_resolve.py          parse references.bib entry + annotation
+│   ├── bib_match_library.py    classify paper bib entries vs the library
+│   └── rename_citekey.py       rewrite \cite*{} in tex + citations.json
 ├── build/
 │   └── build-editor-bundle.mjs mirrors skills/ → .claude/commands/editor/
 └── AGENTS.md                   ← this file
@@ -163,6 +172,44 @@ Three modifications + two new files in the main app:
 | [src/lib/ai-request-bridge.ts](../src/lib/ai-request-bridge.ts) | New. `bridgeCardAiRequestFlag()` keeps `ai-requests.json` in sync with card-level flags. |
 | [src/hooks/useNotes.ts](../src/hooks/useNotes.ts), [useTodos.ts](../src/hooks/useTodos.ts), [useCutter.ts](../src/hooks/useCutter.ts), [useRevisions.ts](../src/hooks/useRevisions.ts) | Each `setXAiRequest` callback now invokes the bridge. |
 | [src/hooks/useDocNotificationStream.ts](../src/hooks/useDocNotificationStream.ts) | New. 6-second poll of `<docPath>/virgil/notifications.json`; emits new items for the consumer to toast. Not yet wired to a UI host — toasting is a follow-up. |
+
+## Cross-cutting with the Library
+
+`/editor/sync-bib-to-library` is the first editor skill that writes to
+the user's Virgil Library. The architectural choice is **single-session
+cross-cutting**, not a two-session handshake: the editor session reads
+`master.bib` and `.virgil/catalog.json` directly, and writes through
+the library's `flock`-protected Python shims
+(`update_master_bib_entry.py`, `update_catalog_entry.py`,
+`append_inbox_item.py`, `bump_catalog_version.py`,
+`triage_apply.py`). Those locks make it safe to interleave with a
+parallel library session (`/loop /library/index-pending`) — the user
+doesn't have to pause anything, just runs `/editor/sync-bib-to-library`.
+
+The library's filesystem path is *not* discoverable from the browser
+(it lives in IndexedDB as an FSA handle, with no exposed path). Editor
+skills resolve it via [scripts/library_path.py](scripts/library_path.py),
+which walks this chain:
+
+1. `--library <path>` flag.
+2. `VIRGIL_LIBRARY_ROOT` env var (the long-standing convention used
+   by `library/scripts/audit_deepindex.py`).
+3. `~/.config/virgil/library-path.json` (`{"libraryRoot": "...", "version": 1}`).
+4. `~/Virgil-Library/` (legacy default).
+
+Each candidate is validated against the
+`master.bib` + `.virgil/catalog.json` + `.virgil/scripts/` triple —
+stale records fail loudly rather than fall through. Set the central
+config once with:
+
+```bash
+python3 editor/scripts/library_path.py --set /absolute/path/to/library
+```
+
+**Don't reimplement this resolution chain in other editor skills.**
+Either call the script (`python3 editor/scripts/library_path.py
+--get`) or `from library_path import resolve_library` and let the same
+helper handle it.
 
 ## Helper script boundary
 
