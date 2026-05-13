@@ -157,8 +157,20 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
   // so OmniHost / PanelColumn render their content.
   const prefs = useMemo<ViewPrefs>(() => {
     const dockSlots: ViewPrefs["dockSlots"] = {};
-    if (activeLeft) dockSlots[dockSlotKey("left", "full")] = activeLeft;
-    if (activeRight) dockSlots[dockSlotKey("right", "full")] = activeRight;
+    // Match the Editor's `useViewPrefs` contract: only specific panels
+    // live in `dockSlots`. `omni` is the always-mounted bottom layer of
+    // PanelColumn (rendered via `omniSlot.omni`); `blank` is an empty-
+    // state marker tracked on `activeLeft`/`activeRight` only. Putting
+    // either in `dockSlots` makes EditorPane's floating-panel block
+    // (which iterates dockSlots) render them via `PaneRailBody`, which
+    // dispatches only specific panel kinds and falls through to the
+    // "panel isn't wired into EditorPane yet" placeholder for omni/blank.
+    if (activeLeft && activeLeft !== "omni" && activeLeft !== "blank") {
+      dockSlots[dockSlotKey("left", "full")] = activeLeft;
+    }
+    if (activeRight && activeRight !== "omni" && activeRight !== "blank") {
+      dockSlots[dockSlotKey("right", "full")] = activeRight;
+    }
     return {
       placements: persistentPlacements,
       activeLeft,
