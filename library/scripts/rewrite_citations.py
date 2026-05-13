@@ -38,7 +38,14 @@ def normalize_surname(s: str) -> str:
 
 def parse_bib(bib_path: Path) -> dict[tuple, str]:
     """{(normalized-surname-tuple, year) → citekey}, reading both
-    `author` and `editor` fields."""
+    `author` and `editor` fields.
+
+    Indexes under multiple keys per entry for robust lookup:
+    - Full surname tuple at (surnames, year) — primary.
+    - First-only at ((first,), year, "first-only") — for et al.
+    - Each surname individually at ((surname,), year, "any-author") —
+      for short-form mentions and endnote-style citations.
+    """
     text = bib_path.read_text(encoding="utf-8")
     entries = re.split(r"\n@", text)
     out: dict[tuple, str] = {}
@@ -63,6 +70,44 @@ def parse_bib(bib_path: Path) -> dict[tuple, str]:
         out[(tuple(surnames), year)] = citekey
         if len(surnames) > 1:
             out[((surnames[0],), year, "first-only")] = citekey
+        for sn in surnames:
+            out.setdefault(((sn,), year, "any-author"), citekey)
+    return out
+
+
+def parse_bracket_keys(bib_path: Path) -> dict[str, str]:
+    """For bracket-key style (SIGGRAPH/CS): map [KEY] inline labels to
+    citekeys via a `note` or `label` field, or by heuristic derivation
+    from author surnames + year.
+    """
+    text = bib_path.read_text(encoding="utf-8")
+    entries = re.split(r"\n@", text)
+    out: dict[str, str] = {}
+    for entry in entries:
+        m_key = re.match(r"\w+\{([^,]+),", entry)
+        m_label = re.search(r"(?:note|label)\s*=\s*\{\[([^\]]+)\]\}", entry)
+        m_author = re.search(r"author\s*=\s*\{([^}]+)\}", entry)
+        m_year = re.search(r"year\s*=\s*\{(\d{4})\}", entry)
+        if not m_key:
+            continue
+        citekey = m_key.group(1).strip()
+        if m_label:
+            out[m_label.group(1).strip()] = citekey
+            continue
+        if m_author and m_year:
+            authors = re.split(r"\s+and\s+", m_author.group(1))
+            yr2 = m_year.group(1)[-2:]
+            if len(authors) == 1:
+                surname = authors[0].split(",")[0].strip() if "," in authors[0] else authors[0].split()[-1]
+                tag = re.sub(r"[^A-Za-z]", "", surname)[:3].upper() + yr2
+                out[tag] = citekey
+            elif len(authors) <= 4:
+                tag = ""
+                for a in authors:
+                    sn = a.split(",")[0].strip() if "," in a else a.split()[-1]
+                    tag += re.sub(r"[^A-Za-z]", "", sn)[:1].upper()
+                tag += yr2
+                out[tag] = citekey
     return out
 
 
@@ -106,7 +151,8 @@ SKIP_CONTEXTS = [
 ]
 
 
-def rewrite_citations(text: str, bibmap: dict[tuple, str]) -> tuple[str, int, list[str]]:
+def rewrite_citations(text: str, bibmap: dict[tuple, str],
+                      style: str = "chicago") -> tuple[str, int, list[str]]:
     refs_start = text.find(r"\section{References}")
     if refs_start < 0:
         refs_start = len(text)
@@ -120,10 +166,18 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str]) -> tuple[str, int, li
     def _inside_any(pos: int, ranges) -> bool:
         return any(s <= pos < e for s, e in ranges)
 
-    author_atom = r"[A-Z][a-z]+(?:[-'][A-Z][a-z]+)?"
-    citation_re = re.compile(
-        rf"({author_atom}(?:\s+(?:and|&)\s+{author_atom})?(?:\s+et\s+al\.?)?)\s+(\d{{4}}[a-c]?)\b"
-    )
+    # Author atom supports lowercase particles (von, de, van der, Mc),
+    # up to 3 deep, plus accented Latin capitals.
+    particle_pat = r"(?:(?:von|de|van|der|den|da|do|del|della|di|dos|das|du|la|le|te|al|el|st|sankt|Mc|McC|ten|ter)\s+){0,3}"
+    author_atom = rf"{particle_pat}[A-ZÀ-Ý][a-zà-ÿ\-']+(?:[-'][A-Z][a-z]+)?"
+    if style == "apa":
+        citation_re = re.compile(
+            rf"({author_atom}(?:\s*(?:,\s*|\s+and\s+|\s+&\s+){author_atom})*(?:\s+et\s+al\.?)?)\s*,\s*(\d{{4}}[a-c]?)\b"
+        )
+    else:
+        citation_re = re.compile(
+            rf"({author_atom}(?:\s+(?:and|&)\s+{author_atom})?(?:\s+et\s+al\.?)?)\s+(\d{{4}}[a-c]?)\b"
+        )
 
     rewrites: list[tuple[int, int, str]] = []
     unresolved: list[str] = []
@@ -154,6 +208,14 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str]) -> tuple[str, int, li
                 citekey = bibmap.get(((surnames[0],), try_year, "first-only"))
                 if citekey:
                     break
+            # Fall through to "any-author" index — useful for short-form
+            # citations and multi-word surname mismatches.
+            for sn in surnames:
+                citekey = bibmap.get(((sn,), try_year, "any-author"))
+                if citekey:
+                    break
+            if citekey:
+                break
 
         if not citekey:
             unresolved.append(f"{author_part} {year_part}")
@@ -180,24 +242,65 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str]) -> tuple[str, int, li
     return new_body + tail, len(rewrites), unresolved
 
 
+def rewrite_bracket_keys(text: str, bracket_map: dict[str, str]) -> tuple[str, int]:
+    """For bracket-key style: rewrite inline `[KEY]` to `\\cite{citekey}`."""
+    refs_start = text.find(r"\section{References}")
+    if refs_start < 0:
+        refs_start = len(text)
+    body = text[:refs_start]
+    tail = text[refs_start:]
+    count = 0
+    def replace(m):
+        nonlocal count
+        key = m.group(1)
+        ck = bracket_map.get(key)
+        if not ck:
+            return m.group(0)
+        count += 1
+        return f"\\cite{{{ck}}}"
+    new_body = re.sub(r"\[([A-Z][\w+]*)\]", replace, body)
+    return new_body + tail, count
+
+
 def main() -> int:
-    if len(sys.argv) != 3:
-        print("usage: rewrite_citations.py <main.tex> <references.bib>", file=sys.stderr)
+    args = sys.argv[1:]
+    style = "chicago"
+    positional = []
+    for a in args:
+        if a.startswith("--style="):
+            style = a.split("=", 1)[1]
+        else:
+            positional.append(a)
+    if len(positional) != 2:
+        print(
+            "usage: rewrite_citations.py <main.tex> <references.bib> "
+            "[--style=apa|chicago|bracket-key]",
+            file=sys.stderr,
+        )
         return 2
-    tex_path = Path(sys.argv[1])
-    bib_path = Path(sys.argv[2])
+    tex_path = Path(positional[0])
+    bib_path = Path(positional[1])
 
     tex = tex_path.read_text(encoding="utf-8")
     tex, ocr_fixes = fix_ocr_years(tex)
-    bibmap = parse_bib(bib_path)
-    new_tex, count, unresolved = rewrite_citations(tex, bibmap)
+
+    if style == "bracket-key":
+        bracket_map = parse_bracket_keys(bib_path)
+        new_tex, count = rewrite_bracket_keys(tex, bracket_map)
+        unresolved = []
+    else:
+        bibmap = parse_bib(bib_path)
+        new_tex, count, unresolved = rewrite_citations(tex, bibmap, style=style)
 
     if ocr_fixes:
         tex = new_tex
         print(f"OCR year fixes: {ocr_fixes}")
     if count:
         tex_path.write_text(new_tex, encoding="utf-8")
-        print(f"Rewrote {count} bare author-year mentions to \\cite/\\citealt/\\citet.")
+        print(
+            f"Rewrote {count} {style}-style mentions to "
+            f"\\cite/\\citealt/\\citet."
+        )
     elif ocr_fixes:
         tex_path.write_text(new_tex, encoding="utf-8")
 

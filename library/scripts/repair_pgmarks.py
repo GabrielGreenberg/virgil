@@ -158,11 +158,23 @@ def _apply_removals(content: str, pgmarks: list[Pgmark], removals: set[int]) -> 
 
 
 def repair(path: str, dry_run: bool = False) -> dict:
-    """Repair the file at `path`. Returns a summary dict."""
+    """Repair the file at `path`. Returns a summary dict.
+
+    Safeguard: if the repair would remove >50% of pgmarks, the paper
+    likely has multi-section page-label collisions (book with front
+    matter + body + indexes). Abort and warn — let the validator emit
+    pre-existing continuity warnings instead of silently dropping
+    anchors.
+    """
     with open(path, encoding="utf-8") as f:
         content = f.read()
     pgmarks = _parse_pgmarks(content)
     removals = _decide_removals(pgmarks)
+    numeric_count = sum(1 for pm in pgmarks if pm.value is not None)
+    aborted = False
+    if numeric_count > 0 and len(removals) > numeric_count * 0.5:
+        aborted = True
+        removals = set()
     removed_descriptors = [
         {"line": pgmarks[i].line, "label": pgmarks[i].label, "text": pgmarks[i].text}
         for i in sorted(removals)
@@ -177,6 +189,7 @@ def repair(path: str, dry_run: bool = False) -> dict:
         "removed_count": len(removals),
         "removed": removed_descriptors,
         "dry_run": dry_run,
+        "aborted_50_percent_guard": aborted,
     }
 
 
@@ -191,6 +204,13 @@ def main(argv: list[str]) -> int:
     except FileNotFoundError:
         print(f"not found: {path}", file=sys.stderr)
         return 1
+    if result.get("aborted_50_percent_guard"):
+        print(
+            f"Aborted pgmark repair on {result['path']}: would remove "
+            f">50% of pgmarks ({result['total_pgmarks']} total). Likely "
+            f"multi-section page-label collisions; leave baseline pgmarks."
+        )
+        return 0
     n = result["removed_count"]
     if n == 0:
         print(f"No spurious pgmarks in {result['path']}.")

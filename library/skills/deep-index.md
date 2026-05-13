@@ -1,5 +1,5 @@
 ---
-description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Resumes from prior passes by default; escalates through layout-mode pdftotext → fresh OCR → visual page inspection before bailing on ambiguous calls. Always emits an outstanding-work list + a streamlining memo. Sets indexed.state to "deepIndexed" (double checkmark). Args: <citekey> [--fresh]
+description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Runs an internal convergence loop (no cap), persistently working through every recoverable issue until two consecutive passes produce no new findings. Emits a clear "Deep indexing complete" banner (or stall report) when done. Args: <citekey> [--fresh]
 ---
 
 # /deep-index
@@ -38,20 +38,167 @@ The paper must already be indexed (`papers/<citekey>/main.tex` must
 exist). If it doesn't, tell the user to run `/index-pending` first
 and stop.
 
+Also verify the body is populated: a `main.tex` whose body (between
+`\maketitle` and `\end{document}`) has fewer than 100 non-comment
+bytes is an `/index-paper` failure (typically a scanned PDF that
+pymupdf could not text-extract). Hard-stop with the message
+"extraction-empty-body — body has <N> bytes; re-run /index-paper
+with OCR" and do not proceed. There is nothing for /deep-index to
+clean up.
+
+## Scope doctrine (load-bearing)
+
+**Aggressive default: in-scope unless proven otherwise.** /deep-index
+is responsible for every cleanup problem that can be solved by reading
+the source PDF, the existing `main.tex`, and the bibliography. Recoverable
+problems explicitly include:
+
+- **Footnotes** — leaked-prose, orphan, column-format, chapter-end,
+  multi-page continuations. Walk the tier ladder (§3d). The Tier 4
+  orphan-prefix fallback always succeeds with approximate placement;
+  it is strictly better than leaving content unattached.
+- **Chapter titles and heading hierarchy** — infer from body context,
+  the TOC, or PDF visual structure. Merge wrapped section fragments.
+  Demote math-symbol-only headings. Delete OCR-garbage cluster
+  headings (figure-caption blocks). Promote all-caps siblings.
+- **Pagination and pgmarks** — offset detection has multiple fallback
+  patterns (standalone numeric footer, recto/verso running headers,
+  modal offset from multiple anchors). Blank pages get
+  `\pgmark[low]{N}` with no body.
+- **Misplaced text** — relocate body fragments to their correct
+  positions; remove adjacent-article content from multi-article PDFs
+  surgically.
+- **Drop-cap recovery** — OCR'd chapter-starts missing their initial
+  letter are recoverable from `pdftotext -layout` on the PDF.
+- **Invisible characters and ligatures** — strip soft hyphens, normalize
+  U+FB00–U+FB06 ligatures, replace mid-word NBSP, replace U+2800 Braille
+  pattern blank in citation contexts.
+- **Bibliography parsing** — even 1000+ entry book bibliographies are
+  in-scope. State-machine parser handles run-on prose; multi-word
+  surnames (`McNaughton`, `van Fraassen`, `Graf Fara`) and lowercase
+  particles (`von`, `de`, `van der`, `Mc`) work via longest-suffix
+  match against the parsed author list.
+- **Citation rewriting** — every style: author-year, APA comma-separator,
+  numeric/Vancouver, bracket-key (SIGGRAPH/CS), endnote-style with
+  full bibliographic detail at first mention. Index bib entries under
+  every author surname (not just first). Title-only fallback for
+  short-form citations.
+- **Multi-article PDFs** — JSTOR scans and Annual-Reviews collections
+  that bundle adjacent-article content into `main.tex` get surgical
+  removal. Use `detect_multi_article.py` to identify; remove with
+  a targeted body edit, not by re-extracting.
+
+**Genuinely out of scope is narrow.** Only three categories qualify:
+
+1. **Source-missing content** — a page literally absent from the PDF.
+   Verify with `pdfinfo papers/$ARGUMENTS/$ARGUMENTS.pdf | grep '^Pages:'`
+   against the catalog's `indexed.pgmarkCount` and the expected page
+   range from `master.bib`. Tag as
+   `source-missing — verified absent from PDF (pages X–Y)`.
+2. **Figure/diagram reconstruction** — raster-only content where the
+   meaning is the image itself (not text overlaid on an image). Tag
+   as `figure-reconstruction — raster-only content`. Text in
+   figure captions IS in scope and must be cleaned.
+3. **User-judgment-required** — a genuinely ambiguous call that
+   requires human input (rare in practice). Tag as
+   `user-judgment-required — <specific question>` with the exact
+   question that needs answering. **Default expectation: this is
+   almost never the right tag.** If you're tempted to use it, you
+   are probably failing to exhaust a tier.
+
+Everything else is in-scope. **"I tried one approach and it didn't
+fully work" is not exhaustion.** Tier 4 (orphan-attachment with
+`[orphan fn N]` prefix) always succeeds with approximate placement.
+"Out of /deep-index scope" is not a valid deferral reason for any
+problem within the explicit in-scope list above.
+
+## Persistence: internal convergence loop (no cap)
+
+This skill runs an internal loop, not a single pass. The structure is:
+
+```
+loop:
+  pass N:
+    run Steps 1–9 (preprocess → AI improvements → validate → outstanding list)
+    Step 9.5: run audit_deepindex.py — emit punch-list of remaining issues
+    compute pass-fingerprint = (audit punch-list, outstanding list as set,
+                                validator findings as set)
+    if pass-fingerprint matches the prior pass exactly: convergence — exit loop
+    if pass N >= 3 AND outstanding list strictly grew AND no items resolved:
+        pathological-loop guard — exit loop with stall report
+    else: continue (pass N's outstanding items + audit punch-list become
+                    pass N+1's agenda)
+final:
+  emit completion banner (Step 10, see §Output format)
+  write addendum log (if this is a resume)
+  write streamlining memo
+```
+
+**Convergence criterion.** Two consecutive passes produce the *same*
+outstanding set (treated as a set of bullet contents, normalized
+whitespace) and the *same* audit punch-list and the *same* validator
+findings. The skill stops because nothing more can change, not
+because a counter ran out.
+
+**No hard cap.** The only termination backstops are (a) genuine
+convergence (preferred) and (b) the pathological-loop guard (only fires
+after pass 3 if the outstanding list is *growing* and no resolutions
+are happening). Most papers converge in 1–4 passes; some books take
+5–8. Run all of them autonomously without asking the user.
+
+**Resume across invocations.** If `indexed.state == "deepIndexed"`
+when this skill is invoked, the loop still runs — it picks up the
+prior summary's `## Outstanding work` and audit punch-list as the
+starting agenda and converges from there. Write an addendum log
+`<ISO>-deepindex-addendum.summary.md` per §8 (in addition to the
+normal summary) when resuming.
+
+## Genre detection (preflight)
+
+After §Preflight (resume detection) but before Step 1, run a fast
+genre classifier:
+
+```bash
+python3 .virgil/scripts/detect_genre.py papers/$ARGUMENTS
+```
+
+Emits one of: `book` / `article` / `multi-article-pdf` / `scanned-ocr` /
+`endnote-style`. Several later steps branch on the result:
+
+- `multi-article-pdf` — run `detect_multi_article.py` to identify
+  adjacent-article spans for surgical removal (§3a).
+- `scanned-ocr` — expect drop-cap loss (run `recover_drop_caps.py`),
+  ligature artifacts (run `fix_invisibles.py` aggressively), and
+  inline running headers (extend preprocessor's strip patterns).
+- `endnote-style` — chapter-end-notes recovery is the primary tier-0
+  footnote path (run `reattach_chapter_end_notes.py`); the bibliography
+  may live in a unified Notes section (run `itemize_endnotes.py`,
+  not the standard §3e itemizer).
+- `book` — bibliography may have 100s of entries (use
+  `format_references_section.py` rather than hand-shaping); chapters
+  may need explicit `\section{}` markers added before §3d's auto-pipeline
+  can scope per-chapter.
+- `article` — standard path; the existing tier ladder is well-suited.
+
+If `detect_genre.py` is unavailable or its output is ambiguous,
+proceed as `article` and let downstream steps detect failures and
+adapt.
+
 ## Steps
 
 ### Preflight: Resume vs. fresh
 
 **Default is resume.** Before doing anything else, check the catalog
 row for this paper. If `indexed.state == "deepIndexed"`, a prior pass
-has run — pick up from where it left off rather than starting over.
+has run — pick up from where it left off and the loop will continue
+to convergence from there.
 
 Read:
 
 - The most recent `.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`
   — specifically its `## Outstanding work` section (the schema from
-  §9 below) and `**AI changes:**` block. The outstanding-work list
-  becomes the starting agenda for this run.
+  §9 below) and `## Audit punch-list` section. Both become the
+  starting agenda for the first pass of this invocation.
 - The catalog `indexed.warnings` array — every item still present
   there is something the prior pass either deferred or couldn't
   resolve.
@@ -59,6 +206,14 @@ Read:
 The §1 preprocessing scripts are designed to be re-run safely (idempotent
 on already-clean input). Run them again — they'll be no-ops if there
 is nothing new to fix.
+
+**When this invocation is a resume**, write an addendum log
+`<ISO>-deepindex-addendum.summary.md` (alongside the normal
+`<ISO>-deepindex.summary.md` per §8) that cross-references the prior
+summary's outstanding items, marking each as `resolved` (no longer
+present on the current pass) or `carried over` (still present, with
+notes on what was tried). This makes multi-pass convergence
+auditable across invocations.
 
 **`--fresh` flag.** If the user invokes
 `/library/deep-index $CITEKEY --fresh`, treat `$ARGUMENTS` as the
@@ -79,11 +234,29 @@ re-runs can then `--fresh`-restore.
 ### 1. Run deterministic preprocessing
 
 ```bash
+python3 .virgil/scripts/fix_invisibles.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/deep_preprocess.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/repair_pgmarks.py papers/$ARGUMENTS/main.tex
 ```
 
-Two deterministic passes:
+Three deterministic passes:
+
+**0. `fix_invisibles.py`** (new, run first) — strips soft hyphens
+(U+00AD) wholesale, normalizes ligatures (U+FB00–U+FB06: `ﬁ` → `fi`,
+`ﬄ` → `ffl`, etc.), replaces word-internal NBSP (U+00A0 between two
+lowercase letters) with a regular space, and replaces U+2800 (Braille
+pattern blank) with `(` in citation contexts. These artifacts break
+byte-offset matching in downstream regex work and produce silent
+mismatches in Edit calls; clearing them at the front of every pass
+removes a whole class of bugs. Idempotent on already-clean input.
+
+**Pgmark repair safeguard.** If `repair_pgmarks.py` would remove more
+than 50% of pgmarks, that's a red flag — the paper likely has
+multi-section page-label collisions (book with front matter + body +
+indexes sharing printed page numbers). The script aborts and prints
+a warning in that case; revert to baseline pgmarks (skip the repair)
+and let the validator (§3i) emit pre-existing continuity warnings
+instead of silently dropping anchors.
 
 **a. `deep_preprocess.py`** — strips repeating running headers and
 footers, removes leaked page numbers, rejoins hyphenated line breaks,
@@ -160,13 +333,42 @@ category in order:
 > looks ambiguous — a footnote you can't place, a heading you can't
 > classify, a pgmark whose target text you can't find, an inline
 > citation that doesn't obviously match a bib entry — **do not bail.**
-> Escalate through the tier ladder defined in §3d (re-extract page
-> text → fresh OCR → rasterize and visually inspect) before logging
-> the item as unresolved. The ideal is that every section a–i
-> completes; warnings should reflect genuine intractability, not
-> first-tier doubt. If a tier exhausts with no progress, move to the
-> next tier; only log to `## Outstanding work` (step 9) when the
-> ladder is exhausted.
+> Escalate through the tier ladder defined in §3d:
+>
+> - **Tier 0:** in-file scan of `main.tex` for content already present
+>   (leaked-prose footnotes, chapter-end notes, inline call sites).
+>   Run `reattach_leaked_footnotes.py` and (for endnote-style sources)
+>   `reattach_chapter_end_notes.py`. This is faster than PDF
+>   re-extraction when the bodies are already in the file.
+> - **Tier 1:** PDF re-extraction with `pdftotext -layout` on specific
+>   pages; the `extract_pdf_footnotes.py` + `reattach_footnotes.py`
+>   pipeline for batched recovery.
+> - **Tier 2:** fresh OCR via `ocrmypdf` on individual pages (skip
+>   silently if `ocrmypdf` is missing).
+> - **Tier 3:** rasterize the page to PNG via PyMuPDF and read it
+>   visually (Read tool handles PNG natively). For orphan footnotes,
+>   `recover_orphan_footnotes.py` does this in batch against six
+>   call-site patterns and ±12K-char context match.
+> - **Tier 4 (always succeeds):** for orphan footnotes whose call
+>   site cannot be located, attach to the end of the nearest preceding
+>   body paragraph as `\footnote{[orphan fn N] <body>}`. The
+>   `[orphan fn N]` prefix tells the reader the placement is
+>   approximate. **This is strictly better than leaving the
+>   numbered paragraph unattached.** Tier 4 closes every footnote.
+>
+> The ideal is that every section a–i completes with the outstanding
+> list empty. Warnings should reflect genuine intractability (the three
+> narrow categories from §0.5 scope doctrine), not first-tier doubt.
+>
+> **"Out of scope" is not a synonym for "hard."** If you are tempted to
+> defer a problem with "out of /deep-index scope" as the reason, check
+> the §0.5 in-scope list first. Footnotes, chapter titles, pagination,
+> misplaced text, drop-cap recovery, invisible characters, bibliography
+> parsing (all styles), citation rewriting (all styles), and
+> multi-article surgical cleanup are all in scope. The bar for
+> out-of-scope deferral is very high; the convergence loop (§Persistence)
+> will keep re-running until the outstanding list stabilizes, so
+> deferring an in-scope item just means re-doing it next pass.
 
 **a. Header / `\maketitle` cleanup**
 
@@ -177,6 +379,64 @@ is present after the preamble. Remove any author names, journal
 titles, or institutional affiliations that leaked into the body text
 as paragraphs or headings on the first page (they belong in the
 preamble fields, not in the document body).
+
+**Filename-shaped titles.** If `\title{}` matches a filename pattern
+(`*.dvi`, `*.pdf`, `*.ps`, or a single-word LaTeX-source residue), the
+extractor used the file's source name instead of the printed title.
+Replace with the actual title from `master.bib`. If `master.bib` is
+also wrong, promote the document's first `\section{}` heading as the
+title.
+
+**Drop-cap recovery (OCR'd books).** OCR commonly drops the styled
+drop-cap glyph at chapter starts, leaving body text like `ower is the
+ability to do work...` mis-classified as a `\subsubsection`. Detect
+by scanning the first paragraph after each `\section{}` for a lowercase
+opening that doesn't form a valid English word with the section
+heading's context. Run:
+
+```bash
+python3 .virgil/scripts/recover_drop_caps.py papers/$ARGUMENTS
+```
+
+The script reads the corresponding PDF page via `pdftotext -layout`
+to recover the missing initial letter and emits a patch list. Apply
+each suggestion as a body Edit (one-letter prepend; never modify
+surrounding text).
+
+**Content vs. metadata mismatch.** If the body content does not match
+`master.bib`'s `title` (e.g., the file is a whole book but `master.bib`
+describes one chapter), **do NOT** silently change the title to fit
+the content — that creates downstream metadata drift. Instead, flag in
+`## Outstanding work` as:
+
+```
+- [user-judgment-required] content/metadata mismatch: file contains
+  <description>, master.bib describes <description> — should master.bib
+  be updated to match content, or should the file be re-extracted as
+  a per-chapter source?
+```
+
+…and continue the rest of the deep-index pass against the actual
+content. If the user later authorizes a metadata update, also update
+the in-file `\title{}` and the catalog row's `title`/`doi` fields to
+match. Without explicit authorization, leave the title alone.
+
+**Multi-article PDF detection.** If `detect_genre.py` (preflight)
+classified the source as `multi-article-pdf`, run:
+
+```bash
+python3 .virgil/scripts/detect_multi_article.py papers/$ARGUMENTS
+```
+
+The script identifies adjacent-article spans in `main.tex` (text that
+belongs to a different article — often JSTOR scans or Annual Reviews
+collections include front-of-issue or facing-page content). Surgically
+remove each identified span via a body Edit. This **is** in-scope for
+/deep-index per §0.5; do not defer it to /index-paper. The threshold
+for surgical removal: the span must (a) be clearly attributable to a
+different article (different title, different authors), (b) not be
+referenced by the body of the indexed paper, and (c) have a clear
+start/end boundary (typically a column or paragraph break).
 
 **b. Heading hierarchy**
 
@@ -192,6 +452,53 @@ Walk the entire document and correct `\section` / `\subsection` /
     is needed based on the document structure).
 - Use the PDF's table of contents or visual structure to verify the
   heading hierarchy.
+
+**All-caps sibling promotion.** When `\subsubsection{HEADING1}`,
+`\subsubsection{HEADING2}`, … `\subsubsection{HEADINGn}` are all-caps
+siblings at the same nesting depth, the extractor mistook journal
+small-caps or all-caps styling for a sub-sub-section. Promote each
+to `\section{Title Case HeadingN}`. This is a common failure mode
+for Annual Reviews, Springer, and other journals that style section
+headings in all-caps. Detection: run of ≥2 sibling
+`\subsubsection{}` calls whose argument is ≥80% uppercase letters
+and ≥4 characters.
+
+**Math-symbol subsection demotion.** Headings whose content is
+dominated by math symbols (⊢, ⇑, ⇀, ↿, ▷◁, ≡, ∅, ⊬, ∆, Γ, δ, γ, σ, θ,
+⇒) or has fewer than 3 letters or starts with `)` should be unwrapped
+back to plain body text. These are inference-rule diagram fragments
+mis-promoted from formal-logic/math books. Common in textbooks and
+dissertations on logic, semantics, and proof theory.
+
+**OCR-garbage heading detection (cluster awareness).** Per-line
+heuristics ("mostly numbers", "single-word fragments") miss ~50% of
+garbage headings on edge cases. Use cluster awareness:
+
+- If `\section{}` / `\subsection{}` headings appear in a cluster of
+  ≥3 short/noisy entries within 50 lines, and the surrounding body
+  text reads like a figure caption (axis labels, coordinate values,
+  figure references), the entire cluster is a figure-caption block
+  that the extractor synthesized. Delete the headings (or convert to
+  `\textbf{}` if the captions are needed).
+- Single-character headings, headings whose argument is mostly
+  non-alphabetic punctuation, and headings with `\(\d+\)\s*[a-z]'?\(`
+  shape (formal-semantics example markers): delete or convert to
+  body text. They are not headings.
+
+**Multi-line section fragment merger.** Book chapter titles often
+wrap across extraction lines (e.g., `\section{Convention, Construction,
+and}` immediately followed by a blank line and `\section{Cinematic
+Vision}`). Detect adjacent `\section{}` calls separated only by blank
+lines where the first ends without terminal punctuation (no period,
+no question mark, no closing quote), and merge them into a single
+heading. Preserve italic-toggle and quote-context.
+
+**Lost section heading recovery.** If a chapter or section heading
+appears to be missing — sequence reset detected in body text (e.g.,
+note numbers jump backward from 47 to 1), or the body contains a
+chapter list that doesn't match the present headings — propose
+inserting it. Source the title from the body's chapter list or the
+PDF's TOC.
 
 **c. `\pgmark` alignment**
 
@@ -246,13 +553,64 @@ the pgmark on its own line between them. Example — equation (4) of
 Do **not** fuse those two displays into one — the pgmark would have
 to live inside math, and would disappear.
 
-**d. Orphan footnote reattachment**
+**d. Footnote recovery (full tier ladder, Tier 0 → Tier 4)**
 
-If `% orphan footnote` comments exist in the document, attempt to
-re-attach them as `\footnote{…}` at the correct position in the body
-text. Use footnote numbering from the PDF to identify the attachment
-point. If you can't determine the correct position with confidence,
-leave the comment in place.
+Footnotes have three failure modes from the original extractor:
+
+1. **Orphan-comment form** — `% orphan footnote` comments scattered
+   in the body; the call site is unknown.
+2. **Leaked-prose form (most common)** — pymupdf and similar
+   extractors emit footnote bodies as ordinary paragraphs at
+   page-bottom, beginning with a bare or superscript footnote number.
+3. **DOCX-dropped form** — DOCX extractor silently drops PDF
+   footnotes; the body has no `\footnote{…}` and no leaked-prose
+   bodies, but the PDF alternate has visible footnotes.
+
+For modes 1 and 2, walk the tier ladder below. For mode 3, the DOCX
+case stays out-of-scope for re-extraction (warn and continue, per the
+existing DOCX-native rule below) — but the warning is single-issue,
+not a stall reason for the rest of the pass.
+
+> **Tier 0 — in-file scan (run first, fastest).** Most leaked-prose
+> footnotes are already present in `main.tex` as paragraphs; the work
+> is to locate the call site within the same chapter and rewrap. Run:
+>
+> ```bash
+> python3 .virgil/scripts/reattach_leaked_footnotes.py papers/$ARGUMENTS/main.tex
+> ```
+>
+> The script walks `main.tex` for paragraph-start patterns
+> (`^\d+\s+<body>$`, `^\d+\.\s+<body>$`, column-glued
+> `^\d+\s+<body>\s+\d+\s+<body>` runs) and matches each leaked body
+> to an inline call site via six patterns: `<word>.N`, `<word>N`
+> (no separator), `<word>,N`, `<word> N`, `<close-punct>N`, and
+> `<digit>, N`. Rewraps each match as `\footnote{<body>}` inline at
+> the call site. Reports placed vs. unplaced counts.
+>
+> If the source is endnote-style (chapter-end notes rather than
+> per-page footnotes), run instead:
+>
+> ```bash
+> python3 .virgil/scripts/reattach_chapter_end_notes.py papers/$ARGUMENTS/main.tex
+> ```
+>
+> This script identifies notes-block structure (last paragraph of a
+> chapter starting with `^1\.\s+`, followed by `2\.`, `3\.`, … and
+> ending at the next chapter or end of section), parses the bodies,
+> and matches inline call sites within the parent chapter. Expects
+> 70–95% recovery before Tier 1.
+>
+> If `% orphan footnote` comments exist in the document with no
+> known call sites, those are mode 1 — leave them for Tier 3.5 (PDF
+> call-site recovery via `recover_orphan_footnotes.py`) and Tier 4.
+
+If `% orphan footnote` comments exist in the document (mode 1),
+attempt to re-attach them as `\footnote{…}` at the correct position
+in the body text. Use footnote numbering from the PDF to identify the
+attachment point. If you can't determine the correct position with
+Tier 0, walk Tiers 1–4 below — **don't leave orphan comments in
+place once the ladder has been walked**; the Tier 4 fallback always
+gives every footnote a home.
 
 > **DOCX-native sources with PDF alternate.** The DOCX extractor
 > commonly drops PDF footnotes silently — no `% orphan footnote`
@@ -426,17 +784,48 @@ leave the comment in place.
 > Python invocation — keep the work directory and clean it up at the
 > end of the run (or at the start of the next run).
 >
-> **Tier 4 — log and move on.** Only after all three tiers fail to
-> resolve a particular footnote, leave it as prose and contribute it
-> to the `footnote-recovery-needed:` count. The warning text becomes:
+> **Tier 3.5 — batch orphan-footnote recovery.** Before falling back to
+> Tier 4, run the batch PDF call-site recovery script against all
+> remaining orphans:
 >
-> `footnote-recovery-needed: <N> footnote bodies extracted as
-> paragraph prose, not yet re-attached (tier-4 escalation exhausted)`
+> ```bash
+> python3 .virgil/scripts/recover_orphan_footnotes.py papers/$ARGUMENTS
+> ```
 >
-> Where `<N>` is the count of footnotes that survived all three
-> escalation tiers. Each such footnote also gets a bullet in step 9's
-> `## Outstanding work` with `[footnote-recovery]` category and
-> `tier-4 escalation exhausted` reason.
+> The script tries six call-site patterns (`.N`, `wordN`, `,N`, ` N`,
+> `<close-punct>N`, `<digit>, N`) against the PDF page text, filters
+> running headers/footers, and matches body context within ±12K chars
+> of the orphan position in `main.tex`. Expects 70–85% additional
+> recovery over Tier 1's auto-pipeline output. Anything still
+> unattached after this batch run falls through to Tier 4.
+
+> **Tier 4 — orphan-prefix attachment (always succeeds).** When a
+> footnote body cannot be confidently matched to a call site after
+> Tiers 0–3.5, attach it to the **end of the nearest preceding body
+> paragraph** with `[orphan fn N]` prefix:
+>
+> ```latex
+> ... preceding paragraph's last sentence.\footnote{[orphan fn 7] Not
+> absent some extra information about the typing context...}
+> ```
+>
+> The `[orphan fn N]` prefix tells the reader the placement is
+> approximate. This is **strictly better** than leaving the numbered
+> paragraph loose as prose, which (a) clutters the body with
+> mis-classified text and (b) wastes the work of having extracted
+> the footnote body. Tier 4 always succeeds; every footnote gets a
+> `\footnote{}` wrapper.
+>
+> Optionally, when many orphans converge to nearby positions, emit a
+> summary warning of the form:
+>
+> `footnote-recovery-needed: <N> footnotes attached with approximate
+> placement (orphan-prefix tag) — Tiers 0–3.5 could not pin call sites`
+>
+> Where `<N>` is the count of footnotes attached with `[orphan fn N]`
+> prefix. This warning is informational, not a blocker. Re-running
+> deep-index does NOT re-do these — `[orphan fn N]` is the canonical
+> form for approximate placements.
 >
 > This rule is **distinct from the DOCX-native case above**. There,
 > footnotes were dropped entirely; here they leak as prose. The
@@ -467,6 +856,31 @@ leave the comment in place.
 > entries). Do not re-flow whitespace, re-order entries, or normalize
 > font commands (`\emph{}` ↔ `\textit{}`) on a re-run; that just
 > creates churn against any other skill or human edit.
+>
+> **Partial-coverage idempotency.** If ≥80% of `\item` lines start
+> with `\textbf{}`, treat as already-shaped (some entries may have
+> been hand-edited and de-bolded). Skip the bulk itemization.
+
+> **Batch script for long bibliographies (>50 entries).** For books and
+> review articles with hundreds of references, manual itemization is
+> error-prone and slow. Run:
+>
+> ```bash
+> python3 .virgil/scripts/format_references_section.py papers/$ARGUMENTS [--style=apa|chicago|endnote|bracket-key]
+> ```
+>
+> Auto-detects style if `--style` is omitted. The script uses a
+> state-machine parser that supports multi-word surnames (`McNaughton`,
+> `MacEvoy`, `van Fraassen`, `Graf Fara`) via longest-suffix match,
+> lowercase particles (`von`, `de`, `van`, `der`, `Mc`, `McC`, etc.,
+> up to 3 deep), year regex 1600–2099 with `1967/1973` and `1995a/b`
+> forms, accented Latin, hyphenated initials, leaked running-header
+> stripping, prefixed page ranges (`S51-S65`), and auto entry-type
+> detection.
+>
+> If the script produces output that looks wrong, fall through to
+> manual itemization — but on a long bibliography, the script is
+> almost always faster and more accurate than per-entry editing.
 
 The references section is typically the last `\section` of the paper
 (headings like "References", "Bibliography", "Works Cited"). After
@@ -668,9 +1082,38 @@ Walk the body text and replace inline parenthetical / textual citation
 prose with `\cite{…}` family commands using the citekey table built in
 step 3e.
 
+> **Style detection and rewriter selection.** Citation styles vary
+> per discipline:
+>
+> - **Author-year, Chicago/MLA** — space-separator: `(Author Year)`.
+>   Default; pass `--style=chicago` or omit.
+> - **Author-year, APA** (psychology, cognitive science) —
+>   comma-separator: `(Author, Year)`. Pass `--style=apa`.
+> - **Numeric / Vancouver** (biology, medicine) — bare integers in
+>   the body. Leave as prose; emit `numeric-citation-style:` warning.
+> - **Bracket-key** (SIGGRAPH/CS) — `[GG01]`, `[MAB+97]`. Detect via
+>   ≥80% of bracket patterns having a matching `[KEY]` entry in refs.
+>   Pass `--style=bracket-key`.
+> - **Endnote-style** (humanities books) — full bibliographic detail
+>   at first mention; index bib entries under every author surname.
+>
+> **Multi-word surname handling.** When body says `von Fintel 1994` or
+> `Graf Fara 2002`, the standard tokenizer matches only the last token.
+> The extended rewriter uses longest-suffix match against the parsed
+> surname set from `references.bib`, with particle list (`von`, `de`,
+> `van`, `der`, `Mc`, `McC`, etc.) honored to 3 depth.
+>
+> **Title-only fallback.** After the structured-citation pass, run a
+> title-only matcher: any `'<title>'` quote ≥15 chars matching a
+> `references.bib` title (strong prefix match) gets `\cite{key}`
+> appended after the title. Safeguards: skip text inside existing
+> `\cite[]{}` args; require strong prefix match to avoid catching
+> concept quotes.
+
 > **Batch tool (preferred for author-year sources).** Run
 > `python3 .virgil/scripts/rewrite_citations.py
-> papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib`. It
+> papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib
+> [--style=apa|chicago|bracket-key]`. It
 > parses both `author = {}` AND `editor = {}` fields from
 > `references.bib` (load-bearing for edited collections like
 > `@book{block1981imagery, editor = {Block, Ned}}` and
@@ -1358,6 +1801,25 @@ Common fixes:
   certainly deleted or moved a marker by accident; cross-reference the
   PDF and restore the missing one.
 
+**Math-display-open downgrade rule.** When the validator reports a
+`math display open` violation but the open `\[` is followed by ASCII
+alphanumeric continuation on the same line (e.g., `sh\[sh`), this is
+almost always a PDF extraction artifact (unbalanced bracket from a
+Unicode angle bracket `〈 〉` mis-extraction, or a phonetic
+transcription that included `[`). A single such artifact can produce
+a cascade of 7+ false-positive scope violations. Before treating
+these as blockers: scan for orphan `\[` on lines where alphanumeric
+characters follow within 10 columns; replace each such `\[` with `[`;
+re-run the validator. The cascade should clear.
+
+**Low-confidence pgmark re-verification.** `\pgmark[low]{N}` is not
+a permanent classification. After §1's preprocessing pass strips soft
+hyphens and normalizes prose, content-overlap verification at a
+slightly relaxed threshold (30%, was 40%) and wider window
+(±1500 chars, was ±800) often successfully promotes markers that
+previously failed. Always re-run `[low]` verification after any prose
+cleanup; this is a free pass-2 win.
+
 Pre-existing continuity findings (`_pre-existing_` in the report) are
 not blockers — they reflect imperfect detection from the original
 extraction and are fine to leave. Only `**new**` findings gate the
@@ -1622,21 +2084,27 @@ not vague. One bullet per item:
 
 Allowed `<category>` values:
 
-- `footnote-recovery` — footnote bodies still unattached
-- `structural` — heading hierarchy, section boundaries, fabricated headings
-- `extraction` — content missing or corrupted by the extractor (out of /deep-index scope)
-- `pgmark-continuity` — duplicates, gaps, out-of-order remains
-- `bib` — missing entries, ambiguous mentions, formatting issues
-- `examples` — numbered examples left as prose
-- `formatting` — TOC, indices, lists, captions, fonts
-- `other` — anything else worth flagging
+- `source-missing` — page or block literally absent from the PDF
+- `figure-reconstruction` — raster-only content (figures, diagrams)
+- `user-judgment-required` — requires user input (rare; high bar)
+
+These are the **only three categories** that may remain after the
+convergence loop completes. Everything else is in-scope per §0.5
+and must be drained by subsequent passes. If you find yourself
+wanting to use a different category, you are almost certainly failing
+to exhaust a tier. Go back and try Tier 0 (in-file scan), Tier 3.5
+(batch orphan recovery), or Tier 4 (orphan-prefix attachment).
 
 Allowed `<why deferred>` values (be precise — these are auditable):
 
-- `tier-4 escalation exhausted` — you tried §3d's full ladder
-- `extraction bug — out of /deep-index scope` — belongs to /index-paper
-- `requires user judgment` — genuine human-call territory
-- `low-priority, deferred` — saw it, chose not to fix this pass (be explicit, never silent)
+- `source-missing — verified absent from PDF (pages X–Y)` — with
+  evidence: `pdfinfo` page count vs. expected.
+- `figure-reconstruction — raster-only content` — for raster figures
+  whose meaning is the image. Text in captions is NOT this category;
+  it's in-scope.
+- `user-judgment-required — <specific question>` — with the exact
+  question that needs the user's input. Default expectation: this
+  is almost never the right reason.
 
 **If everything was resolved**, write the section with body:
 
@@ -1650,9 +2118,56 @@ Do **not** omit the section — its presence (including the "None"
 form) is the contract that downstream readers can rely on. A
 missing `## Outstanding work` section is a skill-protocol violation.
 
-Re-runs should make the outstanding-work list shrink, not grow. If a
-prior pass's outstanding item is now resolved, simply omit it from
-this pass's list (it'll be implicit-resolved by absence).
+**Convergence interaction.** The persistence loop uses this list,
+together with the audit punch-list from Step 9.5, as the convergence
+fingerprint. When two consecutive passes produce the identical
+outstanding set, the loop exits. Empty or narrow-out-of-scope-only
+outstanding lists are the desired terminal state.
+
+Re-runs across invocations should make the outstanding-work list
+shrink, not grow.
+
+### 9.5. Audit punch-list (REQUIRED — drives convergence)
+
+After steps 1–9 complete for the pass, run the audit script:
+
+```bash
+python3 .virgil/scripts/audit_deepindex.py papers/$ARGUMENTS
+```
+
+The script emits a punch-list of concrete cleanup issues that remain
+in `main.tex`, `references.bib`, and the catalog. It checks: invisible
+characters (U+00AD, U+200B, U+00A0 word-internal, U+FB00–U+FB06
+ligatures, U+2800 Braille blank); hyphenation artifacts; title /
+metadata cross-check; `references.bib` sample audit; pgmark continuity
++ low-confidence count; footnote inline-rate; citation completeness.
+
+Append the audit output as a `## Audit punch-list` section to the
+SAME summary log file from step 8.
+
+```markdown
+## Audit punch-list
+
+- [invisibles] 13 U+00AD soft hyphens remain (samples: line 42, 78, 124)
+- [hyphenation-artifacts] 4 broken-word joins remain
+- [footnote-inline-rate] 5 leaked-prose paragraphs un-reattached
+- ...
+```
+
+If the punch-list is **empty**, write:
+
+```markdown
+## Audit punch-list
+
+Clean. No remaining issues detected.
+```
+
+**Convergence semantics.** Each punch-list item is the next pass's
+agenda. The pass-fingerprint includes the punch-list as a set, so an
+unchanged punch-list (and unchanged outstanding list, unchanged
+validator findings) signals convergence and exits the loop. An empty
+punch-list plus an empty outstanding list (or only narrow-out-of-scope
+items) is the desired terminal state.
 
 ### 10. Streamlining memo (REQUIRED — always emit, even if empty)
 
@@ -1704,39 +2219,84 @@ even when they only apply once (the user may generalize them later).
 
 ## Output format
 
+The terminal output is a human-readable banner — NOT a technical-stats
+dump. The audience is the user; the stats live in the summary log
+(§8). Emit one of two banners depending on convergence outcome.
+
+**Converged-clean banner** (audit punch-list empty AND outstanding
+list empty or narrow-out-of-scope-only):
+
 ```
-Deep-indexed $ARGUMENTS (resume | fresh).
-Preprocessing: <N> headers removed, <M> page numbers removed, ...
-Pgmark repair: <N> spurious pgmarks removed (or "no spurious pgmarks").
-Escalation: <N> tier-1, <M> tier-2, <K> tier-3 invocations (omit if zero).
-AI fixes: <bulleted list of structural changes>.
-Outstanding: <N> items (see summary log §9), <K> tier-4 footnote-recovery (or "none").
-Streamlining memo: <path> (or "no observations").
+✓ Deep indexing complete: $ARGUMENTS
+
+  Document: <N> chapters / sections, <M> pages
+  Footnotes: <K> inline, <J> approximate placement with [orphan fn N] prefix (or "0 orphaned")
+  Citations: <N> clickable, 0 unresolved
+  Bibliography: <N>-entry references.bib, all entries parsed
+  Cleanup: 0 invisibles, 0 hyphenation artifacts, 0 catalog warnings
+  Passes: <P> (converged at pass <P>)
+
+  Outstanding: none (or "<N> permanently-out-of-scope items, see log §9")
 ```
+
+**Stalled banner** (the pathological-loop guard fired, OR convergence
+reached but with non-narrow outstanding items remaining):
+
+```
+⚠ Deep indexing stalled: $ARGUMENTS
+
+  Converged at pass <P> with residual:
+    - <category>: <count> items
+
+  Re-invoke /library/deep-index $ARGUMENTS to retry from here.
+  See .virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md §9 for detail.
+```
+
+The stalled banner is rare — the convergence loop normally drives
+everything to an empty or narrow-only outstanding list. If you find
+the loop emitting "stalled" frequently, escalate by re-reading §Scope
+doctrine and the tier ladder; the typical cause is prematurely
+tagging in-scope items as out-of-scope.
+
+The detailed stats (preprocessing counts, pgmark repair counts,
+per-tier escalation counts, AI-changes list, full outstanding-work
+list, audit punch-list) all live in the summary log file at
+`.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md`. Reference the
+log path in the streamlining memo (§10).
 
 ## What this command does NOT do
 
-- Does not re-extract the full document from the PDF. The bulk
-  extraction (`index_paper.py`) is assumed complete; this command
-  refines the existing `main.tex`. The §3d tier ladder *does*
-  re-extract individual pages for footnote-recovery purposes (via
-  `pdftotext -layout`, `ocrmypdf`, or PNG rasterization) — those are
-  targeted page-level lookups, not full-document re-extraction. If a
-  paper has systemic extraction problems (e.g. half the body is
-  missing), that's an /index-paper concern; flag it under
-  `[extraction]` in step 9 and stop rather than trying to rebuild
-  the document from scratch here.
+These are the **narrow** out-of-scope boundaries. Everything inside
+§Scope doctrine is in-scope and the convergence loop drives it to
+resolution.
+
+- Does not re-extract the full document from the PDF in bulk.
+  Targeted per-page or per-region re-extraction via `pdftotext
+  -layout`, `ocrmypdf`, or PyMuPDF rasterization is **in scope** —
+  the §3d tier ladder uses it. What's out of scope is rebuilding the
+  whole `main.tex` from the PDF; if the catalog row has
+  `extraction-empty-body` or pymupdf returned 0 blocks, that's an
+  `/index-paper` failure surfaced at the Preflight check, not a
+  /deep-index problem.
 - Does not touch `master.bib` or bib authentication — those are
   separate concerns handled by `/authenticate-bib`. Each paper's
   `references.bib` is self-contained; cross-paper deduplication and
-  per-entry authentication are future features.
-- Does not handle formulas, pictures, graphics, or tables — those
-  are out of scope for now.
+  per-entry authentication are future features. Exception: when a
+  metadata-vs-content mismatch is explicitly authorized by the
+  user (§3a), update `master.bib` via `update_master_bib_entry.py`.
+- Does not reconstruct figures or diagrams. Raster-only content
+  whose meaning is the image stays as-is; text in captions IS in
+  scope and must be cleaned. Tag truly-raster items as
+  `figure-reconstruction — raster-only content` in §9.
 - Does not collapse multi-display equations into a single `\[...\]`
   when a page boundary runs between them. If `\pgmark{N}` already sits
   between two displays in the input, leave the layout split — fusing
   the displays would force the pgmark either inside math (silently
   swallowed by the renderer) or far from its true position.
+- Does not "give up" on hard problems by tagging them out-of-scope.
+  If you're tempted to tag something as out-of-scope, re-read §Scope
+  doctrine and the tier ladder. The skill is designed to be
+  persistent; premature deferral defeats that purpose.
 
 ## Idempotency
 
@@ -1744,6 +2304,25 @@ Running `/deep-index` twice on the same paper should not degrade it.
 The preprocessing script detects already-cleaned content (no running
 headers to strip = no changes). The AI step should similarly recognize
 when structural fixes have already been applied and avoid double-fixing.
+
+**Multi-pass addendum pattern (within a single invocation).** The
+internal convergence loop runs Steps 1–9.5 N times until the
+pass-fingerprint stabilizes. Each pass either resolves outstanding
+items from the prior pass or carries them over. The pass-fingerprint
+is `(outstanding-list-as-set, audit-punch-list-as-set,
+validator-findings-as-set)`. Two consecutive identical fingerprints
+trigger exit.
+
+**Multi-pass addendum pattern (across invocations).** When `/deep-index`
+is invoked on a paper that's already `deepIndexed`, the new invocation
+writes both the normal summary log AND an addendum log
+`<ISO>-deepindex-addendum.summary.md` that cross-references the prior
+summary's outstanding items, marking each as `resolved` (no longer
+present this pass) or `carried over` (still present, with notes on
+what was tried). This makes multi-invocation convergence auditable.
+
+A paper that requires more than 2 invocations to converge is unusual
+and warrants a streamlining-memo entry diagnosing the friction.
 
 For the bibliography work specifically: on a second pass, the entries
 already exist in `references.bib` and the body already has `\cite{…}` /

@@ -207,7 +207,16 @@ def main() -> int:
         encoding="utf-8",
     )
     total = sum(len(v) for v in by_chapter.values())
+    inline_calls = len(re.findall(r"\b\w+\.\d{1,3}(?!\d)", tex))
     print(f"Extracted {total} footnote bodies across {len(by_chapter)} chapters.")
+    print(f"Inline call-site signals in main.tex: {inline_calls}")
+    if inline_calls > 0 and total < inline_calls * 0.4:
+        print(
+            f"  Note: extraction recovered <40% of expected footnotes "
+            f"({total}/{inline_calls}). Consider falling through to "
+            f"reattach_leaked_footnotes.py (Tier 0) or "
+            f"recover_orphan_footnotes.py (Tier 3.5)."
+        )
     for ch in sorted(by_chapter):
         nums = sorted(by_chapter[ch].keys())
         if nums:

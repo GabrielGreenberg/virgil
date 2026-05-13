@@ -51,19 +51,51 @@ def get_page_text(pdf_path: Path, pdf_page: int) -> str:
 def detect_offset(pdf_path: Path, target_printed: int, search_range: int = 30) -> int | None:
     """Find the PDF page on which the printed page-number footer = target_printed.
 
-    Walks PDF pages target_printed-2 through target_printed + search_range,
-    checking each for a line that's just `<target_printed>` (page-number
-    footer). Returns the PDF page number, or None.
+    Tries multiple patterns: standalone numeric footer, recto running
+    header (`<NUM>  TITLE`), verso running header (`TITLE  <NUM>`).
+    Walks target_printed through target_printed + search_range.
     """
+    candidates: list[int] = []
     for pdf_page in range(max(1, target_printed), target_printed + search_range):
         try:
             text = get_page_text(pdf_path, pdf_page)
         except subprocess.CalledProcessError:
             return None
         for line in text.split("\n"):
-            if line.strip() == str(target_printed):
-                return pdf_page
-    return None
+            stripped = line.strip()
+            if stripped == str(target_printed):
+                candidates.append(pdf_page)
+                break
+            m = re.match(rf"^(\d+)\s+[A-Z][A-Z\s]{{3,}}\s*$", stripped)
+            if m and int(m.group(1)) == target_printed:
+                candidates.append(pdf_page)
+                break
+            m = re.match(rf"^[A-Z][A-Z\s]{{3,}}\s+(\d+)\s*$", stripped)
+            if m and int(m.group(1)) == target_printed:
+                candidates.append(pdf_page)
+                break
+    if not candidates:
+        return None
+    return min(candidates)
+
+
+def detect_offset_modal(pdf_path: Path, anchor_printed_pages: list[int],
+                        search_range: int = 30) -> int | None:
+    """Detect offset via modal agreement across multiple anchor pages.
+
+    Useful when chapter-opener pages have suppressed page numbers —
+    sampling 3-5 mid-chapter anchors and taking the mode of
+    (pdf_page - printed_page) gives a stable offset estimate.
+    """
+    offsets: list[int] = []
+    for printed in anchor_printed_pages:
+        pdf_page = detect_offset(pdf_path, printed, search_range)
+        if pdf_page is not None:
+            offsets.append(pdf_page - printed)
+    if not offsets:
+        return None
+    from collections import Counter
+    return Counter(offsets).most_common(1)[0][0]
 
 
 def extract_first_body_words(page_text: str) -> str | None:
