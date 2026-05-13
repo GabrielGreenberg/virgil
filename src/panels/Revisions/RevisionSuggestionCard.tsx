@@ -1,13 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { RevisionSuggestionCard as RevisionSuggestionCardData } from "@/lib/types";
 import {
-  BadgeLabel,
   Button,
-  CardDragHandle,
-  CardTargetIcon,
-  CardTypeLabel,
   Chevron,
   PanelCard,
 } from "@/components/panel-primitives";
@@ -127,42 +123,20 @@ function FieldBlock({
   onChange,
   readOnly,
   kindHint,
-  collapsedAffordance,
 }: {
   field: SuggestionField;
   value: string;
   onChange: (v: string) => void;
   readOnly?: boolean;
   kindHint?: string | null;
-  collapsedAffordance?: string;
 }) {
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
-  const [expanded, setExpanded] = useState(!collapsedAffordance || !!value);
   const [folded, setFolded] = useState(false);
   const bodyStyle = usePanelBodyStyle("revision");
   const textareaStyle: React.CSSProperties = FIELDS_WITH_COLOR_CUE.has(field)
     ? { fontFamily: bodyStyle.fontFamily, fontSize: bodyStyle.fontSize }
     : bodyStyle;
-
-  useEffect(() => {
-    if (expanded && !value && collapsedAffordance) taRef.current?.focus();
-  }, [expanded, value, collapsedAffordance]);
-
-  if (!value && !expanded && collapsedAffordance) {
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setExpanded(true);
-        }}
-        className="text-[10px] text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1 py-0.5 hover-on-light"
-      >
-        {collapsedAffordance}
-      </button>
-    );
-  }
 
   const isSubstantive = FIELDS_WITH_WORD_COUNT.has(field);
   return (
@@ -213,6 +187,7 @@ export function RevisionSuggestionCard({
   onJump,
   onTogglePopout,
   isPoppedOut,
+  extraDataAttrs,
 }: {
   card: RevisionSuggestionCardData;
   selected: boolean;
@@ -228,6 +203,7 @@ export function RevisionSuggestionCard({
   onJump?: (sourceEl?: HTMLElement | null) => void;
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
+  extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardTheme("revision");
   const cardRef = useRef<HTMLDivElement>(null);
@@ -261,6 +237,7 @@ export function RevisionSuggestionCard({
       data-revision-suggestion-entry={card.id}
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
+      {...(extraDataAttrs || {})}
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
@@ -289,44 +266,22 @@ export function RevisionSuggestionCard({
         }
       }}
       className="focus:outline-none mb-2"
-    >
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        <BadgeLabel label="S" theme={theme} />
-        <div className="flex-1 min-w-0 flex items-center gap-2">
+      kind="suggestion"
+      canJump={isAnchored && !!onJump}
+      onJump={(e) => {
+        if (onJump && isAnchored)
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+      }}
+      headerTrailing={
+        <>
           {dot}
-          <CardTypeLabel kind="suggestion" />
           <AuthorChip author={card.author} />
           <span className="text-[10px] text-ink-muted">
             {STATUS_LABEL[card.status]}
           </span>
-        </div>
-        {onJump && (
-          <CardTargetIcon
-            selected={selected}
-            disabled={!isAnchored}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isAnchored)
-                onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-            }}
-            title={
-              isAnchored
-                ? "Jump to text in document"
-                : "Not anchored in document"
-            }
-          />
-        )}
-      </div>
-
-      <div
-        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
+        </>
+      }
+    >
       {compressed ? (
         <div className="px-3 pt-1 pb-1.5 text-xs truncate">
           {card.suggested_text ? (
@@ -361,7 +316,6 @@ export function RevisionSuggestionCard({
             field="instructions"
             value={card.instructions}
             onChange={(v) => onUpdateField(card.id, "instructions", v)}
-            collapsedAffordance="+ Instructions"
           />
         )}
 

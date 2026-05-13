@@ -52,41 +52,39 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
 
     const renderCard = (omniId: string) =>
       card.kind === "suggestion" ? (
-        <div data-omni-entry={omniId}>
-          <RevisionSuggestionCard
-            key={omniId}
-            card={card as RevisionSuggestionCardData}
-            selected={isSelected}
-            onUpdateField={a.updateSuggestionField}
-            onAccept={a.acceptSuggestion}
-            onReject={a.rejectSuggestion}
-            onDelete={a.deleteCard}
-            onSelect={a.setSelectedId}
-            onJump={
-              pids.length > 0
-                ? (sourceEl) => a.jumpToCard(card, sourceEl)
-                : undefined
-            }
-          />
-        </div>
+        <RevisionSuggestionCard
+          key={omniId}
+          card={card as RevisionSuggestionCardData}
+          selected={isSelected}
+          onUpdateField={a.updateSuggestionField}
+          onAccept={a.acceptSuggestion}
+          onReject={a.rejectSuggestion}
+          onDelete={a.deleteCard}
+          onSelect={a.setSelectedId}
+          onJump={
+            pids.length > 0
+              ? (sourceEl) => a.jumpToCard(card, sourceEl)
+              : undefined
+          }
+          extraDataAttrs={{ "data-omni-entry": omniId }}
+        />
       ) : (
-        <div data-omni-entry={omniId}>
-          <RevisionCommentCard
-            key={omniId}
-            card={card as RevisionCommentCardData}
-            selected={isSelected}
-            editor={a.editor}
-            onUpdateText={a.updateCommentText}
-            onSetAiRequest={a.setCommentAiRequest}
-            onDelete={a.deleteCard}
-            onSelect={a.setSelectedId}
-            onJump={
-              pids.length > 0
-                ? (sourceEl) => a.jumpToCard(card, sourceEl)
-                : undefined
-            }
-          />
-        </div>
+        <RevisionCommentCard
+          key={omniId}
+          card={card as RevisionCommentCardData}
+          selected={isSelected}
+          editor={a.editor}
+          onUpdateText={a.updateCommentText}
+          onSetAiRequest={a.setCommentAiRequest}
+          onDelete={a.deleteCard}
+          onSelect={a.setSelectedId}
+          onJump={
+            pids.length > 0
+              ? (sourceEl) => a.jumpToCard(card, sourceEl)
+              : undefined
+          }
+          extraDataAttrs={{ "data-omni-entry": omniId }}
+        />
       );
 
     if (pids.length === 0) {

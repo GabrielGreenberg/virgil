@@ -4,10 +4,6 @@ import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import {
   EditableCard,
-  BadgeLabel,
-  BadgeOrphaned,
-  CardTitleInput,
-  CardTargetIcon,
   startTextDrag,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -79,38 +75,16 @@ export function ArchiveCard({
     <EditableCard
       id={snippet.id}
       cardKind="archive"
+      kind="archive"
       selected={isSelected}
       theme={theme}
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={
-        orphaned ? (
-          <BadgeOrphaned theme={theme} />
-        ) : (
-          <BadgeLabel label="A" theme={theme} />
-        )
-      }
-      headerContent={
-        <CardTitleInput
-          defaultValue={snippet.title}
-          onChange={(t) => onUpdateTitle(snippet.id, t)}
-          theme={theme}
-        />
-      }
-      headerTrailing={
-        isAnchored && onJump ? (
-          <CardTargetIcon
-            selected={isSelected}
-            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-            title="Jump to archive marker"
-            data-helper="Jump"
-            data-helper-pos="above"
-          />
-        ) : orphaned ? (
-          <CardTargetIcon selected={false} disabled onClick={() => {}} />
-        ) : undefined
-      }
+      bodyTitle={snippet.title}
+      onBodyTitleChange={(t) => onUpdateTitle(snippet.id, t)}
+      canJump={isAnchored && !!onJump}
+      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : snippet.id); }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
@@ -133,7 +107,6 @@ export function ArchiveCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      typeLabelKind="archive"
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;

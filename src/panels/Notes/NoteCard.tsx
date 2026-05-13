@@ -6,10 +6,6 @@ import type { UserNote } from "@/lib/types";
 import {
   EditableCard,
   AiRequestCheckbox,
-  BadgeLabel,
-  BadgeOrphaned,
-  CardTitleInput,
-  CardTargetIcon,
   startTextDrag,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -17,7 +13,7 @@ import { getLinkedParagraphIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
-import { popKey } from "@/panels/panel-registry";
+import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
 
@@ -79,14 +75,18 @@ export function NoteCard({
   // visuals. They stay in sync because the parent's selected*Id is
   // derived from the same cardStore.
   const isSelected = ac.selected || selected;
-  const isOrphaned = getLinkedParagraphIds(note).length === 0;
+  // isOrphaned was previously surfaced as a BadgeOrphaned in the header;
+  // unified-chrome cards have no badge so this state isn't rendered, but
+  // we still compute it for the existing data-orphaned attribute callers.
+  const _isOrphaned = getLinkedParagraphIds(note).length === 0;
+  void _isOrphaned;
   const theme = useCardTheme("note");
   const compressed = !isSelected && !isPoppedOut;
   const compressedSummary = compressed
     ? (richJsonToPlainText(note.content).trim().slice(0, 80) || "")
     : undefined;
   const popped = usePoppedCards();
-  const cardKey = popKey("notes", note.id);
+  const cardKey = cardPopKey("note", note.id);
   const onToggleFromCtx = onTogglePopout
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
@@ -96,38 +96,16 @@ export function NoteCard({
     <EditableCard
       id={note.id}
       cardKind="note"
+      kind="note"
       selected={isSelected}
       theme={theme}
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={
-        isOrphaned ? (
-          <BadgeOrphaned theme={theme} />
-        ) : (
-          <BadgeLabel label="N" theme={theme} />
-        )
-      }
-      headerContent={
-        <CardTitleInput
-          defaultValue={note.title}
-          onChange={(t) => onUpdateTitle(note.id, t)}
-          theme={theme}
-        />
-      }
-      headerTrailing={
-        onJump ? (
-          <CardTargetIcon
-            selected={isSelected}
-            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-            title="Jump to note anchor"
-            data-helper="Jump"
-            data-helper-pos="above"
-          />
-        ) : (
-          <CardTargetIcon selected={false} disabled onClick={() => {}} />
-        )
-      }
+      bodyTitle={note.title}
+      onBodyTitleChange={(t) => onUpdateTitle(note.id, t)}
+      canJump={!!onJump}
+      onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : note.id); }}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via
@@ -160,7 +138,6 @@ export function NoteCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      typeLabelKind="note"
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;

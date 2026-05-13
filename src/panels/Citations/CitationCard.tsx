@@ -16,11 +16,7 @@ import {
 import {
   PanelCard,
   PANEL,
-  TargetIcon,
-  CardTypeLabel,
-  CardDragHandle,
 } from "@/components/panel-primitives";
-import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -146,7 +142,6 @@ export function CitationCard({
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
-  const inOmni = useInOmni() != null;
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
   const isSelectedEffective = ac.selected || isSelected;
   const compressed = !isSelectedEffective && !isPoppedOut;
@@ -389,56 +384,23 @@ export function CitationCard({
         const h = cardStore.getState().hover;
         if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
       }}
+      kind="citation"
+      canJump
+      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       title={
         !isAnchored
           ? "Unanchored citation — drag into the editor to anchor it"
           : undefined
       }
     >
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        {inOmni ? (
-          <div className="flex-1 min-w-0 flex flex-col">
-            <CardTypeLabel kind="citation" />
-            {headerContent}
-          </div>
-        ) : (
-          <div className="flex-1 min-w-0">{headerContent}</div>
-        )}
-        <div
-          className={`shrink-0 transition-opacity ${isSelected ? "opacity-100" : "opacity-60"}`}
-          draggable={false}
-          onDragStart={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-          }}
-        >
-          <TargetIcon
-            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-            title="Jump to citation"
-            data-helper="Jump"
-            data-helper-pos="above"
-          />
-        </div>
-      </div>
-
-      <div
-        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
       {compressed ? (
-        <div className="px-3 py-1 text-[11px] font-mono text-ink-subtle truncate">
-          {cit.command}
-        </div>
+        <div className="px-3 py-1.5">{headerContent}</div>
       ) : (
       <>
       <div
         className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
       >
+        <div className="mb-1.5">{headerContent}</div>
         <ul className="flex flex-col gap-1 list-none m-0 p-0">
           {cit.keys.map((key, idx) => {
             const entry = bibEntryMap.get(key);

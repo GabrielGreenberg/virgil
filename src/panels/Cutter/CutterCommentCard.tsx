@@ -5,11 +5,6 @@ import type { Editor } from "@tiptap/react";
 import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
-  BadgeLabel,
-  BadgeOrphaned,
-  CardDragHandle,
-  CardTargetIcon,
-  CardTypeLabel,
   PanelCard,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -51,6 +46,7 @@ export function CutterCommentCard({
   onTogglePopout,
   isPoppedOut,
   editor,
+  extraDataAttrs,
 }: {
   card: CutterCommentCardData;
   selected: boolean;
@@ -63,6 +59,7 @@ export function CutterCommentCard({
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   editor?: Editor | null;
+  extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardTheme("cut");
   const cutBodyStyle = usePanelBodyStyle("cut");
@@ -79,7 +76,6 @@ export function CutterCommentCard({
 
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
-  const [commentExpanded, setCommentExpanded] = useState(!!card.text);
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
@@ -89,8 +85,8 @@ export function CutterCommentCard({
   const collabCtx = useCollabContext();
   const partnerSelections = collabCtx.getCardSelections("cut", card.id);
   useEffect(() => {
-    if (selected && commentExpanded && !card.text) taRef.current?.focus();
-  }, [selected, commentExpanded, card.text]);
+    if (selected && !card.text) taRef.current?.focus();
+  }, [selected, card.text]);
 
   const cardEl = (
     <PanelCard
@@ -98,6 +94,7 @@ export function CutterCommentCard({
       data-cutter-comment-entry={card.id}
       data-card-key={cardKey}
       data-pristine-card-id={card.id}
+      {...(extraDataAttrs || {})}
       theme={theme}
       selected={isSelected}
       isPoppedOut={isPoppedOut}
@@ -127,50 +124,20 @@ export function CutterCommentCard({
         }
       }}
       className="focus:outline-none mb-2"
-    >
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        {isOrphaned ? (
-          <BadgeOrphaned theme={theme} />
-        ) : (
-          <BadgeLabel label="C" theme={theme} />
-        )}
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <CardTypeLabel kind="cutter-comment" />
-        </div>
-        {onJump && (
-          <CardTargetIcon
-            selected={selected}
-            disabled={!isAnchored || isOrphaned}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isAnchored && !isOrphaned)
-                onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-            }}
-            title={
-              isOrphaned
-                ? "No anchor in document"
-                : isAnchored
-                  ? "Jump to text in document"
-                  : "Not anchored in document"
-            }
-          />
-        )}
-        {partnerClaim ? (
+      kind="cutter-comment"
+      canJump={isAnchored && !isOrphaned && !!onJump}
+      onJump={(e) => {
+        if (onJump && isAnchored && !isOrphaned)
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+      }}
+      headerTrailing={
+        partnerClaim ? (
           <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
         ) : (
           <CollabPresenceDots presences={partnerSelections} />
-        )}
-      </div>
-
-      <div
-        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
+        )
+      }
+    >
       {compressed ? (
         <div
           className="px-3 pt-1 pb-1.5 text-xs truncate"
@@ -218,45 +185,32 @@ export function CutterCommentCard({
           </div>
         )}
 
-        {!card.text && !commentExpanded ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setCommentExpanded(true);
-            }}
-            className="text-[10px] text-[var(--muted)] hover:text-ink-strong cursor-pointer rounded px-1 py-0.5 hover-on-light"
-          >
-            + comment
-          </button>
-        ) : (
-          <div>
-            <FieldTitleRow
-              label="Comment"
-              text={card.text}
-              showCopy={false}
-              showWordCount={false}
-              folded={commentFolded}
-              onToggleFold={() => setCommentFolded((f) => !f)}
+        <div>
+          <FieldTitleRow
+            label="Comment"
+            text={card.text}
+            showCopy={false}
+            showWordCount={false}
+            folded={commentFolded}
+            onToggleFold={() => setCommentFolded((f) => !f)}
+          />
+          {!commentFolded && (
+            <textarea
+              ref={taRef}
+              value={card.text}
+              onChange={(e) => onUpdateText(card.id, e.target.value)}
+              onFocus={() => claim()}
+              onBlur={() => release()}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={onTextareaKeyDown}
+              placeholder="Comment text…"
+              style={cutBodyStyle}
+              className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
+              rows={3}
             />
-            {!commentFolded && (
-              <textarea
-                ref={taRef}
-                value={card.text}
-                onChange={(e) => onUpdateText(card.id, e.target.value)}
-                onFocus={() => claim()}
-                onBlur={() => release()}
-                onClick={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onKeyDown={onTextareaKeyDown}
-                placeholder="Comment text…"
-                style={cutBodyStyle}
-                className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
-                rows={3}
-              />
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         <AiRequestCheckbox
           checked={card.aiRequest}

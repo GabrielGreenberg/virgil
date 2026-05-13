@@ -4,11 +4,7 @@ import { useCallback, useRef } from "react";
 import {
   CARD_THEMES,
   PanelCard,
-  CardTargetIcon,
-  CardTypeLabel,
-  CardDragHandle,
 } from "@/components/panel-primitives";
-import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
@@ -112,7 +108,6 @@ export function ErrorCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const inOmni = useInOmni() != null;
   const compressed = !selected && !isPoppedOut;
 
   // TODO(grip-redesign): drop-into-document via the grip is disabled
@@ -171,48 +166,19 @@ export function ErrorCard({
       }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
+      kind="error"
+      footnoteBadge={<ErrorBadge severity={err.severity} />}
+      canJump={!!onJump && (hasAnchor || err.line > 0)}
+      onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{
-          backgroundColor: selected ? theme.headerSelected : theme.headerDefault,
-          borderLeft: `3px solid ${SEVERITY_COLOR[err.severity]}`,
-        }}
-      >
-        <CardDragHandle />
-
-        <ErrorBadge severity={err.severity} />
-
-        {inOmni && <CardTypeLabel kind="error" />}
-
-        <div
-          className="flex-1 min-w-0 truncate text-[0.78rem] font-medium"
-          style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-          title={title}
-        >
-          {title}
-        </div>
-
-        <CardTargetIcon
-          selected={selected}
-          disabled={!onJump}
-          onClick={(e) => {
-            e.stopPropagation();
-            onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-          }}
-          title={
-            hasAnchor || err.line > 0 ? "Jump to in text" : "No location"
-          }
-        />
-      </div>
-
-      <div
-        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
       {compressed ? (
         <div className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate">
+          <span
+            className="font-medium text-[0.78rem] mr-2"
+            style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
+          >
+            {title}
+          </span>
           {err.line > 0 && (
             <span className="text-ink-muted mr-1">
               line {err.line}
@@ -225,6 +191,13 @@ export function ErrorCard({
       <div
         className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
       >
+        <div
+          className="text-[0.78rem] font-medium mb-1"
+          style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
+          title={title}
+        >
+          {title}
+        </div>
         {snippet && (
           <div className="text-xs italic text-[var(--muted)] border-l-2 border-edge-subtle pl-2 py-0.5 mb-1.5 font-mono truncate">
             {snippet}

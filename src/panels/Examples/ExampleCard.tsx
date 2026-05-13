@@ -4,11 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ExampleInfo } from "@/components/Editor";
 import {
   PanelCard,
-  CardTargetIcon,
-  CardTypeLabel,
-  CardDragHandle,
 } from "@/components/panel-primitives";
-import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { FloatCard } from "@/components/FloatingCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -57,7 +53,6 @@ export function ExampleCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const inOmni = useInOmni() != null;
   const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
   const isSelectedEffective = ac.selected || isSelected;
   const compressed = !isSelectedEffective && !isPoppedOut;
@@ -128,43 +123,10 @@ export function ExampleCard({
       isCollapsed={compressed}
       data-link-card={`example:${example.exampleId}`}
       {...(extraDataAttrs ?? {})}
+      kind="example"
+      canJump
+      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
-      {/* ── Header ────────────────────────────────────────────────── */}
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: isSelected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        {inOmni && <CardTypeLabel kind="example" />}
-        <span
-          className="flex-1 min-w-0 truncate"
-          style={{
-            fontSize: "var(--par-title-size, 0.78rem)",
-            color: theme.titleColor,
-            fontWeight: 500,
-            fontFamily: "var(--font-sans), Inter, sans-serif",
-            letterSpacing: "0.02em",
-          }}
-        >
-          {inOmni ? `(${example.number || "?"})` : "Example"}
-        </span>
-        <CardTargetIcon
-          selected={isSelected}
-          onClick={(e) => {
-            e.stopPropagation();
-            onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-          }}
-          title="Jump to example"
-          data-helper="Jump"
-          data-helper-pos="above"
-        />
-      </div>
-
-      <div
-        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
       {compressed ? (
         <div
           className="px-3 py-1.5 text-xs text-ink-body truncate"

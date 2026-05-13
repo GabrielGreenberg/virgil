@@ -38,19 +38,18 @@ export function buildErrorOmniItems(a: BuildArgs): OmniItem[] {
       id: omniId,
       pos,
       content: (
-        <div data-omni-entry={omniId}>
-          <ErrorCard
-            key={omniId}
-            err={err}
-            title={errorTitle(err)}
-            snippet={a.snippets.get(err.id)}
-            selected={isSelected}
-            hasAnchor={a.anchoredIds.has(err.id)}
-            onSelect={a.setSelectedId}
-            onJump={() => a.onJump(err)}
-            onDismiss={a.onDismiss}
-          />
-        </div>
+        <ErrorCard
+          key={omniId}
+          err={err}
+          title={errorTitle(err)}
+          snippet={a.snippets.get(err.id)}
+          selected={isSelected}
+          hasAnchor={a.anchoredIds.has(err.id)}
+          onSelect={a.setSelectedId}
+          onJump={() => a.onJump(err)}
+          onDismiss={a.onDismiss}
+          extraDataAttrs={{ "data-omni-entry": omniId }}
+        />
       ),
     });
   }

@@ -18,11 +18,8 @@ import {
   PanelCard,
   PANEL,
   Chevron,
-  TargetIcon,
-  CardTypeLabel,
-  CardDragHandle,
+  CardBodyTitle,
 } from "@/components/panel-primitives";
-import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -682,14 +679,7 @@ export function QuotationGroupCard({
     setTitle(group.title);
   }, [group.title]);
   const debouncedTitleUpdate = useDebouncedCallback(onUpdateGroupTitle, 400);
-  const handleTitleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value;
-      setTitle(v);
-      debouncedTitleUpdate(group.id, v);
-    },
-    [group.id, debouncedTitleUpdate],
-  );
+  void debouncedTitleUpdate;
 
   // TODO(grip-redesign): drop-into-document via the grip is disabled
   // during the unified header redesign. Re-introduce thoughtfully via a
@@ -706,7 +696,6 @@ export function QuotationGroupCard({
   // );
 
   const cardRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const theme = useCardTheme("quote");
   const popped = usePoppedCards();
@@ -739,7 +728,6 @@ export function QuotationGroupCard({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const inOmni = useInOmni() != null;
   const ac = useAnchoredCard({ kind: "quotation", id: group.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
@@ -780,85 +768,21 @@ export function QuotationGroupCard({
         if (!isSelected) onSelect();
       }}
       onKeyDown={handleKeyDown}
+      kind="quotation"
+      canJump={!!onJump}
+      onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
-      <div
-        ref={headerRef}
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        {inOmni ? (
-          <div className="flex-1 min-w-0 flex flex-col">
-            <CardTypeLabel kind="quotation" />
-            <input
-              type="text"
-              value={title}
-              onChange={handleTitleChange}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              draggable={false}
-              onDragStart={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              placeholder="Group title..."
-              className="bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
-              style={{
-                fontSize: "var(--par-title-size, 0.78rem)",
-                color: theme.titleColor,
-                fontWeight: 500,
-                fontFamily: "var(--font-sans), Inter, sans-serif",
-                letterSpacing: "0.02em",
-              }}
-            />
-          </div>
-        ) : (
-          <input
-            type="text"
-            value={title}
-            onChange={handleTitleChange}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            draggable={false}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              e.preventDefault();
-            }}
-            placeholder="Group title..."
-            className="flex-1 min-w-0 bg-transparent outline-none overflow-hidden text-ellipsis placeholder:text-ink-muted placeholder:font-normal"
-            style={{
-              fontSize: "var(--par-title-size, 0.78rem)",
-              color: theme.titleColor,
-              fontWeight: 500,
-              fontFamily: "var(--font-sans), Inter, sans-serif",
-              letterSpacing: "0.02em",
-            }}
-          />
-        )}
-        <ConfirmDialog
-          open={confirmOpen}
-          message="Delete this quotation group?"
-          confirmLabel="Delete"
-          tone="danger"
-          anchorRef={cardRef}
-          onConfirm={() => {
-            setConfirmOpen(false);
-            onDelete();
-          }}
-          onCancel={() => setConfirmOpen(false)}
-        />
-        {onJump && (
-          <TargetIcon
-            onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-            title="Jump to quotation in text"
-            data-helper="Jump"
-            data-helper-pos="above"
-          />
-        )}
-      </div>
-
-      <div
-        className={`border-t transition-colors ${selected ? "border-amber-200" : "border-edge-subtle group-hover:border-edge-hover"}`}
+      <ConfirmDialog
+        open={confirmOpen}
+        message="Delete this quotation group?"
+        confirmLabel="Delete"
+        tone="danger"
+        anchorRef={cardRef}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          onDelete();
+        }}
+        onCancel={() => setConfirmOpen(false)}
       />
 
       {compressed ? (
@@ -886,6 +810,15 @@ export function QuotationGroupCard({
             : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }
         }
       >
+        <CardBodyTitle
+          value={title}
+          onChange={(v) => {
+            setTitle(v);
+            onUpdateGroupTitle(group.id, v);
+          }}
+          placeholder="Group title..."
+          theme={theme}
+        />
         <div
           className="space-y-3 divide-y divide-stone-100 [&>*:not(:first-child)]:pt-3"
           onClick={(e) => e.stopPropagation()}

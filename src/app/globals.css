@@ -38,10 +38,11 @@
   --header-bg: #e8e5de;
   --panel-admin-text-color: #44403c;
   --panel-admin-text-font: "Inter";
-  --header-h: 34px;
+  --header-h: 26px;
   --pod-radius: 8px;
   --pod-gap: 10px;
   --pod-border: 1px solid var(--border-light);
+  --panel-border: 3px solid var(--border-light);
   --pod-shadow: 0 1px 6px rgba(0,0,0,0.12), 0 0 2px rgba(0,0,0,0.06);
   --pod-shadow-light: 0 1px 5px rgba(0,0,0,0.09), 0 0 2px rgba(0,0,0,0.05);
   /* Ambient lift for omni-view cards floating on the canvas. Smaller
@@ -887,6 +888,54 @@ textarea,
   right: 0;
 }
 
+/* In-card title (CardBodyTitle) — mirrors .par-title-* visual so card
+ * titles read identically to paragraph titles. The +T button is hover-
+ * revealed only when the card is hovered. */
+.card-title-wrapper {
+  display: block;
+  line-height: 1;
+  min-height: calc(var(--par-title-size, 0.78rem) + 0.2rem);
+  margin-bottom: 0.2em;
+}
+.card-title-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--par-title-color, #c45a5a);
+  outline: none;
+  font-size: var(--par-title-size, 0.78rem);
+  font-weight: 500;
+  color: var(--par-title-color, #c45a5a);
+  font-family: var(--font-partitle-family, var(--font-sans-override, var(--font-sans))), Inter, sans-serif;
+  letter-spacing: 0.02em;
+  padding: 0;
+  line-height: 1.4;
+  width: 100%;
+  display: block;
+}
+.card-title-add {
+  font-size: calc(var(--par-title-size, 0.78rem) - 0.06rem);
+  font-weight: 500;
+  color: var(--par-title-color, #c45a5a);
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: 0.04em;
+  background: transparent;
+  border: none;
+  padding: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.card-title-add:hover {
+  opacity: 1;
+  filter: brightness(0.8);
+}
+[data-card]:hover .card-title-wrapper.card-title-add-only > .card-title-add {
+  opacity: 0.6;
+}
+[data-card]:hover .card-title-wrapper.card-title-add-only > .card-title-add:hover {
+  opacity: 1;
+}
+
 .par-title-annotation:hover {
   filter: brightness(0.8);
 }
@@ -1444,11 +1493,26 @@ textarea,
   transition: background-color 120ms ease-out;
 }
 .linked-anchor[data-link-card^="note:"]      { --link-anchor-color: #15803d; }
+.linked-anchor[data-link-card^="highlight:"] { --link-anchor-color: #fbbf24; }
 .linked-anchor[data-link-card^="cut:"]       { --link-anchor-color: #b45757; }
 .linked-anchor[data-link-card^="comment:"]   { --link-anchor-color: #9333ea; }
 .linked-anchor[data-link-card^="archive:"]   { --link-anchor-color: #5a7a99; }
 .linked-anchor[data-link-card^="quotation:"] { --link-anchor-color: #a16207; }
 .linked-anchor[data-link-card^="todo:"]      { --link-anchor-color: #44403c; }
+
+/* Persistent highlight tint — set by the linkedAnchor mark's `tintColor`
+ * attribute (Adobe-style: stays visible without hover/selection gating
+ * and independent of the `data-show-hl-*` toggles below). Carries through
+ * the highlight→note morph: changing the card's kind does not strip the
+ * tint from the anchored text. Yellow is hardcoded in v1; a future pass
+ * can read per-instance hex from the attribute via an inline style.
+ *
+ * `!important` wins over the kind-based `data-show-hl-*` rules so a note
+ * that was born from a highlight still wears the yellow even when "show
+ * note highlights" is toggled on. */
+.linked-anchor[data-tint-color] {
+  background: color-mix(in oklab, #fbbf24 35%, transparent) !important;
+}
 
 /* Per-kind --link-anchor-color on panel cards. Mirrors the linked-anchor
  * map above so the card, the margin icon, and the linked text all paint
@@ -1462,6 +1526,7 @@ textarea,
  * (CARD_KEY_PREFIXES in src/panels/panel-registry.ts is authoritative).
  * In particular, the "comment" CardKind uses prefix "revision:". */
 [data-card-key^="note:"]                { --link-anchor-color: #15803d; }
+[data-card-key^="highlight:"]           { --link-anchor-color: #fbbf24; }
 [data-card-key^="cutter-comment:"],
 [data-card-key^="cutter-suggestion:"]   { --link-anchor-color: #b45757; }
 [data-card-key^="revision:"],
@@ -1479,6 +1544,7 @@ textarea,
  * data-card-{selected,hovered}="paragraph". These rules paint that
  * paragraph in the right kind color. */
 [data-paragraph-kind="note"]      { --link-anchor-color: #15803d; }
+[data-paragraph-kind="highlight"] { --link-anchor-color: #fbbf24; }
 [data-paragraph-kind="cut"]       { --link-anchor-color: #b45757; }
 [data-paragraph-kind="comment"]   { --link-anchor-color: #9333ea; }
 [data-paragraph-kind="archive"]   { --link-anchor-color: #5a7a99; }
@@ -1650,19 +1716,20 @@ textarea,
   outline-color: color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
 }
 
-/* Hover — outline at 50% (matches the other channels' hover ring). */
+/* Hover — outline at 50% (matches the other channels' hover ring).
+ * Outline is inset (negative offset) so it sits inside the card's own
+ * border-radius; we intentionally do NOT override the radius here, so
+ * the card's outer shape is identical in default/hover/selected states. */
 [data-card-key][data-card-hovered="true"]:not([data-card-selected="true"]),
 [data-card-key]:hover:not([data-card-selected="true"]) {
   outline: 1.5px solid color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   outline-offset: -1.5px;
-  border-radius: 4px;
 }
 
 /* Selected — outline at 80% (matches the other channels' selected ring). */
 [data-card-key][data-card-selected="true"] {
   outline: 2px solid color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
   outline-offset: -2px;
-  border-radius: 4px;
 }
 
 /* AI request marker — placeholder chip dropped from a draft AI request card */
@@ -2762,9 +2829,12 @@ textarea,
 .panel-container {
   font-size: var(--panel-font-size, 13px);
 }
-.panel-container .panel-header-title {
-  font-size: var(--panel-header-size, 14px);
-  color: var(--panel-admin-text-color, var(--ink-body));
+.panel-header-title {
+  color: var(--panel-admin-text-color, var(--muted));
+  font-family: var(--panel-admin-text-font, var(--font-sans-override, var(--font-sans))), Inter, system-ui, sans-serif;
+}
+.panel-header-count {
+  color: var(--panel-header-text-color, var(--muted));
   font-family: var(--panel-admin-text-font, var(--font-sans-override, var(--font-sans))), Inter, system-ui, sans-serif;
 }
 

@@ -156,6 +156,10 @@ export function themedCardStyle(
 export const CARD_THEMES = {
   footnote:  themeFromAccent(DEFAULT_PANEL_COLORS.footnote),
   note:      themeFromAccent(DEFAULT_PANEL_COLORS.note),
+  // Notes panel hosts highlights alongside notes; the highlight kind gets
+  // its own amber accent so the cards and the tint on the anchored text
+  // read as a distinct visual identity.
+  highlight: themeFromAccent(DEFAULT_PANEL_COLORS.highlight),
   archive:   themeFromAccent(DEFAULT_PANEL_COLORS.archive),
   todo:      themeFromAccent(DEFAULT_PANEL_COLORS.todo),
   bib:       themeFromAccent(DEFAULT_PANEL_COLORS.bib),
@@ -227,9 +231,8 @@ export function BadgeOrphaned({ theme }: { theme: CardTheme }) {
 }
 
 /** Small uppercase overline naming the card type ("Citation", "Footnote", …).
- *  Visible always for Comment/Suggestion families; visible elsewhere only
- *  when rendered inside OmniView (the consumer gates this with
- *  `useInOmni()`). Matches the style first introduced on Comment cards. */
+ *  Used by `CardKindHeader` (unified card chrome) as the single-kind case.
+ *  Matches the style first introduced on Comment cards. */
 export function CardTypeLabel({
   kind,
   labelOverride,
@@ -245,6 +248,217 @@ export function CardTypeLabel({
     >
       {labelOverride ?? cardTypeLabel(kind)}
     </span>
+  );
+}
+
+/* ── Unified card-chrome header components ────────────────────────── */
+
+/** Kind label / kind dropdown for the unified card header.
+ *  When `options` has more than one entry and `onChange` is given,
+ *  renders a clickable dropdown with a chevron-down; otherwise renders
+ *  the bare label. Single source of truth for the card-kind affordance
+ *  in card headers (cutter/revision panels override with `options`). */
+export function CardKindHeader({
+  kind,
+  labelOverride,
+  options,
+  onChange,
+}: {
+  kind: CardKind;
+  labelOverride?: string;
+  options?: CardKind[];
+  onChange?: (k: CardKind) => void;
+}) {
+  if (!options || options.length <= 1 || !onChange) {
+    return <CardTypeLabel kind={kind} labelOverride={labelOverride} />;
+  }
+  return (
+    <CardKindDropdown
+      kind={kind}
+      labelOverride={labelOverride}
+      options={options}
+      onChange={onChange}
+    />
+  );
+}
+
+function CardKindDropdown({
+  kind,
+  labelOverride,
+  options,
+  onChange,
+}: {
+  kind: CardKind;
+  labelOverride?: string;
+  options: CardKind[];
+  onChange: (k: CardKind) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (
+        menuRef.current?.contains(e.target as Node) ||
+        buttonRef.current?.contains(e.target as Node)
+      ) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+  return (
+    <span className="relative inline-flex items-center">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        draggable={false}
+        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        className="inline-flex items-center gap-0.5 text-[10px] text-[var(--muted)] uppercase tracking-wider font-medium hover:text-ink-body transition-colors cursor-pointer bg-transparent p-0"
+        title="Change card type"
+      >
+        {labelOverride ?? cardTypeLabel(kind)}
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          className="absolute top-full left-0 mt-1 z-50 bg-surface border border-[var(--border)] rounded-md shadow-lg py-1 min-w-[120px]"
+        >
+          {options.map((opt) => (
+            <button
+              key={opt}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setOpen(false);
+                if (opt !== kind) onChange(opt);
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className={`w-full text-left text-[11px] uppercase tracking-wider px-3 py-1 hover:bg-surface-muted-strong transition-colors ${opt === kind ? "text-ink-body font-medium" : "text-[var(--muted)]"}`}
+            >
+              {cardTypeLabel(opt)}
+            </button>
+          ))}
+        </div>
+      )}
+    </span>
+  );
+}
+
+/** Rightward chevron jump-to-source button. Renders in the card header
+ *  only when the card is popped out (matches the popped-text UX in
+ *  ParagraphFloat / HeadingFloat / SelectionFloat). */
+export function CardJumpChevron({
+  onClick,
+  title = "Jump to source",
+}: {
+  onClick: (e: React.MouseEvent) => void;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onClick(e); }}
+      onMouseDown={(e) => e.stopPropagation()}
+      draggable={false}
+      onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+      className="w-4 h-4 flex items-center justify-center rounded text-ink-muted hover:text-ink-body transition-colors bg-transparent p-0 shrink-0"
+      title={title}
+      aria-label={title}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <polyline points="9 6 15 12 9 18" />
+      </svg>
+    </button>
+  );
+}
+
+/** In-body title field, modeled after the paragraph +T affordance.
+ *  When no title is set, shows a hover-revealed "+T" button.
+ *  When a title is set (or being edited), renders an inline editable
+ *  input. CSS mirrors the .par-title-* conventions so card titles read
+ *  identically to paragraph titles. */
+export function CardBodyTitle({
+  value,
+  onChange,
+  placeholder = "Title",
+  theme,
+}: {
+  value: string | undefined;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  theme?: CardTheme;
+}) {
+  const [editing, setEditing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const hasTitle = !!value?.trim();
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editing]);
+
+  const style: React.CSSProperties | undefined = theme
+    ? { color: theme.titleColor, borderBottomColor: theme.titleColor }
+    : undefined;
+
+  if (hasTitle || editing) {
+    return (
+      <div className="card-title-wrapper">
+        <input
+          ref={inputRef}
+          type="text"
+          defaultValue={value ?? ""}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onBlur={(e) => {
+            const v = e.target.value;
+            if (v !== (value ?? "")) onChange(v);
+            if (!v.trim()) setEditing(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).blur();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              (e.target as HTMLInputElement).value = value ?? "";
+              setEditing(false);
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          placeholder={placeholder}
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+          className="card-title-input"
+          style={style}
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="card-title-wrapper card-title-add-only">
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        draggable={false}
+        onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        className="card-title-add"
+        style={theme ? { color: theme.titleColor } : undefined}
+        title="Add title"
+      >
+        +T
+      </button>
+    </div>
   );
 }
 
@@ -349,12 +563,17 @@ export interface EditableCardProps {
   selected: boolean;
   theme: CardTheme;
 
-  /** Badge element at the left of the header row. */
-  badge: ReactNode;
-  /** Extra content between badge and toolbar target (e.g. title input). Should be flex-1 to fill space. */
-  headerContent?: ReactNode;
-  /** Content after toolbar target, before menu (e.g. TargetIcon). */
+  /** Footnote-only: small letter/number badge at the left of the header.
+   *  All other cards pass `undefined` — badges were unified out in the
+   *  card-chrome redesign. */
+  footnoteBadge?: ReactNode;
+  /** Narrow slot between kind label and jump/X chrome (status dot, AI
+   *  checkbox, partner-claim pill). Avoid free-form layouts here. */
   headerTrailing?: ReactNode;
+  /** Optional in-body title shown above the rich-text editor. When set,
+   *  renders a +T affordance via `CardBodyTitle`. */
+  bodyTitle?: string | undefined;
+  onBodyTitleChange?: (v: string) => void;
   /** Extra content below the RichTextField body (e.g. action buttons). */
   footer?: ReactNode;
 
@@ -420,16 +639,21 @@ export interface EditableCardProps {
   /** One-line summary rendered in place of the rich body when compressed.
    *  Required if compressed is ever true. */
   compressedSummary?: ReactNode;
-  /** Card kind for the OmniView type-label overline. When set and the
-   *  card is rendered inside OmniView (`useInOmni()` non-null), a small
-   *  uppercase "Note" / "Footnote" / etc. label is added between the
-   *  badge and the title. */
-  typeLabelKind?: CardKind;
-  /** Override for the type-label text. When set, replaces the registry
-   *  lookup (`cardTypeLabel(typeLabelKind)`) — used for sub-kinds that
-   *  share a panel/card kind but want a distinct overline (e.g. a
-   *  `\thanks` footnote rendered as ACKNOWLEDGEMENT). */
-  typeLabelOverride?: string;
+  /** Card kind for the unified header kind-label. Required for the new
+   *  card chrome — every card declares its kind so the header renders a
+   *  consistent label. Cards with multi-kind panels can also pass
+   *  `kindOptions` + `onKindChange` for a dropdown. */
+  kind: CardKind;
+  /** Override for the kind label text (e.g. "Acknowledgement" for
+   *  `\thanks` footnotes). */
+  kindLabelOverride?: string;
+  kindOptions?: CardKind[];
+  onKindChange?: (k: CardKind) => void;
+  /** When the card is popped out, show a chevron-right jump-to-source
+   *  button immediately left of the close X. Docked cards never show
+   *  the jump button (matches the popped-text UX). */
+  canJump?: boolean;
+  onJump?: (e: React.MouseEvent) => void;
 }
 
 /**
@@ -441,7 +665,7 @@ export interface EditableCardProps {
  */
 export function EditableCard({
   id, selected, theme,
-  badge, headerContent, headerTrailing, footer,
+  footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, footer,
   menuContent, onDelete,
   onClick, onDragStart, onTextDragStart,
   value, variant, placeholder, muted, panelKey, cardKind,
@@ -449,7 +673,9 @@ export function EditableCard({
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
   hideToolbar, inlineDelete, onBodyFocus, onEditorFocus, onHoverChange,
   onTogglePopout, isPoppedOut, cardKey,
-  compressed, compressedSummary, typeLabelKind, typeLabelOverride,
+  compressed, compressedSummary,
+  kind, kindLabelOverride, kindOptions, onKindChange,
+  canJump, onJump,
 }: EditableCardProps) {
   // Chrome-driven read-only mode: when the host has set
   // `editableCardKinds` and this card's kind isn't on the list, the
@@ -460,8 +686,6 @@ export function EditableCard({
   const cardEditable = !cardKind ||
     !chrome.editableCardKinds ||
     chrome.editableCardKinds.includes(cardKind);
-  const inOmni = useInOmni() != null;
-  const showTypeLabel = inOmni && typeLabelKind != null;
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -549,6 +773,30 @@ export function EditableCard({
   // Whether to render the three-dot menu in the header (skip when inlineDelete is on)
   const showHeaderMenu = !inlineDelete;
 
+  /** Trailing chrome assembled from the per-card slot + collab indicators
+   *  + optional three-dot menu. PanelCard renders this into the unified
+   *  header between the kind label and the jump/X chrome. */
+  const trailing = (
+    <>
+      {headerTrailing}
+      {partnerClaim ? (
+        <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
+      ) : (
+        <CollabPresenceDots presences={partnerSelections} />
+      )}
+      {showHeaderMenu && (
+        <div
+          draggable={false}
+          onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
+        >
+          {menuContent ?? (onDelete ? (
+            <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
+          ) : null)}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <CardClaimContext.Provider
       value={{ panelKind: panelKey, cardId: id, partnerClaimed: !!partnerClaim }}
@@ -574,6 +822,14 @@ export function EditableCard({
       onDragStart={onDragStart}
       tabIndex={selected ? 0 : -1}
       onKeyDown={handleKeyDown}
+      kind={kind}
+      kindLabelOverride={kindLabelOverride}
+      kindOptions={kindOptions}
+      onKindChange={onKindChange}
+      footnoteBadge={footnoteBadge}
+      headerTrailing={trailing}
+      canJump={canJump}
+      onJump={onJump}
       onMouseDown={() => {
         isPointerInteractingRef.current = true;
         requestAnimationFrame(() => {
@@ -590,43 +846,6 @@ export function EditableCard({
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >
-      {/* Header — pr-7 reserves space for the absolute top-right popout overlay */}
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-        {badge}
-        {showTypeLabel && <CardTypeLabel kind={typeLabelKind!} labelOverride={typeLabelOverride} />}
-        {headerContent}
-        {!hideToolbar && !compressed && (
-          <div ref={setToolbarTarget} className="flex items-center" />
-        )}
-        {!headerContent && !hideToolbar && <div className="flex-1" />}
-        {headerTrailing}
-        {partnerClaim ? (
-          <CollabClaimPill holder={partnerClaim.holder} color={partnerClaim.color} />
-        ) : (
-          <CollabPresenceDots presences={partnerSelections} />
-        )}
-        {showHeaderMenu && (
-          <div
-            draggable={false}
-            onDragStart={(e) => { e.stopPropagation(); e.preventDefault(); }}
-          >
-            {menuContent ?? (onDelete ? (
-              <ItemMenu><MenuDelete onClick={tryDelete} /></ItemMenu>
-            ) : null)}
-          </div>
-        )}
-      </div>
-
-      {/* Separator */}
-      <div
-        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
       {/* Body. When the partner has claimed this card, dim it and gate
           pointer events so the user can't accidentally focus into it.
           When compressed, render a one-line summary in place of the
@@ -644,7 +863,7 @@ export function EditableCard({
         </div>
       ) : (
       <div
-        className={`relative px-3 pt-1.5 pb-2${onTextDragStart ? " flex items-start gap-1" : ""}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
+        className={`relative px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : " overflow-y-auto"}`}
         style={{
           ...(isPoppedOut
             ? null
@@ -655,45 +874,54 @@ export function EditableCard({
         }}
         title={partnerClaim ? `${partnerClaim.holder} is editing this card` : undefined}
       >
-        {/* Optional text-drag handle — drags only text content for inline insertion */}
-        {onTextDragStart && (
-          <div
-            draggable={!isFocused}
-            onDragStart={(e) => { onTextDragStart(e); }}
-            onClick={(e) => e.stopPropagation()}
-            className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-            title="Drag text into document"
-            data-helper="Drag text"
-            data-helper-pos="above"
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
-        )}
-        <div className={onTextDragStart ? "flex-1 min-w-0" : undefined}>
-          <RichTextField
-            instanceKey={id}
-            value={value}
-            placeholder={placeholder}
-            variant={variant}
-            selected={selected}
-            muted={muted}
-            onChange={onChange}
-            onArchiveConsumed={onArchiveConsumed}
-            getCitationDisplayText={getCitationDisplayText}
-            onCitationCreated={onCitationCreated}
-            onFocusChange={handleFocusChange}
-            toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
-            hideToolbar={hideToolbar || !cardEditable}
-            panelKey={panelKey}
-            editable={cardEditable}
+        {onBodyTitleChange && (
+          <CardBodyTitle
+            value={bodyTitle}
+            onChange={onBodyTitleChange}
+            theme={theme}
           />
+        )}
+        <div className={onTextDragStart ? "flex items-start gap-1" : undefined}>
+          {/* Optional text-drag handle — drags only text content for inline insertion */}
+          {onTextDragStart && (
+            <div
+              draggable={!isFocused}
+              onDragStart={(e) => { onTextDragStart(e); }}
+              onClick={(e) => e.stopPropagation()}
+              className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
+              title="Drag text into document"
+              data-helper="Drag text"
+              data-helper-pos="above"
+            >
+              <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+                <circle cx="3" cy="2" r="1.2" />
+                <circle cx="7" cy="2" r="1.2" />
+                <circle cx="3" cy="7" r="1.2" />
+                <circle cx="7" cy="7" r="1.2" />
+                <circle cx="3" cy="12" r="1.2" />
+                <circle cx="7" cy="12" r="1.2" />
+              </svg>
+            </div>
+          )}
+          <div className={onTextDragStart ? "flex-1 min-w-0" : undefined}>
+            <RichTextField
+              instanceKey={id}
+              value={value}
+              placeholder={placeholder}
+              variant={variant}
+              selected={selected}
+              muted={muted}
+              onChange={onChange}
+              onArchiveConsumed={onArchiveConsumed}
+              getCitationDisplayText={getCitationDisplayText}
+              onCitationCreated={onCitationCreated}
+              onFocusChange={handleFocusChange}
+              toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
+              hideToolbar={hideToolbar || !cardEditable}
+              panelKey={panelKey}
+              editable={cardEditable}
+            />
+          </div>
         </div>
       </div>
       )}
@@ -1188,6 +1416,42 @@ interface PanelCardProps extends Omit<HTMLAttributes<HTMLDivElement>, "onClick">
   /** When true, the card is in its collapsed/minimized form and the
    *  lift-off drag is disabled (cards are only liftable when expanded). */
   isCollapsed?: boolean;
+
+  /* ── Unified header chrome ───────────────────────────────────────
+   * When `kind` is provided, PanelCard renders its own unified header
+   * (drag handle + optional badge + kind label/dropdown + spacer +
+   * trailing slot + jump chevron when popped + popout/X). Cards that
+   * pass `kind` MUST NOT include their own `<header>` div as the first
+   * child — `children` becomes pure body content + separator handling.
+   *
+   * When `kind` is omitted, PanelCard falls back to the legacy
+   * children-render-all layout (first child = header, etc.). All cards
+   * should migrate to the unified header.
+   */
+  kind?: CardKind;
+  /** Override for the kind label text (e.g. "Acknowledgement" for `\thanks` footnotes). */
+  kindLabelOverride?: string;
+  /** When set with `onKindChange`, the kind label becomes a chevron-down
+   *  dropdown for switching card kinds in-place. Used by panels that host
+   *  multiple kinds (Cutter, Revisions). */
+  kindOptions?: CardKind[];
+  onKindChange?: (k: CardKind) => void;
+  /** Footnote-only: small letter/number badge at the left of the header.
+   *  Other cards should pass `undefined` — badges are unified out per the
+   *  card-chrome design. */
+  footnoteBadge?: ReactNode;
+  /** Narrow slot between the kind label and the jump/X chrome. Use for
+   *  status dots, partner-claim pills, AiRequestCheckbox, etc. Avoid
+   *  free-form layouts here. */
+  headerTrailing?: ReactNode;
+  /** When true and `isPoppedOut`, renders a `CardJumpChevron` immediately
+   *  left of the close X. Docked cards never show the jump-to button. */
+  canJump?: boolean;
+  onJump?: (e: React.MouseEvent) => void;
+  /** Optional placement of the separator line between header and body.
+   *  Defaults to true so the existing visual is preserved; set false to
+   *  suppress (e.g. a card that paints its own divider). */
+  showSeparator?: boolean;
 }
 
 /** Cursor distance (px) the user must drag from a card's header before
@@ -1215,10 +1479,24 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
     cardKey,
     isCollapsed,
     onMouseDown: callerMouseDown,
+    kind,
+    kindLabelOverride,
+    kindOptions,
+    onKindChange,
+    footnoteBadge,
+    headerTrailing,
+    canJump,
+    onJump,
+    showSeparator = true,
     ...rest
   },
   ref,
 ) {
+  /** Unified header rendering: when `kind` is provided, PanelCard owns the
+   *  header. Single source of truth for header layout, height, slots, and
+   *  popped-out chrome. Cards pass kind + slots and supply only the body
+   *  via `children`. */
+  const renderUnifiedHeader = kind != null;
   // Measure the header (first child) so the absolute popout overlay centers
   // on whatever the header's actual height turns out to be — header content
   // varies per panel (inputs, avatars, chips, …) so a fixed `top` value
@@ -1257,7 +1535,10 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
   // they don't pass onTogglePopout up to PanelCard.
   const popped = usePoppedCards();
   const onWrapperMouseDown = (e: React.MouseEvent) => {
-    if (!cardKey || isPoppedOut || isCollapsed) return;
+    // Lift-to-popout is allowed in both expanded and collapsed states —
+    // the drag handle is the only popout affordance now. Only a popped
+    // card disables the gesture (the X in its header docks it back).
+    if (!cardKey || isPoppedOut) return;
     if (!popped?.popOutAtRect && !onTogglePopout) return;
     if (e.button !== 0) return;
     const cardEl = innerRef.current;
@@ -1379,16 +1660,56 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
       }}
       {...rest}
     >
-      {children}
-      {onTogglePopout && isPoppedOut && (
-        <div
-          className="absolute right-1.5 z-10"
-          style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
-        >
-          <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
-        </div>
+      {renderUnifiedHeader ? (
+        <>
+          {/* Unified card header — single source of truth for header layout.
+              Height matches popped-out text headers (h-6 = 24px). Drag
+              handle (10×14 SVG) fits with room to spare. */}
+          <div
+            className="flex items-center gap-1 px-2 h-6 shrink-0"
+            style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
+          >
+            <CardDragHandle />
+            {footnoteBadge}
+            <CardKindHeader
+              kind={kind!}
+              labelOverride={kindLabelOverride}
+              options={kindOptions}
+              onChange={onKindChange}
+            />
+            <div className="flex-1" />
+            {headerTrailing}
+            {isPoppedOut && canJump && onJump && (
+              <CardJumpChevron onClick={onJump} />
+            )}
+            {/* Docked cards use lift-to-popout via the drag handle; only
+                popped cards render an X (close/dock) button in the header. */}
+            {onTogglePopout && isPoppedOut && (
+              <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
+            )}
+          </div>
+          {showSeparator && (
+            <div
+              className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
+              style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
+            />
+          )}
+          {children}
+        </>
+      ) : (
+        <>
+          {children}
+          {onTogglePopout && isPoppedOut && (
+            <div
+              className="absolute right-1.5 z-10"
+              style={{ top: "calc(var(--pc-header-h, 32px) / 2 - 10px)" }}
+            >
+              <CardPopoutButton isPoppedOut onClick={onTogglePopout} />
+            </div>
+          )}
+        </>
       )}
-      {onTrashClick && <CardTrashButton onClick={onTrashClick} />}
+      {onTrashClick && !isCollapsed && <CardTrashButton onClick={onTrashClick} />}
     </div>
   );
 });
@@ -1400,53 +1721,48 @@ export function PanelHeader({
   count,
   onAdd,
   onAddOptions,
-  onAiRequest,
   leading,
   titleAfter,
   children,
 }: {
   title: string;
   count?: number;
-  onAdd?: () => void;
+  /** Receives the trigger button's bounding rect so the host can pop the
+   *  new card as a float anchored to the "+" button. */
+  onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a small dropdown menu of
    *  choices instead of firing `onAdd` directly. Use when a panel
    *  hosts more than one card kind (e.g. Cutter: Comment vs Suggestion).
+   *  Each option receives the trigger button's bounding rect.
    *  `onAdd` is ignored when `onAddOptions` is set. */
-  onAddOptions?: { label: string; onClick: () => void }[];
-  /**
-   * When provided, renders a small star button next to the "+" button
-   * that creates a new AI request (or opens a request form, depending
-   * on the panel). Uses the same sun-star icon as the editor toolbar.
-   */
-  onAiRequest?: () => void;
+  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
   /** Content rendered at the far left of the header, before the title.
    *  Typical use: the panel's three-dots options menu. */
   leading?: ReactNode;
-  /** Content rendered immediately after the title (before add/AI buttons).
+  /** Content rendered immediately after the count (before add buttons).
    *  Use for inline mode toggles that cluster with the title — e.g.
    *  Outline's Edit/Focus/Lock buttons. */
   titleAfter?: ReactNode;
   children?: ReactNode;
 }) {
-  const chrome = useContext(PanelChromeContext);
   return (
     <div className={`${PANEL.header} flex items-center gap-1.5`}>
       {leading}
-      <h3 className={`panel-header-title text-sm font-semibold text-ink-body${leading ? " -ml-1" : ""}`}>
+      <h3 className={`panel-header-title text-[11px] font-semibold uppercase tracking-wider leading-none${leading ? " -ml-1" : ""}`}>
         {title}
-        {count != null && count > 0 && (
-          <span className="ml-1.5 text-xs font-normal text-[var(--muted)]">
-            ({count})
-          </span>
-        )}
       </h3>
+      {count != null && count > 0 && (
+        <span className="panel-header-count text-[11px] font-semibold uppercase tracking-wider leading-none ml-1">
+          {count}
+        </span>
+      )}
       {titleAfter}
       {onAddOptions ? (
         <HeaderAddDropdown options={onAddOptions} />
       ) : onAdd && (
         <button
-          onClick={onAdd}
-          className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
+          onClick={(e) => onAdd(e.currentTarget.getBoundingClientRect())}
+          className="iconbtn-sm"
           title="Add"
           data-helper="Add"
         >
@@ -1455,26 +1771,8 @@ export function PanelHeader({
           </svg>
         </button>
       )}
-      {onAiRequest && (
-        <button
-          onClick={onAiRequest}
-          className={`w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-sky-600 hover:bg-sky-50 transition-colors${onAdd ? " -ml-1" : ""}`}
-          title="New AI request"
-          data-helper="AI request"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <g transform="rotate(15 12 12)">
-              <line x1="12" y1="2" x2="12" y2="22" />
-              <line x1="2" y1="12" x2="22" y2="12" />
-              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
-              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07" />
-            </g>
-          </svg>
-        </button>
-      )}
       <div className="flex-1" />
       {children}
-      {chrome && <PanelPopout />}
       <PanelClose />
     </div>
   );
@@ -1487,10 +1785,12 @@ export function PanelHeader({
 function HeaderAddDropdown({
   options,
 }: {
-  options: { label: string; onClick: () => void }[];
+  options: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const triggerRectRef = useRef<DOMRect | null>(null);
   const [pos, setPos] = useState<{
     top?: number;
     bottom?: number;
@@ -1508,8 +1808,9 @@ function HeaderAddDropdown({
   }, [open]);
 
   const handleToggle = () => {
-    if (!open && ref.current) {
-      const r = ref.current.getBoundingClientRect();
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      triggerRectRef.current = r;
       const POPUP_H = 28 * options.length + 8;
       const POPUP_W = 160;
       const GAP = 4;
@@ -1529,16 +1830,18 @@ function HeaderAddDropdown({
     setOpen(!open);
   };
 
-  const pick = (onClick: () => void) => {
+  const pick = (onClick: (anchorRect?: DOMRect) => void) => {
+    const rect = triggerRectRef.current ?? undefined;
     setOpen(false);
-    onClick();
+    onClick(rect ?? undefined);
   };
 
   return (
     <div ref={ref} className="relative inline-flex items-center">
       <button
+        ref={btnRef}
         onClick={handleToggle}
-        className="w-6 h-6 flex items-center justify-center rounded-md text-ink-muted hover:text-blue-500 hover:bg-blue-50 transition-colors"
+        className="iconbtn-sm"
         title="Add"
         data-helper="Add"
         aria-haspopup="menu"
@@ -1917,11 +2220,7 @@ export function ItemMenu({
       <button
         ref={btnRef}
         onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
-        className={
-          isPanelHeader
-            ? "p-0.5 text-ink-muted hover:text-ink-body transition-colors"
-            : "iconbtn-md"
-        }
+        className={isPanelHeader ? "iconbtn-sm" : "iconbtn-md"}
         title="Options"
         data-helper="Options"
       >

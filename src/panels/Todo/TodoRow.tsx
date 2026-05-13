@@ -7,12 +7,8 @@ import {
   CARD_THEMES,
   PanelCard,
   CardTitleInput,
-  CardTargetIcon,
-  CardTypeLabel,
-  CardDragHandle,
   AiRequestCheckbox,
 } from "@/components/panel-primitives";
-import { useInOmni } from "@/components/editor-layout/contexts/omni";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -82,7 +78,6 @@ export function TodoRow({
     ?? (popped
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
-  const inOmni = useInOmni() != null;
   const ac = useAnchoredCard({ kind: "todo", id: item.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
@@ -122,19 +117,17 @@ export function TodoRow({
           onDelete(item.id);
         }
       }}
-    >
-      <div
-        className="flex items-center gap-2 pl-3 pr-7 py-1.5"
-        style={{ backgroundColor: selected ? theme.headerSelected : theme.headerDefault }}
-      >
-        <CardDragHandle />
-
+      kind="todo"
+      canJump={isAnchored && !!onJump}
+      onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+      headerTrailing={
         <button
           onClick={(e) => {
             e.stopPropagation();
             onToggle(item.id);
           }}
-          className="shrink-0"
+          onMouseDown={(e) => e.stopPropagation()}
+          className="shrink-0 bg-transparent p-0"
           title={item.done ? "Mark as not done" : "Mark as done"}
           data-helper={item.done ? "Undo done" : "Mark done"}
           data-helper-pos="above"
@@ -150,78 +143,42 @@ export function TodoRow({
             </svg>
           )}
         </button>
-
-        {inOmni ? (
-          <div className="flex-1 min-w-0 flex flex-col">
-            <CardTypeLabel kind="todo" />
-            <CardTitleInput
-              defaultValue={item.text}
-              onChange={(t) => onUpdate(item.id, t)}
-              placeholder="Task"
-              theme={theme}
-              style={{
-                ...(item.done ? { textDecoration: "line-through" } : null),
-                ...todoBodyStyle,
-              }}
-            />
-          </div>
-        ) : (
-          <CardTitleInput
-            defaultValue={item.text}
-            onChange={(t) => onUpdate(item.id, t)}
-            placeholder="Task"
-            theme={theme}
-            style={{
-              ...(item.done ? { textDecoration: "line-through" } : null),
-              ...todoBodyStyle,
-            }}
-          />
-        )}
-
-        <CardTargetIcon
-          selected={selected}
-          disabled={!isAnchored}
-          onClick={(e) => {
-            e.stopPropagation();
-            onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+      }
+    >
+      <div className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}>
+        <CardTitleInput
+          defaultValue={item.text}
+          onChange={(t) => onUpdate(item.id, t)}
+          placeholder="Task"
+          theme={theme}
+          style={{
+            ...(item.done ? { textDecoration: "line-through" } : null),
+            ...todoBodyStyle,
           }}
-          title={isAnchored ? "Jump to in text" : "Not anchored in document"}
-          data-helper={isAnchored ? "Jump to" : "Not anchored"}
-          data-helper-pos="above"
         />
+        {!compressed && (
+          <>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={commitNotes}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onKeyDown={onTextareaKeyDown}
+              placeholder="Notes..."
+              data-panel-kind="todo"
+              style={todoBodyStyle}
+              className={`w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed mt-1${isPoppedOut ? " flex-1 min-h-0" : ""}`}
+              rows={isPoppedOut ? undefined : 2}
+            />
+            <AiRequestCheckbox
+              checked={item.aiRequest}
+              onToggle={(next) => onSetAiRequest(item.id, next)}
+              className="mt-1"
+            />
+          </>
+        )}
       </div>
-
-      {!compressed && (
-        <>
-      <div
-        className={`border-t transition-colors ${selected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={selected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
-      <div
-        className={`px-3 pt-1.5 pb-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto flex flex-col" : ""}`}
-      >
-        <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          onBlur={commitNotes}
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-          onKeyDown={onTextareaKeyDown}
-          placeholder="Notes..."
-          data-panel-kind="todo"
-          style={todoBodyStyle}
-          className={`w-full bg-transparent placeholder:text-ink-muted focus:outline-none resize-none leading-relaxed${isPoppedOut ? " flex-1 min-h-0" : ""}`}
-          rows={isPoppedOut ? undefined : 2}
-        />
-        <AiRequestCheckbox
-          checked={item.aiRequest}
-          onToggle={(next) => onSetAiRequest(item.id, next)}
-          className="mt-1"
-        />
-      </div>
-        </>
-      )}
     </PanelCard>
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;

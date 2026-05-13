@@ -8,8 +8,6 @@ import {
   EditableCard,
   BadgeLabel,
   BadgeOrphaned,
-  CardTitleInput,
-  CardTargetIcon,
   startTextDrag,
 } from "@/components/panel-primitives";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -112,28 +110,18 @@ export function FootnoteCard({
     <EditableCard
       id={fn.footnoteId}
       cardKind="footnote"
+      kind="footnote"
+      kindLabelOverride={fn.thanks ? "Acknowledgement" : undefined}
       selected={isSelectedEffective}
       theme={theme}
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={<BadgeLabel label={fn.thanks ? "A" : fn.number} theme={theme} />}
-      headerContent={
-        <CardTitleInput
-          defaultValue={fn.title}
-          onChange={onEditTitle}
-          theme={theme}
-        />
-      }
-      headerTrailing={
-        <CardTargetIcon
-          selected={isSelectedEffective}
-          onClick={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-          title="Jump to footnote marker"
-          data-helper="Jump"
-          data-helper-pos="above"
-        />
-      }
+      footnoteBadge={<BadgeLabel label={fn.thanks ? "A" : fn.number} theme={theme} />}
+      bodyTitle={fn.title}
+      onBodyTitleChange={onEditTitle ?? undefined}
+      canJump
+      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
@@ -159,8 +147,6 @@ export function FootnoteCard({
       cardKey={cardKey}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      typeLabelKind="footnote"
-      typeLabelOverride={fn.thanks ? "Acknowledgement" : undefined}
     />
   );
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{card}</FloatCard>;
@@ -210,20 +196,15 @@ export function OrphanedFootnoteCard({
     <EditableCard
       id={orphan.footnoteId}
       cardKind="footnote"
+      kind="footnote"
       selected={isSelected}
       theme={theme}
       hideToolbar
       inlineDelete
       onEditorFocus={onEditorFocus}
-      badge={<BadgeOrphaned theme={theme} />}
-      headerContent={
-        <CardTitleInput
-          defaultValue={orphan.title}
-          onChange={onEditTitle}
-          theme={theme}
-        />
-      }
-      headerTrailing={<CardTargetIcon selected={false} disabled onClick={() => {}} />}
+      footnoteBadge={<BadgeOrphaned theme={theme} />}
+      bodyTitle={orphan.title}
+      onBodyTitleChange={onEditTitle ?? undefined}
       onClick={onSelect}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign — see note on the FootnoteCard
@@ -247,7 +228,6 @@ export function OrphanedFootnoteCard({
       wrapperStyle={wrapperStyle}
       compressed={compressed}
       compressedSummary={compressedSummary}
-      typeLabelKind="footnote"
     />
   );
 }
