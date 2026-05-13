@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { CatalogEntry } from "@library/lib/catalog";
 import type { BibEntry } from "@library/lib/types";
 import { ENTRIES_DT_TYPE, ENTRY_DT_TYPE } from "@library/lib/dnd-types";
@@ -65,6 +66,19 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
   // The menu actions key off citekey, so triage rows (no citekey yet) get
   // a disabled menu — there's nothing to review or delete by name.
   const ck = entry.citekey;
+
+  const [copied, setCopied] = useState(false);
+  const handleCopyCitekey = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!ck) return;
+    try {
+      await navigator.clipboard.writeText(ck);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
     <div
@@ -224,22 +238,77 @@ export default function LeftListRow({ entry, bib, selected, gridTemplate, entryK
           </span>
         </Cell>
         <Spacer />
-        {/* citekey */}
-        <code
+        {/* citekey + copy button */}
+        <div
           style={{
-            fontFamily: "var(--mono)",
-            fontSize: 11,
-            color: "var(--accent)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            display: "block",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+            minWidth: 0,
             paddingLeft: 8,
             paddingRight: 8,
           }}
         >
-          {citekeyLabel}
-        </code>
+          <code
+            style={{
+              fontFamily: "var(--mono)",
+              fontSize: 11,
+              color: "var(--accent)",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              display: "block",
+              flex: "1 1 auto",
+              minWidth: 0,
+            }}
+          >
+            {citekeyLabel}
+          </code>
+          {ck && (
+            <button
+              type="button"
+              className="iconbtn-sm"
+              aria-label="Copy citekey"
+              title={copied ? "Copied" : "Copy citekey"}
+              draggable={false}
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={handleCopyCitekey}
+              style={{ flexShrink: 0 }}
+            >
+              {copied ? (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <polyline points="2.5,6.5 5,9 9.5,3.5" />
+                </svg>
+              ) : (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1" />
+                  <path d="M2 8V2.5A1 1 0 0 1 3 1.5h5.5" />
+                </svg>
+              )}
+            </button>
+          )}
+        </div>
       </div>
       {/* Always-visible action-menu column. Stays pinned on the right
           regardless of how compressed the grid is — it's a flex sibling
