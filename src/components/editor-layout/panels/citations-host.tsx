@@ -50,7 +50,7 @@ export interface CitationsHostProps {
 export function CitationsHost(p: CitationsHostProps) {
   const { editorRef } = useEditorRefContext();
   const { selectedCitationId, setSelectedCitationId } = useSelectionsContext();
-  const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText } = useCitationDisplayContext();
   const { createCitation } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("citation");
@@ -96,7 +96,6 @@ export function CitationsHost(p: CitationsHostProps) {
       onUpdateBibEntry={p.updateBibEntry}
       onUpdateBibKeyAndType={p.updateBibKeyAndType}
       aiRequests={aiRequests}
-      onAddAiRequest={() => addAiRequest("citation")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       recentlyAddedId={recentlyAddedId}

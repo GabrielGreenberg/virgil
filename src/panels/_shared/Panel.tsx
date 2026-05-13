@@ -26,11 +26,11 @@ export interface PanelProps {
   title?: string;
   /** Optional count badge in the header. */
   count?: number;
-  onAdd?: () => void;
+  onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a dropdown of choices. Used by
-   *  panels hosting more than one card kind. Overrides `onAdd`. */
-  onAddOptions?: { label: string; onClick: () => void }[];
-  onAiRequest?: () => void;
+   *  panels hosting more than one card kind. Overrides `onAdd`.
+   *  Each option's `onClick` receives the trigger button's bounding rect. */
+  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
   /** Far-left header content (e.g. options menu). */
   headerLeading?: ReactNode;
   /** Inline content right after the title (mode toggles that cluster with
@@ -72,7 +72,6 @@ export function Panel({
   count,
   onAdd,
   onAddOptions,
-  onAiRequest,
   headerLeading,
   headerTitleAfter,
   headerExtras,
@@ -115,7 +114,6 @@ export function Panel({
           count={count}
           onAdd={onAdd}
           onAddOptions={onAddOptions}
-          onAiRequest={onAiRequest}
           leading={headerLeading}
           titleAfter={headerTitleAfter}
         >

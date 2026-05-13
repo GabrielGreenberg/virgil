@@ -49,12 +49,12 @@ export interface CardListPanelProps<T> {
   // ── Pass-through Panel slots ──
   title?: string;
   count?: number;
-  onAdd?: () => void;
+  onAdd?: (anchorRect?: DOMRect) => void;
   /** When provided, the "+" button opens a small dropdown of choices
    *  instead of firing `onAdd`. Used by panels hosting more than one
-   *  card kind (Cutter: Comment / Suggestion). */
-  onAddOptions?: { label: string; onClick: () => void }[];
-  onAiRequest?: () => void;
+   *  card kind (Cutter: Comment / Suggestion). Each option's `onClick`
+   *  receives the trigger button's bounding rect. */
+  onAddOptions?: { label: string; onClick: (anchorRect?: DOMRect) => void }[];
   headerLeading?: ReactNode;
   headerExtras?: ReactNode;
   panelExtras?: ReactNode;
@@ -88,7 +88,6 @@ export function CardListPanel<T>({
   count,
   onAdd,
   onAddOptions,
-  onAiRequest,
   headerLeading,
   headerExtras,
   panelExtras,
@@ -136,7 +135,6 @@ export function CardListPanel<T>({
       count={count}
       onAdd={onAdd}
       onAddOptions={onAddOptions}
-      onAiRequest={onAiRequest}
       headerLeading={headerLeading}
       headerExtras={headerExtras}
       panelExtras={panelExtras}

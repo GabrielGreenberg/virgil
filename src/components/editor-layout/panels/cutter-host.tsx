@@ -84,11 +84,11 @@ export function CutterHost(p: CutterHostProps) {
   useEffect(() => () => discardRef.current(), []);
 
   const onAddComment = useCallback(
-    (): CutterCommentCard => createCutterComment({}),
+    (rect?: DOMRect): CutterCommentCard => createCutterComment({ anchorRect: rect }),
     [createCutterComment],
   );
   const onAddSuggestion = useCallback(
-    (): CutterSuggestionCard => createCutterSuggestion({}),
+    (rect?: DOMRect): CutterSuggestionCard => createCutterSuggestion({ anchorRect: rect }),
     [createCutterSuggestion],
   );
 

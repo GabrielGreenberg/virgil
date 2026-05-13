@@ -121,6 +121,73 @@ export function findDockTargetAtPoint(
     const podRight = side === "left" ? r.right - 4 - podGap : r.right - 4;
     const fullTop = TOP_BAR + podGap;
     const fullHeight = window.innerHeight - TOP_BAR - 2 * podGap;
+    // Split mode: prefer the live `[data-panel-half]` anchors' rects so
+    // the outline + hit-test follow the user's current ratio (and any
+    // min-height clamping), rather than a hardcoded 50/50 phantom.
+    // Falls through to the 50/50 fallback only if anchors are missing.
+    if (split) {
+      const halves = readSplitHalfRects(col);
+      if (halves) {
+        // Boundary = midpoint between the two half rects (the divider line).
+        const halfBoundary = (halves.top.bottom + halves.bottom.top) / 2;
+        const half: "top" | "bottom" = y < halfBoundary ? "top" : "bottom";
+        let chosenLeft = (half === "top" ? halves.top : halves.bottom).left;
+        let chosenTop = (half === "top" ? halves.top : halves.bottom).top;
+        let chosenWidth = (half === "top" ? halves.top : halves.bottom).width;
+        let chosenHeight = (half === "top" ? halves.top : halves.bottom).height;
+        let otherLeft = (half === "top" ? halves.bottom : halves.top).left;
+        let otherTop = (half === "top" ? halves.bottom : halves.top).top;
+        let otherWidth = (half === "top" ? halves.bottom : halves.top).width;
+        let otherHeight = (half === "top" ? halves.bottom : halves.top).height;
+
+        // Predict post-drop extension: dropping a panel into an empty top
+        // half flips `extendsOverToolbar` to true (panel-column.tsx),
+        // shifting the stack up so its top moves from y=64 to y=podGap
+        // and its height grows by (64 - podGap). Without this prediction,
+        // the glow renders at the LOW pre-drop position and the panel
+        // visually jumps up on drop.
+        const topAnchor = col.querySelector<HTMLElement>(
+          '[data-panel-half="top"]',
+        );
+        const topEmpty =
+          !!topAnchor && !topAnchor.hasAttribute("data-dock-slot");
+        // The action toolbar wrapper is only rendered when the column is
+        // NOT extended over the toolbar (see panel-column.tsx).
+        const currentlyExtended = !col.querySelector("[data-tool-strip]");
+        if (half === "top" && topEmpty && !currentlyExtended && topAnchor) {
+          const stack = topAnchor.parentElement;
+          if (stack) {
+            const stackH = stack.getBoundingClientRect().height;
+            if (stackH > 0) {
+              // Ratio derives consistently in either extension mode.
+              const ratio = Math.max(
+                0.05,
+                Math.min(0.95, (halves.top.height + podGap / 2) / stackH),
+              );
+              const extTop = fullTop; // TOP_BAR + podGap
+              const extH = fullHeight; // 100dvh - TOP_BAR - 2*podGap
+              const predTopH = ratio * extH - podGap / 2;
+              const predBotTop = extTop + ratio * extH + podGap / 2;
+              const predBotH = (1 - ratio) * extH - podGap / 2;
+              chosenLeft = halves.top.left;
+              chosenTop = extTop;
+              chosenWidth = halves.top.width;
+              chosenHeight = predTopH;
+              otherLeft = halves.bottom.left;
+              otherTop = predBotTop;
+              otherWidth = halves.bottom.width;
+              otherHeight = predBotH;
+            }
+          }
+        }
+
+        return {
+          slotKey: `${side}-${half}` as DockSlotKey,
+          rect: { left: chosenLeft, top: chosenTop, width: chosenWidth, height: chosenHeight },
+          companionRect: { left: otherLeft, top: otherTop, width: otherWidth, height: otherHeight },
+        };
+      }
+    }
     // Half boundary is the midline of the *viewport-bound* dock region,
     // not the column's bounding rect. The column extends down with the
     // document and can be many viewports tall, so `(y - r.top) < r.height/2`
@@ -144,9 +211,8 @@ export function findDockTargetAtPoint(
         },
       };
     }
-    // Split: divide the full pod region evenly. Use equal halves as a
-    // reasonable default when no real anchor is available to read the
-    // user's split ratio from.
+    // Split fallback: divide the full pod region evenly. Only reached
+    // when the live anchors aren't measurable (defensive).
     const halfHeight = Math.floor((fullHeight - podGap) / 2);
     const podWidth = podRight - podLeft;
     const topRect = { left: podLeft, top: fullTop, width: podWidth, height: halfHeight };
@@ -160,24 +226,42 @@ export function findDockTargetAtPoint(
   return null;
 }
 
+/** Read the live `[data-panel-half]` anchors on `col` and return their
+ *  current viewport rects. The anchors are sized by the user's split
+ *  ratio (CSS calc on `${ratio * 100}%`) so this is the source of truth
+ *  for where the halves actually sit on screen. Returns null when split
+ *  mode isn't engaged or either anchor is missing / collapsed. */
+function readSplitHalfRects(
+  col: HTMLElement,
+): { top: DOMRect; bottom: DOMRect } | null {
+  const top = col.querySelector<HTMLElement>('[data-panel-half="top"]');
+  const bottom = col.querySelector<HTMLElement>('[data-panel-half="bottom"]');
+  if (!top || !bottom) return null;
+  const topR = top.getBoundingClientRect();
+  const botR = bottom.getBoundingClientRect();
+  if (topR.height <= 0 || botR.height <= 0) return null;
+  return { top: topR, bottom: botR };
+}
+
 /**
- * Auto-dock proximity test: find the dock target whose peripheral
- * (outer) edge is closest to the floating panel's nearest corner —
- * within `AUTO_DOCK_PROXIMITY` pixels.
+ * Auto-dock proximity test: find the dock target whose far-top corner
+ * is closest to the floating panel's matching top corner — within
+ * `AUTO_DOCK_PROXIMITY` pixels (Euclidean).
  *
- * Why the panel rect (not the cursor)? When dragging a wide floating
- * panel, the cursor is anchored under the header, often well to the
- * inside of the panel's leading edge. Triggering on cursor would
- * require dragging far past where the panel visually meets the dock.
- * Triggering on the panel's nearest-corner-to-edge distance fires
- * when the panel itself is visually near the dock — matching what the
- * user sees.
+ * Why corner-to-corner? Edge-to-edge snapping made the entire column
+ * width a hot zone, so a panel hovering over the middle of a dock
+ * auto-redocked on release. With a corner gate, redocking is
+ * intentional: the user has to nudge the panel into one of the dock's
+ * outer-top corners. Hovering over the dock center stays floating.
  *
- * The "peripheral edge" is the dock's outer edge: the LEFT edge of a
- * left-side dock and the RIGHT edge of a right-side dock — the ones
- * facing away from the editor. The panel's nearest corner to a
- * vertical line is whichever side of the panel sits closer to it (its
- * left edge for the left dock, its right edge for the right dock).
+ * In split mode there are TWO snap corners per column:
+ *  - the top half's top-outer corner (= the dock pod's top corner)
+ *  - the bottom half's top-outer corner (= the divider's outer corner)
+ * Both are eligible; whichever the panel's top corner is closer to wins.
+ *
+ * "Far corner" = the dock pod's OUTER side: LEFT for the left-side dock,
+ * RIGHT for the right-side dock. The panel's matching corner is its
+ * top-LEFT (left dock) or top-RIGHT (right dock).
  */
 export function findDockTargetByPanelProximity(
   panelRect: { x: number; y: number; width: number; height: number },
@@ -193,30 +277,51 @@ export function findDockTargetByPanelProximity(
   const cols = document.querySelectorAll<HTMLElement>(
     "[data-panel-column-side]",
   );
+  const podGap =
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--pod-gap"),
+    ) || 10;
+  const TOP_BAR = 32;
   let bestSide: "left" | "right" | null = null;
   let bestDist = Infinity;
   let bestColRect: DOMRect | null = null;
   for (const col of Array.from(cols)) {
     const r = col.getBoundingClientRect();
     const side = (col.dataset.panelColumnSide ?? "left") as "left" | "right";
-    // Signed distance from the panel's near-edge corner to the dock's
-    // peripheral (outer) edge. We clamp to ≥0 so a panel whose edge is
-    // already past the peripheral edge counts as fully snapped (dist=0)
-    // — otherwise a wide panel hovering off-screen past the gutter
-    // could measure as "far" by absolute distance.
-    //
-    // Right dock peripheral edge = column.right. Snap when panel.right
-    // is at or past it (within `threshold` of the inside).
-    // Left dock peripheral edge = column.left. Snap when panel.left is
-    // at or past it.
-    const dist =
-      side === "left"
-        ? Math.max(0, panelRect.x - r.left)
-        : Math.max(0, r.right - (panelRect.x + panelRect.width));
-    if (dist < threshold && dist < bestDist) {
-      bestSide = side;
-      bestDist = dist;
-      bestColRect = r;
+    const split = side === "left" ? splitState.left : splitState.right;
+    // Snap corners for this column. Always include the top corner at the
+    // dock pod's predicted top (TOP_BAR + podGap, post-extend position —
+    // consistent regardless of whether the column currently extends over
+    // the toolbar). In split mode, add the bottom half's top corner so
+    // dragging toward the lower half is also eligible.
+    const cornerX = side === "left" ? r.left : r.right;
+    const snapCorners: { x: number; y: number }[] = [
+      { x: cornerX, y: TOP_BAR + podGap },
+    ];
+    if (split) {
+      const bottomAnchor = col.querySelector<HTMLElement>(
+        '[data-panel-half="bottom"]',
+      );
+      if (bottomAnchor) {
+        const botR = bottomAnchor.getBoundingClientRect();
+        if (botR.height > 0) {
+          snapCorners.push({ x: cornerX, y: botR.top });
+        }
+      }
+    }
+    // Floating panel's matching top-outer corner.
+    const panelCornerX =
+      side === "left" ? panelRect.x : panelRect.x + panelRect.width;
+    const panelCornerY = panelRect.y;
+    for (const corner of snapCorners) {
+      const dx = corner.x - panelCornerX;
+      const dy = corner.y - panelCornerY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < threshold && dist < bestDist) {
+        bestSide = side;
+        bestDist = dist;
+        bestColRect = r;
+      }
     }
   }
   if (!bestSide || !bestColRect) return null;

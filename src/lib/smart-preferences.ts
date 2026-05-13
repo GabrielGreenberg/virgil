@@ -168,8 +168,14 @@ export const SMART_PREFERENCES: SmartSection[] = [
       p({
         type: "color",
         key: "panelAdminTextColor",
-        label: "Admin text color",
+        label: "Header title color",
         description: "Panel header titles like \"Footnotes\" and \"Citations\".",
+      }),
+      p({
+        type: "color",
+        key: "panelHeaderTextColor",
+        label: "Header text color",
+        description: "Other text in panel headers (e.g. count number).",
       }),
       p({
         type: "font",

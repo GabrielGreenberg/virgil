@@ -46,8 +46,8 @@ export default function RevisionsPanel({
   cards: RevisionCard[];
   tracker: RevisionsTracker | null;
   onSetTrackerTarget: (target: number | null) => void;
-  onAddComment: () => RevisionCommentCardData;
-  onAddSuggestion: () => RevisionSuggestionCardData;
+  onAddComment: (anchorRect?: DOMRect) => RevisionCommentCardData;
+  onAddSuggestion: (anchorRect?: DOMRect) => RevisionSuggestionCardData;
   onUpdateCommentText: (id: string, text: string) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
@@ -155,8 +155,8 @@ export default function RevisionsPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Comment", onClick: () => onAddComment() },
-      { label: "Suggestion", onClick: () => onAddSuggestion() },
+      { label: "Comment", onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: "Suggestion", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
   );

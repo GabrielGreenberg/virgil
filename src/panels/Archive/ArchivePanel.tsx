@@ -58,6 +58,7 @@ function ArchivePanel({
   return (
     <CardListPanel
       kind="archive"
+      count={snippets.length}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">

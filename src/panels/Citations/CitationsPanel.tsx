@@ -5,7 +5,6 @@ import type { BibEntry, CitationRef, AiRequest } from "@/lib/types";
 import {
   ItemMenu,
   PANEL,
-  PrevNextCounter,
   useCycle,
   clearStaleHover,
 } from "@/components/panel-primitives";
@@ -52,7 +51,6 @@ interface CitationsPanelProps {
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
   aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   recentlyAddedId?: string | null;
@@ -98,7 +96,6 @@ function CitationsPanel({
   onUpdateBibEntry,
   onUpdateBibKeyAndType,
   aiRequests,
-  onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
   recentlyAddedId,
@@ -204,10 +201,10 @@ function CitationsPanel({
   return (
     <CardListPanel
       kind="citations"
+      count={orderedCitations.length}
       onAdd={() => {
         onStartCreate();
       }}
-      onAiRequest={onAddAiRequest}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
@@ -246,13 +243,6 @@ function CitationsPanel({
             </button>
           ))}
         </ItemMenu>
-      }
-      headerExtras={
-        <PrevNextCounter
-          current={cycleIdx}
-          total={orderedCitations.length}
-          label=""
-        />
       }
       panelExtras={
         pendingCreate !== null ? (

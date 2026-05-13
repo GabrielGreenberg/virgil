@@ -49,8 +49,8 @@ export default function CutterPanel({
   goal: CutterGoal | null;
   onSetGoal: (target: number, initialWords: number) => void;
   onClearGoal: () => void;
-  onAddComment: () => CutterCommentCardData;
-  onAddSuggestion: () => CutterSuggestionCardData;
+  onAddComment: (anchorRect?: DOMRect) => CutterCommentCardData;
+  onAddSuggestion: (anchorRect?: DOMRect) => CutterSuggestionCardData;
   onUpdateCommentText: (id: string, text: string) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
@@ -150,8 +150,8 @@ export default function CutterPanel({
 
   const onAddOptions = useMemo(
     () => [
-      { label: "Comment", onClick: () => onAddComment() },
-      { label: "Suggestion", onClick: () => onAddSuggestion() },
+      { label: "Comment", onClick: (rect?: DOMRect) => onAddComment(rect) },
+      { label: "Suggestion", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
   );

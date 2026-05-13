@@ -72,6 +72,13 @@ export interface ViewPrefs {
   /** 0..1 — top half height ratio when the side is split. */
   splitLeftRatio: number;
   splitRightRatio: number;
+  /** Provenance of the current split. `"user"` = user clicked the
+   *  split-toggle icon (persists with empty halves when one panel
+   *  closes). `"auto"` = engaged automatically when a 2nd panel was
+   *  opened on the side (self-disengages back to single-slot when a
+   *  panel closes and only one or zero remain). `null` when not split. */
+  splitLeftOrigin: "auto" | "user" | null;
+  splitRightOrigin: "auto" | "user" | null;
   panelWidths: Record<string, number>; // keyed by `${side}-${panelId}`
   /** Whether the main editor is split into two panes. */
   editorSplit: boolean;
@@ -313,6 +320,8 @@ function loadPrefs(): ViewPrefs {
       activeRight: "omni",
       activeLeftBottom: null,
       activeRightBottom: null,
+      splitLeftOrigin: null,
+      splitRightOrigin: null,
       _stashedLeft: null,
       _stashedRight: null,
       poppedOutPanels: [],
@@ -421,6 +430,99 @@ export function useViewPrefs() {
     return null;
   }
 
+  /** Plan where `id` should land on `side`. Returns a partial state
+   *  patch describing the placement, or null if no docked slot is
+   *  available (caller decides: fall through to floating, or replace
+   *  the canonical slot). Cases:
+   *  - side already split with a free half → drop into the free half
+   *  - side not split, `${side}-full` empty → drop into full
+   *  - side not split, `${side}-full` occupied → auto-engage split:
+   *    migrate the existing full occupant to `${side}-top`, place
+   *    `id` in `${side}-bottom`, set origin "auto", ratio stays at
+   *    its persisted value (default 0.5).
+   *  - side already split with both halves occupied → null (no room) */
+  function planSlotAssignment(
+    p: ViewPrefs,
+    side: Side,
+    id: PanelId,
+  ): Partial<ViewPrefs> | null {
+    const isSplit =
+      side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
+    const fullKey = dockSlotKey(side, "full");
+    const topKey = dockSlotKey(side, "top");
+    const bottomKey = dockSlotKey(side, "bottom");
+    if (isSplit) {
+      if (!p.dockSlots[topKey]) {
+        return { dockSlots: { ...p.dockSlots, [topKey]: id } };
+      }
+      if (!p.dockSlots[bottomKey]) {
+        return { dockSlots: { ...p.dockSlots, [bottomKey]: id } };
+      }
+      return null;
+    }
+    if (!p.dockSlots[fullKey]) {
+      return { dockSlots: { ...p.dockSlots, [fullKey]: id } };
+    }
+    // Auto-engage split: migrate existing full occupant to top, new to bottom.
+    const existing = p.dockSlots[fullKey]!;
+    const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
+    delete nextDockSlots[fullKey];
+    nextDockSlots[topKey] = existing;
+    nextDockSlots[bottomKey] = id;
+    return side === "left"
+      ? {
+          dockSlots: nextDockSlots,
+          activeLeftBottom: id,
+          splitLeftOrigin: "auto",
+        }
+      : {
+          dockSlots: nextDockSlots,
+          activeRightBottom: id,
+          splitRightOrigin: "auto",
+        };
+  }
+
+  /** When a panel closes on a split side whose origin is "auto", and
+   *  one or zero panels remain on the side, collapse the split back
+   *  to single-slot mode: migrate any remaining occupant to
+   *  `${side}-full`, clear the bottom marker, clear the origin.
+   *  User-toggled splits (origin "user") persist with empty halves —
+   *  the user has to click the split toggle again to dismiss them.
+   *  Returns a partial patch including the (possibly updated)
+   *  dockSlots. Callers pass in their post-close dockSlots and merge
+   *  the result. */
+  function autoDisengageIfNeeded(
+    p: ViewPrefs,
+    side: Side,
+    nextDockSlots: Partial<Record<DockSlotKey, PanelId>>,
+  ): Partial<ViewPrefs> {
+    const origin = side === "left" ? p.splitLeftOrigin : p.splitRightOrigin;
+    if (origin !== "auto") return { dockSlots: nextDockSlots };
+    const fullKey = dockSlotKey(side, "full");
+    const topKey = dockSlotKey(side, "top");
+    const bottomKey = dockSlotKey(side, "bottom");
+    const top = nextDockSlots[topKey];
+    const bottom = nextDockSlots[bottomKey];
+    const occupiedCount = (top ? 1 : 0) + (bottom ? 1 : 0);
+    if (occupiedCount >= 2) return { dockSlots: nextDockSlots };
+    const remaining = top ?? bottom;
+    const finalDockSlots = { ...nextDockSlots };
+    delete finalDockSlots[topKey];
+    delete finalDockSlots[bottomKey];
+    if (remaining) finalDockSlots[fullKey] = remaining;
+    return side === "left"
+      ? {
+          dockSlots: finalDockSlots,
+          activeLeftBottom: null,
+          splitLeftOrigin: null,
+        }
+      : {
+          dockSlots: finalDockSlots,
+          activeRightBottom: null,
+          splitRightOrigin: null,
+        };
+  }
+
   /** True when `id` is currently open in any form (docked or floating). */
   function isPanelOpen(p: ViewPrefs, id: PanelId): boolean {
     if (p.poppedOutPanels.includes(id)) return true;
@@ -459,11 +561,11 @@ export function useViewPrefs() {
       const mode: PanelMode = p.panelModes[id] ?? "docked";
 
       if (mode === "docked") {
-        const slot = findOpenDockSlot(p, targetSide);
-        if (slot) {
-          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        const plan = planSlotAssignment(p, targetSide, id);
+        if (plan) {
+          return { ...p, ...plan };
         }
-        // No free slot — fall through to floating fallback below.
+        // Both halves of a split side are occupied — fall through to floating.
       }
       const savedRect = p.floatPositions[id];
       const rect = savedRect ?? computeColumnSpawnRect(targetSide);
@@ -500,25 +602,26 @@ export function useViewPrefs() {
       const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
       const targetSide: Side =
         side ?? placement?.side ?? registryEntry?.defaultStripSide ?? "left";
-      const isSplit =
-        targetSide === "left"
-          ? p.activeLeftBottom != null
-          : p.activeRightBottom != null;
-      // Pick the target slot: free first, else the canonical slot.
-      let slot = findOpenDockSlot(p, targetSide);
-      if (!slot) slot = isSplit ? dockSlotKey(targetSide, "top") : dockSlotKey(targetSide, "full");
-      const occupant = p.dockSlots[slot];
-      let next: ViewPrefs = {
+      const next: ViewPrefs = {
         ...p,
         panelModes: { ...p.panelModes, [id]: "docked" },
       };
-      // Replace, don't displace: if the slot is occupied, the previous
-      // occupant just closes (kept out of poppedOutPanels). The user's
-      // intent with a strip click is "swap this into the dock", not
-      // "kick the other panel out as a floater".
+      // Try the standard slot plan first — handles empty full, free
+      // half in split, or auto-splits when full is occupied.
+      const plan = planSlotAssignment(p, targetSide, id);
+      if (plan) {
+        return { ...next, ...plan };
+      }
+      // No room in any half (split side, both occupied) — replace the
+      // canonical top slot. Replace, don't displace: the previous
+      // occupant just closes (kept out of poppedOutPanels). A strip
+      // click is "swap this into the dock", not "kick the other panel
+      // out as a floater".
+      const canonical = dockSlotKey(targetSide, "top");
+      const occupant = p.dockSlots[canonical];
       return {
         ...next,
-        dockSlots: { ...next.dockSlots, [slot]: id },
+        dockSlots: { ...next.dockSlots, [canonical]: id },
         poppedOutPanels:
           occupant && occupant !== id
             ? next.poppedOutPanels.filter((x) => x !== occupant)
@@ -577,8 +680,10 @@ export function useViewPrefs() {
       ...p,
       activeLeft: p.activeLeft != null ? "omni" : p.activeLeft,
       activeLeftBottom: null,
+      splitLeftOrigin: null,
       activeRight: p.activeRight != null ? "omni" : p.activeRight,
       activeRightBottom: null,
+      splitRightOrigin: null,
       poppedOutPanels: [],
       poppedOutOrigins: {},
       poppedOutCards: [],
@@ -625,13 +730,19 @@ export function useViewPrefs() {
         const dockSlot = findDockSlotForPanel(p, id);
         const nextDockSlots = { ...p.dockSlots };
         if (dockSlot) delete nextDockSlots[dockSlot];
+        const sideAffected: Side | null = dockSlot
+          ? (dockSlot.startsWith("left") ? "left" : "right")
+          : null;
+        const disengagePatch = sideAffected
+          ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
+          : { dockSlots: nextDockSlots };
         return {
           ...p,
-          dockSlots: nextDockSlots,
+          ...disengagePatch,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
         };
       }
-      // Opening path — defer to openPanel logic via state mutation
+      // Opening path
       const placement = p.placements.find((pl) => pl.id === id);
       const registryEntry = (PANEL_REGISTRY as Record<string, { defaultStripSide?: Side }>)[id];
       const targetSide: Side =
@@ -639,9 +750,9 @@ export function useViewPrefs() {
       const mode: PanelMode = p.panelModes[id] ?? "docked";
 
       if (mode === "docked") {
-        const slot = findOpenDockSlot(p, targetSide);
-        if (slot) {
-          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        const plan = planSlotAssignment(p, targetSide, id);
+        if (plan) {
+          return { ...p, ...plan };
         }
       }
       const savedRect = p.floatPositions[id];
@@ -753,13 +864,13 @@ export function useViewPrefs() {
         panelModes: nextModes,
       };
       if (side === "left") {
-        if (isSplit) return { ...baseUpdate, activeLeftBottom: null };
+        if (isSplit) return { ...baseUpdate, activeLeftBottom: null, splitLeftOrigin: null };
         const top = p.activeLeft ?? "omni";
-        return { ...baseUpdate, activeLeft: top, activeLeftBottom: "omni" };
+        return { ...baseUpdate, activeLeft: top, activeLeftBottom: "omni", splitLeftOrigin: "user" };
       } else {
-        if (isSplit) return { ...baseUpdate, activeRightBottom: null };
+        if (isSplit) return { ...baseUpdate, activeRightBottom: null, splitRightOrigin: null };
         const top = p.activeRight ?? "omni";
-        return { ...baseUpdate, activeRight: top, activeRightBottom: "omni" };
+        return { ...baseUpdate, activeRight: top, activeRightBottom: "omni", splitRightOrigin: "user" };
       }
     });
   }, [update]);
@@ -769,87 +880,6 @@ export function useViewPrefs() {
     update((p) => (side === "left"
       ? { ...p, splitLeftRatio: clamped }
       : { ...p, splitRightRatio: clamped }));
-  }, [update]);
-
-  /** Internal-only ratio setter used by useAutoSplitDock to track a
-   *  single docked panel's natural content height. Functionally
-   *  identical to setSplitRatio today; kept separate so a future
-   *  user-vs-auto override flag can distinguish the call sites. */
-  const setSplitRatioInternal = useCallback((side: Side, ratio: number) => {
-    const clamped = Math.max(0.05, Math.min(0.95, ratio));
-    update((p) => (side === "left"
-      ? { ...p, splitLeftRatio: clamped }
-      : { ...p, splitRightRatio: clamped }));
-  }, [update]);
-
-  /** Atomically engage split mode and set the height ratio in one
-   *  state update. Used by useAutoSplitDock when a single docked panel
-   *  leaves enough leftover space for a second slot. Mirrors the
-   *  "splitting on" branch of toggleSplit: migrates ${side}-full's
-   *  occupant to ${side}-top, sets the bottom slot's marker to "omni",
-   *  and sets the split ratio. No-op if already split. */
-  const engageAutoSplit = useCallback((side: Side, ratio: number) => {
-    const clamped = Math.max(0.05, Math.min(0.95, ratio));
-    update((p) => {
-      const isSplit =
-        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-      if (isSplit) {
-        return side === "left"
-          ? { ...p, splitLeftRatio: clamped }
-          : { ...p, splitRightRatio: clamped };
-      }
-      const fullKey = dockSlotKey(side, "full");
-      const topKey = dockSlotKey(side, "top");
-      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
-      if (nextDockSlots[fullKey]) {
-        nextDockSlots[topKey] = nextDockSlots[fullKey];
-        delete nextDockSlots[fullKey];
-      }
-      if (side === "left") {
-        const top = p.activeLeft ?? "omni";
-        return {
-          ...p,
-          dockSlots: nextDockSlots,
-          activeLeft: top,
-          activeLeftBottom: "omni",
-          splitLeftRatio: clamped,
-        };
-      }
-      const top = p.activeRight ?? "omni";
-      return {
-        ...p,
-        dockSlots: nextDockSlots,
-        activeRight: top,
-        activeRightBottom: "omni",
-        splitRightRatio: clamped,
-      };
-    });
-  }, [update]);
-
-  /** Disengage an auto-split: revert to non-split mode. Only called
-   *  by useAutoSplitDock when the side has a single docked panel in
-   *  the top slot and an empty bottom. Migrates ${side}-top's
-   *  occupant back to ${side}-full. No float-displacement path
-   *  needed (bottom slot is empty by construction). No-op if not
-   *  split. */
-  const disengageAutoSplit = useCallback((side: Side) => {
-    update((p) => {
-      const isSplit =
-        side === "left" ? p.activeLeftBottom != null : p.activeRightBottom != null;
-      if (!isSplit) return p;
-      const fullKey = dockSlotKey(side, "full");
-      const topKey = dockSlotKey(side, "top");
-      const bottomKey = dockSlotKey(side, "bottom");
-      const nextDockSlots: Partial<Record<DockSlotKey, PanelId>> = { ...p.dockSlots };
-      const topOccupant = nextDockSlots[topKey];
-      delete nextDockSlots[topKey];
-      delete nextDockSlots[bottomKey];
-      if (topOccupant) nextDockSlots[fullKey] = topOccupant;
-      if (side === "left") {
-        return { ...p, dockSlots: nextDockSlots, activeLeftBottom: null };
-      }
-      return { ...p, dockSlots: nextDockSlots, activeRightBottom: null };
-    });
   }, [update]);
 
   const setEditorSplit = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
@@ -894,11 +924,17 @@ export function useViewPrefs() {
       const dockSlot = findDockSlotForPanel(p, id);
       const nextDockSlots = { ...p.dockSlots };
       if (dockSlot) delete nextDockSlots[dockSlot];
+      const sideAffected: Side | null = dockSlot
+        ? (dockSlot.startsWith("left") ? "left" : "right")
+        : null;
+      const disengagePatch = sideAffected
+        ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
+        : { dockSlots: nextDockSlots };
       return {
         ...p,
+        ...disengagePatch,
         poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
         poppedOutOrigins: remainingOrigins,
-        dockSlots: nextDockSlots,
         // floatPositions intentionally unchanged: the user's pinned size
         // sticks across close/open cycles.
       };
@@ -915,9 +951,15 @@ export function useViewPrefs() {
         const dockSlot = findDockSlotForPanel(p, id);
         const nextDockSlots = { ...p.dockSlots };
         if (dockSlot) delete nextDockSlots[dockSlot];
+        const sideAffected: Side | null = dockSlot
+          ? (dockSlot.startsWith("left") ? "left" : "right")
+          : null;
+        const disengagePatch = sideAffected
+          ? autoDisengageIfNeeded(p, sideAffected, nextDockSlots)
+          : { dockSlots: nextDockSlots };
         return {
           ...p,
-          dockSlots: nextDockSlots,
+          ...disengagePatch,
           poppedOutPanels: p.poppedOutPanels.filter((x) => x !== id),
         };
       }
@@ -927,9 +969,9 @@ export function useViewPrefs() {
         placement?.side ?? registryEntry?.defaultStripSide ?? "left";
       const mode: PanelMode = p.panelModes[id] ?? "docked";
       if (mode === "docked") {
-        const slot = findOpenDockSlot(p, targetSide);
-        if (slot) {
-          return { ...p, dockSlots: { ...p.dockSlots, [slot]: id } };
+        const plan = planSlotAssignment(p, targetSide, id);
+        if (plan) {
+          return { ...p, ...plan };
         }
       }
       const savedRect = p.floatPositions[id];
@@ -1113,9 +1155,6 @@ export function useViewPrefs() {
     setActiveHalf,
     toggleSplit,
     setSplitRatio,
-    setSplitRatioInternal,
-    engageAutoSplit,
-    disengageAutoSplit,
     setEditorSplit,
     setEditorSplitRatio,
     setPageWidth,

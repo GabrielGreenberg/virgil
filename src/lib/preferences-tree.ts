@@ -209,7 +209,7 @@ export const PREFERENCES_TREE: PrefNode[] = [
         label: "Panel Typography & Surfaces",
         children: [
           { type: "slider", key: "panelFontSize", label: "Font size", description: "Text size in side panel content", min: 11, max: 16, step: 1, unit: "px" },
-          { type: "slider", key: "panelHeaderSize", label: "Header size", description: "Text size for panel section headers", min: 12, max: 17, step: 1, unit: "px" },
+          { type: "slider", key: "panelHeaderSize", label: "Header size", description: "Text size for panel section headers", min: 9, max: 17, step: 1, unit: "px" },
           { type: "color", key: "surfaceColor", label: "Card background", description: "Fill color of cards and containers" },
           { type: "font", key: "fontSans", label: "Font family", description: "Typeface used in panels and UI", options: SANS_FONTS },
         ],
@@ -327,6 +327,7 @@ export const PREF_TO_CSS: CssMapping[] = [
   { key: "podToolbar", cssVar: "--pod-toolbar", isColor: true },
   { key: "podDark", cssVar: "--pod-dark", isColor: true },
   { key: "panelAdminTextColor", cssVar: "--panel-admin-text-color", isColor: true },
+  { key: "panelHeaderTextColor", cssVar: "--panel-header-text-color", isColor: true },
   { key: "panelAdminTextFont", cssVar: "--panel-admin-text-font", isColor: false, transform: (v) => `"${v}"` },
 
   // Canvas & layout
@@ -378,6 +379,7 @@ export const DERIVED_CSS: DerivedCssMapping[] = [
   { cssVar: "--footnote-bg", compute: (p) => deriveLight(p.footnoteColor, 0.08) },
   { cssVar: "--note-bg", compute: (p) => deriveLight(p.noteColor, 0.06) },
   { cssVar: "--pod-border", compute: (p) => `1px solid ${p.borderLight}` },
+  { cssVar: "--panel-border", compute: (p) => `3px solid ${p.borderLight}` },
   // Per-category font families. When the user picks "Pin to body family"
   // (stored as null) we resolve to the body family here so the rendered
   // CSS var always carries a usable value.

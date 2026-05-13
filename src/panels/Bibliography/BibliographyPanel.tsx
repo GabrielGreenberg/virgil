@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useRef, useEffect, memo } from "react";
 import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
-import { ItemMenu, PANEL, PrevNextCounter, clearStaleHover } from "@/components/panel-primitives";
+import { ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
 import { searchGeneralBib, searchLocalBib } from "@/lib/bib-search";
@@ -500,11 +500,6 @@ function BibliographyPanel({
 
   const headerExtras = (
     <>
-      <PrevNextCounter
-        current={selectedIdx >= 0 ? selectedIdx : null}
-        total={displayedEntries.length}
-        label=""
-      />
       <button
         type="button"
         onClick={handleToggleSearch}
@@ -760,8 +755,8 @@ function BibliographyPanel({
   return (
     <CardListPanel
       kind="bibliography"
+      count={displayedEntries.length}
       onAdd={() => setAddMenuOpen((o) => !o)}
-      onAiRequest={handleOpenRequestForm}
       headerLeading={headerLeading}
       headerExtras={headerExtras}
       panelExtras={panelExtras}

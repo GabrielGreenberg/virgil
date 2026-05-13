@@ -63,6 +63,7 @@ export interface EditorPreferences {
   podToolbar: string;
   podDark: string;
   panelAdminTextColor: string;  // Panel header titles ("Footnotes", etc.)
+  panelHeaderTextColor: string; // Other text in panel headers (count, etc.)
   panelAdminTextFont: string;
 
   // App Chrome

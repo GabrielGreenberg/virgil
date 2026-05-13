@@ -5,7 +5,6 @@ import type { ExampleInfo } from "@/components/Editor";
 import {
   ItemMenu,
   PANEL,
-  PrevNextCounter,
   useCycle,
   clearStaleHover,
 } from "@/components/panel-primitives";
@@ -18,7 +17,7 @@ interface ExamplesPanelProps {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   onJump: (id: string, sourceEl?: HTMLElement | null) => void;
-  onAdd?: () => void;
+  onAdd?: (anchorRect?: DOMRect) => void;
   onUpdateLatex?: (exampleId: string, latex: string) => boolean;
 }
 
@@ -73,6 +72,7 @@ function ExamplesPanel(props: ExamplesPanelProps) {
   return (
     <CardListPanel
       kind="examples"
+      count={examples.length}
       onAdd={onAdd}
       headerLeading={
         <ItemMenu align="left">
@@ -80,9 +80,6 @@ function ExamplesPanel(props: ExamplesPanelProps) {
             <PanelThemePicker panelKey="example" label="Example color" />
           </div>
         </ItemMenu>
-      }
-      headerExtras={
-        <PrevNextCounter current={cycleIdx} total={examples.length} label="" />
       }
       items={examples}
       getId={(it) => it.exampleId}

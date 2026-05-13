@@ -503,7 +503,7 @@ export function PanelColumn({
                 : {
                     background: 'var(--pod-panel)',
                     borderRadius: podRadius,
-                    border: 'var(--pod-border)',
+                    border: 'var(--panel-border)',
                     boxShadow: 'var(--pod-shadow-light)',
                   }),
               position: 'sticky' as const,

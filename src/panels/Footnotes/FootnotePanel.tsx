@@ -7,7 +7,6 @@ import type { OrphanedFootnote, AiRequest } from "@/lib/types";
 import {
   ItemMenu,
   PANEL,
-  PrevNextCounter,
   useCycle,
   clearStaleHover,
 } from "@/components/panel-primitives";
@@ -34,11 +33,10 @@ interface FootnotePanelProps {
   onDeleteOrphan: (id: string) => void;
   onEditOrphan: (id: string, newContent: JSONContent) => void;
   onEditOrphanTitle?: (id: string, title: string) => void;
-  onAdd?: () => void;
+  onAdd?: (anchorRect?: DOMRect) => void;
   getCitationDisplayText?: (command: string) => string;
   onCitationCreated?: (command: string) => { id: string; displayText: string } | null;
   aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   onEditTitle?: (id: string, title: string) => void;
@@ -61,7 +59,6 @@ function FootnotePanel({
   getCitationDisplayText,
   onCitationCreated,
   aiRequests,
-  onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
   onEditTitle,
@@ -132,21 +129,14 @@ function FootnotePanel({
   return (
     <CardListPanel
       kind="footnotes"
+      count={footnotes.length}
       onAdd={onAdd}
-      onAiRequest={onAddAiRequest}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="footnote" label="Footnote color" />
           </div>
         </ItemMenu>
-      }
-      headerExtras={
-        <PrevNextCounter
-          current={cycleIdx}
-          total={footnotes.length}
-          label=""
-        />
       }
       items={items}
       getId={(it) => it.data.footnoteId}

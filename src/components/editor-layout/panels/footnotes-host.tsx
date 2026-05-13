@@ -27,7 +27,7 @@ export interface FootnotesHostProps {
 export function FootnotesHost(p: FootnotesHostProps) {
   const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedFootnoteId, setSelectedFootnoteId } = useSelectionsContext();
-  const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   const recentlyAddedId = useRecentlyAddedId("footnote");
   return (
@@ -46,7 +46,6 @@ export function FootnotesHost(p: FootnotesHostProps) {
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       aiRequests={aiRequests}
-      onAddAiRequest={() => addAiRequest("footnote")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       onEditTitle={p.onEditTitle}

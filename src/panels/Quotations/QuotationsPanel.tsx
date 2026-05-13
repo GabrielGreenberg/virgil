@@ -10,7 +10,6 @@ import type {
 import {
   ItemMenu,
   PANEL,
-  PrevNextCounter,
   useCycle,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
@@ -24,7 +23,7 @@ export interface QuotationsPanelProps {
   bibEntries: BibEntry[];
   bibPackage: string;
   citationStyle: string;
-  onAddGroup: () => QuotationGroup;
+  onAddGroup: (anchorRect?: DOMRect) => QuotationGroup;
   onDeleteGroup: (groupId: string) => void;
   onUpdateGroupTitle: (groupId: string, title: string) => void;
   onAddReference: (groupId: string) => string;
@@ -43,7 +42,6 @@ export interface QuotationsPanelProps {
   onSelectGroup?: (groupId: string | null) => void;
   onJumpToCard?: (card: QuotationGroup) => void;
   aiRequests?: AiRequest[];
-  onAddAiRequest?: () => void;
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
   recentlyAddedId?: string | null;
@@ -67,7 +65,6 @@ export default function QuotationsPanel({
   onSelectGroup,
   onJumpToCard,
   aiRequests,
-  onAddAiRequest,
   onUpdateAiRequestText,
   onDeleteAiRequest,
   recentlyAddedId,
@@ -100,8 +97,8 @@ export default function QuotationsPanel({
     el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [selectedGroupId]);
 
-  const handleAdd = useCallback(() => {
-    const g = onAddGroup();
+  const handleAdd = useCallback((anchorRect?: DOMRect) => {
+    const g = onAddGroup(anchorRect);
     setSelectedGroupId(g.id);
   }, [onAddGroup, setSelectedGroupId]);
 
@@ -175,21 +172,14 @@ export default function QuotationsPanel({
   return (
     <CardListPanel
       kind="quotations"
+      count={groups.length}
       onAdd={handleAdd}
-      onAiRequest={onAddAiRequest}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">
             <PanelThemePicker panelKey="quote" label="Quotation color" />
           </div>
         </ItemMenu>
-      }
-      headerExtras={
-        <PrevNextCounter
-          current={cycleIdx}
-          total={anchoredGroups.length}
-          label=""
-        />
       }
       items={withRecentlyAddedFirst(groups, recentlyAddedId, (g) => g.id)}
       getId={(g) => g.id}

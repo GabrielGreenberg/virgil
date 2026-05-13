@@ -34,7 +34,7 @@ export interface QuotationsHostProps {
 export function QuotationsHost(p: QuotationsHostProps) {
   const { editorRef } = useEditorRefContext();
   const { selectedQuotationGroupId, setSelectedQuotationGroupId } = useSelectionsContext();
-  const { aiRequests, addAiRequest, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
+  const { aiRequests, updateAiRequestText, deleteAiRequest } = useAiRequestsContext();
   const { createQuotation } = useCardCreationContext();
   const recentlyAddedId = useRecentlyAddedId("quotation");
   return (
@@ -43,7 +43,7 @@ export function QuotationsHost(p: QuotationsHostProps) {
       bibEntries={p.bibEntries}
       bibPackage={p.bibPackage}
       citationStyle={p.citationStyle}
-      onAddGroup={() => createQuotation({})}
+      onAddGroup={(rect) => createQuotation({ anchorRect: rect })}
       onDeleteGroup={p.deleteQuotationGroup}
       onUpdateGroupTitle={p.updateQuotationGroupTitle}
       onAddReference={p.addQuotationReference}
@@ -57,7 +57,6 @@ export function QuotationsHost(p: QuotationsHostProps) {
       onSelectGroup={setSelectedQuotationGroupId}
       onJumpToCard={(group) => editorRef.current?.jumpToCard(group)}
       aiRequests={aiRequests}
-      onAddAiRequest={() => addAiRequest("quotation")}
       onUpdateAiRequestText={updateAiRequestText}
       onDeleteAiRequest={deleteAiRequest}
       recentlyAddedId={recentlyAddedId}

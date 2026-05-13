@@ -85,11 +85,11 @@ export function RevisionsHost(p: RevisionsHostProps) {
   useEffect(() => () => discardRef.current(), []);
 
   const onAddComment = useCallback(
-    (): RevisionCommentCard => createRevisionComment({}),
+    (rect?: DOMRect): RevisionCommentCard => createRevisionComment({ anchorRect: rect }),
     [createRevisionComment],
   );
   const onAddSuggestion = useCallback(
-    (): RevisionSuggestionCard => createRevisionSuggestion({}),
+    (rect?: DOMRect): RevisionSuggestionCard => createRevisionSuggestion({ anchorRect: rect }),
     [createRevisionSuggestion],
   );
 

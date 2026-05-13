@@ -13,7 +13,7 @@ import { TodoRow } from "./TodoRow";
 
 interface TodoPanelProps {
   items: TodoItem[];
-  onAdd: () => TodoItem;
+  onAdd: (anchorRect?: DOMRect) => TodoItem;
   onToggle: (id: string) => void;
   onUpdate: (id: string, text: string) => void;
   onUpdateNotes: (id: string, notes: string) => void;
@@ -124,7 +124,7 @@ export default function TodoPanel({
     <CardListPanel
       kind="todo"
       count={pending.length}
-      onAdd={() => onAdd()}
+      onAdd={(rect) => onAdd(rect)}
       headerLeading={
         <ItemMenu align="left">
           <div className="px-3 py-1.5 flex items-center justify-end gap-2">

@@ -63,6 +63,8 @@
   "activeRightBottom": null,
   "splitLeftRatio": 0.5,
   "splitRightRatio": 0.5,
+  "splitLeftOrigin": null,
+  "splitRightOrigin": null,
   "panelWidths": {},
   "editorSplit": false,
   "editorSplitRatio": 0.5,
