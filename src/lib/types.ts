@@ -153,6 +153,7 @@ export interface TodoState {
 export type AiRequestKind =
   | "footnote"
   | "note"
+  | "highlight"
   | "quotation"
   | "citation"
   | "todo"
@@ -299,8 +300,16 @@ export interface ExamplesState {
 }
 
 // --- Notes ---
+//
+// The Notes panel hosts two polymorphic card kinds — notes and highlights.
+// Highlights wrap a text range with a colored tint (Adobe-style); notes
+// carry a rich-text body. Adding a note to an existing highlight spawns a
+// SIBLING note card sharing the same anchor (no morph; both cards live
+// alongside one another in the panel). The two coexist in a single
+// `cards` array; legacy `{ notes: [...] }` sidecars are migrated on load.
 
 export interface UserNote {
+  kind: "note";
   id: string;
   title: string; // optional display title (empty string if untitled)
   // Tiptap JSONContent doc — see normalizeRichContent for accepted shapes.
@@ -313,8 +322,21 @@ export interface UserNote {
   links: Link[];
 }
 
+export interface HighlightCard {
+  kind: "highlight";
+  id: string;
+  createdAt: string;
+  /** Hex color override; null = panel-theme default. v1 always null. */
+  highlightColor: string | null;
+  aiRequest: boolean;
+  /** Must carry exactly one text-range anchor link. */
+  links: Link[];
+}
+
+export type NoteCardItem = UserNote | HighlightCard;
+
 export interface NotesState {
-  notes: UserNote[];
+  cards: NoteCardItem[];
 }
 
 // --- Cutter ---

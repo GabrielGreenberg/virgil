@@ -1,6 +1,6 @@
 import { type ReactNode, type Dispatch, type SetStateAction, type RefObject } from "react";
 import type { JSONContent, Editor } from "@tiptap/react";
-import { NoteCard } from "@/panels/Notes";
+import { NoteCard, HighlightCard } from "@/panels/Notes";
 import { FootnoteCard } from "@/panels/Footnotes";
 import { ArchiveCard } from "@/panels/Archive";
 import { CutterCommentCard, CutterSuggestionCard } from "@/panels/Cutter";
@@ -18,6 +18,7 @@ import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
 import type {
   UserNote,
+  HighlightCard as HighlightCardData,
   ArchivedSnippet,
   CutterCard,
   CutterSuggestionCard as CutterSuggestionCardData,
@@ -41,6 +42,7 @@ import type {
 export interface PoppedCardDeps {
   // Entity collections
   notes: UserNote[];
+  highlights: HighlightCardData[];
   footnotes: FootnoteInfo[];
   archiveSnippets: ArchivedSnippet[];
   cutterCards: CutterCard[];
@@ -90,6 +92,8 @@ export interface PoppedCardDeps {
   updateNote: (id: string, content: JSONContent) => void;
   updateNoteTitle: (id: string, title: string) => void;
   setNoteAiRequest: (id: string, value: boolean) => void;
+  setHighlightAiRequest: (id: string, value: boolean) => void;
+  addNoteForHighlight: (id: string) => UserNote | null;
   deleteNote: (id: string) => void;
 
   // Footnotes
@@ -213,6 +217,24 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           onEditorFocus={d.setOverrideEditor}
           getCitationDisplayText={d.getCitationDisplayText}
           onCitationCreated={d.handleCitationCreated}
+          isPoppedOut
+        />
+      );
+    }
+    case "highlight": {
+      const hl = d.highlights.find((h) => h.id === id);
+      if (!hl) return null;
+      const canJump = getLinkedParagraphIds(hl).length > 0;
+      return (
+        <HighlightCard
+          key={key}
+          card={hl}
+          selected={d.selectedNoteId === hl.id}
+          onAddNote={(hid) => d.addNoteForHighlight(hid)}
+          onSetAiRequest={d.setHighlightAiRequest}
+          onDelete={d.deleteNote}
+          onSelect={d.setSelectedNoteId}
+          onJump={canJump ? (sourceEl) => d.editorRef.current?.jumpToCard(hl, sourceEl) : undefined}
           isPoppedOut
         />
       );

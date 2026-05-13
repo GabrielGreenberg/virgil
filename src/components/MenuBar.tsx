@@ -4,6 +4,7 @@ import { memo, useState, useRef, useEffect, useCallback, Fragment, type ReactNod
 import { Editor } from "@tiptap/react";
 import {
   IconNotes,
+  IconHighlight,
   IconTodo,
   IconRevisions,
   IconCutter,
@@ -312,6 +313,7 @@ export type ActionToolbarCallback = (anchorRect: DOMRect | null) => void;
 export interface ActionToolbarCallbacks {
   onAddComment?: ActionToolbarCallback;
   onAddNote?: ActionToolbarCallback;
+  onAddHighlight?: ActionToolbarCallback;
   onAddTodo?: ActionToolbarCallback;
   onCutSelection?: ActionToolbarCallback;
   onArchive?: ActionToolbarCallback;
@@ -928,6 +930,7 @@ export interface ActionButtonDef {
 export const ACTION_BUTTON_DEFS: ActionButtonDef[] = [
   { callbackKey: "onAddComment", panelId: "revisions", themeKey: "revision", title: "Add revision", color: "#9333ea", hoverBg: "#faf5ff", hoverColor: "#7e22ce", icon: <IconRevisions size={16} />, dataAttr: "data-add-comment-button" },
   { callbackKey: "onAddNote", panelId: "notes", themeKey: "note", title: "Add note", color: "#15803d", hoverBg: "#f0fdf4", hoverColor: "#166534", icon: <IconNotes size={16} />, dataAttr: "data-add-note-button" },
+  { callbackKey: "onAddHighlight", panelId: "notes", themeKey: "highlight", title: "Highlight selection", color: "#d97706", hoverBg: "#fffbeb", hoverColor: "#92400e", icon: <IconHighlight size={16} />, dataAttr: "data-add-highlight-button" },
   { callbackKey: "onAddTodo", panelId: "todo", themeKey: "todo", title: "Add todo", color: "#44403c", hoverBg: "#f5f4f1", hoverColor: "#1c1917", icon: <IconTodo size={16} />, dataAttr: "data-add-todo-button" },
   { callbackKey: "onCutSelection", panelId: "cutter", themeKey: "cut", title: "Add cut", color: "#b45757", hoverBg: "#fef2f2", hoverColor: "#993d3d", icon: <IconCutter size={16} />, dataAttr: "data-cut-selection-button" },
   { callbackKey: "onArchive", panelId: "archive", themeKey: "archive", title: "Add archive", color: "#7191b0", hoverBg: "#f0f5fa", hoverColor: "#5a7a99", icon: <IconArchive size={16} /> },
@@ -1431,7 +1434,7 @@ function ViewMenu({
 function MenuBarContent({
   editor,
   orientation,
-  onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddTodo, onCutSelection, onInsertCitation,
+  onAddComment, onArchive, onCreateFootnote, onQuoteSelection, onAddNote, onAddHighlight, onAddTodo, onCutSelection, onInsertCitation,
   showParTitles, onToggleParTitles,
   showLatexComments, onToggleLatexComments,
   showSectionIndicator, onToggleSectionIndicator,
@@ -1526,6 +1529,7 @@ function MenuBarContent({
             close={close}
             onAddComment={onAddComment}
             onAddNote={onAddNote}
+            onAddHighlight={onAddHighlight}
             onAddTodo={onAddTodo}
             onCutSelection={onCutSelection}
             onArchive={onArchive}

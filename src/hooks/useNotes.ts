@@ -1,9 +1,14 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import type { JSONContent } from "@tiptap/react";
 import { generateEntityId } from "@/lib/uuid";
-import type { NotesState, UserNote } from "@/lib/types";
+import type {
+  HighlightCard,
+  NoteCardItem,
+  NotesState,
+  UserNote,
+} from "@/lib/types";
 import { normalizeRichContent, emptyRichContent } from "@/lib/footnote-content";
 import {
   addParagraphLink,
@@ -20,11 +25,12 @@ import { usePersistentState } from "./usePersistentState";
 import { usePristineTracker } from "./usePristineTracker";
 import type { PristineKindApi } from "./usePristineCardManager";
 
-const EMPTY_STATE: NotesState = { notes: [] };
+const EMPTY_STATE: NotesState = { cards: [] };
 
 function migrateNote(raw: unknown): UserNote {
-  const r = raw as Partial<UserNote>;
+  const r = (raw ?? {}) as Partial<UserNote>;
   return {
+    kind: "note",
     id: r.id!,
     title: typeof r.title === "string" ? r.title : "",
     content: normalizeRichContent(r.content),
@@ -34,9 +40,40 @@ function migrateNote(raw: unknown): UserNote {
   };
 }
 
+function migrateHighlight(raw: unknown): HighlightCard {
+  const r = (raw ?? {}) as Partial<HighlightCard> & { highlightColor?: unknown };
+  return {
+    kind: "highlight",
+    id: r.id!,
+    createdAt: r.createdAt!,
+    highlightColor:
+      typeof r.highlightColor === "string" ? r.highlightColor : null,
+    aiRequest: !!r.aiRequest,
+    links: migrateCardLinks("highlight", raw),
+  };
+}
+
+function migrateCard(raw: unknown): NoteCardItem | null {
+  const r = (raw ?? {}) as { kind?: string; id?: string };
+  if (!r.id) return null;
+  if (r.kind === "highlight") return migrateHighlight(raw);
+  return migrateNote(raw);
+}
+
 function migrateNotes(raw: unknown): NotesState {
-  const s = raw as Partial<NotesState>;
-  return { notes: Array.isArray(s.notes) ? s.notes.map(migrateNote) : [] };
+  const s = (raw ?? {}) as { cards?: unknown; notes?: unknown };
+  if (Array.isArray(s.cards)) {
+    return {
+      cards: s.cards
+        .map(migrateCard)
+        .filter((c): c is NoteCardItem => c !== null),
+    };
+  }
+  // Legacy { notes: UserNote[] } sidecars — stamp kind: "note" on each.
+  if (Array.isArray(s.notes)) {
+    return { cards: s.notes.map(migrateNote) };
+  }
+  return { cards: [] };
 }
 
 export function useNotes(docId: string | null, externalPristine?: PristineKindApi | null) {
@@ -49,6 +86,16 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const localPristine = usePristineTracker();
   const pristine = externalPristine ?? localPristine;
 
+  const cards = state.cards;
+  const notes = useMemo(
+    () => cards.filter((c): c is UserNote => c.kind === "note"),
+    [cards],
+  );
+  const highlights = useMemo(
+    () => cards.filter((c): c is HighlightCard => c.kind === "highlight"),
+    [cards],
+  );
+
   const addNote = useCallback(
     (
       paragraphId: string | null,
@@ -56,8 +103,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       anchor?: { anchorId: string; anchorText: string },
     ) => {
       let newNote: UserNote = {
+        kind: "note",
         id: generateEntityId(),
-        title: nextCardTitle("note", state.notes.length),
+        title: nextCardTitle("note", notes.length),
         content: content ?? emptyRichContent(),
         createdAt: new Date().toISOString(),
         aiRequest: false,
@@ -71,58 +119,94 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
       // pristine — a note seeded from a drop or selection counts as
       // "written to" since the user already committed an intent.
       if (!content && !anchor && !paragraphId) pristine.markNew(newNote.id);
-      update((prev) => ({ notes: [...prev.notes, newNote] }));
+      update((prev) => ({ cards: [...prev.cards, newNote] }));
       return newNote;
     },
-    [update, pristine, state.notes.length],
+    [update, pristine, notes.length],
+  );
+
+  const addHighlight = useCallback(
+    (
+      anchor: { anchorId: string; anchorText: string },
+      paragraphId: string | null,
+      color?: string | null,
+    ): HighlightCard => {
+      let newCard: HighlightCard = {
+        kind: "highlight",
+        id: generateEntityId(),
+        createdAt: new Date().toISOString(),
+        highlightColor: color ?? null,
+        aiRequest: false,
+        links: [],
+      };
+      if (paragraphId) {
+        newCard = addParagraphLink(newCard, "highlight", paragraphId);
+      }
+      newCard = setTextAnchorLink(
+        newCard,
+        "highlight",
+        anchor.anchorId,
+        anchor.anchorText,
+      );
+      update((prev) => ({ cards: [...prev.cards, newCard] }));
+      return newCard;
+    },
+    [update],
   );
 
   const setNoteAnchor = useCallback(
     (id: string, anchorId: string, anchorText: string) => {
       update((prev) => ({
-        notes: prev.notes.map((n) =>
-          n.id === id ? setTextAnchorLink(n, "note", anchorId, anchorText) : n,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note"
+            ? setTextAnchorLink(c, "note", anchorId, anchorText)
+            : c,
         ),
       }));
     },
     [update],
   );
 
-  const clearNoteAnchor = useCallback(
+  // Orphan listener — when the mark vanishes from the doc, clear the dead
+  // anchor on the matching card (note or highlight). Highlights with no
+  // anchor are kept; the card stays orphaned in the panel until deleted.
+  const clearCardAnchor = useCallback(
     (anchorId: string) => {
       update((prev) => {
-        if (!prev.notes.some((n) => getTextAnchor(n)?.anchorId === anchorId)) {
+        if (!prev.cards.some((c) => getTextAnchor(c)?.anchorId === anchorId)) {
           return prev;
         }
         return {
-          notes: prev.notes.map((n) =>
-            getTextAnchor(n)?.anchorId === anchorId
-              ? clearTextAnchorLink(n, "note")
-              : n,
-          ),
+          cards: prev.cards.map((c) => {
+            if (getTextAnchor(c)?.anchorId !== anchorId) return c;
+            if (c.kind === "note") return clearTextAnchorLink(c, "note");
+            if (c.kind === "highlight") return clearTextAnchorLink(c, "highlight");
+            return c;
+          }),
         };
       });
     },
     [update],
   );
 
-  // Orphan listener — when the mark vanishes from the doc, clear the dead id
-  // on the matching note (keep the note; it becomes un-anchored).
   useEffect(() => {
     const handler = (e: Event) => {
       const { anchorId, kind } = (e as CustomEvent).detail || {};
-      if (kind !== "note" || !anchorId) return;
-      clearNoteAnchor(anchorId);
+      if (!anchorId) return;
+      if (kind !== "note" && kind !== "highlight") return;
+      clearCardAnchor(anchorId);
     };
     window.addEventListener("virgil-anchor-orphaned", handler);
     return () => window.removeEventListener("virgil-anchor-orphaned", handler);
-  }, [clearNoteAnchor]);
+  }, [clearCardAnchor]);
 
   const updateNote = useCallback(
     (id: string, content: JSONContent) => {
       pristine.markDirty(id);
       update((prev) => ({
-        notes: prev.notes.map((n) => (n.id === id ? { ...n, content } : n)),
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note" ? { ...c, content } : c,
+        ),
       }));
     },
     [update, pristine],
@@ -132,7 +216,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     (id: string, title: string) => {
       pristine.markDirty(id);
       update((prev) => ({
-        notes: prev.notes.map((n) => (n.id === id ? { ...n, title } : n)),
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note" ? { ...c, title } : c,
+        ),
       }));
     },
     [update, pristine],
@@ -141,9 +227,11 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const setNoteAiRequest = useCallback(
     (id: string, value: boolean) => {
       pristine.markDirty(id);
-      const note = state.notes.find((n) => n.id === id);
+      const note = notes.find((n) => n.id === id);
       update((prev) => ({
-        notes: prev.notes.map((n) => (n.id === id ? { ...n, aiRequest: value } : n)),
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note" ? { ...c, aiRequest: value } : c,
+        ),
       }));
       if (note) {
         void bridgeCardAiRequestFlag(
@@ -151,6 +239,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
           { panel: "notes", cardId: id },
           value,
           {
+            kind: "note",
             text: note.title || "<note>",
             paragraphIds: getLinkedParagraphIds(note),
             selectedText: getTextAnchor(note)?.anchorText,
@@ -158,14 +247,42 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
         );
       }
     },
-    [update, pristine, docId, state.notes],
+    [update, pristine, docId, notes],
+  );
+
+  const setHighlightAiRequest = useCallback(
+    (id: string, value: boolean) => {
+      const card = highlights.find((h) => h.id === id);
+      update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "highlight" ? { ...c, aiRequest: value } : c,
+        ),
+      }));
+      if (card) {
+        const anchorText = getTextAnchor(card)?.anchorText || "";
+        void bridgeCardAiRequestFlag(
+          docId,
+          { panel: "notes", cardId: id },
+          value,
+          {
+            kind: "highlight",
+            text: anchorText || "<highlight>",
+            paragraphIds: getLinkedParagraphIds(card),
+            selectedText: anchorText,
+          },
+        );
+      }
+    },
+    [update, docId, highlights],
   );
 
   const addNoteParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
-        notes: prev.notes.map((n) =>
-          n.id === id ? addParagraphLink(n, "note", paragraphId) : n,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note"
+            ? addParagraphLink(c, "note", paragraphId)
+            : c,
         ),
       }));
     },
@@ -175,8 +292,10 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const removeNoteParagraphId = useCallback(
     (id: string, paragraphId: string) => {
       update((prev) => ({
-        notes: prev.notes.map((n) =>
-          n.id === id ? removeParagraphLink(n, paragraphId) : n,
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "note"
+            ? removeParagraphLink(c, paragraphId)
+            : c,
         ),
       }));
     },
@@ -186,7 +305,7 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   const deleteNote = useCallback(
     (id: string) => {
       pristine.markDirty(id);
-      update((prev) => ({ notes: prev.notes.filter((n) => n.id !== id) }));
+      update((prev) => ({ cards: prev.cards.filter((c) => c.id !== id) }));
     },
     [update, pristine],
   );
@@ -194,8 +313,8 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
   /**
    * Drop any notes that were created via `addNote()` but never edited.
    * Call from panel-close / host-unmount so "press +, do nothing, leave"
-   * does not leave a blank card behind. When the external pristine manager
-   * is in use, it owns discard via the registered delete callback.
+   * does not leave a blank card behind. Highlights are never pristine —
+   * they always carry a text anchor.
    */
   const discardPristineNotes = useCallback(() => {
     if (externalPristine) {
@@ -205,20 +324,24 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     const ids = localPristine.takePristine();
     if (ids.length === 0) return;
     const idSet = new Set(ids);
-    update((prev) => ({ notes: prev.notes.filter((n) => !idSet.has(n.id)) }));
+    update((prev) => ({ cards: prev.cards.filter((c) => !idSet.has(c.id)) }));
   }, [update, externalPristine, localPristine]);
 
   return {
-    notes: state.notes,
+    cards,
+    notes,
+    highlights,
     addNote,
+    addHighlight,
     updateNote,
     updateNoteTitle,
     setNoteAiRequest,
+    setHighlightAiRequest,
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,
     setNoteAnchor,
-    clearNoteAnchor,
+    clearNoteAnchor: clearCardAnchor,
     discardPristineNotes,
   };
 }

@@ -25,6 +25,17 @@ export const LinkedAnchor = Mark.create({
       linkId: { default: "", renderHTML: () => ({}) },
       linkKind: { default: "anchor", renderHTML: () => ({}) },
       linkCard: { default: "", renderHTML: () => ({}) },
+      // Persistent highlight tint (Adobe-style). When set, CSS paints the
+      // anchored text yellow unconditionally — independent of the
+      // hover/selection-driven highlight states for other card kinds.
+      // Survives kind transitions so a sibling note over a highlight's
+      // range doesn't dim the existing yellow.
+      tintColor: {
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute("data-tint-color"),
+        renderHTML: (attrs: Record<string, unknown>) =>
+          attrs.tintColor ? { "data-tint-color": attrs.tintColor as string } : {},
+      },
     };
   },
 
@@ -51,6 +62,7 @@ export const LinkedAnchor = Mark.create({
       const cardKind =
         legacyKind === "revision" ? "comment"
           : legacyKind === "note" ? "note"
+          : legacyKind === "highlight" ? "highlight"
           : legacyKind === "cut" ? "cut"
           : "";
       if (cardKind) linkCard = `${cardKind}:`;

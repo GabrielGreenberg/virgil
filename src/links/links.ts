@@ -59,6 +59,8 @@ function legacyAnchorKindToCardKind(
   switch (kind) {
     case "note":
       return "note";
+    case "highlight":
+      return "highlight";
     case "cut":
     case "cutter-comment":
       return "cutter-comment";
@@ -362,6 +364,8 @@ function cardKindToLegacyAnchorKind(cardKind: CardKind): string {
   switch (cardKind) {
     case "note":
       return "note";
+    case "highlight":
+      return "highlight";
     case "cutter-comment":
       return "cutter-comment";
     case "cutter-suggestion":
@@ -685,6 +689,7 @@ function removeLinkedAnchorMark(editor: Editor, anchorId: string): void {
 
 export type LinkedAnchorKind =
   | "note"
+  | "highlight"
   | "revision"
   | "cutter-comment"
   | "cutter-suggestion";
@@ -700,6 +705,8 @@ function legacyKindToCardKindString(kind: LinkedAnchorKind): string {
   switch (kind) {
     case "note":
       return "note";
+    case "highlight":
+      return "highlight";
     case "cutter-comment":
       return "cutter-comment";
     case "cutter-suggestion":
@@ -719,6 +726,7 @@ export function createLinkedAnchor(
   kind: LinkedAnchorKind,
   range?: { from: number; to: number },
   cardId?: string,
+  opts?: { tintColor?: string | null },
 ): LinkedAnchorRecord | null {
   const sel = range ?? {
     from: editor.state.selection.from,
@@ -739,6 +747,7 @@ export function createLinkedAnchor(
       linkId: anchorId,
       linkKind: "anchor",
       linkCard,
+      tintColor: opts?.tintColor ?? null,
     })
     .setTextSelection(sel.from)
     .run();
@@ -778,13 +787,18 @@ export function updateLinkedAnchorCard(
 ): void {
   const range = resolveTextRangeByAnchorId(editor, anchorId);
   if (!range) return;
-  // Preserve legacy `kind` attr and other existing attrs.
+  // Preserve legacy `kind` and `tintColor` attrs along with other
+  // existing attrs (tintColor especially must survive kind transitions
+  // so the yellow stays through highlight→note-sibling).
   let legacyKind = "note";
+  let tintColor: string | null = null;
   editor.state.doc.nodesBetween(range.from, range.to, (node) => {
     if (!node.isText) return true;
     for (const m of node.marks) {
       if (m.type.name === "linkedAnchor" && m.attrs.anchorId === anchorId) {
         legacyKind = (m.attrs.kind as string) || legacyKind;
+        const tc = m.attrs.tintColor;
+        if (typeof tc === "string" && tc) tintColor = tc;
       }
     }
     return true;
@@ -798,6 +812,7 @@ export function updateLinkedAnchorCard(
       linkId: anchorId,
       linkKind: "anchor",
       linkCard: `${cardKind}:${cardId}`,
+      tintColor,
     })
     .setTextSelection(range.from)
     .run();

@@ -562,6 +562,7 @@ export default function EditorLayout() {
   const {
     notes,
     addNote,
+    addHighlight,
     addNoteParagraphId,
     removeNoteParagraphId,
     deleteNote,
@@ -2492,6 +2493,7 @@ export default function EditorLayout() {
   } = useDropActions({
     editorRef,
     addNote,
+    addHighlight,
     addCutterComment,
     setSelectedNoteId,
     setSelectedCutterCardId,

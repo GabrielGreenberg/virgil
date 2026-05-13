@@ -16,6 +16,7 @@ export type PanelThemeKey =
   | "bib"
   | "footnote"
   | "note"
+  | "highlight"
   | "archive"
   | "quote"
   | "todo"

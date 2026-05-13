@@ -33,6 +33,7 @@ export type PanelKind =
 
 export type CardKind =
   | "note"
+  | "highlight"
   | "footnote"
   | "archive"
   | "todo"

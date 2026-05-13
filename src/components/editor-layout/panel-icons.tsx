@@ -13,6 +13,19 @@ export function IconNotes({ active, size = 18 }: { active?: boolean; size?: numb
   );
 }
 
+// Highlighter pen — chunky marker tip with a swept underline beneath so
+// the icon reads as "drag this across text and it leaves yellow."
+export function IconHighlight({ active, size = 18 }: { active?: boolean; size?: number }) {
+  const c = active ? "var(--accent)" : "currentColor";
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 4 L20 9 L13 16 L8 16 L8 11 Z" />
+      <path d="M8 16 L6 18 L8 20 L10 18 Z" />
+      <line x1="3" y1="22" x2="21" y2="22" strokeWidth="2.5" />
+    </svg>
+  );
+}
+
 export function IconRevisions({ active, size = 18 }: { active?: boolean; size?: number }) {
   const c = active ? "var(--accent)" : "currentColor";
   const cx = 12, cy = 12, r = 8;

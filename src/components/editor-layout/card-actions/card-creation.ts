@@ -2,6 +2,8 @@ import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateActio
 import type { JSONContent } from "@tiptap/react";
 import type {
   UserNote,
+  HighlightCard,
+  NoteCardItem,
   CutterCommentCard,
   CutterSuggestionCard,
   RevisionCommentCard,
@@ -12,6 +14,10 @@ import type {
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { nextCardTitle } from "@/panels/panel-registry";
+import {
+  getTextAnchor,
+  removeLinkedAnchor,
+} from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -43,6 +49,17 @@ export interface CardCreationDeps {
     content?: JSONContent,
     anchor?: AnchorRef,
   ) => UserNote;
+  addHighlight: (
+    anchor: AnchorRef,
+    paragraphId: string | null,
+    color?: string | null,
+  ) => HighlightCard;
+  /** Notes panel's current cards (note + highlight union). Used by
+   *  `addNoteForHighlight` / `deleteHighlightOrNote` to look up the live
+   *  card by id without forcing those callers to thread the hook through
+   *  their own props. */
+  notesCards: NoteCardItem[];
+  deleteNote: (id: string) => void;
   addCutterComment: (
     paragraphId: string | null,
     content?: JSONContent,
@@ -107,6 +124,22 @@ export interface CardCreationApi {
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
   }) => UserNote;
+  createHighlight: (opts: {
+    /** Mandatory — highlights are always a text-range gesture. */
+    anchor: AnchorRef;
+    paragraphId?: string | null;
+    color?: string | null;
+    anchorRect?: DOMRect | null;
+    mode?: CardCreateMode;
+  }) => HighlightCard;
+  /** Spawn a sibling Note card anchored to the same text range as the
+   *  given highlight. The highlight is left untouched (yellow tint stays);
+   *  the new note shares the highlight's `anchorId` so no new in-doc mark
+   *  is created. */
+  addNoteForHighlight: (highlightId: string) => UserNote | null;
+  /** Delete a note OR highlight by id. For highlights, also strips the
+   *  in-doc `linkedAnchor` mark so the yellow tint goes away. */
+  deleteHighlightOrNote: (id: string) => void;
   createCutterComment: (opts: {
     paragraphId?: string | null;
     content?: JSONContent;
@@ -164,6 +197,9 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   const {
     editorRef,
     addNote,
+    addHighlight,
+    notesCards,
+    deleteNote,
     addCutterComment,
     addCutterSuggestion,
     addRevisionComment,
@@ -228,6 +264,61 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
       return note;
     },
     [addNote, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const createHighlight = useCallback<CardCreationApi["createHighlight"]>(
+    (opts) => {
+      const card = addHighlight(opts.anchor, opts.paragraphId ?? null, opts.color ?? null);
+      setSelectedNoteId(card.id);
+      pin("highlight", card.id);
+      if (opts.mode === "omni") return card;
+      if (fromToolbar(opts))
+        popCardAtAnchor("highlight", card.id, opts.anchorRect!);
+      else ensurePanelActive("notes");
+      return card;
+    },
+    [addHighlight, setSelectedNoteId, pin, ensurePanelActive, popCardAtAnchor],
+  );
+
+  const addNoteForHighlight = useCallback<CardCreationApi["addNoteForHighlight"]>(
+    (highlightId) => {
+      const highlight = notesCards.find(
+        (c): c is HighlightCard => c.kind === "highlight" && c.id === highlightId,
+      );
+      if (!highlight) return null;
+      const textAnchor = getTextAnchor(highlight);
+      const pids = highlight.links
+        .flatMap((l) => (l.anchor.type === "anchor" ? l.anchor.paragraphIds : []));
+      const paragraphId = pids[0] ?? null;
+      // The new note shares the highlight's existing `linkedAnchor` mark
+      // by referencing the same `anchorId` — no new mark is created, so
+      // the highlight's `tintColor` survives. Deleting the highlight
+      // strips the mark; the note's textRange link goes stale but its
+      // paragraph anchor still holds the note in the panel.
+      const anchor = textAnchor
+        ? { anchorId: textAnchor.anchorId, anchorText: textAnchor.anchorText }
+        : undefined;
+      const note = addNote(paragraphId, undefined, anchor);
+      setSelectedNoteId(note.id);
+      pin("note", note.id);
+      return note;
+    },
+    [notesCards, addNote, setSelectedNoteId, pin],
+  );
+
+  const deleteHighlightOrNote = useCallback<CardCreationApi["deleteHighlightOrNote"]>(
+    (id) => {
+      const card = notesCards.find((c) => c.id === id);
+      if (card?.kind === "highlight") {
+        // Strip the in-doc tint before dropping the sidecar entry so the
+        // yellow doesn't linger over deleted text.
+        const editor = editorRef.current?.getEditor();
+        const anchorId = getTextAnchor(card)?.anchorId;
+        if (editor && anchorId) removeLinkedAnchor(editor, anchorId);
+      }
+      deleteNote(id);
+    },
+    [notesCards, editorRef, deleteNote],
   );
 
   const createCutterComment = useCallback<CardCreationApi["createCutterComment"]>(
@@ -400,6 +491,9 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   return useMemo<CardCreationApi>(
     () => ({
       createNote,
+      createHighlight,
+      addNoteForHighlight,
+      deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,
       createRevisionComment,
@@ -411,6 +505,9 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
     }),
     [
       createNote,
+      createHighlight,
+      addNoteForHighlight,
+      deleteHighlightOrNote,
       createCutterComment,
       createCutterSuggestion,
       createRevisionComment,

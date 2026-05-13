@@ -123,8 +123,17 @@ const PREFIX_TO_PANEL: Record<string, PanelKind> = (() => {
   for (const entry of Object.values(PANEL_REGISTRY)) {
     if (entry.card) out[entry.card.keyPrefix] = entry.kind;
   }
-  // Polymorphic cutter kinds: both prefixes resolve to the cutter panel.
-  for (const kind of ["cutter-comment", "cutter-suggestion", "revision-suggestion"] as const) {
+  // Polymorphic kinds: resolve to their owning panel via the registry's
+  // POLYMORPHIC_CARD_PANEL table. Notes panel hosts both `note` and
+  // `highlight`; Cutter hosts the two cutter kinds; Revisions surfaces
+  // `revision-suggestion` for completeness.
+  for (const kind of [
+    "cutter-comment",
+    "cutter-suggestion",
+    "revision-suggestion",
+    "note",
+    "highlight",
+  ] as const) {
     const panel = getPanelByCardKind(kind);
     if (panel) out[kind] = panel.kind;
   }

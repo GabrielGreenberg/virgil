@@ -48,6 +48,10 @@ export interface BridgeContext {
   paragraphIds?: string[];
   /** Mode B selectedText snapshot, if any. */
   selectedText?: string;
+  /** Override for the default `PANEL_TO_KIND` mapping. Set when a panel
+   *  hosts multiple AI-request kinds (e.g. the Notes panel hosts both
+   *  `note` and `highlight`). */
+  kind?: AiRequestKind;
 }
 
 /**
@@ -104,7 +108,7 @@ export async function bridgeCardAiRequestFlag(
     } else {
       const req: AiRequest = {
         id: generateEntityId(),
-        kind: PANEL_TO_KIND[link.panel],
+        kind: ctx.kind ?? PANEL_TO_KIND[link.panel],
         text: ctx.text,
         createdAt: new Date().toISOString(),
         status: "submitted",

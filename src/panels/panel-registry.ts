@@ -47,7 +47,9 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
     kind: "notes",
     label: "Notes",
     folder: "src/panels/Notes",
-    card: { kind: "note", keyPrefix: "note", themeKey: "note" },
+    // Polymorphic — hosts both `note` and `highlight` card kinds. See
+    // POLYMORPHIC_CARD_PANEL below.
+    card: null,
     omniEligible: true,
     omniSide: "right",
     defaultStripSide: "right",
@@ -189,6 +191,7 @@ export const PANEL_REGISTRY: Record<PanelKind, PanelRegistryEntry> = {
  *  so they don't have a parent panel — listed here directly. */
 export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
   note: "note",
+  highlight: "highlight",
   footnote: "footnote",
   archive: "archive",
   todo: "todo",
@@ -216,6 +219,7 @@ export const CARD_KEY_PREFIXES: Record<CardKind, string> = {
  *  every kind since they're rendered as a static overline. */
 export const CARD_TYPE_LABELS: Record<CardKind, string> = {
   note: "Note",
+  highlight: "Highlight",
   footnote: "Footnote",
   archive: "Archive",
   todo: "Task",
@@ -243,6 +247,7 @@ export function cardTypeLabel(kind: CardKind): string {
  *  ai-requests / bib entries / errors are externally generated). */
 export const CARD_TITLE_LABELS: Record<CardKind, string | null> = {
   note: "Note",
+  highlight: null,
   archive: "Archive Text",
   quotation: "Quotation",
   todo: "Task",
@@ -290,6 +295,8 @@ export function cardPopKey(cardKind: CardKind, id: string): string {
 const POLYMORPHIC_CARD_PANEL: Partial<Record<CardKind, PanelKind>> = {
   "cutter-comment": "cutter",
   "cutter-suggestion": "cutter",
+  note: "notes",
+  highlight: "notes",
 };
 
 export function getPanelByCardKind(cardKind: CardKind): PanelRegistryEntry | null {

@@ -28,6 +28,7 @@ import type {
   OrphanedFootnote,
   RevisionCard,
   CutterCard,
+  UserNote,
 } from "@/lib/types";
 import type { LatexError } from "@/lib/latex-errors";
 import type { FootnoteInfo, ExampleInfo } from "../../Editor";
@@ -85,12 +86,17 @@ export interface OmniHostProps {
   updateQuotationQuote: QuotationsHook["updateQuote"];
   deleteQuotationQuote: QuotationsHook["deleteQuote"];
   updateQuotationNotes: QuotationsHook["updateNotes"];
-  // Notes
-  notes: NotesHook["notes"];
+  // Notes (polymorphic: hosts both `note` and `highlight` cards)
+  notesCards: NotesHook["cards"];
   updateNote: NotesHook["updateNote"];
   updateNoteTitle: NotesHook["updateNoteTitle"];
   setNoteAiRequest: NotesHook["setNoteAiRequest"];
-  deleteNote: NotesHook["deleteNote"];
+  setHighlightAiRequest: NotesHook["setHighlightAiRequest"];
+  /** Spawn a sibling note for a highlight; routed through cardCreation. */
+  addNoteForHighlight: (id: string) => UserNote | null;
+  /** Kind-aware delete; routed through cardCreation so deleting a
+   *  highlight also strips the in-doc tint. */
+  deleteNote: (id: string) => void;
   // Archive
   sortedArchiveSnippets: ArchivedSnippet[];
   anchoredIds: Set<string>;
@@ -450,7 +456,7 @@ export function OmniHost(p: OmniHostProps) {
       updateQuotationNotes: p.updateQuotationNotes,
     }),
     ...buildNoteOmniItems({
-      notes: p.notes,
+      cards: p.notesCards,
       selectedNoteId,
       setSelectedNoteId: setNoteInOmni,
       jumpToCard,
@@ -458,6 +464,8 @@ export function OmniHost(p: OmniHostProps) {
       updateNote: p.updateNote,
       updateNoteTitle: p.updateNoteTitle,
       setNoteAiRequest: p.setNoteAiRequest,
+      setHighlightAiRequest: p.setHighlightAiRequest,
+      addNoteForHighlight: p.addNoteForHighlight,
       deleteNote: p.deleteNote,
       setOverrideEditor,
       getCitationDisplayText,
@@ -541,7 +549,7 @@ export function OmniHost(p: OmniHostProps) {
     p.footnotes, p.orphanedFootnotes,
     p.citations, p.citationPositionMap, p.bibEntries, p.bibPackage,
     p.quotationGroups,
-    p.notes,
+    p.notesCards,
     p.sortedArchiveSnippets, p.anchoredIds,
     p.todoItems,
     p.examples,

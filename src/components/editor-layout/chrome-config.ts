@@ -23,6 +23,7 @@ import type { CardKind, PanelKind } from "@/panels/_shared/types";
 export type ActionKind =
   | "comment"   // revision comment
   | "note"
+  | "highlight"
   | "todo"
   | "cut"
   | "archive"
@@ -132,6 +133,7 @@ export function isActionVisible(
 export const CALLBACK_TO_ACTION_KIND: Record<string, ActionKind | undefined> = {
   onAddComment: "comment",
   onAddNote: "note",
+  onAddHighlight: "highlight",
   onAddTodo: "todo",
   onCutSelection: "cut",
   onArchive: "archive",

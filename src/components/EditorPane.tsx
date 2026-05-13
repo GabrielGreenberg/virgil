@@ -1284,6 +1284,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const cardCreation = useCardCreation({
     editorRef: innerRef,
     addNote: notesHook.addNote,
+    addHighlight: notesHook.addHighlight,
+    notesCards: notesHook.cards,
+    deleteNote: notesHook.deleteNote,
     addCutterComment: cutterHook.addComment,
     addCutterSuggestion: cutterHook.addSuggestion,
     addRevisionComment: revisionsHook.addComment,
@@ -1753,6 +1756,29 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }
   }, [readSelection, cardCreation]);
 
+  // Highlight needs a live text-range selection (Adobe-style); a click
+  // with no selection is a no-op.
+  const handleToolbarAddHighlight = useCallback((anchorRect: DOMRect | null) => {
+    const sel = readSelection();
+    if (!sel) return;
+    const paragraphId = sel.editorHandle.ensureParagraphUuid(sel.from);
+    const record = createLinkedAnchor(
+      sel.ed,
+      "highlight",
+      undefined,
+      undefined,
+      { tintColor: "#fbbf24" },
+    );
+    if (!record) return;
+    const card = cardCreation.createHighlight({
+      anchor: { anchorId: record.anchorId, anchorText: record.text },
+      paragraphId,
+      anchorRect,
+    });
+    updateLinkedAnchorCard(sel.ed, record.anchorId, "highlight", card.id);
+    try { window.getSelection()?.removeAllRanges(); } catch { /* ignore */ }
+  }, [readSelection, cardCreation]);
+
   const handleToolbarAddTodo = useCallback((anchorRect: DOMRect | null) => {
     const sel = readSelection();
     const paragraphId = sel ? sel.editorHandle.ensureParagraphUuid(sel.from) : null;
@@ -1817,6 +1843,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const actionsBundle = useMemo<ActionToolbarCallbacks>(() => ({
     onAddComment: handleToolbarAddComment,
     onAddNote: handleToolbarAddNote,
+    onAddHighlight: handleToolbarAddHighlight,
     onAddTodo: handleToolbarAddTodo,
     onCutSelection: handleToolbarAddCut,
     onArchive: handleToolbarArchive,
@@ -1826,6 +1853,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }), [
     handleToolbarAddComment,
     handleToolbarAddNote,
+    handleToolbarAddHighlight,
     handleToolbarAddTodo,
     handleToolbarAddCut,
     handleToolbarArchive,
@@ -1906,6 +1934,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   } = useDropActions({
     editorRef: innerRef,
     addNote: notesHook.addNote,
+    addHighlight: notesHook.addHighlight,
     addCutterComment: cutterHook.addComment,
     setSelectedNoteId,
     setSelectedCutterCardId,
@@ -2227,6 +2256,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => ({
       // Entity collections
       notes: notesHook.notes,
+      highlights: notesHook.highlights,
       footnotes: footnoteInfos,
       archiveSnippets: archiveHook.snippets,
       cutterCards: cutterHook.cards,
@@ -2274,7 +2304,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       updateNote: notesHook.updateNote,
       updateNoteTitle: notesHook.updateNoteTitle,
       setNoteAiRequest: notesHook.setNoteAiRequest,
-      deleteNote: notesHook.deleteNote,
+      setHighlightAiRequest: notesHook.setHighlightAiRequest,
+      // Route through cardCreation: spawning a sibling note shares the
+      // highlight's anchorId; deleting a highlight strips the in-doc tint.
+      addNoteForHighlight: cardCreation.addNoteForHighlight,
+      deleteNote: cardCreation.deleteHighlightOrNote,
 
       // Footnotes
       handleEditFootnote,
@@ -2577,6 +2611,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 actions={{
                   onAddComment: handleToolbarAddComment,
                   onAddNote: handleToolbarAddNote,
+                  onAddHighlight: handleToolbarAddHighlight,
                   onAddTodo: handleToolbarAddTodo,
                   onCutSelection: handleToolbarAddCut,
                   onArchive: handleToolbarArchive,
@@ -2750,6 +2785,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     bibReviewHook={bibReviewHook}
                     bibSettingsHook={bibSettingsHook}
                     notesHook={notesHook}
+                    cardCreation={cardCreation}
                     allEditorCitations={allEditorCitations}
                     citationPositionMap={citationPositionMap}
                     citationOrder={citationOrder}
@@ -2826,6 +2862,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       bibReviewHook={bibReviewHook}
                       bibSettingsHook={bibSettingsHook}
                       notesHook={notesHook}
+                      cardCreation={cardCreation}
                       allEditorCitations={allEditorCitations}
                       citationPositionMap={citationPositionMap}
                       citationOrder={citationOrder}
@@ -2945,6 +2982,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 bibReviewHook={bibReviewHook}
                 bibSettingsHook={bibSettingsHook}
                 notesHook={notesHook}
+                cardCreation={cardCreation}
                 allEditorCitations={allEditorCitations}
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
@@ -3143,6 +3181,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onCreateFootnote={handleToolbarCreateFootnote}
                     onQuoteSelection={handleToolbarQuoteSelection}
                     onAddNote={handleToolbarAddNote}
+                    onAddHighlight={handleToolbarAddHighlight}
                     onAddTodo={handleToolbarAddTodo}
                     onCutSelection={handleToolbarAddCut}
                     onInsertCitation={handleToolbarInsertCitation}
@@ -3456,6 +3495,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         bibReviewHook={bibReviewHook}
                         bibSettingsHook={bibSettingsHook}
                         notesHook={notesHook}
+                        cardCreation={cardCreation}
                         allEditorCitations={allEditorCitations}
                         citationPositionMap={citationPositionMap}
                         citationOrder={citationOrder}
@@ -3627,6 +3667,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 bibReviewHook={bibReviewHook}
                 bibSettingsHook={bibSettingsHook}
                 notesHook={notesHook}
+                cardCreation={cardCreation}
                 allEditorCitations={allEditorCitations}
                 citationPositionMap={citationPositionMap}
                 citationOrder={citationOrder}
@@ -3759,6 +3800,7 @@ interface PaneRailProps {
   bibReviewHook: ReturnType<typeof useBibReview>;
   bibSettingsHook: ReturnType<typeof useBibSettings>;
   notesHook: ReturnType<typeof useNotes>;
+  cardCreation: ReturnType<typeof useCardCreation>;
   allEditorCitations: Array<{
     citationId: string;
     command: string;
@@ -3963,6 +4005,7 @@ function PaneRail({
   bibReviewHook,
   bibSettingsHook,
   notesHook,
+  cardCreation,
   allEditorCitations,
   citationPositionMap,
   citationOrder,
@@ -4103,11 +4146,13 @@ function PaneRail({
           updateQuotationQuote={quotationsHook.updateQuote}
           deleteQuotationQuote={quotationsHook.deleteQuote}
           updateQuotationNotes={quotationsHook.updateNotes}
-          notes={notesHook.notes}
+          notesCards={notesHook.cards}
           updateNote={notesHook.updateNote}
           updateNoteTitle={notesHook.updateNoteTitle}
           setNoteAiRequest={notesHook.setNoteAiRequest}
-          deleteNote={notesHook.deleteNote}
+          setHighlightAiRequest={notesHook.setHighlightAiRequest}
+          addNoteForHighlight={cardCreation.addNoteForHighlight}
+          deleteNote={cardCreation.deleteHighlightOrNote}
           sortedArchiveSnippets={sortedArchiveSnippets}
           anchoredIds={anchoredArchiveIds}
           updateArchiveSnippet={archiveHook.updateSnippet}
@@ -4257,6 +4302,7 @@ interface PaneRailBodyProps {
   bibReviewHook: ReturnType<typeof useBibReview>;
   bibSettingsHook: ReturnType<typeof useBibSettings>;
   notesHook: ReturnType<typeof useNotes>;
+  cardCreation: ReturnType<typeof useCardCreation>;
   allEditorCitations: Array<{
     citationId: string;
     command: string;
@@ -4334,6 +4380,7 @@ function PaneRailBody({
   bibReviewHook,
   bibSettingsHook,
   notesHook,
+  cardCreation,
   allEditorCitations,
   citationPositionMap,
   citationOrder,
@@ -4498,11 +4545,13 @@ function PaneRailBody({
       <NotesHost
         side={side}
         panelSide={notesPanelSide}
-        notes={notesHook.notes}
+        cards={notesHook.cards}
         addNote={notesHook.addNote}
+        addHighlight={notesHook.addHighlight}
         updateNote={notesHook.updateNote}
         updateNoteTitle={notesHook.updateNoteTitle}
         setNoteAiRequest={notesHook.setNoteAiRequest}
+        setHighlightAiRequest={notesHook.setHighlightAiRequest}
         deleteNote={notesHook.deleteNote}
         discardPristine={discardPristineNotes}
         onDropSelection={onDropSelectionOnNotes}

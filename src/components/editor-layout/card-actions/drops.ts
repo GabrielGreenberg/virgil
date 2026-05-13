@@ -1,6 +1,6 @@
 import { useCallback, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { JSONContent } from "@tiptap/react";
-import type { UserNote, CutterCommentCard } from "@/lib/types";
+import type { UserNote, HighlightCard, CutterCommentCard } from "@/lib/types";
 import { createLinkedAnchor, updateLinkedAnchorCard } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 
@@ -10,6 +10,11 @@ type AddNote = (
   content?: JSONContent,
   anchor?: { anchorId: string; anchorText: string },
 ) => UserNote;
+type AddHighlight = (
+  anchor: { anchorId: string; anchorText: string },
+  paragraphId: string | null,
+  color?: string | null,
+) => HighlightCard;
 type AddCutterComment = (
   paragraphId: string | null,
   content?: JSONContent,
@@ -38,6 +43,7 @@ type AddCutterComment = (
 export function useDropActions(deps: {
   editorRef: RefObject<EditorHandle | null>;
   addNote: AddNote;
+  addHighlight: AddHighlight;
   addCutterComment: AddCutterComment;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCutterCardId: Dispatch<SetStateAction<string | null>>;
@@ -45,27 +51,37 @@ export function useDropActions(deps: {
   const {
     editorRef,
     addNote,
+    addHighlight,
     addCutterComment,
     setSelectedNoteId,
     setSelectedCutterCardId,
   } = deps;
 
+  // Selection-drop on Notes defaults to Highlight (Adobe-style: dragging
+  // a text selection in is the "give me a yellow swatch" gesture). The
+  // panel header "+" dropdown lets the user create a Note from selection
+  // explicitly.
   const handleDropSelectionOnNotes = useCallback(
     (payload: DropSelectionPayload) => {
       const ed = editorRef.current?.getEditor();
       if (!ed || !editorRef.current) return;
       const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
-      const record = createLinkedAnchor(ed, "note", { from: payload.from, to: payload.to });
-      if (!record) return;
-      const note = addNote(
-        paragraphId,
+      const record = createLinkedAnchor(
+        ed,
+        "highlight",
+        { from: payload.from, to: payload.to },
         undefined,
-        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
+        { tintColor: "#fbbf24" },
       );
-      updateLinkedAnchorCard(ed, record.anchorId, "note", note.id);
-      setSelectedNoteId(note.id);
+      if (!record) return;
+      const card = addHighlight(
+        { anchorId: record.anchorId, anchorText: record.text || payload.selectedText },
+        paragraphId,
+      );
+      updateLinkedAnchorCard(ed, record.anchorId, "highlight", card.id);
+      setSelectedNoteId(card.id);
     },
-    [editorRef, addNote, setSelectedNoteId],
+    [editorRef, addHighlight, setSelectedNoteId],
   );
 
   const handleDropParagraphOnNotes = useCallback(
