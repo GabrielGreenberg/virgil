@@ -20,6 +20,7 @@ import {
   IconCitation,
   IconCutter,
   IconFootnote,
+  IconHighlight,
   IconNotes,
   IconQuotations,
   IconRevisions,
@@ -31,8 +32,8 @@ export type DragHandleAction =
   | "citation"
   | "quotation"
   | "note"
+  | "highlight"
   | "todo"
-  | "review"
   | "suggest-edit"
   | "cutter"
   | "archive";
@@ -48,14 +49,14 @@ interface MenuEntry {
 }
 
 const MENU_ENTRIES: MenuEntry[] = [
+  { action: "highlight", label: "Highlight", letter: "H", icon: <IconHighlight size={16} /> },
+  { action: "note", label: "Note", letter: "N", icon: <IconNotes size={16} /> },
   { action: "footnote", label: "Footnote", letter: "F", icon: <IconFootnote size={16} /> },
   { action: "citation", label: "Citation", letter: "C", icon: <IconCitation size={16} /> },
   { action: "quotation", label: "Quotation", letter: "Q", icon: <IconQuotations size={16} /> },
-  { action: "note", label: "Note", letter: "N", icon: <IconNotes size={16} /> },
   { action: "todo", label: "Todo", letter: "T", icon: <IconTodo size={16} /> },
-  { action: "review", label: "Review", letter: "R", icon: <IconRevisions size={16} /> },
-  { action: "suggest-edit", label: "Suggest edit", letter: "S", icon: <IconRevisions size={16} /> },
-  { action: "cutter", label: "Cutter", letter: "X", icon: <IconCutter size={16} /> },
+  { action: "suggest-edit", label: "Suggest edit", letter: "E", icon: <IconRevisions size={16} /> },
+  { action: "cutter", label: "Suggest cut", letter: "X", icon: <IconCutter size={16} /> },
   { action: "archive", label: "Archive", letter: "A", icon: <IconArchive size={16} />, destructive: true, separator: true },
 ];
 
@@ -86,19 +87,25 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
     return base + h;
   }, []);
 
-  // Position relative to the anchor — right of the handle by default,
-  // flip left if it would overflow the viewport. Top-aligned with the
-  // handle's top, nudged up if too close to the bottom edge.
+  // Position relative to the anchor — left of the handle by default so
+  // the menu doesn't cover the grip or the prose to its right. Flip
+  // right if there isn't room on the left. Vertically center the menu
+  // on the handle so the user's grip lands mid-menu; clamp to the
+  // viewport's top / bottom margins when centering would overflow.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    let left = anchorRect.right + 6;
-    if (left + MENU_W > vw - VIEWPORT_MARGIN) {
-      left = anchorRect.left - MENU_W - 6;
+    let left = anchorRect.left - MENU_W - 6;
+    if (left < VIEWPORT_MARGIN) {
+      left = anchorRect.right + 6;
+      if (left + MENU_W > vw - VIEWPORT_MARGIN) {
+        left = Math.max(VIEWPORT_MARGIN, vw - MENU_W - VIEWPORT_MARGIN);
+      }
     }
-    if (left < VIEWPORT_MARGIN) left = VIEWPORT_MARGIN;
-    let top = anchorRect.top;
+    const handleCenter = (anchorRect.top + anchorRect.bottom) / 2;
+    let top = handleCenter - menuHeight / 2;
+    if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
     if (top + menuHeight > vh - VIEWPORT_MARGIN) {
       top = Math.max(VIEWPORT_MARGIN, vh - menuHeight - VIEWPORT_MARGIN);
     }

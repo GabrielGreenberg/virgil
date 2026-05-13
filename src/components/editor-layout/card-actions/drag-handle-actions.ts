@@ -181,6 +181,25 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           focusCardKey = `note:${note.id}`;
           break;
         }
+        case "highlight": {
+          // Highlights always anchor to a range. For paragraph/heading
+          // passages the selection already spans the whole block, so the
+          // linkedAnchor wraps the entire passage.
+          if (!text) break;
+          const record = createLinkedAnchor(ed, "highlight", undefined, undefined, {
+            tintColor: "#fbbf24",
+          });
+          if (!record) break;
+          const card = cardCreation.createHighlight({
+            anchor: { anchorId: record.anchorId, anchorText: record.text },
+            paragraphId,
+            mode: "omni",
+          });
+          updateLinkedAnchorCard(ed, record.anchorId, "highlight", card.id);
+          panelId = "notes";
+          focusCardKey = `highlight:${card.id}`;
+          break;
+        }
         case "todo": {
           const todo = cardCreation.createTodo({
             text: text || undefined,
@@ -189,20 +208,6 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           });
           panelId = "todo";
           focusCardKey = `todo:${todo.id}`;
-          break;
-        }
-        case "review": {
-          const anchor = wantRangeAnchor ? createAnchor(ed, "revision") : undefined;
-          const card = cardCreation.createRevisionComment({
-            paragraphId,
-            anchor,
-            mode: "omni",
-          });
-          if (anchor) {
-            updateLinkedAnchorCard(ed, anchor.anchorId, "comment", card.id);
-          }
-          panelId = "revisions";
-          focusCardKey = `revision:${card.id}`;
           break;
         }
         case "suggest-edit": {
