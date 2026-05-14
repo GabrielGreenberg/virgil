@@ -47,3 +47,19 @@ export function getSelectionFloatData(id: string): SelectionFloatData | undefine
 export function disposeSelectionFloat(id: string): void {
   store.delete(id);
 }
+
+/**
+ * Update the live `range` for a selection float as the main doc edits
+ * remap its positions. Called from `SelectionFloat`'s transaction
+ * handler so drop-mode (and any future consumer) can read the current
+ * range without holding a React ref. No-op if the float isn't in the
+ * registry.
+ */
+export function updateSelectionFloatRange(
+  id: string,
+  range: { from: number; to: number },
+): void {
+  const data = store.get(id);
+  if (!data) return;
+  store.set(id, { ...data, range });
+}

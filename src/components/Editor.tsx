@@ -43,6 +43,7 @@ import {
   isAnchorDrag,
 } from "@/lib/marginalia";
 import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
+import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { generateShortId } from "@/lib/uuid";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
@@ -3387,6 +3388,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         editorInstanceRef.current = null;
       }
     };
+  }, [editor]);
+
+  // Register the editor's ProseMirror DOM with the drop-mode target
+  // registry, so shift-drag hit-testing can find this editor under the
+  // cursor. Re-registers when the editor instance changes (extension
+  // reloads, doc swaps).
+  useEffect(() => {
+    if (!editor) return;
+    return registerDropTarget(editor);
   }, [editor]);
 
   return (

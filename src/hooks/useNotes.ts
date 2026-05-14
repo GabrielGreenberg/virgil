@@ -302,6 +302,64 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     [update],
   );
 
+  const addHighlightParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
+      update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "highlight"
+            ? addParagraphLink(c, "highlight", paragraphId)
+            : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
+  const removeHighlightParagraphId = useCallback(
+    (id: string, paragraphId: string) => {
+      update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id && c.kind === "highlight"
+            ? removeParagraphLink(c, paragraphId)
+            : c,
+        ),
+      }));
+    },
+    [update],
+  );
+
+  /**
+   * Phase 4 sidecar capture: before drop mode strips a Mode B anchor
+   * (text-range) from a note or highlight, save the original anchor
+   * data onto the card so future UX can restore the range. No-op if
+   * the card has no textRange (Mode A already). Returns the captured
+   * `anchorId` if any, so callers can clean up the linkedAnchor mark
+   * in the editor after the re-anchor lands.
+   */
+  const preserveModeBAnchor = useCallback(
+    (id: string): string | null => {
+      const card = cards.find((c) => c.id === id);
+      if (!card) return null;
+      const textAnchor = getTextAnchor(card);
+      if (!textAnchor) return null;
+      const original: import("@/lib/types").OriginalAnchor = {
+        droppedAt: new Date().toISOString(),
+        anchorId: textAnchor.anchorId,
+        textSnapshot: textAnchor.anchorText,
+        paragraphIds: getLinkedParagraphIds(card),
+      };
+      update((prev) => ({
+        cards: prev.cards.map((c) =>
+          c.id === id && (c.kind === "note" || c.kind === "highlight")
+            ? { ...c, originalAnchor: original }
+            : c,
+        ),
+      }));
+      return textAnchor.anchorId;
+    },
+    [cards, update],
+  );
+
   const deleteNote = useCallback(
     (id: string) => {
       pristine.markDirty(id);
@@ -339,6 +397,9 @@ export function useNotes(docId: string | null, externalPristine?: PristineKindAp
     setHighlightAiRequest,
     addNoteParagraphId,
     removeNoteParagraphId,
+    addHighlightParagraphId,
+    removeHighlightParagraphId,
+    preserveModeBAnchor,
     deleteNote,
     setNoteAnchor,
     clearNoteAnchor: clearCardAnchor,

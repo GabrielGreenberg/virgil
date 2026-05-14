@@ -118,6 +118,7 @@ import { DockOutline } from "./editor-layout/DockOutline";
 import { CardLiftOutline } from "./CardLiftOutline";
 import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
+import { DropModeProvider } from "./drop-mode/DropModeProvider";
 import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
@@ -972,6 +973,96 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       recordFocus: (key) => viewPrefs.focusFloating({ kind: "card", key }),
     };
   }, [viewPrefs]);
+
+  // Drop-mode adapters — one per attachment-card kind. Each wraps the
+  // live hook in the generic `ParagraphAnchorApi` shape the spec
+  // consumes. Memoized so the spec doesn't close over stale callbacks.
+  const dropNotesApi = useMemo(
+    () => ({
+      exists: (id: string) => notesHook.notes.some((n) => n.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const n = notesHook.notes.find((nn) => nn.id === id);
+        return n ? getLinkedParagraphIds(n) : [];
+      },
+      addParagraphLink: notesHook.addNoteParagraphId,
+      removeParagraphLink: notesHook.removeNoteParagraphId,
+      preserveModeBAnchor: notesHook.preserveModeBAnchor,
+    }),
+    [notesHook.notes, notesHook.addNoteParagraphId, notesHook.removeNoteParagraphId, notesHook.preserveModeBAnchor],
+  );
+  const dropHighlightsApi = useMemo(
+    () => ({
+      exists: (id: string) => notesHook.highlights.some((h) => h.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const h = notesHook.highlights.find((hh) => hh.id === id);
+        return h ? getLinkedParagraphIds(h) : [];
+      },
+      addParagraphLink: notesHook.addHighlightParagraphId,
+      removeParagraphLink: notesHook.removeHighlightParagraphId,
+      preserveModeBAnchor: notesHook.preserveModeBAnchor,
+    }),
+    [notesHook.highlights, notesHook.addHighlightParagraphId, notesHook.removeHighlightParagraphId, notesHook.preserveModeBAnchor],
+  );
+  const dropTodosApi = useMemo(
+    () => ({
+      exists: (id: string) => todosHook.items.some((t) => t.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const t = todosHook.items.find((tt) => tt.id === id);
+        return t ? getLinkedParagraphIds(t) : [];
+      },
+      addParagraphLink: todosHook.addParagraphId,
+      removeParagraphLink: todosHook.removeParagraphId,
+    }),
+    [todosHook.items, todosHook.addParagraphId, todosHook.removeParagraphId],
+  );
+  const dropQuotationsApi = useMemo(
+    () => ({
+      exists: (id: string) => quotationsHook.groups.some((g) => g.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const g = quotationsHook.groups.find((gg) => gg.id === id);
+        return g ? getLinkedParagraphIds(g) : [];
+      },
+      addParagraphLink: quotationsHook.addParagraphId,
+      removeParagraphLink: quotationsHook.removeParagraphId,
+    }),
+    [quotationsHook.groups, quotationsHook.addParagraphId, quotationsHook.removeParagraphId],
+  );
+  const dropArchiveApi = useMemo(
+    () => ({
+      exists: (id: string) => archiveHook.snippets.some((s) => s.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const s = archiveHook.snippets.find((ss) => ss.id === id);
+        return s ? getLinkedParagraphIds(s) : [];
+      },
+      addParagraphLink: archiveHook.addParagraphId,
+      removeParagraphLink: archiveHook.removeParagraphId,
+    }),
+    [archiveHook.snippets, archiveHook.addParagraphId, archiveHook.removeParagraphId],
+  );
+  const dropCutterApi = useMemo(
+    () => ({
+      exists: (id: string) => cutterHook.cards.some((c) => c.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const c = cutterHook.cards.find((cc) => cc.id === id);
+        return c ? getLinkedParagraphIds(c) : [];
+      },
+      addParagraphLink: cutterHook.addCardParagraphId,
+      removeParagraphLink: cutterHook.removeCardParagraphId,
+    }),
+    [cutterHook.cards, cutterHook.addCardParagraphId, cutterHook.removeCardParagraphId],
+  );
+  const dropRevisionsApi = useMemo(
+    () => ({
+      exists: (id: string) => revisionsHook.cards.some((c) => c.id === id),
+      getAnchorParagraphIds: (id: string) => {
+        const c = revisionsHook.cards.find((cc) => cc.id === id);
+        return c ? getLinkedParagraphIds(c) : [];
+      },
+      addParagraphLink: revisionsHook.addCardParagraphId,
+      removeParagraphLink: revisionsHook.removeCardParagraphId,
+    }),
+    [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
+  );
   // Reader has no real `useViewPrefs` (that's per-window shell state).
   // Synthesize a minimal snapshot — `useCardCreation` reads only
   // `prefs.placements`, `prefs.activeLeft`, `prefs.activeRight`. With
@@ -2551,6 +2642,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               EditorLayout copies. */}
           <DockOutline />
           <CardLiftOutline />
+          {/* Drop-mode controller — mounts the blue placement indicator
+              (body-portaled) and the confirmation modal used when an
+              already-anchored card is re-anchored. Registers a per-doc
+              `DropCtx` with the controller; the controller no-ops if a
+              card kind has no spec, so this is harmless before specs
+              land. */}
+          {viewPrefs && (
+            <DropModeProvider
+              mainEditor={editor}
+              closePopout={viewPrefs.closeCardPopout}
+              notes={dropNotesApi}
+              highlights={dropHighlightsApi}
+              todos={dropTodosApi}
+              quotations={dropQuotationsApi}
+              archive={dropArchiveApi}
+              cutterCards={dropCutterApi}
+              revisions={dropRevisionsApi}
+            />
+          )}
           {/* Per-doc card popouts — paragraph / heading / example floats
               and individual card popouts (notes, footnotes, citations,
               etc.). Each entry in `prefs.poppedOutCards` keys a

@@ -17,6 +17,7 @@ import {
   findDockTargetAtPoint,
   type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
+import { beginDropSession } from "@/components/drop-mode/controller";
 
 /**
  * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
@@ -34,6 +35,10 @@ interface FloatingPanelProps {
   /** Panel id this shell hosts. Required for dock-aware mounts; optional
    *  for non-panel uses (cards, dialogs) that always float. */
   panelId?: PanelId;
+  /** Popout key for cards/blocks (`${kind}:${id}`). Required to start a
+   *  drop-mode session on shift+mousedown — non-card floats (dialogs)
+   *  may omit it. */
+  cardKey?: string;
   /** "docked" mounts the panel inside the side gutter's dock slot via
    *  portal; "floating" mounts it at document.body. Defaults to
    *  "floating" so non-panel callers don't need to opt in. */
@@ -87,6 +92,7 @@ interface FloatingPanelProps {
  */
 function FloatingPanelInner({
   panelId,
+  cardKey,
   mode = "floating",
   slotKey = null,
   surface = "panel",
@@ -323,6 +329,20 @@ function FloatingPanelInner({
       )
     ) {
       return;
+    }
+    // Shift+mousedown on the grab bar → drop-mode session. Only for
+    // popped-out cards/blocks (have a cardKey). The controller no-ops
+    // gracefully if no spec is registered for this kind, so this is a
+    // safe branch to install even before all specs are wired.
+    if (e.shiftKey && cardKey && mode === "floating") {
+      const started = beginDropSession({
+        cardKey,
+        origin: { x: e.clientX, y: e.clientY },
+      });
+      if (started) {
+        e.preventDefault();
+        return;
+      }
     }
     let origX = pos.x;
     let origY = pos.y;

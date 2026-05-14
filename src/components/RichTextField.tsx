@@ -30,6 +30,7 @@ import { generateShortId } from "@/lib/uuid";
 import { MIME_CITATION, MIME_NOTE, MIME_FOOTNOTE, MIME_ARCHIVE } from "@/lib/marginalia";
 import type { PanelBodyKey } from "@/lib/panel-typography";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
+import { registerDropTarget } from "@/components/drop-mode/target-registry";
 
 interface RichTextFieldProps {
   /** Initial content. The editor remounts when `instanceKey` changes. */
@@ -414,6 +415,13 @@ function RichTextFieldImpl({
       editor.setEditable(editable);
     }
   }, [editor, editable]);
+
+  // Register this nested editor with the drop-mode target registry, so
+  // shift-drag can target card bodies in addition to the main editor.
+  useEffect(() => {
+    if (!editor) return;
+    return registerDropTarget(editor);
+  }, [editor]);
 
   // Sync per-panel body style (only overridden fields) onto the ProseMirror
   // DOM. Leaving a field unset lets the class-based defaults in globals.css

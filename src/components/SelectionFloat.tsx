@@ -48,7 +48,7 @@ import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
 import { MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
-import { getSelectionFloatData } from "./selection-floats";
+import { getSelectionFloatData, updateSelectionFloatRange } from "./selection-floats";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -133,6 +133,7 @@ export function SelectionFloat({
         return;
       }
       rangeRef.current = { from: newFrom, to: newTo };
+      updateSelectionFloatRange(selectionFloatId, rangeRef.current);
     };
     mainEditor.on("transaction", handler);
     return () => {
@@ -209,6 +210,7 @@ export function SelectionFloat({
       // right span.
       const newSize = inlineNodes.reduce((acc, n) => acc + n.nodeSize, 0);
       rangeRef.current = { from, to: from + newSize };
+      updateSelectionFloatRange(selectionFloatId, rangeRef.current);
     } catch {
       /* schema mismatch / stale range — swallow */
     }

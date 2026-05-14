@@ -140,6 +140,7 @@ export function FloatCard({
   return (
     <FloatingPanel
       ref={panelHandleRef}
+      cardKey={cardKey}
       initialX={initialX}
       initialY={initialY}
       initialWidth={initialWidth}

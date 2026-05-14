@@ -308,6 +308,24 @@ export interface ExamplesState {
 // alongside one another in the panel). The two coexist in a single
 // `cards` array; legacy `{ notes: [...] }` sidecars are migrated on load.
 
+/**
+ * Sidecar field set when a Mode B (text-range-anchored) card is
+ * re-anchored to a paragraph-only Mode A anchor via drop mode. Saves
+ * the original anchor data so future UX can restore the text range
+ * or surface a "was a highlight" affordance. Drop mode only writes
+ * this field; nothing reads it yet.
+ */
+export interface OriginalAnchor {
+  /** ISO timestamp of when the swap to Mode A happened. */
+  droppedAt: string;
+  /** Original linkedAnchor mark id (before strip). */
+  anchorId: string;
+  /** Text inside the original range (for fuzzy re-anchoring later). */
+  textSnapshot: string;
+  /** Paragraph UUID(s) the original anchor sat in. */
+  paragraphIds: string[];
+}
+
 export interface UserNote {
   kind: "note";
   id: string;
@@ -320,6 +338,9 @@ export interface UserNote {
    *  wants Claude to act on. Toggled via the per-card AiRequestCheckbox. */
   aiRequest: boolean;
   links: Link[];
+  /** Set when a Mode B note was re-anchored to a paragraph via drop
+   *  mode; preserves the original textRange data for future use. */
+  originalAnchor?: OriginalAnchor;
 }
 
 export interface HighlightCard {
@@ -331,6 +352,10 @@ export interface HighlightCard {
   aiRequest: boolean;
   /** Must carry exactly one text-range anchor link. */
   links: Link[];
+  /** Set when this highlight was re-anchored to a paragraph via drop
+   *  mode; preserves the original textRange + tint so we can later
+   *  offer to restore the highlight from sidecar data. */
+  originalAnchor?: OriginalAnchor;
 }
 
 export type NoteCardItem = UserNote | HighlightCard;

@@ -126,11 +126,13 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       if (!pos) { hideIndicator(); return; }
       if (!indicator) {
         indicator = document.createElement("div");
-        indicator.className = "marginalia-drop-indicator";
+        // Same blue token the drop-mode controller uses for its
+        // paragraph-side indicator — both gestures land here visually.
+        indicator.className = "marginalia-drop-indicator dropmode-bar-side";
         Object.assign(indicator.style, {
           position: "absolute",
           width: "2px",
-          background: "var(--accent, #b45757)",
+          background: "var(--accent-blue, #2563eb)",
           pointerEvents: "none",
           zIndex: "20",
           borderRadius: "1px",
