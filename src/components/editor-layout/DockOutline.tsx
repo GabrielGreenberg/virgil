@@ -14,12 +14,16 @@ const OUTLINE_GLOW =
 
 /**
  * Body-portaled hard-black outline that marks the active dock target
- * during a drag. Body-portaling lets the outline:
- *   - Render at fixed viewport coordinates (the rect captured at
- *     mousedown), so it stays put even after the panel undocks and
- *     the underlying slot DOM changes shape or unmounts.
- *   - Sit above any floating panel shells (z-index 9999 vs the shell's
- *     ~1000-range), so floating pop-outs never occlude it.
+ * during a drag. Body-portaling lets the outline render at fixed
+ * viewport coordinates (the rect captured at mousedown), so it stays
+ * put even after the panel undocks and the underlying slot DOM changes
+ * shape or unmounts.
+ *
+ * Stacking: the outline sits at z-index 999, just below
+ * FLOATING_PANEL_Z_BASE (1000). The actively-dragged floating panel
+ * therefore occludes the outline as it lifts off the source dock or
+ * slides into a target dock — the panel reads as "in front of" the
+ * landing frame instead of disappearing behind its edge.
  *
  * The outline crossfades in when a target appears and out when it
  * clears. Position changes mid-drag (hovering from one slot to
@@ -93,7 +97,7 @@ export function DockOutline() {
         position: "fixed",
         inset: 0,
         pointerEvents: "none",
-        zIndex: 9999,
+        zIndex: 999,
         // Initial opacity 0; WAAPI animates it to 1.
         opacity: 0,
       }}

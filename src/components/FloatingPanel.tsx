@@ -137,6 +137,12 @@ function FloatingPanelInner({
         // Only when the cursor approaches a *different* dock do we
         // switch to that dock's full-frame "set-down" outline.
         sourceGhost: DockDragTarget | null;
+        // Docked geometry captured at mousedown so the freshly-floating
+        // panel lifts off at the same size it had in the dock. Null for
+        // gestures that didn't start docked (e.g. card hand-offs via
+        // beginDragAt, or floating-mode header drags).
+        dockedWidth: number | null;
+        dockedHeight: number | null;
       }
     | { mode: "resize"; startX: number; startY: number; origW: number; origH: number }
     | null
@@ -177,12 +183,19 @@ function FloatingPanelInner({
           if (dx === 0 && dy === 0) return;
           // Compute the initial floating rect: same width/height as the
           // docked geometry, translated by the cursor delta so the panel
-          // header tracks the cursor exactly.
+          // header tracks the cursor exactly. The docked w/h were
+          // captured at mousedown — clamp to the same min/max bounds the
+          // resize gesture enforces so an oversized docked panel doesn't
+          // lift off larger than the floating shell ever allows.
+          const fallbackW = latestPosRef.current.width;
+          const fallbackH = latestPosRef.current.height;
+          const rawW = s.dockedWidth ?? fallbackW;
+          const rawH = s.dockedHeight ?? fallbackH;
           const initialFloatRect = {
             x: s.origX + dx,
             y: s.origY + dy,
-            width: latestPosRef.current.width,
-            height: latestPosRef.current.height,
+            width: Math.max(240, Math.min(900, rawW)),
+            height: Math.max(200, Math.min(window.innerHeight - 40, rawH)),
           };
           // Flip the gesture into a normal floating-move: from now on,
           // origX/Y stay anchored to the docked rect's top-left and the
@@ -190,8 +203,16 @@ function FloatingPanelInner({
           s.pendingUndock = false;
           handlersRef.current.onUndock?.(initialFloatRect);
           // We've already moved this frame — apply it immediately so
-          // there's no visible single-frame lag.
-          setPos((p) => ({ ...p, x: initialFloatRect.x, y: initialFloatRect.y }));
+          // there's no visible single-frame lag. Includes width/height
+          // so the panel renders at the docked-derived size in the same
+          // commit, rather than flashing the prior saved float size for
+          // one frame before the parent re-render syncs it back.
+          setPos(() => ({
+            x: initialFloatRect.x,
+            y: initialFloatRect.y,
+            width: initialFloatRect.width,
+            height: initialFloatRect.height,
+          }));
           return;
         }
         const maxX = window.innerWidth - 60;
@@ -387,6 +408,12 @@ function FloatingPanelInner({
       pendingUndock,
       socketSlot,
       sourceGhost,
+      // Capture docked w/h from the same primaryRect the source ghost
+      // uses — for split halves this is the half-anchor's visual frame
+      // (not the panel's intrinsic content height), so undocking from a
+      // half-slot gives a half-sized floating panel.
+      dockedWidth: pendingUndock && primaryRect ? primaryRect.width : null,
+      dockedHeight: pendingUndock && primaryRect ? primaryRect.height : null,
     };
     document.body.style.userSelect = "none";
     document.body.style.cursor = "grabbing";
@@ -408,6 +435,8 @@ function FloatingPanelInner({
         pendingUndock: false,
         socketSlot: null,
         sourceGhost: null,
+        dockedWidth: null,
+        dockedHeight: null,
       };
       document.body.style.userSelect = "none";
       document.body.style.cursor = "grabbing";
