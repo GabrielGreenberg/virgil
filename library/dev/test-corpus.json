@@ -72,7 +72,7 @@
       ],
       "regression_guards": [
         "mathify_formal_semantics should process ~80 math spans",
-        "linguex_to_expex partial conversion should not match existing \\ex blocks"
+        "bulk_convert_numbered_examples partial conversion should not match existing \\ex blocks"
       ]
     },
     {

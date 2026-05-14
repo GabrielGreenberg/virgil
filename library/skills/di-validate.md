@@ -40,11 +40,20 @@ baseline").
 
 **Flags:**
 
-- `--journal-cumulative` — suppress range checks (Springer / Elsevier
+- `--no-pdf-check` — skip range checks entirely (use for
+  journal-offset reprints if the AND-of-range-and-span rule somehow
+  trips; in practice the AND rule handles Springer / Elsevier
   articles where the PDF starts at the article's first printed page).
-- `--no-pdf-check` — skip range checks entirely.
-- `--pdf-pages N` — explicit page count.
-- `--pdf <path>` — explicit PDF path.
+- `--pdf-pages N` — explicit page count (overrides auto-detection
+  from the sibling PDF).
+- `--severity warn` — always exit 0 (use when invoking from a wrapper
+  that needs to inspect findings without halting on blockers).
+- `--json` — emit JSON instead of markdown.
+- `--baseline-from-catalog` — required for the "new vs. baseline"
+  continuity check (already in the canonical invocation above).
+
+Run from the library root (`cd ~/Virgil-Library`) — the script and
+paper paths above are relative to that root.
 
 ## Step 9.5 — Audit punch-list (drives convergence)
 

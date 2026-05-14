@@ -15,9 +15,20 @@ Operates on `papers/$ARGUMENTS/main.tex` and
 
 Read `papers/$ARGUMENTS/virgil/notes.json` for `kind: "todo" |
 "suggestion" | "footnote" | "citation" | "note"` entries that ask
-for body edits. Each gets processed per the [editor-side
-review](../../editor/AGENTS.md) skill set (which lives in
-`/editor/answer-*` and `/editor/draft-*`).
+for body edits. **di-examples does NOT invoke the editor skills
+inline.** The contract is:
+
+- If `notes.json` is missing or `notes: []`: no-op, no warning.
+- If one or more matching entries exist: append a single
+  outstanding-work item `notes-pending-editor-review (N entries)`
+  to the deep-index audit punch-list so the user knows to run
+  `/editor/review <docPath>` afterwards. Do not edit the document
+  body in this skill; that's the editor skill set's job.
+
+The editor-side skills (`/editor/answer-*` and `/editor/draft-*`,
+documented in [editor/AGENTS.md](../../editor/AGENTS.md)) drain
+the queue when explicitly invoked by the user against the paper
+folder.
 
 ## Step 3.h₂ — Numbered examples / expex conversion
 
@@ -56,6 +67,31 @@ python3 .virgil/scripts/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main
 python3 .virgil/scripts/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex --apply
 ```
 
+**Re-run safety.** Before invoking `--apply`, count existing
+converted examples:
+
+```bash
+grep -c 'exno=' papers/$ARGUMENTS/main.tex
+```
+
+If the count is `>5`, the paper has prior conversion state and the
+remaining proposals are enriched for false positives. Reject any
+proposal whose body:
+
+- starts with a lowercase letter or a function word (`do`, `the`,
+  `is`, `as`, `c.`, `b.`) — broken-prose continuation, not an
+  example;
+- contains `\pgmark{`, `\vexid{`, `\xe`, or `\ex[` — overlaps an
+  already-converted region;
+- is a bare sub-letter (e.g. `(421) c. He walked up to ...`) whose
+  parent `(N)` block is elsewhere — the script's pex grouping is
+  misfiring.
+
+If every remaining proposal fails these checks, skip `--apply`
+entirely — the conversion work is done, and forcing a re-run will
+corrupt content. No outstanding-work warning is needed in that
+case.
+
 Top-level `(N)` examples become `\ex[exno=N] \vexid{<uuid>} body
 \xe`; sub-items `(Na)` / `(Nb)` get grouped under a parent `\pex`
 block with `\a` sub-items.
@@ -67,6 +103,7 @@ Refuses to convert inside:
 - `\begin{quote}` blocks.
 - The References section.
 - Theorem / proposition / lemma numbering contexts.
+- Existing `\ex[…]…\xe` / `\pex…\xe` blocks (idempotency).
 
 **Wrap bare numbered prose into enumerate envelopes** (NOT into
 expex) when the source shows `^1. Foo` paragraph leaders for

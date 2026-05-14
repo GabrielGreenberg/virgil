@@ -1,11 +1,12 @@
 ---
-description: Closed-loop iteration on a Library skill. Runs the target skill (index-paper / deep-index / authenticate-bib) on each citekey via a fresh subagent, reads the subagent's memo, edits the skill markdown to fix flagged ambiguities, then continues. Args: <skill-name> <citekey1> [citekey2] ...
+description: Closed-loop iteration on a Library skill. Runs the target skill (index-paper / deep-index / authenticate-bib, or one of the deep-index subskills: di-preflight / di-clean-prose / recover-footnotes / clean-bibliography / di-examples / di-validate) on each citekey via a fresh subagent, reads the subagent's memo, edits the skill markdown to fix flagged ambiguities, then continues. Args: <skill-name> <citekey1> [citekey2] ...
 ---
 
 # /iterate-skill $ARGUMENTS
 
-Drive a closed-loop iteration on one of the three core Library skills.
-You (the agent invoking this) act as the loop driver: spawn subagents to
+Drive a closed-loop iteration on one of the Library skills (the three
+core entry points or one of the six deep-index subskills). You (the
+agent invoking this) act as the loop driver: spawn subagents to
 execute the target skill, read their critique memos, edit the skill
 markdown, repeat. The subagent runs against the user's REAL
 `~/Virgil-Library/` — successful runs do real indexing/auth work — and
@@ -17,13 +18,21 @@ this skill iterates the *meta* layer (the skill markdown itself).
 /library/iterate-skill <skill-name> <citekey1> [citekey2] [citekey3] ...
 ```
 
-`<skill-name>` ∈ `{index-paper, deep-index, authenticate-bib}`. Anything
-else: abort with a one-line error.
+`<skill-name>` ∈ `{index-paper, deep-index, authenticate-bib,
+di-preflight, di-clean-prose, recover-footnotes, clean-bibliography,
+di-examples, di-validate}`. Anything else: abort with a one-line error.
+
+The first three are the core entry points; the latter six are the
+deep-index subskills (each callable standalone via
+`/library/<subskill> <citekey>`). For the subskills, the iteration
+target file is `library/skills/<subskill>.md`, not deep-index.md.
 
 `<citekey...>` — one or more citekeys. Each must already exist in the
 user's `master.bib` (and, for `index-paper`, have a source file at
 `~/Virgil-Library/papers/<citekey>/<citekey>.{pdf,docx,tex}` or a
-pre-triage file in `~/Virgil-Library/unsorted/`).
+pre-triage file in `~/Virgil-Library/unsorted/`). For deep-index
+subskills, the paper must already be at least `indexed` (the subskills
+operate on `papers/<citekey>/main.tex`).
 
 ## Preflight
 
@@ -58,8 +67,11 @@ Use this template (substitute `<skill>`, `<citekey>`, `<date>`,
 >
 > Steps:
 > 1. Read the skill source at `library/skills/<skill>.md` (relative to current cwd) IN FULL. Treat it as your instructions for what follows.
+> 1.5. **Snapshot the paper's baseline.** If `~/Virgil-Library/papers/<citekey>/` exists, run `cp -R ~/Virgil-Library/papers/<citekey>/ /tmp/iterate-test/<citekey>-baseline-<run-N>/` so a regression diff is possible after the run. (Create `/tmp/iterate-test/` if missing.) If the paper folder doesn't exist yet (pre-triage `index-paper` case), skip snapshotting — there is nothing to diff against.
 > 2. Execute the skill on citekey `<citekey>` exactly as the markdown describes. Mutate the real library (move files, run python scripts, write catalog rows, edit master.bib, etc.) just as if a user had invoked the skill directly. If the skill says to invoke a python script, invoke it. If it says to fetch DOI metadata, fetch it. Do not paper over ambiguity by guessing silently — when the markdown leaves a choice underspecified, log the ambiguity in section 3 of your memo.
-> 3. After the skill run completes (success, partial, or failure), write a memo to `library/dev/iterations/<date>-<skill>/<citekey>.md` (relative to cwd, create parent dirs as needed) using EXACTLY this template:
+> 3. After the skill run completes (success, partial, or failure), if a baseline snapshot was created in step 1.5, run `diff -r /tmp/iterate-test/<citekey>-baseline-<run-N>/ ~/Virgil-Library/papers/<citekey>/ > /tmp/iterate-test/<citekey>-diff-<run-N>.txt` (or use `git diff --no-index` if you prefer). Read the diff to inform the "Diff summary" memo section.
+> 4. Read `library/dev/test-corpus.json` (relative to cwd). If `<citekey>` appears as a row in `papers[]`, extract its `regression_guards` array — these are pass/fail assertions the run must satisfy. If the citekey is NOT in test-corpus.json, write "Not in test corpus — no regression guards" in that memo section.
+> 5. Write a memo to `library/dev/iterations/<date>-<skill>/<citekey>.md` (relative to cwd, create parent dirs as needed) using EXACTLY this template:
 >
 > ```markdown
 > # <skill> on <citekey> — run <run-N>
@@ -77,16 +89,22 @@ Use this template (substitute `<skill>`, `<citekey>`, `<date>`,
 > ## Judgment calls made
 > <discretionary choices you made and why. If none, write "None.">
 >
+> ## Diff summary
+> <one paragraph summarizing what changed between the baseline snapshot and the post-run paper folder: which files changed, rough magnitude (lines added/removed), notable new content (pgmark adds, footnote attaches, references.bib emissions). If no baseline was taken (pre-triage case), write "No baseline — paper folder created by this run.">
+>
+> ## Regression-guard outcomes
+> <if the citekey is in test-corpus.json, list each guard as a bullet with PASS / FAIL / N/A and a one-line justification tied to actions or diff content. If FAIL, that's a regression — flag it loudly and treat it as a [block]-level concern. If the citekey is not in test-corpus.json, write "Not in test corpus — no regression guards.">
+>
 > ## Final library state
 > - catalog.json entry for <citekey>: indexed.state=<v>, bib.state=<v>, warnings=<list>
 > - files written: <paths under ~/Virgil-Library/>
 > - queue files remaining: <paths or "none">
 >
 > ## Suggested skill edits
-> <each entry prefixed with [block] or [nice-to-have], referencing a line number in skills/<skill>.md, with a concrete proposed change. [block] = the skill cannot be reliably executed without this fix. [nice-to-have] = quality improvement. If none, write "None.">
+> <each entry prefixed with [block] or [nice-to-have], referencing a line number in skills/<skill>.md, with a concrete proposed change. [block] = the skill cannot be reliably executed without this fix, OR a regression guard failed. [nice-to-have] = quality improvement. If none, write "None.">
 > ```
 >
-> 4. Reply with ONLY the absolute path to the memo file you wrote, plus a one-line summary of `[block]` count. Do not edit `library/skills/<skill>.md`. Do not write any other files in `library/`.
+> 6. Reply with ONLY the absolute path to the memo file you wrote, plus a one-line summary of `[block]` count and regression-guard pass/fail tally. Do not edit `library/skills/<skill>.md`. Do not write any other files in `library/`.
 >
 > Hard rules:
 > - You operate on the user's real library. Do not create test fixtures.
@@ -134,6 +152,12 @@ Once the loop exits:
    This regenerates `.claude/commands/library/<skill>.md` and the public
    skill bundle so the user's next `/library/<skill>` invocation picks
    up the edits.
+
+   > **If you are one of several iterate-skill loops running in
+   > parallel** (e.g. the parent dispatched 6 iterations across the 6
+   > deep-index subskills in one wave), skip this step — concurrent
+   > builds race on file writes. The parent dispatcher should rebuild
+   > the bundle once after all loops finish.
 
 2. **Print a summary** in your reply, ≤8 lines:
    - Skill iterated, citekeys processed, total `[block]` items raised

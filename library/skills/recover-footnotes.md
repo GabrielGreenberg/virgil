@@ -41,7 +41,7 @@ python3 .virgil/scripts/reattach_super_footnotes.py papers/$ARGUMENTS/main.tex
 Per-chapter Notes blocks (single-chapter papers):
 
 ```bash
-python3 .virgil/scripts/reattach_chapter_end_notes.py $ARGUMENTS
+python3 .virgil/scripts/reattach_chapter_end_notes.py papers/$ARGUMENTS/main.tex
 ```
 
 End-of-book Notes with `\subsection{Chapter N}` sub-dividers:
@@ -65,9 +65,22 @@ python3 .virgil/scripts/reattach_page_hint_endnotes.py papers/$ARGUMENTS/main.te
 ## Tier 1 — PDF re-extraction
 
 ```bash
-python3 .virgil/scripts/extract_pdf_footnotes.py papers/$ARGUMENTS
-python3 .virgil/scripts/reattach_footnotes.py papers/$ARGUMENTS
+python3 .virgil/scripts/extract_pdf_footnotes.py papers/$ARGUMENTS/$ARGUMENTS.pdf papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
+python3 .virgil/scripts/reattach_footnotes.py papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
 ```
+
+> The source PDF basename matches `$ARGUMENTS` for PDFs indexed via
+> the standard pipeline. If the on-disk filename differs (e.g.
+> `<citekey>.PDF` or a triage-renamed alternate), substitute the
+> actual filename in the first arg.
+
+> **Tier 1 failure mode.** If `extract_pdf_footnotes.py` aborts with
+> `ERROR: can't pin offset (no PDF footer for printed page N)`, the
+> PDF lacks a recognisable footer for the seed page — common in
+> popular-science books and InDesign-typeset PDFs where the running
+> footer is graphical. **Skip Tier 1 and proceed to Tier 3 / orphan
+> resolution.** Do not retry; the auto-detector won't change its
+> mind on a re-run.
 
 ## Tier 2 — Fresh OCR on individual pages
 
@@ -92,6 +105,15 @@ python3 .virgil/scripts/resolve_orphan_footnotes.py $ARGUMENTS
 orphans in reverse document order so earlier ones' offsets stay
 valid.
 
+> **Coverage caveat.** The script's wrapper regex caps nested-brace
+> depth at 2, so dense footnotes (multiple `\cite{...}` inside an
+> orphan body) may be silently skipped. If
+> `grep -cE '\[orphan fn [0-9]+\]' papers/$ARGUMENTS/main.tex`
+> exceeds the script's reported total by more than 2×, treat the
+> unmatched orphans as accepted Tier-4 outcomes — approximate
+> placement with an `[orphan fn N]` prefix is strictly better than
+> no placement.
+
 ## Tier 3.7 — Semantic relocation
 
 For orphans whose body has a distinctive term that appears exactly
@@ -103,9 +125,13 @@ python3 .virgil/scripts/relocate_orphan_footnotes.py $ARGUMENTS
 
 ## Tier 4 — Orphan-prefix attachment (always succeeds)
 
-Now automatic inside `reattach_leaked_footnotes.py`. When no call
-site is found, the footnote attaches to the nearest preceding body
-paragraph with a `[orphan fn N]` prefix. **This is strictly better
+Tier 4 is not a standalone invocation; it fires *automatically*
+inside `reattach_leaked_footnotes.py` (Tier 0) whenever a leaked-prose
+paragraph can't be auto-attached to a call site. Each Tier-4
+placement is logged as `[N via Tier-4 orphan-prefix]` in the reattach
+summary. **The orphan count can *increase* during Tier 0** if call
+sites can't be found; later tiers (3.5, 3.7) then *decrease* it as
+exact placements are recovered. **Tier-4 placement is strictly better
 than leaving a numbered paragraph unattached.**
 
 ## Truncated-footnote recovery

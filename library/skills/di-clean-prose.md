@@ -61,7 +61,7 @@ python3 .virgil/scripts/strip_ocr_headings.py papers/$ARGUMENTS/main.tex
 ```
 
 For diagram-heavy books (Venn diagrams, payoff matrices, formal
-logic):
+logic) — *reporter; review before editing*:
 
 ```bash
 python3 .virgil/scripts/detect_garbage_headings.py papers/$ARGUMENTS/main.tex
@@ -69,11 +69,46 @@ python3 .virgil/scripts/detect_garbage_headings.py papers/$ARGUMENTS/main.tex
 
 For prose-shaped misclassified headings (italicized fragments,
 transitional phrases, ellipses) — these are body sentences
-mis-promoted:
+mis-promoted — *reporter; review before editing*:
 
 ```bash
 python3 .virgil/scripts/detect_misclassified_headings.py papers/$ARGUMENTS/main.tex
 ```
+
+> **Known false-positive patterns for the two reporters above.** Both
+> scripts can flag legitimate headings; do not blindly act on every
+> report. Common false positives:
+>
+> - **Numbered chapter titles** (`\section{1. First Approximations}`,
+>   `\section{2. Private Language, Public Languages}`): the period
+>   after the chapter number trips
+>   `detect_misclassified_headings`'s `\.\s+[A-Z]` "multiple sentences"
+>   rule; the same titles often surface in
+>   `detect_garbage_headings`. If the heading is a legitimate chapter
+>   title that matches the book's TOC structure, skip the candidate.
+> - **All-caps siblings already at the correct nesting level** —
+>   sometimes flagged as garbage due to length / lack of subordinate
+>   prose.
+> - **Single-phrase titles with no body prose at all** — the
+>   "multiple sentences" rule sometimes mis-fires on author + comma +
+>   year citation contexts inside an otherwise legitimate heading.
+>
+> **Reliable vs. unreliable reasons for `detect_misclassified_headings`.**
+> The script tags each finding with one of five reasons. Their
+> reliability varies:
+>
+> - `interior comma + lowercase` — **reliable**. Almost always a real
+>   pulled-prose mispromotion.
+> - `transitional phrase` (however, indeed, therefore, …) —
+>   **reliable** for similar reasons.
+> - `ends with ellipsis` — **reliable** for body-prose detection.
+> - `italic/quoted pulled sentence` — **moderately reliable**; review.
+> - `multiple sentences` — **unreliable on numbered headings**; review
+>   carefully (this is the main source of false positives).
+>
+> Review every report against the paper's actual structure before
+> editing. Both scripts only **print** findings; they don't mutate the
+> file.
 
 For punctuation-only headings (`* *`, `**`, `Δ`):
 
@@ -89,10 +124,13 @@ python3 .virgil/scripts/promote_inline_section_labels.py papers/$ARGUMENTS/main.
     --style=default   # or `jp` (lowercase roman) or `wiley`
 ```
 
-For OCR-spaced lost subsections (`M u lti-d im en sion al`):
+For OCR-spaced lost subsections (`M u lti-d im en sion al`) — *script
+not yet written; recognize the pattern manually and edit if it
+appears*:
 
 ```bash
-python3 .virgil/scripts/promote_lost_subsections.py papers/$ARGUMENTS/main.tex
+# python3 .virgil/scripts/promote_lost_subsections.py papers/$ARGUMENTS/main.tex
+# (TODO: script doesn't exist yet. Manually edit affected headings.)
 ```
 
 **All-caps sibling promotion** (run of ≥2 sibling `\subsubsection{}`
@@ -112,12 +150,32 @@ punctuation — merge into a single heading.
 python3 .virgil/scripts/recover_chapter_titles.py $ARGUMENTS
 ```
 
+> **Verify the result.** After running, scan the diff for repeated
+> identical `\section{}` titles (a strong signal the script captured
+> the book's recto/verso running-header banner instead of real
+> chapter titles — common on OCR'd books with strong page banners).
+> If you see the same heading text re-injected at every pgmark,
+> revert and use `extract_book_toc.py` + `book_chapter_locator.py`
+> (next block) instead.
+
 For book TOC-driven heading insertion:
 
 ```bash
 python3 .virgil/scripts/extract_book_toc.py $ARGUMENTS --out /tmp/$ARGUMENTS-toc.json
 python3 .virgil/scripts/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMENTS-toc.json
 ```
+
+> **Verify the result.** After running, scan the diff: if the inserted
+> `\section{Chapter N: <title>}` headings appear adjacent to existing
+> title-only `\section{<title>}` headings (the book uses titles-only
+> rather than `Chapter N: …`), they're **duplicates** — the script's
+> existing-section guard only matches sections that already start
+> with a numeric chapter number. Revert and either (a) rely on the
+> existing chapter headings, or (b) manually rewrite the existing
+> headings to include the chapter number so future locator runs see
+> them. Also cross-check the TOC count against the body's `\section{}`
+> count — `extract_book_toc.py` sometimes misses chapters in messy
+> PDF TOCs (the locator only inserts what TOC contains).
 
 ## Step 3c — `\pgmark` alignment
 
@@ -185,3 +243,12 @@ without triggering the >50% safeguard):
 ```bash
 python3 .virgil/scripts/repair_pgmarks.py papers/$ARGUMENTS/main.tex --max-page 250
 ```
+
+For `@book` entries (which normally lack a `pages` field), omit
+`--max-page` entirely — the script's IQR-envelope safeguard handles
+outlier protection on its own. If the catalog warns
+`pgmark-range-impossible` on a `@book`, run
+`recover_low_confidence_pgmarks.py` first to upgrade legitimate
+markers before invoking `repair_pgmarks` (so the IQR envelope is
+computed against the full population, not just the high-confidence
+subset).
