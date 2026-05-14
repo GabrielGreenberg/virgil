@@ -158,7 +158,13 @@ Skill-development memos (the per-citekey critique memos written by `/library/ite
 
 ## Skills
 
-Nine markdown skills, mirrored at build time from `library/skills/*.md` to `.claude/commands/library/*.md`. Invoked as `/library/<name>` from any session opened in this repo:
+Markdown skills are mirrored at build time from `library/skills/*.md`
+to `.claude/commands/library/*.md`. Files starting with `_` (e.g.
+`_doctrine.md`) are *includes* shared across skills — they are NOT
+registered as slash commands. Invoke as `/library/<name>` from any
+session opened in this repo:
+
+**Entry points (callable as slash commands):**
 
 - `/library/index-pending` — drain the queue in one pass (use `/loop /library/index-pending` for steady-state polling)
 - `/library/index-paper <citekey>` — index a single source
@@ -166,11 +172,44 @@ Nine markdown skills, mirrored at build time from `library/skills/*.md` to `.cla
 - `/library/triage-pending [auto]` — batch triage `unsorted/`
 - `/library/authenticate-bib <citekey>` — auth via Crossref / OpenAlex / Semantic Scholar / arXiv
 - `/library/apply-bib-edit <citekey>` — apply a queued manual bib edit
-- `/library/deep-index <citekey>` — structural cleanup (deterministic preprocess + AI pass)
+- `/library/deep-index <citekey>` — orchestrates the deep-index subskill family (deterministic preprocess + AI pass)
 - `/library/ai-requests` — drain user-authored AI review requests
-- `/library/iterate-skill <skill-name> <citekey...>` — closed-loop iteration on `index-paper` / `deep-index` / `authenticate-bib` (dev tool: spawns subagents that execute the skill on real papers, writes critique memos to `library/dev/iterations/`, edits the skill markdown between rounds)
+- `/library/iterate-skill <skill-name> <citekey...>` — closed-loop iteration
+
+**Deep-index subskills** (Phase 1 stubs; content migration from the
+monolithic `deep-index.md` will land iteratively):
+
+- `/library/di-preflight <citekey>` — Step 0 / Step 0.5: metadata mismatch, lending-slip, JSTOR boilerplate, multi-article, OCR recovery dispatch, genre routing.
+- `/library/di-clean-prose <citekey>` — Step 3a / 3b / 3c: title, headers, heading hierarchy, drop caps, pgmark alignment.
+- `/library/recover-footnotes <citekey>` — Step 3d full tier ladder.
+- `/library/clean-bibliography <citekey>` — Step 3e / 3f / 3g: References itemization, references.bib emission, citation rewriting.
+- `/library/di-examples <citekey>` — Step 3.h₁ / 3.h₂: numbered examples, formal-semantics math, user-note processing.
+- `/library/di-validate <citekey>` — Step 3i + Step 9.5: pgmark validator, audit punch-list, outstanding-work classification.
+
+**Shared doctrine include** (not a slash command):
+
+- `library/skills/_doctrine.md` — §0.5 Scope doctrine + §Persistence convergence + §9 outstanding-work categories + anti-patterns + self-check. Subskill stubs point readers here for the load-bearing rules.
 
 Edit the source under `library/skills/`; rerun `npm run build:library-bundle` (or `npm run dev` / `npm run build`, which auto-run via `predev` / `prebuild` hooks) to regenerate `.claude/commands/library/` and `public/skill-bundle/`.
+
+## One-off-script promotion rule
+
+Any one-off Python script written under `/tmp/<paper>/` or inline
+during a deep-index pass is moved into `library/scripts/` before the
+pass closes. Per-paper specifics get factored as flags
+(`--diagram-tokens`, `--max-page`, `--style=...`); paper-specific
+fixture data goes into `library/dev/fixtures/<citekey>/`. The aim:
+every recurring "I had to write a one-off Python script" memo
+becomes a permanent library script after the first occurrence.
+
+## Test corpus
+
+`library/dev/test-corpus.json` maps citekey → genre → subskills
+exercised → regression guards. The 20 papers listed there are the
+canonical regression set drawn from the May 2026 streamlining
+memos. When modifying a script or skill, run
+`/library/iterate-skill <skill> <citekey>` against the corpus
+entries flagged for that subskill.
 
 ## Required deps for the Python pipeline
 

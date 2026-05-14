@@ -13,6 +13,23 @@ Two layers of validation:
     coherent sequence — no duplicates, no decreases in the arabic run,
     no large gaps, and not too many [low]-confidence markers.
 
+  - **Range** (when --pdf-pages or sibling PDF available): pgmark
+    values must be plausible relative to the PDF page count.
+    `range-impossible` fires only when both `hi > pdf_pages × 1.5`
+    AND `span > pdf_pages` — journal-offset reprints (e.g. pp.
+    579–627 in a 49-page PDF, where the span fits within the PDF
+    page count) are exempted. `range-suspiciously-wide` is a
+    separate catastrophic-offset check (`span > pdf_pages × 1.3`)
+    that would have caught the peacocke +170 silent extraction bug.
+
+  - **Multi-section pagination**: a monotonic-reset transition
+    (front-matter roman → body arabic, body → index restart) is
+    detected and pgmark duplicates whose two occurrences straddle a
+    reset are reported as `multi-section` (informational) rather
+    than `duplicate` (blocker). This eliminates the schwarzlose /
+    zeki false positives on books with separate page-label
+    namespaces.
+
 Used by:
 
   - scripts/index_paper.py — post-emit, soft (warn): findings populate
@@ -27,6 +44,9 @@ CLI:
       [--baseline-from-catalog]   # compare against prior warnings
       [--severity=warn|error]     # default error (exit 1 on blockers)
       [--json]                    # machine-readable output
+      [--pdf-pages N]             # PDF page count for range checks
+      [--no-pdf-check]            # skip range checks entirely
+      [--pdf <path>]              # explicit PDF path (else sibling auto-detect)
 """
 
 from __future__ import annotations
@@ -34,6 +54,8 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -461,8 +483,71 @@ def _is_roman(s: str) -> bool:
     return bool(s) and bool(_ROMAN_RE.match(s))
 
 
+def _detect_section_resets(
+    arabic_seq: list[tuple[int, int]],
+) -> list[tuple[int, int]]:
+    """Detect monotonic-reset transitions in the arabic pgmark sequence.
+
+    A "reset" is a transition from a high value to a value substantially
+    lower (≥ 50% drop AND prior value ≥ 10). Common in books with
+    separate front-matter / body / index paginations or in book chapters
+    whose page numbers restart from 1.
+
+    Returns list of (marker_index_before, marker_index_after) for each
+    reset, where marker indexes refer to positions in `arabic_seq`.
+    """
+    resets: list[tuple[int, int]] = []
+    for idx in range(1, len(arabic_seq)):
+        _, v_prev = arabic_seq[idx - 1]
+        _, v_curr = arabic_seq[idx]
+        if v_prev >= 10 and v_curr <= v_prev * 0.5:
+            resets.append((arabic_seq[idx - 1][0], arabic_seq[idx][0]))
+    return resets
+
+
+def _detect_pdf_pages(
+    tex_path: Path | None,
+    pdf_arg: Path | None,
+) -> int | None:
+    """Auto-detect PDF page count via pdfinfo on sibling .pdf or explicit path.
+
+    Returns None if no PDF is available or pdfinfo isn't installed.
+    Sibling resolution: tex_path = papers/<citekey>/main.tex → look for
+    papers/<citekey>/<citekey>.pdf (the canonical Library layout).
+    """
+    if not shutil.which("pdfinfo"):
+        return None
+    candidate: Path | None = None
+    if pdf_arg is not None and pdf_arg.exists():
+        candidate = pdf_arg
+    elif tex_path is not None:
+        citekey = tex_path.parent.name
+        sib = tex_path.parent / f"{citekey}.pdf"
+        if sib.exists():
+            candidate = sib
+    if candidate is None:
+        return None
+    try:
+        out = subprocess.run(
+            ["pdfinfo", str(candidate)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if out.returncode != 0:
+            return None
+        for line in out.stdout.splitlines():
+            if line.startswith("Pages:"):
+                return int(line.split(":", 1)[1].strip())
+    except (subprocess.SubprocessError, ValueError):
+        return None
+    return None
+
+
 def _scan_continuity(
-    tex: str, baseline_kinds: set[str] | None = None,
+    tex: str,
+    baseline_kinds: set[str] | None = None,
+    pdf_pages: int | None = None,
 ) -> list[ContinuityFinding]:
     findings: list[ContinuityFinding] = []
     pgmarks: list[tuple[str, str]] = []
@@ -477,22 +562,67 @@ def _scan_continuity(
     def _is_new(kind: str) -> bool:
         return baseline_kinds is None or kind not in baseline_kinds
 
+    arabic_seq: list[tuple[int, int]] = [
+        (i, int(v)) for i, (v, _) in enumerate(pgmarks) if v.isdigit()
+    ]
+    section_resets = _detect_section_resets(arabic_seq)
+    reset_boundary_indexes: set[int] = set()
+    for before_i, after_i in section_resets:
+        # Mark every index from `before_i+1` through end of doc as living
+        # in a different "page namespace" than indexes ≤ before_i for
+        # duplicate-detection purposes. We accumulate a "namespace id"
+        # assignment below.
+        reset_boundary_indexes.add(after_i)
+
+    # Assign each pgmark index to a "section namespace" id. Indexes
+    # before the first reset are namespace 0; after the first reset, 1;
+    # after the second, 2; etc.
+    namespace_of: dict[int, int] = {}
+    ns = 0
+    for i in range(len(pgmarks)):
+        if i in reset_boundary_indexes:
+            ns += 1
+        namespace_of[i] = ns
+
     counts: dict[str, list[int]] = {}
     for i, (v, _) in enumerate(pgmarks):
         counts.setdefault(v, []).append(i)
     for v, positions in counts.items():
-        if len(positions) > 1:
+        if len(positions) <= 1:
+            continue
+        # Group occurrences by section namespace. Within one namespace,
+        # a duplicate is a real `duplicate` finding. Across namespaces,
+        # it's a benign `multi-section` finding.
+        per_ns: dict[int, list[int]] = {}
+        for pos in positions:
+            per_ns.setdefault(namespace_of[pos], []).append(pos)
+        within_ns_dups = [
+            (n, ps) for n, ps in per_ns.items() if len(ps) > 1
+        ]
+        cross_ns = len(per_ns) > 1
+        if within_ns_dups:
+            for n_id, ps in within_ns_dups:
+                findings.append(ContinuityFinding(
+                    kind="duplicate",
+                    detail=f"page '{v}' appears {len(ps)} times within section "
+                           f"namespace {n_id} (at marker indexes {ps})",
+                    new_vs_baseline=_is_new("duplicate"),
+                ))
+        if cross_ns:
             findings.append(ContinuityFinding(
-                kind="duplicate",
-                detail=f"page '{v}' appears {len(positions)} times "
-                       f"(at marker indexes {positions})",
-                new_vs_baseline=_is_new("duplicate"),
+                kind="multi-section",
+                detail=f"page '{v}' appears in {len(per_ns)} section "
+                       f"namespaces (at marker indexes {positions}); "
+                       f"likely legitimate (front-matter / body / index)",
+                new_vs_baseline=False,
             ))
 
-    arabic_seq: list[tuple[int, int]] = [
-        (i, int(v)) for i, (v, _) in enumerate(pgmarks) if v.isdigit()
-    ]
+    # Out-of-order / gap checks. Skip transitions that cross a section
+    # reset boundary — those are expected page-namespace restarts.
+    reset_pairs = set(section_resets)
     for (i1, v1), (i2, v2) in zip(arabic_seq, arabic_seq[1:]):
+        if (i1, i2) in reset_pairs:
+            continue
         if v2 < v1:
             findings.append(ContinuityFinding(
                 kind="out-of-order",
@@ -515,15 +645,55 @@ def _scan_continuity(
             new_vs_baseline=_is_new("low-confidence-flood"),
         ))
 
+    # Range checks against PDF page count. Only run when we have a
+    # plausible pdf_pages value AND at least one arabic pgmark.
+    if pdf_pages is not None and pdf_pages > 0 and arabic_seq:
+        lo = min(v for _, v in arabic_seq)
+        hi = max(v for _, v in arabic_seq)
+        span = hi - lo + 1
+
+        # `range-impossible`: hi exceeds pdf_pages × 1.5 AND the span
+        # also exceeds pdf_pages. Both conditions required to avoid
+        # firing on journal-offset reprints (kunene, neander, davidson,
+        # kriegeskorte, haugeland, greenberg).
+        if hi > pdf_pages * 1.5 and span > pdf_pages:
+            findings.append(ContinuityFinding(
+                kind="range-impossible",
+                detail=f"max pgmark {hi} exceeds 1.5× PDF page count "
+                       f"({pdf_pages}) AND span {span} exceeds PDF pages — "
+                       f"likely extractor offset bug",
+                new_vs_baseline=_is_new("range-impossible"),
+            ))
+
+        # `range-suspiciously-wide`: span > pdf_pages × 1.3. Would have
+        # caught the peacocke +170 silent offset (where max-min still
+        # formed a consistent ascending sequence but the range was
+        # impossible). Reported as informational unless catastrophic.
+        elif span > pdf_pages * 1.3:
+            findings.append(ContinuityFinding(
+                kind="range-suspiciously-wide",
+                detail=f"pgmark span {span} pages ({lo}–{hi}) exceeds 1.3× "
+                       f"PDF page count ({pdf_pages}) — possible silent "
+                       f"offset bug",
+                new_vs_baseline=_is_new("range-suspiciously-wide"),
+            ))
+
     return findings
 
 
 def validate(
-    tex: str, *, baseline_kinds: set[str] | None = None,
+    tex: str,
+    *,
+    baseline_kinds: set[str] | None = None,
+    pdf_pages: int | None = None,
 ) -> ValidationReport:
     return ValidationReport(
         scope_violations=_scan_scope(tex),
-        continuity_findings=_scan_continuity(tex, baseline_kinds=baseline_kinds),
+        continuity_findings=_scan_continuity(
+            tex,
+            baseline_kinds=baseline_kinds,
+            pdf_pages=pdf_pages,
+        ),
     )
 
 
@@ -560,6 +730,19 @@ def main() -> int:
                    help="error (default): exit 1 on blockers. warn: always exit 0.")
     p.add_argument("--json", action="store_true",
                    help="Emit JSON instead of markdown.")
+    p.add_argument("--pdf-pages", type=int, default=None,
+                   help="PDF page count for range checks. If omitted, "
+                        "auto-detect via pdfinfo on sibling <citekey>.pdf "
+                        "or --pdf path.")
+    p.add_argument("--pdf", type=str, default=None,
+                   help="Explicit PDF path for pdfinfo auto-detection.")
+    p.add_argument("--no-pdf-check", action="store_true",
+                   help="Skip PDF range checks entirely.")
+    p.add_argument("--journal-cumulative", action="store_true",
+                   help="Treat printed pages N..N+K as journal-offset reprint "
+                        "(skip range-impossible and range-suspiciously-wide). "
+                        "Useful for Springer/Elsevier articles where the PDF "
+                        "starts at the article's first printed page.")
     args = p.parse_args()
 
     tex_path = Path(args.tex)
@@ -577,7 +760,22 @@ def main() -> int:
         except Exception:
             baseline = None
 
-    report = validate(tex, baseline_kinds=baseline)
+    pdf_pages: int | None = None
+    if not args.no_pdf_check:
+        if args.pdf_pages is not None:
+            pdf_pages = args.pdf_pages
+        else:
+            pdf_path = Path(args.pdf) if args.pdf else None
+            pdf_pages = _detect_pdf_pages(tex_path, pdf_path)
+
+    # `--journal-cumulative` suppresses the high-end range checks
+    # since journal offset reprints legitimately have pgmarks far
+    # above 1. The multi-section duplicate-detection and out-of-order
+    # checks remain active.
+    if args.journal_cumulative:
+        pdf_pages = None
+
+    report = validate(tex, baseline_kinds=baseline, pdf_pages=pdf_pages)
 
     if args.json:
         print(json.dumps({
@@ -585,6 +783,7 @@ def main() -> int:
             "continuity_findings": [f.__dict__ for f in report.continuity_findings],
             "has_blockers": report.has_blockers,
             "summary": report.summary_line(),
+            "pdf_pages": pdf_pages,
         }, indent=2))
     else:
         print(report.to_markdown(), end="")

@@ -112,6 +112,96 @@ fully work" is not exhaustion.** Tier 4 (orphan-attachment with
 "Out of /deep-index scope" is not a valid deferral reason for any
 problem within the explicit in-scope list above.
 
+### Anti-patterns: things that are NOT exhaustion signals
+
+A retrospective on the 5-13 / 5-14 batch of streamlining memos shows
+the deep-indexer was repeatedly stopping work for reasons the skill
+text doesn't accept. Each of the following is **not** a reason to
+emit an `outstanding-work` item — it's a reason to do the work:
+
+1. **"No existing script for this."** Write the script. The skill is
+   explicit that this is in-scope; §10 (streamlining memo) is for
+   *recording* that the script should exist permanently, not for
+   substituting a memo *in place of* doing the work this pass. If
+   the same gap shows up across multiple papers, lift the script
+   into `library/scripts/` so future runs inherit it.
+2. **"The auto-pipeline produced false positives."** Build a more
+   conservative version. The right response to a script that's too
+   aggressive is to add a guard (TOC-skip, citation-arg guard,
+   pgmark-preservation, body-argument-list filter), not to abandon
+   the pass.
+3. **"A safeguard fired (e.g., >50% removal threshold)."** Add a
+   per-paper override (`--max-page N`, `--style=<X>`) or fix the
+   safeguard. The safeguard's job is to catch bad cases, not to
+   define exhaustion.
+4. **"The validator flagged something."** Distinguish real defects
+   from heuristic limitations. If the finding is a confirmed false
+   positive (journal-offset reprint, multi-section pagination,
+   low-confidence flood on a scanned-OCR book), record it as
+   `validator-false-positive` and proceed. Validator findings are
+   gates only when they reflect actual file defects.
+5. **"It's risky to auto-fix."** Design the safer version. If
+   coordinated compounds like `pre- and post-test` are getting
+   misflagged as hyphenation artifacts, the fix is a negative
+   lookahead for `and|or|nor|but|to|vs`, not a deferral. If
+   hyphenation cleanup might rejoin a legitimate compound, use a
+   dictionary check or a conservative "join only if result is a
+   common word" rule.
+
+### Self-check before emitting any outstanding-work item
+
+Before tagging any item as `[source-missing]`,
+`[figure-reconstruction]`, `[user-judgment-required]`, or
+`[validator-false-positive]`, walk this checklist:
+
+- Have I exhausted the §0.5 in-scope ladder for this category?
+- For a footnote: did I try Tier 4 (orphan-prefix) — which always
+  succeeds where a preceding body paragraph exists?
+- For a script-protected operation: did I try a per-paper override
+  flag (`--max-page`, `--style=...`, `--diagram-tokens`)?
+- For a missing bibliography entry that's a well-known cited work:
+  did I consider synthesis from external reference data with a
+  `% synthesized` comment?
+- For metadata mismatch where the citekey clearly names the work
+  and the body matches: did I apply the auto-resolution policy
+  (update `master.bib` + catalog, set `bib.state = needs-reauth`)?
+
+If any answer is no, the deferral is premature — do the work first.
+
+### Convergence behavior (anti-pattern enforcement)
+
+Stopping after 3-4 passes because the remaining work is laborious is
+**not** convergence. The loop continues until either:
+
+- (a) the outstanding list is empty, or narrow-out-of-scope only
+  (the three §0.5 narrow categories, plus `validator-false-positive`
+  for known heuristic limitations), or
+- (b) the pathological-loop guard fires (pass ≥3, outstanding list
+  growing, zero resolutions).
+
+Items in pass 1's outstanding list that the agent expects to address
+in a follow-up pass should be tagged `[in-progress]`, not
+`[user-judgment-required]`, and should be carried forward by the
+loop — not surfaced to the user as questions.
+
+### When `user-judgment-required` IS the right tag
+
+A short list of cases where this tag is genuinely warranted:
+
+- The user has set `metadata-lock: true` in the catalog row or left
+  an explicit note in `papers/<citekey>/virgil/notes.json` about
+  intended chapter-level identity, and the on-disk file no longer
+  matches that intent.
+- The on-disk file and `master.bib` describe genuinely different
+  works (different authors, different years, no obvious subset
+  relation) and the citekey could plausibly refer to either.
+- A republication / reprint identity choice where both options are
+  defensible and the user has not previously expressed a preference.
+
+If the situation doesn't match one of these, the right move is
+almost always to apply a reasonable default (file is source of
+truth; update metadata to match) and proceed.
+
 ## Persistence: internal convergence loop (no cap)
 
 This skill runs an internal loop, not a single pass. The structure is:
@@ -403,23 +493,47 @@ to recover the missing initial letter and emits a patch list. Apply
 each suggestion as a body Edit (one-letter prepend; never modify
 surrounding text).
 
-**Content vs. metadata mismatch.** If the body content does not match
-`master.bib`'s `title` (e.g., the file is a whole book but `master.bib`
-describes one chapter), **do NOT** silently change the title to fit
-the content — that creates downstream metadata drift. Instead, flag in
-`## Outstanding work` as:
+**Content vs. metadata mismatch — match metadata to file.** When the
+body content does not match `master.bib`'s `title` (e.g., the file is
+a whole book but `master.bib` describes one chapter), the on-disk
+file is the source of truth. Update `master.bib`, the catalog row,
+and the in-file `\title{...}` to match the file's actual identity.
+Use the cover/title-page of the source PDF as the authoritative
+title.
 
-```
-- [user-judgment-required] content/metadata mismatch: file contains
-  <description>, master.bib describes <description> — should master.bib
-  be updated to match content, or should the file be re-extracted as
-  a per-chapter source?
-```
+Apply this update directly (no `user-judgment-required` deferral)
+when **all four** conditions hold:
 
-…and continue the rest of the deep-index pass against the actual
-content. If the user later authorizes a metadata update, also update
-the in-file `\title{}` and the catalog row's `title`/`doi` fields to
-match. Without explicit authorization, leave the title alone.
+1. The file is structurally larger (whole book / full proceedings /
+   full dissertation), AND
+2. The current metadata describes a proper subset (one chapter, one
+   excerpt), AND
+3. The cover page (first 2 pages, via `pdftotext -layout`)
+   unambiguously gives the larger artifact's title, AND
+4. The catalog row has no `metadata-lock: true` flag and
+   `papers/<citekey>/virgil/notes.json` is silent on intentional
+   chapter-level identity.
+
+After updating metadata, set `bib.state = "needs-reauth"` so the
+next `/library/authenticate-bib` pass re-verifies the new DOI.
+Update the in-file `\title{}` to match. Use
+`update_master_bib_entry.py` and `update_catalog_entry.py` (NOT
+direct Write) to acquire the file locks safely.
+
+Keep the `user-judgment-required` deferral only for:
+
+- The inverse direction (file is a chapter, metadata describes the
+  book) — we can't re-extract the whole book from a chapter file.
+- Genuinely different works (different authors, different years,
+  no obvious subset relation).
+- `metadata-lock: true` in the catalog row, or explicit user notes
+  in `papers/<citekey>/virgil/notes.json` about chapter-level
+  identity.
+- Republication / reprint identity choices where both are defensible
+  and the user has expressed no prior preference. Even here, apply
+  a reasonable default (keep the existing bib, add a `note` field
+  documenting the reprint source) rather than blocking on user
+  input.
 
 **Multi-article PDF detection.** If `detect_genre.py` (preflight)
 classified the source as `multi-article-pdf`, run:
@@ -2087,8 +2201,15 @@ Allowed `<category>` values:
 - `source-missing` — page or block literally absent from the PDF
 - `figure-reconstruction` — raster-only content (figures, diagrams)
 - `user-judgment-required` — requires user input (rare; high bar)
+- `validator-false-positive` — the validator's heuristic flagged
+  something that's verifiably correct (journal-offset reprint with
+  span fitting in PDF page count, multi-section pagination with
+  legitimate page-label namespaces, low-confidence-flood on a
+  scanned-OCR book where every marker has been positionally
+  verified). Distinct from `user-judgment-required` because there's
+  no decision for the user to make — the file is already correct.
 
-These are the **only three categories** that may remain after the
+These are the **only four categories** that may remain after the
 convergence loop completes. Everything else is in-scope per §0.5
 and must be drained by subsequent passes. If you find yourself
 wanting to use a different category, you are almost certainly failing
@@ -2105,6 +2226,10 @@ Allowed `<why deferred>` values (be precise — these are auditable):
 - `user-judgment-required — <specific question>` — with the exact
   question that needs the user's input. Default expectation: this
   is almost never the right reason.
+- `validator-false-positive — <finding kind>: <why it's correct>` —
+  e.g., `range-impossible: span fits in PDF page count (offset
+  reprint)`. The corresponding catalog warning gets a
+  `…-false-positive:` prefix so future passes don't re-flag it.
 
 **If everything was resolved**, write the section with body:
 

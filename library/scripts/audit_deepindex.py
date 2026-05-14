@@ -7,14 +7,19 @@ punch-list becomes the next pass's agenda.
 Checks performed:
 - Invisible characters (U+00AD, U+200B, U+00A0 word-internal, U+FEFF,
   U+FB00-U+FB06 ligatures, U+2800 Braille pattern blank).
-- Hyphenation artifacts (\\b[a-z]+- [a-z]+\\b, \\b\\w[A-Z][a-z]\\b).
+- Hyphenation artifacts (\\b[a-z]+- [a-z]+\\b), with coordinated-compound
+  exclusion (`pre- and post-test`, `object- and property-aspects`).
 - Title/metadata cross-check (\\title{} vs catalog vs master.bib).
 - references.bib sample audit (trailing ", no", trailing periods,
   double-hyphenation on page ranges, suspicious type detection).
 - Pgmark continuity (low-confidence count, validator-finding count).
 - Footnote inline-rate (leaked-prose paragraphs that should have been
-  re-attached but weren't).
+  re-attached but weren't) — with TOC, enumeration-sequence,
+  numbered-list, theorem-numbering, and figure-context exclusions; and
+  full skip when document has zero `\\footnote{}` commands.
 - Citation completeness (\\cite{} keys missing from references.bib).
+- Unbalanced-brace detection (runaway `\\footnote{`/`\\section{`/`\\textbf{`).
+- Missing-pgmark-range (silent losses vs. PDF page count from pdfinfo).
 
 Usage:
     python3 audit_deepindex.py <paper-dir>
@@ -30,6 +35,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -55,14 +62,27 @@ LIGATURES = {
     "U+FB06": "ﬆ",  # st
 }
 
-# Hyphenation artifact patterns. `\b[a-z]+- [a-z]+\b` catches
+# Hyphenation artifact patterns. `\b[a-z]+- [a-z]{2,}\b` catches
 # "exam- ple" patterns the deep_preprocess.py whitelisted-suffix
-# rejoin missed.
-HYPHEN_ARTIFACT_RE = re.compile(r"\b[a-z]+- [a-z]{2,}\b")
+# rejoin missed. Negative lookahead excludes coordinated compounds
+# (`pre- and post-test`, `one- and two-year-olds`, `object- and
+# property-aspects`) which are correct English.
+HYPHEN_ARTIFACT_RE = re.compile(
+    r"\b[a-z]+- (?!(?:and|or|nor|but|to|vs|versus)\b)[a-z]{2,}\b"
+)
 
 # Case error: lowercase letter followed by capital + lowercase, mid-word.
 # Pattern catches "JoyceJ.", "concatenatedFoo".
 CASE_ERROR_RE = re.compile(r"\b[a-z]\w*[a-z][A-Z][a-z]\w*\b")
+
+# Math-identifier-like prefixes that look like case errors but are
+# almost always variable / function names in formal-semantics or
+# mathematical prose. Skip case-error matches whose prefix matches
+# any of these. (leong memo: `posM`, `posMtxtM` falsely flagged.)
+MATH_IDENT_PREFIX_RE = re.compile(
+    r"^(?:pos|lab|fun|fn|var|val|cl|obj|prop|rel|sub|sup|tag|ctx|"
+    r"id|exp|num|tmp|usr|app|src|dst|loc|len|cnt|seg|fst|snd|tok)[A-Z]"
+)
 
 # Word-internal NBSP between two lowercase letters.
 WORD_NBSP_RE = re.compile(r"[a-z] [a-z]")
@@ -70,6 +90,38 @@ WORD_NBSP_RE = re.compile(r"[a-z] [a-z]")
 # Leaked-prose footnote pattern: paragraph that starts with a bare or
 # punctuated integer 1-200 followed by body text.
 LEAKED_FN_RE = re.compile(r"^(\d{1,3})[.\s]+[A-Z][\w\s\.,;:'\-]{20,}")
+
+# Numbered TOC entry: `N <Title>, <page>` or `N. <Title> ... <page>`
+# (with optional dot leaders). Matches Lewis-style and book-TOC
+# patterns that the leaked-FN detector falsely flags.
+TOC_ENTRY_RE = re.compile(
+    r"^\s*\d{1,3}\.?\s+[A-Z][A-Za-z\-' ]{3,80}[,\s\.]+\d{1,4}\s*$"
+)
+
+# Figure-caption marker. If this appears 1-5 lines BEFORE a candidate
+# leaked-FN paragraph, the candidate is a figure annotation, not a
+# leaked footnote body. (leong memo.)
+FIGURE_CAPTION_RE = re.compile(
+    r"\\begin\{quote\}\s*\\textit\{Figure\s+\d+(?:\.\d+)?"
+)
+
+# Footnote command anywhere in the document. If the document has zero
+# `\footnote{}` calls, there is no plausible leaked-FN body to recover
+# in the first place. (carey memo: `[footnote-inline-rate]` false
+# positive on documents with no footnotes at all.)
+FOOTNOTE_CMD_RE = re.compile(r"\\footnote\{")
+
+# Section heads that begin the back-matter (or front-matter Contents)
+# for purposes of skipping the leaked-FN scan. Including Contents /
+# TOC heads keeps numbered chapter listings inside `\section{Contents}`
+# out of the leaked-FN count.
+BACK_MATTER_OR_FRONT_TOC_RE = re.compile(
+    r"^\s*\\section\{("
+    r"References|Bibliography|Works\s*Cited|Notes|Endnotes|Index|"
+    r"Contents|Table\s+of\s+Contents|TOC"
+    r")\b",
+    re.IGNORECASE,
+)
 
 # Pgmark with optional `[low]` confidence.
 PGMARK_RE = re.compile(r"\\pgmark(?:\[([a-z]+)\])?\{(\d+)\}")
@@ -79,6 +131,10 @@ CITE_RE = re.compile(r"\\cite(?:[a-z]*)?(?:\[[^\]]*\])?\{([^}]+)\}")
 
 # BibTeX entry key extraction.
 BIB_KEY_RE = re.compile(r"^@\w+\{([^,\s]+)", re.M)
+
+# Math span (single-dollar pair) — stripped before case-error check.
+INLINE_MATH_RE = re.compile(r"(?<!\\)\$[^$\n]+\$")
+DISPLAY_MATH_RE = re.compile(r"\\\[.*?\\\]", re.DOTALL)
 
 
 def read_text(path: Path) -> str:
@@ -145,38 +201,144 @@ def count_hyphen_artifacts(text: str) -> tuple[int, list[int]]:
 
 
 def count_case_errors(text: str) -> tuple[int, list[int]]:
-    """Count mid-word case errors (camelCase mid-word). Skip command args."""
+    """Count mid-word case errors (camelCase mid-word). Skip command args
+    and math spans, and exclude matches that look like math-identifier
+    names (`posM`, `posMtxtM`)."""
     # Strip LaTeX command bodies to avoid false positives on intended camelCase.
     no_cmd = re.sub(r"\\[a-zA-Z]+\{[^}]*\}", "", text)
-    matches = list(CASE_ERROR_RE.finditer(no_cmd))
-    samples = sample_line_numbers(no_cmd, CASE_ERROR_RE)
-    return len(matches), samples
+    # Strip math spans so identifiers like `posM` inside `$pos_M$` don't
+    # show up. We replace with blanks (preserving line numbers).
+    no_math = DISPLAY_MATH_RE.sub(
+        lambda m: " " * len(m.group(0)), no_cmd,
+    )
+    no_math = INLINE_MATH_RE.sub(
+        lambda m: " " * len(m.group(0)), no_math,
+    )
+    # Per-line so we can preserve line numbers for samples.
+    real_matches: list[tuple[int, str]] = []
+    for line_no, line in enumerate(no_math.splitlines(), start=1):
+        for m in CASE_ERROR_RE.finditer(line):
+            token = m.group(0)
+            # Skip math-identifier-like prefixes (leong memo).
+            if MATH_IDENT_PREFIX_RE.match(token):
+                continue
+            real_matches.append((line_no, token))
+    samples = [ln for ln, _ in real_matches[:3]]
+    return len(real_matches), samples
 
 
 def count_leaked_footnotes(text: str) -> tuple[int, list[int]]:
-    """Count paragraphs that look like leaked footnote bodies."""
+    """Count paragraphs that look like leaked footnote bodies.
+
+    Multiple exclusions guard against false positives:
+
+    - **Zero-footnote skip**: if the document contains no `\\footnote{}`
+      commands, no candidate is a leaked footnote body (carey memo).
+
+    - **Front-matter Contents/TOC skip**: candidates inside
+      `\\section{Contents}` / `\\section{Table of Contents}` blocks
+      are TOC entries, not footnote bodies (kulvicki, shin, zeki).
+
+    - **Back-matter skip**: candidates after `\\section{References}` /
+      `\\section{Bibliography}` / etc. are bibliography entries or
+      index lines.
+
+    - **TOC-shape skip**: a candidate whose line shape matches `N
+      <Title>, <page>` (numbered TOC entry, even outside an explicit
+      Contents section) is treated as a TOC entry (carey, zeki).
+
+    - **Enumeration-sequence skip**: a candidate whose number is part
+      of a 3+ consecutive sequence (1, 2, 3 ... seen within 30 lines
+      of each other) is a numbered list / argument enumeration, not
+      a leaked footnote (shimojima, leong, fodor).
+
+    - **Figure-context skip**: a candidate preceded within 5 lines by
+      a `\\begin{quote}\\textit{Figure N…}` marker is a figure
+      annotation (leong).
+    """
     samples: list[int] = []
-    count = 0
+    # Zero-footnote skip.
+    if not FOOTNOTE_CMD_RE.search(text):
+        return 0, samples
+
+    lines = text.splitlines()
+
+    # First pass: collect ALL leaked-FN candidates with their line
+    # numbers and footnote numbers. We need the full list before we
+    # can detect enumeration sequences.
     body_started = False
-    in_refs = False
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    in_back_matter = False
+    candidates: list[tuple[int, int]] = []  # (line_no, fn_number)
+    for line_no, line in enumerate(lines, start=1):
         if r"\maketitle" in line:
             body_started = True
             continue
         if not body_started:
             continue
-        if re.match(r"\\section\{(References|Bibliography|Works Cited|Notes|Index)", line):
-            in_refs = True
-        if in_refs:
+        if BACK_MATTER_OR_FRONT_TOC_RE.match(line):
+            in_back_matter = True
+        if in_back_matter:
+            continue
+        # TOC-shape skip: matches numbered TOC entries even outside a
+        # Contents section.
+        if TOC_ENTRY_RE.match(line):
             continue
         m = LEAKED_FN_RE.match(line)
-        if m:
-            n = int(m.group(1))
-            # Plausible footnote number, not a list item or year.
-            if 1 <= n <= 200:
-                count += 1
-                if len(samples) < 3:
-                    samples.append(line_no)
+        if not m:
+            continue
+        n = int(m.group(1))
+        if not (1 <= n <= 200):
+            continue
+        candidates.append((line_no, n))
+
+    if not candidates:
+        return 0, samples
+
+    # Enumeration-sequence detection: a candidate is part of a sequence
+    # if there's a candidate with number n+1 within 30 lines AND a
+    # candidate with number n-1 OR n+2 within the same window (so
+    # 1,2 alone doesn't count — we want 1,2,3 or 2,3,4).
+    by_number_then_line: dict[int, list[int]] = {}
+    for ln, n in candidates:
+        by_number_then_line.setdefault(n, []).append(ln)
+
+    def in_enumeration(line_no: int, n: int) -> bool:
+        # Find candidates with numbers n-1, n+1, n+2 within ±30 lines.
+        nearby_numbers = set()
+        for other_n in (n - 2, n - 1, n + 1, n + 2):
+            for other_ln in by_number_then_line.get(other_n, []):
+                if abs(other_ln - line_no) <= 30:
+                    nearby_numbers.add(other_n)
+        # Part of an enumeration iff at least two of {n-1, n+1, n+2}
+        # or {n-2, n-1, n+1} are present nearby. Concretely: if both
+        # n+1 and n+2 (or both n-1 and n-2, or both n-1 and n+1) show
+        # up, we have a 3-run including this candidate.
+        if n + 1 in nearby_numbers and n + 2 in nearby_numbers:
+            return True
+        if n - 1 in nearby_numbers and n - 2 in nearby_numbers:
+            return True
+        if n - 1 in nearby_numbers and n + 1 in nearby_numbers:
+            return True
+        return False
+
+    # Figure-context skip: walk back up to 5 lines before each
+    # candidate looking for a figure-caption marker.
+    def in_figure_context(line_no: int) -> bool:
+        start = max(1, line_no - 5)
+        for j in range(start, line_no):
+            if FIGURE_CAPTION_RE.search(lines[j - 1]):
+                return True
+        return False
+
+    count = 0
+    for ln, n in candidates:
+        if in_enumeration(ln, n):
+            continue
+        if in_figure_context(ln):
+            continue
+        count += 1
+        if len(samples) < 3:
+            samples.append(ln)
     return count, samples
 
 
@@ -201,6 +363,122 @@ def find_unresolved_cites(tex_text: str, bib_keys: set[str]) -> tuple[int, list[
 
 def find_low_confidence_pgmarks(tex_text: str) -> int:
     return sum(1 for m in PGMARK_RE.finditer(tex_text) if m.group(1) == "low")
+
+
+# Commands whose brace argument is expected to be a single paragraph
+# at most. A matching close-brace farther than this many newlines
+# downstream indicates a runaway brace from OCR'd content. (dretske
+# memo: footnote bodies with OCR-introduced unbalanced braces consume
+# the rest of the document silently.)
+_RUNAWAY_BRACE_CMDS = ("footnote", "section", "subsection", "subsubsection",
+                       "textbf", "textit", "title", "author")
+_RUNAWAY_PARA_LIMIT = 3  # max paragraph breaks allowed inside an argument
+
+
+def find_unbalanced_braces(text: str) -> tuple[int, list[int]]:
+    """Detect `\\<cmd>{...}` invocations whose close brace is more than
+    `_RUNAWAY_PARA_LIMIT` paragraphs away or crosses a `\\section{}`
+    boundary. Returns (count, sample line numbers)."""
+    samples: list[int] = []
+    count = 0
+    for cmd in _RUNAWAY_BRACE_CMDS:
+        # Find each `\<cmd>{`.
+        for m in re.finditer(rf"\\{cmd}\*?\{{", text):
+            open_pos = m.end() - 1  # position of the `{`
+            line_no = text.count("\n", 0, open_pos) + 1
+            # Walk forward tracking brace depth.
+            depth = 0
+            i = open_pos
+            n = len(text)
+            paragraphs_seen = 0
+            crossed_section = False
+            while i < n:
+                c = text[i]
+                if c == "\\" and i + 1 < n:
+                    # Check whether the rest is `section{` etc. (cheap).
+                    nxt = text[i:i + 15]
+                    if re.match(r"\\section\{", nxt) and depth == 1:
+                        crossed_section = True
+                    i += 2
+                    continue
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                elif c == "\n" and i + 1 < n and text[i + 1] == "\n":
+                    paragraphs_seen += 1
+                i += 1
+            if depth != 0:
+                count += 1
+                if len(samples) < 3:
+                    samples.append(line_no)
+            elif paragraphs_seen > _RUNAWAY_PARA_LIMIT or crossed_section:
+                count += 1
+                if len(samples) < 3:
+                    samples.append(line_no)
+    return count, samples
+
+
+def _detect_pdf_pages_for_audit(paper_dir: Path) -> int | None:
+    """Auto-detect PDF page count via pdfinfo for missing-pgmark-range."""
+    if not shutil.which("pdfinfo"):
+        return None
+    citekey = paper_dir.name
+    sib = paper_dir / f"{citekey}.pdf"
+    if not sib.exists():
+        # Some Library layouts use `<citekey>.PDF` or similar.
+        for ext in (".PDF", ".pdf.pdf"):
+            cand = paper_dir / f"{citekey}{ext}"
+            if cand.exists():
+                sib = cand
+                break
+        else:
+            return None
+    try:
+        out = subprocess.run(
+            ["pdfinfo", str(sib)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if out.returncode != 0:
+            return None
+        for line in out.stdout.splitlines():
+            if line.startswith("Pages:"):
+                return int(line.split(":", 1)[1].strip())
+    except (subprocess.SubprocessError, ValueError):
+        return None
+    return None
+
+
+def check_missing_pgmark_range(
+    tex: str, pdf_pages: int | None,
+) -> str | None:
+    """If the max pgmark falls substantially short of the PDF page
+    count, flag as silent losses from prior passes (dretske memo).
+
+    Returns a human-readable finding string, or None if the range is
+    plausible or we lack a PDF page count.
+    """
+    if pdf_pages is None or pdf_pages < 5:
+        return None
+    arabic = [int(m.group(2)) for m in PGMARK_RE.finditer(tex)
+              if m.group(2).isdigit()]
+    if not arabic:
+        return None
+    hi = max(arabic)
+    # Threshold: if max pgmark < 80% of pdf_pages, something was lost.
+    # (For journal-offset reprints — kunene with hi=39, pdf=23 — this
+    # never fires because hi > pdf, not <.)
+    if hi < pdf_pages * 0.8:
+        return (
+            f"max pgmark {hi} is well below PDF page count {pdf_pages} "
+            f"({hi * 100 // pdf_pages}% coverage) — likely silent "
+            f"pgmark losses from prior passes"
+        )
+    return None
 
 
 def audit_references_bib(bib_text: str) -> list[str]:
@@ -359,6 +637,23 @@ def audit(paper_dir: Path) -> dict:
             f"{low_count} \\pgmark[low]{{}} markers — re-verify after cleanup "
             f"(threshold 30%, window ±1500 chars)",
         ))
+
+    # 10. Unbalanced braces (OCR'd argument runaway).
+    runaway_count, runaway_samples = find_unbalanced_braces(tex)
+    if runaway_count > 0:
+        sample = ", ".join(f"line {n}" for n in runaway_samples)
+        findings.append((
+            "unbalanced-brace",
+            f"{runaway_count} runaway brace argument(s) "
+            f"(spans > {_RUNAWAY_PARA_LIMIT} paragraphs or crosses "
+            f"`\\section{{}}`; samples: {sample})",
+        ))
+
+    # 11. Missing-pgmark-range (silent losses vs. PDF page count).
+    pdf_pages = _detect_pdf_pages_for_audit(paper_dir)
+    range_finding = check_missing_pgmark_range(tex, pdf_pages)
+    if range_finding is not None:
+        findings.append(("missing-pgmark-range", range_finding))
 
     return {"citekey": citekey, "findings": findings}
 

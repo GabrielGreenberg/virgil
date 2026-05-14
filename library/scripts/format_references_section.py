@@ -54,11 +54,25 @@ INLINE_HEADER_RE = re.compile(r"\s+(?:REFERENCES|BIBLIOGRAPHY|WORKS CITED)\s+\d+
 
 def detect_style(refs_text: str) -> str:
     """Heuristically detect citation style."""
-    bracket_keys = len(re.findall(r"\[\w+\]", refs_text))
+    bracket_keys = len(re.findall(r"\[[A-Za-z]\w*\]", refs_text))
+    bracket_numeric = len(re.findall(r"\[(\d{1,3})\]", refs_text))
+    siggraph_signals = len(re.findall(
+        r"\b[A-Z]{2,}(?:,\s+[A-Z]\.)+,?\s+AND\s+[A-Z]{2,}", refs_text,
+    ))
     apa_signals = len(re.findall(r"[A-Z]\w+,\s+[A-Z]\.\s*(?:,\s+[A-Z]\.\s*)*\s*\(", refs_text))
     chicago_signals = len(re.findall(r"[A-Z]\w+,\s+[A-Z]\.\s+\d{4}\.", refs_text))
+    author_year_paren = len(re.findall(
+        r"[A-Z][a-zA-Z\-']+(?:\s+and\s+[A-Z][a-zA-Z\-']+)?\s*\(\d{4}[a-c]?\)",
+        refs_text,
+    ))
+    if siggraph_signals >= 3:
+        return "siggraph"
+    if bracket_numeric >= 5 and bracket_numeric > bracket_keys:
+        return "bracket-numeric"
     if bracket_keys >= 5 and bracket_keys > apa_signals + chicago_signals:
         return "bracket-key"
+    if author_year_paren >= 5 and author_year_paren > chicago_signals:
+        return "author-year-paren"
     if apa_signals >= 5 and apa_signals > chicago_signals:
         return "apa"
     if chicago_signals >= 5:
@@ -71,34 +85,187 @@ def strip_inline_headers(text: str) -> str:
     return INLINE_HEADER_RE.sub(" ", text)
 
 
-def split_entries(refs_text: str, style: str) -> list[str]:
-    """Split a run-on references section into individual entries."""
+# Author-start signal for an APA/Chicago entry: a capitalized surname
+# followed by a comma (`Lastname,`). Caught by the comma being the
+# canonical APA / Chicago separator between surname and initials. This
+# is the strongest, lowest-false-positive boundary signal.
+_AUTHOR_START_STRONG_RE = re.compile(
+    r"(?:^|(?<=[\.\)\n])\s*)([A-ZÀ-ÝŒÆ][a-zA-ZÀ-ÿ\-'’]+,)"
+)
+
+# Author-start signal for Chicago-without-comma (rarer). Fallback.
+_AUTHOR_START_WEAK_RE = re.compile(
+    r"(?:^|(?<=[\.\n])\s+)([A-ZÀ-ÝŒÆ][a-zA-ZÀ-ÿ\-'’]{2,}\s+[A-ZÀ-Ý]\.)"
+)
+
+
+def _looks_like_paragraph_separated(refs_text: str) -> bool:
+    """Detect a 'one entry per paragraph' references section.
+
+    Returns True when ≥10 paragraphs are present AND ≥80% of them
+    start with a surname-shaped prefix followed by a 4-digit year
+    within the first ~200 chars. Such bibliographies should bypass
+    the year-anchor split entirely and just wrap each paragraph in
+    an `\\item`. (greenberg, kriegeskorte memos.)
+    """
+    paras = [p.strip() for p in re.split(r"\n\s*\n", refs_text) if p.strip()]
+    if len(paras) < 10:
+        return False
+    head_re = re.compile(r"^[A-ZÀ-ÝŒÆ][a-zA-ZÀ-ÿ\-'’]+[,\.]")
+    with_year = sum(
+        1 for p in paras
+        if head_re.match(p) and YEAR_RE.search(p[:200])
+    )
+    return with_year >= 0.8 * len(paras)
+
+
+def _author_start_before(
+    text: str, year_start: int, floor: int,
+) -> int:
+    """Return the position of the author-surname start for an entry
+    whose year boundary is at `year_start`. Searches in
+    `text[floor:year_start]`. Falls back to `year_start` itself if no
+    clear boundary is found."""
+    chunk = text[floor:year_start]
+    # Strong signal: `.\s+Lastname,` or paragraph-start `Lastname,`.
+    matches = list(_AUTHOR_START_STRONG_RE.finditer(chunk))
+    if matches:
+        # Take the LAST match closest to the year — that's the actual
+        # author for this entry, not an earlier author embedded in
+        # the previous entry's title.
+        return floor + matches[-1].start(1)
+    # Weak signal: `Lastname F.`-style without trailing comma.
+    matches = list(_AUTHOR_START_WEAK_RE.finditer(chunk))
+    if matches:
+        return floor + matches[-1].start(1)
+    return year_start
+
+
+def _split_siggraph(text: str) -> list[str]:
+    """SIGGRAPH-style: `LASTNAME, F., AND LASTNAME, F. YEAR. Title…`.
+    Split at period-space before all-caps surname (with multi-word
+    surname support)."""
+    parts = re.split(
+        r"(?<=[\.\]])\s+(?=[A-Z]{2,}(?:\s+[A-Z]{2,})?,\s+[A-Z]\.)",
+        text,
+    )
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _split_author_year_paren(text: str) -> list[str]:
+    """Humanities-thesis style: `Author(s) (YYYY[a/b]) Title. Rest.`.
+    Entry start is `Lastname,\\s+F\\.` or paragraph-start `Lastname`."""
+    # First try paragraph-separated.
+    if _looks_like_paragraph_separated(text):
+        return [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    # Otherwise split on the entry-start regex.
+    parts = re.split(
+        r"(?<=[\.\]])\s+(?=[A-Z][a-zA-Z\-']+,\s+[A-Z]\.)",
+        text,
+    )
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _apply_same_author_continuation(entries: list[str]) -> list[str]:
+    """Merge entries that look like same-author year-only
+    continuations (`^1998. Title. Rest.`) into the prior entry's
+    author. (kulvicki memo.)"""
+    out: list[str] = []
+    prev_author: str | None = None
+    for entry in entries:
+        m_year_start = re.match(r"^(\d{4}[a-c]?)\.\s+", entry)
+        if m_year_start and prev_author:
+            # Take the surname/given-initials prefix of the previous
+            # entry up to its year.
+            out.append(f"{prev_author} {entry}")
+            continue
+        # Track the previous entry's "author prefix" for potential
+        # same-author continuation. Heuristic: everything up to (but
+        # not including) the first 4-digit year.
+        ya = re.search(r"\b(1[6-9]\d{2}|20\d{2})\b", entry)
+        if ya:
+            prev_author = entry[:ya.start()].rstrip(" .,")
+        out.append(entry)
+    return out
+
+
+def split_entries(
+    refs_text: str,
+    style: str,
+    same_author_mode: bool = False,
+) -> list[str]:
+    """Split a run-on references section into individual entries.
+
+    Strategies, by style:
+
+    - **bracket-key** / **bracket-numeric**: split on bracket
+      paragraph-starts.
+    - **siggraph**: all-caps surname boundary.
+    - **author-year-paren**: paragraph-separated or
+      `Lastname,\\s+F\\.` boundary.
+    - **paragraph-separated fast path** (any style): when the source
+      already has one entry per paragraph (≥10 paragraphs, ≥80%
+      surname+year prefix), wrap each paragraph in `\\item`.
+    - **year-anchor split** (corrected): find each `YYYY[a-z]?\\.`
+      year-boundary, walk backward to the author-surname start just
+      before the year, and use that as the entry boundary.
+
+    When `same_author_mode=True`, entries starting with a bare year
+    (`^1998. …`) inherit the previous entry's author prefix.
+    """
     text = strip_inline_headers(refs_text)
     if style == "bracket-key":
-        # Split on [KEY] at line/paragraph start.
-        parts = re.split(r"\n\s*(?=\[)", text)
+        parts = re.split(r"\n\s*(?=\[[A-Za-z])", text)
         return [p.strip() for p in parts if p.strip()]
-    # Author-year style: split on YEAR-period.
-    entries = []
-    pos = 0
-    for m in YEAR_BOUNDARY_RE.finditer(text):
-        # Reject if the YEAR appears mid-name (preceded by "et al." or
-        # closing bracket of a parenthetical year).
-        boundary_end = m.end()
-        # Check if the next character is a likely entry start: capital
-        # letter or em-dash same-author marker.
-        next_chunk = text[boundary_end:boundary_end + 30].lstrip()
-        if not next_chunk:
-            continue
-        # Look for `[A-Z]` (new author), `—` (same author), or `"` (some refs
-        # start the title immediately after the year).
-        if not re.match(r"[A-ZÀ-Ý\"“—–\-]", next_chunk):
-            continue
-        entries.append(text[pos:boundary_end].strip())
-        pos = boundary_end
-    if pos < len(text):
-        entries.append(text[pos:].strip())
-    return [e for e in entries if e]
+    if style == "bracket-numeric":
+        parts = re.split(r"\n\s*(?=\[\d+\])", text)
+        return [p.strip() for p in parts if p.strip()]
+    if style == "siggraph":
+        return _split_siggraph(text)
+    if style == "author-year-paren":
+        entries = _split_author_year_paren(text)
+        if same_author_mode:
+            entries = _apply_same_author_continuation(entries)
+        return entries
+
+    # Fast path: paragraph-separated.
+    if _looks_like_paragraph_separated(text):
+        paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        if same_author_mode:
+            paras = _apply_same_author_continuation(paras)
+        return paras
+
+    # Year-anchor split (corrected).
+    year_matches = list(YEAR_BOUNDARY_RE.finditer(text))
+    if not year_matches:
+        return []
+
+    starts: list[int] = []
+    prev_end = 0
+    for m in year_matches:
+        author_start = _author_start_before(text, m.start(), prev_end)
+        starts.append(author_start)
+        prev_end = m.end()
+
+    cleaned: list[int] = []
+    for s in starts:
+        if not cleaned or s > cleaned[-1]:
+            cleaned.append(s)
+
+    if cleaned and cleaned[0] > 50 and text[:cleaned[0]].strip():
+        cleaned = [0] + cleaned
+
+    entries: list[str] = []
+    for i, start in enumerate(cleaned):
+        end = cleaned[i + 1] if i + 1 < len(cleaned) else len(text)
+        entry = text[start:end].strip()
+        if entry:
+            entries.append(entry)
+
+    if same_author_mode:
+        entries = _apply_same_author_continuation(entries)
+
+    return entries
 
 
 def detect_entry_type(entry: str) -> str:
@@ -153,8 +320,18 @@ def shape_entry(entry: str, style: str) -> str:
 
 
 def format_references(paper_dir: Path, style: str | None = None,
-                      dry_run: bool = False) -> dict:
-    """Format the references section of the paper's main.tex."""
+                      dry_run: bool = False,
+                      same_author_mode: bool = False,
+                      diagnostic: bool = False) -> dict:
+    """Format the references section of the paper's main.tex.
+
+    Sanity-checks the parser output before writing: if the entry count
+    is implausibly low for the section size (< 1 entry per 500 bytes),
+    aborts and leaves the file untouched. This catches the silent-mangle
+    case (e.g. willats 4 entries / 25KB section) where the script
+    otherwise overwrites the section with garbage. (willats, carey,
+    peacocke memos.)
+    """
     tex_path = paper_dir / "main.tex"
     if not tex_path.exists():
         return {"error": "main.tex not found"}
@@ -174,9 +351,38 @@ def format_references(paper_dir: Path, style: str | None = None,
     if not style:
         style = detect_style(refs_text)
 
-    entries = split_entries(refs_text, style)
+    entries = split_entries(refs_text, style, same_author_mode=same_author_mode)
     if not entries:
         return {"entries": 0, "style": style, "reason": "no entries detected"}
+
+    if diagnostic:
+        section_bytes = len(refs_text.encode("utf-8"))
+        coverage = (
+            sum(1 for e in entries if YEAR_RE.search(e)) / len(entries)
+            if entries else 0
+        )
+        print(
+            f"[diagnostic] style={style}, entries={len(entries)}, "
+            f"section_bytes={section_bytes}, "
+            f"avg_bytes_per_entry={section_bytes // max(1, len(entries))}, "
+            f"year_coverage={coverage:.0%}"
+        )
+
+    # Sanity-check: implausibly few entries for the section size means
+    # the parser failed. Abort before silently mangling the file.
+    section_bytes = len(refs_text.encode("utf-8"))
+    if section_bytes > 5000 and len(entries) < max(5, section_bytes // 500):
+        return {
+            "entries": 0,
+            "style": style,
+            "reason": (
+                f"sanity-check abort: {len(entries)} entries for "
+                f"{section_bytes} bytes (threshold {section_bytes // 500}). "
+                "Parser likely misclassified the section's style. "
+                "File left untouched; try a different --style or "
+                "preprocess the section first."
+            ),
+        }
 
     items = ["\\begin{itemize}"]
     for e in entries:
@@ -195,19 +401,32 @@ def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
             "usage: format_references_section.py <paper-dir> "
-            "[--style=apa|chicago|endnote|bracket-key] [--dry-run]",
+            "[--style=apa|chicago|bracket-key|bracket-numeric|siggraph|author-year-paren] "
+            "[--same-author-mode] [--diagnostic] [--dry-run]",
             file=sys.stderr,
         )
         return 2
     paper_dir = Path(argv[1]).resolve()
     style = None
     dry_run = False
+    same_author_mode = False
+    diagnostic = False
     for arg in argv[2:]:
         if arg.startswith("--style="):
             style = arg.split("=", 1)[1]
         elif arg == "--dry-run":
             dry_run = True
-    result = format_references(paper_dir, style=style, dry_run=dry_run)
+        elif arg == "--same-author-mode":
+            same_author_mode = True
+        elif arg == "--diagnostic":
+            diagnostic = True
+    result = format_references(
+        paper_dir,
+        style=style,
+        dry_run=dry_run,
+        same_author_mode=same_author_mode,
+        diagnostic=diagnostic,
+    )
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1

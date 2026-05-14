@@ -1,0 +1,247 @@
+{
+  "_comment": "Test corpus for /library/iterate-skill and skill-bundle regression tests. Each entry maps a citekey to its genre, the subskill it's most representative for, and the memos that established it as a regression case. Cite the memo files in .virgil/memos/ for the specific failure mode each paper guards against.",
+
+  "_genres": {
+    "scanned-ocr": "OCR'd book or pre-2000 article scan; heading mis-promotion, drop caps, fix_italic_numerals, decode_caesar_pdf, recover_low_confidence_pgmarks.",
+    "journal-article-offset-pagination": "PDF starts at the article's first printed page (pp. 19-39 in a 23-page PDF). Triggers `pgmark_validate.py --journal-cumulative`; tests the AND-of-range-and-span fix in pgmark_validate.",
+    "book-endnote-style": "End-of-book Notes section with chapter sub-dividers or page-hint format. Tests reattach_page_hint_endnotes / reattach_unified_chapter_notes.",
+    "formal-semantics-paper": "Davidson / Schlenker family with OCR-mangled lambda calculus and Heim-Kratzer brackets. Tests mathify_formal_semantics.",
+    "diagram-heavy-book": "Venn-diagram logic books, payoff-matrix philosophy. Tests detect_garbage_headings + strip_ocr_headings + detect_diagram_book_garbage_headings.",
+    "dissertation": "OCR'd thesis with no-separator footnotes and OCR-spaced headings. Tests split_leaked_footnotes + promote_lost_subsections + rewrite_citations(--style=bracket-numeric).",
+    "annual-reviews-paper": "Annual Reviews journal article with margin glossary and post-article TOC pages. Tests detect_journal_toc + consolidate_margin_glossary."
+  },
+
+  "papers": [
+    {
+      "citekey": "kunene1965ideophone",
+      "genre": "journal-article-offset-pagination",
+      "subskills_exercised": ["di-validate", "di-preflight"],
+      "memos": ["2026-05-14-deepindex-streamlining-kunene1965ideophone.md"],
+      "regression_guards": [
+        "pgmark_validate.range-impossible must NOT fire (span=21, pdf_pages=23)",
+        "detect_lending_slip should find 2 prepended lending pages"
+      ]
+    },
+    {
+      "citekey": "neander1987pictorial",
+      "genre": "journal-article-offset-pagination",
+      "subskills_exercised": ["di-validate", "di-clean-prose"],
+      "memos": ["2026-05-14-deepindex-streamlining-neander1987pictorial.md"],
+      "regression_guards": [
+        "fix_italic_numerals should resolve I-for-1 in italic years",
+        "pgmark range 213-226 in 14-page PDF must pass the AND-of-range-and-span check"
+      ]
+    },
+    {
+      "citekey": "haugeland1991representational",
+      "genre": "journal-article-offset-pagination",
+      "subskills_exercised": ["di-validate", "recover-footnotes"],
+      "memos": ["2026-05-14-deepindex-streamlining-haugeland1991representational.md"],
+      "regression_guards": [
+        "pgmark 171-203 in 36-page PDF must NOT trip range-impossible",
+        "reattach_document_end_notes (Phase 2.2 deferred) should pick up the doc-end Notes"
+      ]
+    },
+    {
+      "citekey": "greenberg2023iconic",
+      "genre": "journal-article-offset-pagination",
+      "subskills_exercised": ["di-validate", "clean-bibliography"],
+      "memos": ["2026-05-14-deepindex-streamlining-greenberg2023iconic.md"],
+      "regression_guards": [
+        "format_references_section paragraph-separated fast path",
+        "reattach_leaked_footnotes Tier-4 fallback fires when call site unrecoverable"
+      ]
+    },
+    {
+      "citekey": "kriegeskorte2015deep",
+      "genre": "annual-reviews-paper",
+      "subskills_exercised": ["di-clean-prose", "clean-bibliography"],
+      "memos": ["2026-05-14-deepindex-streamlining-kriegeskorte2015deep.md"],
+      "regression_guards": [
+        "detect_journal_toc must find the post-article TOC",
+        "format_references_section.shift-by-one must NOT fire"
+      ]
+    },
+    {
+      "citekey": "davidson2015quotation",
+      "genre": "formal-semantics-paper",
+      "subskills_exercised": ["di-examples", "di-clean-prose"],
+      "memos": [
+        "2026-05-14-deepindex-streamlining-davidson2015quotation.md",
+        "2026-05-14-davidson-formalism-conversion.md"
+      ],
+      "regression_guards": [
+        "mathify_formal_semantics should process ~80 math spans",
+        "linguex_to_expex partial conversion should not match existing \\ex blocks"
+      ]
+    },
+    {
+      "citekey": "shimojima1996efficacy",
+      "genre": "dissertation",
+      "subskills_exercised": ["clean-bibliography", "recover-footnotes"],
+      "memos": ["2026-05-14-deepindex-streamlining-shimojima1996efficacy.md"],
+      "regression_guards": [
+        "format_references_section --style=author-year-paren handles the bibliography",
+        "rewrite_citations --style=author-year-paren handles inline mentions",
+        "audit footnote-inline-rate must NOT flag numbered list items"
+      ]
+    },
+    {
+      "citekey": "leong1994towards",
+      "genre": "dissertation",
+      "subskills_exercised": [
+        "di-preflight", "clean-bibliography", "recover-footnotes"
+      ],
+      "memos": [
+        "2026-05-13-deepindex-streamlining-leong1994towards.md",
+        "2026-05-13-bib-auth-mismatch-leong1994towards.md"
+      ],
+      "regression_guards": [
+        "validate_bib_coherence must pass (@phdthesis with no journal/publisher)",
+        "rewrite_citations --style=bracket-numeric resolves the 230 numeric brackets",
+        "split_leaked_footnotes pre-pass handles OCR no-separator 38% of FNs"
+      ]
+    },
+    {
+      "citekey": "peacocke2019primacy",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["recover-footnotes", "clean-bibliography"],
+      "memos": ["2026-05-13-deepindex-streamlining-peacocke2019primacy.md"],
+      "regression_guards": [
+        "reattach_super_footnotes places Unicode-superscript leaks",
+        "rewrite_citations alphabetic year-suffix support resolves `Peacocke 2017a`",
+        "rewrite_citations fused-surname handles `McDowell`",
+        "audit hyphen-coordinator exclusion handles `object- and property-aspects`"
+      ]
+    },
+    {
+      "citekey": "schwarzlose2021brainscapes",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["recover-footnotes", "di-validate"],
+      "memos": ["2026-05-14-deepindex-streamlining-schwarzlose2021brainscapes.md"],
+      "regression_guards": [
+        "reattach_page_hint_endnotes recovers 80%+ of page+hint endnotes",
+        "pgmark_validate multi-section namespace detection handles roman→arabic resets"
+      ]
+    },
+    {
+      "citekey": "dretske1981knowledge",
+      "genre": "scanned-ocr",
+      "subskills_exercised": [
+        "di-clean-prose", "recover-footnotes", "clean-bibliography"
+      ],
+      "memos": [
+        "2026-05-14-deepindex-streamlining-dretske1981knowledge.md",
+        "2026-05-14-deepindex-streamlining-dretske1981knowledge-addendum.md",
+        "2026-05-14-deepindex-streamlining-dretske1981knowledge-cleanup.md",
+        "2026-05-14-deepindex-streamlining-dretske1981knowledge-index.md"
+      ],
+      "regression_guards": [
+        "strip_ocr_headings detects bulk-corruption regime",
+        "itemize_index three-pass design produces clean entries",
+        "fix_pgmark_in_footnotes lifts inline pgmarks out of footnote bodies",
+        "audit unbalanced-brace check fires on runaway brace args"
+      ]
+    },
+    {
+      "citekey": "fodor1975language",
+      "genre": "scanned-ocr",
+      "subskills_exercised": [
+        "di-clean-prose", "recover-footnotes", "clean-bibliography"
+      ],
+      "memos": ["2026-05-14-deepindex-streamlining-fodor1975language.md"],
+      "regression_guards": [
+        "repair_pgmarks --max-page handles year-as-pages artifacts",
+        "detect_chapter_footnote_collision flags low-N duplicates",
+        "strip_ocr_headings fires on >100 subsections + >30% lowercase",
+        "synthesize_canonical_entries handles missing-bib-entry warnings for classics"
+      ]
+    },
+    {
+      "citekey": "shin1994logical",
+      "genre": "diagram-heavy-book",
+      "subskills_exercised": ["di-clean-prose", "recover-footnotes"],
+      "memos": ["2026-05-14-deepindex-streamlining-shin1994logical.md"],
+      "regression_guards": [
+        "detect_garbage_headings flags Venn-diagram caption strings",
+        "reattach_leaked_footnotes TOC-skip guard avoids book TOC false positives",
+        "fix_pgmark_in_footnotes lifts pgmarks from footnote bodies"
+      ]
+    },
+    {
+      "citekey": "zeki1993vision",
+      "genre": "scanned-ocr",
+      "subskills_exercised": ["di-preflight", "di-clean-prose"],
+      "memos": ["2026-05-14-deepindex-streamlining-zeki1993vision.md"],
+      "regression_guards": [
+        "detect_metadata_mismatch surfaces the wrong-bib case at preflight",
+        "audit footnote-inline-rate TOC-aware skip handles TOC entries",
+        "detect_garbage_headings flags figure-caption-style headings"
+      ]
+    },
+    {
+      "citekey": "lewis1969convention",
+      "genre": "diagram-heavy-book",
+      "subskills_exercised": ["di-clean-prose", "clean-bibliography"],
+      "memos": ["2026-05-14-deepindex-streamlining-lewis1969convention.md"],
+      "regression_guards": [
+        "bib_auth @book skips journal-recovery (no 0.9-scored Crossref hit)",
+        "strip_impossible_pgmarks with envelope check leaves book pgmarks alone",
+        "reattach_leaked_footnotes TOC-skip avoids book TOC false positives"
+      ]
+    },
+    {
+      "citekey": "burge2022perception",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["recover-footnotes"],
+      "memos": [
+        "2026-05-13-deepindex-streamlining-burge2022perception-orphan-resolution.md"
+      ],
+      "regression_guards": [
+        "resolve_orphan_footnotes 6-pattern matcher recovers 70%+ of orphans"
+      ]
+    },
+    {
+      "citekey": "block1983mental",
+      "genre": "scanned-ocr",
+      "subskills_exercised": ["di-preflight", "di-clean-prose"],
+      "memos": ["2026-05-14-deepindex-streamlining-block1983mental.md"],
+      "regression_guards": [
+        "decode_caesar_pdf detects and decodes Caesar-shifted JSTOR text",
+        "strip_ocr_running_headers strips OCR-garbled running headers"
+      ]
+    },
+    {
+      "citekey": "kulvicki2006images",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["di-preflight", "clean-bibliography"],
+      "memos": ["2026-05-14-deepindex-streamlining-kulvicki2006images.md"],
+      "regression_guards": [
+        "apply_metadata_mismatch_policy resolves the chapter→book promotion",
+        "format_references_section --same-author-mode handles year-only continuations"
+      ]
+    },
+    {
+      "citekey": "kehler2002coherence",
+      "genre": "scanned-ocr",
+      "subskills_exercised": [
+        "di-examples", "clean-bibliography", "recover-footnotes"
+      ],
+      "memos": ["2026-05-14-deepindex-streamlining-kehler2002coherence.md"],
+      "regression_guards": [
+        "bulk_convert_numbered_examples handles 50+ examples per paper",
+        "fuzzy_citekey_disambiguate resolves same-author collisions"
+      ]
+    },
+    {
+      "citekey": "chomsky1957syntactic",
+      "genre": "scanned-ocr",
+      "subskills_exercised": ["di-preflight", "di-clean-prose"],
+      "memos": ["2026-05-13-deepindex-streamlining-chomsky1957syntactic.md"],
+      "regression_guards": [
+        "fix_roman_pgmarks fixes OCR-garbled Roman numerals",
+        "reattach_leaked_footnotes bibliography-section guard avoids numbered bib entries"
+      ]
+    }
+  ]
+}

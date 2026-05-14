@@ -64,6 +64,32 @@ REFS_RE = re.compile(
     re.M | re.I,
 )
 
+# Contents / TOC section start (front-matter).
+TOC_SECTION_RE = re.compile(
+    r"^\\section\{(Contents|Table\s+of\s+Contents|TOC)\b",
+    re.M | re.I,
+)
+
+# Numbered TOC entry: short line "N <Title> <page>" or "N. <Title> p."
+TOC_ENTRY_LINE_RE = re.compile(
+    r"^\s*\d{1,3}\.?\s+[A-Z][A-Za-z\-' ]{3,80}\s+\d{1,4}\s*$"
+)
+
+# Pgmark literal — used by preservation guard to prevent absorbing
+# `\pgmark{N}` into a footnote argument (where the renderer would
+# silently swallow it).
+PGMARK_LITERAL_RE = re.compile(r"\\pgmark(?:\[[a-z]+\])?\{\d+\}")
+
+# Commands whose brace argument must never receive a footnote
+# insertion. Inserting `\footnote{}` inside `\cite{...}` or
+# `\section{...}` corrupts the LaTeX parse irreversibly.
+PROTECTED_CMD_PREFIXES = (
+    "cite", "citet", "citep", "citealp", "citealt", "citeauthor",
+    "citeyear", "citeyearpar", "section", "subsection", "subsubsection",
+    "title", "author", "textbf", "textit", "emph", "ref", "label",
+    "pgmark",
+)
+
 # Skip block contexts: math, footnote already-wrapped, command arg.
 SKIP_CONTEXTS = (r"\[", r"\(", r"\\footnote\{", r"\\section\{", r"\\subsection\{")
 
@@ -73,6 +99,101 @@ class LeakedNote(NamedTuple):
     body: str
     start: int
     end: int
+
+
+def _find_toc_skip_ranges(text: str) -> list[tuple[int, int]]:
+    """Return (start, end) ranges of front-matter Contents / TOC blocks.
+
+    Two ways a TOC block is identified:
+
+    1. **Explicit** — content under `\\section{Contents}` /
+       `\\section{Table of Contents}` until the next `\\section{}`.
+    2. **Implicit** — a run of 5+ consecutive lines in the first 200
+       lines of the body matching the numbered-TOC-entry pattern
+       (Lewis-style `1 Title 1` / `2 Title 3` / ...). Detected by
+       sliding window.
+    """
+    ranges: list[tuple[int, int]] = []
+
+    # Explicit Contents heading.
+    for tm in TOC_SECTION_RE.finditer(text):
+        start = tm.start()
+        next_section = SECTION_RE.search(text, tm.end())
+        end = next_section.start() if next_section else len(text)
+        ranges.append((start, end))
+
+    # Implicit TOC: search first 200 lines.
+    lines = text.split("\n", 250)[:200]
+    line_offsets: list[int] = [0]
+    pos = 0
+    for line in lines[:-1]:
+        pos += len(line) + 1
+        line_offsets.append(pos)
+    run_start_idx = -1
+    run_count = 0
+    for idx, line in enumerate(lines):
+        if TOC_ENTRY_LINE_RE.match(line):
+            if run_start_idx < 0:
+                run_start_idx = idx
+            run_count += 1
+        else:
+            if run_count >= 5 and run_start_idx >= 0:
+                s_off = line_offsets[run_start_idx]
+                e_off = line_offsets[idx]
+                ranges.append((s_off, e_off))
+            run_start_idx = -1
+            run_count = 0
+    if run_count >= 5 and run_start_idx >= 0:
+        s_off = line_offsets[run_start_idx]
+        e_off = line_offsets[min(run_start_idx + run_count, len(line_offsets) - 1)]
+        ranges.append((s_off, e_off))
+
+    return ranges
+
+
+def _position_in_protected_arg(text: str, pos: int) -> bool:
+    """Return True if `pos` lies inside the brace argument of a
+    protected command (\\cite{}, \\section{}, \\textbf{}, etc.).
+
+    Walks backward to find the nearest unclosed `\\<cmd>{` whose
+    matching close-brace is after `pos`.
+    """
+    depth = 0
+    i = pos - 1
+    while i >= 0:
+        c = text[i]
+        # Skip escaped braces.
+        if c in "{}" and i > 0 and text[i - 1] == "\\":
+            i -= 1
+            continue
+        if c == "}":
+            depth += 1
+        elif c == "{":
+            if depth == 0:
+                # Found an unclosed open brace. Check what command
+                # precedes it.
+                j = i - 1
+                # Possibly an `[opt]` argument.
+                if j >= 0 and text[j] == "]":
+                    k = j - 1
+                    while k >= 0 and text[k] != "[":
+                        k -= 1
+                    if k >= 0:
+                        j = k - 1
+                # Collect command name.
+                end = j + 1
+                while j >= 0 and (text[j].isalpha() or text[j] == "*"):
+                    j -= 1
+                if j >= 0 and text[j] == "\\":
+                    cmd = text[j + 1:end].rstrip("*")
+                    if cmd in PROTECTED_CMD_PREFIXES:
+                        return True
+                # Not a protected command; keep walking out.
+                depth = 0
+            else:
+                depth -= 1
+        i -= 1
+    return False
 
 
 def find_chapter_boundaries(text: str) -> list[tuple[int, int]]:
@@ -94,10 +215,21 @@ def find_chapter_boundaries(text: str) -> list[tuple[int, int]]:
     return boundaries
 
 
-def find_leaked_notes(text: str, chapter_start: int, chapter_end: int) -> list[LeakedNote]:
-    """Find leaked-footnote-shaped paragraphs in [chapter_start, chapter_end)."""
+def find_leaked_notes(
+    text: str,
+    chapter_start: int,
+    chapter_end: int,
+    toc_skip_ranges: list[tuple[int, int]] | None = None,
+) -> list[LeakedNote]:
+    """Find leaked-footnote-shaped paragraphs in [chapter_start, chapter_end).
+
+    Skips candidates that fall inside any TOC-skip range so chapter-TOC
+    entries are not misclassified as footnote bodies. (shin, lewis,
+    kulvicki memos.)
+    """
     chunk = text[chapter_start:chapter_end]
     out: list[LeakedNote] = []
+    toc_skip_ranges = toc_skip_ranges or []
     for m in LEAKED_PARA_RE.finditer(chunk):
         n = int(m.group(1))
         body = m.group(2).strip()
@@ -114,6 +246,11 @@ def find_leaked_notes(text: str, chapter_start: int, chapter_end: int) -> list[L
         if any(s in prefix for s in (r"\begin{equation}", r"\[", "$$")):
             # crude math context check
             continue
+        # Skip if the match falls inside a TOC-skip range.
+        abs_start = chapter_start + m.start()
+        in_toc = any(s <= abs_start < e for s, e in toc_skip_ranges)
+        if in_toc:
+            continue
         out.append(LeakedNote(
             number=n,
             body=body,
@@ -123,10 +260,41 @@ def find_leaked_notes(text: str, chapter_start: int, chapter_end: int) -> list[L
     # Filter to ascending sequence (footnotes are sequential per chapter).
     if not out:
         return []
-    # Sort by position; if numbers don't monotonically ascend, keep only
-    # the longest ascending subsequence ending at the highest number.
     out.sort(key=lambda n: n.start)
     return out
+
+
+def _split_body_around_pgmarks(body: str) -> tuple[str, list[str]]:
+    """If the body contains `\\pgmark{N}` literals, strip them so the
+    footnote argument doesn't swallow them. Returns (cleaned_body,
+    list_of_pgmark_literals_to_reinject_at_body_scope)."""
+    pgmarks = PGMARK_LITERAL_RE.findall(body)
+    if not pgmarks:
+        return body, []
+    cleaned = PGMARK_LITERAL_RE.sub("", body).strip()
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned, pgmarks
+
+
+def _find_tier4_attachment(
+    text: str, leaked_start: int, chapter_start: int,
+) -> int | None:
+    """Find the end position of the nearest preceding body paragraph
+    in the chapter — that's where the Tier-4 `[orphan fn N]` attaches.
+    Returns None if no preceding paragraph exists in the chapter."""
+    # Walk back from `leaked_start` to find the previous paragraph-end
+    # (a `\n\s*\n` boundary or `.` ending a sentence at body scope).
+    window = text[chapter_start:leaked_start].rstrip()
+    if not window:
+        return None
+    # Find the last sentence-ending position in `window`.
+    last = max(window.rfind(". "), window.rfind(".\n"))
+    if last < 0:
+        return None
+    abs_end = chapter_start + last + 1  # right after the period
+    if _position_in_protected_arg(text, abs_end):
+        return None
+    return abs_end
 
 
 def find_call_site(text: str, number: int, chapter_start: int, chapter_end: int,
@@ -172,41 +340,80 @@ def find_call_site(text: str, number: int, chapter_start: int, chapter_end: int,
 
 
 def reattach(text: str) -> tuple[str, dict]:
-    """Reattach leaked-footnote paragraphs. Returns (new-text, stats)."""
+    """Reattach leaked-footnote paragraphs. Returns (new-text, stats).
+
+    Guards applied in order:
+
+    - **TOC-skip** — candidates inside a Contents block or implicit
+      numbered-TOC run are excluded.
+    - **Citation-argument** — refuses to insert a `\\footnote{}` into
+      the brace argument of a protected command (\\cite{}, \\section{},
+      etc.).
+    - **Pgmark-preservation** — strips `\\pgmark{N}` literals out of
+      the footnote body and re-injects them at body scope after the
+      footnote, so the renderer doesn't silently swallow them.
+    - **Tier-4 fallback** — when no inline call site is found,
+      attaches `\\footnote{[orphan fn N] <body>}` to the end of the
+      nearest preceding body paragraph in the chapter. Per the
+      tier-ladder doctrine, this always succeeds (where a previous
+      paragraph exists) and means we close every leaked note even
+      when the call-site marker was OCR-dropped.
+    """
     chapters = find_chapter_boundaries(text)
     if not chapters:
         return text, {"placed": 0, "unplaced": 0, "chapters": 0}
 
-    # Plan all edits first, then apply in reverse order so offsets stay valid.
+    toc_skip = _find_toc_skip_ranges(text)
+
     insertions: list[tuple[int, str]] = []  # (position, text-to-insert)
-    deletions: list[tuple[int, int]] = []   # (start, end) ranges to delete
+    deletions: list[tuple[int, int]] = []
     placed = 0
+    placed_tier4 = 0
     unplaced = 0
-    per_chapter: list[tuple[int, int]] = []  # (chapter_idx, placed_in_chapter)
+    per_chapter: list[tuple[int, int]] = []
 
     for ch_idx, (cs, ce) in enumerate(chapters, start=1):
-        leaked = find_leaked_notes(text, cs, ce)
+        leaked = find_leaked_notes(text, cs, ce, toc_skip_ranges=toc_skip)
         if not leaked:
             per_chapter.append((ch_idx, 0))
             continue
         ch_placed = 0
         for note in leaked:
             site = find_call_site(text, note.number, cs, ce, note.start)
+            tier4 = False
             if site is None:
+                # Tier-4 fallback: attach to end of nearest preceding
+                # body paragraph in the chapter.
+                site = _find_tier4_attachment(text, note.start, cs)
+                if site is None:
+                    unplaced += 1
+                    continue
+                tier4 = True
+            # Citation-argument guard: refuse if the target is inside
+            # a protected command's brace argument.
+            if _position_in_protected_arg(text, site):
                 unplaced += 1
                 continue
-            # Escape internal braces in body.
-            body = note.body.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-            # But undo over-escaping of legitimate LaTeX commands.
+            # Pgmark-preservation: strip pgmarks from body, plan to
+            # re-inject them at body scope right after the footnote.
+            cleaned_body, pulled_pgmarks = _split_body_around_pgmarks(note.body)
+            # Escape internal braces in the (cleaned) body.
+            body = cleaned_body.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
             body = body.replace("\\\\textit", "\\textit").replace(
                 "\\\\textbf", "\\textbf").replace("\\\\emph", "\\emph")
-            insertions.append((site, f"\\footnote{{{body}}}"))
+            if tier4:
+                body = f"[orphan fn {note.number}] {body}"
+            insertion = f"\\footnote{{{body}}}"
+            if pulled_pgmarks:
+                insertion += " " + " ".join(pulled_pgmarks)
+            insertions.append((site, insertion))
             deletions.append((note.start, note.end))
             placed += 1
+            if tier4:
+                placed_tier4 += 1
             ch_placed += 1
         per_chapter.append((ch_idx, ch_placed))
 
-    # Apply edits in reverse order.
     combined = sorted(
         [(p, "ins", t, len(t)) for p, t in insertions]
         + [(s, "del", "", e - s) for s, e in deletions],
@@ -221,9 +428,11 @@ def reattach(text: str) -> tuple[str, dict]:
 
     return new_text, {
         "placed": placed,
+        "placed_tier4": placed_tier4,
         "unplaced": unplaced,
         "chapters": len(chapters),
         "per_chapter": per_chapter,
+        "toc_skip_ranges": len(toc_skip),
     }
 
 
@@ -243,11 +452,15 @@ def main(argv: list[str]) -> int:
         print(f"No leaked-prose footnote paragraphs detected in {path}.")
         return 0
     suffix = " (dry run)" if dry_run else ""
+    tier4 = stats.get("placed_tier4", 0)
+    tier4_note = f" [{tier4} via Tier-4 orphan-prefix]" if tier4 else ""
     print(
-        f"Reattached {stats['placed']} leaked footnotes "
+        f"Reattached {stats['placed']} leaked footnotes{tier4_note} "
         f"({stats['unplaced']} unplaced) "
         f"across {stats['chapters']} chapters{suffix}."
     )
+    if stats.get("toc_skip_ranges", 0):
+        print(f"  Skipped {stats['toc_skip_ranges']} TOC range(s).")
     for ch_idx, count in stats.get("per_chapter", []):
         if count > 0:
             print(f"  Ch {ch_idx}: {count} placed")

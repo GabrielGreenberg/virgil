@@ -1776,9 +1776,20 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
             time.sleep(0.2)
 
     # P13: journal + author + year search (ignore junk title).
-    journal = (current_fields.get("journal")
-               or current_fields.get("booktitle")
-               or _sniff_journal_from_title(seed_title))
+    #
+    # @book entries don't have a `journal` field. If a book's bib has a
+    # `journal` value, it was almost certainly inherited from a wrong
+    # Crossref match on a prior pass — fitting the title here treats
+    # the title as a journal name, which produces high-confidence false
+    # matches (lewis1969convention case: title "Convention: A
+    # Philosophical Study" was searched as a journal, returning a
+    # 1969 spinel-crystal paper at score 0.9). Skip for @book entries.
+    if entry_type == "book":
+        journal = None
+    else:
+        journal = (current_fields.get("journal")
+                   or current_fields.get("booktitle")
+                   or _sniff_journal_from_title(seed_title))
     year = current_fields.get("year", "")
     if journal:
         recs = _search_by_journal(seed_authors, journal, year)
@@ -1791,11 +1802,16 @@ def authenticate(seed_title: str, seed_authors: list[str], current_fields: dict,
             if target_year:
                 viable.sort(key=lambda r: 0 if r.get("year") == target_year else 1)
             rec = viable[0]
+            # Cap the journal-recovery score at 0.6 (was 0.9). Recovery
+            # that ignored the title is weakly authenticated at best —
+            # let the caller decide whether to accept it, and don't
+            # let it satisfy the ≥0.92 authentication threshold on its
+            # own. (lewis memo.)
             return _authenticated_from_record(
                 rec, current_fields, entry_type,
                 sources=list(result.sources) + ["crossref-journal-author-year"],
-                score=0.9,
-                note=f"recovered via journal+author+year search (journal={journal!r}, year={year!r})",
+                score=0.6,
+                note=f"recovered via journal+author+year search (journal={journal!r}, year={year!r}); score capped at 0.6 (title was not used)",
                 doi_verified=bool(rec.get("doi")),
             )
 

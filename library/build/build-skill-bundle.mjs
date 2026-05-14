@@ -44,7 +44,17 @@ async function listFilesIn(dir, predicate) {
 }
 
 async function buildSources() {
-  const skillNames = await listFilesIn("library/skills", (n) => n.endsWith(".md"));
+  // Skill files: any `*.md` under `library/skills/` EXCEPT those with
+  // a leading underscore. The underscore prefix marks include files
+  // (e.g. `_doctrine.md`) that are referenced by other skills as
+  // shared source content. Claude Code's loader registers any `.md`
+  // under `.claude/commands/<category>/` as a slash command, so
+  // include files are NOT mirrored into the command dir — only the
+  // skill files are.
+  const skillNames = await listFilesIn(
+    "library/skills",
+    (n) => n.endsWith(".md") && !n.startsWith("_"),
+  );
   const scriptNames = await listFilesIn(
     "library/scripts",
     (n) => n.endsWith(".py") || n === "requirements.txt",
@@ -81,6 +91,8 @@ async function fileExists(p) {
 }
 
 async function mirrorSkillsIntoClaudeCommands(skillNames) {
+  // Only mirror skill files (no leading underscore) — Claude Code's
+  // loader registers every `.md` here as a slash command.
   await rm(claudeCommandsDir, { recursive: true, force: true });
   await mkdir(claudeCommandsDir, { recursive: true });
   for (const name of skillNames) {

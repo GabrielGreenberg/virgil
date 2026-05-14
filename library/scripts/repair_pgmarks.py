@@ -157,24 +157,42 @@ def _apply_removals(content: str, pgmarks: list[Pgmark], removals: set[int]) -> 
     return "".join(out_lines)
 
 
-def repair(path: str, dry_run: bool = False) -> dict:
+def repair(
+    path: str,
+    dry_run: bool = False,
+    max_page: int | None = None,
+    safeguard_pct: float = 0.5,
+) -> dict:
     """Repair the file at `path`. Returns a summary dict.
 
-    Safeguard: if the repair would remove >50% of pgmarks, the paper
-    likely has multi-section page-label collisions (book with front
-    matter + body + indexes). Abort and warn — let the validator emit
-    pre-existing continuity warnings instead of silently dropping
-    anchors.
+    Safeguard: if the repair would remove >`safeguard_pct` of pgmarks
+    (default 50%), the paper likely has multi-section page-label
+    collisions (book with front matter + body + indexes). Abort and
+    warn — let the validator emit pre-existing continuity warnings
+    instead of silently dropping anchors.
+
+    The `max_page` argument bypasses the safeguard for unambiguously-bad
+    high-value markers (`v > max_page`); those are stripped regardless.
+    Useful when the catalog's `pageCount` is known or when `master.bib`
+    has a `pages = {<lo>-<hi>}` field that bounds the realistic range.
     """
     with open(path, encoding="utf-8") as f:
         content = f.read()
     pgmarks = _parse_pgmarks(content)
     removals = _decide_removals(pgmarks)
     numeric_count = sum(1 for pm in pgmarks if pm.value is not None)
+    # Pre-stage: forced removals for max_page-exceeding pgmarks.
+    forced_removals: set[int] = set()
+    if max_page is not None:
+        for i, pm in enumerate(pgmarks):
+            if pm.value is not None and pm.value > max_page:
+                forced_removals.add(i)
     aborted = False
-    if numeric_count > 0 and len(removals) > numeric_count * 0.5:
+    if numeric_count > 0 and len(removals) > numeric_count * safeguard_pct:
         aborted = True
         removals = set()
+    # Forced removals always go through, even when safeguard fires.
+    removals = removals | forced_removals
     removed_descriptors = [
         {"line": pgmarks[i].line, "label": pgmarks[i].label, "text": pgmarks[i].text}
         for i in sorted(removals)
@@ -187,6 +205,7 @@ def repair(path: str, dry_run: bool = False) -> dict:
         "path": path,
         "total_pgmarks": len(pgmarks),
         "removed_count": len(removals),
+        "forced_removed_count": len(forced_removals),
         "removed": removed_descriptors,
         "dry_run": dry_run,
         "aborted_50_percent_guard": aborted,
@@ -195,29 +214,63 @@ def repair(path: str, dry_run: bool = False) -> dict:
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: python repair_pgmarks.py <main.tex> [--dry-run]", file=sys.stderr)
+        print(
+            "usage: python repair_pgmarks.py <main.tex> "
+            "[--dry-run] [--max-page N] [--safeguard-pct 0.5]",
+            file=sys.stderr,
+        )
         return 2
     dry_run = "--dry-run" in argv[2:]
+    max_page: int | None = None
+    safeguard_pct = 0.5
+    for i, arg in enumerate(argv[2:]):
+        if arg == "--max-page" and i + 3 < len(argv):
+            try:
+                max_page = int(argv[i + 3])
+            except ValueError:
+                pass
+        elif arg.startswith("--max-page="):
+            try:
+                max_page = int(arg.split("=", 1)[1])
+            except ValueError:
+                pass
+        elif arg.startswith("--safeguard-pct="):
+            try:
+                safeguard_pct = float(arg.split("=", 1)[1])
+            except ValueError:
+                pass
     path = argv[1]
     try:
-        result = repair(path, dry_run=dry_run)
+        result = repair(
+            path, dry_run=dry_run, max_page=max_page,
+            safeguard_pct=safeguard_pct,
+        )
     except FileNotFoundError:
         print(f"not found: {path}", file=sys.stderr)
         return 1
     if result.get("aborted_50_percent_guard"):
+        forced = result.get("forced_removed_count", 0)
+        extra = f" ({forced} forced removals applied)" if forced else ""
         print(
             f"Aborted pgmark repair on {result['path']}: would remove "
-            f">50% of pgmarks ({result['total_pgmarks']} total). Likely "
-            f"multi-section page-label collisions; leave baseline pgmarks."
+            f">{int(safeguard_pct * 100)}% of pgmarks ({result['total_pgmarks']} total). "
+            f"Likely multi-section page-label collisions; leave baseline "
+            f"pgmarks{extra}."
         )
-        return 0
+        if forced == 0:
+            return 0
     n = result["removed_count"]
     if n == 0:
         print(f"No spurious pgmarks in {result['path']}.")
     else:
         suffix = " (dry run)" if dry_run else ""
-        print(f"Repaired {result['path']}: "
-              f"{n} spurious pgmark{'s' if n != 1 else ''} removed{suffix}.")
+        forced = result.get("forced_removed_count", 0)
+        forced_note = f" ({forced} forced via --max-page)" if forced else ""
+        print(
+            f"Repaired {result['path']}: "
+            f"{n} spurious pgmark{'s' if n != 1 else ''} removed"
+            f"{forced_note}{suffix}."
+        )
         for r in result["removed"]:
             print(f"  line {r['line']}: {r['text']}")
     return 0
