@@ -1,57 +1,130 @@
 ---
-description: Bibliography cleanup — References itemization, references.bib emission, inline citation rewriting (every style). Phase 3 of the deep-index split.
+description: Bibliography cleanup — References itemization, references.bib emission, inline citation rewriting (every style).
 arguments: <citekey>
 ---
 
 # Bibliography cleanup
 
-> **Status: Phase 1 stub.** Content will be migrated from
-> [deep-index.md](deep-index.md) §3e / §3f / §3g during Phase 3 of the
-> [deep-index improvement plan](../../.claude/plans/ok-i-ve-been-running-unified-sunrise.md).
-> Until then, run `/library/deep-index` directly.
+> Shared doctrine: read [_doctrine.md](_doctrine.md). Even
+> 1000+-entry book bibliographies and run-on indices are in-scope —
+> deferring is almost always a doctrine violation.
 
-> Shared doctrine: read [_doctrine.md](_doctrine.md) (scope, anti-patterns,
-> self-check, convergence behavior, narrow out-of-scope categories).
+Operates on `papers/$ARGUMENTS/main.tex` and
+`papers/$ARGUMENTS/references.bib`. The canonical narrative is
+[deep-index.md](deep-index.md) §3e/3f/3g; this stub documents the
+script-invocation order and the style choices.
 
-## Arguments
+## Step 3e — Itemize the References section
 
-`$ARGUMENTS` is the citekey.
+**Detect the style and itemize:**
 
-## Pipeline
+```bash
+python3 .virgil/scripts/format_references_section.py papers/$ARGUMENTS \
+    --diagnostic   # print regex-coverage stats
+```
 
-- **3e — References itemization** via `format_references_section.py`.
-  Phase 1.3 fixed the shift-by-one bug and added the paragraph-separated
-  fast path + sanity-check abort. Phase 2.1 adds style flags:
-  - `--style=siggraph` for all-caps author Chicago.
-  - `--style=author-year-paren` for humanities theses.
-  - `--same-author-mode` for year-only continuation entries.
-  - `--diagnostic` for parser-coverage stats.
-  - Fallback to `itemize_jammed_references.py` (Phase 2.1) when the
-    primary parser yields <5% of expected entries.
-  - Fallback to `itemize_book_bibliography.py` (Phase 2.1) for fully
-    run-on book bibliographies.
-- **3e' — Index itemization** via `itemize_index.py` (Phase 2.1).
-- **3e'' — Illustrations list** via `format_illustrations_list.py`
-  (Phase 2.1) for art-history books.
-- **3f — `references.bib` emission**. After itemization,
-  `populate_references_bib_from_itemize.py` (Phase 2.1) extracts each
-  `\item` and emits a bibtex entry with the citekey rule.
-- **3g — Citation rewriting** via `rewrite_citations.py` with the
-  extended style table (Phase 2.1):
-  - `chicago`, `apa`, `bracket-key`, `bracket-numeric`,
-    `bracket-author-year`, `author-year-paren`, `bracket-locator`,
-    plus alphabetic year-suffix support, fused-surname tokenizer,
-    lowercase-particle longest-suffix match, multi-author surname
-    matching, possessive citations, expanded SKIP_CONTEXTS and
-    year-range guard.
-  - `fuzzy_citekey_disambiguate.py` (Phase 2.1) breaks ties on
-    same-surname-same-year-same-titleword collisions.
+The script auto-detects style from `chicago` / `apa` / `bracket-key`
+/ `bracket-numeric` / `siggraph` / `author-year-paren`. The
+shift-by-one bug (each `\item` containing the tail of the previous
+entry plus the head of the next) was fixed in Phase 1.3 — every
+anchor is now the START of its entry, not the END.
 
-## Synthesis (sources gap)
+**Style flags** (when auto-detection picks the wrong one):
 
-When the source PDF's bibliography is truncated or incomplete, instead
-of emitting many `missing-bib-entry:` warnings, **synthesize**
-canonical entries from external reference data for well-known cited
-works. Mark with `% synthesized` comment in `references.bib` and a
-short `\noindent\textit{Note: …}` disclaimer in the body's
-Bibliography section.
+- `--style=siggraph` for all-caps author Chicago bibliographies
+  (SIGGRAPH / Eurographics).
+- `--style=author-year-paren` for humanities theses with `Author(s)
+  (YYYY[a/b]) Title. Rest.` form.
+- `--style=bracket-numeric` for CS-paper `[N]` bibliographies.
+- `--same-author-mode` to merge year-only paragraph-starts (`^1998.
+  Title…`) into the prior entry's author prefix.
+
+**Fallback to year-anchor splitter** when the primary parser yields
+implausibly few entries (the script's sanity-check aborts the write
+in that case):
+
+```bash
+python3 .virgil/scripts/itemize_jammed_references.py papers/$ARGUMENTS
+```
+
+**Index itemization** (for books with a `\section{Index}` of
+flattened-OCR entries):
+
+```bash
+python3 .virgil/scripts/clean_index_ocr.py papers/$ARGUMENTS/main.tex
+```
+
+## Step 3f — Emit / populate `references.bib`
+
+When `/library/index-paper` only seeded `references.bib` with the
+paper itself (so every body `Author Year` mention fires
+`missing-bib-entry:`), populate from the itemized References section:
+
+```bash
+python3 .virgil/scripts/populate_references_bib_from_itemize.py papers/$ARGUMENTS
+```
+
+When emitted citekeys collide on same-surname-same-year-same-titleword
+patterns (kehler-style author-heavy bibliographies):
+
+```bash
+python3 .virgil/scripts/fuzzy_citekey_disambiguate.py papers/$ARGUMENTS
+```
+
+The disambiguator uses title second-word / journal-initials /
+publisher-initials before falling back to year-letter suffixes;
+rewrites every `\cite{}`-family call in `main.tex` accordingly.
+
+## Step 3g — Rewrite inline citations
+
+```bash
+python3 .virgil/scripts/rewrite_citations.py \
+    papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib
+```
+
+**Default style is `chicago`** (no flag needed). Other styles:
+
+- `--style=apa` for `Author (Year)` parenthetical-year inline.
+- `--style=bracket-key` for `[KEY]` (SIGGRAPH/CS).
+- `--style=bracket-numeric` for `[N]` (CS theses).
+- `--style=bracket-author-year` for `[Author Year]` SIGGRAPH /
+  Eurographics inline.
+- `--style=author-year-paren` for humanities `Author (Year)`.
+- `--style=bracket-locator` for Lee-style `Author [Year: page]`.
+
+**Always add `--also-possessive`** to rewrite `Author's Year` forms
+to `\citeauthor{key}'s \citeyearpar{key}`.
+
+**Built-in fixes** (no flag needed, applied automatically):
+
+- Alphabetic year-suffix support: body `Peacocke 2017a` resolves
+  against bib key `peacocke2017atemporal`.
+- Fused-surname tokenizer: `McDowell`, `MacEvoy`, `O'Brien`,
+  `D'Alembert`, `Van Dyck` matched as single surname.
+- `NOT_A_SURNAME` filter: skips month / day names, `Theorem`,
+  `Chapter`, `Volume`, etc., that look like single-token surnames.
+- Year-range guard: years outside 1500-2099 are not matched.
+- Skip contexts: `©`, `Copyright`, `First published`, `Reprinted`,
+  classical references like `Poetics 14`.
+
+## Bibliography synthesis (sources gap)
+
+When the source PDF's bibliography is truncated and many
+`missing-bib-entry:` warnings remain, synthesize canonical entries
+for well-known cited works via Crossref:
+
+```bash
+python3 .virgil/scripts/synthesize_canonical_entries.py $ARGUMENTS \
+    --max-entries 30
+```
+
+Synthesized entries are marked with a `% synthesized via Crossref on
+<date>` comment so future passes / users can verify or replace them.
+
+## Pre-flight (called from /library/authenticate-bib, not here)
+
+Cross-field coherence + PDF cover-page check before authentication:
+
+```bash
+python3 .virgil/scripts/validate_bib_coherence.py $ARGUMENTS
+```
