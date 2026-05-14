@@ -13,12 +13,6 @@ should follow.
 > anti-patterns, self-check, convergence behavior, narrow
 > out-of-scope categories).
 
-> **Status note.** Until Phase 3 content migration completes, the
-> canonical descriptions of each step still live in
-> [deep-index.md](deep-index.md). Subskill stubs document the
-> *invocation order* and the scripts that run; the doctrine and
-> per-step semantics are in deep-index.md.
-
 ## Arguments
 
 `$ARGUMENTS` is the citekey to preflight.
@@ -90,8 +84,8 @@ case — it is a flag, not a halt.
 python3 .virgil/scripts/detect_multi_article.py papers/$ARGUMENTS
 ```
 
-Identifies adjacent-article spans for surgical removal (per §3a in
-deep-index.md).
+Identifies adjacent-article spans for surgical removal (see
+`/library/di-clean-prose` Step 3a for the removal procedure).
 
 ## Step 0.4 — Caesar-shift / running-header cleanup
 
@@ -200,7 +194,7 @@ an in-memory pass-through if you are inside the
   `reattach_document_end_notes` per the sub-pattern detected).
 - **`multi-article-pdf`** — Step 0.3 result is authoritative. If
   Step 0.3 surfaced spans, trigger surgical adjacent-article removal
-  per §3a in deep-index.md. If Step 0.3 returned 0 spans, IGNORE the
+  (see `/library/di-clean-prose` Step 3a). If Step 0.3 returned 0 spans, IGNORE the
   `multi-article-pdf` label here and treat the paper as `article` —
   `detect_genre.py` and `detect_multi_article.py` use different
   heuristics, and the `detect_multi_article` zero-spans signal is

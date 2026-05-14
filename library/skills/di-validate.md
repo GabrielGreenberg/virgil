@@ -10,7 +10,9 @@ arguments: <citekey>
 > false positives mean the agent makes bad decisions.
 
 Operates on `papers/$ARGUMENTS/main.tex` and the catalog row. The
-canonical narrative is [deep-index.md](deep-index.md) §3i and §9.5.
+§9.5 audit punch-list narrative (which depends on the validator's
+outputs) lives in [deep-index.md](deep-index.md) §9.5 as part of the
+orchestrator's convergence-driving section.
 
 ## Step 3i — Pgmark validation (hard gate)
 
@@ -55,6 +57,136 @@ baseline").
 Run from the library root (`cd ~/Virgil-Library`) — the script and
 paper paths above are relative to that root.
 
+### Hard-gate semantics
+
+Exit code 0 = clean; exit code 1 = blockers (scope violations, or
+continuity breaks newly introduced by this pass). Any blocker must
+be fixed before write-back. Read the markdown report it prints; for
+each finding, edit the file to fix it, then re-run. The validator
+is the truthful-signal gate for the convergence loop — silently
+downgrading severity to `warn` is the failure mode this skill
+exists to prevent.
+
+### Scope-violation findings (always blockers)
+
+Scope violations are always blockers regardless of baseline — they
+cannot be pre-existing because the pre-deep-index file rendered
+fine. Common fixes:
+
+- `pgmark-scope: math display` — split the surrounding `\[...\]`
+  into two displays with the pgmark on its own line between them
+  (see §3c in the orchestrator).
+- `pgmark-scope: argument of \<cmd>` — pull the pgmark out of the
+  command's brace argument and place it on its own line before the
+  command.
+- `pgmark-scope: preamble` — move the pgmark below `\maketitle`.
+
+**Math-display-open downgrade rule.** When the validator reports a
+`math display open` violation but the open `\[` is followed by
+ASCII alphanumeric continuation on the same line (e.g., `sh\[sh`),
+this is almost always a PDF extraction artifact (unbalanced bracket
+from a Unicode angle bracket `〈 〉` mis-extraction, or a phonetic
+transcription that included `[`). A single such artifact can
+produce a cascade of 7+ false-positive scope violations. Before
+treating these as blockers: scan for orphan `\[` on lines where
+alphanumeric characters follow within 10 columns; replace each
+such `\[` with `[`; re-run the validator. The cascade should
+clear.
+
+### Continuity findings (only blockers when "new vs. baseline")
+
+- `pgmark-gap` / `pgmark-out-of-order` (new vs. baseline) — you
+  almost certainly deleted or moved a marker by accident; cross-
+  reference the PDF and restore the missing one.
+- `pgmark-duplicate` — same printed-page number appearing twice
+  inside a single monotonic run (not across a section reset).
+  Usually means a stale marker was left behind after a fix; locate
+  and remove the misplaced copy.
+- `content-mismatch` — pgmark whose surrounding prose doesn't match
+  the page's text in the PDF; either the marker is misplaced or
+  the prose was reflowed across pages. Re-anchor against the PDF.
+- `range-impossible` — already covered above (Phase 1.1 fixes
+  applied). Fires only when `hi > pdf_pages × 1.5` AND `span >
+  pdf_pages` (AND, not either-or).
+
+Pre-existing continuity findings (`_pre-existing_` in the report)
+are not blockers — they reflect imperfect detection from the
+original extraction and are fine to leave. Only `**new**` findings
+gate the pass.
+
+> **Empty-baseline case.** When the catalog row has
+> `warnings == []` (typical for papers indexed before continuity-
+> warning emission was added to `index_paper.py`), the validator
+> has no baseline to compare against and will mark **every**
+> continuity gap as "new". To handle this:
+>
+> 1. **Before** running the preprocessor in §1, copy
+>    `papers/$ARGUMENTS/main.tex` to
+>    `.virgil/baselines/$ARGUMENTS-pre-deepindex.tex` (`mkdir -p`
+>    the dir if missing). This is the snapshot of pre-deep-index
+>    state.
+> 2. **In §3i**, if the catalog row's `warnings` is empty, run the
+>    validator a **second time** against the baseline file:
+>    `python3 .virgil/scripts/pgmark_validate.py .virgil/baselines/$ARGUMENTS-pre-deepindex.tex --baseline-from-catalog`
+>    The script doesn't need a special flag for this — the file
+>    path is the only required positional. The output is its own
+>    gap set (call it `B`).
+> 3. Re-run on the current `main.tex` to get its gap set (call
+>    it `C`).
+> 4. **Match gaps by `(prev_pgmark, next_pgmark)` pair**, not by
+>    line number (line numbers shift during deep-index). A gap in
+>    `C` is `_pre-existing_` iff a gap in `B` reports the same
+>    `(prev, next)` pgmark pair. Any gap in `C` whose `(prev,
+>    next)` pair has no match in `B` is genuinely **new** and
+>    gates the pass.
+> 5. Scope violations (`pgmark-scope: …`) are always blockers
+>    regardless of baseline — they cannot be pre-existing because
+>    the pre-deep-index file rendered fine.
+>
+> Do not silently dismiss "new" findings without this cross-check.
+
+### Low-confidence pgmark re-verification
+
+`\pgmark[low]{N}` is not a permanent classification. After the
+preprocessing pass strips soft hyphens and normalizes prose,
+content-overlap verification at a slightly relaxed threshold (30%,
+was 40%) and wider window (±1500 chars, was ±800) often
+successfully promotes markers that previously failed. Always
+re-run `[low]` verification after any prose cleanup; this is a
+free pass-2 win.
+
+### Three-iteration abort
+
+If three iterations fail to clear all blockers, **abort**: leave
+`indexed.state` unchanged (do not write `deepIndexed`), append a
+notification with `kind: "deep-index-blocked"` (see the
+orchestrator's step 6 for shape, swap the kind), and stop. Do not
+silently downgrade the validator severity to `warn` — that is the
+failure mode this skill exists to prevent.
+
+### Baseline acceptance via catalog warnings
+
+When the validator flags a finding that's verifiably correct (a
+heuristic limitation rather than a real defect — journal-offset
+reprint, multi-section pagination, low-confidence flood on a
+scanned-OCR book whose markers have all been positionally
+verified), suppress future passes by adding a `…-false-positive:`
+prefix to the corresponding entry in the catalog row's
+`indexed.warnings`. The prefix vocabulary mirrors the finding
+kind:
+
+- `pgmark-range-impossible-false-positive: <why it's correct>`
+- `pgmark-duplicate-false-positive: <why it's correct>`
+- `pgmark-gap-false-positive: <why it's correct>`
+- `pgmark-out-of-order-false-positive: <why it's correct>`
+
+A concrete `<why it's correct>` is required (e.g., `span fits in
+PDF page count (offset reprint)`) — these warnings are auditable.
+Subsequent validator runs read the catalog warnings and treat any
+finding whose kind matches an existing `…-false-positive:` entry
+as pre-existing rather than new. This is how known-good cases
+escape the convergence-loop gate.
+
 ## Step 9.5 — Audit punch-list (drives convergence)
 
 ```bash
@@ -94,8 +226,18 @@ tagging anything. The four allowed categories:
 - `figure-reconstruction` — raster-only figure content.
 - `user-judgment-required` — narrow; see doctrine for the cases
   where this IS the right tag.
-- `validator-false-positive` — validator's heuristic flagged
-  something verifiably correct.
+- `validator-false-positive` — the validator's heuristic flagged
+  something that's verifiably correct (journal-offset reprint with
+  span fitting in PDF page count, multi-section pagination with
+  legitimate page-label namespaces, low-confidence-flood on a
+  scanned-OCR book where every marker has been positionally
+  verified). Distinct from `user-judgment-required` because there's
+  no decision for the user to make — the file is already correct.
+  When tagging an item as `[validator-false-positive]` in the
+  Outstanding-work list, also add the matching
+  `…-false-positive:` warning to the catalog row (see "Baseline
+  acceptance via catalog warnings" above), so future passes don't
+  re-flag it.
 
 Items tagged for follow-up passes should be `[in-progress]`, not
 `[user-judgment-required]`, and should be carried forward by the

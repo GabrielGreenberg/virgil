@@ -9,25 +9,40 @@ arguments: <citekey>
 > self-check, convergence behavior, narrow out-of-scope categories).
 
 Operates on `papers/$ARGUMENTS/main.tex` after `/library/di-preflight`
-has run. The canonical narrative for each step still lives in
-[deep-index.md](deep-index.md) §3a/3b/3c; the subskill stub
-documents the script-invocation order and the load-bearing rules.
+has run.
 
 ## Step 3a — Header / `\maketitle` cleanup
 
-Compare `\title{...}`, `\author{...}`, `\date{...}` against
-`master.bib`. Remove journal-title / institutional-affiliation /
-author-name leaks from the body.
+Compare the current `\title{…}`, `\author{…}`, `\date{…}` fields
+against `master.bib`. Fix them if they're wrong (e.g. title includes
+the journal name, or author is in wrong format). Ensure `\maketitle`
+is present after the preamble. Remove any author names, journal
+titles, or institutional affiliations that leaked into the body text
+as paragraphs or headings on the first page (they belong in the
+preamble fields, not in the document body).
 
-**Filename-shaped titles** (`*.dvi`, `*.pdf`, `*.ps`, single-word
-LaTeX-source residue): replace with the `master.bib` title; if
-that's also wrong, promote the first body `\section{}` heading.
+**Filename-shaped titles.** If `\title{}` matches a filename pattern
+(`*.dvi`, `*.pdf`, `*.ps`, or a single-word LaTeX-source residue), the
+extractor used the file's source name instead of the printed title.
+Replace with the actual title from `master.bib`. If `master.bib` is
+also wrong, promote the document's first `\section{}` heading as the
+title.
 
-**Drop-cap recovery (OCR'd books):**
+**Drop-cap recovery (OCR'd books).** OCR commonly drops the styled
+drop-cap glyph at chapter starts, leaving body text like `ower is the
+ability to do work...` mis-classified as a `\subsubsection`. Detect
+by scanning the first paragraph after each `\section{}` for a lowercase
+opening that doesn't form a valid English word with the section
+heading's context. Run:
 
 ```bash
 python3 .virgil/scripts/recover_drop_caps.py papers/$ARGUMENTS
 ```
+
+The script reads the corresponding PDF page via `pdftotext -layout`
+to recover the missing initial letter and emits a patch list. Apply
+each suggestion as a body Edit (one-letter prepend; never modify
+surrounding text).
 
 For scanned-OCR articles where the drop-cap got concatenated to the
 title (e.g., `\section{... PERCEPTION* I}` + body `n perception`):
@@ -36,22 +51,82 @@ title (e.g., `\section{... PERCEPTION* I}` + body `n perception`):
 python3 .virgil/scripts/recover_drop_cap_at_title.py papers/$ARGUMENTS/main.tex
 ```
 
-**Content vs. metadata mismatch.** When `detect_metadata_mismatch.py`
-(run in di-preflight) returned `file-is-book-bib-is-chapter`, the
-policy script in preflight already updated `master.bib`. Otherwise,
-the four-condition policy stays a `user-judgment-required` (see
-[_doctrine.md](_doctrine.md) for when it isn't).
+**Content vs. metadata mismatch — match metadata to file.** When the
+body content does not match `master.bib`'s `title` (e.g., the file is
+a whole book but `master.bib` describes one chapter), the on-disk
+file is the source of truth. Update `master.bib`, the catalog row,
+and the in-file `\title{...}` to match the file's actual identity.
+Use the cover/title-page of the source PDF as the authoritative
+title.
 
-**Multi-article PDF detection:**
+When `detect_metadata_mismatch.py` (run in di-preflight) returned
+`file-is-book-bib-is-chapter`, the policy script in preflight already
+updated `master.bib`. Otherwise, apply this update directly (no
+`user-judgment-required` deferral) when **all four** conditions hold:
+
+1. The file is structurally larger (whole book / full proceedings /
+   full dissertation), AND
+2. The current metadata describes a proper subset (one chapter, one
+   excerpt), AND
+3. The cover page (first 2 pages, via `pdftotext -layout`)
+   unambiguously gives the larger artifact's title, AND
+4. The catalog row has no `metadata-lock: true` flag and
+   `papers/<citekey>/virgil/notes.json` is silent on intentional
+   chapter-level identity.
+
+After updating metadata, set `bib.state = "needs-reauth"` so the
+next `/library/authenticate-bib` pass re-verifies the new DOI.
+Update the in-file `\title{}` to match. Use
+`update_master_bib_entry.py` and `update_catalog_entry.py` (NOT
+direct Write) to acquire the file locks safely.
+
+Keep the `user-judgment-required` deferral only for:
+
+- The inverse direction (file is a chapter, metadata describes the
+  book) — we can't re-extract the whole book from a chapter file.
+- Genuinely different works (different authors, different years,
+  no obvious subset relation).
+- `metadata-lock: true` in the catalog row, or explicit user notes
+  in `papers/<citekey>/virgil/notes.json` about chapter-level
+  identity.
+- Republication / reprint identity choices where both are defensible
+  and the user has expressed no prior preference. Even here, apply
+  a reasonable default (keep the existing bib, add a `note` field
+  documenting the reprint source) rather than blocking on user
+  input.
+
+**Multi-article PDF detection.** If `detect_genre.py` (preflight)
+classified the source as `multi-article-pdf`, run:
 
 ```bash
 python3 .virgil/scripts/detect_multi_article.py papers/$ARGUMENTS
 ```
 
-Surgically remove adjacent-article spans via body Edit. In-scope per
-§0.5 doctrine — don't defer.
+The script identifies adjacent-article spans in `main.tex` (text that
+belongs to a different article — often JSTOR scans or Annual Reviews
+collections include front-of-issue or facing-page content). Surgically
+remove each identified span via a body Edit. This **is** in-scope for
+/deep-index per §0.5 doctrine — don't defer it to /index-paper. The
+threshold for surgical removal: the span must (a) be clearly
+attributable to a different article (different title, different
+authors), (b) not be referenced by the body of the indexed paper,
+and (c) have a clear start/end boundary (typically a column or
+paragraph break).
 
 ## Step 3b — Heading hierarchy
+
+Walk the entire document and correct `\section` / `\subsection` /
+`\subsubsection` usage:
+
+- Remove section numbering from heading text (e.g. `\section{2. The
+  Data}` → `\section{The Data}`) — LaTeX auto-numbers sections.
+- Demote or remove misclassified headings. Common mistakes:
+  - Author name promoted to `\subsubsection{Samuel Cumming}` — delete.
+  - Single words that are clearly running header remnants — delete.
+  - Subheading levels are wrong (e.g. `\subsection` where `\section`
+    is needed based on the document structure).
+- Use the PDF's table of contents or visual structure to verify the
+  heading hierarchy.
 
 For OCR'd books with bulk-corruption (many `\subsection{...}` calls
 with lowercase content):
@@ -133,16 +208,52 @@ appears*:
 # (TODO: script doesn't exist yet. Manually edit affected headings.)
 ```
 
-**All-caps sibling promotion** (run of ≥2 sibling `\subsubsection{}`
-with ≥80% uppercase): promote to `\section{Title Case}`. Manual edit
-or per-paper script.
+**All-caps sibling promotion.** When `\subsubsection{HEADING1}`,
+`\subsubsection{HEADING2}`, … `\subsubsection{HEADINGn}` are all-caps
+siblings at the same nesting depth, the extractor mistook journal
+small-caps or all-caps styling for a sub-sub-section. Promote each
+to `\section{Title Case HeadingN}`. This is a common failure mode
+for Annual Reviews, Springer, and other journals that style section
+headings in all-caps. Detection: run of ≥2 sibling
+`\subsubsection{}` calls whose argument is ≥80% uppercase letters
+and ≥4 characters. Manual edit or per-paper script.
 
-**Math-symbol subsection demotion**: unwrap headings dominated by
-`⊢⇑⇀≡⊬∆Γδγσθ⇒` etc. back to body text.
+**Math-symbol subsection demotion.** Headings whose content is
+dominated by math symbols (⊢, ⇑, ⇀, ↿, ▷◁, ≡, ∅, ⊬, ∆, Γ, δ, γ, σ, θ,
+⇒) or has fewer than 3 letters or starts with `)` should be unwrapped
+back to plain body text. These are inference-rule diagram fragments
+mis-promoted from formal-logic/math books. Common in textbooks and
+dissertations on logic, semantics, and proof theory.
 
-**Multi-line section fragment merger**: adjacent `\section{}` calls
-separated only by blank lines where the first lacks terminal
-punctuation — merge into a single heading.
+**OCR-garbage heading detection (cluster awareness).** Per-line
+heuristics ("mostly numbers", "single-word fragments") miss ~50% of
+garbage headings on edge cases. Use cluster awareness:
+
+- If `\section{}` / `\subsection{}` headings appear in a cluster of
+  ≥3 short/noisy entries within 50 lines, and the surrounding body
+  text reads like a figure caption (axis labels, coordinate values,
+  figure references), the entire cluster is a figure-caption block
+  that the extractor synthesized. Delete the headings (or convert to
+  `\textbf{}` if the captions are needed).
+- Single-character headings, headings whose argument is mostly
+  non-alphabetic punctuation, and headings with `\(\d+\)\s*[a-z]'?\(`
+  shape (formal-semantics example markers): delete or convert to
+  body text. They are not headings.
+
+**Multi-line section fragment merger.** Book chapter titles often
+wrap across extraction lines (e.g., `\section{Convention, Construction,
+and}` immediately followed by a blank line and `\section{Cinematic
+Vision}`). Detect adjacent `\section{}` calls separated only by blank
+lines where the first ends without terminal punctuation (no period,
+no question mark, no closing quote), and merge them into a single
+heading. Preserve italic-toggle and quote-context.
+
+**Lost section heading recovery.** If a chapter or section heading
+appears to be missing — sequence reset detected in body text (e.g.,
+note numbers jump backward from 47 to 1), or the body contains a
+chapter list that doesn't match the present headings — propose
+inserting it. Source the title from the body's chapter list or the
+PDF's TOC.
 
 **Lost chapter-title recovery (OCR'd books):**
 
@@ -179,23 +290,56 @@ python3 .virgil/scripts/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMENTS-toc.j
 
 ## Step 3c — `\pgmark` alignment
 
-> **Short-circuit for DOCX-native papers** (catalog
-> `indexed.pgmarkCount == 0`): skip §3c entirely. The validator in
-> §3i passes trivially.
+> **Short-circuit for DOCX-native (or otherwise pgmark-less) papers.**
+> If the catalog row has `indexed.pgmarkCount == 0` — typical for
+> DOCX-native extraction, plain-text imports, etc. — there are no
+> markers to align. **Skip §3c entirely.** Do **not** read the PDF
+> alternate and synthesize new pgmarks; that's out of scope for
+> deep-index (it would re-extract page boundaries, which belongs to
+> `/index-paper`). The validator in §3i will pass trivially in this
+> case (zero markers ⇒ no scope violations, no continuity gaps).
+>
+> Note: §2's PDF reading rule (read the first ~8 pages of any
+> available PDF for structural reference) **still applies** — it's a
+> read-only structural cross-check, not a pgmark-synthesis step.
+> Only the per-marker alignment work in §3c is short-circuited.
 
-**Scope rule (load-bearing — silently breaks rendering if violated):**
-`\pgmark{N}` must appear at document body scope only. Never inside:
+Verify that `\pgmark{N}` appears **above** the first line of content
+from printed page N. After header/footer removal, some markers may
+have shifted relative to their content. Cross-check against the PDF
+text to confirm correct placement.
 
-- math mode (`\[...\]`, `$...$`, `\begin{equation}…\end{equation}`,
-  `align`, `gather`, `multline`, math environment);
-- the brace argument of a command (`\footnote{...}`, `\textbf{...}`,
+**Scope rules (load-bearing — silently breaks rendering if violated).**
+`\pgmark{N}` must appear at **document body scope only**. Never inside:
+
+- math mode: `\[...\]`, `$...$`, `\begin{equation}...\end{equation}`,
+  `align`, `gather`, `multline`, or any other math environment;
+- the brace-argument of a command: `\footnote{...}`, `\textbf{...}`,
   `\textit{...}`, `\section{...}`, `\subsection{...}`, `\title{...}`,
-  `\author{...}`, `\date{...}`);
+  `\author{...}`, `\date{...}`, etc.;
 - the preamble (above `\begin{document}` / `\maketitle`).
 
 The renderer's pgmark scanner only sees markers at body scope; one
 inside math or a command argument is silently swallowed and produces
 no margin chip.
+
+If a source page boundary cuts through one of these constructs, place
+the pgmark on its own line *before* the enclosing block. If that loses
+too much fidelity (e.g., the boundary truly falls inside a multi-line
+equation), **split the block at the boundary** into two pieces with
+the pgmark on its own line between them. Example — equation (4) of
+`cumming2024attentional` with the page break running through the `=`:
+
+```latex
+\[ (4) \quad [\![\text{Why is Mary annoyed?}]\!] = \]
+
+\pgmark{5}
+
+\[ \lambda p.\, \text{Explanation(that Mary is annoyed, } p) \]
+```
+
+Do **not** fuse those two displays into one — the pgmark would have
+to live inside math, and would disappear.
 
 **OCR-garbled Roman numeral pgmarks:**
 
