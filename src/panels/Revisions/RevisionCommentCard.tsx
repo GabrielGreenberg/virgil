@@ -6,7 +6,9 @@ import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types
 import {
   AiRequestCheckbox,
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import {
   getAnchorSummary,
@@ -78,6 +80,7 @@ export function RevisionCommentCard({
   const ac = useAnchoredCard({ kind: "comment", id: card.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
   useEffect(() => {
     if (isSelected && !card.text) taRef.current?.focus();
   }, [isSelected, card.text]);
@@ -126,14 +129,16 @@ export function RevisionCommentCard({
       }}
     >
       {compressed ? (
-        <div className="px-3 pt-1 pb-1.5 text-xs truncate">
-          {card.selectedText ? (
-            <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
-          ) : card.text ? (
-            <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
-          ) : (
-            <span className="text-ink-faint italic">empty comment</span>
-          )}
+        <div className="px-3 pt-1.5 pb-1.5">
+          <div style={{ ...revisionBodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            {card.selectedText ? (
+              <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
+            ) : card.text ? (
+              <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
+            ) : (
+              <span className="text-ink-faint italic">empty comment</span>
+            )}
+          </div>
         </div>
       ) : (
       <div

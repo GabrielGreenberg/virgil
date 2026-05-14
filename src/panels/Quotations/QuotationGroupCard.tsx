@@ -19,7 +19,9 @@ import {
   PANEL,
   Chevron,
   CardBodyTitle,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { useTabIndent } from "@/hooks/useTabIndent";
@@ -731,6 +733,8 @@ export function QuotationGroupCard({
   const ac = useAnchoredCard({ kind: "quotation", id: group.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
+  const cardBodyStyle = usePanelBodyStyle("quote");
   const refCount = group.references.length;
   const quoteCount = group.references.reduce((s, r) => s + r.quotes.length, 0);
   const firstRef = group.references[0];
@@ -786,20 +790,22 @@ export function QuotationGroupCard({
       />
 
       {compressed ? (
-        <div className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate">
-          {refCount === 0 ? (
-            <span className="text-ink-faint italic">(empty)</span>
-          ) : (
-            <>
-              <span className="text-ink-muted">{refCount} ref{refCount !== 1 ? "s" : ""} · {quoteCount} quote{quoteCount !== 1 ? "s" : ""}</span>
-              {firstCit && firstCit.author && (
-                <span className="ml-2">
-                  <span className="font-medium">{firstCit.author}</span>
-                  {firstCit.year ? <span className="text-ink-muted"> ({firstCit.year})</span> : null}
-                </span>
-              )}
-            </>
-          )}
+        <div className="px-3 pt-1.5 pb-1.5 text-ink-subtle">
+          <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            {refCount === 0 ? (
+              <span className="text-ink-faint italic">(empty)</span>
+            ) : (
+              <>
+                <span className="text-ink-muted">{refCount} ref{refCount !== 1 ? "s" : ""} · {quoteCount} quote{quoteCount !== 1 ? "s" : ""}</span>
+                {firstCit && firstCit.author && (
+                  <span className="ml-2">
+                    <span className="font-medium">{firstCit.author}</span>
+                    {firstCit.year ? <span className="text-ink-muted"> ({firstCit.year})</span> : null}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         </div>
       ) : (
       <div

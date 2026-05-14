@@ -5,7 +5,9 @@ import type { HighlightCard as HighlightCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import {
   getLinkedParagraphIds,
@@ -59,6 +61,7 @@ export function HighlightCard({
   const ac = useAnchoredCard({ kind: "highlight", id: card.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
 
   // The card body renders the highlighted text in the document's serif
   // face (matching the editor) so the snippet reads like an excerpt.
@@ -70,9 +73,10 @@ export function HighlightCard({
     color: "var(--editor-text-color)",
   } as const;
   const trimmedAnchor = anchorText.replace(/\s+/g, " ").trim();
+  const snippetCap = 80 * Math.max(1, compressedLines);
   const compressedSnippet =
-    trimmedAnchor.length > 80
-      ? `${trimmedAnchor.slice(0, 77)}…`
+    trimmedAnchor.length > snippetCap
+      ? `${trimmedAnchor.slice(0, snippetCap - 3)}…`
       : trimmedAnchor;
 
   const cardEl = (
@@ -117,13 +121,12 @@ export function HighlightCard({
       {...(extraDataAttrs ?? {})}
     >
       {compressed ? (
-        <div
-          className="px-3 pt-1.5 pb-1.5 text-sm overflow-hidden text-ellipsis whitespace-nowrap"
-          style={snippetFontStyle}
-        >
-          {compressedSnippet || (
-            <span className="text-ink-faint italic">empty highlight</span>
-          )}
+        <div className="px-3 pt-1.5 pb-1.5 text-sm">
+          <div style={{ ...snippetFontStyle, ...compressedBodyStyle(compressedLines) }}>
+            {compressedSnippet || (
+              <span className="text-ink-faint italic">empty highlight</span>
+            )}
+          </div>
         </div>
       ) : (
         <div className="px-3 pt-2 pb-2 space-y-2" onClick={(e) => e.stopPropagation()}>

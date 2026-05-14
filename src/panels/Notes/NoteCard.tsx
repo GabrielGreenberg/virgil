@@ -6,13 +6,15 @@ import type { UserNote } from "@/lib/types";
 import {
   EditableCard,
   AiRequestCheckbox,
+  makeCompressedSummary,
   startTextDrag,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
-import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { cardPopKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
@@ -81,9 +83,10 @@ export function NoteCard({
   const _isOrphaned = getLinkedParagraphIds(note).length === 0;
   void _isOrphaned;
   const theme = useCardTheme("note");
+  const compressedLines = useCompressedLines();
   const compressed = !isSelected && !isPoppedOut;
   const compressedSummary = compressed
-    ? (richJsonToPlainText(note.content).trim().slice(0, 80) || "")
+    ? (makeCompressedSummary(note.content, compressedLines) || "")
     : undefined;
   const popped = usePoppedCards();
   const cardKey = cardPopKey("note", note.id);

@@ -40,6 +40,8 @@ import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { cardPopKey, cardTypeLabel } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import { useInOmni } from "./editor-layout/contexts/omni";
+import { useCompressedLines } from "./editor-layout/contexts/card-display";
+import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/panel-theme";
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
@@ -60,6 +62,39 @@ export interface CardClaimSlot {
 const CardClaimContext = createContext<CardClaimSlot | null>(null);
 function useCardClaimSlot(): CardClaimSlot | null {
   return useContext(CardClaimContext);
+}
+
+/* ── Compressed-body helpers ──────────────────────────────────────
+ *  Cards render the same "header + N-line summary" shape when collapsed
+ *  across many panels. These helpers centralise the CSS clamp and the
+ *  plain-text summary builder so every site honours `useCompressedLines()`
+ *  uniformly. N=1 is the legacy single-line ellipsized behaviour. */
+
+export function compressedBodyStyle(
+  lines: number,
+  opts?: { lineHeight?: number },
+): React.CSSProperties {
+  const n = Math.max(1, lines);
+  const lh = opts?.lineHeight ?? 1.4;
+  return {
+    display: "-webkit-box",
+    WebkitLineClamp: n,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    overflowWrap: "anywhere",
+    lineHeight: lh,
+    // Hard ceiling on content height so any ascender bleed from the
+    // clamped next line gets clipped, not shown. box-sizing:content-box
+    // makes maxHeight apply to the content area only, so the wrapping
+    // div's padding lives outside the ceiling and isn't squeezed.
+    maxHeight: `calc(${lh}em * ${n})`,
+    boxSizing: "content-box",
+  };
+}
+
+export function makeCompressedSummary(content: JSONContent | unknown, lines: number): string {
+  const text = richJsonToPlainText(content).replace(/\s+/g, " ").trim();
+  return text.slice(0, 80 * Math.max(1, lines));
 }
 
 /* ── Class-string constants ───────────────────────────────────────── */
@@ -686,6 +721,8 @@ export function EditableCard({
   const cardEditable = !cardKind ||
     !chrome.editableCardKinds ||
     chrome.editableCardKinds.includes(cardKind);
+  const compressedLines = useCompressedLines();
+  const compressedBody = usePanelBodyStyle(panelKey);
   const [isFocused, setIsFocused] = useState(false);
   const [toolbarTarget, setToolbarTarget] = useState<HTMLDivElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -852,14 +889,16 @@ export function EditableCard({
           rich-text editor; clicking the card expands it via onClick. */}
       {compressed ? (
         <div
-          className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate cursor-pointer"
+          className="px-3 pt-1.5 pb-1.5 text-ink-subtle cursor-pointer"
           style={
             partnerClaim
               ? { opacity: 0.55, pointerEvents: "none", filter: "saturate(0.7)" }
               : undefined
           }
         >
-          {compressedSummary ?? <span className="text-ink-faint italic">empty</span>}
+          <div style={{ ...compressedBody, ...compressedBodyStyle(compressedLines) }}>
+            {compressedSummary ?? <span className="text-ink-faint italic">empty</span>}
+          </div>
         </div>
       ) : (
       <div

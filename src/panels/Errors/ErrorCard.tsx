@@ -4,7 +4,9 @@ import { useCallback, useRef } from "react";
 import {
   CARD_THEMES,
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
@@ -109,6 +111,7 @@ export function ErrorCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const compressed = !selected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
 
   // TODO(grip-redesign): drop-into-document via the grip is disabled
   // during the unified header redesign. Re-introduce thoughtfully via a
@@ -172,20 +175,22 @@ export function ErrorCard({
       onJump={(e) => onJump?.((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
       {compressed ? (
-        <div className="px-3 pt-1 pb-1.5 text-xs text-ink-subtle truncate">
-          <span
-            className="font-medium text-[0.78rem] mr-2"
-            style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
-          >
-            {title}
-          </span>
-          {err.line > 0 && (
-            <span className="text-ink-muted mr-1">
-              line {err.line}
-              {err.column ? `:${err.column}` : ""} —
+        <div className="px-3 pt-1.5 pb-1.5 text-xs text-ink-subtle">
+          <div style={compressedBodyStyle(compressedLines)}>
+            <span
+              className="font-medium text-[0.78rem] mr-2"
+              style={{ color: theme.titleColor, letterSpacing: "0.02em" }}
+            >
+              {title}
             </span>
-          )}
-          {err.message}
+            {err.line > 0 && (
+              <span className="text-ink-muted mr-1">
+                line {err.line}
+                {err.column ? `:${err.column}` : ""} —
+              </span>
+            )}
+            {err.message}
+          </div>
         </div>
       ) : (
       <div

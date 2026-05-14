@@ -8,8 +8,10 @@ import {
   EditableCard,
   BadgeLabel,
   BadgeOrphaned,
+  makeCompressedSummary,
   startTextDrag,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
@@ -101,9 +103,10 @@ export function FootnoteCard({
       : undefined);
   const ac = useAnchoredCard({ kind: "footnote", id: fn.footnoteId });
   const isSelectedEffective = ac.selected || isSelected;
+  const compressedLines = useCompressedLines();
   const compressed = !isSelectedEffective && !isPoppedOut;
   const compressedSummary = compressed
-    ? (richJsonToPlainText(fn.content).trim().slice(0, 80) || "")
+    ? (makeCompressedSummary(fn.content, compressedLines) || "")
     : undefined;
 
   const card = (
@@ -187,9 +190,10 @@ export function OrphanedFootnoteCard({
     [onEdit],
   );
   const theme = useCardTheme("footnote");
+  const compressedLines = useCompressedLines();
   const compressed = !isSelected;
   const compressedSummary = compressed
-    ? (richJsonToPlainText(orphan.content).trim().slice(0, 80) || "")
+    ? (makeCompressedSummary(orphan.content, compressedLines) || "")
     : undefined;
 
   return (

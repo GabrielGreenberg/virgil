@@ -6,7 +6,9 @@ import type { CutterCommentCard as CutterCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import {
   getAnchorSummary,
@@ -81,6 +83,7 @@ export function CutterCommentCard({
   const ac = useAnchoredCard({ kind: "cutter-comment", id: card.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
   const { partnerClaim, claim, release } = useCardClaim("cut", card.id);
   const collabCtx = useCollabContext();
   const partnerSelections = collabCtx.getCardSelections("cut", card.id);
@@ -140,20 +143,18 @@ export function CutterCommentCard({
     >
       {compressed ? (
         <div
-          className="px-3 pt-1 pb-1.5 text-xs truncate"
-          style={
-            partnerClaim
-              ? { opacity: 0.55, filter: "saturate(0.7)" }
-              : undefined
-          }
+          className="px-3 pt-1.5 pb-1.5"
+          style={partnerClaim ? { opacity: 0.55, filter: "saturate(0.7)" } : undefined}
         >
-          {card.selectedText ? (
-            <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
-          ) : card.text ? (
-            <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
-          ) : (
-            <span className="text-ink-faint italic">empty comment</span>
-          )}
+          <div style={{ ...cutBodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            {card.selectedText ? (
+              <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
+            ) : card.text ? (
+              <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
+            ) : (
+              <span className="text-ink-faint italic">empty comment</span>
+            )}
+          </div>
         </div>
       ) : (
       <div

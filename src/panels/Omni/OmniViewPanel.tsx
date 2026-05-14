@@ -10,6 +10,7 @@ import {
 } from "@/panels/panel-registry";
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
+import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -315,6 +316,7 @@ function OmniViewPanel({
 
   return (
     <OmniProvider value={{ side }}>
+    <CardDisplayProvider value={{ compressedLines: 2 }}>
     <div
       className="relative w-full"
       onMouseDown={(e) => {
@@ -381,6 +383,7 @@ function OmniViewPanel({
         </div>
       </div>
     </div>
+    </CardDisplayProvider>
     </OmniProvider>
   );
 }

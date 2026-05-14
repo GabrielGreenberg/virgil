@@ -6,7 +6,9 @@ import {
   Button,
   Chevron,
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
@@ -316,6 +318,8 @@ export function CutterSuggestionCard({
   const ac = useAnchoredCard({ kind: "cutter-suggestion", id: card.id });
   const isSelected = ac.selected || selected;
   const compressed = !isSelected && !isPoppedOut;
+  const compressedLines = useCompressedLines();
+  const cardBodyStyle = usePanelBodyStyle("cut");
 
   const dot = (
     <span
@@ -376,14 +380,16 @@ export function CutterSuggestionCard({
       }
     >
       {compressed ? (
-        <div className="px-3 pt-1 pb-1.5 text-xs truncate">
-          {card.suggested_text ? (
-            <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
-          ) : card.original_text ? (
-            <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
-          ) : (
-            <span className="text-ink-faint italic">empty suggestion</span>
-          )}
+        <div className="px-3 pt-1.5 pb-1.5">
+          <div style={{ ...cardBodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            {card.suggested_text ? (
+              <span className="text-emerald-700/90">{card.suggested_text.replace(/\s+/g, " ").trim()}</span>
+            ) : card.original_text ? (
+              <span className="text-ink-subtle">→ <span className="text-red-700/70 italic">{card.original_text.replace(/\s+/g, " ").trim()}</span></span>
+            ) : (
+              <span className="text-ink-faint italic">empty suggestion</span>
+            )}
+          </div>
         </div>
       ) : (
       <div

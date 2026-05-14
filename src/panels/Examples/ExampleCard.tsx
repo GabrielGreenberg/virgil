@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import type { ExampleInfo } from "@/components/Editor";
 import {
   PanelCard,
+  compressedBodyStyle,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { FloatCard } from "@/components/FloatingCards";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
@@ -56,6 +58,7 @@ export function ExampleCard({
   const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
   const isSelectedEffective = ac.selected || isSelected;
   const compressed = !isSelectedEffective && !isPoppedOut;
+  const compressedLines = useCompressedLines();
 
   const [isEditing, setIsEditing] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -128,22 +131,21 @@ export function ExampleCard({
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
     >
       {compressed ? (
-        <div
-          className="px-3 py-1.5 text-xs text-ink-body truncate"
-          style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle }}
-        >
-          <span
-            className="font-mono mr-2"
-            style={{ color: theme.titleColor }}
-          >
-            ({example.number || "?"})
-          </span>
-          {(() => {
-            const text = example.bodyText || example.items[0]?.text || "";
-            const trimmed = text.replace(/\s+/g, " ").trim();
-            if (trimmed) return trimmed;
-            return <span className="italic text-ink-muted">empty</span>;
-          })()}
+        <div className="px-3 py-1.5 text-ink-body">
+          <div style={{ fontFamily: "var(--font-serif), Georgia, serif", ...bodyStyle, ...compressedBodyStyle(compressedLines) }}>
+            <span
+              className="font-mono mr-2"
+              style={{ color: theme.titleColor }}
+            >
+              ({example.number || "?"})
+            </span>
+            {(() => {
+              const text = example.bodyText || example.items[0]?.text || "";
+              const trimmed = text.replace(/\s+/g, " ").trim();
+              if (trimmed) return trimmed;
+              return <span className="italic text-ink-muted">empty</span>;
+            })()}
+          </div>
         </div>
       ) : (
       <>

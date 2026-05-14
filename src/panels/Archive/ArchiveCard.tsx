@@ -4,12 +4,14 @@ import type { JSONContent } from "@tiptap/react";
 import type { ArchivedSnippet } from "@/lib/types";
 import {
   EditableCard,
+  makeCompressedSummary,
   startTextDrag,
 } from "@/components/panel-primitives";
+import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
-import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_ARCHIVE_ANCHOR } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
@@ -67,9 +69,10 @@ export function ArchiveCard({
       : undefined);
   const ac = useAnchoredCard({ kind: "archive", id: snippet.id });
   const isSelected = ac.selected || selected;
+  const compressedLines = useCompressedLines();
   const compressed = !isSelected && !isPoppedOut;
   const compressedSummary = compressed
-    ? (richJsonToPlainText(snippet.content).trim().slice(0, 80) || "")
+    ? (makeCompressedSummary(snippet.content, compressedLines) || "")
     : undefined;
   const card = (
     <EditableCard
