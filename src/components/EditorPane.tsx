@@ -3743,7 +3743,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             <EditorScrollbar
               rowRef={rowScrollRef}
               editorColRef={editorColRef}
-              outset={3}
+              rightInset={3}
             />
           )}
           {dragHandleMenuState && (

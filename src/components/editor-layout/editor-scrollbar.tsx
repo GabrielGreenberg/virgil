@@ -3,37 +3,73 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Custom thin scrollbar pinned to the editor column's right edge.
+ * Custom thin scrollbar tucked just inside the editor column's right edge.
  *
  * The unified row scroll places the native scrollbar at the far right of
- * the window. This component instead renders a custom thumb at the editor
- * pod's right edge, so the scroll affordance sits next to the content it
- * scrolls. The native vertical scrollbar is hidden via CSS in globals.css.
+ * the window. This component instead renders a custom thumb sitting in
+ * the editor pod's right padding, so the scroll affordance overlays the
+ * content it scrolls. The native vertical scrollbar is hidden via CSS in
+ * globals.css.
  *
  * Position is computed in viewport coords from the editor column's
  * bounding rect, updated on row scroll, resize, and panel collapse/expand.
  * Drag handlers translate thumb-Y deltas into row.scrollTop changes.
+ *
+ * Visibility follows the modern overlay-scrollbar pattern: the thumb
+ * appears on scroll/drag, then fades after FADE_DELAY ms of inactivity,
+ * unless the user is hovering or dragging.
  */
+const FADE_DELAY = 1000;
+const FADE_DURATION = 300;
+
 export function EditorScrollbar({
   rowRef,
   editorColRef,
   topInset = 40,
   bottomInset = 18,
   width = 6,
-  outset = 2,
+  rightInset = 3,
 }: {
   rowRef: React.RefObject<HTMLElement | null>;
   editorColRef: React.RefObject<HTMLElement | null>;
   topInset?: number;
   bottomInset?: number;
   width?: number;
-  /** Pixels right of the editor column's right edge to start the track. */
-  outset?: number;
+  /** Pixels left of the editor column's right edge to place the thumb. */
+  rightInset?: number;
 }) {
   const [layout, setLayout] = useState({ left: 0, top: 0, height: 0 });
   const [scroll, setScroll] = useState({ top: 0, height: 1, client: 1 });
   const [hover, setHover] = useState(false);
-  const dragging = useRef(false);
+  const [dragging, setDragging] = useState(false);
+  const [visible, setVisible] = useState(true);
+  const [dragSuppress, setDragSuppress] = useState(false);
+  const fadeTimer = useRef<number | null>(null);
+
+  // Hide the thumb while the user is resizing a panel-edge drag-gap. The
+  // editor column's width is changing continuously during the drag, so the
+  // thumb would otherwise visibly chase the moving edge.
+  useEffect(() => {
+    const onStart = () => setDragSuppress(true);
+    const onEnd = () => setDragSuppress(false);
+    window.addEventListener("virgil:drag-gap-start", onStart);
+    window.addEventListener("virgil:drag-gap-end", onEnd);
+    return () => {
+      window.removeEventListener("virgil:drag-gap-start", onStart);
+      window.removeEventListener("virgil:drag-gap-end", onEnd);
+    };
+  }, []);
+
+  const scheduleFade = useCallback(() => {
+    if (fadeTimer.current !== null) {
+      window.clearTimeout(fadeTimer.current);
+    }
+    setVisible(true);
+    fadeTimer.current = window.setTimeout(() => {
+      setVisible(false);
+      fadeTimer.current = null;
+    }, FADE_DELAY);
+  }, []);
 
   const refresh = useCallback(() => {
     const ec = editorColRef.current;
@@ -42,7 +78,7 @@ export function EditorScrollbar({
     const ecr = ec.getBoundingClientRect();
     const rowr = row.getBoundingClientRect();
     setLayout({
-      left: ecr.right + outset,
+      left: ecr.right - width - rightInset,
       top: rowr.top + topInset,
       height: Math.max(0, rowr.height - topInset - bottomInset),
     });
@@ -55,10 +91,18 @@ export function EditorScrollbar({
       height: effectiveHeight,
       client: row.clientHeight,
     });
-  }, [rowRef, editorColRef, topInset, bottomInset, outset]);
+  }, [rowRef, editorColRef, topInset, bottomInset, width, rightInset]);
+
+  const onScroll = useCallback(() => {
+    refresh();
+    scheduleFade();
+  }, [refresh, scheduleFade]);
 
   useEffect(() => {
     refresh();
+    // Initial mount flash: start visible, then fade so the user gets a
+    // one-shot hint that the doc is scrollable.
+    scheduleFade();
     const row = rowRef.current;
     const ec = editorColRef.current;
     if (!row || !ec) return;
@@ -101,7 +145,7 @@ export function EditorScrollbar({
       row.style.setProperty("--cap-bottom-display", docFits ? "none" : "flex");
     };
     syncRowBoundCss();
-    row.addEventListener("scroll", refresh, { passive: true });
+    row.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", refresh);
     const ro = new ResizeObserver(() => { syncRowBoundCss(); refresh(); });
     ro.observe(row);
@@ -111,12 +155,16 @@ export function EditorScrollbar({
     const mo = new MutationObserver(() => { syncRowBoundCss(); refresh(); });
     mo.observe(row, { childList: true, subtree: true, characterData: true });
     return () => {
-      row.removeEventListener("scroll", refresh);
+      row.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", refresh);
       ro.disconnect();
       mo.disconnect();
+      if (fadeTimer.current !== null) {
+        window.clearTimeout(fadeTimer.current);
+        fadeTimer.current = null;
+      }
     };
-  }, [rowRef, editorColRef, refresh]);
+  }, [rowRef, editorColRef, refresh, onScroll, scheduleFade]);
 
   const scrollable = scroll.height > scroll.client + 1;
   const thumbRatio = scrollable ? scroll.client / scroll.height : 1;
@@ -132,7 +180,8 @@ export function EditorScrollbar({
       e.preventDefault();
       const row = rowRef.current;
       if (!row) return;
-      dragging.current = true;
+      setDragging(true);
+      scheduleFade();
       const startY = e.clientY;
       const startScroll = row.scrollTop;
       const trackPx = layout.height - thumbHeight;
@@ -143,22 +192,31 @@ export function EditorScrollbar({
         row.scrollTop = startScroll + dy * ratio;
       };
       const onUp = () => {
-        dragging.current = false;
+        setDragging(false);
+        scheduleFade();
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [rowRef, layout.height, scroll.height, scroll.client, thumbHeight],
+    [rowRef, layout.height, scroll.height, scroll.client, thumbHeight, scheduleFade],
   );
 
   if (!scrollable) return null;
 
+  const effectiveOpacity = !dragSuppress && (visible || hover || dragging) ? 1 : 0;
+
   return (
     <div
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      onMouseEnter={() => {
+        setHover(true);
+        scheduleFade();
+      }}
+      onMouseLeave={() => {
+        setHover(false);
+        scheduleFade();
+      }}
       style={{
         position: "fixed",
         left: layout.left,
@@ -167,7 +225,8 @@ export function EditorScrollbar({
         height: layout.height,
         zIndex: 35,
         // Track is invisible; only the thumb is drawn. Pointer events
-        // are still on the wrapper so hover changes the thumb opacity.
+        // are still on the wrapper so hover changes the thumb opacity
+        // and the user can grab the thumb even mid-fade.
         pointerEvents: "auto",
       }}
     >
@@ -180,11 +239,12 @@ export function EditorScrollbar({
           width,
           height: thumbHeight,
           borderRadius: width / 2,
-          background: hover || dragging.current
+          background: hover || dragging
             ? "rgba(0,0,0,0.35)"
             : "rgba(0,0,0,0.18)",
+          opacity: effectiveOpacity,
           cursor: "grab",
-          transition: "background 120ms ease",
+          transition: `opacity ${FADE_DURATION}ms ease, background 120ms ease`,
         }}
       />
     </div>

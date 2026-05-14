@@ -74,6 +74,7 @@ export function useDragGap({
         gapRef.current?.classList.add("dragging");
         document.body.style.cursor = cursor;
         document.body.style.userSelect = "none";
+        window.dispatchEvent(new CustomEvent("virgil:drag-gap-start"));
       }
 
       const onMoveEvt = (ev: MouseEvent) => {
@@ -85,6 +86,7 @@ export function useDragGap({
           gapRef.current?.classList.add("dragging");
           document.body.style.cursor = cursor;
           document.body.style.userSelect = "none";
+          window.dispatchEvent(new CustomEvent("virgil:drag-gap-start"));
         }
         onMoveRef.current(ev);
       };
@@ -93,6 +95,9 @@ export function useDragGap({
         gapRef.current?.classList.remove("dragging");
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
+        if (activated) {
+          window.dispatchEvent(new CustomEvent("virgil:drag-gap-end"));
+        }
         window.removeEventListener("mousemove", onMoveEvt);
         window.removeEventListener("mouseup", onUp);
       };

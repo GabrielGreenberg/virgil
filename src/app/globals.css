@@ -2624,7 +2624,12 @@ textarea,
   background-color: var(--comment-bg, rgba(147, 197, 253, 0.25));
 }
 
-/* Scrollbar styling */
+/* Scrollbar styling — auto-hide on idle, reveal on activity/hover.
+   Thumb defaults to transparent; `data-scroll-active` (set by the
+   useScrollActivityTracker hook) reveals it during/just-after scroll,
+   and `:hover` on the scroll container reveals it while the user is
+   mousing over the area. Width stays at 6px so layout doesn't shift
+   when the thumb fades. */
 ::-webkit-scrollbar {
   width: 6px;
 }
@@ -2634,12 +2639,33 @@ textarea,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb, #d4cfc8);
+  background-color: transparent;
   border-radius: 3px;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  ::-webkit-scrollbar-thumb {
+    transition: background-color 300ms ease;
+  }
+}
+
+[data-scroll-active]::-webkit-scrollbar-thumb,
+:hover::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb, #d4cfc8);
+}
+
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-hover, #b5b0aa);
+  background-color: var(--scrollbar-hover, #b5b0aa);
+}
+
+/* Firefox parallel — `scrollbar-color` is inheritable, so set the
+   default on `html` and override per-element on activity/hover. */
+html {
+  scrollbar-color: transparent transparent;
+}
+[data-scroll-active],
+*:hover {
+  scrollbar-color: var(--scrollbar-thumb, #d4cfc8) transparent;
 }
 
 /* Toolbar horizontal scroll — hide scrollbar */
@@ -2993,25 +3019,13 @@ body[data-helper-mode="on"] [data-helper-pos="above"]:hover::after {
    editor so it lands at the actual center of that gutter, and extend
    an invisible ::before hit area across the full gutter so users can
    grab anywhere in that visible gap — not just the 10px centered strip.
-   The EditorScrollbar overlay sits 3px outside the editor column
-   (`outset: 3`), and the right-side drag-gap adds `drag-gap-line-outer`
-   to push the blue line to the panel side (away from the scrollbar).
-   Result, left-to-right: editor | 3px | scrollbar | blue line | panel. */
+   The EditorScrollbar overlay lives inside the editor column's right
+   padding, so the blue line is free to sit at the editor-facing side
+   of the gap on both left and right (mirror-symmetric). */
 .drag-gap-v.drag-gap-toward-editor-right::after {
   left: calc(50% + 4px);
 }
 .drag-gap-v.drag-gap-toward-editor-left::after {
-  left: calc(50% - 4px);
-}
-/* When the EditorScrollbar sits inside this gap on the editor side, push
-   the blue line to the outer side (away from editor, closer to the panel)
-   so the scrollbar can occupy the editor-side half of the gap without
-   colliding with the line. Hit-area direction (::before) is unaffected —
-   the grab area still extends into the editor. */
-.drag-gap-v.drag-gap-line-outer.drag-gap-toward-editor-left::after {
-  left: calc(50% + 4px);
-}
-.drag-gap-v.drag-gap-line-outer.drag-gap-toward-editor-right::after {
   left: calc(50% - 4px);
 }
 .drag-gap-v::before {

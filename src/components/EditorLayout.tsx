@@ -58,6 +58,7 @@ import {
 import { loadPanelTypography } from "@/lib/panel-typography";
 import { loadPrefLinks } from "@/lib/pref-links";
 import { useDevPrefsMirror } from "@/lib/dev-prefs-mirror";
+import { useScrollActivityTracker } from "@/hooks/useScrollActivityTracker";
 
 /** Subscribe the EditorLayout tree to panel-color changes. */
 function usePanelColorSubscription(): number {
@@ -363,6 +364,11 @@ export default function EditorLayout() {
   // Dev-only: mirror personal localStorage prefs to disk for the
   // promote-defaults pipeline. No-op in production builds.
   useDevPrefsMirror();
+
+  // Global auto-hide scrollbars: paints `data-scroll-active` on the
+  // scrolled element for 1s after the last scroll event so CSS can
+  // reveal the thumb on activity. Hover-reveal is CSS-only.
+  useScrollActivityTracker();
 
   // In-app confirmation dialog — replaces native window.confirm for
   // workflows that benefit from a styled, app-themed modal (e.g.
