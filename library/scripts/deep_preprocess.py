@@ -24,6 +24,37 @@ from pathlib import Path
 PGMARK_RE = re.compile(r"^\\pgmark\{([^}]+)\}$")
 
 
+# Pure LaTeX block openers/closers that appear on their own line as
+# document structure, NOT as running header/footer prose. The
+# recurring-line detector must exclude these — otherwise a paper with N
+# consecutive pages each ending in `\xe` (expex example closer) will
+# silently strip every `\xe` in the document and leave example blocks
+# unclosed. Same risk for `\endgl`, `\end{xlist}`, and bare `}`.
+_STRUCTURAL_LINE_RE = re.compile(
+    # Single-token expex envelope and gloss commands.
+    r"^\\(?:xe|endgl|begingl|ex|pex|sex|nex|cex"
+    r"|xa|xb|xc|xd|xf|xg|xh|nogl|gla|glb|glc|glft|glend|gln)"
+    r"(?:\[[^\]]*\])?(?:\{[^}]*\})?\s*$"
+    # \begin{env} / \end{env} on their own line.
+    r"|^\\(?:begin|end)\{[^}]+\}\s*$"
+    # Bare closing/opening braces left over from multi-line commands.
+    r"|^\}+\s*$"
+    r"|^\{\s*$"
+)
+
+
+def _is_structural_line(s: str) -> bool:
+    """Return True if `s` (already stripped) is a pure LaTeX block
+    opener/closer rather than running-header/footer text.
+
+    Used to keep the recurring-line detector from misreading structural
+    LaTeX (e.g., `\\xe`, `\\end{xlist}`) as recurring page chrome.
+    """
+    if not s:
+        return False
+    return bool(_STRUCTURAL_LINE_RE.match(s))
+
+
 def _split_pages(tex: str) -> list[tuple[str, list[str]]]:
     """Split tex into page chunks delimited by \\pgmark{N}.
 
@@ -61,17 +92,21 @@ def strip_running_headers(tex: str) -> tuple[str, int]:
     if len(pages) < 4:
         return tex, 0
 
-    # Collect first non-empty lines after each pgmark (skip preamble chunk).
+    # Collect first non-empty, non-structural lines after each pgmark
+    # (skip preamble chunk). Structural lines (e.g., `\ex`, `\begin{xlist}`)
+    # are block markers, not running-header candidates — skip past them
+    # to find the real page-top content.
     page_tops: list[list[str]] = []
     for label, lines in pages:
         if not label:
             page_tops.append([])
             continue
         top = []
-        for ln in lines[:4]:
+        for ln in lines[:8]:
             s = ln.strip()
-            if s:
-                top.append(s)
+            if not s or _is_structural_line(s):
+                continue
+            top.append(s)
             if len(top) >= 2:
                 break
         page_tops.append(top)
@@ -96,7 +131,10 @@ def strip_running_headers(tex: str) -> tuple[str, int]:
                 run_end += 1
             if run_end - run_start >= 3:
                 for i in range(run_start, run_end):
-                    headers_to_remove.add(candidates[i])
+                    cand = candidates[i]
+                    if _is_structural_line(cand):
+                        continue
+                    headers_to_remove.add(cand)
             run_start = run_end
 
         # Pass 2: alternating recto/verso (appears on every other page, 3+ times).
@@ -118,7 +156,10 @@ def strip_running_headers(tex: str) -> tuple[str, int]:
                     clusters.append([text])
             for cluster in clusters:
                 if len(cluster) >= 3:
-                    headers_to_remove.update(cluster)
+                    for c in cluster:
+                        if _is_structural_line(c):
+                            continue
+                        headers_to_remove.add(c)
 
     if not headers_to_remove:
         return tex, 0
@@ -147,8 +188,9 @@ def strip_running_footers(tex: str) -> tuple[str, int]:
         bottom = []
         for ln in reversed(lines):
             s = ln.strip()
-            if s:
-                bottom.append(s)
+            if not s or _is_structural_line(s):
+                continue
+            bottom.append(s)
             if len(bottom) >= 2:
                 break
         page_bottoms.append(bottom)
@@ -170,7 +212,10 @@ def strip_running_footers(tex: str) -> tuple[str, int]:
                 run_end += 1
             if run_end - run_start >= 3:
                 for i in range(run_start, run_end):
-                    footers_to_remove.add(candidates[i])
+                    cand = candidates[i]
+                    if _is_structural_line(cand):
+                        continue
+                    footers_to_remove.add(cand)
             run_start = run_end
 
     if not footers_to_remove:
