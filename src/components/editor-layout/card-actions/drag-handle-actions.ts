@@ -332,7 +332,7 @@ function focusNewCard(cardKey: string): void {
       return;
     }
     try {
-      target.focus({ preventScroll: false });
+      target.focus({ preventScroll: true });
     } catch {
       /* ignore */
     }
