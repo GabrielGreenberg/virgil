@@ -44,16 +44,18 @@ async function listFilesIn(dir, predicate) {
 }
 
 async function buildSources() {
-  // Skill files: any `*.md` under `library/skills/` EXCEPT those with
-  // a leading underscore. The underscore prefix marks include files
-  // (e.g. `_doctrine.md`) that are referenced by other skills as
-  // shared source content. Claude Code's loader registers any `.md`
-  // under `.claude/commands/<category>/` as a slash command, so
-  // include files are NOT mirrored into the command dir — only the
-  // skill files are.
+  // Skill files: every `*.md` under `library/skills/` ships in the
+  // published bundle, including include files like `_doctrine.md`
+  // that other skills reference via markdown links — agents reading
+  // a skill on a user's library must be able to resolve those links
+  // locally. The leading-underscore convention only gates the
+  // slash-command mirror (`mirrorSkillsIntoClaudeCommands` below):
+  // Claude Code's loader registers any `.md` under
+  // `.claude/commands/<category>/` as a slash command, so includes
+  // are filtered out there.
   const skillNames = await listFilesIn(
     "library/skills",
-    (n) => n.endsWith(".md") && !n.startsWith("_"),
+    (n) => n.endsWith(".md"),
   );
   const scriptNames = await listFilesIn(
     "library/scripts",
@@ -129,7 +131,12 @@ async function main() {
 
     filesForManifest.push(src.bundlePath);
     if (src.bundlePath.startsWith("claude-commands/")) {
-      skillNames.push(src.bundlePath.slice("claude-commands/".length));
+      const name = src.bundlePath.slice("claude-commands/".length);
+      // Underscore-prefixed files (e.g. `_doctrine.md`) ship in the
+      // bundle but are not mirrored — see `mirrorSkillsIntoClaudeCommands`.
+      if (!name.startsWith("_")) {
+        skillNames.push(name);
+      }
     }
   }
 
