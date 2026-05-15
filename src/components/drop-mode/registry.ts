@@ -30,6 +30,8 @@ import { revisionDropSpec } from "@/panels/Revisions/drop-spec";
 import { footnoteDropSpec } from "@/panels/Footnotes/drop-spec";
 import { citationDropSpec } from "@/panels/Citations/drop-spec";
 import { exampleDropSpec } from "@/panels/Examples/drop-spec";
+import { stackPullDropSpec } from "./specs/stack-pull";
+import { STACK_PULL_PREFIX } from "@/lib/stack/types";
 
 /**
  * Spec by card-key prefix. The prefix is what `cardKey.split(":")[0]`
@@ -53,6 +55,7 @@ const SPECS: Record<string, DropSpec | undefined> = {
   footnote: footnoteDropSpec,
   citation: citationDropSpec,
   ai: aiRequestDropSpec,
+  [STACK_PULL_PREFIX]: stackPullDropSpec,
 };
 
 export function lookupSpec(kind: string): DropSpec | undefined {

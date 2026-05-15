@@ -119,6 +119,17 @@ import { CardLiftOutline } from "./CardLiftOutline";
 import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
+import type { StackPullApi } from "./drop-mode/types";
+import { StackIcon } from "./stack/StackIcon";
+import { StackStrip } from "./stack/StackStrip";
+import { useStack, addStackItem } from "@/hooks/useStack";
+import {
+  snapshotCard,
+  snapshotHeadingSection,
+  snapshotParagraph,
+} from "@/lib/stack/snapshot";
+import type { StackItem as StackItemType } from "@/lib/stack/types";
+import { resolveCardData, cardKeyPrefixToStackKind } from "@/lib/stack/resolve-card";
 import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
@@ -722,7 +733,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const quotationsHook = useQuotations(docId, quotationPristine);
   const archiveHook = useArchive(docId);
   const footnotesHook = useFootnotes(docId, footnotePristine);
-  void footnotesHook; // wired into the panel host once FootnotesHost moves here
   const suggestionsHook = useSuggestions(docId);
   void suggestionsHook; // surfaces in the suggestions panel mounting later
   const collab = useCollab(docId);
@@ -733,6 +743,106 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // the user moves selection elsewhere. Local-to-pane scoping
   // matches the per-doc semantics of selection state.
   const recentlyAdded = useRecentlyAddedTracker();
+
+  // ── Stack (visual clipboard) ────────────────────────────────────
+  // Window-global; `useStack` reads/writes a versioned envelope in
+  // localStorage. The strip is collapsed by default; click the icon to
+  // toggle.
+  const stack = useStack();
+  const [stackOpen, setStackOpen] = useState(false);
+  const stackSourceRef = useRef<{ docId: string | null }>({ docId: docId ?? null });
+  stackSourceRef.current = { docId: docId ?? null };
+  // Click-away: close the strip when the user mousedowns outside both
+  // the icon and the strip. Effect is skipped while the strip is
+  // closed to avoid a persistent document listener.
+  useEffect(() => {
+    if (!stackOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (
+        target.closest('[data-stack-icon-hit="true"]') ||
+        target.closest('[data-stack-strip="true"]')
+      ) {
+        return;
+      }
+      setStackOpen(false);
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+    };
+  }, [stackOpen]);
+  // FloatingPanel fires `virgil-stack-drop` with { cardKey, clientX,
+  // clientY } when a popped-out float is released over the StackIcon.
+  // Snapshot via the appropriate path (paragraph / heading / card),
+  // then close the float. Card kinds outside the v1 set (example,
+  // unknown) are silently skipped.
+  useEffect(() => {
+    const onDrop = (raw: Event) => {
+      const detail = (raw as CustomEvent<{
+        cardKey: string;
+        clientX: number;
+        clientY: number;
+      }>).detail;
+      if (!detail || typeof detail.cardKey !== "string") return;
+      const cardKey = detail.cardKey;
+      const sep = cardKey.indexOf(":");
+      if (sep <= 0) return;
+      const prefix = cardKey.slice(0, sep);
+      const id = cardKey.slice(sep + 1);
+      const source = { docId: stackSourceRef.current.docId };
+      let item: StackItemType | null = null;
+      const mainEd = innerRef.current?.getEditor() ?? null;
+      if (prefix === "paragraph") {
+        if (mainEd) item = snapshotParagraph(mainEd, id, source);
+      } else if (prefix === "heading") {
+        if (mainEd) item = snapshotHeadingSection(mainEd, id, source);
+      } else {
+        // Card kinds — translate the cardKey prefix to a StackCardKind
+        // (e.g. `revision` → `comment`, `bib` → `bibliography`).
+        const stackKind = cardKeyPrefixToStackKind(prefix);
+        if (stackKind && stackKind !== "example") {
+          const cardData = resolveCardData(stackKind, id, {
+            notesHook,
+            todosHook,
+            archiveHook,
+            quotationsHook,
+            revisionsHook,
+            cutterHook,
+            footnotesHook,
+            citationsHook,
+          });
+          if (cardData) {
+            item = snapshotCard(stackKind, cardData, source, {
+              getBibEntry: citationsHook.getBibEntry,
+            });
+          }
+        }
+      }
+      if (item) addStackItem(item);
+      // Close the source float regardless of snapshot success — the
+      // user's intent is clear.
+      viewPrefs?.closeCardPopout(cardKey);
+      // Open the strip so the new item is visible.
+      if (item) setStackOpen(true);
+    };
+    window.addEventListener("virgil-stack-drop", onDrop as EventListener);
+    return () => {
+      window.removeEventListener("virgil-stack-drop", onDrop as EventListener);
+    };
+  }, [
+    innerRef,
+    viewPrefs,
+    notesHook,
+    todosHook,
+    archiveHook,
+    quotationsHook,
+    revisionsHook,
+    cutterHook,
+    footnotesHook,
+    citationsHook,
+  ]);
 
   // ── Document load + compile state ─────────────────────────────────
   // `useDocument` reads its docId+pipeline from the surrounding
@@ -1063,6 +1173,105 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }),
     [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
   );
+  // Stack-pull API — surfaces per-doc card-creation factories so the
+  // stack-pull DropSpec can materialize fresh entities on pull. Each
+  // method here mirrors the corresponding sidecar hook, ignoring the
+  // source snapshot's id and generating a fresh one (paste-as-new).
+  const dropStackApi = useMemo<StackPullApi>(() => {
+    return {
+      addNote: (paragraphId, seed) =>
+        notesHook.addNote(paragraphId, (seed.content ?? undefined) as JSONContent | undefined),
+      addHighlight: (paragraphId) =>
+        notesHook.addHighlight(
+          { anchorId: "", anchorText: "" },
+          paragraphId,
+          null,
+        ),
+      addTodo: (paragraphId, seed) => {
+        const t = todosHook.addItem();
+        if (seed.text) todosHook.updateItem(t.id, seed.text);
+        if (paragraphId) todosHook.addParagraphId(t.id, paragraphId);
+        return t;
+      },
+      addArchive: (paragraphId, seed) => {
+        const s = archiveHook.archiveContent(seed.content ?? "");
+        if (seed.title) archiveHook.updateSnippetTitle(s.id, seed.title);
+        if (paragraphId) archiveHook.addParagraphId(s.id, paragraphId);
+        return s;
+      },
+      addQuotation: (paragraphId, seed) => {
+        const g = quotationsHook.addGroup({ paragraphId });
+        if (seed.title) quotationsHook.updateGroupTitle(g.id, seed.title);
+        if (seed.notes) quotationsHook.updateNotes(g.id, seed.notes);
+        return g;
+      },
+      addRevisionComment: (paragraphId, seed) => {
+        const c = revisionsHook.addComment(
+          paragraphId,
+          (seed.content ?? undefined) as JSONContent | undefined,
+        );
+        return c;
+      },
+      addRevisionSuggestion: (paragraphId, seed) => {
+        const c = revisionsHook.addSuggestion(
+          paragraphId,
+          seed.original_text || undefined,
+        );
+        // Best-effort copy of the meaningful fields.
+        if (seed.suggested_text) {
+          revisionsHook.updateSuggestionField(
+            c.id,
+            "suggested_text",
+            seed.suggested_text,
+          );
+        }
+        if (seed.explanation) {
+          revisionsHook.updateSuggestionField(c.id, "explanation", seed.explanation);
+        }
+        return c;
+      },
+      addCutterComment: (paragraphId, seed) => {
+        const c = cutterHook.addComment(
+          paragraphId,
+          (seed.content ?? undefined) as JSONContent | undefined,
+        );
+        return c;
+      },
+      addCutterSuggestion: (paragraphId, seed) => {
+        const c = cutterHook.addSuggestion(
+          paragraphId,
+          seed.original_text || undefined,
+        );
+        if (seed.suggested_text) {
+          cutterHook.updateSuggestionField(
+            c.id,
+            "suggested_text",
+            seed.suggested_text,
+          );
+        }
+        if (seed.explanation) {
+          cutterHook.updateSuggestionField(c.id, "explanation", seed.explanation);
+        }
+        return c;
+      },
+      addFootnote: (seed) =>
+        footnotesHook.addFootnote(
+          (seed.content ?? "") as JSONContent | string,
+        ),
+      addCitation: (seed) =>
+        citationsHook.addCitation(seed.command, undefined, true),
+      upsertBibEntry: (entry) => citationsHook.addBibEntry(entry),
+    };
+  }, [
+    notesHook,
+    todosHook,
+    archiveHook,
+    quotationsHook,
+    revisionsHook,
+    cutterHook,
+    footnotesHook,
+    citationsHook,
+  ]);
   // Reader has no real `useViewPrefs` (that's per-window shell state).
   // Synthesize a minimal snapshot — `useCardCreation` reads only
   // `prefs.placements`, `prefs.activeLeft`, `prefs.activeRight`. With
@@ -2659,7 +2868,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               archive={dropArchiveApi}
               cutterCards={dropCutterApi}
               revisions={dropRevisionsApi}
+              stack={dropStackApi}
             />
+          )}
+          {/* Stack icon + popout strip (bottom-left of the editor pane).
+              Anchored to editorPaneRootRef via ResizeObserver inside
+              each component. Hidden in zen mode to keep the canvas
+              calm. */}
+          {viewPrefs && !viewPrefs.zenMode && (
+            <>
+              <StackIcon
+                open={stackOpen}
+                onToggle={() => setStackOpen((v) => !v)}
+                mainEditor={editor}
+                source={{ docId: docId ?? null }}
+              />
+              <StackStrip
+                open={stackOpen}
+                items={stack.items}
+                onRemove={stack.remove}
+              />
+            </>
           )}
           {/* Per-doc card popouts — paragraph / heading / example floats
               and individual card popouts (notes, footnotes, citations,

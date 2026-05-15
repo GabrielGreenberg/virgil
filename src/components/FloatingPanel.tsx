@@ -18,6 +18,12 @@ import {
   type DockDragTarget,
 } from "@/components/editor-layout/dock-drag";
 import { beginDropSession } from "@/components/drop-mode/controller";
+import {
+  isOverStackIcon,
+  isHeaderOverStackIcon,
+  setStackDropTarget,
+  getStackDropTarget,
+} from "@/lib/stack/stack-drop-target";
 
 /**
  * Imperative handle exposed via `forwardRef`. Used by FloatCard to hand
@@ -226,6 +232,31 @@ function FloatingPanelInner({
         const nx = Math.max(-latestPosRef.current.width + 60, Math.min(maxX, s.origX + dx));
         const ny = Math.max(0, Math.min(maxY, s.origY + dy));
         setPos((p) => ({ ...p, x: nx, y: ny }));
+        // Stack-drop affordance: when a card/block float drags over the
+        // StackIcon, light up its illuminated ring. The icon component
+        // caches its rect into a module-level signal so this stays a
+        // pure-data lookup. Suppresses the dock outline so the two
+        // affordances don't fight.
+        if (cardKey) {
+          // Two acceptable conditions: the cursor itself is over the
+          // icon, OR the dragged float's header strip overlaps the icon.
+          // The latter makes the drop target much more forgiving — the
+          // user only needs to nudge the card header onto the circle,
+          // not center the cursor.
+          const stackHit =
+            isOverStackIcon(e.clientX, e.clientY) ||
+            isHeaderOverStackIcon({
+              x: nx,
+              y: ny,
+              width: latestPosRef.current.width,
+            });
+          if (stackHit) {
+            setStackDropTarget(true);
+            setDockDragTarget(null);
+            return;
+          }
+          if (getStackDropTarget()) setStackDropTarget(false);
+        }
         // Skip dock-outline updates entirely for shells that aren't
         // dock-eligible (popped-out cards, dialogs). Cards can't redock,
         // so flashing the dock outline as they pass over a column would
@@ -280,6 +311,38 @@ function FloatingPanelInner({
       if (!s) return;
       const wasFloatingMove =
         s.mode === "move" && !s.pendingUndock && handlersRef.current.mode === "floating";
+      // Stack drop: cursor OR the dragged float's header is over the
+      // StackIcon at release. Emit a doc-level event so EditorPane
+      // (which holds the per-doc hooks) can perform the snapshot. Skip
+      // the rest of the redock flow on stack drop.
+      const stackDropHit =
+        wasFloatingMove && cardKey != null &&
+        (
+          isOverStackIcon(e.clientX, e.clientY) ||
+          isHeaderOverStackIcon({
+            x: latestPosRef.current.x,
+            y: latestPosRef.current.y,
+            width: latestPosRef.current.width,
+          })
+        );
+      if (stackDropHit) {
+        setStackDropTarget(false);
+        setDockDragTarget(null);
+        dragStateRef.current = null;
+        document.body.style.userSelect = "";
+        document.body.style.cursor = "";
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("virgil-stack-drop", {
+              detail: { cardKey, clientX: e.clientX, clientY: e.clientY },
+            }),
+          );
+        }
+        return;
+      }
+      // Clear stack-target signal whenever we exit a drag (covers a
+      // miss after a hover).
+      if (getStackDropTarget()) setStackDropTarget(false);
       // Fresh proximity test for the redock target — the displayed
       // outline may be the lift-off "source ghost" even when the panel
       // isn't actually near any dock, so we can't reuse it as the

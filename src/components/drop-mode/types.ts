@@ -11,6 +11,18 @@
 
 import type { Editor } from "@tiptap/react";
 import type { ReactNode } from "react";
+import type {
+  ArchivedSnippet,
+  BibEntry,
+  CitationRef,
+  CutterCard,
+  FootnoteRef,
+  HighlightCard,
+  QuotationGroup,
+  RevisionCard,
+  TodoItem,
+  UserNote,
+} from "@/lib/types";
 
 /** A rectangle in viewport coordinates, used to position the indicator. */
 export interface ViewportRect {
@@ -130,6 +142,67 @@ export interface DropCtx {
   cutterCards?: ParagraphAnchorApi;
   /** Both revision (comment) and revision-suggestion share this API. */
   revisions?: ParagraphAnchorApi;
+  /** Sub-bag for the stack-pull spec. Carries the per-doc card-creation
+   *  factories plus a bib upsert so a pulled snapshot can materialize a
+   *  fresh entity in the destination doc with a new id. Absent means
+   *  stack pulls into this doc are no-ops (e.g. paper render mode). */
+  stack?: StackPullApi;
+}
+
+/**
+ * API the stack-pull DropSpec uses to materialize a snapshot into the
+ * destination doc. Each method creates a NEW entity with a fresh id
+ * (paste-as-new) and returns it so the spec can chain anchoring.
+ *
+ * Cards that anchor to a paragraph accept an optional `paragraphId`;
+ * when null, the card is unanchored. Bib upsert is no-op when the key
+ * already exists.
+ */
+export interface StackPullApi {
+  /** Add a note. Returns the new card with a fresh id. */
+  addNote: (
+    paragraphId: string | null,
+    seed: { title?: string; content?: unknown },
+  ) => UserNote;
+  /** Add a highlight. v1 stack-pull skips re-anchoring a highlight's
+   *  text range (the original mark is gone) — drops always create an
+   *  unanchored highlight or a paragraph-anchored placeholder.
+   *  Absent means highlights aren't supported in this doc. */
+  addHighlight?: (paragraphId: string | null) => HighlightCard;
+  addTodo: (paragraphId: string | null, seed: { text?: string }) => TodoItem;
+  addArchive: (
+    paragraphId: string | null,
+    seed: { title?: string; content?: unknown },
+  ) => ArchivedSnippet;
+  addQuotation: (
+    paragraphId: string | null,
+    seed: QuotationGroup,
+  ) => QuotationGroup;
+  addRevisionComment: (
+    paragraphId: string | null,
+    seed: Extract<RevisionCard, { kind: "comment" }>,
+  ) => RevisionCard;
+  addRevisionSuggestion: (
+    paragraphId: string | null,
+    seed: Extract<RevisionCard, { kind: "suggestion" }>,
+  ) => RevisionCard;
+  addCutterComment: (
+    paragraphId: string | null,
+    seed: Extract<CutterCard, { kind: "comment" }>,
+  ) => CutterCard;
+  addCutterSuggestion: (
+    paragraphId: string | null,
+    seed: Extract<CutterCard, { kind: "suggestion" }>,
+  ) => CutterCard;
+  /** Register a footnote ref (without inline marker insertion — v1
+   *  stack-pull only adds the ref so the body content survives; the
+   *  inline atom belongs to a future enhancement). */
+  addFootnote: (seed: FootnoteRef) => FootnoteRef;
+  /** Add an unanchored citation; v1 stack-pull creates citations as
+   *  unanchored entries in the panel. */
+  addCitation: (seed: CitationRef) => CitationRef;
+  /** Upsert a bib entry. No-op when the key already exists. */
+  upsertBibEntry: (entry: BibEntry) => void;
 }
 
 /**

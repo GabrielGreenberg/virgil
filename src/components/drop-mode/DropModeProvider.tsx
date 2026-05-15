@@ -20,7 +20,7 @@ import type { Editor } from "@tiptap/react";
 import { useConfirmDialog } from "../ConfirmDialog";
 import { setDropCtx } from "./controller";
 import { DropModeIndicator } from "./Indicator";
-import type { ParagraphAnchorApi } from "./types";
+import type { ParagraphAnchorApi, StackPullApi } from "./types";
 
 export interface DropModeProviderProps {
   mainEditor: Editor | null;
@@ -32,6 +32,7 @@ export interface DropModeProviderProps {
   archive?: ParagraphAnchorApi;
   cutterCards?: ParagraphAnchorApi;
   revisions?: ParagraphAnchorApi;
+  stack?: StackPullApi;
 }
 
 export function DropModeProvider({
@@ -44,6 +45,7 @@ export function DropModeProvider({
   archive,
   cutterCards,
   revisions,
+  stack,
 }: DropModeProviderProps) {
   const { confirm, dialog } = useConfirmDialog();
   // Keep `confirm` accessible to the controller via a ref so the
@@ -63,11 +65,12 @@ export function DropModeProvider({
       archive,
       cutterCards,
       revisions,
+      stack,
     });
     return () => {
       setDropCtx(null);
     };
-  }, [mainEditor, closePopout, notes, highlights, todos, quotations, archive, cutterCards, revisions]);
+  }, [mainEditor, closePopout, notes, highlights, todos, quotations, archive, cutterCards, revisions, stack]);
 
   return (
     <>

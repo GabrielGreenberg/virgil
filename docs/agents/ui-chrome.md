@@ -208,6 +208,33 @@ Every panel-header three-dot menu auto-injects a compact text-size stepper befor
 
 The View menu's "Fonts…" item opens [src/components/FontsDialog.tsx](../../src/components/FontsDialog.tsx) — a `FloatingPanel`-based per-category font + size editor. One soft-pod card per font category (body, headings, footnotes, marginalia, etc.); each card pairs a `FontPicker` (typeahead pop-down listing `MAIN_TEXT_FONTS` from [src/lib/preferences-tree.ts](../../src/lib/preferences-tree.ts)) with a `SizeStepper` (− / + numeric stepper, larger hit targets than `PanelTextSizeRow`). Reset buttons restore each category to its default. Ownership is split: top-level prefs (e.g. body font) on `EditorPreferences` via `usePreferences`; per-panel-kind typography via `usePanelTypography` writing through `setPanelTypographyField`. MenuBar plumbs the open callback as `onOpenFontsDialog`; EditorLayout (the shell) owns the `fontsOpen` state and mounts the dialog (~line 5091).
 
+## Stack (visual clipboard)
+
+Bottom-left floating widget mounted as a body portal anchored to
+`editorPaneRootRef` ([src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)
+~line 3060). Two components:
+
+- **`StackIcon`** ([src/components/stack/StackIcon.tsx](../../src/components/stack/StackIcon.tsx)) — 56px round button, three stacked pages glyph, slightly translucent (`backdrop-filter: blur(4px)`). Click to toggle the strip. Hosts an HTML5 `dragover`/`drop` listener that accepts `MIME_PAR_CAPTURE` / `MIME_TEXT_CAPTURE` / `MIME_TEXT_INSERT`. Marked with `data-stack-icon-hit="true"`.
+- **`StackStrip`** ([src/components/stack/StackStrip.tsx](../../src/components/stack/StackStrip.tsx)) — horizontal scrollable bar, ~60% editor-pane width, with `StackThumbnail` cards. Translucent dark bg.
+
+State + persistence: `useStack()` hook ([src/hooks/useStack.ts](../../src/hooks/useStack.ts)) reads/writes a versioned envelope at localStorage key `virgil-stack-v1`. Window-global / cross-document. Capped at 200 items, FIFO eviction. Cross-tab sync via the standard `storage` event.
+
+Drop-into-stack flow (FloatingPanel drag → stack):
+1. `FloatingPanel`'s `onMove` calls `isOverStackIcon(x, y)` from [src/lib/stack/stack-drop-target.ts](../../src/lib/stack/stack-drop-target.ts) — a module-level signal pattern that mirrors `dock-drag.ts`. When hit, sets `useStackDropTarget = true` and clears the dock outline.
+2. `FloatingPanel`'s `onUp` fires a `virgil-stack-drop` CustomEvent on window with `{ cardKey, clientX, clientY }`.
+3. `EditorPane` listens for that event, parses the `cardKey` prefix, and snapshots via the appropriate helper from [src/lib/stack/snapshot.ts](../../src/lib/stack/snapshot.ts) (`snapshotParagraph`, `snapshotHeadingSection`, or `snapshotCard`).
+4. The float is closed via `viewPrefs.closeCardPopout(cardKey)`.
+
+Pull-from-stack flow (thumbnail → editor):
+1. `StackThumbnail` mousedown calls `beginDropSession({ cardKey: 'stack-pull:<stackId>' })` from the drop-mode controller.
+2. The `stack-pull` `DropSpec` ([src/components/drop-mode/specs/stack-pull.ts](../../src/components/drop-mode/specs/stack-pull.ts)) is keyed by `STACK_PULL_PREFIX` in the registry.
+3. On release at a valid placement, the spec dispatches by payload kind. Cards materialize via the `ctx.stack: StackPullApi` bag (see `DropCtx` in [src/components/drop-mode/types.ts](../../src/components/drop-mode/types.ts)) — each method creates a fresh entity with a new id (paste-as-new).
+4. The stack item is **kept** (`postDrop: "keep"`); pulls are copy, not pop.
+
+Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation / quotation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
+
+Hidden in zen mode (`viewPrefs.zenMode`).
+
 ## Dock-target outline
 
 [src/components/editor-layout/DockOutline.tsx](../../src/components/editor-layout/DockOutline.tsx) renders a body-portaled clear-blue outline at fixed viewport coordinates to mark the active dock target during a panel drag. The signal driving it lives in [src/components/editor-layout/dock-drag.ts](../../src/components/editor-layout/dock-drag.ts) — a module-level `{slotKey, rect}` store with `setDockDragTarget` / `getDockDragTarget` / `useDockDragTarget`. Two flows write to it: undock (rect captured at mousedown so the outline survives the panel undocking and the slot DOM reshaping) and redock (mousemove hit-test against gutter columns; release reads the target and decides whether to redock). The store is module-level (not React Context) because producer (panel shell) and consumer (the body-portaled `DockOutline` plus EditorPane's mouseup handler) sit in different parts of the React tree. WAAPI-driven crossfade (not React state + CSS transitions) avoids races with React's batched commits and Strict Mode's effect double-invoke. Mounted from `EditorPane.tsx` ~line 2247, suppressed in zen mode.

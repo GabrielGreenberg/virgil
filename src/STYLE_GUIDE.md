@@ -274,6 +274,21 @@ Drop targets get a 2px dashed amber outline (`--ring-drag-target`)
 plus a 12% fill — universal across paragraph drops, panel drops, card
 drops.
 
+## Stack (visual clipboard)
+
+The Stack lives at the bottom-left of the editor pane: a 56px round
+translucent button (3 stacked pages icon) backed by a body-portaled
+strip that opens on click. Items in the strip are 160×96 compressed
+cards showing kind label, 5-line summary, X-to-remove, and relative
+date.
+
+Z-index band: **999** — same as `DockOutline`, below `FloatingPanel`
+(1200+) so a dragged float visually lands on top of the icon. The
+StackIcon paints a blue ring (`#2563eb`) while a drag is hovering it
+(populated via the `useStackDropTarget` module signal). The strip uses
+`rgba(28, 25, 23, 0.82)` with backdrop blur — a darkish translucent
+band consistent with overlay chrome.
+
 ## Editor inlines
 
 Eight kinds, each with its own token group:
