@@ -37,6 +37,24 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 > paragraph exists; deferring footnote recovery is almost always a
 > doctrine violation.
 
+> **No-paraphrase rule (load-bearing).** This skill re-anchors
+> footnote bodies that leaked into the body as ordinary paragraphs,
+> or that were emitted as `% orphan footnote` comments. The
+> reattachment is *structural only*: strip the leading footnote
+> number, wrap the rest in `\footnote{…}`, and place it at the call
+> site. **Do not rewrite the footnote's words.** Do not "tighten",
+> paraphrase, expand, or smooth the source text. Do not drop
+> author-year mentions while reformatting (an existing
+> `Tao [2011]` becomes `\citet{tao2011}` — it never disappears).
+> Do not invent continuation text for a footnote that ends mid-
+> sentence — use `recover_truncated_footnote.py` to pull the
+> continuation from the PDF instead. The `lee2023structure`
+> footnote-18 case (2026-05) — where the AI step substituted invented
+> philosophy prose for the source text and silently dropped a
+> `Tao [2011]` citation — is the exact failure mode this rule exists
+> to prevent. See `_doctrine.md` §No-paraphrase rule for full
+> taxonomy.
+
 Operates on `papers/$ARGUMENTS/main.tex`.
 
 ## Failure modes

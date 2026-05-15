@@ -35,6 +35,20 @@ export VIRGIL_LIBRARY_ROOT="$library_root"
 > Shared doctrine: read [_doctrine.md](_doctrine.md) (scope, anti-patterns,
 > self-check, convergence behavior, narrow out-of-scope categories).
 
+> **No-paraphrase rule (load-bearing).** Header / heading / drop-cap /
+> pgmark-alignment cleanup is *structural*: deleting misclassified
+> headings, merging wrapped heading fragments, recovering OCR-dropped
+> drop-cap letters, fixing `\title{}`, moving a pgmark to body scope.
+> **Do not rewrite the words of body paragraphs.** Drop-cap recovery
+> prepends a single recovered letter to one word; it does not rewrite
+> the following sentence. Multi-article span removal *deletes* the
+> adjacent-article text — it does not paraphrase or summarize it.
+> Heading-hierarchy fixes change `\section{}` / `\subsection{}` markup
+> around a heading, not the heading's text (except when the doctrine
+> explicitly authorizes deletion of OCR-garbage clusters). See
+> `_doctrine.md` §No-paraphrase rule for the full permitted/forbidden
+> taxonomy and the `lee2023structure` failure case.
+
 Operates on `papers/$ARGUMENTS/main.tex` after `/library/di-preflight`
 has run.
 

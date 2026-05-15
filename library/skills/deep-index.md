@@ -279,6 +279,21 @@ dispatches to them here.
 > will keep re-running until the outstanding list stabilizes, so
 > deferring an in-scope item just means re-doing it next pass.
 
+> **No-paraphrase principle (load-bearing).** The AI work in steps a–i
+> may re-anchor prose (e.g., wrap a leaked footnote body in
+> `\footnote{}`), fix deterministic OCR artifacts (ligatures, soft
+> hyphens, hyphenated line breaks), format References as itemize, and
+> convert author-year mentions to `\cite{}`. It **must not** substitute
+> new sentences for existing source prose, "improve" the writing,
+> expand a terse footnote into a longer explanation, or drop citations
+> while paraphrasing. The output `\footnote{…}` / paragraph body must
+> contain the same words as the source (modulo the structural
+> transforms above). See `_doctrine.md` §No-paraphrase rule for the
+> full permitted/forbidden taxonomy, the test to apply before any in-
+> prose edit, and the `lee2023structure` failure case (footnote 18 had
+> its prose replaced wholesale and a `Tao [2011]` citation silently
+> dropped) that motivates this rule.
+
 #### Steps 3a / 3b / 3c — Prose cleanup → `/library/di-clean-prose`
 
 Run `/library/di-clean-prose $ARGUMENTS`. Covers header / `\maketitle`

@@ -241,11 +241,11 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
     author_atom = rf"{particle_pat}{surname_alt}"
     if style == "apa":
         citation_re = re.compile(
-            rf"({author_atom}(?:\s*(?:,\s*|\s+and\s+|\s+&\s+){author_atom})*(?:\s+et\s+al\.?)?)\s*,\s*(\d{{4}}[a-c]?)\b"
+            rf"({author_atom}(?:\s*(?:,\s*|\s+and\s+|\s+(?:&|\\&)\s+){author_atom})*(?:\s+et\s+al\.?)?)\s*,\s*(\d{{4}}[a-c]?)\b"
         )
     else:
         citation_re = re.compile(
-            rf"({author_atom}(?:\s+(?:and|&)\s+{author_atom})?(?:\s+et\s+al\.?)?)\s+(\d{{4}}[a-c]?)\b"
+            rf"({author_atom}(?:\s+(?:and|&|\\&)\s+{author_atom})?(?:\s+et\s+al\.?)?)\s+(\d{{4}}[a-c]?)\b"
         )
 
     rewrites: list[tuple[int, int, str]] = []
@@ -269,7 +269,9 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
 
         et_al = "et al" in author_part.lower()
         cleaned = re.sub(r"\s+et\s+al\.?", "", author_part).strip()
-        parts = re.split(r"\s+(?:and|&)\s+", cleaned)
+        # Split on author separators — include LaTeX-escaped `\&` so
+        # `Siegelmann \& Fishman` parses to two surnames, not one.
+        parts = re.split(r"\s+(?:and|&|\\&)\s+", cleaned)
         # Surname guard: skip if the single-token author is a month
         # name, day name, or article-structure label.
         last_tokens = [p.split()[-1] for p in parts]
@@ -536,7 +538,15 @@ def rewrite_author_year_paren(
 def rewrite_bracket_locator(
     text: str, bibmap: dict[tuple, str],
 ) -> tuple[str, int, list[str]]:
-    """Lee-2023-style: `Author [Year: page]` / `Author [Year]`."""
+    """Lee-2023-style: `Author [Year: page]` / `Author [Year]`.
+
+    Handles single-author, multi-author (`X and Y [Year]`,
+    `X, Y, and Z [Year]`, `X et al. [Year]`), multi-year
+    (`X [Year1, Year2]`), `[forthcoming]`, and non-numeric locators
+    (`[Year: §2-3]`, `[Year, Chapter 4]`). First-author surname is
+    used for bib lookup; remaining authors fall through to the bibmap's
+    "any-author" index for cross-checking.
+    """
     refs_start = text.find(r"\section{References}")
     if refs_start < 0:
         refs_start = len(text)
@@ -545,32 +555,108 @@ def rewrite_bracket_locator(
     count = 0
     unresolved: list[str] = []
 
-    pattern = re.compile(
-        r"([A-Z][a-zA-Z\-']+)\s+\[(\d{4}[a-c]?)(?:\s*[:,]\s*(\d+(?:[-–]\d+)?))?\]"
+    # Accented capitals (À-Ý) + lowercase (à-ÿ) so names like
+    # `Schönfinkel`, `Frigério`, `Boër` match. Mirrors the author atom in
+    # `rewrite_citations()`.
+    author_atom = r"[A-ZÀ-Ý][a-zA-Zà-ÿ\-']+"
+    # Up to 3 additional authors after the first, separated by
+    # `, `, `, and `, ` and `, or ` & ` (or LaTeX-escaped ` \& `).
+    author_group = (
+        rf"{author_atom}"
+        rf"(?:(?:,\s+(?:and\s+)?|\s+and\s+|\s+(?:&|\\&)\s+){author_atom}){{0,3}}"
+    )
+    # Optional ` et al.` tail (handles `X et al [Year]` / `X et al. [Year]`).
+    author_tail = r"(?:\s+et\s+al\.?)?"
+
+    def first_surname(author_str: str) -> str:
+        """First-author surname from a multi-author group."""
+        # Split on the same separators we used in the regex, take the
+        # leftmost token chunk, then its last whitespace-delimited word
+        # so particles like `van` / `de` get dropped (consistent with
+        # parse_bib's tokenizer).
+        first = re.split(r"\s+and\s+|\s+&\s+|,\s+", author_str)[0]
+        return normalize_surname(first.split()[-1])
+
+    def lookup(surname: str, year: str) -> str | None:
+        return (
+            bibmap.get(((surname,), year))
+            or bibmap.get(((surname,), year, "first-only"))
+            or bibmap.get(((surname,), year, "any-author"))
+        )
+
+    def format_locator(loc: str) -> str:
+        """Wrap a locator string as an optional natbib bracket arg."""
+        loc = loc.strip()
+        if not loc:
+            return ""
+        # Pure numeric (single page or range) gets the conventional
+        # p./pp. prefix; everything else (§, Chapter, ¶, etc.) passes
+        # through verbatim.
+        if re.match(r"^\d+(?:\s*[-–]\s*\d+)?$", loc):
+            arg = loc.replace("–", "--").replace("-", "--")
+            prefix = "pp.~" if "--" in arg else "p.~"
+            return f"[{prefix}{arg}]"
+        return f"[{loc}]"
+
+    # Pass 1: multi-year — `Author [Year1, Year2, ...]`. Must run before
+    # the single-year pass so the year-list isn't truncated to its first
+    # entry.
+    multi_year_re = re.compile(
+        rf"({author_group}){author_tail}"
+        rf"\s*\[\s*(\d{{4}}[a-c]?(?:\s*,\s*\d{{4}}[a-c]?)+)\s*\]"
     )
 
-    def replace(m: re.Match) -> str:
+    def replace_multi_year(m: re.Match) -> str:
         nonlocal count
-        author, year, page = m.group(1), m.group(2), m.group(3)
-        if not _is_valid_year(year):
+        author = m.group(1)
+        years = [y.strip() for y in m.group(2).split(",")]
+        surname = first_surname(author)
+        if not _passes_surname_guard(surname):
             return m.group(0)
-        if not _passes_surname_guard(author):
+        keys: list[str] = []
+        for y in years:
+            if not _is_valid_year(y):
+                continue
+            ck = lookup(surname, y)
+            if ck:
+                keys.append(ck)
+            else:
+                unresolved.append(f"{author} [{y}]")
+        if not keys:
             return m.group(0)
-        last = normalize_surname(author)
-        ck = (
-            bibmap.get(((last,), year))
-            or bibmap.get(((last,), year, "first-only"))
-            or bibmap.get(((last,), year, "any-author"))
-        )
+        count += 1
+        return f"\\citet{{{','.join(keys)}}}"
+
+    # Pass 2: single year (or `forthcoming`) with optional locator.
+    # Locator content excludes `]` `)` `(` `[` and newlines, and caps at
+    # 30 chars. The exclusions are load-bearing: an OCR-mangled `123)`
+    # (close-paren instead of close-bracket) used to let `[^\]]*?` chase
+    # across the rest of the paragraph to the next real `]`, swallowing
+    # prose into the locator argument.
+    single_re = re.compile(
+        rf"({author_group}){author_tail}"
+        rf"\s*\[\s*(\d{{4}}[a-c]?|forthcoming)"
+        rf"(?:\s*[:,]\s*([^\])(\[\n]{{1,30}}?))?\s*\]"
+    )
+
+    def replace_single(m: re.Match) -> str:
+        nonlocal count
+        author, year, locator = m.group(1), m.group(2), m.group(3)
+        if year != "forthcoming" and not _is_valid_year(year):
+            return m.group(0)
+        surname = first_surname(author)
+        if not _passes_surname_guard(surname):
+            return m.group(0)
+        ck = lookup(surname, year)
         if not ck:
             unresolved.append(f"{author} [{year}]")
             return m.group(0)
         count += 1
-        if page:
-            return f"\\citet[p.~{page.replace('-', '--')}]{{{ck}}}"
-        return f"\\citet{{{ck}}}"
+        loc_arg = format_locator(locator) if locator else ""
+        return f"\\citet{loc_arg}{{{ck}}}"
 
-    new_body = pattern.sub(replace, body)
+    new_body = multi_year_re.sub(replace_multi_year, body)
+    new_body = single_re.sub(replace_single, new_body)
     return new_body + tail, count, unresolved
 
 

@@ -350,6 +350,35 @@ export interface EditorHandle {
   refreshExamplePopouts: () => void;
 }
 
+/**
+ * Walk a JSONContent tree and invoke `visit` for every citation node.
+ *
+ * Atomic nodes (footnote, examples) keep their inner content as a
+ * JSONContent literal in `attrs.content`; ProseMirror's `descendants`
+ * doesn't traverse into that. Citations stored inside such inner
+ * content are otherwise invisible to the editor's citation collectors,
+ * which means the Citations and Bibliography panels under-count the
+ * doc's actual citations. This helper walks the literal to surface
+ * them.
+ */
+function walkJsonContentForCitations(
+  json: JSONContent | null | undefined,
+  visit: (cit: { citationId: string; command: string; displayText: string }) => void,
+): void {
+  if (!json) return;
+  if (json.type === "citation" && json.attrs) {
+    const a = json.attrs as Record<string, unknown>;
+    visit({
+      citationId: (a.citationId as string) || "",
+      command: (a.command as string) || "",
+      displayText: (a.displayText as string) || "",
+    });
+  }
+  if (Array.isArray(json.content)) {
+    for (const child of json.content) walkJsonContentForCitations(child, visit);
+  }
+}
+
 function findTextRange(editor: Editor, searchText: string): { from: number; to: number } | null {
   const text = editor.getText();
   const index = text.indexOf(searchText);
@@ -2965,6 +2994,16 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             pos,
           });
         }
+        // Footnotes are atomic nodes; their `attrs.content` is a
+        // JSONContent literal that ProseMirror's traversal won't enter.
+        // Walk it explicitly so citations inside footnotes register in
+        // the Citations / Bibliography panels.
+        if (node.type.name === "footnote" && node.attrs.content) {
+          walkJsonContentForCitations(
+            node.attrs.content as JSONContent,
+            (cit) => results.push({ ...cit, pos }),
+          );
+        }
         return true;
       });
       return results;
@@ -3002,6 +3041,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const ids = new Set<string>();
       editor.state.doc.descendants((node) => {
         if (node.type.name === "citation") ids.add(node.attrs.citationId);
+        if (node.type.name === "footnote" && node.attrs.content) {
+          walkJsonContentForCitations(
+            node.attrs.content as JSONContent,
+            (cit) => ids.add(cit.citationId),
+          );
+        }
         return true;
       });
       return ids;
@@ -3012,6 +3057,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       const ids: string[] = [];
       editor.state.doc.descendants((node) => {
         if (node.type.name === "citation") ids.push(node.attrs.citationId);
+        if (node.type.name === "footnote" && node.attrs.content) {
+          walkJsonContentForCitations(
+            node.attrs.content as JSONContent,
+            (cit) => ids.push(cit.citationId),
+          );
+        }
         return true;
       });
       return ids;

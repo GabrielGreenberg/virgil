@@ -183,3 +183,94 @@ A short list of cases where this tag is genuinely warranted:
 If the situation doesn't match one of these, the right move is
 almost always to apply a reasonable default (file is source of
 truth; update metadata to match) and proceed.
+
+## No-paraphrase rule (load-bearing)
+
+**The deep-index AI step must not rewrite the words of the source.**
+The pipeline is a *structural* cleanup pass — it re-shapes extraction
+artifacts (heading hierarchy, pgmark placement, footnote anchoring,
+citation form, bibliography layout) so a human reader can navigate
+the paper. It is **not** a copyediting pass. Source prose — in body
+paragraphs, footnotes, captions, examples, and notes — is sacrosanct.
+
+**Permitted prose edits** (purely structural / deterministic):
+
+- **Re-anchor leaked footnote prose to its call site.** Strip a
+  leading bare numeral (`7See e.g., Hobbs…` → `\footnote{See e.g.,
+  Hobbs…}`). Do not change any other word inside the body.
+- **Fix deterministic OCR artifacts** — soft hyphens, U+FB00–FB06
+  ligatures (`ﬁ` → `fi`), word-internal NBSP, hyphenated line breaks
+  (`re- semble` → `resemble`), diacritic restoration on a single
+  identified character where the PDF unambiguously shows it.
+- **Format the References list** as `\begin{itemize}…\end{itemize}`
+  with one `\item` per entry. The entry text itself is preserved —
+  only the surrounding markup changes.
+- **Convert inline author-year mentions to `\cite{…}`/`\citet{…}`.**
+  The author and year tokens are replaced by the citation command;
+  surrounding prose is untouched. Every cited author-year pair in the
+  source must survive as a `\cite…{}` in the output.
+- **Surgically remove adjacent-article spans** flagged by
+  `detect_multi_article.py`. The span is deleted, not paraphrased
+  into a summary.
+
+**Forbidden prose edits** (this is the failure mode that motivates
+the rule):
+
+- **Substituting new sentences for existing prose.** If the source
+  says "appealing to the Lebesgue measure", the output must contain
+  the words "appealing to the Lebesgue measure" — not a paraphrase
+  such as "measuring size in terms of some other notion of measure".
+- **"Improving" the writing.** Tightening, expanding, smoothing,
+  re-ordering clauses, varying word choice — all forbidden. The
+  author wrote the words; the AI does not rewrite them.
+- **Expanding a terse footnote into a longer explanation.** A
+  one-sentence footnote stays a one-sentence footnote. `See Tao
+  [2011] for more discussion of measures.` becomes `\footnote{See
+  \citet{tao2011} for more discussion of measures.}` — never a
+  paragraph of fresh prose on measure theory.
+- **Dropping citations while paraphrasing.** A paraphrase that loses
+  an existing `Author [Year]` mention is a doctrine violation twice
+  over (rewritten prose + dropped citation).
+- **Filling in "missing" content from the model's own knowledge.** A
+  footnote that ends mid-sentence is a `recover-footnotes` truncated-
+  recovery problem (pull continuation from the PDF via
+  `recover_truncated_footnote.py`), not a license to invent text.
+
+**The test before any in-prose edit.** Before changing any character
+inside an `\footnote{…}`, a body paragraph, a caption, an example, or
+a note, ask: *Is this change a deterministic transformation of the
+existing characters (ligature normalization, hyphen rejoin, citation-
+form conversion, structural re-anchoring), or is it a new sentence
+the model is writing?* If the latter, **stop.** The edit is forbidden,
+regardless of whether the new sentence reads better.
+
+**Why this is load-bearing.** Paraphrase damage is silent: the output
+reads fluently, the structural anchors (footnote position, pgmark,
+heading) align with the source, and existing validators see nothing
+wrong. The only post-hoc detection mechanism is a word-level diff
+against a preserved baseline. One documented instance
+(`lee2023structure` footnote 18, 2026-05) had the AI step substitute
+invented philosophy prose for the source text and silently drop a
+`Tao [2011]` citation. Without the pre-deepindex baseline, the damage
+would have been undetectable. **No automated validator currently
+catches this class of failure** — the rule above is the only line of
+defense.
+
+**Future work — paraphrase-diff validator.** A
+`validate_footnote_text.py` script that diff-checks every
+`\footnote{…}` body against `pdftotext`-extracted footnote text from
+the corresponding page would catch the lee2023 case post-hoc.
+Sketched design: walk every `\footnote{…}` in `main.tex` and resolve
+its hosting page via the nearest preceding `\pgmark{N}`; for each
+hosting page run `pdftotext -layout` and isolate the
+bottom-of-page region (lines below the last running-header-y cutoff,
+or lines after a short rule / increased line gap); token-compare
+each footnote body against that region with a tolerance for OCR
+ligature / hyphen drift and for citation-rewriting (`Tao [2011]` →
+`\citet{tao2011}`); emit a `footnote-paraphrase-suspected:` finding
+for any body whose normalized token-overlap with the PDF-side
+footnote text drops below ~70%. Page-bottom region detection is the
+hard part — extending to body paragraphs (not just footnotes) is
+even harder because it requires a clean pgmark-to-page mapping the
+validator can't always trust. Not yet implemented; the rule above
+is the substitute.

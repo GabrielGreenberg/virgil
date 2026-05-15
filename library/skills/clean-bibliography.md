@@ -362,12 +362,21 @@ step 3e.
 
 ### Citation-style detection (do this first)
 
-Look at how the body text references its bibliography. Two regimes:
+Look at how the body text references its bibliography. Three regimes:
 
 - **Author-year** (default in linguistics, philosophy, social
   science): mentions take the shape `(Author Year)`, `Author
   (Year)`, `Author and Author Year`, `Author et al. Year`, etc. Use
   the natbib vocabulary and tables below.
+- **Author-bracket-year** (Noûs / Wiley humanities / some philosophy
+  journals): mentions take the shape `Author [Year]`, `Author [Year:
+  page]`, `Author and Author [Year]`, `Author, Author, and Author
+  [Year, §N]`. The author is *outside* the brackets (textual), year
+  and locator are *inside*. Pass `--style=bracket-locator`. Distinct
+  from bracket-key (`[GG01]`) where the whole citation token is
+  inside the brackets. Detection signal: ≥5 occurrences of
+  `[A-Z][a-zA-Z\-']+\s+\[\d{4}` in the body trumps the chicago
+  default — chicago expects paren-style and will miss every one.
 - **Numeric / Vancouver-style** (default in biology, medicine,
   chemistry, much of psychology, Nature/Science journals): mentions
   take the shape of bare superscript or bracketed integers — e.g.
@@ -403,6 +412,15 @@ Citation styles vary per discipline:
 - **Bracket-key** (SIGGRAPH/CS) — `[GG01]`, `[MAB+97]`. Detect via
   ≥80% of bracket patterns having a matching `[KEY]` entry in refs.
   Pass `--style=bracket-key`.
+- **Bracket-locator** (Noûs / Wiley humanities / some philosophy
+  journals) — author textual, year and page locator in square
+  brackets: `Author [Year]`, `Author [Year: page]`, `Author and
+  Author [Year]`, `Author, Author, and Author [Year, §N]`. Detect
+  via ≥5 occurrences of the pattern `[A-Z][a-zA-Z\-']+ \[\d{4}` in
+  the body. Pass `--style=bracket-locator`. Distinguish from
+  bracket-key: bracket-locator has a textual author *outside* the
+  brackets and a 4-digit year *inside*; bracket-key has the whole
+  citation token inside the brackets (`[GG01]`).
 - **Endnote-style** (humanities books) — full bibliographic detail
   at first mention; index bib entries under every author surname.
 
