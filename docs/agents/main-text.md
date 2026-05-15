@@ -1,4 +1,4 @@
-<!-- last-verified: 5d9aa33 2026-05-13 -->
+<!-- last-verified: ee17e07 2026-05-14 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -124,6 +124,15 @@ Per-card integration is one line: `const ac = useAnchoredCard({ kind, id }); ret
 - [src/links/_shared/usePanelCardHoverBridge.ts](../../src/links/_shared/usePanelCardHoverBridge.ts) — single document-level listener that reads `data-card-key` to translate panel card hovers into entity hovers.
 
 Margin markers carry a generic `hovered` prop (boxShadow ring) and `onHover` callback applied uniformly across every kind in `EditorLayout.tsx`'s `marginaliaMarkers` useMemo.
+
+## Drop mode
+
+Shift-grabbing a popped float's grab bar puts the app into **drop mode** — the source float dims and goes click-through, and a visual indicator (paragraph-side / between-blocks / inline-cursor bar) tracks the cursor over valid placements. Releasing drops the payload back into the editor; releasing outside any target cancels.
+
+- Entry: `beginDropSession({ cardKey })` in [src/components/drop-mode/controller.ts](../../src/components/drop-mode/controller.ts) — called by `FloatingPanel`'s shift-drag and by `StackThumbnail` (with cardKey `stack-pull:<id>`).
+- Provider: [src/components/drop-mode/DropModeProvider.tsx](../../src/components/drop-mode/DropModeProvider.tsx). Indicator: [Indicator.tsx](../../src/components/drop-mode/Indicator.tsx). Hit-testing: [hit-test.ts](../../src/components/drop-mode/hit-test.ts).
+- Per-payload behavior is a `DropSpec` keyed by card-key prefix in [registry.ts](../../src/components/drop-mode/registry.ts); specs live in [specs/](../../src/components/drop-mode/specs/) (`paragraph`, `heading`, `selection`, `ai-request`, `stack-pull`). Each panel that participates also re-exports its spec via a panel-local `drop-spec.ts` (Archive, Citations, Cutter, Examples, Footnotes, Notes, Quotations, Revisions, Todo).
+- CSS for the placement bars lives in [src/app/globals.css](../../src/app/globals.css) (`.dropmode-bar-*`).
 
 ## Marginalia
 

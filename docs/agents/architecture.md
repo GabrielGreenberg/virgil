@@ -1,4 +1,4 @@
-<!-- last-verified: 5d9aa33 2026-05-13 -->
+<!-- last-verified: ee17e07 2026-05-14 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -49,6 +49,9 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useLatexCompile` | SwiftLaTeX pdfTeX compile + parsed-error extraction. On success, persists the resulting PDF next to the `.tex` (`pdfFilenameFromTex`) so the in-app PDF view (`library/components/PdfView.tsx`) can re-render without recompiling |
 | `useDocNotificationStream` | Polls `<doc>/virgil/notifications.json` for completion entries written by editor-side skills; returns items appended since the doc-keyed last-seen timestamp in localStorage, for the consumer to toast |
 | `useMyPapers` | Global "My Papers" list shown in the Library's My Papers pod (IndexedDB single shared record + BroadcastChannel sync). Decoupled from open document tabs: opening a doc anywhere never auto-adds, and removing a row never closes a tab |
+| `useStack` | Cross-doc visual clipboard at the editor's bottom-left. Versioned envelope in localStorage (`virgil-stack-v1`), 200-item FIFO cap, cross-tab sync via the `storage` event. See `ui-chrome.md` → Stack |
+| `useScrollActivityTracker` | Auto-hide scrollbars: paints `data-scroll-active` on the container while the user is actively scrolling/hovering, fades when idle |
+| `useUpdateAvailable` | Service-worker update polling; exposes a "new version available" flag that drives the in-app refresh banner (per-folder skill sync) |
 
 ## Persistence layers
 

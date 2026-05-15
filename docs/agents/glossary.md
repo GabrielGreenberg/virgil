@@ -1,4 +1,4 @@
-<!-- last-verified: 5d9aa33 2026-05-13 -->
+<!-- last-verified: ee17e07 2026-05-14 -->
 
 # Glossary
 
@@ -128,6 +128,7 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | **Three-dot menu** | `ItemMenu` (~line 1844 in `panel-primitives.tsx`). Auto-injects a text-size stepper (`PanelTextSizeRow`) at ~line 1875; size persists via `useViewPrefs` keyed by panel kind | `panel-primitives.tsx`; [src/components/PanelTextSizeRow.tsx](../../src/components/PanelTextSizeRow.tsx); sizes via [src/lib/panel-typography.ts](../../src/lib/panel-typography.ts); per-kind context [src/components/panel-kind-context.tsx](../../src/components/panel-kind-context.tsx) |
 | **Grab handle** (6-dot grip on card header) | Inline SVG, appears when `grabHandle` prop is true | `panel-primitives.tsx` (`EditableCard` header) |
 | **Text drag handle** (3-line icon on card body) | Inline SVG, appears when `onTextDragStart` prop is provided | `panel-primitives.tsx` |
+| **Stack** / **visual clipboard** (round button at the editor's bottom-left; click to open a horizontal strip of parked items that can be pulled back into any open doc) | `StackIcon` toggles, `StackStrip` renders, `StackThumbnail` is each item; state via `useStack`; cross-doc localStorage at `virgil-stack-v1` | [src/hooks/useStack.ts](../../src/hooks/useStack.ts); [src/components/stack/](../../src/components/stack/) (StackIcon.tsx, StackStrip.tsx, StackThumbnail.tsx); snapshot helpers in [src/lib/stack/snapshot.ts](../../src/lib/stack/snapshot.ts); see `ui-chrome.md` → Stack for the full flow |
 | **Passage-action menu** / **drag-handle menu** (click the paragraph/selection/heading drag handle to pop a vertical menu of Footnote / Citation / Quotation / Note / Todo / Review / Suggest edit / Cutter / Archive, each with a single-letter keyboard hint that's active only while the menu is open) | `DragHandleMenu` (anchored popover, react-portal); opened via `DragHandleMenuApi.open(passage, anchorRect)` from `DragHandleMenuProvider`; passage drag-handle UI in `SelectionDragHandle` | [src/components/DragHandleMenu.tsx](../../src/components/DragHandleMenu.tsx); [src/components/editor-layout/card-actions/drag-handle-menu-context.tsx](../../src/components/editor-layout/card-actions/drag-handle-menu-context.tsx); [src/components/SelectionDragHandle.tsx](../../src/components/SelectionDragHandle.tsx); wired in `EditorPane.tsx` ~line 1375 |
 
 ## Link model
