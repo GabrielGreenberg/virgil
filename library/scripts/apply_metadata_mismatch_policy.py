@@ -1,30 +1,34 @@
 """Apply the content/metadata-mismatch auto-resolution policy.
 
 When `detect_metadata_mismatch.py` reports
-`kind == "file-is-book-bib-is-chapter"` AND all four policy
-conditions hold, the on-disk file is the source of truth and the
-metadata should be updated to match the file:
+`kind == "file-is-book-bib-is-chapter"`, the on-disk file is the
+source of truth and the metadata is updated to match the file. See
+the `_doctrine.md` §0 Automatic decisions section for the contract.
 
-1. The file is structurally larger (whole book / full proceedings).
-2. The current metadata describes a proper subset (chapter, excerpt).
-3. The cover page unambiguously gives the larger artifact's title.
-4. No `metadata-lock: true` flag in the catalog row, and
-   `papers/<citekey>/virgil/notes.json` is silent on intentional
-   chapter-level identity.
+Policy (post-2026-05 rewrite):
+
+- **`metadata-lock: true` on the catalog row** is the **only**
+  refusal condition. The caller signals `DEEP_INDEX_STALLED` and
+  appends a `deep-index-blocked` notification (same channel as the
+  three-iteration validator abort).
+- **All other previously-deferred cases proceed automatically** with
+  the file-is-source-of-truth default: notes.json asserts
+  chapter-level identity → file still wins (override logged);
+  cover-page title is ambiguous → pick the longest reasonable
+  candidate and let the next `/library/authenticate-bib` pass
+  correct it.
 
 This script implements the policy hook. It:
 
 - Reads cover-page text via `pdftotext -layout`.
-- Extracts the candidate book title (first non-trivial line on page 1).
+- Extracts the candidate book title (longest plausible line on the
+  first non-lending page).
 - Extracts the publisher / press / ISBN where available.
 - Calls `update_master_bib_entry.py` to rewrite `master.bib` with
   `type=@book` and the new fields.
-- Calls `update_catalog_entry.py` to update `title`, `doi`, and set
+- Calls `update_catalog_entry.py` to update `title` and set
   `bib.state = "needs-reauth"`.
 - Updates the in-file `\\title{...}` in `main.tex`.
-
-Refuses to act if any of the four conditions fails; in that case
-emits an outstanding-work item with `user-judgment-required`.
 
 (content-metadata-mismatch-policy memo; kulvicki case.)
 
@@ -107,23 +111,40 @@ def _extract_cover(pdf: Path, pages: int = 2) -> str:
 
 
 def _extract_book_title(cover_text: str) -> str | None:
-    """Heuristic: first 1-3 lines that look like a title (capitalized,
-    no body-prose punctuation, not a copyright/ISBN line)."""
+    """Pick the longest reasonable title-shaped line from the cover.
+
+    Two-tier extraction:
+    1. Strict pass — lines that match a clean title regex (capitalized
+       start, only letters / spaces / common punctuation).
+    2. Fallback — longest plausible line that isn't copyright/ISBN
+       noise. Doctrine §0 says "ambiguous cover-page title → use the
+       longest reasonable candidate; the next authenticate-bib pass
+       will correct it." Do not refuse.
+    """
     lines = [l.strip() for l in cover_text.split("\n") if l.strip()]
-    title_candidates: list[str] = []
-    for line in lines[:15]:
+
+    def _is_noise(line: str) -> bool:
+        return bool(re.search(
+            r"©|Copyright|ISBN|Oxford University|Cambridge University",
+            line,
+        ))
+
+    strict_candidates: list[str] = []
+    fallback_candidates: list[str] = []
+    for line in lines[:20]:
         if len(line) < 5 or len(line) > 200:
             continue
-        if re.search(r"©|Copyright|ISBN|Press|Oxford University|Cambridge", line):
+        if _is_noise(line):
             continue
+        fallback_candidates.append(line)
         if re.match(r"^[A-Z][A-Za-z\-:'\s,]+$", line):
-            title_candidates.append(line)
-            if len(title_candidates) >= 3:
-                break
-    if not title_candidates:
-        return None
-    # Heuristic: longest candidate (book subtitles often follow the main title).
-    return max(title_candidates, key=len)
+            strict_candidates.append(line)
+
+    if strict_candidates:
+        return max(strict_candidates, key=len)
+    if fallback_candidates:
+        return max(fallback_candidates, key=len)
+    return None
 
 
 def _extract_publisher(cover_text: str) -> str | None:
@@ -257,30 +278,40 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
             ),
         }
 
-    # Condition 4: no metadata-lock, no notes assertion.
+    # The only block: explicit metadata-lock on the catalog row.
+    # Caller maps this to DEEP_INDEX_STALLED + a deep-index-blocked
+    # notification. See _doctrine.md §0.
     catalog_row = _read_catalog_row(library, citekey)
     if _has_metadata_lock(catalog_row):
         return {
             "applied": False,
-            "reason": "metadata-lock: true on catalog row; user-judgment-required",
+            "blocked": True,
+            "reason": "metadata-lock: true on catalog row; pass blocked",
         }
+
+    # notes.json asserting chapter-level identity used to block; under
+    # the new policy the file still wins. Record the override so the
+    # caller can log it.
     notes_text = _read_paper_notes(library, citekey)
-    if _notes_assert_chapter_identity(notes_text):
-        return {
-            "applied": False,
-            "reason": "notes.json asserts chapter-level identity; user-judgment-required",
-        }
+    notes_override = _notes_assert_chapter_identity(notes_text)
 
     cover_text = _extract_cover(pdf_path, pages=2)
     if not cover_text:
         return {"error": "pdftotext failed", "applied": False}
 
-    # Condition 3: cover page unambiguously names the larger artifact.
+    # Cover-page title: take the longest reasonable candidate (the
+    # two-tier extractor returns None only if the cover is entirely
+    # unreadable). Do not refuse on ambiguity — the next
+    # authenticate-bib pass will correct any rough edges.
     title = _extract_book_title(cover_text)
-    if not title or len(title.split()) < 3:
+    if not title:
         return {
             "applied": False,
-            "reason": "cover-page title ambiguous; user-judgment-required",
+            "reason": (
+                "cover-page text contained no plausible title line; "
+                "leaving metadata unchanged. Re-run after PDF "
+                "re-extraction or fix manually."
+            ),
         }
 
     publisher = _extract_publisher(cover_text)
@@ -353,7 +384,13 @@ def apply(citekey: str, dry_run: bool = False) -> dict:
     if n > 0:
         tex_path.write_text(new_tex, encoding="utf-8")
 
-    return {"applied": True, "fields": fields}
+    result: dict = {"applied": True, "fields": fields}
+    if notes_override:
+        result["notes_override"] = (
+            "notes.json asserted chapter-level identity; file-is-source-of-"
+            "truth default applied per _doctrine.md §0."
+        )
+    return result
 
 
 def main() -> int:
@@ -368,6 +405,10 @@ def main() -> int:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
     if not result.get("applied"):
+        if result.get("blocked"):
+            # Distinct exit code so callers can map to DEEP_INDEX_STALLED.
+            print(f"Policy BLOCKED: {result.get('reason')}", file=sys.stderr)
+            return 2
         print(f"Policy not applied: {result.get('reason', 'see dry-run output')}")
         if result.get("dry_run"):
             print(f"Would set fields: {result.get('fields')}")
@@ -375,6 +416,8 @@ def main() -> int:
     print(f"Policy applied: master.bib updated to @book, "
           f"catalog title set to {result['fields']['title'][:80]!r}, "
           f"bib.state=needs-reauth.")
+    if result.get("notes_override"):
+        print(f"  Override: {result['notes_override']}")
     return 0
 
 

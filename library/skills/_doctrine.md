@@ -3,6 +3,63 @@
      Do not surface this file as a slash command — the build script
      filters leading-underscore files out of the command mirror. -->
 
+## §0 Autonomous execution (load-bearing)
+
+The deep-index family is invoked by `/loop`, by batch drains, and by
+user-typed `/library/deep-index`. There is no interactive operator
+mid-run. Every subskill in this family inherits the same contract.
+
+**1. Never ask the user a question.** Not via tools, not via prose,
+not via "I would normally ask…" hedging. The user is not in this
+loop and will not see questions until the skill terminates. If you
+are tempted to ask, apply the default in §Automatic decisions below
+and proceed.
+
+**2. Only three terminal states.** The orchestrator emits exactly one
+of these keywords on its own line, immediately below the
+human-readable banner:
+
+- `DEEP_INDEX_RESOLVED` — audit punch-list empty AND outstanding
+  list literally empty (zero items, including zero narrow items).
+- `DEEP_INDEX_NARROW_RESIDUAL` — only narrow out-of-scope items
+  remain (the three categories in §Scope doctrine).
+- `DEEP_INDEX_STALLED` — pathological-loop guard fired, OR
+  three-iteration validator abort, OR `metadata-lock: true` block.
+
+Anything else (a different banner, a question, a no-keyword exit)
+is a protocol violation. `/loop` callers grep for these keywords.
+
+**3. Automatic decisions where prior versions deferred.** Cases that
+older skill text tagged `user-judgment-required` are now resolved
+by default:
+
+- **Metadata-vs-file divergence** (chapter-vs-book, divergent works,
+  republication identity, genuinely different works under one
+  citekey) → **file is source of truth.** Update `master.bib` +
+  catalog to match the file content; set `bib.state = needs-reauth`.
+  Log the change to the run summary as an AI-change bullet — never
+  as outstanding work.
+- **Ambiguous cover-page title** → use the longest reasonable
+  candidate; the next `/library/authenticate-bib` pass corrects it.
+- **Reprint / republication identity** → keep the existing bib,
+  add a `note` field documenting the reprint source, proceed.
+- **`notes.json` asserts chapter-level identity but file content
+  diverges** → file wins; update metadata; log the override.
+
+**4. The only block-the-pass exception is `metadata-lock: true`.**
+If the catalog row carries `metadata-lock: true`, the user has
+explicitly pinned the metadata. Do not touch `master.bib` or the
+catalog `title`. Emit `DEEP_INDEX_STALLED` with a notification of
+`kind: "deep-index-blocked"` and reason
+`metadata-lock: true on catalog row; pass blocked`. This is the
+same exit channel as the three-iteration validator abort.
+
+**5. Outstanding-work categories are exactly three.** Allowed
+values: `source-missing`, `figure-reconstruction`,
+`validator-false-positive`. The legacy `user-judgment-required`
+category has been removed. If you are tempted to tag with anything
+else, walk the tier ladder.
+
 ## Scope doctrine (load-bearing)
 
 **Aggressive default: in-scope unless proven otherwise.** The deep-index
@@ -56,23 +113,18 @@ Recoverable problems explicitly include:
   removal. Use `detect_multi_article.py` to identify; remove with
   a targeted body edit, not by re-extracting.
 - **Content/metadata mismatch (file is source of truth)** — when the
-  on-disk file content does not match `master.bib` (e.g., the file
-  is the whole book but `master.bib` describes one chapter), update
-  the metadata to match the file. The four-condition auto-resolution
-  policy is documented in `di-preflight`.
+  on-disk file content does not match `master.bib`, update the
+  metadata to match the file. See §0 "Automatic decisions" above —
+  this is no longer a deferrable case.
 
-**Genuinely out of scope is narrow.** Only four categories qualify:
+**Genuinely out of scope is narrow.** Only three categories qualify:
 
 1. **Source-missing content** — a page literally absent from the PDF.
    Verify with `pdfinfo`. Tag as
    `source-missing — verified absent from PDF (pages X–Y)`.
 2. **Figure/diagram reconstruction** — raster-only content whose
    meaning is the image. Text in captions IS in scope.
-3. **User-judgment-required** — a genuinely ambiguous call needing
-   human input. Default expectation: this is almost never the right
-   tag. If you're tempted to use it, you are probably failing to
-   exhaust a tier.
-4. **Validator-false-positive** — the validator's heuristic flagged
+3. **Validator-false-positive** — the validator's heuristic flagged
    something verifiably correct (journal-offset reprint, multi-section
    pagination, low-confidence flood on a scanned-OCR book where each
    marker has been positionally verified). The file is already
@@ -119,8 +171,8 @@ emit an `outstanding-work` item — it's a reason to do the work:
 ### Self-check before emitting any outstanding-work item
 
 Before tagging any item as `[source-missing]`,
-`[figure-reconstruction]`, `[user-judgment-required]`, or
-`[validator-false-positive]`, walk this checklist:
+`[figure-reconstruction]`, or `[validator-false-positive]`, walk
+this checklist:
 
 - Have I exhausted the in-scope ladder for this category?
 - For a footnote: did I try Tier 4 (orphan-prefix) — which always
@@ -131,8 +183,9 @@ Before tagging any item as `[source-missing]`,
   did I consider synthesis from external reference data with a
   `% synthesized` comment?
 - For metadata mismatch where the citekey clearly names the work
-  and the body matches: did I apply the auto-resolution policy
-  (update `master.bib` + catalog, set `bib.state = needs-reauth`)?
+  and the body matches: did I apply the §0 automatic-decision policy
+  (file is source of truth — update `master.bib` + catalog, set
+  `bib.state = needs-reauth`)?
 
 If any answer is no, the deferral is premature — do the work first.
 
@@ -144,45 +197,79 @@ Each subskill is invoked from that loop and may itself run sub-iterations.
 **Convergence criterion.** Two consecutive passes produce the *same*
 outstanding set (treated as a set of bullet contents, normalized
 whitespace) and the *same* audit punch-list and the *same* validator
-findings. The skill stops because nothing more can change, not
-because a counter ran out.
+findings. The pass-fingerprint is `(outstanding-list-as-set,
+audit-punch-list-as-set, validator-findings-as-set)`. Two consecutive
+identical fingerprints trigger exit — the skill stops because
+nothing more can change, not because a counter ran out.
 
 **No hard cap.** The only termination backstops are (a) genuine
 convergence (preferred) and (b) the pathological-loop guard (only
 fires after pass 3 if the outstanding list is *growing* and no
 resolutions are happening). Most papers converge in 1–4 passes; some
-books take 5–8. Run all of them autonomously without asking the user.
+books take 5–8. Run all of them autonomously — see §0.
 
-**Anti-pattern enforcement.** Stopping after 3-4 passes because the
+**Anti-pattern enforcement.** Stopping after 3–4 passes because the
 remaining work is laborious is **not** convergence. The loop continues
-until either:
+until one of the three terminal states (§0) is reached:
 
-- (a) the outstanding list is empty, or narrow-out-of-scope only
-  (the four narrow categories above), or
-- (b) the pathological-loop guard fires.
+- the outstanding list is empty (→ `DEEP_INDEX_RESOLVED`), or
+- only narrow-out-of-scope items remain
+  (→ `DEEP_INDEX_NARROW_RESIDUAL`), or
+- the pathological-loop guard fires, the three-iteration validator
+  abort fires, or `metadata-lock: true` blocks the pass
+  (→ `DEEP_INDEX_STALLED`).
 
 Items the agent expects to address in a follow-up pass should be
-tagged `[in-progress]`, not `[user-judgment-required]`, and should
-be carried forward by the loop — not surfaced to the user as
-questions.
+tagged `[in-progress]` and carried forward by the loop — not
+surfaced to the user as questions (§0).
 
-## When `user-judgment-required` IS the right tag
+**Cross-invocation addendum.** When `/library/deep-index` is invoked
+on a paper already in `deepIndexed` state, the new invocation writes
+both the normal summary log AND an addendum log
+`<ISO>-deepindex-addendum.summary.md` that cross-references the prior
+summary's outstanding items, marking each as `resolved` (no longer
+present this pass) or `carried over` (still present, with notes on
+what was tried). A paper that requires more than 2 invocations to
+converge warrants a streamlining-memo entry diagnosing the friction.
 
-A short list of cases where this tag is genuinely warranted:
+**Idempotency.** Running the orchestrator twice should not degrade
+the document. The deterministic preprocessing scripts detect
+already-cleaned content and become no-ops. The AI subskills should
+similarly recognize when structural fixes have already been applied.
 
-- The user has set `metadata-lock: true` in the catalog row or left
-  an explicit note in `papers/<citekey>/virgil/notes.json` about
-  intended chapter-level identity, and the on-disk file no longer
-  matches that intent.
-- The on-disk file and `master.bib` describe genuinely different
-  works (different authors, different years, no obvious subset
-  relation) and the citekey could plausibly refer to either.
-- A republication / reprint identity choice where both options are
-  defensible and the user has not previously expressed a preference.
+For the bibliography work specifically: on a second pass, the entries
+already exist in `references.bib` and the body already has `\cite{…}`
+/ `\citet{…}` commands. Re-running the bibliography subskill should
+produce **zero diffs** in both `main.tex` and `references.bib`. If
+the second pass would change either file, check first whether the
+difference is genuine new work or just spurious re-formatting — the
+latter signals a bug in the rewrite heuristics.
 
-If the situation doesn't match one of these, the right move is
-almost always to apply a reasonable default (file is source of
-truth; update metadata to match) and proceed.
+For numbered examples specifically: on a second pass, the `\vexid{…}`
+markers from the first pass identify each canonical example, and
+the examples subskill short-circuits to a no-op when every `\ex|\pex`
+is already prefixed with a v4 `\vexid`. Re-running the examples
+subskill should produce **zero diffs** in the example region. If the
+user manually added a new `\ex` without a `\vexid` between runs, that
+single example gets a fresh UUID; existing canonical examples are
+left untouched.
+
+For catalog warnings specifically: the `indexed.warnings` array is
+recomputed per pass for eight prefixes (`missing-bib-entry:`,
+`footnote-recovery-needed:`, `examples-not-converted:`,
+`ambiguous-citation:`, `numeric-citation-style:`,
+`pgmark-duplicate:`, `pgmark-gap:`, `pgmark-out-of-order:`). Other
+warning kinds are preserved verbatim. If a missing entry from a prior
+pass has since been added to `references.bib` (e.g. by a manual edit),
+the rerun drops it from warnings. Same for stale pgmark-continuity
+findings that have been resolved by the §1b repair pass.
+
+When merging or rewriting math fragments on a second pass, **scan
+the merge region for `\pgmark{N}` markers first and pull them out to
+body scope before doing the merge**. A well-intentioned "improvement"
+that fuses two `\[...\]` displays without first extracting the pgmark
+between them will silently re-introduce a swallowed marker — exactly
+the bug that di-validate exists to catch.
 
 ## No-paraphrase rule (load-bearing)
 

@@ -187,9 +187,10 @@ free pass-2 win.
 If three iterations fail to clear all blockers, **abort**: leave
 `indexed.state` unchanged (do not write `deepIndexed`), append a
 notification with `kind: "deep-index-blocked"` (see the
-orchestrator's step 6 for shape, swap the kind), and stop. Do not
-silently downgrade the validator severity to `warn` — that is the
-failure mode this skill exists to prevent.
+orchestrator's step 6 for shape, swap the kind), and signal the
+orchestrator to emit `DEEP_INDEX_STALLED` (see `_doctrine.md` §0).
+Do not silently downgrade the validator severity to `warn` — that
+is the failure mode this skill exists to prevent.
 
 ### Baseline acceptance via catalog warnings
 
@@ -247,25 +248,23 @@ Reports remaining issues across:
 ## Outstanding-work classification
 
 Walk the [_doctrine.md](_doctrine.md) self-check checklist before
-tagging anything. The four allowed categories:
+tagging anything. The three allowed categories (§0 / §Scope doctrine):
 
 - `source-missing` — page literally absent from PDF.
 - `figure-reconstruction` — raster-only figure content.
-- `user-judgment-required` — narrow; see doctrine for the cases
-  where this IS the right tag.
 - `validator-false-positive` — the validator's heuristic flagged
   something that's verifiably correct (journal-offset reprint with
   span fitting in PDF page count, multi-section pagination with
   legitimate page-label namespaces, low-confidence-flood on a
   scanned-OCR book where every marker has been positionally
-  verified). Distinct from `user-judgment-required` because there's
-  no decision for the user to make — the file is already correct.
-  When tagging an item as `[validator-false-positive]` in the
-  Outstanding-work list, also add the matching
-  `…-false-positive:` warning to the catalog row (see "Baseline
-  acceptance via catalog warnings" above), so future passes don't
-  re-flag it.
+  verified). The file is already correct; the validator is the
+  thing that's mis-classifying. When tagging an item as
+  `[validator-false-positive]` in the Outstanding-work list, also
+  add the matching `…-false-positive:` warning to the catalog row
+  (see "Baseline acceptance via catalog warnings" above), so future
+  passes don't re-flag it.
 
-Items tagged for follow-up passes should be `[in-progress]`, not
-`[user-judgment-required]`, and should be carried forward by the
-convergence loop — not surfaced as questions.
+`user-judgment-required` is **not** a valid category — see
+`_doctrine.md` §0. Items the agent expects to address in a
+follow-up pass go as `[in-progress]` and are carried forward by
+the convergence loop, never surfaced to the user as questions.

@@ -586,6 +586,36 @@ commands above (plus the comma-separated multi-key form), and the
 renderer at `src/lib/bib-parser.ts` (`formatInlineCitation`) has explicit
 display cases for each. No preamble change is needed.
 
+### Missing-bib-entry lookup spec (load-bearing)
+
+Emit a `missing-bib-entry:` line **only when** the inline mention
+has no matching entry in `references.bib` under this lookup:
+
+1. **Normalize each surname** (NFKD-fold, strip diacritics, lowercase,
+   drop hyphens / apostrophes / spaces, drop trailing `jr|sr|iii`).
+2. **Extract every cited surname** from the mention. Handle:
+   `Author1 and Author2`; `Author1 & Author2`; `Author1, Author2, and
+   Author3` (Oxford comma optional); `Author1 et al.` (treat as a
+   prefix match — first surname only); `Author1, Author2, …, AuthorN`.
+3. **Match against `references.bib`** by (a) parsing each entry's
+   `author = {…}` field into a normalized surname list, then (b)
+   accepting iff: (i) the cited year matches the entry's year, AND
+   (ii) for `et al.` mentions, the first surname is among the entry's
+   first 3 authors; for explicit `Author1 (and|&) Author2` mentions,
+   every cited surname appears in the entry's author list.
+4. **Emit the warning only if no entry matches.** If multiple entries
+   match (same first author + year), emit `ambiguous-citation:` with
+   the candidate citekeys, not `missing-bib-entry:`.
+
+Heuristic shortcuts that match only on first-author surname + year
+will produce ~30–50% false-positive `missing-bib-entry` warnings on
+multi-author corpora — this is the failure mode the spec above
+exists to prevent. Do **not** emit warnings then post-hoc filter
+them; implement the lookup correctly the first time, and if the
+lookup is too expensive to do inline (large bibliography), build
+the normalized author-list index once at the start of step 3g and
+reuse it.
+
 ### Triaging unresolved mentions
 
 When the script prints `Unresolved (N unique): …`, classify each:

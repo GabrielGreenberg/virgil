@@ -92,49 +92,45 @@ title (e.g., `\section{... PERCEPTION* I}` + body `n perception`):
 python3 .virgil/scripts/library/recover_drop_cap_at_title.py papers/$ARGUMENTS/main.tex
 ```
 
-**Content vs. metadata mismatch — match metadata to file.** When the
-body content does not match `master.bib`'s `title` (e.g., the file is
-a whole book but `master.bib` describes one chapter), the on-disk
-file is the source of truth. Update `master.bib`, the catalog row,
-and the in-file `\title{...}` to match the file's actual identity.
-Use the cover/title-page of the source PDF as the authoritative
-title.
+**Content vs. metadata mismatch — file is source of truth.** When
+the body content does not match `master.bib`'s `title` (e.g., the
+file is a whole book but `master.bib` describes one chapter, or the
+file and bib describe genuinely different works, or this is a
+reprint / republication), the on-disk file wins. Update
+`master.bib`, the catalog row, and the in-file `\title{...}` to
+match the file's actual identity. Use the cover/title-page of the
+source PDF as the authoritative title. Apply this **automatically**
+— do not defer; do not surface a question (see `_doctrine.md` §0).
 
-When `detect_metadata_mismatch.py` (run in di-preflight) returned
-`file-is-book-bib-is-chapter`, the policy script in preflight already
-updated `master.bib`. Otherwise, apply this update directly (no
-`user-judgment-required` deferral) when **all four** conditions hold:
+When `detect_metadata_mismatch.py` (run in di-preflight) flagged a
+mismatch, the policy script in preflight already updated
+`master.bib`. Otherwise, apply the update directly:
 
-1. The file is structurally larger (whole book / full proceedings /
-   full dissertation), AND
-2. The current metadata describes a proper subset (one chapter, one
-   excerpt), AND
-3. The cover page (first 2 pages, via `pdftotext -layout`)
-   unambiguously gives the larger artifact's title, AND
-4. The catalog row has no `metadata-lock: true` flag and
-   `papers/<citekey>/virgil/notes.json` is silent on intentional
-   chapter-level identity.
+1. Read the cover/title page via `pdftotext -layout`.
+2. Choose the longest reasonable candidate title from the cover. If
+   ambiguous, prefer the larger artifact (book over chapter,
+   proceedings over paper, reprint over original).
+3. Use `update_master_bib_entry.py` and `update_catalog_entry.py`
+   (NOT direct Write) to acquire the file locks safely.
+4. Set `bib.state = "needs-reauth"` so the next
+   `/library/authenticate-bib` pass re-verifies the new DOI.
+5. Update the in-file `\title{}` to match.
+6. Log the change as an AI-change bullet in the run summary — never
+   as outstanding work.
 
-After updating metadata, set `bib.state = "needs-reauth"` so the
-next `/library/authenticate-bib` pass re-verifies the new DOI.
-Update the in-file `\title{}` to match. Use
-`update_master_bib_entry.py` and `update_catalog_entry.py` (NOT
-direct Write) to acquire the file locks safely.
+For reprint / republication: keep the existing bib but add a
+`note` field documenting the reprint source, then proceed.
 
-Keep the `user-judgment-required` deferral only for:
-
-- The inverse direction (file is a chapter, metadata describes the
-  book) — we can't re-extract the whole book from a chapter file.
-- Genuinely different works (different authors, different years,
-  no obvious subset relation).
-- `metadata-lock: true` in the catalog row, or explicit user notes
-  in `papers/<citekey>/virgil/notes.json` about chapter-level
-  identity.
-- Republication / reprint identity choices where both are defensible
-  and the user has expressed no prior preference. Even here, apply
-  a reasonable default (keep the existing bib, add a `note` field
-  documenting the reprint source) rather than blocking on user
-  input.
+**The only exception — `metadata-lock: true`.** If the catalog row
+carries `metadata-lock: true`, the user has explicitly pinned the
+metadata. Do **not** touch `master.bib` or the catalog `title`.
+Signal the orchestrator to emit `DEEP_INDEX_STALLED` (see
+`_doctrine.md` §0) and append a notification with
+`kind: "deep-index-blocked"` and reason
+`metadata-lock: true on catalog row; pass blocked`. This is the
+same exit channel as the three-iteration validator abort. Do not
+emit it as an outstanding-work item — it's a terminal-state
+block.
 
 **Multi-article PDF detection.** If `detect_genre.py` (preflight)
 classified the source as `multi-article-pdf`, run:
