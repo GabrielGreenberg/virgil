@@ -1,5 +1,5 @@
 // Generate a macOS .icns (plus the PWA / apple-touch set) from the
-// parchment-V source at icons/new_new_icon.png.
+// parchment-V source at icons/updated_icon.png.
 //
 // The source art already carries its own squircle shape. We pad to
 // square, inset slightly to leave room for a soft ambient drop shadow
@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 
-const SOURCE = join(repoRoot, "icons/new_new_icon.png");
+const SOURCE = join(repoRoot, "icons/updated_icon.png");
 const ICONSET_DIR = join(repoRoot, "icons/Virgil.iconset");
 const ICNS_OUT = join(repoRoot, "icons/Virgil.icns");
 const MASTER_1024 = join(repoRoot, "icons/app-icon-1024.png");
