@@ -4,17 +4,17 @@
 //
 // Two outputs:
 //
-//   1. public/skill-bundle/<files>           — shipped as static assets
+//   1. public/skill-bundle/library/<files>   — shipped as static assets
 //                                              (Next.js `output: "export"`).
-//      The frontend fetches /skill-bundle/bundle-manifest.json on launch,
-//      compares to ~/Virgil-Library/.skill-bundle-version.json, and
-//      overwrites stale files in the user's library folder. This keeps
-//      the user's library folder a self-contained Claude Code workspace
-//      that auto-updates.
+//      The frontend's skill-sync engine fetches the meta-manifest at
+//      /skill-bundle/bundle-manifest.json (assembled by
+//      scripts/build-meta-bundle.mjs from this builder's output and the
+//      editor builder's output), compares against the on-disk version
+//      stamp in each Virgil-managed folder, and overwrites stale files.
 //
 //   2. .claude/commands/library/<skill>.md   — mirrored from library/skills/.
-//      Surfaces the library's slash commands as /library/<skill> in any
-//      session opened in this repo.
+//      Surfaces the library's slash commands as /library:<skill> in any
+//      session opened in this repo (developer workflow).
 //
 // Sources:
 //   library/skills/*.md                              (skill prompts)
@@ -32,7 +32,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
-const bundleDir = join(repoRoot, "public", "skill-bundle");
+const bundleDir = join(repoRoot, "public", "skill-bundle", "library");
 const claudeCommandsDir = join(repoRoot, ".claude", "commands", "library");
 
 async function listFilesIn(dir, predicate) {

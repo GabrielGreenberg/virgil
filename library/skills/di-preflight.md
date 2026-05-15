@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Deep-index preflight
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 Runs the gates that decide whether `/library/deep-index` can proceed
 on `papers/$ARGUMENTS/`, and which genre branches downstream subskills
 should follow.
@@ -20,8 +47,8 @@ should follow.
 ## Step 0.1 — Lending-slip / JSTOR boilerplate strip (one-time)
 
 ```bash
-python3 .virgil/scripts/detect_lending_slip.py $ARGUMENTS --strip-from-tex
-python3 .virgil/scripts/strip_jstor_boilerplate.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/detect_lending_slip.py $ARGUMENTS --strip-from-tex
+python3 .virgil/scripts/library/strip_jstor_boilerplate.py papers/$ARGUMENTS/main.tex
 ```
 
 Removes ILLIAD / OCLC / interlibrary-loan front matter and JSTOR
@@ -31,7 +58,7 @@ on the article's real first page.
 ## Step 0.2 — Content / metadata mismatch detection
 
 ```bash
-python3 .virgil/scripts/detect_metadata_mismatch.py $ARGUMENTS --json
+python3 .virgil/scripts/library/detect_metadata_mismatch.py $ARGUMENTS --json
 ```
 
 Note: `detect_metadata_mismatch.py` matches against the **PDF cover
@@ -48,11 +75,11 @@ Outputs a `kind` in {`none`, `title-only-missing`,
 ```bash
 # Always dry-run first — the candidate-title extraction can grab
 # blurb attributions, ISBN footers, or other noisy cover-page lines.
-python3 .virgil/scripts/apply_metadata_mismatch_policy.py $ARGUMENTS --dry-run
+python3 .virgil/scripts/library/apply_metadata_mismatch_policy.py $ARGUMENTS --dry-run
 # Eyeball the "Would set fields: {...}" output. If the candidate
 # title looks like a real book title (not a person's name, not an
 # ISBN, not "A Classic Series"), commit:
-python3 .virgil/scripts/apply_metadata_mismatch_policy.py $ARGUMENTS
+python3 .virgil/scripts/library/apply_metadata_mismatch_policy.py $ARGUMENTS
 ```
 
 If the on-disk bib entry already has `@book` AND the bib title
@@ -81,7 +108,7 @@ case — it is a flag, not a halt.
 ## Step 0.3 — Multi-article detection
 
 ```bash
-python3 .virgil/scripts/detect_multi_article.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/detect_multi_article.py papers/$ARGUMENTS
 ```
 
 Identifies adjacent-article spans for surgical removal (see
@@ -112,9 +139,9 @@ and only commit if the decoded preview reads as English prose.
 
 ```bash
 # Only if Caesar conditions above hold:
-python3 .virgil/scripts/decode_caesar_pdf.py papers/$ARGUMENTS/main.tex --dry-run
+python3 .virgil/scripts/library/decode_caesar_pdf.py papers/$ARGUMENTS/main.tex --dry-run
 # review output, then re-run without --dry-run to commit
-python3 .virgil/scripts/decode_caesar_pdf.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/decode_caesar_pdf.py papers/$ARGUMENTS/main.tex
 ```
 
 For running-header cleanup, `strip_ocr_running_headers.py` is **not
@@ -157,7 +184,7 @@ print(m.group(1).lower() if m else 'unknown')
 ")
 if [ "$TOC_PRESENT" -gt 0 ] && [ "$BIB_TYPE" != "book" ] && [ "$BIB_TYPE" != "inbook" ]; then
   cp papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/main.tex.bak
-  python3 .virgil/scripts/strip_ocr_running_headers.py papers/$ARGUMENTS/main.tex \
+  python3 .virgil/scripts/library/strip_ocr_running_headers.py papers/$ARGUMENTS/main.tex \
       --from-toc
   if diff papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/main.tex.bak \
         | grep -E '\\(title|section|chapter)\{ *\}'; then
@@ -173,7 +200,7 @@ fi
 ## Step 0.5 — Genre routing
 
 ```bash
-python3 .virgil/scripts/detect_genre.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/detect_genre.py papers/$ARGUMENTS
 ```
 
 `detect_genre.py` prints one of five primary labels to stdout:

@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Deep-index prose cleanup
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > Shared doctrine: read [_doctrine.md](_doctrine.md) (scope, anti-patterns,
 > self-check, convergence behavior, narrow out-of-scope categories).
 
@@ -36,7 +63,7 @@ opening that doesn't form a valid English word with the section
 heading's context. Run:
 
 ```bash
-python3 .virgil/scripts/recover_drop_caps.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/recover_drop_caps.py papers/$ARGUMENTS
 ```
 
 The script reads the corresponding PDF page via `pdftotext -layout`
@@ -48,7 +75,7 @@ For scanned-OCR articles where the drop-cap got concatenated to the
 title (e.g., `\section{... PERCEPTION* I}` + body `n perception`):
 
 ```bash
-python3 .virgil/scripts/recover_drop_cap_at_title.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/recover_drop_cap_at_title.py papers/$ARGUMENTS/main.tex
 ```
 
 **Content vs. metadata mismatch — match metadata to file.** When the
@@ -99,7 +126,7 @@ Keep the `user-judgment-required` deferral only for:
 classified the source as `multi-article-pdf`, run:
 
 ```bash
-python3 .virgil/scripts/detect_multi_article.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/detect_multi_article.py papers/$ARGUMENTS
 ```
 
 The script identifies adjacent-article spans in `main.tex` (text that
@@ -132,14 +159,14 @@ For OCR'd books with bulk-corruption (many `\subsection{...}` calls
 with lowercase content):
 
 ```bash
-python3 .virgil/scripts/strip_ocr_headings.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/strip_ocr_headings.py papers/$ARGUMENTS/main.tex
 ```
 
 For diagram-heavy books (Venn diagrams, payoff matrices, formal
 logic) — *reporter; review before editing*:
 
 ```bash
-python3 .virgil/scripts/detect_garbage_headings.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/detect_garbage_headings.py papers/$ARGUMENTS/main.tex
 ```
 
 For prose-shaped misclassified headings (italicized fragments,
@@ -147,7 +174,7 @@ transitional phrases, ellipses) — these are body sentences
 mis-promoted — *reporter; review before editing*:
 
 ```bash
-python3 .virgil/scripts/detect_misclassified_headings.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/detect_misclassified_headings.py papers/$ARGUMENTS/main.tex
 ```
 
 > **Known false-positive patterns for the two reporters above.** Both
@@ -188,14 +215,14 @@ python3 .virgil/scripts/detect_misclassified_headings.py papers/$ARGUMENTS/main.
 For punctuation-only headings (`* *`, `**`, `Δ`):
 
 ```bash
-python3 .virgil/scripts/strip_punctuation_only_headings.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/strip_punctuation_only_headings.py papers/$ARGUMENTS/main.tex
 ```
 
 For inline section labels (LSA / Journal of Philosophy / Wiley
 styles):
 
 ```bash
-python3 .virgil/scripts/promote_inline_section_labels.py papers/$ARGUMENTS/main.tex \
+python3 .virgil/scripts/library/promote_inline_section_labels.py papers/$ARGUMENTS/main.tex \
     --style=default   # or `jp` (lowercase roman) or `wiley`
 ```
 
@@ -204,7 +231,7 @@ not yet written; recognize the pattern manually and edit if it
 appears*:
 
 ```bash
-# python3 .virgil/scripts/promote_lost_subsections.py papers/$ARGUMENTS/main.tex
+# python3 .virgil/scripts/library/promote_lost_subsections.py papers/$ARGUMENTS/main.tex
 # (TODO: script doesn't exist yet. Manually edit affected headings.)
 ```
 
@@ -258,7 +285,7 @@ PDF's TOC.
 **Lost chapter-title recovery (OCR'd books):**
 
 ```bash
-python3 .virgil/scripts/recover_chapter_titles.py $ARGUMENTS
+python3 .virgil/scripts/library/recover_chapter_titles.py $ARGUMENTS
 ```
 
 > **Verify the result.** After running, scan the diff for repeated
@@ -272,8 +299,8 @@ python3 .virgil/scripts/recover_chapter_titles.py $ARGUMENTS
 For book TOC-driven heading insertion:
 
 ```bash
-python3 .virgil/scripts/extract_book_toc.py $ARGUMENTS --out /tmp/$ARGUMENTS-toc.json
-python3 .virgil/scripts/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMENTS-toc.json
+python3 .virgil/scripts/library/extract_book_toc.py $ARGUMENTS --out /tmp/$ARGUMENTS-toc.json
+python3 .virgil/scripts/library/book_chapter_locator.py $ARGUMENTS /tmp/$ARGUMENTS-toc.json
 ```
 
 > **Verify the result.** After running, scan the diff: if the inserted
@@ -344,25 +371,25 @@ to live inside math, and would disappear.
 **OCR-garbled Roman numeral pgmarks:**
 
 ```bash
-python3 .virgil/scripts/fix_roman_pgmarks.py $ARGUMENTS
+python3 .virgil/scripts/library/fix_roman_pgmarks.py $ARGUMENTS
 ```
 
 **Italic OCR `I`/`l`/`O` as digits in year / page-range contexts:**
 
 ```bash
-python3 .virgil/scripts/fix_italic_numerals.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/fix_italic_numerals.py papers/$ARGUMENTS/main.tex
 ```
 
 **Mid-word page-break gap detection (no auto-fix; reports):**
 
 ```bash
-python3 .virgil/scripts/recover_mid_word_breaks.py $ARGUMENTS
+python3 .virgil/scripts/library/recover_mid_word_breaks.py $ARGUMENTS
 ```
 
 **Low-confidence pgmark promotion:**
 
 ```bash
-python3 .virgil/scripts/recover_low_confidence_pgmarks.py $ARGUMENTS \
+python3 .virgil/scripts/library/recover_low_confidence_pgmarks.py $ARGUMENTS \
     --threshold 0.30 --window 1500
 ```
 
@@ -370,14 +397,14 @@ python3 .virgil/scripts/recover_low_confidence_pgmarks.py $ARGUMENTS \
 IQR envelope, so journal-offset reprints are safe):
 
 ```bash
-python3 .virgil/scripts/strip_impossible_pgmarks.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/strip_impossible_pgmarks.py papers/$ARGUMENTS/main.tex
 ```
 
 **Chapter-footnote collision detection** (low-N pgmarks that are
 actually footnote numbers, not page numbers):
 
 ```bash
-python3 .virgil/scripts/detect_chapter_footnote_collision.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/detect_chapter_footnote_collision.py papers/$ARGUMENTS/main.tex
 ```
 
 **Repair with bypass** (when `master.bib` has `pages = {<lo>-<hi>}`,
@@ -385,7 +412,7 @@ pass `--max-page <hi+5>` to strip year-shaped or stray-page outliers
 without triggering the >50% safeguard):
 
 ```bash
-python3 .virgil/scripts/repair_pgmarks.py papers/$ARGUMENTS/main.tex --max-page 250
+python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex --max-page 250
 ```
 
 For `@book` entries (which normally lack a `pages` field), omit

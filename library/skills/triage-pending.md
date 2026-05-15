@@ -4,6 +4,33 @@ description: Batch-triage every file in ~/Virgil-Library/unsorted/. Produces a J
 
 # /triage-pending $ARGUMENTS
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 Drain `unsorted/` in one batch. Use this instead of invoking
 `/triage-pdf` once per file when you have more than a handful of new
 sources to triage — `/triage-pdf` is the per-file workflow; this is the
@@ -27,7 +54,7 @@ directory).
 
 1. **Extract.** Run the batch script:
    ```bash
-   python3 .virgil/scripts/triage_batch.py --output /tmp/triage.jsonl
+   python3 .virgil/scripts/library/triage_batch.py --output /tmp/triage.jsonl
    ```
    This walks `unsorted/` and emits one JSON line per **document or bib
    entry**. Supported source kinds:
@@ -71,7 +98,7 @@ directory).
 
 3. **Apply.** Pipe the (possibly edited) JSONL into the apply script:
    ```bash
-   python3 .virgil/scripts/triage_apply.py --input /tmp/triage.jsonl
+   python3 .virgil/scripts/library/triage_apply.py --input /tmp/triage.jsonl
    ```
    For each row this:
    - **whole-handbook** → moves file to `unsorted/_pending/`,
@@ -100,7 +127,7 @@ directory).
    Capture the script's per-row output and final summary in your reply.
 
 4. **Drain the queue.** After triage, the queue has N pending `index`
-   entries. Run `/index-pending` (or `python3 .virgil/scripts/drain_queue.py`
+   entries. Run `/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
    directly) to actually index every paper and authenticate every bib.
 
 ## Reply format

@@ -1,42 +1,92 @@
-// Synchronizes the on-disk skill bundle in the user's library folder
-// with the version shipped in this app's public/skill-bundle/.
+// Synchronizes the on-disk skill bundle in a Virgil-managed folder
+// (library OR paper) with the meta-bundle shipped in this app's
+// public/skill-bundle/.
 //
-// On every app launch, after the FSA folder handle is granted, we:
-//   1. fetch /skill-bundle/bundle-manifest.json
-//   2. read .skill-bundle-version.json from the user's folder
-//   3. if versions differ, fetch every file in the manifest and overwrite
-//   4. write the new manifest as .skill-bundle-version.json
+// On every doc-open and library-open, after the FSA folder handle is
+// granted, we:
+//   1. fetch /skill-bundle/bundle-manifest.json (the meta-manifest)
+//   2. read .virgil/.skill-bundle-version.json from the user's folder
+//   3. if versions differ, fetch every file listed in each sub-manifest
+//      and overwrite; also delete stale files that left the bundle
+//   4. write the new meta-manifest summary as .skill-bundle-version.json
+//   5. write .virgil/library-path.json with the currently-configured
+//      library absolute path (or null when no library is set)
 //
-// Bundle paths use `claude-commands/...` (no leading dot) because some
-// static hosts skip hidden directories under public/. The on-disk
-// destinations are rewritten when writing into the library folder so the
-// user's library root stays clean (only master.bib / papers/ / unsorted/
-// remain visible). See PREFIX_REWRITE / FILE_REWRITE below.
+// Bundle layout (produced by scripts/build-meta-bundle.mjs):
+//
+//   public/skill-bundle/
+//     bundle-manifest.json            ← {version, sources: [...]}
+//     library/
+//       bundle-manifest.json          (sub-manifest, format unchanged)
+//       CLAUDE.md
+//       claude-commands/*.md
+//       scripts/*.py
+//     editor/
+//       bundle-manifest.json
+//       claude-commands/*.md
+//       scripts/*.py
+//
+// On-disk rewrite (per-folder), keyed by `<subsystem>/<bundlePath>`:
+//   library/CLAUDE.md                  → .claude/CLAUDE.md
+//   library/claude-commands/X.md       → .claude/commands/library/X.md
+//   library/scripts/X.py               → .virgil/scripts/library/X.py
+//   editor/claude-commands/X.md        → .claude/commands/editor/X.md
+//   editor/scripts/X.py                → .virgil/scripts/editor/X.py
+//
+// We use `claude-commands/` (no leading dot) inside the bundle because
+// some static hosts skip hidden directories under public/. The disk
+// rewrite restores the canonical `.claude/commands/...` location.
 
 import { readJsonFile, writeBinaryFile, writeJsonFile, writeTextFile, VIRGIL_DIR, CLAUDE_DIR } from "./library-storage";
 
-interface BundleManifest {
+interface SubManifest {
   version: string;
   generatedAt: string;
   files: string[];
 }
 
+interface MetaManifestSource {
+  name: string;
+  version: string;
+  files: string[];
+}
+
+interface MetaManifest {
+  version: string;
+  generatedAt: string;
+  sources: MetaManifestSource[];
+}
+
 interface OnDiskVersion {
   version: string;
   syncedAt: string;
+  /** Bundle-relative paths (e.g. "library/scripts/foo.py"). Used at the
+   *  next sync to detect files that left the bundle so they can be
+   *  cleaned up from the folder. */
   files: string[];
 }
 
 const VERSION_PATH = `${VIRGIL_DIR}/.skill-bundle-version.json`;
-// Bundle path → on-disk path. Order matters; first match wins.
-const PREFIX_REWRITE: Array<[string, string]> = [
-  ["claude-commands/", `${CLAUDE_DIR}/commands/`],
-  ["scripts/", `${VIRGIL_DIR}/scripts/`],
-];
-// Exact-match rewrites for individual files at the bundle root.
-const FILE_REWRITE: Record<string, string> = {
-  "CLAUDE.md": `${CLAUDE_DIR}/CLAUDE.md`,
-};
+const LIBRARY_PATH_PATH = `${VIRGIL_DIR}/library-path.json`;
+
+/** Map `<subsystem>/<bundle-relative path>` to its on-disk destination.
+ *  Returns undefined for paths whose subsystem we don't recognise — the
+ *  caller skips them (defence against malformed manifests). */
+function diskPathFor(subsystem: string, bundlePath: string): string | undefined {
+  // The workspace CLAUDE.md only ships from the library subsystem.
+  if (subsystem === "library" && bundlePath === "CLAUDE.md") {
+    return `${CLAUDE_DIR}/CLAUDE.md`;
+  }
+  if (bundlePath.startsWith("claude-commands/")) {
+    const rest = bundlePath.slice("claude-commands/".length);
+    return `${CLAUDE_DIR}/commands/${subsystem}/${rest}`;
+  }
+  if (bundlePath.startsWith("scripts/")) {
+    const rest = bundlePath.slice("scripts/".length);
+    return `${VIRGIL_DIR}/scripts/${subsystem}/${rest}`;
+  }
+  return undefined;
+}
 
 function bundleUrl(path: string): string {
   // Resolve relative to the deployed app origin so this works under both
@@ -49,16 +99,6 @@ function bundleUrl(path: string): string {
   return `${base}/skill-bundle/${path}`;
 }
 
-function diskPathForBundlePath(bundlePath: string): string {
-  if (FILE_REWRITE[bundlePath]) return FILE_REWRITE[bundlePath];
-  for (const [from, to] of PREFIX_REWRITE) {
-    if (bundlePath.startsWith(from)) {
-      return to + bundlePath.slice(from.length);
-    }
-  }
-  return bundlePath;
-}
-
 export interface SyncResult {
   synced: boolean;
   version: string;
@@ -66,33 +106,63 @@ export interface SyncResult {
   removed: string[];
 }
 
+export interface SyncOptions {
+  /** Absolute path of the currently-configured library, or null when no
+   *  library is set up. Written to `<folder>/.virgil/library-path.json`
+   *  so library skills running in this folder can resolve the root. */
+  libraryRoot?: string | null;
+}
+
 export async function syncSkillBundle(
   handle: FileSystemDirectoryHandle,
+  options: SyncOptions = {},
 ): Promise<SyncResult> {
-  // 1. Fetch the bundle manifest.
-  const manifestUrl = bundleUrl("bundle-manifest.json");
-  const resp = await fetch(manifestUrl, { cache: "no-store" });
+  const { libraryRoot = null } = options;
+
+  // 1. Fetch the top-level meta-manifest.
+  const metaUrl = bundleUrl("bundle-manifest.json");
+  const resp = await fetch(metaUrl, { cache: "no-store" });
   if (!resp.ok) {
-    throw new Error(`skill-sync: manifest fetch failed (${resp.status} ${resp.statusText})`);
+    throw new Error(`skill-sync: meta-manifest fetch failed (${resp.status} ${resp.statusText})`);
   }
-  const manifest = (await resp.json()) as BundleManifest;
+  const meta = (await resp.json()) as MetaManifest;
 
-  // 2. Read on-disk version.
+  // 2. Read on-disk version stamp.
   const onDisk = await readJsonFile<OnDiskVersion>(handle, VERSION_PATH);
-  if (onDisk?.version === manifest.version) {
-    return { synced: false, version: manifest.version, filesWritten: 0, removed: [] };
+  const versionsMatch = onDisk?.version === meta.version;
+
+  // Always (re)write the library-path pointer — it can change
+  // independently of the bundle version (user picks a different library
+  // folder), and rewriting is cheap.
+  await writeJsonFile(handle, LIBRARY_PATH_PATH, { libraryRoot });
+
+  if (versionsMatch) {
+    return { synced: false, version: meta.version, filesWritten: 0, removed: [] };
   }
 
-  // 3. Fetch each file and write it into the library folder.
+  // 3. Build the new full file list (bundle-relative, prefixed with
+  //    subsystem name), and walk + write everything.
+  const newFiles: string[] = [];
+  for (const src of meta.sources) {
+    for (const f of src.files) {
+      newFiles.push(`${src.name}/${f}`);
+    }
+  }
+
   let written = 0;
-  for (const bundlePath of manifest.files) {
-    const url = bundleUrl(bundlePath);
+  for (const fullBundlePath of newFiles) {
+    const slash = fullBundlePath.indexOf("/");
+    const subsystem = fullBundlePath.slice(0, slash);
+    const bundlePath = fullBundlePath.slice(slash + 1);
+    const diskPath = diskPathFor(subsystem, bundlePath);
+    if (!diskPath) continue;
+
+    const url = bundleUrl(fullBundlePath);
     const r = await fetch(url, { cache: "no-store" });
     if (!r.ok) {
-      throw new Error(`skill-sync: file fetch failed for ${bundlePath} (${r.status})`);
+      throw new Error(`skill-sync: file fetch failed for ${fullBundlePath} (${r.status})`);
     }
     const blob = await r.blob();
-    const diskPath = diskPathForBundlePath(bundlePath);
     if (looksTextual(diskPath)) {
       const text = await blob.text();
       await writeTextFile(handle, diskPath, text);
@@ -103,32 +173,36 @@ export async function syncSkillBundle(
   }
 
   // 4. Remove files that were in the previous bundle but no longer in
-  // this one. (Renaming a script or removing a skill cleans up.)
+  //    this one. (Renaming a script or removing a skill cleans up.)
   const removed: string[] = [];
   if (onDisk?.files) {
-    const newSet = new Set(manifest.files);
-    for (const oldBundlePath of onDisk.files) {
-      if (!newSet.has(oldBundlePath)) {
-        const oldDiskPath = diskPathForBundlePath(oldBundlePath);
-        try {
-          await deletePath(handle, oldDiskPath);
-          removed.push(oldDiskPath);
-        } catch {
-          /* best-effort */
-        }
+    const newSet = new Set(newFiles);
+    for (const oldFullBundlePath of onDisk.files) {
+      if (newSet.has(oldFullBundlePath)) continue;
+      const slash = oldFullBundlePath.indexOf("/");
+      if (slash < 0) continue;
+      const subsystem = oldFullBundlePath.slice(0, slash);
+      const bundlePath = oldFullBundlePath.slice(slash + 1);
+      const oldDiskPath = diskPathFor(subsystem, bundlePath);
+      if (!oldDiskPath) continue;
+      try {
+        await deletePath(handle, oldDiskPath);
+        removed.push(oldDiskPath);
+      } catch {
+        /* best-effort */
       }
     }
   }
 
   // 5. Write the new version stamp.
   const stamp: OnDiskVersion = {
-    version: manifest.version,
+    version: meta.version,
     syncedAt: new Date().toISOString(),
-    files: manifest.files,
+    files: newFiles,
   };
   await writeJsonFile(handle, VERSION_PATH, stamp);
 
-  return { synced: true, version: manifest.version, filesWritten: written, removed };
+  return { synced: true, version: meta.version, filesWritten: written, removed };
 }
 
 function looksTextual(diskPath: string): boolean {

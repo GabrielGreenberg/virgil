@@ -44,9 +44,12 @@ iterate-skill must be run from the Virgil repo (where library/skills/ lives).
 Current cwd: <pwd>
 ```
 
-Confirm `~/Virgil-Library/master.bib` is readable. If the library hasn't
-been picked yet (no master.bib), abort with a pointer to set up the
-library first.
+Confirm the user has a Virgil Library configured. Resolve it via
+`python3 editor/scripts/library_path.py --get` (the dev-repo location of
+the resolver). If that errors, abort with a pointer to set up the
+library first. Use the resolved path everywhere this skill mentions
+`~/Virgil-Library/` below — most users do place the library there, but
+not all do.
 
 ## The loop
 

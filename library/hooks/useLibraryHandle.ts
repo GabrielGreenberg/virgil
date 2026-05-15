@@ -7,6 +7,7 @@ import {
   ensureReadWritePermission,
   queryReadWritePermission,
   clearLibraryHandle,
+  resolveLibraryRootPath,
 } from "@library/lib/library-folder";
 import { ensureLibraryStructure } from "@library/lib/library-storage";
 import { syncSkillBundle, type SyncResult } from "@library/lib/skill-sync";
@@ -76,7 +77,12 @@ export function useLibraryHandle() {
     if (syncedHandleRef.current === handle) return;
     syncedHandleRef.current = handle;
     try {
-      const result = await syncSkillBundle(handle);
+      // Library folder writes its own library-path.json pointing to
+      // itself. In dev-storage we have the abs path via the dev API;
+      // in production FSA we leave it null (handled gracefully by
+      // library_path.py's resolution chain).
+      const libraryRoot = (await resolveLibraryRootPath()) ?? null;
+      const result = await syncSkillBundle(handle, { libraryRoot });
       setLastSync(result);
     } catch (err) {
       console.error("[skill-sync] failed", err);

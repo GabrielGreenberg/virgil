@@ -4,11 +4,38 @@ description: Drain ~/Virgil-Library/.virgil/queue/ in one pass — process every
 
 # /index-pending
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library queue. Resolve the
+library root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 Drain the queue to empty in **one turn**. Designed for the catch-up
 case (a backlog after `/triage-pending`); for steady-state polling,
 wrap with `/loop /index-pending`.
 
-The bulk of the work is delegated to `.virgil/scripts/drain_queue.py`, which
+The bulk of the work is delegated to `.virgil/scripts/library/drain_queue.py`, which
 shells out to `index_paper.py` per entry. This avoids the per-file
 skill-invocation overhead that would otherwise burn through context
 for any non-trivial queue.
@@ -20,7 +47,7 @@ directory).
 
 1. **Drain native kinds in batch.** Run:
    ```bash
-   python3 .virgil/scripts/drain_queue.py
+   python3 .virgil/scripts/library/drain_queue.py
    ```
    This processes every `kind=index` and `kind=reindex` entry in
    `.virgil/queue/*.json`, grouped by citekey and ordered:
@@ -51,7 +78,7 @@ directory).
    Run them sequentially — most queues will have at most a handful.
 
 3. **If `bib-edit` or `authenticate` skill runs produced changes**,
-   re-run `python3 .virgil/scripts/drain_queue.py` once more so any
+   re-run `python3 .virgil/scripts/library/drain_queue.py` once more so any
    newly-eligible `index`/`reindex` entries get picked up. Skip if
    step 2 was a no-op.
 
@@ -70,7 +97,7 @@ just that single line, no further work needed.
 
 ## Large queues / running from inside a subagent
 
-The synchronous `python3 .virgil/scripts/drain_queue.py` in step 1 is
+The synchronous `python3 .virgil/scripts/library/drain_queue.py` in step 1 is
 fine when the queue is small (≤ ~20 entries) **or** when this skill
 runs in a session with no turn-budget cap (a user-driven session that
 can sit idle for hours).
@@ -89,7 +116,7 @@ Detach-and-poll instead. Two phases:
 **Phase A — kick off the drain detached, return immediately.**
 ```bash
 cd <library-root>
-nohup python3 .virgil/scripts/drain_queue.py \
+nohup python3 .virgil/scripts/library/drain_queue.py \
   > /tmp/drain_$(date +%s).log 2>&1 &
 disown
 echo "drain pid=$! log=/tmp/drain_$(date +%s).log"

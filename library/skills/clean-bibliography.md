@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Bibliography cleanup
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > Shared doctrine: read [_doctrine.md](_doctrine.md). Even
 > 1000+-entry book bibliographies and run-on indices are in-scope —
 > deferring is almost always a doctrine violation.
@@ -102,7 +129,7 @@ For books and review articles with hundreds of references, manual
 itemization is error-prone and slow. Run the auto-detector:
 
 ```bash
-python3 .virgil/scripts/format_references_section.py papers/$ARGUMENTS \
+python3 .virgil/scripts/library/format_references_section.py papers/$ARGUMENTS \
     --diagnostic   # print regex-coverage stats
 ```
 
@@ -137,14 +164,14 @@ implausibly few entries (the script's sanity-check aborts the write
 in that case):
 
 ```bash
-python3 .virgil/scripts/itemize_jammed_references.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/itemize_jammed_references.py papers/$ARGUMENTS
 ```
 
 **Index itemization** (for books with a `\section{Index}` of
 flattened-OCR entries):
 
 ```bash
-python3 .virgil/scripts/clean_index_ocr.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/clean_index_ocr.py papers/$ARGUMENTS/main.tex
 ```
 
 ### Build the citekey table
@@ -295,7 +322,7 @@ paper itself (so every body `Author Year` mention fires
 `missing-bib-entry:`), populate from the itemized References section:
 
 ```bash
-python3 .virgil/scripts/populate_references_bib_from_itemize.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/populate_references_bib_from_itemize.py papers/$ARGUMENTS
 ```
 
 **Precondition (load-bearing).** This script blindly APPENDS — it does
@@ -307,7 +334,7 @@ invoking, gate on entry count:
 ```bash
 count=$(grep -c '^@' papers/$ARGUMENTS/references.bib)
 # Only run if the bib is at seed state (≤ 1 entry — the paper itself).
-[ "$count" -le 1 ] && python3 .virgil/scripts/populate_references_bib_from_itemize.py papers/$ARGUMENTS
+[ "$count" -le 1 ] && python3 .virgil/scripts/library/populate_references_bib_from_itemize.py papers/$ARGUMENTS
 ```
 
 Skip the populate step entirely when the bib is already populated
@@ -320,7 +347,7 @@ When emitted citekeys collide on same-surname-same-year-same-titleword
 patterns (kehler-style author-heavy bibliographies):
 
 ```bash
-python3 .virgil/scripts/fuzzy_citekey_disambiguate.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/fuzzy_citekey_disambiguate.py papers/$ARGUMENTS
 ```
 
 The disambiguator uses title second-word / journal-initials /
@@ -395,7 +422,7 @@ concept quotes.
 ### Batch tool (preferred for author-year sources)
 
 ```bash
-python3 .virgil/scripts/rewrite_citations.py \
+python3 .virgil/scripts/library/rewrite_citations.py \
     papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/references.bib
 ```
 
@@ -561,7 +588,7 @@ When the source PDF's bibliography is truncated and many
 for well-known cited works via Crossref:
 
 ```bash
-python3 .virgil/scripts/synthesize_canonical_entries.py $ARGUMENTS \
+python3 .virgil/scripts/library/synthesize_canonical_entries.py $ARGUMENTS \
     --max-entries 30
 ```
 
@@ -573,5 +600,5 @@ Synthesized entries are marked with a `% synthesized via Crossref on
 Cross-field coherence + PDF cover-page check before authentication:
 
 ```bash
-python3 .virgil/scripts/validate_bib_coherence.py $ARGUMENTS
+python3 .virgil/scripts/library/validate_bib_coherence.py $ARGUMENTS
 ```

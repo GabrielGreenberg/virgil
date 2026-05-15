@@ -14,6 +14,7 @@ import { devLibraryRootHandle } from "./dev-fsa";
 
 const store = createStore("virgil", "kv");
 const HANDLE_KEY = "library-folder-handle";
+const ROOT_PATH_KEY = "library-folder-root-path";
 
 export async function getLibraryHandle(): Promise<
   FileSystemDirectoryHandle | undefined
@@ -30,6 +31,44 @@ export async function setLibraryHandle(
 
 export async function clearLibraryHandle(): Promise<void> {
   await del(HANDLE_KEY, store);
+  await del(ROOT_PATH_KEY, store);
+}
+
+/** Absolute filesystem path of the currently-configured library folder,
+ *  or undefined when unknown. The browser's FSA can't extract abs paths
+ *  from a `FileSystemDirectoryHandle` directly — we either get the path
+ *  out-of-band (dev-storage: from `/api/dev-library/_meta`) or remain in
+ *  the dark (production FSA: caller must arrange a separate setup). */
+export async function getLibraryRootPath(): Promise<string | undefined> {
+  return get<string>(ROOT_PATH_KEY, store);
+}
+
+export async function setLibraryRootPath(absPath: string): Promise<void> {
+  await set(ROOT_PATH_KEY, absPath, store);
+}
+
+/** Resolve the library's absolute path, persisting it in IndexedDB so
+ *  the next sync doesn't have to re-fetch. In dev-storage mode this
+ *  queries `/api/dev-library/_meta`; in production FSA it returns
+ *  `undefined` (the path is genuinely unknown). */
+export async function resolveLibraryRootPath(): Promise<string | undefined> {
+  const cached = await getLibraryRootPath();
+  if (cached) return cached;
+  if (isDevStorage) {
+    try {
+      const resp = await fetch("/api/dev-library/_meta", { cache: "no-store" });
+      if (!resp.ok) return undefined;
+      const data = (await resp.json()) as { libraryRoot?: string };
+      if (typeof data.libraryRoot === "string" && data.libraryRoot) {
+        await setLibraryRootPath(data.libraryRoot);
+        return data.libraryRoot;
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+  return undefined;
 }
 
 export type PickFolderResult =

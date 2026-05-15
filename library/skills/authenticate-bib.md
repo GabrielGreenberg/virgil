@@ -4,6 +4,37 @@ description: Authenticate a .bib entry against Crossref/OpenAlex/Semantic Schola
 
 # /authenticate-bib $ARGUMENTS
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else — that way the skill
+works from any Virgil-managed folder (paper folder, library folder, or
+anywhere with the Virgil sync bundle).
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+All paths in the rest of this skill resolve against the library root.
+
+---
+
 Run the bib authentication subprocess for ONE citekey. Useful when:
 - A user added an entry to `master.bib` by hand and wants it verified
   without indexing a PDF.
@@ -19,7 +50,7 @@ directory).
 
 2. **Run the helper.** Pass `library` and `citekey` so the recovery chain
    can read the indexed paper at `papers/<citekey>/main.tex`. The Python
-   pipeline lives at `.virgil/scripts/` (NOT `scripts/`).
+   pipeline lives at `.virgil/scripts/library/`.
 
    **Pass `title`, `authors_list`, and `fields_dict` exactly as they
    appear in `master.bib` — verbatim, with no cleanup or normalization.
@@ -30,7 +61,7 @@ directory).
    python3 -c '
    import sys, json
    from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts")
+   sys.path.insert(0, ".virgil/scripts/library")
    from bib_auth import authenticate
    from dataclasses import asdict
    # Fill in title and authors from master.bib for citekey, verbatim
@@ -200,7 +231,7 @@ directory).
    cat > /tmp/<citekey>-auth-fields.json <<'EOF'
    { "title": "...", "author": "...", "year": "...", ... }
    EOF
-   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<entry_type>" \
      --fields-file /tmp/<citekey>-auth-fields.json \
      --bib-state "<final_state>"
@@ -219,7 +250,7 @@ directory).
    ```bash
    python3 -c '
    import sys; from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts")
+   sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _resync_references_bib
    ok = _resync_references_bib(Path("."), "<citekey>")
    print("references.bib resynced" if ok else "no paper dir — skipped")
@@ -234,7 +265,7 @@ directory).
    python3 -c '
    import sys, json, time
    from pathlib import Path
-   sys.path.insert(0, ".virgil/scripts")
+   sys.path.insert(0, ".virgil/scripts/library")
    from index_paper import _sync_catalog_entry_from_master
 
    # `r` is the AuthResult dict from step 2 (deserialize the JSON
@@ -309,7 +340,7 @@ directory).
      "at": "<now ISO>",
      "summary": "Authenticated <citekey> via <sources> (<N> field changes)" }
    EOF
-   python3 .virgil/scripts/append_inbox_item.py \
+   python3 .virgil/scripts/library/append_inbox_item.py \
      --item-file /tmp/<citekey>-auth-notify.json
    rm /tmp/<citekey>-auth-notify.json
    ```

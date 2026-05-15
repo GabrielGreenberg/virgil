@@ -3,10 +3,10 @@
   "version": "0.1.39",
   "private": true,
   "scripts": {
-    "predev": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs",
+    "predev": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node scripts/build-meta-bundle.mjs",
     "dev": "next dev",
     "dev:preview": "NEXT_PUBLIC_DEV_STORAGE=true next dev",
-    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs",
+    "prebuild": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node scripts/build-meta-bundle.mjs",
     "build": "next build",
     "start": "next start",
     "preview:pages": "NEXT_PUBLIC_BASE_PATH=/virgil next build && npx serve out -p 4173",
@@ -15,7 +15,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build:library-bundle": "node library/build/build-skill-bundle.mjs",
-    "build:editor-bundle": "node editor/build/build-editor-bundle.mjs"
+    "build:editor-bundle": "node editor/build/build-editor-bundle.mjs",
+    "build:meta-bundle": "node scripts/build-meta-bundle.mjs",
+    "build:skill-bundles": "node library/build/build-skill-bundle.mjs && node editor/build/build-editor-bundle.mjs && node scripts/build-meta-bundle.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",

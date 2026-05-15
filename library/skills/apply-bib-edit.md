@@ -4,6 +4,33 @@ description: Apply a queued manual bib edit to master.bib and references.bib. Ar
 
 # /apply-bib-edit $ARGUMENTS
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 Apply a manual bib edit that the frontend wrote to
 `.virgil/queue/<citekey>-bibedit.json`. The frontend never writes `master.bib`
 itself (cowork constraint) — this skill is the drain.
@@ -38,7 +65,7 @@ All paths below are relative to the library root.
    cat > /tmp/$ARGUMENTS-bibedit-fields.json <<'EOF'
    { "title": "...", "author": "...", "year": "...", ... }
    EOF
-   python3 .virgil/scripts/update_master_bib_entry.py "$ARGUMENTS" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "$ARGUMENTS" \
      --entry-type "<type>" \
      --fields-file /tmp/$ARGUMENTS-bibedit-fields.json
    rm /tmp/$ARGUMENTS-bibedit-fields.json
@@ -82,7 +109,7 @@ All paths below are relative to the library root.
      }
    }
    EOF
-   python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+   python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
      --patch-file /tmp/$ARGUMENTS-bibedit-patch.json
    rm /tmp/$ARGUMENTS-bibedit-patch.json
    ```
@@ -111,7 +138,7 @@ All paths below are relative to the library root.
    { "kind": "authenticated", "citekey": "<citekey>", "at": "<now ISO>",
      "summary": "Applied manual edit (<N> field changes)" }
    EOF
-   python3 .virgil/scripts/append_inbox_item.py \
+   python3 .virgil/scripts/library/append_inbox_item.py \
      --item-file /tmp/$ARGUMENTS-bibedit-notify.json
    rm /tmp/$ARGUMENTS-bibedit-notify.json
    ```

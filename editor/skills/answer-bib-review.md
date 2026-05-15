@@ -33,9 +33,28 @@ Three modes:
 > (bib-review-requests load), 2 (fields), 3 (notes), and 4 (request
 > flip). Library-sync writes its own notification and exits.
 
+> **Path resolution.** Every step below uses `$scripts_editor` and
+> `$scripts_library` to invoke Python helpers. Resolve them once at the
+> start of the procedure:
+> ```bash
+> scripts_editor=""
+> for candidate in .virgil/scripts/editor editor/scripts; do
+>   [ -d "$candidate" ] && { scripts_editor="$candidate"; break; }
+> done
+> scripts_library=""
+> for candidate in .virgil/scripts/library library/scripts; do
+>   [ -d "$candidate" ] && { scripts_library="$candidate"; break; }
+> done
+> if [ -z "$scripts_editor" ] || [ -z "$scripts_library" ]; then
+>   echo "This folder doesn't look Virgil-managed (no synced scripts found)."
+>   echo "Open the paper in Virgil first so cowork tooling syncs into it."
+>   exit 1
+> fi
+> ```
+
 1. **Load.** Resolve the entry:
    ```bash
-   python3 editor/scripts/bib_resolve.py <docPath> <bibKey>
+   python3 "$scripts_editor/bib_resolve.py" <docPath> <bibKey>
    ```
    Stdout has `entry`, `type`, `fields`, `annotation`. Read the
    matching `bib-review-requests.json` row to find the request type +
@@ -45,10 +64,10 @@ Three modes:
    - Look up the entry against Crossref → OpenAlex → Semantic Scholar
      → arXiv (in that order). Try the library's auth helper:
      ```bash
-     python3 library/scripts/bib_auth.py --citekey <bibKey> \
-                                         --title "<existing title>" \
-                                         --author "<existing author>" \
-                                         --type article
+     python3 "$scripts_library/bib_auth.py" --citekey <bibKey> \
+                                            --title "<existing title>" \
+                                            --author "<existing author>" \
+                                            --type article
      ```
      If it errors with `ModuleNotFoundError` (deps not installed) or
      can't resolve from `cwd`, fall through to direct Crossref /
@@ -81,17 +100,25 @@ Three modes:
      forms).
 
 3a. **For `--library-sync <libraryCitekey>`:**
-   - Resolve the library path. If `--library` was passed, use it; else:
+   - Resolve the library root. The script directories were already
+     established at the top of the procedure (`$scripts_editor`,
+     `$scripts_library`); we reuse them here:
      ```bash
-     library_root=$(python3 editor/scripts/library_path.py --get)
+     if [ -n "$LIBRARY" ]; then
+       library_root="$LIBRARY"
+     else
+       library_root=$(python3 "$scripts_editor/library_path.py" --get) || {
+         echo "No library set up. Pick a library in Virgil first."
+         exit 1
+       }
+     fi
      ```
-     If that fails, exit with the error message (the user must set the
-     library path before running this mode).
    - Read the library entry verbatim:
      ```bash
      python3 -c '
-     import sys; from pathlib import Path
-     sys.path.insert(0, "library/scripts")
+     import sys
+     from pathlib import Path
+     sys.path.insert(0, "'"$scripts_library"'")
      from _bib_parse import find_entry_span
      text = Path("'"$library_root"'/master.bib").read_text(encoding="utf-8")
      span = find_entry_span(text, "<libraryCitekey>")
@@ -109,7 +136,7 @@ Three modes:
    - If `<bibKey> != <libraryCitekey>`, rewrite every `\cite*{...}`
      command and update `virgil/citations.json`:
      ```bash
-     python3 editor/scripts/rename_citekey.py <docPath> <bibKey> <libraryCitekey>
+     python3 "$scripts_editor/rename_citekey.py" <docPath> <bibKey> <libraryCitekey>
      ```
    - Skip the bib-review-requests.json flip — library-sync isn't driven
      by that file. Skip external Crossref/OpenAlex lookups — the
@@ -129,7 +156,7 @@ Three modes:
    entry's `status` from `"pending"` to `"complete"`. Then notify +
    bump version:
    ```bash
-   python3 editor/scripts/apply_response.py <docPath> --complete-only <bibKey> --note "Updated bib entry <bibKey> (<type>)"
+   python3 "$scripts_editor/apply_response.py" <docPath> --complete-only <bibKey> --note "Updated bib entry <bibKey> (<type>)"
    ```
    *(`--complete-only` here is repurposed to write the notification +
    version-bump path; the request-id resolution falls through harmlessly

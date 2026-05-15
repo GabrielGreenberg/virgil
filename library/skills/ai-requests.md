@@ -4,6 +4,33 @@ description: Drain only user-authored AI requests in ~/Virgil-Library/.virgil/qu
 
 # /ai-requests
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library queue. Resolve the
+library root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 **Process only the user-driven AI requests.** Do **not** run the
 general-purpose indexing/triage pipeline. The user explicitly invoked
 this command because they want their hand-written notes addressed, not
@@ -77,11 +104,11 @@ A queue entry is an AI request when **any** of these is true:
      section/element the note refers to, and fix it. If the request
      requires re-running the linearization pipeline (e.g. "re-extract
      section 3" or "this paper has a two-column layout"), invoke the
-     relevant scripts (`.virgil/scripts/index_paper.py`, `.virgil/scripts/extract.py`)
+     relevant scripts (`.virgil/scripts/library/index_paper.py`, `.virgil/scripts/library/extract.py`)
      scoped as narrowly as you can. Save the updated `main.tex`. Then
      signal the frontend via the locked CLI shim:
      ```bash
-     python3 .virgil/scripts/bump_catalog_version.py
+     python3 .virgil/scripts/library/bump_catalog_version.py
      ```
 
 3. **Mark done.** Once the request is handled, delete its queue file.
@@ -103,7 +130,7 @@ A queue entry is an AI request when **any** of these is true:
   `kind=bib-edit` entries.
 - Does **not** run vanilla `authenticate` entries (those without a
   note). They stay in the queue for `/index-pending` to pick up.
-- Does **not** invoke `.virgil/scripts/drain_queue.py` — that's the general
+- Does **not** invoke `.virgil/scripts/library/drain_queue.py` — that's the general
   indexing path and is the wrong tool for AI requests.
 
 ## When the candidate list is empty

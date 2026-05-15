@@ -1,95 +1,101 @@
-# Virgil Library — Claude Code workspace
+# Virgil — Claude Code workspace
 
-This folder is a self-contained Claude Code workspace for indexing and managing
-academic source documents — PDFs, Word `.docx`, LaTeX `.tex` manuscripts, and
-loose `.bib` files (each entry becomes a bib-only catalog row, no source file
-required). The Virgil Library web app keeps `.claude/CLAUDE.md` (this file),
-`.claude/commands/`, and `.virgil/scripts/` in sync — **don't hand-edit them**,
-they get overwritten on the next app launch.
+This folder is a Virgil-managed Claude Code workspace. The Virgil web app keeps
+`.claude/CLAUDE.md` (this file), `.claude/commands/{editor,library}/`, and
+`.virgil/scripts/{editor,library}/` in sync — **don't hand-edit them**, they get
+overwritten when Virgil updates.
 
-User-owned: `master.bib`, `papers/`, `unsorted/`. Skill-managed runtime state
-lives under `.virgil/` (catalog, queue, notifications, logs, memos). User
-notes per paper at `papers/<citekey>/virgil/notes.json` are also user-owned.
+Two namespaces of skills are available everywhere:
+
+- **`/editor:*`** — operate on the current paper folder (paragraph anchors,
+  AI requests, footnote drafting, suggestion review, sidecars). Useful when
+  this folder is one of your papers.
+- **`/library:*`** — operate on your Virgil Library (catalog, master.bib,
+  unsorted triage, deep indexing). Useful when this folder is your Library
+  *or* when you want to authenticate / triage / index from inside a paper.
+
+Library skills resolve the library root automatically via
+`./.virgil/library-path.json` (written by Virgil), `VIRGIL_LIBRARY_ROOT`,
+`~/.config/virgil/library-path.json`, or `~/Virgil-Library/` — in that order.
+If no library is configured, library-touching skills print "No library set up
+— pick a library in Virgil first" and exit cleanly.
 
 ---
 
 ## When the user says "follow the instructions here"
 
-Do this, in order:
+The right answer depends on what kind of folder this is.
+
+**If this is your Library folder** (contains `master.bib`, `.virgil/catalog.json`,
+`papers/<citekey>/...`), follow the library queue-drain workflow:
 
 1. **Check setup.** Run `python3 -c "import fitz, requests" 2>&1`. If pymupdf or
-   requests are missing, run the install command from the **Setup** section
-   below and tell the user.
+   requests are missing, run the install command from the **Setup** section.
 2. **Inspect the queue.** List `.virgil/queue/*.json` (skip `_*.lock` and `*.done`).
 3. **Process pending work:**
-   - If any entry is `kind: "triage"` and `status: "requested"` → run `/triage-pdf`.
-   - If any entry is `kind: "index"` and `status: "requested"` → run `/index-paper`.
-   - If any entry is `kind: "authenticate"` and `status: "requested"` → run `/authenticate-bib`.
-   - If any entry is `kind: "deepIndex"` (or legacy `"richIndex"`) and `status: "requested"` → run `/deep-index`.
-   - If any entry is `kind: "paper-review"` or has a user `note` → run `/ai-requests`.
-4. **If the queue is empty,** report that and ask the user what they'd like to
-   do next.
+   - `kind: "triage"` + `status: "requested"` → `/library:triage-pdf`.
+   - `kind: "index"` + `status: "requested"` → `/library:index-paper`.
+   - `kind: "authenticate"` + `status: "requested"` → `/library:authenticate-bib`.
+   - `kind: "deepIndex"` (or legacy `"richIndex"`) + `status: "requested"` → `/library:deep-index`.
+   - `kind: "paper-review"` or any entry with a user `note` → `/library:ai-requests`.
+4. If the queue is empty, report that and ask the user what to do next.
 
-If the user follows up with "watch", "keep going", or "drain continuously",
-run `/loop /index-pending` instead — Claude wakes itself periodically and drains
-new entries as they appear.
+To poll continuously: `/loop /library:index-pending`.
+
+**If this is a paper folder** (contains `main.tex`, `references.bib`,
+`virgil/ai-requests.json`), follow the editor-review workflow:
+
+1. **Drain open AI requests.** Run `/editor:review` — it dispatches each
+   pending request in `virgil/ai-requests.json` to the appropriate per-kind
+   subskill (footnote, citation, note, suggestion, bib-review, style-merge).
+2. If no AI requests are pending, ask the user what they'd like to work on
+   next (revisions, todos, library-side authentication of a new citekey, etc.).
+
+To poll continuously: `/loop /editor:review`.
 
 ---
 
 ## Available commands
 
-- **`/index-paper <citekey>`** — full pipeline for one paper. Reads
-  `papers/<citekey>/<citekey>.{pdf,docx,tex}` (priority `tex > docx > pdf`),
-  writes `papers/<citekey>/main.tex` (with `\pgmark{N}` printed-page anchors
-  for PDFs; DOCX and TEX have none — TEX is a passthrough copy of the source),
-  initializes Virgil sidecars, authenticates the `.bib` entry against external
-  sources, updates `.virgil/catalog.json`.
-- **`/triage-pdf <filename>`** — for a freshly-dropped source file (PDF, DOCX,
-  `.tex`, or `.bib`) in `unsorted/`, proposes a citekey, moves the file to
-  `papers/<citekey>/<citekey>.<ext>`, adds a `master.bib` stub if needed, and
-  queues an indexing request. For `.bib` files (multi-entry fan-out), each
-  entry produces a bib-only catalog row and queues `kind: "authenticate"`
-  instead of `index`; the source `.bib` is deleted from `unsorted/` after
-  successful fan-out.
-- **`/authenticate-bib <citekey>`** — verifies a `.bib` entry against
-  Crossref / OpenAlex / Semantic Scholar / arXiv. Standalone-callable when a
-  user adds a `.bib` entry by hand and wants it cleaned up.
-- **`/apply-bib-edit <citekey>`** — drains a manual bib edit queued by the
-  frontend's "Edit" button. Reads `.virgil/queue/<citekey>-bibedit.json`,
-  rewrites the `master.bib` block, re-emits `references.bib`, and bumps
-  the catalog version.
-- **`/deep-index <citekey>`** — applies structural cleanup to an
-  already-indexed paper. Runs deterministic preprocessing (strips
-  repeating headers/footers, removes leaked page numbers, rejoins
-  hyphenated words, joins broken paragraphs), then AI-driven structural
-  fixes (heading hierarchy, `\maketitle` cleanup, pgmark alignment,
-  orphan footnote re-attachment). Sets `indexed.state = "deepIndexed"`
-  (double checkmark in the frontend). Was previously `/rich-index`;
-  legacy `richIndex` queue entries and `richIndexed` catalog rows are
-  still accepted on read.
-- **`/ai-requests`** — drains user-authored AI requests only (entries
-  with a `note` field, plus all `paper-review` entries). Surfaces the
-  user's note verbatim and acts on it. Skips general indexing/triage.
-- **`/triage-pending`** — batch-triages every file in `unsorted/`.
-- **`/index-pending`** — drains every queued request once, then exits.
+### Editor skills (operate on this paper)
+- `/editor:review` — umbrella: drain all open AI requests, routing each to
+  the right per-kind subskill.
+- `/editor:draft-footnote` / `/editor:draft-quotation` / `/editor:draft-suggestion`
+  — produce per-kind cards in response to AI requests.
+- `/editor:answer-note-request` / `/editor:answer-todo-request` /
+  `/editor:answer-cutter-comment` / `/editor:answer-revision-comment` /
+  `/editor:answer-bib-review` — respond to flagged comments / todo requests.
+- `/editor:find-citation` — find an authoritative source for a citation request.
+- `/editor:sync-bib-to-library` — diff `references.bib` against your library
+  and reconcile (requires a configured library).
+- `/editor:style-merge` — merge local preamble customizations into the active
+  document style.
 
-All commands operate on the current working directory as the library root.
-Always run them from inside the library folder (`cd ~/Virgil-Library`).
+### Library skills (operate on your library)
+- `/library:index-paper <citekey>` — full pipeline for one source.
+- `/library:triage-pdf <filename>` / `/library:triage-pending` — process
+  files in `unsorted/`.
+- `/library:authenticate-bib <citekey>` — verify a `.bib` entry against
+  Crossref / OpenAlex / Semantic Scholar / arXiv.
+- `/library:apply-bib-edit <citekey>` — apply a queued manual bib edit.
+- `/library:deep-index <citekey>` — structural cleanup (deterministic + AI).
+- `/library:fuse-alternate <citekey>` — fuse a PDF alternate's pgmarks into
+  a TEX/DOCX primary.
+- `/library:ai-requests` — drain user-authored AI requests on library papers.
+- `/library:index-pending` — drain every queued request once, then exit.
 
 ---
 
 ## Where to put files you create
 
-Skills sometimes need to write a memo or a report. Use these conventions:
+Skills sometimes write a memo or a report. Use these conventions:
 
-- **Dev memos** — suggestions for improving a skill, retros on what went
-  wrong this run, ideas for future passes — go to
-  `.virgil/memos/<YYYY-MM-DD>-<slug>.md`. These are **about the pipeline**,
-  not about a specific paper. Never drop a dev memo at the library root.
-- **Paper-specific reports** — written analyses, extracted summaries,
-  anything *about* one citekey's content — go to
-  `papers/<citekey>/notes/<slug>.md`. Co-located with the paper so the user
-  finds them when browsing the paper folder.
+- **Dev memos** (skill improvements, retros, ideas) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`
+  inside the **library** folder (resolved via `library_path.py`). About the
+  pipeline, not a paper.
+- **Paper-specific reports** → `<paper-folder>/notes/<slug>.md` (when inside
+  a paper) or `<library>/papers/<citekey>/notes/<slug>.md` (when reaching from
+  the library). Co-located with the paper.
 - When in doubt, ask the user before writing a file you can't classify.
 
 ---
@@ -98,7 +104,7 @@ Skills sometimes need to write a memo or a report. Use these conventions:
 
 ```bash
 brew install poppler
-pip3 install --user --break-system-packages -r .virgil/scripts/requirements.txt
+pip3 install --user --break-system-packages -r .virgil/scripts/library/requirements.txt
 ```
 
 Optional, for higher-quality output:
@@ -117,36 +123,6 @@ is the always-on fallback for digital-native PDFs.
 
 ---
 
-## Disk layout
-
-```
-~/Virgil-Library/
-├── master.bib                       # canonical bibliography (you own)
-├── unsorted/                        # raw drops awaiting triage (you own)
-├── papers/<citekey>/                # one folder per paper (you own)
-│   ├── <citekey>.{pdf,docx}         # the source file
-│   ├── main.tex                     # extracted LaTeX
-│   ├── references.bib               # single-entry mirror of master.bib row
-│   ├── virgil/{virgil,notes,footnotes}.json   # editor sidecars
-│   ├── variants/                    # alternate sources from triage
-│   ├── notes/                       # paper-specific AI reports / analyses
-│   └── <user supplementary>         # extra files the user drops
-├── .claude/                         # Claude Code config (app-managed)
-│   ├── CLAUDE.md                    # this file
-│   └── commands/library/*.md        # skill prompts
-└── .virgil/                         # runtime state (app-managed)
-    ├── catalog.json                 # frontend state-of-the-world
-    ├── catalog-version.txt          # 1-byte counter, frontend polls it
-    ├── queue/                       # {triage,index,authenticate,...} requests
-    ├── notifications/inbox.json     # toast feed for the frontend
-    ├── logs/<citekey>/              # per-run logs + summary.md
-    ├── memos/                       # dev memos (skill-improvement notes)
-    ├── scripts/*.py                 # Python pipeline
-    └── .skill-bundle-version.json   # version stamp
-```
-
----
-
 ## Failure handling
 
 - If a Python script throws, capture the traceback verbatim in your reply.
@@ -154,6 +130,6 @@ is the always-on fallback for digital-native PDFs.
 - A queue entry that has failed three times has its `status` set to
   `"poisoned"` and is surfaced in the frontend with an "open log" link. Don't
   re-process poisoned entries unless the user explicitly asks.
-- The orchestrator handles `.virgil/catalog.json`, `.virgil/catalog-version.txt`,
-  and `.virgil/notifications/inbox.json` updates itself — you don't write to
-  them directly.
+- The library orchestrator handles `master.bib`, `.virgil/catalog.json`, and
+  `.virgil/notifications/inbox.json` updates via Python CLI shims with file
+  locks — you don't write to them directly.

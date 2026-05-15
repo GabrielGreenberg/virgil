@@ -4,11 +4,38 @@ description: Index a single source (PDF, DOCX, or .tex) in the Virgil Library �
 
 # /index-paper $ARGUMENTS
 
-Index ONE paper in the user's library root. The citekey is the first
-argument. The library root is the current working directory — the
-default is `~/Virgil-Library/` but the user may have placed it
-elsewhere (e.g. `~/Documents/Virgil-Library/`). All paths below are
-relative to that root.
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else — that way the skill
+works from any Virgil-managed folder.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
+Index ONE paper in the user's library. The citekey is the first
+argument. All paths below resolve against `$library_root` (the library
+root the bootstrap just located), so the skill works whether the user
+invoked it from the library folder or from a paper folder.
 
 The source can be a PDF, a Word document (`.docx`), or a LaTeX manuscript
 (`.tex`); the orchestrator auto-detects which is present at
@@ -39,7 +66,7 @@ you to disambiguate something.
    { "kind": "failed", "citekey": "<citekey>", "at": "<ISO>",
      "summary": "Setup check failed: <reason>" }
    EOF
-   python3 .virgil/scripts/append_inbox_item.py \
+   python3 .virgil/scripts/library/append_inbox_item.py \
      --item-file /tmp/<citekey>-setup-failed.json
    rm /tmp/<citekey>-setup-failed.json
    ```
@@ -50,14 +77,14 @@ you to disambiguate something.
    ```
    If pymupdf is missing, run:
    ```bash
-   pip3 install --user --break-system-packages -r .virgil/scripts/requirements.txt
+   pip3 install --user --break-system-packages -r .virgil/scripts/library/requirements.txt
    ```
    `python-docx` is also installed by that command — it's required only for
    `.docx` sources.
 
 3. **Run the orchestrator.** From the library root:
    ```bash
-   python3 .virgil/scripts/index_paper.py <citekey>
+   python3 .virgil/scripts/library/index_paper.py <citekey>
    ```
    For PDF sources, this:
    - classifies scanned vs digital (OCRs scanned PDFs if `ocrmypdf` is installed)
@@ -113,7 +140,7 @@ you to disambiguate something.
    cat > /tmp/<citekey>-doiback-fields.json <<'EOF'
    { "author": "...", "title": "...", "year": "...", "doi": "...", ... }
    EOF
-   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-doiback-fields.json \
      --bib-state authenticated
@@ -127,7 +154,7 @@ you to disambiguate something.
    cat > /tmp/<citekey>-doiback-catalog.json <<'EOF'
    { "bib": { "state": "authenticated", "doiVerified": true } }
    EOF
-   python3 .virgil/scripts/update_catalog_entry.py "<citekey>" \
+   python3 .virgil/scripts/library/update_catalog_entry.py "<citekey>" \
      --patch-file /tmp/<citekey>-doiback-catalog.json
    rm /tmp/<citekey>-doiback-catalog.json
    ```
@@ -306,7 +333,7 @@ you to disambiguate something.
    cat > /tmp/<citekey>-tier-fields.json <<'EOF'
    { "author": "...", "title": "...", "year": "...", ... }
    EOF
-   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-tier-fields.json
    rm /tmp/<citekey>-tier-fields.json

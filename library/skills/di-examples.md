@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Examples & user notes
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > Shared doctrine: read [_doctrine.md](_doctrine.md).
 
 Operates on `papers/$ARGUMENTS/main.tex` and
@@ -83,7 +110,7 @@ PDF text) to `\begingl…\endgl`.
 **Formal-semantics math pre-pass** (Davidson, Schlenker, etc.):
 
 ```bash
-python3 .virgil/scripts/mathify_formal_semantics.py papers/$ARGUMENTS/main.tex \
+python3 .virgil/scripts/library/mathify_formal_semantics.py papers/$ARGUMENTS/main.tex \
     --predicates demonstration,agent,theme,locating,similar,move,see
 ```
 
@@ -96,10 +123,10 @@ Wraps predicate names in `\text{}` to keep them upright.
 examples):
 
 ```bash
-python3 .virgil/scripts/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
+python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex \
     --out /tmp/$ARGUMENTS-proposals.json
 # review the proposals, then:
-python3 .virgil/scripts/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex --apply
+python3 .virgil/scripts/library/bulk_convert_numbered_examples.py papers/$ARGUMENTS/main.tex --apply
 ```
 
 **Re-run safety.** Before invoking `--apply`, count existing
@@ -583,7 +610,7 @@ already in the source PDF; we just need to locate and inject them):
 > with:
 >
 > ```bash
-> python3 .virgil/scripts/recover_missing_pgmarks.py \
+> python3 .virgil/scripts/library/recover_missing_pgmarks.py \
 >   papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/$ARGUMENTS.pdf
 > ```
 >
@@ -611,7 +638,7 @@ already in the source PDF; we just need to locate and inject them):
 > Run:
 >
 > ```bash
-> python3 .virgil/scripts/recover_page_break_fragments.py \
+> python3 .virgil/scripts/library/recover_page_break_fragments.py \
 >   papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/$ARGUMENTS.pdf
 > ```
 >
@@ -634,14 +661,14 @@ already in the source PDF; we just need to locate and inject them):
 > between digits `27—8`), run:
 >
 > ```bash
-> python3 .virgil/scripts/clean_index_ocr.py papers/$ARGUMENTS/main.tex
+> python3 .virgil/scripts/library/clean_index_ocr.py papers/$ARGUMENTS/main.tex
 > ```
 >
 > If any `\footnote{...}` body ends with a stray printed page-number
 > (`...Convention C unless I say otherwise. 137}`), run:
 >
 > ```bash
-> python3 .virgil/scripts/clean_fn_trailing_pagenum.py papers/$ARGUMENTS/main.tex
+> python3 .virgil/scripts/library/clean_fn_trailing_pagenum.py papers/$ARGUMENTS/main.tex
 > ```
 >
 > Both scripts are idempotent and safe to run on already-clean

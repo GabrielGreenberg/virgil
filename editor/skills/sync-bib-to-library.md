@@ -38,27 +38,50 @@ required.
 
 ## Procedure
 
-All paths below are relative to the repository root (the Virgil source
-tree).
+Paths below are relative to the cwd you ran cowork from — typically the
+paper folder (post-sync, Virgil-managed) or the Virgil source repo (dev
+workflow). Both work; we pick the right helper-script location at the
+top of step 1.
 
 1. **Resolve the library.**
    ```bash
-   library_root=$(python3 editor/scripts/library_path.py --get ${LIBRARY:+--library "$LIBRARY"}) || true
+   # Synced PWA folders have library_path.py under .virgil/scripts/editor/.
+   # The Virgil source repo has it under editor/scripts/. Either is fine.
+   library_path_py=""
+   for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+     [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+   done
+   if [ -z "$library_path_py" ]; then
+     echo "This folder doesn't look Virgil-managed (no editor scripts found)."
+     echo "Open the paper in Virgil first so cowork tooling syncs into it."
+     exit 1
+   fi
+   library_root=$(python3 "$library_path_py" --get ${LIBRARY:+--library "$LIBRARY"}) || true
+   # Derive the editor scripts directory from the resolved library_path.py.
+   # Used below for `bib_match_library.py` etc. so we stay consistent
+   # with whichever location the resolver was found in.
+   scripts_dir="$(dirname "$library_path_py")"
    ```
-   If the command failed (non-zero exit), tell the user the resolved
-   error message verbatim, then ask them once: *"Where is your Virgil
-   Library? (absolute path)"*. On their answer:
+   If the second command failed (no `library_root` populated), surface a
+   clean message and stop:
+   ```
+   No library set up. Pick a library in Virgil first.
+   ```
+   You may optionally offer (once) to record the path on the user's
+   behalf: ask *"Where is your Virgil Library? (absolute path; leave
+   blank to skip)"*. On a non-empty answer:
    ```bash
-   python3 editor/scripts/library_path.py --set "<their answer>"
-   library_root=$(python3 editor/scripts/library_path.py --get)
+   python3 "$library_path_py" --set "<their answer>"
+   library_root=$(python3 "$library_path_py" --get)
    ```
-   If they refuse or the path doesn't validate, stop and report
-   `error: library path not set — re-run after setting it via
-   library_path.py --set <abs-path>`. Don't fall back to guessing.
+   If they leave it blank or the path doesn't validate, stop with
+   `error: library path not set — pick a library in Virgil first, or
+   re-run after setting it via library_path.py --set <abs-path>`. Don't
+   fall back to guessing.
 
 2. **Match phase.** Classify every paper entry:
    ```bash
-   python3 editor/scripts/bib_match_library.py "<docPath>" \
+   python3 "$scripts_dir/bib_match_library.py" "<docPath>" \
        --library "$library_root" \
        --output /tmp/sync-match.jsonl
    ```
@@ -109,9 +132,12 @@ tree).
       directly:
       ```bash
       python3 -c '
-      import json, sys
+      import json, os, sys
       from pathlib import Path
-      sys.path.insert(0, "library/scripts")
+      for p in (".virgil/scripts/library", "library/scripts"):
+          if os.path.isfile(os.path.join(p, "_bib_parse.py")):
+              sys.path.insert(0, p)
+              break
       from _bib_parse import read_bib_file
       bundle = Path("'"$bundle"'")
       rows = []
@@ -138,7 +164,7 @@ tree).
       correctly through its locked shims):
       ```bash
       (cd "$library_root" && \
-       python3 .virgil/scripts/triage_apply.py \
+       python3 .virgil/scripts/library/triage_apply.py \
          --input /tmp/sync-triage.jsonl \
          --library .)
       ```
@@ -163,7 +189,7 @@ tree).
    `master.bib`, re-run the matcher and apply the swap for the same
    set of paper citekeys:
    ```bash
-   python3 editor/scripts/bib_match_library.py "<docPath>" \
+   python3 "$scripts_dir/bib_match_library.py" "<docPath>" \
        --library "$library_root" \
        --output /tmp/sync-match-2.jsonl
    ```

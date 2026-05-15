@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Validate & audit
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > Shared doctrine: read [_doctrine.md](_doctrine.md). The validator
 > and audit are the truthful-signal gate for the convergence loop —
 > false positives mean the agent makes bad decisions.
@@ -17,7 +44,7 @@ orchestrator's convergence-driving section.
 ## Step 3i — Pgmark validation (hard gate)
 
 ```bash
-python3 .virgil/scripts/pgmark_validate.py papers/$ARGUMENTS/main.tex \
+python3 .virgil/scripts/library/pgmark_validate.py papers/$ARGUMENTS/main.tex \
     --baseline-from-catalog --severity error
 ```
 
@@ -127,7 +154,7 @@ gate the pass.
 >    state.
 > 2. **In §3i**, if the catalog row's `warnings` is empty, run the
 >    validator a **second time** against the baseline file:
->    `python3 .virgil/scripts/pgmark_validate.py .virgil/baselines/$ARGUMENTS-pre-deepindex.tex --baseline-from-catalog`
+>    `python3 .virgil/scripts/library/pgmark_validate.py .virgil/baselines/$ARGUMENTS-pre-deepindex.tex --baseline-from-catalog`
 >    The script doesn't need a special flag for this — the file
 >    path is the only required positional. The output is its own
 >    gap set (call it `B`).
@@ -190,7 +217,7 @@ escape the convergence-loop gate.
 ## Step 9.5 — Audit punch-list (drives convergence)
 
 ```bash
-python3 .virgil/scripts/audit_deepindex.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS
 ```
 
 Reports remaining issues across:

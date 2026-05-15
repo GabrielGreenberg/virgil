@@ -4,6 +4,33 @@ description: Apply structural cleanup to an already-indexed paper — produces a
 
 # /deep-index
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > **Naming note.** This skill was previously called `/rich-index`. Old
 > queue files (`.virgil/queue/<citekey>-richindex.json`) and catalog entries
 > (`indexed.state == "richIndexed"`) are still accepted on read; new
@@ -12,13 +39,12 @@ description: Apply structural cleanup to an already-indexed paper — produces a
 **Structurally improve a paper's `main.tex`** — transform raw extracted
 text into properly structured LaTeX that is useful to a human reader.
 
-All paths are relative to the **library root**, which is your **current working directory**. The default convention is `~/Virgil-Library`, but the user may have picked a different folder (e.g. `~/Documents/Virgil-Library`). Resolve the library root in this order:
-
-1. `$VIRGIL_LIBRARY_ROOT` if set;
-2. otherwise your current cwd, **iff** it contains both `master.bib` and `.virgil/catalog.json`;
-3. otherwise `~/Virgil-Library`.
-
-`cd` into that directory before running any of the commands below — every relative path (`papers/<citekey>/...`, `.virgil/...`, `master.bib`, `references.bib`) and every helper script under `.virgil/scripts/` resolves against cwd. If none of the three resolutions yields a valid library, abort with a one-line error pointing the user to set up the library first.
+All paths below resolve against `$library_root` (the library root the
+bootstrap just located). Every relative path (`papers/<citekey>/...`,
+`.virgil/...`, `master.bib`, `references.bib`) and every helper script
+under `.virgil/scripts/library/` resolves against the cwd the bootstrap
+set. If the bootstrap printed "No library set up", honour its exit code
+and stop — don't try to recover by hand.
 
 > **Where any memo you write goes.** Dev memos (skill retros, ideas for
 > improving this pipeline) → `.virgil/memos/<YYYY-MM-DD>-<slug>.md`.
@@ -55,7 +81,7 @@ After §Preflight (resume detection) but before Step 1, run a fast
 genre classifier:
 
 ```bash
-python3 .virgil/scripts/detect_genre.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/detect_genre.py papers/$ARGUMENTS
 ```
 
 Emits one of: `book` / `article` / `multi-article-pdf` / `scanned-ocr` /
@@ -130,9 +156,9 @@ re-runs can then `--fresh`-restore.
 ### 1. Run deterministic preprocessing
 
 ```bash
-python3 .virgil/scripts/fix_invisibles.py papers/$ARGUMENTS/main.tex
-python3 .virgil/scripts/deep_preprocess.py papers/$ARGUMENTS/main.tex
-python3 .virgil/scripts/repair_pgmarks.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/fix_invisibles.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/deep_preprocess.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex
 ```
 
 Three deterministic passes:
@@ -418,7 +444,7 @@ cat > /tmp/$ARGUMENTS-deepindex-patch.json <<'EOF'
   }
 }
 EOF
-python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
   --patch-file /tmp/$ARGUMENTS-deepindex-patch.json
 rm /tmp/$ARGUMENTS-deepindex-patch.json
 ```
@@ -442,7 +468,7 @@ cat > /tmp/$ARGUMENTS-deepindex-notify.json <<'EOF'
   "summary": "Deep-indexed $ARGUMENTS"
 }
 EOF
-python3 .virgil/scripts/append_inbox_item.py \
+python3 .virgil/scripts/library/append_inbox_item.py \
   --item-file /tmp/$ARGUMENTS-deepindex-notify.json
 rm /tmp/$ARGUMENTS-deepindex-notify.json
 ```
@@ -569,7 +595,7 @@ shrink, not grow.
 After steps 1–9 complete for the pass, run the audit script:
 
 ```bash
-python3 .virgil/scripts/audit_deepindex.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS
 ```
 
 The script emits a punch-list of concrete cleanup issues that remain

@@ -4,6 +4,33 @@ description: Fuse \pgmark{N} pagination from a PDF alternate into an already-ind
 
 # /fuse-alternate $ARGUMENTS
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 **Add page-anchor pagination from a PDF alternate to an already-indexed
 paper.** Use this when the paper was indexed from a DOCX or TEX source
 (clean text, but no `\pgmark{N}` markers because Word/LaTeX have no
@@ -72,7 +99,7 @@ If the catalog row already has:
 From the library root:
 
 ```bash
-python3 .virgil/scripts/fuse_alternate.py <citekey> --alternate <pdf-filename>
+python3 .virgil/scripts/library/fuse_alternate.py <citekey> --alternate <pdf-filename>
 ```
 
 The script orchestrates: read main.tex, extract anchors from PDF, align
@@ -113,7 +140,7 @@ cat > /tmp/$ARGUMENTS-fuse-patch.json <<'EOF'
   }
 }
 EOF
-python3 .virgil/scripts/update_catalog_entry.py "$ARGUMENTS" \
+python3 .virgil/scripts/library/update_catalog_entry.py "$ARGUMENTS" \
   --patch-file /tmp/$ARGUMENTS-fuse-patch.json
 rm /tmp/$ARGUMENTS-fuse-patch.json
 ```
@@ -147,7 +174,7 @@ cat > /tmp/$ARGUMENTS-fuse-notify.json <<'EOF'
   "summary": "Fused <N> pgmarks from <pdf>"
 }
 EOF
-python3 .virgil/scripts/append_inbox_item.py \
+python3 .virgil/scripts/library/append_inbox_item.py \
   --item-file /tmp/$ARGUMENTS-fuse-notify.json
 rm /tmp/$ARGUMENTS-fuse-notify.json
 ```

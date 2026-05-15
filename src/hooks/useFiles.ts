@@ -14,6 +14,7 @@ import {
 } from "@/lib/storage";
 import {
   forgetWindow,
+  getDocHandle,
   OUTER_LIBRARY_PREFIX,
   OUTER_LIBRARY_ROOT_ID,
   OUTER_PAPER_PREFIX,
@@ -24,6 +25,8 @@ import {
   type ActivePaneKind,
   type FsaDocMeta,
 } from "@/lib/doc-index";
+import { syncSkillBundle } from "@library/lib/skill-sync";
+import { resolveLibraryRootPath } from "@library/lib/library-folder";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import {
   claimDoc,
@@ -480,6 +483,11 @@ export function useFiles() {
     [appendToOuterOrder],
   );
 
+  // De-dup paper-folder skill syncs across StrictMode double-mounts and
+  // re-activations within the same session. Keyed by docId; reset on
+  // page reload (which is also when a new bundle version arrives).
+  const syncedDocIdsRef = useRef<Set<string>>(new Set());
+
   /** Helper: register a doc and activate its tab. Re-opens of an
    *  existing doc go through the handoff flow when it's owned by
    *  another window. */
@@ -501,6 +509,23 @@ export function useFiles() {
       setCurrentDocId(meta.id);
       setActivePaneState("doc");
       bumpAccessed(meta.id);
+      // Fire-and-forget: write the Virgil skill bundle into this paper
+      // folder so any cowork session opened against it sees /editor:*
+      // and /library:* commands. Idempotent — the version-stamp dedup
+      // in skill-sync makes the steady-state cost a single FSA stat.
+      if (!syncedDocIdsRef.current.has(meta.id)) {
+        syncedDocIdsRef.current.add(meta.id);
+        void (async () => {
+          try {
+            const handle = await getDocHandle(meta.id);
+            if (!handle) return;
+            const libraryRoot = (await resolveLibraryRootPath()) ?? null;
+            await syncSkillBundle(handle, { libraryRoot });
+          } catch (err) {
+            console.error("[skill-sync] paper-folder sync failed", err);
+          }
+        })();
+      }
     },
     [appendToOuterOrder, bumpAccessed, claimWithHandoff],
   );

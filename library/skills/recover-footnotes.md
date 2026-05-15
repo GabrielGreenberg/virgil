@@ -5,6 +5,33 @@ arguments: <citekey>
 
 # Footnote recovery
 
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+---
+
 > Shared doctrine: read [_doctrine.md](_doctrine.md). Tier 4
 > (orphan-prefix attachment) always succeeds where a preceding body
 > paragraph exists; deferring footnote recovery is almost always a
@@ -48,14 +75,14 @@ Pre-pass to normalize OCR no-separator and glued-multi-footnote
 patterns:
 
 ```bash
-python3 .virgil/scripts/split_leaked_footnotes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/split_leaked_footnotes.py papers/$ARGUMENTS/main.tex
 ```
 
 Standard reattacher (now with bibliography-section / citation-arg /
 pgmark-preservation / TOC-skip guards + automatic Tier-4 fallback):
 
 ```bash
-python3 .virgil/scripts/reattach_leaked_footnotes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/reattach_leaked_footnotes.py papers/$ARGUMENTS/main.tex
 ```
 
 The script walks `main.tex` for paragraph-start patterns
@@ -69,7 +96,7 @@ the call site. Reports placed vs. unplaced counts.
 Unicode-superscript-prefixed leaks (modern OUP/Cambridge/Springer):
 
 ```bash
-python3 .virgil/scripts/reattach_super_footnotes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/reattach_super_footnotes.py papers/$ARGUMENTS/main.tex
 ```
 
 **PDF-native sources with footnote bodies leaked as paragraph prose.**
@@ -102,25 +129,25 @@ parses the bodies, and matches inline call sites within the parent
 chapter):
 
 ```bash
-python3 .virgil/scripts/reattach_chapter_end_notes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/reattach_chapter_end_notes.py papers/$ARGUMENTS/main.tex
 ```
 
 End-of-book Notes with `\subsection{Chapter N}` sub-dividers:
 
 ```bash
-python3 .virgil/scripts/reattach_unified_chapter_notes.py $ARGUMENTS
+python3 .virgil/scripts/library/reattach_unified_chapter_notes.py $ARGUMENTS
 ```
 
 End-of-document Notes with no per-chapter dividers:
 
 ```bash
-python3 .virgil/scripts/reattach_document_end_notes.py $ARGUMENTS
+python3 .virgil/scripts/library/reattach_document_end_notes.py $ARGUMENTS
 ```
 
 Popular-science page+hint endnotes (`<page>\t<hint>: <citation>`):
 
 ```bash
-python3 .virgil/scripts/reattach_page_hint_endnotes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/reattach_page_hint_endnotes.py papers/$ARGUMENTS/main.tex
 ```
 
 ## Pre-Tier 1 preflight (verify offsets and check for duplicates)
@@ -175,8 +202,8 @@ For batch footnote recovery across many pages, prefer the
 `extract_pdf_footnotes.py` + `reattach_footnotes.py` pipeline:
 
 ```bash
-python3 .virgil/scripts/extract_pdf_footnotes.py papers/$ARGUMENTS/$ARGUMENTS.pdf papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
-python3 .virgil/scripts/reattach_footnotes.py papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
+python3 .virgil/scripts/library/extract_pdf_footnotes.py papers/$ARGUMENTS/$ARGUMENTS.pdf papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
+python3 .virgil/scripts/library/reattach_footnotes.py papers/$ARGUMENTS/main.tex papers/$ARGUMENTS/virgil/footnotes-extracted.json
 ```
 
 The first script auto-detects chapter boundaries via `\section{}`
@@ -248,7 +275,7 @@ script against all remaining `[orphan fn N]`-tagged notes from prior
 passes:
 
 ```bash
-python3 .virgil/scripts/resolve_orphan_footnotes.py $ARGUMENTS
+python3 .virgil/scripts/library/resolve_orphan_footnotes.py $ARGUMENTS
 ```
 
 6-pattern matcher (`.N` / `<word>N` / `,N` / ` N` / `<close-punct>N`
@@ -275,7 +302,7 @@ For orphans whose body has a distinctive term that appears exactly
 once in the enclosing chapter:
 
 ```bash
-python3 .virgil/scripts/relocate_orphan_footnotes.py $ARGUMENTS
+python3 .virgil/scripts/library/relocate_orphan_footnotes.py $ARGUMENTS
 ```
 
 ## Tier 4 — Orphan-prefix attachment (always succeeds)
@@ -377,7 +404,7 @@ For footnotes ending mid-sentence (the body continuation got
 dropped at the page boundary):
 
 ```bash
-python3 .virgil/scripts/recover_truncated_footnote.py $ARGUMENTS --apply
+python3 .virgil/scripts/library/recover_truncated_footnote.py $ARGUMENTS --apply
 ```
 
 ## Post-recovery cleanup (always run, idempotent)
@@ -385,20 +412,20 @@ python3 .virgil/scripts/recover_truncated_footnote.py $ARGUMENTS --apply
 Strip over-escapes inside footnote bodies:
 
 ```bash
-python3 .virgil/scripts/unescape_footnote_bodies.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/unescape_footnote_bodies.py papers/$ARGUMENTS/main.tex
 ```
 
 Lift any `\footnote{}` that landed inside `\cite{}` brace args:
 
 ```bash
-python3 .virgil/scripts/fix_footnote_in_citation_args.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/fix_footnote_in_citation_args.py papers/$ARGUMENTS/main.tex
 ```
 
 Pull `\pgmark{}` literals out of footnote bodies (otherwise the
 renderer silently swallows them):
 
 ```bash
-python3 .virgil/scripts/fix_pgmark_in_footnotes.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/fix_pgmark_in_footnotes.py papers/$ARGUMENTS/main.tex
 ```
 
 ## Update `entry.indexed.footnoteCount` after re-attachment

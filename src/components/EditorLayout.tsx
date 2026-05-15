@@ -12,6 +12,7 @@ import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
 import { useMyPapers } from "@/hooks/useMyPapers";
+import { useUpdateAvailable, applyUpdate } from "@/hooks/useUpdateAvailable";
 import { DocPipeline } from "./editor-layout/DocPipeline";
 import { useSelectedAnchorSync } from "@/hooks/useSelectedAnchorSync";
 import { CollabProvider, COLLAB_INERT, type CollabHook } from "@/hooks/useCollab";
@@ -1088,6 +1089,7 @@ export default function EditorLayout() {
   // the ctrl+click picker. Read-only here — the button itself calls toggle().
   const { on: prefModeOn, toggle: togglePrefMode } = usePreferenceMode();
   const helperMode = useHelperMode();
+  const updateAvailable = useUpdateAvailable();
   // Zen mode — render-gates editor chrome (strips, panels, MenuBar,
   // marginalia, popouts) so the document area appears alone. Top bar
   // stays so the button is always reachable. See useZenMode.ts.
@@ -4506,6 +4508,29 @@ export default function EditorLayout() {
         )}
 
         <div className="shrink-0 flex items-center px-2">
+          {/* Service-worker update banner. Visible whenever a new SW
+              has installed and is waiting (see public/sw.js +
+              ServiceWorkerRegistration.tsx). Click → posts SKIP_WAITING
+              → SW activates → controllerchange fires → page reloads
+              and pulls the new skill bundle into folders on next open.
+              Sits before the topbarRightCollapsed gate so an update
+              prompt isn't hidden by the user's collapsed-right setting. */}
+          {updateAvailable && (
+            <button
+              onClick={applyUpdate}
+              className="topbarbtn"
+              title="Refresh to apply the Virgil update"
+              data-helper="Virgil update"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2.5 8a5.5 5.5 0 0 1 9.4-3.9L13.5 5.5" />
+                <path d="M13.5 2.5v3h-3" />
+                <path d="M13.5 8a5.5 5.5 0 0 1-9.4 3.9L2.5 10.5" />
+                <path d="M2.5 13.5v-3h3" />
+              </svg>
+              Virgil update — click to refresh
+            </button>
+          )}
           {!prefs.topbarRightCollapsed && (<>
           {/* ── Status-indicator group (left of divider) ───────────────
               Passive indicators for system-wide modes that are

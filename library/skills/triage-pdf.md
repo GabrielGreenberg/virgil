@@ -4,7 +4,37 @@ description: Triage one source file (PDF, DOCX, .tex, or .bib) in unsorted/ — 
 
 # /triage-pdf $ARGUMENTS
 
-Take a freshly-dropped source file in `~/Virgil-Library/unsorted/<filename>`
+## Bootstrap (run this first)
+
+This skill operates on the user's Virgil Library. Resolve the library
+root and cd into it before running anything else — that way the skill
+works from any Virgil-managed folder.
+
+```bash
+# Find library_path.py — synced PWA folders have it under .virgil/scripts/,
+# the Virgil source repo has it under editor/scripts/. Either is fine.
+library_path_py=""
+for candidate in .virgil/scripts/editor/library_path.py editor/scripts/library_path.py; do
+  [ -f "$candidate" ] && { library_path_py="$candidate"; break; }
+done
+if [ -z "$library_path_py" ]; then
+  echo "No library set up. Pick a library in Virgil first."
+  exit 1
+fi
+library_root="$(python3 "$library_path_py" --get 2>/dev/null)" || {
+  echo "No library set up. Pick a library in Virgil first."
+  echo "  (Or run: python3 $library_path_py --set <abs-path>)"
+  exit 1
+}
+cd "$library_root"
+export VIRGIL_LIBRARY_ROOT="$library_root"
+```
+
+All paths in the rest of this skill resolve against the library root.
+
+---
+
+Take a freshly-dropped source file in `$library_root/unsorted/<filename>`
 and turn it into a properly-located paper folder + queue request.
 
 Supported source kinds:
@@ -136,10 +166,10 @@ directory).
         "at": "<ISO>"
       }
       EOF
-      python3 .virgil/scripts/append_inbox_item.py \
+      python3 .virgil/scripts/library/append_inbox_item.py \
         --item-file /tmp/variant-notify.json
       rm /tmp/variant-notify.json
-      python3 .virgil/scripts/bump_catalog_version.py
+      python3 .virgil/scripts/library/bump_catalog_version.py
       ```
       Then stop.
    3. If `<base>.<ext>` exists on disk but no catalog entry maps to
@@ -188,7 +218,7 @@ directory).
    cat > /tmp/<citekey>-triage-fields.json <<'EOF'
    { "author": "...", "title": "...", "year": "<YYYY>", ... }
    EOF
-   python3 .virgil/scripts/update_master_bib_entry.py "<citekey>" \
+   python3 .virgil/scripts/library/update_master_bib_entry.py "<citekey>" \
      --entry-type "<type>" \
      --fields-file /tmp/<citekey>-triage-fields.json \
      --bib-state unverified
@@ -312,10 +342,10 @@ directory).
       "summary": "Triaged <filename> → <citekey> (<entry_type>)",
       "at": "<ISO>" }
     EOF
-    python3 .virgil/scripts/append_inbox_item.py \
+    python3 .virgil/scripts/library/append_inbox_item.py \
       --item-file /tmp/<citekey>-triaged.json
     rm /tmp/<citekey>-triaged.json
-    python3 .virgil/scripts/bump_catalog_version.py
+    python3 .virgil/scripts/library/bump_catalog_version.py
     ```
 
 ## Reply format

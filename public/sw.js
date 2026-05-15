@@ -8,6 +8,13 @@
 //
 // Bump CACHE_NAME whenever you ship a change the SW could otherwise serve
 // stale. The activate handler purges every cache whose name doesn't match.
+//
+// Update strategy: we DO NOT call skipWaiting() or clients.claim() on
+// install/activate. A new SW enters "waiting" state and stays there
+// until the app posts {type:"SKIP_WAITING"} from a user click on the
+// "Update available" banner in the Virgil bar. This keeps existing tabs
+// stable across silent background SW installs and lets the user pick
+// their refresh moment. See src/components/ServiceWorkerRegistration.tsx.
 const CACHE_NAME = "virgil-v4";
 
 // Cross-origin hosts whose responses we deliberately cache so they keep
@@ -31,7 +38,8 @@ const IS_DEV =
 const OFFLINE_FALLBACK = new URL("./", self.location.href).href;
 
 self.addEventListener("install", () => {
-  self.skipWaiting();
+  // Do NOT skipWaiting() here. The new SW sits in "waiting" until the
+  // user clicks the in-app update banner, which posts SKIP_WAITING.
 });
 
 self.addEventListener("activate", (event) => {
@@ -41,9 +49,19 @@ self.addEventListener("activate", (event) => {
       await Promise.all(
         keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)),
       );
-      await self.clients.claim();
+      // Do NOT clients.claim() here. Once the user accepts the update,
+      // the app reloads on `controllerchange`; the new SW takes over
+      // cleanly on the fresh page. Auto-claiming would also seize
+      // control of any other open tabs the user hasn't explicitly
+      // refreshed, which is the exact behavior we removed.
     })(),
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

@@ -59,6 +59,14 @@ export async function GET(
     }
   }
 
+  // /api/dev-library/_meta → metadata about the dev library (abs path)
+  // Used by the skill-sync engine to populate .virgil/library-path.json
+  // in dev-storage mode (FSA handles don't expose abs paths, but in dev
+  // the library is always at <repoCwd>/library-data).
+  if (segments[0] === "_meta" && segments.length === 1) {
+    return NextResponse.json({ libraryRoot: DATA_DIR });
+  }
+
   // /api/dev-library/_exists/<path>... → existence check (200 vs 404)
   if (segments[0] === "_exists") {
     const subPath = segments.slice(1);

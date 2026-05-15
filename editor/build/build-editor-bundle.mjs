@@ -1,25 +1,39 @@
 #!/usr/bin/env node
-// Mirror the editor's skill markdown into the repo's `.claude/commands/editor/`
-// folder so any Claude Code session opened in this repo surfaces them as
-// `/editor/<name>` slash commands.
+// Build the editor's skill bundle and mirror its skills into Virgil's
+// project-level Claude Code commands.
 //
-// Editor skills run against a user-picked paper folder (passed as `<docPath>`),
-// so unlike the library bundle we do NOT emit a `public/skill-bundle/` for
-// end-user sync today. Skills shell out to Python helpers via paths relative
-// to this repo (`editor/scripts/*.py`); when an end-user-folder sync becomes
-// needed, this script can grow a bundle output the way `library/build/
-// build-skill-bundle.mjs` does.
+// Two outputs:
+//
+//   1. public/skill-bundle/editor/<files>   — shipped as static assets
+//                                             (Next.js `output: "export"`).
+//      The frontend's skill-sync engine fetches the meta-manifest at
+//      /skill-bundle/bundle-manifest.json (assembled by
+//      scripts/build-meta-bundle.mjs from this builder's output and the
+//      library builder's output), compares against the on-disk version
+//      stamp in each Virgil-managed folder, and overwrites stale files.
+//
+//   2. .claude/commands/editor/<skill>.md   — mirrored from editor/skills/.
+//      Surfaces the editor's slash commands as /editor:<skill> in any
+//      session opened in this repo (developer workflow).
+//
+// Sources:
+//   editor/skills/*.md                              (skill prompts)
+//   editor/scripts/*.py                             (helper scripts)
+//
+// Versioning is content-addressed: a sha256 hash of the deterministic
+// concatenation of file contents becomes the bundle version.
 
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "../..");
-const skillsSrcDir = join(repoRoot, "editor", "skills");
+const bundleDir = join(repoRoot, "public", "skill-bundle", "editor");
 const claudeCommandsDir = join(repoRoot, ".claude", "commands", "editor");
 
-async function listSkillFiles(dir) {
+async function listFilesIn(dir, predicate) {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -28,26 +42,98 @@ async function listSkillFiles(dir) {
     throw err;
   }
   return entries
-    .filter((e) => e.isFile() && e.name.endsWith(".md"))
+    .filter((e) => e.isFile() && predicate(e.name))
     .map((e) => e.name)
     .sort();
 }
 
-async function main() {
-  const names = await listSkillFiles(skillsSrcDir);
+async function fileExists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
+async function buildSources() {
+  const skillNames = await listFilesIn(
+    join(repoRoot, "editor", "skills"),
+    (n) => n.endsWith(".md"),
+  );
+  const scriptNames = await listFilesIn(
+    join(repoRoot, "editor", "scripts"),
+    (n) => n.endsWith(".py"),
+  );
+
+  return [
+    ...skillNames.map((name) => ({
+      repoPath: `editor/skills/${name}`,
+      bundlePath: `claude-commands/${name}`,
+    })),
+    ...scriptNames.map((name) => ({
+      repoPath: `editor/scripts/${name}`,
+      bundlePath: `scripts/${name}`,
+    })),
+  ];
+}
+
+async function mirrorSkillsIntoClaudeCommands(skillNames) {
   await rm(claudeCommandsDir, { recursive: true, force: true });
   await mkdir(claudeCommandsDir, { recursive: true });
-
-  for (const name of names) {
-    const src = join(skillsSrcDir, name);
+  for (const name of skillNames) {
+    const src = join(repoRoot, "editor", "skills", name);
     const dest = join(claudeCommandsDir, name);
     const content = await readFile(src);
     await writeFile(dest, content);
   }
+}
+
+async function main() {
+  await rm(bundleDir, { recursive: true, force: true });
+  await mkdir(bundleDir, { recursive: true });
+
+  const sources = await buildSources();
+  const filesForManifest = [];
+  const hash = createHash("sha256");
+  const skillNames = [];
+
+  for (const src of sources) {
+    const absSource = join(repoRoot, src.repoPath);
+    if (!(await fileExists(absSource))) {
+      throw new Error(`Editor bundle source missing: ${src.repoPath}`);
+    }
+    const content = await readFile(absSource);
+    const dest = join(bundleDir, src.bundlePath);
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFile(dest, content);
+
+    hash.update(src.bundlePath);
+    hash.update("\0");
+    hash.update(content);
+    hash.update("\0");
+
+    filesForManifest.push(src.bundlePath);
+    if (src.bundlePath.startsWith("claude-commands/")) {
+      skillNames.push(src.bundlePath.slice("claude-commands/".length));
+    }
+  }
+
+  const version = hash.digest("hex").slice(0, 12);
+  const manifest = {
+    version,
+    generatedAt: new Date().toISOString(),
+    files: filesForManifest,
+  };
+  await writeFile(
+    join(bundleDir, "bundle-manifest.json"),
+    JSON.stringify(manifest, null, 2) + "\n",
+  );
+
+  await mirrorSkillsIntoClaudeCommands(skillNames);
 
   console.log(
-    `[editor-bundle] ${names.length} skills → ${relative(repoRoot, claudeCommandsDir)}/`,
+    `[editor-bundle] v${version} — ${filesForManifest.length} files → ${relative(repoRoot, bundleDir)}/, ${skillNames.length} skills → ${relative(repoRoot, claudeCommandsDir)}/`,
   );
 }
 
