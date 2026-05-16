@@ -5,6 +5,7 @@ import { useCatalog } from "@library/hooks/useCatalog";
 import { useMasterBib } from "@library/hooks/useMasterBib";
 import { useDropPdf } from "@library/hooks/useDropPdf";
 import { useNotificationStream } from "@library/hooks/useNotificationStream";
+import { useSetupStatus } from "@library/hooks/useSetupStatus";
 import { useUnsortedPdfs } from "@library/hooks/useUnsortedPdfs";
 import { useUnsortedBibEntries } from "@library/hooks/useUnsortedBibEntries";
 import { useLibraryTabs, type UseLibraryTabsOptions } from "@library/hooks/useLibraryTabs";
@@ -80,6 +81,7 @@ export default function LibraryView({
     useUnsortedBibEntries(handle);
   const dropPdf = useDropPdf(handle);
   const notifications = useNotificationStream(handle);
+  const setupStatus = useSetupStatus(handle);
 
   // Resizable middle panel — width persisted in localStorage so it
   // survives reloads. (Key is named "left" for back-compat with the
@@ -226,8 +228,8 @@ export default function LibraryView({
     ]);
   }, [lastSync]);
   const allToasts = useMemo(
-    () => [...syncToasts, ...notifications],
-    [syncToasts, notifications],
+    () => [...syncToasts, ...setupStatus.notice, ...notifications],
+    [syncToasts, setupStatus.notice, notifications],
   );
 
   // Selection drives row-highlighting only — opening a paper now spawns

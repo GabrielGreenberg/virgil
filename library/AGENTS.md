@@ -213,13 +213,26 @@ entries flagged for that subskill.
 
 ## Required deps for the Python pipeline
 
-- Python 3.10+, `PyMuPDF` (`pip3 install --user --break-system-packages -r library/scripts/requirements.txt`)
+Run `/library/setup` once per library to install everything below in one shot.
+The skill also pre-downloads marker's ~1 GB of ML weights into
+`<library>/.virgil/models/huggingface/` so they're cached library-locally
+(not in the user's global `~/.cache/huggingface/`) and shared across
+index-paper + deep-index PDF re-reads.
+
+- Python 3.10+
 - Poppler (`brew install poppler`) — provides `pdfinfo`, `pdftotext`, `pdffonts`
+- `PyMuPDF` — printed-page-number detection + the explicit `--extractor pymupdf` debug path
+- `marker-pdf` — **default** PDF extractor (layout-aware, equation-aware, footnote-zone-aware)
+- `ocrmypdf` — required for scanned-PDF input (the pipeline now fails loudly if a scanned PDF arrives and ocrmypdf is missing, instead of silently emitting a near-empty extraction)
+- `tesseract` (`brew install tesseract` / `apt install tesseract-ocr`) — ocrmypdf's backend; system binary, not pip-installable. `/library/setup` checks it's present and prints the install hint when missing.
 
-## Optional deps (the pipeline degrades gracefully if missing)
-
-- `marker-pdf` — better layout-aware extraction for academic PDFs (~1GB model on first use)
-- `ocrmypdf` + `tesseract` (`brew install tesseract`) — needed only for scanned PDFs
+> The previous "optional, degrades gracefully" stance was costing the
+> deep-index pipeline a substantial amount of recovery work — pymupdf
+> alone drops equations, footnote zones, drop caps, and most layout
+> information, and downstream recovery scripts exist to compensate.
+> The new policy: eager install at setup, fail loudly on missing tools,
+> share the model cache across the indexing and deep-indexing PDF
+> re-read paths.
 
 ## Deep indexing
 

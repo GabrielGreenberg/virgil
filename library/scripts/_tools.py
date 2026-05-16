@@ -87,25 +87,154 @@ class Tools:
         rows = [
             f"  poppler:    pdfinfo={self.pdfinfo}, pdftotext={self.pdftotext}, pdffonts={self.pdffonts}",
             f"  pymupdf:    {self.pymupdf}",
-            f"  marker:     {self.marker}  (optional, layout-aware extraction)",
-            f"  ocrmypdf:   {self.ocrmypdf}  (optional, scanned-PDF preprocess)",
-            f"  tesseract:  {self.tesseract}  (optional, ocrmypdf backend)",
+            f"  marker:     {self.marker}  (default PDF extractor — install via /library/setup)",
+            f"  ocrmypdf:   {self.ocrmypdf}  (required for scanned-PDF input — install via /library/setup)",
+            f"  tesseract:  {self.tesseract}  (ocrmypdf backend — brew install tesseract)",
             f"  python-docx:{self.python_docx}  (required only when indexing .docx sources)",
         ]
         return "\n".join(rows)
 
 
+def _has_binary(name: str) -> bool:
+    """Check PATH plus known Homebrew install dirs.
+
+    A common footgun: the user installs a brew package, then re-runs a
+    skill from a shell whose PATH doesn't yet include `/opt/homebrew/bin`
+    (or `/usr/local/bin` on Intel Macs). Without this fallback,
+    `tesseract` / `ocrmypdf` etc. show up as missing for an entire
+    session after install. The hardcoded paths are a stable contract
+    Homebrew commits to.
+    """
+    if shutil.which(name):
+        return True
+    for prefix in ("/opt/homebrew/bin", "/usr/local/bin"):
+        if (Path(prefix) / name).exists():
+            return True
+    return False
+
+
 def detect() -> Tools:
     return Tools(
-        pdfinfo=shutil.which("pdfinfo") is not None,
-        pdftotext=shutil.which("pdftotext") is not None,
-        pdffonts=shutil.which("pdffonts") is not None,
+        pdfinfo=_has_binary("pdfinfo"),
+        pdftotext=_has_binary("pdftotext"),
+        pdffonts=_has_binary("pdffonts"),
         pymupdf=importlib.util.find_spec("fitz") is not None,
         marker=importlib.util.find_spec("marker") is not None,
-        ocrmypdf=shutil.which("ocrmypdf") is not None,
-        tesseract=shutil.which("tesseract") is not None,
+        ocrmypdf=_has_binary("ocrmypdf"),
+        tesseract=_has_binary("tesseract"),
         python_docx=importlib.util.find_spec("docx") is not None,
     )
+
+
+# ── model cache (library-local) ───────────────────────────────────────
+#
+# Heavy ML models (marker's ~1 GB of weights) live inside the library at
+# `<library>/.virgil/models/huggingface/`, not in the user's global
+# `~/.cache/huggingface/`. The choice keeps each library self-contained
+# (portable across machines / backed up with the library), and lets the
+# index-paper pipeline and the deep-index PDF re-reads share one cache.
+#
+# Setup script writes the manifest; every other script that imports
+# `marker` MUST call `ensure_model_env(library)` first so huggingface_hub
+# stamps the right cache directory before it loads its config.
+
+
+SETUP_MANIFEST_REL = ".virgil/models/manifest.json"
+
+
+def models_dir(library: Path) -> Path:
+    """Where library-local ML models live."""
+    return library / ".virgil" / "models"
+
+
+def hf_cache_dir(library: Path) -> Path:
+    """Where huggingface_hub puts marker's model snapshots."""
+    return models_dir(library) / "huggingface"
+
+
+def datalab_cache_dir(library: Path) -> Path:
+    """Where surya-ocr (marker's OCR/layout/table backend) puts its
+    `datalab/models/<name>/<date>` weight tree.
+
+    Surya's settings module reads MODEL_CACHE_DIR as a plain env var
+    (pydantic-settings, no prefix) and defaults to
+    `platformdirs.user_cache_dir("datalab")/models` — i.e. somewhere
+    under `~/Library/Caches/datalab/` or `~/.cache/datalab/`. Without
+    this redirect, the largest chunk of marker's footprint (3 GB+ of
+    surya weights) lands in the user's global cache despite HF_HOME
+    pointing into the library.
+    """
+    return models_dir(library) / "datalab"
+
+
+def ensure_model_env(library: Path) -> None:
+    """Point all marker-related model caches at the library-local dirs.
+
+    Must be called BEFORE `import marker` / `import surya` / any
+    huggingface_hub usage. Idempotent: safe to call repeatedly.
+
+    Sets three env vars:
+    - `HF_HOME` + `TRANSFORMERS_CACHE` → `<library>/.virgil/models/huggingface/`
+      (covers anything pulled through huggingface_hub).
+    - `MODEL_CACHE_DIR` → `<library>/.virgil/models/datalab/`
+      (covers surya-ocr's weight tree, which is the bulk of the
+      download).
+
+    No-op when the manifest is missing — the caller can still proceed
+    with the global cache, but the setup script hasn't run yet so the
+    user will see a slow first-use download. Higher layers should
+    surface the missing-setup signal via `setup_manifest_path` /
+    `read_setup_manifest`.
+    """
+    hf = hf_cache_dir(library)
+    datalab = datalab_cache_dir(library)
+    hf.mkdir(parents=True, exist_ok=True)
+    datalab.mkdir(parents=True, exist_ok=True)
+    os.environ["HF_HOME"] = str(hf)
+    os.environ["TRANSFORMERS_CACHE"] = str(hf)
+    os.environ["MODEL_CACHE_DIR"] = str(datalab)
+
+
+def setup_manifest_path(library: Path) -> Path:
+    return library / SETUP_MANIFEST_REL
+
+
+def read_setup_manifest(library: Path) -> dict | None:
+    """Return the parsed setup manifest, or None if it doesn't exist / is malformed.
+
+    The presence of a valid manifest is the canonical signal that
+    `/library/setup` has run for this library.
+    """
+    p = setup_manifest_path(library)
+    if not p.exists():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except Exception:
+        return None
+
+
+def require_setup_or_die(library: Path, *, for_tool: str = "marker-pdf") -> None:
+    """Raise RuntimeError with the install command if setup hasn't run.
+
+    `for_tool` is the package name surfaced in the error message — use
+    whichever heavy tool the caller is about to invoke (marker-pdf,
+    ocrmypdf, etc.) so the user sees a relevant pointer.
+    """
+    manifest = read_setup_manifest(library)
+    if manifest is None:
+        raise RuntimeError(
+            f"{for_tool} requires Virgil Library setup to run first.\n"
+            f"Library: {library}\n"
+            f"Fix: run /library/setup  (or `python3 .virgil/scripts/library/setup.py`)"
+        )
+    tool_state = manifest.get("tools", {}).get(for_tool, {})
+    if not tool_state.get("installed"):
+        raise RuntimeError(
+            f"{for_tool} not installed in this library's setup.\n"
+            f"Manifest: {setup_manifest_path(library)}\n"
+            f"Fix: run /library/setup --force  to (re)install."
+        )
 
 
 # ── small utilities ───────────────────────────────────────────────────

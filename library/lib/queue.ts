@@ -174,7 +174,7 @@ async function exists(
 }
 
 export interface NotificationItem {
-  kind: "indexed" | "authenticated" | "failed" | "triaged";
+  kind: "indexed" | "authenticated" | "failed" | "triaged" | "setup-needed";
   citekey?: string;
   at: string;
   summary: string;

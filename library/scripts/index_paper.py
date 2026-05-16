@@ -52,7 +52,7 @@ from _tools import (
 )
 from pgmark import detect_print_pages
 from pgmark_validate import validate as pgmark_validate
-from extract import extract_to_json, _ocr_if_needed
+from extract import extract_to_json, _ocr_if_needed, _classify_pdf
 import extract_docx
 from tex_emit import emit
 from bib_auth import authenticate, assert_title_clean
@@ -244,16 +244,44 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
     page_map: list[dict] = []
     layout_position: str = "unknown"
     if source_ext == "pdf":
-        # 1. Classify scanned vs digital, OCR if needed.
+        # 1. Classify scanned vs digital. Scanned PDFs REQUIRE ocrmypdf
+        # — no longer optional. The eager-install model (/library/setup)
+        # means ocrmypdf is expected to be present; if it isn't and the
+        # PDF is scanned, fail loudly with the install command rather
+        # than silently emitting a near-empty extraction.
         log("Step 1: classify scanned vs digital")
-        backup_dir = library / "papers" / citekey / ".originals"
-        if tools.ocrmypdf:
+        cls = _classify_pdf(str(source_path))
+        if cls["scanned"]:
+            log(f"  Scanned PDF detected (fonts={cls['fonts']}, words={cls['word_count']})")
+            if not tools.ocrmypdf:
+                raise RuntimeError(
+                    "Scanned PDF detected, but ocrmypdf is not installed.\n"
+                    f"Source: {source_path.name}\n"
+                    "Fix: run /library/setup  (installs ocrmypdf into the library)."
+                )
+            if not tools.tesseract:
+                raise RuntimeError(
+                    "Scanned PDF detected; ocrmypdf is installed but its "
+                    "tesseract backend is missing.\n"
+                    "Fix: brew install tesseract  (macOS) / "
+                    "apt install tesseract-ocr  (Debian/Ubuntu)\n"
+                    "Then re-run /library/setup to refresh the manifest."
+                )
+            backup_dir = library / "papers" / citekey / ".originals"
             backup_dir.mkdir(parents=True, exist_ok=True)
             backup = backup_dir / f"{citekey}.pdf"
             if _ocr_if_needed(str(source_path), str(source_path) + ".ocr.tmp"):
                 shutil.copy2(str(source_path), str(backup))
                 shutil.move(str(source_path) + ".ocr.tmp", str(source_path))
                 log(f"  Ran ocrmypdf — original backed up to {backup}")
+            else:
+                raise RuntimeError(
+                    f"ocrmypdf failed on {source_path.name} "
+                    "(returned non-zero or produced no output). "
+                    "Check the ocrmypdf install and re-run."
+                )
+        else:
+            log("  Digital PDF — no OCR needed.")
 
         # 2. Detect printed page numbers.
         log("Step 2: detect printed page numbers (pymupdf)")
@@ -264,8 +292,15 @@ def index_paper(citekey: str, library: Path, *, prefer_extractor: str = "auto",
         log(f"  pagination layout: {layout_position}")
 
         # 3. Extract structural blocks (uses layout for asymmetric stripping).
+        # `library` flows through so marker's HF_HOME points at the
+        # library-local cache (.virgil/models/huggingface/).
         log(f"Step 3: structural extraction (prefer={prefer_extractor})")
-        extracted = extract_to_json(str(source_path), page_map, layout=layout_position)
+        extracted = extract_to_json(
+            str(source_path), page_map,
+            layout=layout_position,
+            prefer=prefer_extractor,
+            library=library,
+        )
     elif source_ext == "tex":
         # TeX source: it's already LaTeX. The "extraction" is a passthrough
         # copy at step 5 below — no structural extractor runs and the
@@ -530,7 +565,13 @@ def main() -> int:
     p.add_argument("citekey", help="Citation key, matches papers/<citekey>/<citekey>.pdf or papers/<citekey>/<citekey>.docx")
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
-    p.add_argument("--extractor", choices=["auto", "marker", "pymupdf"], default="auto")
+    p.add_argument(
+        "--extractor", choices=["auto", "marker", "pymupdf"], default="auto",
+        help=("auto / marker (default): use marker-pdf (requires /library/setup). "
+              "pymupdf: explicit fallback for debugging — loses equations, "
+              "footnote zones, drop caps, and most layout. Never selected "
+              "automatically."),
+    )
     p.add_argument("--no-bib-auth", action="store_true",
                    help="Skip the .bib authentication HTTP calls")
     p.add_argument("--no-fuse-pgmarks", action="store_true",

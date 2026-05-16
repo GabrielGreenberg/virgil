@@ -82,25 +82,31 @@ you to disambiguate something.
    rm /tmp/<citekey>-setup-failed.json
    ```
 
-2. **Confirm Python deps.** Run:
+2. **Confirm library setup has run.** Check for the setup manifest:
+   ```bash
+   test -f .virgil/models/manifest.json && echo OK || echo MISSING
+   ```
+   If MISSING, run `/library/setup` first — this skill assumes
+   marker-pdf is installed and its models are cached library-locally.
+   The orchestrator (Step 3) will fail loudly with the same pointer
+   if marker is missing, but checking up front avoids a wasted
+   pre-flight run.
+
+   Lightweight sanity check on the Python imports:
    ```bash
    python3 -c "import fitz, requests" 2>&1
    ```
-   If pymupdf is missing, run:
-   ```bash
-   pip3 install --user --break-system-packages -r .virgil/scripts/library/requirements.txt
-   ```
-   `python-docx` is also installed by that command — it's required only for
-   `.docx` sources.
+   If pymupdf is missing, your setup is corrupted — re-run
+   `/library/setup --force`.
 
 3. **Run the orchestrator.** From the library root:
    ```bash
    python3 .virgil/scripts/library/index_paper.py <citekey>
    ```
    For PDF sources, this:
-   - classifies scanned vs digital (OCRs scanned PDFs if `ocrmypdf` is installed)
+   - classifies scanned vs digital; if scanned, OCRs via ocrmypdf (FAILS LOUDLY if ocrmypdf or tesseract are missing — install them via `/library/setup` + `brew install tesseract`)
    - detects printed page numbers via `pymupdf` (header/footer band heuristic)
-   - extracts structural blocks (marker if installed, else pymupdf fast-path)
+   - extracts structural blocks via `marker-pdf` (the default; pymupdf is only used with explicit `--extractor pymupdf` for debugging)
    - emits `papers/<citekey>/main.tex` with `\pgmark{N}` markers
 
    For DOCX sources, the OCR + printed-page steps are skipped — Word's
@@ -400,8 +406,8 @@ commands to a generated preamble.
 
 ## Optional flags
 
-- `--extractor marker` — force marker (PDF only; skips pymupdf fast-path; slow on CPU).
-- `--extractor pymupdf` — force pymupdf (PDF only; skip marker even if installed).
+- `--extractor pymupdf` — explicit-fallback path (PDF only). Lose equations, footnote zones, drop caps, and most layout — only use to debug a marker regression on a specific paper. NOT selected automatically.
+- `--extractor marker` — synonym for the default `auto`. Marker is the only extractor selected automatically.
 - `--no-bib-auth` — skip the HTTP authentication step.
 
 ## When to fall back to Claude reasoning

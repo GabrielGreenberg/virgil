@@ -1,17 +1,35 @@
 # Required for the indexing pipeline.
+#
+# Install via the one-shot setup script (preferred — also pre-downloads
+# marker's ML weights into <library>/.virgil/models/ so they don't pollute
+# the user's global ~/.cache/huggingface/):
+#
+#   python3 .virgil/scripts/library/setup.py
+#
+# Or install the pip side directly:
+#
+#   pip3 install --user --break-system-packages -r requirements.txt
+#
+# `tesseract` is a system binary (not pip-installable). When ocrmypdf
+# needs it, install via `brew install tesseract` (macOS) or
+# `apt install tesseract-ocr` (Debian/Ubuntu). The setup script
+# detects missing tesseract and prints the right hint.
+#
+# `marker-pdf` ships ~1 GB of ML weights on first use; the setup script
+# pre-downloads them into the library so they're cached once and
+# shared across both /library/index-paper and the deep-index PDF
+# re-reads (footnote zone detection, etc).
+
 PyMuPDF>=1.24
 requests>=2.31
 rapidfuzz>=3.5
 python-docx>=1.1
-
-# Optional, larger downloads. The pipeline gracefully degrades if these
-# aren't installed:
-#   marker-pdf    — best-in-class academic-paper layout extraction. ~1GB
-#                   model download on first use; CPU-only ~30-90s/paper.
-#   ocrmypdf      — wraps Tesseract; only needed for scanned PDFs.
-#                   ocrmypdf itself also needs the `tesseract` system
-#                   binary (brew install tesseract).
-#
-# Install with:
-#   pip install marker-pdf
-#   pip install ocrmypdf  # also `brew install tesseract`
+# marker-pdf>=1.0 is load-bearing: pre-1.0 marker has a totally
+# different module layout (no `marker.converters`, no `JSONRenderer`)
+# that extract.py's structured walker can't drive. Pip's resolver
+# will silently backtrack to 0.2.6 on platforms where torch>=2.5
+# isn't installable (notably x86_64 macOS Python under Rosetta on
+# Apple Silicon) — the >=1.0 pin turns that silent downgrade into
+# a clean ResolutionImpossible error that the setup script surfaces.
+marker-pdf>=1.0
+ocrmypdf>=16.0

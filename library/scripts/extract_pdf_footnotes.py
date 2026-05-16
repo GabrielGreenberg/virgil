@@ -1,18 +1,24 @@
-"""Extract per-chapter footnote bodies from a PDF via `pdftotext -layout`.
+"""Extract per-chapter footnote bodies from a PDF.
+
+Two paths, tried in order:
+
+  1. **Marker** (default since /library/setup makes marker mandatory):
+     marker tags Footnote blocks explicitly with bbox + page metadata.
+     We harvest those, peel the leading number off each body, and
+     map by chapter via the PDF→printed offset.
+
+  2. **pdftotext + vertical-layout heuristic** (fallback): the legacy
+     path. A footnote body has the shape:
+         N                          <- marker line (just the number)
+             <indented body>...     <- body continuation (4+ space indent)
+     Used when marker fails to identify the footnote zone (column
+     layouts, graphical footers, marker bug) or isn't installed.
 
 Auto-detects chapter boundaries by scanning `main.tex` for top-level
 `\\section{...}` headings (excluding front-matter / references / indices),
 then maps each section to its starting printed page via the nearest
-following `\\pgmark{N}`. Walks each chapter's PDF pages and parses
-footnote bodies from the footer zone.
-
-A footnote body has the shape:
-    N                          <- marker line (just the number)
-        <indented body>...     <- body continuation (4+ space indent)
-
-The marker must be alone on its line; the following non-empty line must
-be heavily indented (≥4 spaces). Filters: keep only the trailing run of
-consecutive ascending integers (footnote numbers ascend within a page).
+following `\\pgmark{N}`. Walks each chapter's PDF pages and assigns
+extracted footnotes to chapters by page range.
 
 Output: a JSON map `{chapter_idx: {fn_num: body, ...}}` keyed by 1-based
 chapter index. Use with `reattach_footnotes.py` to place them at call
@@ -21,10 +27,9 @@ sites.
 Usage:
     python3 extract_pdf_footnotes.py papers/<citekey>/<citekey>.pdf papers/<citekey>/main.tex <out.json>
 
-Limitations:
+Limitations of the pdftotext fallback:
 - Column-format footnotes (multiple `N body N body N body` on one line)
-  are not detected by the vertical-layout heuristic. Fall back to
-  manual Tier-1 lookup or `reattach_footnotes.py`'s leaked-body parser.
+  are not detected by the vertical-layout heuristic.
 - The PDF-page → printed-page offset is auto-detected from the nearest
   existing `\\pgmark{N}` anchor.
 """
@@ -35,6 +40,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from extract import marker_footnote_zones_by_page  # noqa: E402
 
 
 # Section names that mark non-body chapters (front-matter, references,
@@ -186,17 +194,33 @@ def main() -> int:
         return 1
     offset = pdf_page_of_anchor - anchor_printed
 
+    # Tier 1a: marker pass. Runs once for the whole PDF, returns
+    # footnote zones grouped by PDF page. Empty dict means marker isn't
+    # available — fall through to the pdftotext heuristic per-page.
+    # Library context lets marker reuse the .virgil/models cache; CWD is
+    # the library root per the skill bootstrap (and per the existing
+    # convention used by index_paper.py).
+    marker_by_pdf_page = marker_footnote_zones_by_page(
+        str(pdf_path), library=Path.cwd(),
+    )
+    marker_pages_seen = set(marker_by_pdf_page.keys())
+
     by_chapter: dict[int, dict[int, str]] = {}
     for i, (ch_idx, title, start_printed) in enumerate(chapters):
         end_printed = chapters[i + 1][2] - 1 if i + 1 < len(chapters) else start_printed + 50
         by_chapter.setdefault(ch_idx, {})
         for printed in range(start_printed, end_printed + 1):
             pdf_page = printed + offset
-            try:
-                text = get_page_text(pdf_path, pdf_page)
-            except subprocess.CalledProcessError:
-                continue
-            for n, body in parse_footnotes_from_page_text(text):
+            # Prefer marker's Footnote blocks when present on this page.
+            if pdf_page in marker_pages_seen:
+                pairs = marker_by_pdf_page.get(pdf_page, [])
+            else:
+                try:
+                    text = get_page_text(pdf_path, pdf_page)
+                except subprocess.CalledProcessError:
+                    continue
+                pairs = parse_footnotes_from_page_text(text)
+            for n, body in pairs:
                 existing = by_chapter[ch_idx].get(n)
                 if existing and len(existing) > len(body):
                     continue
