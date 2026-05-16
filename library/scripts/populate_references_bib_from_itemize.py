@@ -65,7 +65,10 @@ def _parse_author_year(bold: str) -> tuple[list[str], str]:
     raw = re.split(r"\s*(?:,\s*and\s+|,\s+and\s+|,\s+|\s+and\s+|\s+&\s+)", author_str)
     surnames: list[str] = []
     for part in raw:
-        part = part.strip()
+        # Drop standalone or trailing 'et al' / 'et al.' so the chunk
+        # doesn't end with 'al' (which would otherwise be taken as the
+        # surname).
+        part = re.sub(r"\bet\s+al\.?\b", "", part, flags=re.IGNORECASE).strip()
         if not part:
             continue
         # `Lastname, F.` form — surname is before the first comma.

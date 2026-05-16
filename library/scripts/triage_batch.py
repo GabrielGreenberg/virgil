@@ -225,6 +225,33 @@ def _sanitize_byline(raw: str) -> str:
     return s
 
 
+def _first_byline_surname(line: str) -> str:
+    """Return the first author's surname from a Western-order byline line.
+
+    Strips 'et al' / 'et al.', splits on the first author boundary
+    (',' | '&' | '\\&' | ' and '), and returns the last whitespace word
+    of the first chunk with non-letter chars removed.
+    """
+    s = line.strip()
+    if not s:
+        return ""
+    # Drop ' et al' / ' et al.' (case-insensitive) — trailing form first
+    # so 'Doug DeCarlo et al.' collapses to 'Doug DeCarlo'.
+    s = re.sub(r"[,\s]*\bet\s+al\.?\s*$", "", s, flags=re.IGNORECASE).strip()
+    s = re.sub(r"\s+et\s+al\.?\s+", " ", s, flags=re.IGNORECASE).strip()
+    # ' and ' takes priority over ',' so 'Edvard I. Moser, Emilio Kropff
+    # and May-Britt Moser' yields 'Edvard I. Moser' as the first chunk.
+    first = re.split(
+        r"\s*(?:,\s*and\s+|,\s+|\s+and\s+|\s+&\s+|\s+\\&\s+)",
+        s,
+        maxsplit=1,
+    )[0]
+    toks = first.split()
+    if not toks:
+        return ""
+    return re.sub(r"[^A-Za-z]", "", toks[-1])
+
+
 _TITLE_DENYLIST_RE = re.compile(
     r"\bVol\.\s*\d"
     r"|\bpp\.\s*\d"
@@ -561,12 +588,7 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
         proposed_type = "article"
 
     # ── Citekey proposal ──────────────────────────────────────────────
-    content_lastname = ""
-    if byline:
-        # First non-empty token's last word as last-resort lastname.
-        first_byline_words = byline[0].split()
-        if first_byline_words:
-            content_lastname = re.sub(r"[^A-Za-z]", "", first_byline_words[-1])
+    content_lastname = _first_byline_surname(byline[0]) if byline else ""
     chosen_lastname = content_lastname if filename_mismatch else (filename_lastname or content_lastname)
 
     fallback = filename.rsplit(".", 1)[0]

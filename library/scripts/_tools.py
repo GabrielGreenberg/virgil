@@ -555,6 +555,46 @@ def emit_bib_entry(citekey: str, entry_type: str, fields: dict[str, str]) -> str
     return f"@{entry_type}{{{citekey},\n{field_lines}\n}}\n"
 
 
+def rename_master_bib_entry(library: Path, old: str, new: str) -> bool:
+    """Rewrite the citekey on a single master.bib entry. Self-locks.
+
+    Replaces the `@<type>{<old>,` opener with `@<type>{<new>,` and
+    leaves the rest of the entry untouched. Returns True if `old` was
+    found and rewritten, False otherwise. No-op (returns False) if the
+    file is missing.
+    """
+    master_path = library / "master.bib"
+    with lock_master_bib(library):
+        if not master_path.exists():
+            return False
+        text = master_path.read_text()
+        pattern = re.compile(
+            r"(@\w+\s*\{\s*)" + re.escape(old) + r"(\s*,)"
+        )
+        new_text, n = pattern.subn(rf"\g<1>{new}\g<2>", text, count=1)
+        if n == 0:
+            return False
+        _atomic_write_text(master_path, new_text)
+        return True
+
+
+def rename_catalog_entry(library: Path, old: str, new: str) -> bool:
+    """Mutate the `citekey` field of one catalog row. Self-locks.
+
+    Returns True if a row with citekey `old` was found and renamed.
+    Bumps `catalog-version.txt` on success via `write_catalog`.
+    """
+    with lock_catalog(library):
+        catalog = read_catalog(library)
+        for e in catalog.get("entries", []):
+            if e.get("citekey") == old:
+                e["citekey"] = new
+                e["updatedAt"] = _now()
+                write_catalog(library, catalog)
+                return True
+        return False
+
+
 def update_master_bib_entry(
     library: Path,
     citekey: str,

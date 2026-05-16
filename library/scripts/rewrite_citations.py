@@ -36,6 +36,15 @@ def normalize_surname(s: str) -> str:
     return s
 
 
+def _strip_et_al(s: str) -> str:
+    """Drop trailing or inline ' et al' / ' et al.' (case-insensitive).
+
+    Used before splitting an author-string on whitespace and taking the
+    last token — without this, 'Smith et al' would yield 'al'.
+    """
+    return re.sub(r"\s+et\s+al\.?", "", s, flags=re.IGNORECASE).strip()
+
+
 # Suffix derived from the citekey (e.g. `peacocke2017atemporal` → `a`).
 # Used to disambiguate alphabetic-year-suffix mentions like
 # "Peacocke 2017a" against bib keys that embed the suffix character.
@@ -127,13 +136,14 @@ def parse_bracket_keys(bib_path: Path) -> dict[str, str]:
             authors = re.split(r"\s+and\s+", m_author.group(1))
             yr2 = m_year.group(1)[-2:]
             if len(authors) == 1:
-                surname = authors[0].split(",")[0].strip() if "," in authors[0] else authors[0].split()[-1]
+                a0 = authors[0]
+                surname = a0.split(",")[0].strip() if "," in a0 else _strip_et_al(a0).split()[-1]
                 tag = re.sub(r"[^A-Za-z]", "", surname)[:3].upper() + yr2
                 out[tag] = citekey
             elif len(authors) <= 4:
                 tag = ""
                 for a in authors:
-                    sn = a.split(",")[0].strip() if "," in a else a.split()[-1]
+                    sn = a.split(",")[0].strip() if "," in a else _strip_et_al(a).split()[-1]
                     tag += re.sub(r"[^A-Za-z]", "", sn)[:1].upper()
                 tag += yr2
                 out[tag] = citekey
@@ -268,7 +278,7 @@ def rewrite_citations(text: str, bibmap: dict[tuple, str],
             continue
 
         et_al = "et al" in author_part.lower()
-        cleaned = re.sub(r"\s+et\s+al\.?", "", author_part).strip()
+        cleaned = _strip_et_al(author_part)
         # Split on author separators — include LaTeX-escaped `\&` so
         # `Siegelmann \& Fishman` parses to two surnames, not one.
         parts = re.split(r"\s+(?:and|&|\\&)\s+", cleaned)
@@ -457,8 +467,9 @@ def rewrite_bracket_author_year(
     def lookup(author: str, year: str) -> str | None:
         if not _is_valid_year(year):
             return None
-        last = normalize_surname(author.split()[-1])
-        if not _passes_surname_guard(author.split()[-1]):
+        tail = _strip_et_al(author).split()[-1]
+        last = normalize_surname(tail)
+        if not _passes_surname_guard(tail):
             return None
         ck = bibmap.get(((last,), year))
         if ck:
@@ -514,8 +525,9 @@ def rewrite_author_year_paren(
         author_part, year_part, page_part = m.group(1), m.group(2), m.group(3)
         if not _is_valid_year(year_part):
             return m.group(0)
-        last = normalize_surname(author_part.split()[-1])
-        if not _passes_surname_guard(author_part.split()[-1]):
+        tail = _strip_et_al(author_part).split()[-1]
+        last = normalize_surname(tail)
+        if not _passes_surname_guard(tail):
             return m.group(0)
         ck = (
             bibmap.get(((last,), year_part))
@@ -575,7 +587,7 @@ def rewrite_bracket_locator(
         # so particles like `van` / `de` get dropped (consistent with
         # parse_bib's tokenizer).
         first = re.split(r"\s+and\s+|\s+&\s+|,\s+", author_str)[0]
-        return normalize_surname(first.split()[-1])
+        return normalize_surname(_strip_et_al(first).split()[-1])
 
     def lookup(surname: str, year: str) -> str | None:
         return (
