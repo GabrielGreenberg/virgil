@@ -1,15 +1,43 @@
 {
   "placements": [
     {
+      "id": "wordcount",
+      "side": "right"
+    },
+    {
+      "id": "notes",
+      "side": "right"
+    },
+    {
+      "id": "todo",
+      "side": "right"
+    },
+    {
+      "id": "revisions",
+      "side": "right"
+    },
+    {
+      "id": "cutter",
+      "side": "right"
+    },
+    {
+      "id": "errors",
+      "side": "right"
+    },
+    {
+      "id": "archive",
+      "side": "right"
+    },
+    {
       "id": "search",
       "side": "left"
     },
     {
-      "id": "outline",
+      "id": "footnotes",
       "side": "left"
     },
     {
-      "id": "footnotes",
+      "id": "outline",
       "side": "left"
     },
     {
@@ -27,34 +55,6 @@
     {
       "id": "examples",
       "side": "left"
-    },
-    {
-      "id": "wordcount",
-      "side": "right"
-    },
-    {
-      "id": "notes",
-      "side": "right"
-    },
-    {
-      "id": "todo",
-      "side": "right"
-    },
-    {
-      "id": "revisions",
-      "side": "right"
-    },
-    {
-      "id": "errors",
-      "side": "right"
-    },
-    {
-      "id": "cutter",
-      "side": "right"
-    },
-    {
-      "id": "archive",
-      "side": "right"
     }
   ],
   "activeLeft": "omni",
