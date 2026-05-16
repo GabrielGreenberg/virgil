@@ -3513,7 +3513,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               >
                 <div
                   style={{
-                    paddingTop: 10,
+                    paddingTop: 6,
                     maxWidth:
                       'calc((100% - var(--menubar-width, 0px)) / 2 - 12px)',
                   }}
@@ -3525,12 +3525,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             {menuBar && (overrideEditor ?? editor) && (
               <div
                 data-tool-strip="text"
-                className="flex justify-center items-start shrink-0 sticky z-40"
+                className="flex justify-end items-start shrink-0 sticky z-40"
                 style={{
                   background: "var(--background)",
                   top: 0,
-                  height: 32,
-                  paddingTop: 4,
+                  height: 24,
+                  paddingRight: 4,
                   marginLeft: -4,
                   marginRight: -4,
                   pointerEvents: "none",
@@ -3623,15 +3623,15 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 white cap-inner with rounded top corners) with
                 marginBottom: -8 negating its flow contribution. The
                 cap-inner provides the visible top edge of the pod and
-                masks scrolling content beneath it. Sticks at top:32
-                directly under the docked MenuBar's 32px band when
+                masks scrolling content beneath it. Sticks at top:24
+                directly under the docked MenuBar's 24px band when
                 present (main editor); top:0 otherwise (Reader). */}
             {(overrideEditor ?? editor) && (
               <div
                 data-editor-pod-cap
                 className="sticky z-30 shrink-0 pointer-events-none flex flex-col"
                 style={{
-                  top: menuBar ? 32 : 0,
+                  top: menuBar ? 24 : 0,
                   height: 8,
                   marginBottom: -8,
                   marginLeft: 'calc(-4px - var(--pod-gap))',

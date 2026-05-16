@@ -1501,48 +1501,12 @@ function MenuBarContent({
     <>
       {!kebabAtEnd && viewMenu}
 
-      {/* Collaborator-mode status pill — rendered before Format/Actions
-          so the indicator stays visible at the bar's leading edge. */}
+      {/* Collaborator-mode status pill — at the bar's leading edge. */}
       {collabStatus}
-
-      {/* Format popup — each grab spawns a detached Formatting toolbar.
-          Suppressed when the host's chrome disables the formatting
-          toolbar entirely (e.g. Library Reader). */}
-      {showFormattingToolbar && (
-        <AttachedPopover
-          title="Formatting"
-          onGrabStart={onFormatDetach}
-          anchor={<FormatGlyphIcon />}
-        >
-          {() => <FormatButtonsRow editor={editor} />}
-        </AttachedPopover>
-      )}
-
-      {/* Actions popup — each grab spawns a detached Actions toolbar. */}
-      <AttachedPopover
-        title="Actions"
-        onGrabStart={onActionsDetach}
-        anchor={<ActionsStarIcon />}
-      >
-        {(close) => (
-          <ActionButtonsRow
-            close={close}
-            onAddComment={onAddComment}
-            onAddNote={onAddNote}
-            onAddHighlight={onAddHighlight}
-            onAddTodo={onAddTodo}
-            onCutSelection={onCutSelection}
-            onArchive={onArchive}
-            onCreateFootnote={onCreateFootnote}
-            onInsertCitation={onInsertCitation}
-            onQuoteSelection={onQuoteSelection}
-          />
-        )}
-      </AttachedPopover>
 
       {/* Paragraph navigation — back/forward stacked along the main axis. */}
       {(onParaNavBack || onParaNavForward) && (
-        <div className={`flex items-stretch ${isVert ? "flex-col" : "flex-row"}`}>
+        <div className={`flex items-stretch gap-1 ${isVert ? "flex-col" : "flex-row"}`}>
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
@@ -1550,10 +1514,10 @@ function MenuBarContent({
               title="Go back"
               data-helper="Go back"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
+              style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
-              <svg width="8" height="16" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
-                <polyline points="15 18 9 12 15 6" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+                <path d="M19 12H5M12 19l-7-7 7-7" />
               </svg>
             </button>
           )}
@@ -1564,10 +1528,10 @@ function MenuBarContent({
               title="Go forward"
               data-helper="Go forward"
               className="flex items-center justify-center rounded transition-colors disabled:opacity-25 disabled:cursor-default text-[var(--ink-muted)] hover:bg-edge-subtle hover:text-ink-body"
-              style={isVert ? { width: 20, height: 10 } : { width: 10, height: 20 }}
+              style={isVert ? { width: 20, height: 16 } : { width: 16, height: 20 }}
             >
-              <svg width="8" height="16" viewBox="7.5 3 9 18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
-                <polyline points="9 18 15 12 9 6" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={isVert ? { transform: "rotate(90deg)" } : undefined}>
+                <path d="M5 12h14M12 5l7 7-7 7" />
               </svg>
             </button>
           )}
