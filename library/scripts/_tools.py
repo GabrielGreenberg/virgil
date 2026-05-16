@@ -376,6 +376,27 @@ def bump_catalog_version(library: Path) -> None:
         _bump_version_locked(library)
 
 
+def normalize_citekey(citekey: str) -> str:
+    """Canonicalize a citekey to NFC so it byte-matches the form Python
+    JSON writers produce. Any caller comparing user-supplied citekeys
+    against catalog entries must normalize first (1976-Tichý memo:
+    NFC vs NFD `Tich + y + U+0301` mismatch was silently dropping
+    matches).
+    """
+    import unicodedata
+    return unicodedata.normalize("NFC", citekey)
+
+
+def citekey_matches(stored: str, query: str) -> bool:
+    """True if `stored` and `query` refer to the same citekey,
+    independent of Unicode normalization form. Catalog and master.bib
+    files may carry pre-composed (NFC) or decomposed (NFD) Latin-1
+    Supplement codepoints (Tichý, Čerić, López) depending on how the
+    source data was prepared. Compare under NFC to defang the drift.
+    """
+    return normalize_citekey(stored) == normalize_citekey(query)
+
+
 def _deep_merge(dst: dict, src: dict) -> None:
     """Recursively merge `src` into `dst`.
 
@@ -404,7 +425,7 @@ def update_catalog_entry(library: Path, citekey: str, patch: dict) -> None:
         catalog = read_catalog(library)
         target = None
         for e in catalog.get("entries", []):
-            if e.get("citekey") == citekey:
+            if citekey_matches(e.get("citekey", ""), citekey):
                 target = e
                 break
         if target is None:
@@ -422,7 +443,7 @@ def upsert_catalog_entry(catalog: dict, citekey: str, **fields) -> dict:
     the catalog in hand when it computes new row fields.
     """
     for e in catalog.get("entries", []):
-        if e.get("citekey") == citekey:
+        if citekey_matches(e.get("citekey", ""), citekey):
             e.update(fields)
             e["updatedAt"] = _now()
             return e
@@ -562,16 +583,29 @@ def rename_master_bib_entry(library: Path, old: str, new: str) -> bool:
     leaves the rest of the entry untouched. Returns True if `old` was
     found and rewritten, False otherwise. No-op (returns False) if the
     file is missing.
+
+    Citekeys with diacritics are looked up under both NFC and NFD
+    forms; the rewrite writes the NFC form (1976-Tichý memo).
     """
+    import unicodedata
     master_path = library / "master.bib"
+    new_nfc = unicodedata.normalize("NFC", new)
     with lock_master_bib(library):
         if not master_path.exists():
             return False
         text = master_path.read_text()
-        pattern = re.compile(
-            r"(@\w+\s*\{\s*)" + re.escape(old) + r"(\s*,)"
-        )
-        new_text, n = pattern.subn(rf"\g<1>{new}\g<2>", text, count=1)
+        new_text = text
+        n = 0
+        for form in ("NFC", "NFD"):
+            old_form = unicodedata.normalize(form, old)
+            pattern = re.compile(
+                r"(@\w+\s*\{\s*)" + re.escape(old_form) + r"(\s*,)"
+            )
+            new_text, n = pattern.subn(
+                rf"\g<1>{new_nfc}\g<2>", new_text, count=1,
+            )
+            if n > 0:
+                break
         if n == 0:
             return False
         _atomic_write_text(master_path, new_text)
@@ -587,8 +621,8 @@ def rename_catalog_entry(library: Path, old: str, new: str) -> bool:
     with lock_catalog(library):
         catalog = read_catalog(library)
         for e in catalog.get("entries", []):
-            if e.get("citekey") == old:
-                e["citekey"] = new
+            if citekey_matches(e.get("citekey", ""), old):
+                e["citekey"] = normalize_citekey(new)
                 e["updatedAt"] = _now()
                 write_catalog(library, catalog)
                 return True
@@ -607,14 +641,28 @@ def update_master_bib_entry(
     Finds the @type{citekey, ...} block, replaces it (and any
     preceding `% bib.state = ...` comment line) with a freshly emitted
     block. If the citekey is not found, appends at the end.
+
+    Citekeys with diacritics are matched under both NFC and NFD forms
+    (1976-Tichý memo: the file may hold either normalization). The
+    writeback uses NFC for consistency.
     """
+    import unicodedata
     master_path = library / "master.bib"
+    citekey = unicodedata.normalize("NFC", citekey)
     with lock_master_bib(library):
         if not master_path.exists():
             master_path.write_text("")
         text = master_path.read_text()
-        pattern = re.compile(r"@\w+\s*\{\s*" + re.escape(citekey) + r"\s*,")
-        m = pattern.search(text)
+        # Try NFC first, then NFD if NFC isn't present.
+        m = None
+        for form in ("NFC", "NFD"):
+            key_form = unicodedata.normalize(form, citekey)
+            pattern = re.compile(
+                r"@\w+\s*\{\s*" + re.escape(key_form) + r"\s*,"
+            )
+            m = pattern.search(text)
+            if m:
+                break
         replacement = ""
         if bib_state:
             replacement += f"% bib.state = {bib_state}\n"

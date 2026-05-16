@@ -652,12 +652,32 @@ def unwrap_hard_breaks(tex: str) -> tuple[str, int]:
     return "\n".join(result), count
 
 
+def normalize_line_endings(tex: str) -> tuple[str, int]:
+    """Normalize CRLF / CR-only line endings to LF before any
+    `split('\\n')` pass. Classic-Mac (CR-only) input passing through
+    `join_broken_paragraphs` exploded a 216-line file into 6206
+    one-word lines (abusch2013applying memo). Returns (text, count of
+    line endings normalized).
+    """
+    crlf_count = tex.count("\r\n")
+    cr_only_count = tex.count("\r") - crlf_count
+    if crlf_count == 0 and cr_only_count == 0:
+        return tex, 0
+    tex = tex.replace("\r\n", "\n").replace("\r", "\n")
+    return tex, crlf_count + cr_only_count
+
+
 def deep_preprocess(tex: str) -> tuple[str, dict]:
     """Apply all deterministic cleanup passes.
 
     Returns (cleaned_tex, stats_dict).
     """
     stats: dict[str, int] = {}
+
+    # Step 0: line-ending normalization. Must run before any pass that
+    # splits on `\n`.
+    tex, n = normalize_line_endings(tex)
+    stats["line_endings_normalized"] = n
 
     tex, n = strip_running_headers(tex)
     stats["headers_removed"] = n

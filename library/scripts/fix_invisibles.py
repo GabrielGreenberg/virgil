@@ -49,6 +49,63 @@ LIGATURES = {
     "ﬆ": "st",
 }
 
+# C0 control characters (U+0001–U+001F minus tab/newline/cr) that show
+# up in some PDFs as ligature-dropout markers or stream-extraction
+# artifacts. Tab/newline are real whitespace; CR is normalized
+# upstream in deep_preprocess. The rest are illegitimate.
+#
+# U+0002 (STX) specifically appears as a dropped "ti" / "fi" ligature
+# in some extractors (dingemanse2015arbitrarinessb memo). When STX
+# sits between letters we try to reconstruct the most likely ligature;
+# elsewhere we strip.
+C0_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+C0_LIGATURE_NEIGHBORS = {
+    # (preceding, following) -> reconstructed bigram
+    ("t", "i"): "ti",
+    ("f", "i"): "fi",
+    ("f", "l"): "fl",
+    ("f", "f"): "ff",
+}
+
+# Threshold for "treat the whole file's inter-word whitespace as
+# NBSP-poisoned and replace wholesale": if at least this fraction of
+# total whitespace is NBSP, the file was extracted with NBSP as inter-
+# word filler and the narrow word-internal rule below misses most of
+# it (abusch2013applying had ~6000 NBSPs the narrow rule left in).
+NBSP_BULK_THRESHOLD = 0.5
+
+
+def _strip_c0_with_ligature_recovery(text: str) -> tuple[str, int, int]:
+    """Strip C0 control characters; reconstruct adjacent-letter
+    ligatures where the surrounding context suggests one. Returns
+    (cleaned-text, recovered-ligature-count, stripped-count).
+    """
+    recovered = 0
+    stripped = 0
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    while i < n:
+        ch = text[i]
+        if C0_CONTROL_RE.match(ch):
+            prev = out[-1] if out else ""
+            nxt = text[i + 1] if i + 1 < n else ""
+            sub = C0_LIGATURE_NEIGHBORS.get((prev.lower(), nxt.lower()))
+            if sub:
+                # Drop the previous out char (we'll write the full bigram).
+                out.pop()
+                out.append(sub)
+                # If next exists and consumed, skip it too.
+                i += 2
+                recovered += 1
+                continue
+            stripped += 1
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out), recovered, stripped
+
 
 def fix_invisibles(text: str) -> tuple[str, dict[str, int]]:
     """Return (fixed-text, counts-by-category)."""
@@ -116,6 +173,26 @@ def fix_invisibles(text: str) -> tuple[str, dict[str, int]]:
         text = word_nbsp_re.sub(r"\1 \2", text)
         counts["word_internal_nbsp"] = len(matches)
 
+    # 6b. Bulk-NBSP heuristic: when NBSP-density >= NBSP_BULK_THRESHOLD
+    # of total whitespace, the file was extracted with NBSP as inter-
+    # word filler (abusch2013applying). Replace ALL remaining NBSPs
+    # with regular spaces.
+    remaining_nbsp = text.count(NBSP)
+    total_ws = (
+        text.count(" ") + text.count("\t") + text.count("\n") + remaining_nbsp
+    )
+    if total_ws > 0 and remaining_nbsp / total_ws >= NBSP_BULK_THRESHOLD:
+        text = text.replace(NBSP, " ")
+        counts["bulk_nbsp_normalized"] = remaining_nbsp
+
+    # 7. C0 controls — strip with adjacent-letter ligature recovery.
+    if C0_CONTROL_RE.search(text):
+        text, recovered, stripped = _strip_c0_with_ligature_recovery(text)
+        if recovered:
+            counts["c0_ligatures_recovered"] = recovered
+        if stripped:
+            counts["c0_stripped"] = stripped
+
     return text, counts
 
 
@@ -146,6 +223,12 @@ def main(argv: list[str]) -> int:
         summary_parts.append(f"{counts['braille_blank']} Braille-blank chars replaced")
     if "word_internal_nbsp" in counts:
         summary_parts.append(f"{counts['word_internal_nbsp']} word-internal NBSPs collapsed")
+    if "bulk_nbsp_normalized" in counts:
+        summary_parts.append(f"{counts['bulk_nbsp_normalized']} bulk NBSPs (>=50% of whitespace) normalized")
+    if "c0_ligatures_recovered" in counts:
+        summary_parts.append(f"{counts['c0_ligatures_recovered']} C0 controls recovered as ligatures")
+    if "c0_stripped" in counts:
+        summary_parts.append(f"{counts['c0_stripped']} C0 controls stripped")
     suffix = " (dry run)" if dry_run else ""
     print(f"Cleaned invisibles in {path}: " + ", ".join(summary_parts) + f"{suffix}.")
     if not dry_run:

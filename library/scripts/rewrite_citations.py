@@ -714,23 +714,113 @@ _SUPPORTED_STYLES = (
 )
 
 
+def rewrite_multi_year_same_author(
+    text: str, bibmap: dict[tuple, str],
+) -> tuple[str, int]:
+    """Fold `(Author YYYY, YYYY)` into a single `\\citealt{k1, k2}`.
+
+    The standard rewriter (rewrite_citations / rewrite_author_year_paren)
+    handles the first year and leaves the second as orphan prose, then
+    `(Author 1945, 1963)` becomes `(\\citealt{a1945}, 1963)` —
+    unbalanced parens (cohenmscoherence memo). This pass runs FIRST so
+    the standard rewriter sees a clean `\\citealt{...}` instead.
+    """
+    refs_start = text.find(r"\section{References}")
+    if refs_start < 0:
+        refs_start = len(text)
+    body = text[:refs_start]
+    tail = text[refs_start:]
+    count = 0
+
+    # Author (YYYY, YYYY[, YYYY]*) — paren form.
+    pattern_paren = re.compile(
+        r"\(([A-Z][a-zA-Z\-']+(?:\s+(?:and|et\s+al\.?)\s+(?:[A-Z][a-zA-Z\-']+)?)?)"
+        r"\s+(\d{4}[a-c]?(?:\s*,\s*\d{4}[a-c]?){1,4})\)"
+    )
+
+    def lookup(author: str, year: str) -> str | None:
+        if not _is_valid_year(year):
+            return None
+        tail_tok = _strip_et_al(author).split()[-1]
+        last = normalize_surname(tail_tok)
+        if not _passes_surname_guard(tail_tok):
+            return None
+        return (
+            bibmap.get(((last,), year))
+            or bibmap.get(((last,), year, "first-only"))
+            or bibmap.get(((last,), year, "any-author"))
+        )
+
+    def replace_paren(m: re.Match) -> str:
+        nonlocal count
+        author = m.group(1)
+        years = [y.strip() for y in m.group(2).split(",")]
+        keys: list[str] = []
+        for y in years:
+            ck = lookup(author, y)
+            if not ck:
+                return m.group(0)  # bail: leave the source untouched
+            keys.append(ck)
+        count += 1
+        return "\\citealt{" + ", ".join(keys) + "}"
+
+    new_body = pattern_paren.sub(replace_paren, body)
+    return new_body + tail, count
+
+
+def check_paren_balance(text: str) -> list[tuple[int, str]]:
+    """Return list of (line_no, snippet) for lines with unbalanced
+    parens or brackets, scanning only OUTSIDE math spans and
+    cite-arg braces. Used post-rewrite to catch the
+    `(\\citealt{x}, 1963)` failure mode where the standard rewriter
+    left a dangling comma + year.
+    """
+    findings: list[tuple[int, str]] = []
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        # Skip lines inside `\begin{verbatim}` regions (best-effort —
+        # we don't track multi-line state).
+        if line.lstrip().startswith("%"):
+            continue
+        # Strip math spans.
+        stripped = re.sub(r"\$[^$]*\$", "", line)
+        stripped = re.sub(r"\\\[.*?\\\]", "", stripped)
+        # Drop `\cite{...}` content (legitimately unbalanced if `,`
+        # appears inside braces).
+        stripped = re.sub(r"\\cite[a-z]*\{[^}]*\}", "", stripped)
+        depth_paren = 0
+        for ch in stripped:
+            if ch == "(":
+                depth_paren += 1
+            elif ch == ")":
+                depth_paren -= 1
+                if depth_paren < 0:
+                    findings.append((line_no, line[:120]))
+                    break
+        if depth_paren > 0:
+            findings.append((line_no, line[:120]))
+    return findings
+
+
 def main() -> int:
     args = sys.argv[1:]
     style = "chicago"
     also_possessive = False
+    fail_on_unbalanced = False
     positional = []
     for a in args:
         if a.startswith("--style="):
             style = a.split("=", 1)[1]
         elif a == "--also-possessive":
             also_possessive = True
+        elif a == "--fail-on-unbalanced":
+            fail_on_unbalanced = True
         else:
             positional.append(a)
     if len(positional) != 2:
         print(
             "usage: rewrite_citations.py <main.tex> <references.bib> "
             f"[--style={'|'.join(_SUPPORTED_STYLES)}] "
-            "[--also-possessive]",
+            "[--also-possessive] [--fail-on-unbalanced]",
             file=sys.stderr,
         )
         return 2
@@ -743,6 +833,20 @@ def main() -> int:
     unresolved: list[str] = []
     count = 0
     new_tex = tex
+
+    # Multi-year same-author folding runs BEFORE the style-specific
+    # rewriter (cohenmscoherence memo: standard rewriters left a
+    # dangling year + unbalanced paren when they only matched the
+    # first year in `(Author 1945, 1963)`).
+    if style not in {"bracket-key", "bracket-numeric"}:
+        prebibmap = parse_bib(bib_path)
+        new_tex, multi_year_count = rewrite_multi_year_same_author(
+            new_tex, prebibmap,
+        )
+        if multi_year_count:
+            count += multi_year_count
+            print(f"Multi-year folded: {multi_year_count}")
+        tex = new_tex
 
     if style == "bracket-key":
         bracket_map = parse_bracket_keys(bib_path)
@@ -791,6 +895,18 @@ def main() -> int:
         print(f"\nUnresolved ({len(deduped)} unique):")
         for u in deduped[:30]:
             print(f"  - {u}")
+
+    # Paren-balance sweep: catches multi-year-leftover unbalanced parens
+    # and other rewriter slip-ups (cohenmscoherence). Reports unless
+    # silenced; with --fail-on-unbalanced returns nonzero exit so the
+    # convergence loop treats it as an audit finding.
+    unbalanced = check_paren_balance(new_tex)
+    if unbalanced:
+        print(f"\nParen-balance findings ({len(unbalanced)}):")
+        for ln, snip in unbalanced[:10]:
+            print(f"  line {ln}: {snip}")
+        if fail_on_unbalanced:
+            return 1
 
     return 0
 

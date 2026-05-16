@@ -55,18 +55,20 @@ LEAKED_PARA_RE = re.compile(
     re.M,
 )
 
-# Section heading regex.
-SECTION_RE = re.compile(r"^\\section\{([^}]+)\}", re.M)
+# Section heading regex. Matches both `\section{}` and `\section*{}` so
+# starred-form headings in books and edited volumes act as boundaries.
+SECTION_RE = re.compile(r"^\\section\*?\{([^}]+)\}", re.M)
 
-# References / bibliography section boundary.
+# References / bibliography section boundary. Matches `\section{}` and
+# `\section*{}` — the starred form is common in books and edited volumes.
 REFS_RE = re.compile(
-    r"^\\section\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
+    r"^\\section\*?\{(References|Bibliography|Works Cited|Notes|Endnotes|Index)\b",
     re.M | re.I,
 )
 
 # Contents / TOC section start (front-matter).
 TOC_SECTION_RE = re.compile(
-    r"^\\section\{(Contents|Table\s+of\s+Contents|TOC)\b",
+    r"^\\section\*?\{(Contents|Table\s+of\s+Contents|TOC)\b",
     re.M | re.I,
 )
 
@@ -99,6 +101,17 @@ class LeakedNote(NamedTuple):
     body: str
     start: int
     end: int
+
+
+# Tier-4 body-size cap. Tier-4 is the "no inline call site found"
+# fallback that attaches `\footnote{[orphan fn N] <body>}` to the
+# nearest preceding body paragraph. Without a cap, a leaked "footnote"
+# that's actually a 100+-line body block gets wrapped as a single
+# `\footnote{}` (metz1974film: 13 corrupted attachments, one wrapping
+# a full body paragraph). Cap at 500 chars; longer bodies are
+# refused as Tier-4 candidates and re-classified as unplaced so they
+# surface in the audit punch-list.
+TIER4_BODY_CAP_CHARS = 500
 
 
 def _find_toc_skip_ranges(text: str) -> list[tuple[int, int]]:
@@ -382,6 +395,14 @@ def reattach(text: str) -> tuple[str, dict]:
             site = find_call_site(text, note.number, cs, ce, note.start)
             tier4 = False
             if site is None:
+                # Tier-4 body-size cap: refuse the orphan-attachment
+                # path for bodies longer than TIER4_BODY_CAP_CHARS.
+                # Oversized "leaked footnote" candidates are almost
+                # always body paragraphs that got mis-classified
+                # (metz1974film). Defer to the audit punch-list.
+                if len(note.body) > TIER4_BODY_CAP_CHARS:
+                    unplaced += 1
+                    continue
                 # Tier-4 fallback: attach to end of nearest preceding
                 # body paragraph in the chapter.
                 site = _find_tier4_attachment(text, note.start, cs)

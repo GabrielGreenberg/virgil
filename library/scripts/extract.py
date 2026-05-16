@@ -528,6 +528,32 @@ def _marker_heading_level(raw: Any) -> int:
 # of inference but no new download.
 
 
+def marker_extract_first_pages(pdf_path: Path, max_pages: int = 3) -> str:
+    """Cheap marker-pdf extraction of the first `max_pages` pages as
+    Markdown. Used as the triage rescue path (triage_batch.py) when the
+    pdftotext heuristic produces a stopword/filename-stem citekey.
+
+    Returns the rendered Markdown string, or "" if marker is missing
+    or fails. Does NOT cache — callers (e.g. triage_batch) handle
+    sha256-keyed caching at their own layer.
+    """
+    try:
+        from marker.converters.pdf import PdfConverter  # type: ignore
+        from marker.models import create_model_dict  # type: ignore
+    except Exception:
+        return ""
+    try:
+        converter = PdfConverter(
+            artifact_dict=create_model_dict(),
+            renderer="marker.renderers.markdown.MarkdownRenderer",
+            config={"page_range": f"0-{max_pages - 1}"},
+        )
+        rendered = converter(str(pdf_path))
+        return getattr(rendered, "markdown", "") or str(rendered)
+    except Exception:
+        return ""
+
+
 def marker_footnote_zones_by_page(
     pdf_path: str,
     *,

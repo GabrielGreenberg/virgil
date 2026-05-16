@@ -157,11 +157,27 @@ def _apply_removals(content: str, pgmarks: list[Pgmark], removals: set[int]) -> 
     return "".join(out_lines)
 
 
+def _baseline_pgmark_count(baseline_path: str | None) -> int | None:
+    """Return the numeric-pgmark count from a pre-deepindex baseline
+    file. Returns None if the baseline isn't readable; callers should
+    treat None as "use in-place count" (legacy behaviour)."""
+    if not baseline_path:
+        return None
+    try:
+        with open(baseline_path, encoding="utf-8") as f:
+            baseline = f.read()
+    except (OSError, UnicodeDecodeError):
+        return None
+    pgmarks = _parse_pgmarks(baseline)
+    return sum(1 for pm in pgmarks if pm.value is not None)
+
+
 def repair(
     path: str,
     dry_run: bool = False,
     max_page: int | None = None,
     safeguard_pct: float = 0.5,
+    resume_baseline: str | None = None,
 ) -> dict:
     """Repair the file at `path`. Returns a summary dict.
 
@@ -170,6 +186,16 @@ def repair(
     collisions (book with front matter + body + indexes). Abort and
     warn — let the validator emit pre-existing continuity warnings
     instead of silently dropping anchors.
+
+    On a **resume pass** (where a prior /deep-index run already removed
+    some pgmarks), the in-place file's pgmark count is lower than the
+    baseline's. The 50% safeguard then mis-fires — it compares against
+    the already-reduced count and may delete legitimate body anchors
+    (willats1997art lost 86 body-page anchors this way). When
+    `resume_baseline` points to the pre-deepindex baseline file, the
+    safeguard ratio is computed against the baseline pgmark count
+    instead of the in-place count. Skill callers should always pass the
+    matching `.virgil/baselines/<citekey>-pre-deepindex.tex` path.
 
     The `max_page` argument bypasses the safeguard for unambiguously-bad
     high-value markers (`v > max_page`); those are stripped regardless.
@@ -181,6 +207,12 @@ def repair(
     pgmarks = _parse_pgmarks(content)
     removals = _decide_removals(pgmarks)
     numeric_count = sum(1 for pm in pgmarks if pm.value is not None)
+    baseline_count = _baseline_pgmark_count(resume_baseline)
+    safeguard_denom = (
+        baseline_count
+        if baseline_count is not None and baseline_count >= numeric_count
+        else numeric_count
+    )
     # Pre-stage: forced removals for max_page-exceeding pgmarks.
     forced_removals: set[int] = set()
     if max_page is not None:
@@ -188,7 +220,7 @@ def repair(
             if pm.value is not None and pm.value > max_page:
                 forced_removals.add(i)
     aborted = False
-    if numeric_count > 0 and len(removals) > numeric_count * safeguard_pct:
+    if safeguard_denom > 0 and len(removals) > safeguard_denom * safeguard_pct:
         aborted = True
         removals = set()
     # Forced removals always go through, even when safeguard fires.
@@ -209,6 +241,8 @@ def repair(
         "removed": removed_descriptors,
         "dry_run": dry_run,
         "aborted_50_percent_guard": aborted,
+        "safeguard_denom": safeguard_denom,
+        "resume_baseline_used": baseline_count is not None,
     }
 
 
@@ -216,20 +250,27 @@ def main(argv: list[str]) -> int:
     if len(argv) < 2:
         print(
             "usage: python repair_pgmarks.py <main.tex> "
-            "[--dry-run] [--max-page N] [--safeguard-pct 0.5]",
+            "[--dry-run] [--max-page N] [--safeguard-pct 0.5] "
+            "[--resume-baseline <pre-deepindex.tex>]",
             file=sys.stderr,
         )
         return 2
     dry_run = "--dry-run" in argv[2:]
     max_page: int | None = None
     safeguard_pct = 0.5
-    for i, arg in enumerate(argv[2:]):
-        if arg == "--max-page" and i + 3 < len(argv):
+    resume_baseline: str | None = None
+    args = argv[2:]
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--max-page" and i + 1 < len(args):
             try:
-                max_page = int(argv[i + 3])
+                max_page = int(args[i + 1])
             except ValueError:
                 pass
-        elif arg.startswith("--max-page="):
+            i += 2
+            continue
+        if arg.startswith("--max-page="):
             try:
                 max_page = int(arg.split("=", 1)[1])
             except ValueError:
@@ -239,11 +280,19 @@ def main(argv: list[str]) -> int:
                 safeguard_pct = float(arg.split("=", 1)[1])
             except ValueError:
                 pass
+        elif arg == "--resume-baseline" and i + 1 < len(args):
+            resume_baseline = args[i + 1]
+            i += 2
+            continue
+        elif arg.startswith("--resume-baseline="):
+            resume_baseline = arg.split("=", 1)[1]
+        i += 1
     path = argv[1]
     try:
         result = repair(
             path, dry_run=dry_run, max_page=max_page,
             safeguard_pct=safeguard_pct,
+            resume_baseline=resume_baseline,
         )
     except FileNotFoundError:
         print(f"not found: {path}", file=sys.stderr)

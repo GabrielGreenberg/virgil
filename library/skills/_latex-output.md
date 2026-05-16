@@ -16,6 +16,12 @@ outside this list.
 - `\section`, `\subsection`, `\subsubsection`
 - `\pgmark{N}` (preserved from extraction)
 - `\footnote{…}`
+- `\thanks{…}` — title-attached acknowledgements / affiliations.
+  Canonical form: `\title{The Paper Title\thanks{Acknowledgement
+  text}}`. Never re-attach as orphan-prefix body text or invent
+  an `\acknowledgements` section. `audit_deepindex.py` uses a
+  brace-balanced extractor so the nested `\thanks{…}` does not
+  pollute the title-vs-catalog cross-check (cohenmscoherence memo).
 - `\begin{quote}\textit{…}\end{quote}` for captions
 - `\begin{itemize}` ... `\end{itemize}` with `\item` entries (used for
   the bibliography section and any source-document lists)

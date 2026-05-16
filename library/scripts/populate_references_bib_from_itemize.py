@@ -32,6 +32,26 @@ ITEM_RE = re.compile(
     r"\\item\s+\\textbf\{([^}]+)\}\s*([^\n]+(?:\n(?!\s*\\item)[^\n]*)*)",
     re.MULTILINE,
 )
+# Chicago-parens-comma format: `\item \textbf{Author, F. (Year),} <rest>`.
+# Author/year carrier sits inside `\textbf{}` with the year wrapped in
+# parens and a trailing comma (cohenmscoherence memo). The standard
+# ITEM_RE picks up the bold but `_parse_author_year` can't split the
+# parenthesized year from the trailing comma without an explicit form.
+ITEM_PARENS_YEAR_RE = re.compile(
+    r"\\item\s+\\textbf\{([^()}]+)\((1[6-9]\d{2}|20\d{2})[a-c]?\)\s*,?\s*\}"
+    r"\s*([^\n]+(?:\n(?!\s*\\item)[^\n]*)*)",
+    re.MULTILINE,
+)
+# Vancouver / numeric format: `\bibitem{N} Author. Title. Journal …`.
+# These papers list entries numbered `[1]`, `[2]`, … in body. Authors
+# are not the citation key (the number is); writing them out as
+# `<surname><year><word>` would invent bibkey relationships that
+# don't exist. For these we emit `@misc{N, ...}` and let downstream
+# rewrite-citations handle the numeric-bracket form (dingemanse2015arbitrarinessb).
+ITEM_NUMERIC_RE = re.compile(
+    r"\\bibitem\{(\d+)\}\s*([^\n]+(?:\n(?!\s*\\bibitem)[^\n]*)*)",
+    re.MULTILINE,
+)
 STOP_WORDS = frozenset({
     "the", "an", "of", "on", "in", "and", "for", "with", "to", "at",
     "by", "from", "into", "onto", "is", "as",
@@ -179,13 +199,18 @@ def populate(
     bib_existing = bib_path.read_text(encoding="utf-8") if bib_path.exists() else ""
     existing_keys = set(re.findall(r"^@\w+\{([^,\s]+),", bib_existing, re.M))
 
-    refs_start = tex.find("\\section{References}")
-    if refs_start < 0:
-        refs_start = tex.find("\\section{Bibliography}")
-    if refs_start < 0:
+    # Try the starred forms too — per-chapter References in edited
+    # volumes typically use `\section*{References}` /
+    # `\subsection*{References}` (cohenmscoherence, antony2009thinking).
+    refs_re = re.compile(
+        r"\\(?:section|subsection)\*?\{(References|Bibliography|Works Cited)\}"
+    )
+    refs_m = refs_re.search(tex)
+    if not refs_m:
         return {"error": "no References section found"}
-    next_section = re.search(r"\\section\{", tex[refs_start + 1:])
-    refs_end = refs_start + 1 + next_section.start() if next_section else len(tex)
+    refs_start = refs_m.start()
+    next_section = re.search(r"\\(?:section|subsection)\*?\{", tex[refs_m.end():])
+    refs_end = refs_m.end() + next_section.start() if next_section else len(tex)
     refs_section = tex[refs_start:refs_end]
 
     new_entries: list[str] = []
@@ -193,35 +218,107 @@ def populate(
     skipped_unparsable = 0
     seen_keys: set[str] = set(existing_keys)
 
-    for m in ITEM_RE.finditer(refs_section):
-        bold = m.group(1).strip()
-        rest = m.group(2).strip()
-        surnames, year = _parse_author_year(bold)
-        if not surnames or not year:
-            skipped_unparsable += 1
-            continue
-        entry_type = _detect_entry_type(rest)
-        fields = _parse_fields(rest, entry_type)
-        first_surname = _normalize_for_citekey(surnames[0])
-        title_word = _first_significant_title_word(fields.get("title", ""))
-        citekey = f"{first_surname}{year}{title_word}"
-        if not first_surname:
-            skipped_unparsable += 1
-            continue
-        # Disambiguate citekey collisions with a numeric suffix.
-        base_citekey = citekey
-        suffix = 2
-        while citekey in seen_keys:
-            citekey = f"{base_citekey}-{suffix}"
-            suffix += 1
-            if suffix > 99:
-                break
-        if citekey in existing_keys:
-            skipped_dupes += 1
-            continue
-        seen_keys.add(citekey)
-        bib_entry = _emit_entry(entry_type, citekey, surnames, year, fields)
-        new_entries.append(bib_entry)
+    # Style auto-detection: if the section is dominated by `\bibitem{N}`
+    # entries (numeric/Vancouver) AND has no `\textbf{}` author carriers,
+    # treat as numeric style and emit @misc entries keyed by the number.
+    numeric_items = list(ITEM_NUMERIC_RE.finditer(refs_section))
+    standard_items = list(ITEM_RE.finditer(refs_section))
+    parens_items = list(ITEM_PARENS_YEAR_RE.finditer(refs_section))
+    is_vancouver = (
+        style == "vancouver"
+        or (len(numeric_items) >= 5 and len(standard_items) == 0)
+    )
+    is_chicago_parens = (
+        style == "chicago-parens-comma"
+        or (len(parens_items) >= max(5, 2 * len(standard_items)))
+    )
+
+    if is_vancouver:
+        for m in numeric_items:
+            num = m.group(1).strip()
+            rest = m.group(2).strip()
+            entry_type = _detect_entry_type(rest)
+            fields = _parse_fields(rest, entry_type)
+            citekey = f"vancouver{num}"
+            if citekey in seen_keys:
+                skipped_dupes += 1
+                continue
+            seen_keys.add(citekey)
+            new_entries.append(_emit_entry(entry_type, citekey, [], "", fields))
+        # Emit a sidecar numeric→citekey map for rewrite_citations to
+        # consume (`<paper-dir>/.numeric-citekeys.txt`).
+        if new_entries:
+            sidecar = paper_dir / ".numeric-citekeys.txt"
+            sidecar.write_text(
+                "\n".join(
+                    f"{m.group(1)}\tvancouver{m.group(1)}"
+                    for m in numeric_items
+                ) + "\n",
+                encoding="utf-8",
+            )
+    elif is_chicago_parens:
+        for m in parens_items:
+            authors_str = m.group(1).strip().rstrip(" ,.")
+            year = m.group(2)
+            rest = m.group(3).strip()
+            # Re-use existing surname-extractor by passing
+            # "<authors> <year>" so YEAR_RE finds the year.
+            surnames, _ = _parse_author_year(f"{authors_str} {year}")
+            if not surnames:
+                skipped_unparsable += 1
+                continue
+            entry_type = _detect_entry_type(rest)
+            fields = _parse_fields(rest, entry_type)
+            first_surname = _normalize_for_citekey(surnames[0])
+            title_word = _first_significant_title_word(fields.get("title", ""))
+            citekey = f"{first_surname}{year}{title_word}"
+            if not first_surname:
+                skipped_unparsable += 1
+                continue
+            base_citekey = citekey
+            suffix = 2
+            while citekey in seen_keys:
+                citekey = f"{base_citekey}-{suffix}"
+                suffix += 1
+                if suffix > 99:
+                    break
+            if citekey in existing_keys:
+                skipped_dupes += 1
+                continue
+            seen_keys.add(citekey)
+            new_entries.append(
+                _emit_entry(entry_type, citekey, surnames, year, fields),
+            )
+    else:
+        for m in standard_items:
+            bold = m.group(1).strip()
+            rest = m.group(2).strip()
+            surnames, year = _parse_author_year(bold)
+            if not surnames or not year:
+                skipped_unparsable += 1
+                continue
+            entry_type = _detect_entry_type(rest)
+            fields = _parse_fields(rest, entry_type)
+            first_surname = _normalize_for_citekey(surnames[0])
+            title_word = _first_significant_title_word(fields.get("title", ""))
+            citekey = f"{first_surname}{year}{title_word}"
+            if not first_surname:
+                skipped_unparsable += 1
+                continue
+            # Disambiguate citekey collisions with a numeric suffix.
+            base_citekey = citekey
+            suffix = 2
+            while citekey in seen_keys:
+                citekey = f"{base_citekey}-{suffix}"
+                suffix += 1
+                if suffix > 99:
+                    break
+            if citekey in existing_keys:
+                skipped_dupes += 1
+                continue
+            seen_keys.add(citekey)
+            bib_entry = _emit_entry(entry_type, citekey, surnames, year, fields)
+            new_entries.append(bib_entry)
 
     if not new_entries:
         return {
@@ -250,8 +347,13 @@ def main() -> int:
         description="Populate references.bib from itemized References section.",
     )
     parser.add_argument("paper_dir")
-    parser.add_argument("--style", default=None,
-                        choices=["apa", "chicago", "siggraph", "author-year-paren"])
+    parser.add_argument(
+        "--style", default=None,
+        choices=[
+            "apa", "chicago", "siggraph", "author-year-paren",
+            "chicago-parens-comma", "vancouver",
+        ],
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
     paper_dir = Path(args.paper_dir).resolve()

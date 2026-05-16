@@ -98,8 +98,22 @@ def _filter_pdf_text(pdf_text: str) -> str:
 
 
 def _estimate_pdf_offset(text: str, pdf_page_total: int) -> int:
-    """Estimate the (PDF-page − printed-page) offset by looking at the
-    earliest high-confidence pgmark. Returns 0 if can't tell."""
+    """Estimate the (PDF-page − printed-page) offset by sampling
+    high-confidence pgmarks and counting preceding pages.
+
+    For each non-low pgmark, the offset is (PDF-page-where-it-sits) −
+    (printed value). We approximate PDF-page-where-it-sits by counting
+    pgmarks before it (each anchor marks the end of a printed page,
+    so anchor index ≈ printed-page-count-into-the-document). The mode
+    of those samples is returned; falls back to 0 when no signal.
+
+    Fixes the lewis1969convention memo bug where this function always
+    returned 0, leaving every `[low]` marker mis-mapped to the PDF
+    page that matches its printed-page value (i.e., no offset
+    correction at all on journal articles).
+    """
+    samples: list[int] = []
+    high_markers: list[int] = []  # printed values
     for m in PGMARK_ANY_RE.finditer(text):
         if "[low]" in m.group(0):
             continue
@@ -107,16 +121,37 @@ def _estimate_pdf_offset(text: str, pdf_page_total: int) -> int:
             printed = int(m.group(1))
         except ValueError:
             continue
-        # If the first non-low pgmark has value P, and P is reasonable
-        # vs. pdf_page_total, assume PDF page 1 maps to printed P.
-        if 1 <= printed <= pdf_page_total + 30:
-            return 0  # most common: PDF aligns 1-to-1 with printed
+        # Position in the pgmark sequence — 1-indexed — is a proxy for
+        # the PDF page the anchor sits on (one anchor per printed page).
+        pdf_page_estimate = len(high_markers) + 1
+        offset = pdf_page_estimate - printed
+        # Defensive: only trust offsets that put the marker inside the
+        # PDF page range.
+        if -50 <= offset <= 50 and (
+            pdf_page_total == 0
+            or 1 <= printed + offset <= pdf_page_total
+        ):
+            samples.append(offset)
+        high_markers.append(printed)
+    if not samples:
         return 0
-    return 0
+    # Mode (most common offset) is the most reliable signal — outliers
+    # come from chapter-start anchors that land on a recto-only page.
+    from collections import Counter
+    most_common, _count = Counter(samples).most_common(1)[0]
+    return most_common
+
+
+# Cascade thresholds: each higher confidence step is tried first; if
+# nothing promotes, drop to the next. The skill text recommends
+# enabling cascade for `scanned-ocr` genre (leong1994towards,
+# lewis1969convention, pylyshyn2003seeing, schwarzlose2021brainscapes).
+CASCADE_THRESHOLDS = (0.30, 0.20, 0.10, 0.05)
 
 
 def recover(
     citekey: str, threshold: float, window: int, dry_run: bool,
+    cascade: bool = False,
 ) -> dict:
     library = _resolve_library_root()
     paper_dir = library / "papers" / citekey
@@ -153,40 +188,70 @@ def recover(
 
     offset = _estimate_pdf_offset(text, pdf_pages or 1000)
 
-    # Process in reverse position so edits don't shift later ones.
-    promoted = 0
-    checked = 0
-    new_text = text
-    for start, end, printed_page in reversed(low_markers):
-        pdf_page = printed_page + offset
-        if pdf_pages > 0 and not (1 <= pdf_page <= pdf_pages):
-            continue
-        checked += 1
-        pdf_text = _extract_pdf_page(pdf_path, pdf_page)
-        if not pdf_text:
-            continue
-        pdf_tokens = _tokens(_filter_pdf_text(pdf_text))
-        if not pdf_tokens:
-            continue
-        win_lo = max(0, start - window)
-        win_hi = min(len(new_text), end + window)
-        tex_tokens = _tokens(new_text[win_lo:win_hi])
-        if not tex_tokens:
-            continue
-        overlap = len(pdf_tokens & tex_tokens) / max(1, len(pdf_tokens))
-        if overlap >= threshold:
-            # Strip the [low] tag.
-            replacement = f"\\pgmark{{{printed_page}}}"
-            new_text = new_text[:start] + replacement + new_text[end:]
-            promoted += 1
+    # Threshold sequence to try in order. Cascade mode steps down
+    # progressively; non-cascade just runs the single requested
+    # threshold once.
+    thresholds = list(CASCADE_THRESHOLDS) if cascade else [threshold]
+    if cascade and threshold not in thresholds:
+        thresholds = sorted({threshold, *CASCADE_THRESHOLDS}, reverse=True)
+    cascade_log: list[tuple[float, int, int]] = []  # (threshold, promoted, checked)
 
-    if not dry_run and promoted > 0:
+    new_text = text
+    cumulative_promoted = 0
+    cumulative_checked = 0
+    # Recompute markers each iteration since text mutates.
+    for cur_threshold in thresholds:
+        low_markers = []
+        for m in PGMARK_LOW_RE.finditer(new_text):
+            try:
+                page = int(m.group(1))
+            except ValueError:
+                continue
+            low_markers.append((m.start(), m.end(), page))
+        if not low_markers:
+            break
+
+        # Process in reverse position so edits don't shift later ones.
+        round_promoted = 0
+        round_checked = 0
+        for start, end, printed_page in reversed(low_markers):
+            pdf_page = printed_page + offset
+            if pdf_pages > 0 and not (1 <= pdf_page <= pdf_pages):
+                continue
+            round_checked += 1
+            pdf_text = _extract_pdf_page(pdf_path, pdf_page)
+            if not pdf_text:
+                continue
+            pdf_tokens = _tokens(_filter_pdf_text(pdf_text))
+            if not pdf_tokens:
+                continue
+            win_lo = max(0, start - window)
+            win_hi = min(len(new_text), end + window)
+            tex_tokens = _tokens(new_text[win_lo:win_hi])
+            if not tex_tokens:
+                continue
+            overlap = len(pdf_tokens & tex_tokens) / max(1, len(pdf_tokens))
+            if overlap >= cur_threshold:
+                replacement = f"\\pgmark{{{printed_page}}}"
+                new_text = new_text[:start] + replacement + new_text[end:]
+                round_promoted += 1
+        cascade_log.append((cur_threshold, round_promoted, round_checked))
+        cumulative_promoted += round_promoted
+        cumulative_checked += round_checked
+        if round_promoted == 0:
+            # No movement at this threshold; only try a lower one if
+            # cascade is enabled (otherwise we're done).
+            if not cascade:
+                break
+
+    if not dry_run and cumulative_promoted > 0:
         tex_path.write_text(new_text, encoding="utf-8")
 
     return {
-        "promoted": promoted,
-        "checked": checked,
-        "total_low": len(low_markers),
+        "promoted": cumulative_promoted,
+        "checked": cumulative_checked,
+        "total_low": len(re.findall(PGMARK_LOW_RE, text)),
+        "cascade": cascade_log,
     }
 
 
@@ -198,19 +263,38 @@ def main() -> int:
     parser.add_argument("--threshold", type=float, default=0.30)
     parser.add_argument("--window", type=int, default=1500)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--cascade",
+        action="store_true",
+        help=(
+            "Step through thresholds 0.30 → 0.20 → 0.10 → 0.05, "
+            "promoting at each level. Recommended for scanned-OCR "
+            "genre where the single-threshold default leaves a long "
+            "tail of legitimate-but-noisy markers."
+        ),
+    )
     args = parser.parse_args()
     result = recover(
         args.citekey, args.threshold, args.window, args.dry_run,
+        cascade=args.cascade,
     )
     if "error" in result:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
     suffix = " (dry run)" if args.dry_run else ""
-    print(
-        f"Promoted {result['promoted']}/{result['checked']} low markers "
-        f"(of {result['total_low']} total) at threshold "
-        f"{args.threshold:.0%}{suffix}."
-    )
+    if args.cascade and result.get("cascade"):
+        print(
+            f"Promoted {result['promoted']}/{result['checked']} low markers "
+            f"(of {result['total_low']} total) via cascade{suffix}."
+        )
+        for thr, prom, chk in result["cascade"]:
+            print(f"  threshold {thr:.0%}: {prom} promoted of {chk} checked")
+    else:
+        print(
+            f"Promoted {result['promoted']}/{result['checked']} low markers "
+            f"(of {result['total_low']} total) at threshold "
+            f"{args.threshold:.0%}{suffix}."
+        )
     return 0
 
 

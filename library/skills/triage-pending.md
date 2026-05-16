@@ -73,16 +73,44 @@ directory).
      Each row carries `flags: ["bib-only"]` and a `bibEntryRaw` field;
      no source-file move happens at apply time.
 
+   **Layered extractor (PDF rows).** The default extractor is
+   `pdftotext` (cheap, ~30s for a backlog of hundreds). When the
+   heuristic produces an empty / stopword / filename-stem citekey,
+   add `--marker-rescue` so marker-pdf re-runs on heuristic-failed
+   rows for layout-aware extraction (typically 10-30% of a
+   placeholder-named backlog). Marker output is sha256-cached at
+   `.virgil/extraction-cache/<sha>/` so repeated triage runs don't
+   re-pay the cost. See 2026-05-16-triage-no-name-pdfs.md.
+
+   ```bash
+   python3 .virgil/scripts/library/triage_batch.py \\
+       --marker-rescue --output /tmp/triage.jsonl
+   ```
+
    Each row carries:
    - `filename`, `extension`
    - `proposedCitekey`, `proposedType` — best-effort proposals from
-     filename and content
+     filename and content. Empty string when the heuristic detected
+     a stopword/publisher author or degenerate filename fallback
+     (e.g., `unnamed-N.pdf`); paired with `flags: ["needs-metadata"]`.
    - `flags`: subset of `["filename-mismatch", "whole-handbook",
      "variant-copy", "sep", "preprint", "unsupported-ext", "error",
-     "bib-only", "citekey-exists", "bib-manuscript", "bib-parse-failed"]`
+     "bib-only", "citekey-exists", "bib-manuscript", "bib-parse-failed",
+     "needs-metadata", "needs-title", "year-from-pdf-metadata",
+     "year-scan-fallback"]`
    - `proposedFields`: bib-stub fields (title, doi, isbn, url, etc.)
    - `proposedBibState` (bib-only rows only): `"unverified"` or `"manuscript"`
    - `byline`, `textPreview`, `notes`
+
+   **Safeguards.** `triage_batch.py` refuses to mark files with
+   degenerate base stems (no letters) as variant-copy and refuses to
+   mint citekeys from stopword/publisher author candidates (`press`,
+   `university`, `editors`, …). These return empty citekeys plus
+   `needs-metadata` flag; `triage_apply.py` quarantines them to
+   `unsorted/_needs-metadata/` rather than minting garbage
+   `papers/<garbage>/` directories. The cluster-size guard in
+   `triage_apply.py` also strips the `variant-copy` flag when >10
+   children claim to be variants of the same parent.
 
 2. **Review.** Read `/tmp/triage.jsonl` and present a concise summary
    to the user. Group by flag — flagged rows get a one-line note in
@@ -138,6 +166,40 @@ directory).
 4. **Drain the queue.** After triage, the queue has N pending `index`
    entries. Run `/index-pending` (or `python3 .virgil/scripts/library/drain_queue.py`
    directly) to actually index every paper and authenticate every bib.
+
+### Optional: `--llm-rescue` for the residual
+
+After `--marker-rescue` runs, some rows (typically 5-15% of a
+placeholder-named backlog) still have no usable citekey — the title
+page is missing, OCR garbled the byline beyond recovery, or the year
+sits buried somewhere marker didn't reach. For these, dispatch a
+final LLM-rescue pass:
+
+```bash
+# 1. Stage prompts for rows that need LLM rescue.
+python3 .virgil/scripts/library/triage_llm_rescue.py emit-prompts \\
+    /tmp/triage.jsonl --out-dir /tmp/llm-rescue/
+
+# 2. For each /tmp/llm-rescue/prompts/row-NNNN.txt, dispatch a
+#    Sonnet subagent via the Agent tool with that prompt as its
+#    input and write the JSON response to
+#    /tmp/llm-rescue/responses/row-NNNN.json.
+
+# 3. Merge responses back into the JSONL.
+python3 .virgil/scripts/library/triage_llm_rescue.py merge-responses \\
+    /tmp/triage.jsonl --responses-dir /tmp/llm-rescue/responses \\
+    --output /tmp/triage.llm.jsonl
+
+# 4. Backfill years via Crossref for rows where the LLM found
+#    title+author but no year.
+python3 .virgil/scripts/library/triage_llm_rescue.py crossref-year-backfill \\
+    /tmp/triage.llm.jsonl --output /tmp/triage.final.jsonl
+```
+
+Token cost: ~$0.01-0.05 per row with Sonnet. Only run when the
+backlog includes a substantial residual of placeholder-named PDFs
+(>20% with `needs-metadata` after `--marker-rescue`). Rows the LLM
+also can't resolve remain in `_needs-metadata/` quarantine.
 
 ## Reply format
 

@@ -159,6 +159,25 @@ Read:
   there is something the prior pass either deferred or couldn't
   resolve.
 
+**Converged-resume short-circuit.** If the latest summary log ends
+with `DEEP_INDEX_RESOLVED` or `DEEP_INDEX_NARROW_RESIDUAL` AND a
+fresh preflight (re-running `audit_deepindex.py --exit-on-suppressed`
+and `pgmark_validate.py --baseline-from-catalog`) reproduces an
+identical punch-list fingerprint, emit a one-line addendum log
+("carried over, no work this pass") and re-emit the same terminal
+keyword. Don't dispatch the §3 subskills. The haugeland1991representational
+memo flagged 5 consecutive identical resume passes generating
+near-duplicate streamlining memos; this short-circuit stops that
+churn.
+
+**Repair-pgmarks resume baseline.** Whenever §1 calls
+`repair_pgmarks.py`, pass
+`--resume-baseline .virgil/baselines/$ARGUMENTS-pre-deepindex.tex`
+so the 50% safeguard computes its ratio against the baseline
+pgmark count, not the (already-reduced) in-place count. Without it
+the willats1997art catastrophic-deletion failure mode recurs on any
+paper a prior pass already pruned.
+
 The §1 preprocessing scripts are designed to be re-run safely (idempotent
 on already-clean input). Run them again — they'll be no-ops if there
 is nothing new to fix.
@@ -190,14 +209,22 @@ re-runs can then `--fresh`-restore.
 ### 1. Run deterministic preprocessing
 
 ```bash
+python3 .virgil/scripts/library/normalize_whitespace.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/library/fix_invisibles.py papers/$ARGUMENTS/main.tex
 python3 .virgil/scripts/library/deep_preprocess.py papers/$ARGUMENTS/main.tex
-python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex
+python3 .virgil/scripts/library/repair_pgmarks.py papers/$ARGUMENTS/main.tex \\
+    --resume-baseline .virgil/baselines/$ARGUMENTS-pre-deepindex.tex
 ```
 
-Three deterministic passes:
+Four deterministic passes:
 
-**0. `fix_invisibles.py`** (new, run first) — strips soft hyphens
+**0a. `normalize_whitespace.py`** (Step 0; runs first) — CR/CRLF →
+LF, tab → space, bulk-NBSP → space when NBSP density >= 50% of
+total whitespace. Must run before any pass that splits on `\n` —
+classic-Mac CR-only input through `join_broken_paragraphs` exploded
+a 216-line file into 6206 one-word lines (abusch2013applying memo).
+
+**0b. `fix_invisibles.py`** — strips soft hyphens
 (U+00AD) wholesale, normalizes ligatures (U+FB00–U+FB06: `ﬁ` → `fi`,
 `ﬄ` → `ffl`, etc.), replaces word-internal NBSP (U+00A0 between two
 lowercase letters) with a regular space, and replaces U+2800 (Braille
@@ -212,7 +239,11 @@ multi-section page-label collisions (book with front matter + body +
 indexes sharing printed page numbers). The script aborts and prints
 a warning in that case; revert to baseline pgmarks (skip the repair)
 and let the validator (§3i) emit pre-existing continuity warnings
-instead of silently dropping anchors.
+instead of silently dropping anchors. The `--resume-baseline` flag
+above ensures the 50% ratio is computed against the original baseline
+pgmark count, not the (already-reduced) in-place count, so a resume
+pass can't fall through a drifted-ratio loophole and delete legitimate
+body anchors (willats1997art memo).
 
 **a. `deep_preprocess.py`** — strips repeating running headers and
 footers, removes leaked page numbers, rejoins hyphenated line breaks,
@@ -286,6 +317,14 @@ Read all of these:
 callable standalone (e.g. `/library/clean-bibliography <citekey>` to
 re-itemize References without re-running the rest), and `/library/deep-index`
 dispatches to them here.
+
+**No-shortcut contract.** The umbrella MUST dispatch each subskill via
+the `Skill` tool — do not inline-equivalent the work. The
+greenberg2021semantics retry (g-j batch memo) showed that agents
+which shortcut §3 fail the skill's internal classifier and have to
+be retried. Make every dispatch explicit; the convergence loop
+depends on each subskill writing its own audit trail to the run
+summary.
 
 > **Two load-bearing principles inherited from doctrine:**
 > - **Escalation** — when a structural call looks ambiguous, walk
@@ -631,6 +670,15 @@ DEEP_INDEX_STALLED
 The status keyword (`DEEP_INDEX_RESOLVED` | `DEEP_INDEX_NARROW_RESIDUAL`
 | `DEEP_INDEX_STALLED`) **must** appear on its own line, with nothing
 else on that line — `/loop` callers grep for it.
+
+**Persist the terminal keyword to the on-disk summary log too.** The
+banner-only-emission pattern (flagged in 2026-05-15/16 iconicity
+batch memos: g-j, g-k, q-s, s-v, w-z) caused orchestrators that
+re-scan converged papers to grep-miss the keyword in
+`.virgil/logs/$ARGUMENTS/<ISO>-deepindex.summary.md` and re-spawn
+already-converged work. The summary log MUST end with the same
+keyword on its own final line. The skill writes both: the banner to
+stdout and the keyword to the trailing line of the summary log.
 
 The stalled state is rare — the convergence loop normally drives
 everything to resolved or narrow-residual. If you find the loop

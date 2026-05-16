@@ -87,6 +87,55 @@ _CITEKEY_STOPWORDS = frozenset({
     "is", "are", "was", "were",
 })
 
+# Stopword / publisher / topic words that should NOT become author
+# stems. When `_propose_citekey` would otherwise mint a citekey like
+# `press1980image` or `of2002classical` (extracted bylines: "Harvard
+# University Press", "PHILOSOPHY OF"), reject the surname and return
+# the empty-citekey sentinel so triage_apply can quarantine the row.
+# See 2026-05-16-triage-no-name-pdfs.md.
+_AUTHOR_STOPWORDS = frozenset({
+    # Articles / prepositions / conjunctions accidentally captured as
+    # "first author" from title-cased title fragments.
+    "the", "a", "an",
+    "of", "in", "on", "for", "to", "from", "with", "by", "at", "as",
+    "into", "onto", "through", "between", "among",
+    "and", "or", "but", "nor",
+    "is", "are", "was", "were", "be", "being", "been",
+    # Editorial role words.
+    "editors", "edited", "editor", "ed", "eds",
+    # Publisher / institution short forms.
+    "press", "publishers", "publisher", "publishing", "publication",
+    "publications", "university", "universities", "college", "school",
+    "department", "institute", "society", "association", "academy",
+    "books", "journal", "journals", "review", "reviews", "volume",
+    "chapter", "preface", "introduction", "foreword", "epilogue",
+    "abstract", "bibliography", "references", "appendix",
+    # Common publishers (short forms).
+    "blackwell", "wiley", "springer", "elsevier", "routledge",
+    "academic", "pergamon", "kluwer", "reidel", "sage",
+    "harvard", "oxford", "cambridge", "yale", "princeton", "mit",
+    "stanford", "columbia", "cornell", "nyu", "ucla", "cuny",
+    # Topic words that frequently get pulled from titles.
+    "philosophy", "linguistics", "psychology", "physics",
+    "consciousness", "language", "vision", "perception",
+    "representation", "meaning", "knowledge", "reality",
+    "mind", "brain", "cognition", "cognitive",
+    "theory", "theories", "essay", "essays",
+    # OCR / placeholder garbage that survived sanitization.
+    "iii", "iiii", "iiiii", "iiiiii", "iiiiiii", "iiiiiiii",
+    "xxx", "xxxx", "xxxxx",
+    "untitled", "unnamed", "unknown",
+})
+
+# Fallback citekey patterns that signal "the heuristic failed and
+# returned the filename stem". triage_apply should quarantine these
+# rather than auto-import (which produces 560 `papers/unnamed-N/`
+# directories on a placeholder-named backlog).
+_DEGENERATE_FALLBACK_RE = re.compile(
+    r"^(?:unnamed-?\d+|-+|untitled-?\d*|temp-?\d*|tmp-?\d*|scan\d*)$",
+    re.IGNORECASE,
+)
+
 
 def _first_significant_word(title: str) -> str:
     for word in re.findall(r"[a-zA-Z]+", title):
@@ -105,6 +154,52 @@ def _read_pdf_first_pages(pdf_path: Path, max_pages: int = 4) -> str:
         return out.stdout or ""
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return ""
+
+
+def _marker_extract_first_pages(
+    pdf_path: Path, library: Path, max_pages: int = 3,
+) -> str:
+    """Layout-aware extraction via marker-pdf for triage rescue.
+
+    Returns markdown text from the first `max_pages` pages, or empty
+    string if marker is unavailable or fails. Results are cached
+    keyed by `sha256(pdf)` at `.virgil/extraction-cache/<sha>/triage.md`
+    so repeated triage runs don't re-pay the marker cost.
+
+    Marker is slow (~30s/PDF cold, ~1-5s warm with --skip_existing).
+    Use as a RESCUE only — call only on rows where the heuristic
+    citekey is empty / stopword / filename-stem. See
+    2026-05-16-triage-no-name-pdfs.md for the layered design.
+    """
+    import hashlib
+    try:
+        sha = hashlib.sha256(pdf_path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+    cache_dir = library / ".virgil" / "extraction-cache" / sha
+    cache_path = cache_dir / "triage.md"
+    if cache_path.exists():
+        try:
+            return cache_path.read_text(encoding="utf-8")
+        except OSError:
+            pass
+    # Attempt marker. Imports are local so callers without marker
+    # installed don't pay the import cost (~1s).
+    try:
+        from extract import marker_extract_first_pages  # type: ignore
+    except Exception:
+        return ""
+    try:
+        md = marker_extract_first_pages(pdf_path, max_pages=max_pages)
+    except Exception:
+        md = ""
+    if md:
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(md, encoding="utf-8")
+        except OSError:
+            pass
+    return md
 
 
 def _read_docx_meta(docx_path: Path) -> dict[str, Any]:
@@ -378,13 +473,49 @@ def _detect_year_in_text(text: str, flags: Optional[list[str]] = None) -> Option
             year = m.group(1)
             if 1800 <= int(year) <= 2100:
                 year_weights[year] = year_weights.get(year, 0) + weight
-    if not year_weights:
-        return None
-    ranked = sorted(year_weights.items(), key=lambda x: x[1], reverse=True)
-    if (flags is not None and len(ranked) >= 2
-            and abs(int(ranked[0][0]) - int(ranked[1][0])) > 5):
-        flags.append("year-ambiguous")
-    return ranked[0][0]
+    if year_weights:
+        ranked = sorted(year_weights.items(), key=lambda x: x[1], reverse=True)
+        if (flags is not None and len(ranked) >= 2
+                and abs(int(ranked[0][0]) - int(ranked[1][0])) > 5):
+            flags.append("year-ambiguous")
+        return ranked[0][0]
+    # Broader fallback (2026-05-16-triage-no-name-pdfs.md): scan the
+    # whole text for any plausible 1850..current_year and take the
+    # earliest. Most published works mention their year somewhere
+    # in the first few pages — bib entries, acknowledgements, footers.
+    import datetime
+    current_year = datetime.datetime.now().year
+    plausible = [
+        int(m.group(0)) for m in re.finditer(r"\b(?:18|19|20)\d{2}\b", text)
+        if 1850 <= int(m.group(0)) <= current_year
+    ]
+    if plausible:
+        if flags is not None:
+            flags.append("year-scan-fallback")
+        return str(min(plausible))
+    return None
+
+
+def _detect_year_in_pdf_metadata(pdf_path: Path) -> Optional[str]:
+    """Last-resort year fallback: PDF creationDate / modDate. Pulls
+    `D:YYYY...` from pdfinfo. Not as good as content-derived years
+    but better than nothing for placeholder-named files.
+    """
+    try:
+        out = subprocess.run(
+            ["pdfinfo", str(pdf_path)],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+        for line in (out.stdout or "").splitlines():
+            if line.startswith("CreationDate:") or line.startswith("ModDate:"):
+                m = re.search(r"\b(19|20)(\d{2})\b", line)
+                if m:
+                    yr = int(m.group(1) + m.group(2))
+                    if 1980 <= yr <= 2100:
+                        return str(yr)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
 
 
 def _detect_isbn(text: str) -> str:
@@ -443,10 +574,29 @@ def _find_citekey_for_filename(catalog: dict, filename: str) -> str:
 
 
 def _propose_citekey(lastname: str, year: str, title: str, fallback: str) -> str:
-    if lastname and year:
-        stem = re.sub(r"[^a-zA-Z]", "", lastname).lower()
+    """Propose a citekey from heuristic-extracted (lastname, year, title).
+
+    Returns an empty string when the heuristic produced a stopword
+    lastname or a degenerate filename fallback — callers (triage_apply)
+    quarantine empty citekeys to `unsorted/_needs-metadata/` rather
+    than minting `papers/unnamed-N/` directories. See 2026-05-16-
+    triage-no-name-pdfs.md.
+    """
+    stem = re.sub(r"[^a-zA-Z]", "", lastname).lower() if lastname else ""
+    if (
+        stem
+        and year
+        and stem not in _AUTHOR_STOPWORDS
+        and len(stem) >= 2
+    ):
         word = _first_significant_word(title)
         return stem + year + word
+    # No usable author-year; refuse to return a degenerate filename
+    # fallback. The empty-string sentinel routes to quarantine.
+    if not fallback or _DEGENERATE_FALLBACK_RE.match(fallback):
+        return ""
+    # Real filename-stem fallback: keep it but mark via the surrounding
+    # row's flags (`needs-metadata`) downstream.
     return fallback
 
 
@@ -459,6 +609,16 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
 
     # ── Variant-copy detection ────────────────────────────────────────
     vm = _VARIANT_RE.match(filename)
+    if vm:
+        base_stem = vm.group("base")
+        base_letters = re.sub(r"[^A-Za-z]", "", base_stem)
+        # Degenerate-base safeguard: refuse to treat `-.<N>.pdf`,
+        # `<digits>.<N>.pdf`, or single-letter-base files as variants.
+        # A real citekey has letters; without them the variant heuristic
+        # collapses 600+ unrelated placeholder-named PDFs into one
+        # ghost-parent cluster (2026-05-16-triage-no-name-pdfs.md).
+        if len(base_letters) < 2:
+            vm = None
     if vm:
         base_stem = vm.group("base")
         base_ext = vm.group("ext").lower()
@@ -541,6 +701,14 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
     if filename_year and content_year and filename_year != content_year:
         notes.append(f"Filename year {filename_year} != content year {content_year}; using content year")
     chosen_year = content_year or filename_year or ""
+    # Final fallback: PDF metadata creation/modification date. Lower
+    # signal quality than content-derived years, so only used when
+    # nothing else fired (2026-05-16-triage-no-name-pdfs.md).
+    if not chosen_year and ext == "pdf":
+        meta_year = _detect_year_in_pdf_metadata(path)
+        if meta_year:
+            chosen_year = meta_year
+            flags.append("year-from-pdf-metadata")
 
     # ── DOI / ISBN / SEP detection ────────────────────────────────────
     doi_match = _DOI_RE.search(first_pages_text)
@@ -594,7 +762,19 @@ def triage_one(path: Path, library: Path, catalog: dict) -> dict[str, Any]:
     fallback = filename.rsplit(".", 1)[0]
     proposed_citekey = _propose_citekey(chosen_lastname, chosen_year, proposed_fields.get("title", ""), fallback)
     if "sep" in flags:
-        proposed_citekey += "sep"
+        if proposed_citekey:
+            proposed_citekey += "sep"
+    # Empty citekey signals the heuristic failed (degenerate fallback
+    # OR stopword lastname). Flag so triage_apply can quarantine the
+    # row to unsorted/_needs-metadata/ instead of minting a garbage
+    # papers/ directory.
+    if not proposed_citekey:
+        flags.append("needs-metadata")
+        notes.append(
+            "Heuristic could not derive a citekey from filename / extracted "
+            "byline. Quarantine to unsorted/_needs-metadata/ for manual "
+            "review or --llm-rescue pass."
+        )
 
     # ── Assemble row ──────────────────────────────────────────────────
     row: dict[str, Any] = {
@@ -685,12 +865,112 @@ def triage_bib(path: Path, library: Path, catalog: dict) -> list[dict[str, Any]]
     return rows
 
 
+def _needs_marker_rescue(row: dict[str, Any]) -> bool:
+    """A row is a marker-rescue candidate when the heuristic citekey
+    is empty (stopword/degenerate) OR the row carries `needs-metadata`
+    / `needs-title` flags. Avoids marker on rows the cheap heuristic
+    already nailed."""
+    if row.get("extension") != "pdf":
+        return False
+    if not row.get("proposedCitekey"):
+        return True
+    flags = row.get("flags") or []
+    return "needs-metadata" in flags or "needs-title" in flags
+
+
+def _marker_rescue_row(
+    row: dict[str, Any], path: Path, library: Path, catalog: dict,
+) -> dict[str, Any]:
+    """Re-run triage on one row using marker-extracted first pages
+    instead of pdftotext. Idempotent — if marker fails, returns the
+    original row unchanged.
+    """
+    md = _marker_extract_first_pages(path, library, max_pages=3)
+    if not md:
+        return row
+    # Reuse triage_one's per-row logic by stuffing a synthetic
+    # `_marker_text_preview` into the row's notes and re-running. The
+    # cheapest path is to splice the markdown into the byline/title
+    # detectors directly. For now we recompute title + byline + year
+    # from the markdown and overlay.
+    title = _extract_title_from_markdown(md)
+    bylines = _extract_byline_from_markdown(md)
+    year = _detect_year_in_text(md)
+    flags = list(row.get("flags") or [])
+    notes = list(row.get("notes") or [])
+    fields = dict(row.get("proposedFields") or {})
+    if title:
+        fields["title"] = title
+        if "needs-title" in flags:
+            flags.remove("needs-title")
+    if bylines:
+        row["byline"] = bylines[:3]
+    surname = _first_byline_surname(bylines[0]) if bylines else ""
+    chosen_year = year or row.get("contentYear") or row.get("filenameYear") or ""
+    fallback = path.stem
+    new_ck = _propose_citekey(surname, chosen_year, fields.get("title", ""), fallback)
+    if new_ck:
+        row["proposedCitekey"] = new_ck
+        if "needs-metadata" in flags:
+            flags.remove("needs-metadata")
+        notes.append(f"marker-rescue: citekey {new_ck!r} from {path.name}")
+    else:
+        notes.append(
+            "marker-rescue: still no usable citekey "
+            "(consider --llm-rescue)"
+        )
+    row["flags"] = flags
+    row["notes"] = notes
+    row["proposedFields"] = fields
+    return row
+
+
+# Lightweight markdown helpers — only used for marker rescue rows.
+def _extract_title_from_markdown(md: str) -> str:
+    for line in md.splitlines():
+        s = line.strip()
+        if s.startswith("# "):
+            cand = s.lstrip("# ").strip()
+            if cand and not _TITLE_DENYLIST_RE.search(cand):
+                return cand
+    return ""
+
+
+def _extract_byline_from_markdown(md: str) -> list[str]:
+    out: list[str] = []
+    after_title = False
+    for line in md.splitlines():
+        s = line.strip()
+        if s.startswith("# "):
+            after_title = True
+            continue
+        if not after_title or not s:
+            continue
+        if s.startswith("#"):  # subheading or section, byline window closed
+            break
+        cleaned = re.sub(r"[*_`]", "", s)
+        if _BYLINE_RE.match(cleaned):
+            out.append(cleaned)
+        if len(out) >= 5:
+            break
+    return out
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="Batch-extract triage observables from unsorted/.")
     p.add_argument("--library", default=str(Path.cwd()),
                    help="Library root directory (defaults to CWD)")
     p.add_argument("--output", default="-",
                    help="Output JSONL path; '-' for stdout (default)")
+    p.add_argument("--marker-rescue", action="store_true",
+                   help=(
+                       "After the cheap heuristic pass, re-run rows whose "
+                       "citekey is empty / stopword / filename-stem through "
+                       "marker-pdf for layout-aware extraction. Slow per row "
+                       "but only fires on heuristic-failed rows (typically "
+                       "10-30%% of a placeholder-named backlog). Results "
+                       "cached at .virgil/extraction-cache/<sha256>/."
+                   ))
     args = p.parse_args()
 
     library = Path(args.library).expanduser()
@@ -702,6 +982,7 @@ def main() -> int:
     catalog = _read_catalog(library)
 
     rows: list[dict[str, Any]] = []
+    path_by_filename: dict[str, Path] = {}
     for path in sorted(unsorted_dir.iterdir()):
         if path.is_dir():
             continue
@@ -710,6 +991,7 @@ def main() -> int:
         ext = path.suffix.lower()
         if ext not in (".pdf", ".docx", ".tex", ".bib"):
             continue
+        path_by_filename[path.name] = path
         try:
             if ext == ".bib":
                 rows.extend(triage_bib(path, library, catalog))
@@ -722,6 +1004,18 @@ def main() -> int:
                 "flags": ["error"],
                 "notes": [f"triage failed: {e}"],
             })
+
+    if args.marker_rescue:
+        rescued = 0
+        for row in rows:
+            if not _needs_marker_rescue(row):
+                continue
+            path = path_by_filename.get(row.get("filename", ""))
+            if not path:
+                continue
+            _marker_rescue_row(row, path, library, catalog)
+            rescued += 1
+        print(f"marker-rescue: ran on {rescued} rows", file=sys.stderr)
 
     output = "\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n"
     if args.output == "-":

@@ -2,15 +2,18 @@
 
 Inspects main.tex (and PDF page count) and emits one of:
 
-  - book             : multi-chapter monograph, \\section{} count high,
-                       no `article`-class signals.
-  - article          : single-paper article, typical journal layout.
-  - multi-article-pdf: PDF contains content from more than one article
-                       (JSTOR scans, Annual Reviews appended TOCs, etc.).
-                       Heuristic flag — confirm via detect_multi_article.py.
-  - scanned-ocr      : OCR'd source (ligatures, drop-caps signature).
-  - endnote-style    : per-chapter end-notes section (\\section{Notes}
-                       with `^1\\. <body>` paragraphs at chapter end).
+  - book                      : multi-chapter monograph, \\section{} count high,
+                                no `article`-class signals.
+  - article                   : single-paper article, author-year style.
+  - article-vancouver         : article with numeric/bracket citations.
+  - multi-article-pdf         : PDF contains content from more than one
+                                article (JSTOR scans, Annual Reviews
+                                appended TOCs, etc.). Heuristic flag —
+                                confirm via detect_multi_article.py.
+  - scanned-ocr               : OCR'd source (ligatures, drop-caps signature).
+  - endnote-style             : per-chapter end-notes section
+                                (\\section{Notes} with `^1\\. <body>`
+                                paragraphs at chapter end).
 
 Multiple labels can apply; we emit the most discriminating one. If
 ambiguous, defaults to `article` (the most common case and the one
@@ -18,9 +21,11 @@ where the standard /deep-index path works without genre-specific
 tooling).
 
 Usage:
-    python3 detect_genre.py <paper-dir>
+    python3 detect_genre.py <paper-dir> [--with-confidence]
 
-Output: prints the genre label to stdout, one word. Exit 0 always.
+Output: prints the genre label to stdout, one word. With
+`--with-confidence`, prints `<label>\\t<confidence>` where confidence
+is one of `high` / `medium` / `low`. Exit 0 always.
 """
 from __future__ import annotations
 
@@ -30,10 +35,13 @@ import subprocess
 from pathlib import Path
 
 
-SECTION_RE = re.compile(r"^\\section\{[^}]*\}", re.M)
+SECTION_RE = re.compile(r"^\\section\*?\{[^}]*\}", re.M)
 LEAKED_FN_RE = re.compile(r"^(\d{1,3})[.\s]+[A-Z]", re.M)
 LIGATURE_CHARS = "ﬀﬁﬂﬃﬄﬅﬆ"
 DROPCAP_LIKELY_RE = re.compile(r"\\subsubsection\{[a-z][a-z]+ [a-z]", re.M)
+# Vancouver / numeric-citation signal: `[1]`, `[12]`, `[1-3]` inline
+# in body prose at density >= 2/1000 chars.
+VANCOUVER_CITE_RE = re.compile(r"\[\d+(?:[-–,\s]+\d+)*\]")
 
 
 def read_text(path: Path) -> str:
@@ -60,14 +68,16 @@ def pdf_page_count(pdf_path: Path) -> int:
     return 0
 
 
-def detect(paper_dir: Path) -> str:
-    """Return a genre label. See module docstring for the set."""
+def detect(paper_dir: Path) -> tuple[str, str]:
+    """Return (genre_label, confidence). See module docstring for the
+    label set. Confidence is one of `high` / `medium` / `low`.
+    """
     citekey = paper_dir.name
     tex_path = paper_dir / "main.tex"
     pdf_path = paper_dir / f"{citekey}.pdf"
 
     if not tex_path.exists():
-        return "article"
+        return "article", "low"
 
     tex = read_text(tex_path)
     sections = SECTION_RE.findall(tex)
@@ -75,7 +85,7 @@ def detect(paper_dir: Path) -> str:
 
     # Notes-section signature (endnote-style).
     has_notes_section = bool(re.search(
-        r"\\section\{(Notes|Endnotes|Chapter Notes)\}",
+        r"\\section\*?\{(Notes|Endnotes|Chapter Notes)\}",
         tex, re.I,
     ))
     # Find paragraphs at chapter-end that look like notes blocks.
@@ -90,7 +100,15 @@ def detect(paper_dir: Path) -> str:
             chapter_end_notes += 1
 
     pages = pdf_page_count(pdf_path)
-    big_doc = pages >= 150 or section_count >= 8
+    # Page-count guard: chapter excerpts (<=30 pages with few sections)
+    # are articles, not books, even if they look monograph-like
+    # otherwise. Prevents false "book" classification on the
+    # ~26-page chalmersramsey-style memo cases.
+    short_doc = pages > 0 and pages <= 30 and section_count <= 12
+    big_doc = (
+        not short_doc
+        and (pages >= 150 or section_count >= 8)
+    )
 
     # Scanned-OCR signature: ligature characters present, or chapter-start
     # paragraphs that look like dropped-drop-cap residues.
@@ -107,31 +125,49 @@ def detect(paper_dir: Path) -> str:
         (title_count >= 2 or re.search(r"\nABSTRACT\s*\n.*\nABSTRACT\s*\n", tex, re.S))
     )
 
+    # Vancouver / numeric-citation signal: dense `[N]` references in body.
+    if tex:
+        vancouver_density = len(VANCOUVER_CITE_RE.findall(tex)) / max(1, len(tex) / 1000)
+    else:
+        vancouver_density = 0.0
+
     # Endnote-style: notes section with paragraph-numbered bodies.
     if has_notes_section or chapter_end_notes >= 2:
-        return "endnote-style"
+        return "endnote-style", "high" if chapter_end_notes >= 2 else "medium"
 
     if has_multi_article_smell:
-        return "multi-article-pdf"
+        return "multi-article-pdf", "low"  # always heuristic
 
     if is_scanned:
-        return "scanned-ocr"
+        return "scanned-ocr", "high" if ligature_count > 200 else "medium"
 
     if big_doc:
-        return "book"
+        return "book", "high" if pages >= 200 else "medium"
 
-    return "article"
+    # Article — distinguish vancouver vs author-year.
+    if vancouver_density >= 2.0:
+        return "article-vancouver", "high" if vancouver_density >= 5 else "medium"
+    # Confidence for article: high if we have explicit signals
+    # (clear page count, sections, no big_doc / scanned flags fired).
+    confidence = "high" if (pages > 0 and section_count >= 2) else "medium"
+    return "article", confidence
 
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: detect_genre.py <paper-dir>", file=sys.stderr)
+        print("usage: detect_genre.py <paper-dir> [--with-confidence]",
+              file=sys.stderr)
         return 2
+    with_confidence = "--with-confidence" in argv[2:]
     paper_dir = Path(argv[1]).resolve()
     if not paper_dir.is_dir():
         print(f"not a directory: {paper_dir}", file=sys.stderr)
         return 2
-    print(detect(paper_dir))
+    label, confidence = detect(paper_dir)
+    if with_confidence:
+        print(f"{label}\t{confidence}")
+    else:
+        print(label)
     return 0
 
 

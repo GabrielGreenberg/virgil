@@ -223,11 +223,70 @@ finding whose kind matches an existing `…-false-positive:` entry
 as pre-existing rather than new. This is how known-good cases
 escape the convergence-loop gate.
 
+**Always write suppressions atomically via the helper script.** Do
+NOT hand-Edit `catalog.json` to add the warning — go through:
+
+```bash
+python3 .virgil/scripts/library/add_validator_suppression.py \\
+    $ARGUMENTS <kind> "<concrete why-it's-correct>"
+```
+
+This acquires `lock_catalog`, dedupes against existing suppressions,
+and bumps `catalog-version.txt`. The schwarzlose2021brainscapes /
+shimojima2015semantic memos documented passes that classified a
+finding as false-positive but skipped the catalog write — the next
+pass re-flagged the item and the convergence loop misread it as
+new work. The helper script makes the coupling enforceable.
+
+### Audit-side suppression prefixes
+
+The audit script (`audit_deepindex.py`) carries its own catalog-
+suppression vocabulary, symmetric with the validator's. Each
+`…-false-positive:` entry in `indexed.warnings` suppresses the
+matching audit finding kind. Run the audit with
+`--exit-on-suppressed` so the convergence loop sees exit 0 when
+only suppressed items remain (shimojima2015semantic memo: without
+this, the loop can't tell "work remaining" from "work suppressed").
+
+| Audit kind | Suppression prefix | When to use |
+|---|---|---|
+| `case-errors` | `case-errors-false-positive:` | Brand-name CamelCase (covered by allowlist, but for edge cases not yet in the list) |
+| `hyphenation-artifact` | `hyphenation-artifact-false-positive:` | Coordinated compounds the negative-lookahead missed |
+| `footnote-inline-rate` | `footnote-inline-rate-false-positive:` | Philosophy premise enumerations (`1. a. ... b. ...`), TOC scope, submission-date lines |
+| `pgmark-low-confidence-flood` | `pgmark-low-confidence-flood-false-positive:` | Scanned-OCR book where every marker is positionally verified (use `recover_low_confidence_pgmarks.py --cascade` first) |
+| `title-thanks` | `title-thanks-false-positive:` | Title containing legitimate `\\thanks{}` that the brace-balanced parser already handles |
+
+### Known false-positive patterns (do not chase with new validator carveouts)
+
+Each of these recurs across the corpus; the resolution is a catalog
+suppression entry, not a script change:
+
+- **Brand-name CamelCase** (`arXiv`, `bioRxiv`, `ImageNet`, `ChatGPT`,
+  `ResNet`, …) — `audit_deepindex.py` BRAND_NAME_ALLOWLIST handles
+  the common cases; for edge cases use `case-errors-false-positive:`.
+- **Philosophy premise enumerations** — `1. <text>` ... `2. <text>`
+  blocks of inline premises. Looks like leaked footnotes but isn't.
+- **Formal-semantics variables** — single-letter variables (`P`, `Q`,
+  `M`) inside math-mode regions; the math-strip already handles
+  most. For unbracketed inline forms use the audit suppression.
+- **European-particle surnames** — `van der Berg`, `de Vries`,
+  `Graf Fara`. Already handled in citation normalization; if an
+  audit finding still fires, suppress.
+- **TOC-scope footnote-inline candidates** — handled by the
+  back-matter-detection guard; for unusual TOC layouts use the
+  audit suppression.
+
 ## Step 9.5 — Audit punch-list (drives convergence)
 
 ```bash
-python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS
+python3 .virgil/scripts/library/audit_deepindex.py papers/$ARGUMENTS --exit-on-suppressed
 ```
+
+The `--exit-on-suppressed` flag returns 0 when every remaining
+finding sits in a category the catalog explicitly marked
+`*-false-positive:`. The convergence loop relies on this to
+distinguish "work remaining" from "work the prior pass declared a
+false positive" (shimojima2015semantic memo).
 
 Reports remaining issues across:
 

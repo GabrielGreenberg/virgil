@@ -237,6 +237,41 @@ the document. The deterministic preprocessing scripts detect
 already-cleaned content and become no-ops. The AI subskills should
 similarly recognize when structural fixes have already been applied.
 
+**Resume-idempotency caveat for `repair_pgmarks.py`.** The 50%
+safeguard inside `repair_pgmarks.py` is NOT idempotent on a file
+whose pgmark distribution has changed since the baseline: a prior
+pass may have legitimately removed half the pgmarks, and a resume
+pass then sees the *already-reduced* count and refuses to remove
+anything else (or, worse, deletes correct anchors when the relative
+ratio drifts). When invoking `repair_pgmarks.py` from a deep-index
+resume, always pass
+`--resume-baseline .virgil/baselines/<citekey>-pre-deepindex.tex`
+so the safeguard computes its ratio against the baseline pgmark
+count. The willats1997art memo (86 legitimate body-page anchors
+deleted on resume) is the failure case this prevents.
+
+**Suppression-write is a converging operation.** Writing a
+`<kind>-false-positive:` entry to `indexed.warnings` (via
+`add_validator_suppression.py`) changes the fingerprint but the
+convergence loop must treat it as a converging step, not divergence.
+The schwarzlose2021brainscapes / shimojima2015semantic memos
+documented passes that classified a finding as
+`[validator-false-positive]` but forgot to write the catalog entry,
+so the next pass re-flagged the item. Atomic-write the suppression
+in the *same* pass as the classification — the helper script does
+this safely under `lock_catalog`.
+
+**Marker-pdf is the default extractor.** As of commit 02978b3
+(2026-05-16), `/library/index-paper` runs marker-pdf by default. Many
+recovery scripts (math-glyph recovery, page-boundary-dropout fixes,
+custom-CMap inversion) that were proposed in PyMuPDF-era streamlining
+memos are no longer needed; marker handles those classes of failure
+natively. If a deep-index pass encounters a paper that was indexed
+pre-marker (visible signal: no marker provenance in `indexed.notes`,
+pervasive math-glyph collapse, dropped trailing sentences), run
+`/library/index-paper <citekey> --re-extract` first so the rest of
+the pipeline isn't compensating for fixed-upstream artifacts.
+
 For the bibliography work specifically: on a second pass, the entries
 already exist in `references.bib` and the body already has `\cite{…}`
 / `\citet{…}` commands. Re-running the bibliography subskill should

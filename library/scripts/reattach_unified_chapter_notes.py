@@ -43,7 +43,7 @@ CHAPTER_DIVIDER_RE = re.compile(
     re.M | re.I,
 )
 CHAPTER_SECTION_RE = re.compile(
-    r"^\\section\{(?:Chapter\s+)?(\d+)\b", re.M | re.I,
+    r"^\\section\*?\{(?:Chapter\s+)?(\d+)\b", re.M | re.I,
 )
 NOTE_LINE_RE = re.compile(
     r"^\s*(\d{1,3})[\.\s]+([^\n]+(?:\n(?!\s*\d{1,3}[\.\s])[^\n]*)*?)(?=\n\s*\d{1,3}[\.\s]|\n\s*\\subsection|\n\s*Chapter|\Z)",

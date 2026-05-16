@@ -127,6 +127,18 @@ Converts OCR-mangled `λ` → `\lambda`, `∃` → `\exists`, `∧` →
 chains `kdke` → `\lambda d\, \lambda e\,`, subscripts `e1` → `e_1`.
 Wraps predicate names in `\text{}` to keep them upright.
 
+**Inline-example pre-pass.** Before the batch converter, hoist any
+mid-paragraph numbered examples onto their own paragraphs. The
+converter only sees paragraph-leading `^(N)\s+` forms; inline forms
+like `...thus the formula (2) σ31 satisfies P31...` slip past it
+(abusch2013applying memo).
+
+```bash
+python3 .virgil/scripts/library/split_inline_numbered_examples.py papers/$ARGUMENTS/main.tex
+```
+
+The split is idempotent; safe to re-run.
+
 **Batch numbered-example conversion** (linguistics papers with 50+
 examples):
 

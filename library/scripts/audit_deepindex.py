@@ -84,6 +84,39 @@ MATH_IDENT_PREFIX_RE = re.compile(
     r"id|exp|num|tmp|usr|app|src|dst|loc|len|cnt|seg|fst|snd|tok)[A-Z]"
 )
 
+# Brand-name / proper-noun allowlist for camelCase that is NOT an OCR
+# error. Comparison is case-sensitive (since the rendering matters):
+# `arXiv` is allowlisted, `arxiv` would still get caught if it were a
+# different word. Coverage focus: CS, neuroscience, ML, modern web
+# brands frequently cited in cognitive-science papers. (kriegeskorte2015deep
+# memo + systemic across the iconicity batch.)
+BRAND_NAME_ALLOWLIST = frozenset({
+    "arXiv", "bioRxiv", "medRxiv", "ChemRxiv", "psyArXiv", "SocArXiv",
+    "ImageNet", "AlexNet", "ResNet", "VGGNet", "GoogLeNet", "DenseNet",
+    "MobileNet", "EfficientNet", "WaveNet", "U-Net", "SegNet",
+    "ChatGPT", "GPT", "InstructGPT", "DALL-E", "CLIP", "BERT", "RoBERTa",
+    "ELMo", "ELECTRA", "T5", "XLNet", "DistilBERT", "ALBERT",
+    "PyTorch", "TensorFlow", "JAX", "NumPy", "SciPy", "scikit-learn",
+    "matplotlib", "Jupyter", "iPython", "iPhone", "iPad", "macOS", "iOS",
+    "GitHub", "GitLab", "BitBucket", "PostScript", "JavaScript",
+    "TypeScript", "PowerPoint", "MathML", "MathJax", "LaTeX", "BibTeX",
+    "DeepMind", "OpenAI", "HuggingFace", "Anthropic", "MidJourney",
+    "PubMed", "MEDLINE", "fMRI", "iEEG", "rsfMRI", "diffMRI",
+    "MTurk", "PsychoPy", "OpenSesame",
+    "YouTube", "FaceTime", "WhatsApp", "WeChat",
+    "JSTOR", "PhilPapers", "PsycINFO", "SSRN", "RePEc",
+    "WordNet", "ConceptNet", "FrameNet", "VerbNet", "PropBank",
+})
+
+# Backreferences-section heading: matches `\section{}` / `\section*{}`.
+# The case-error scan skips text inside any References section to avoid
+# flagging surname capitalization in author lists. (kriegeskorte memo:
+# arXiv references for 50 papers/year produced 50+ false positives.)
+REFS_SECTION_RE = re.compile(
+    r"\\section\*?\{(References|Bibliography|Works\s*Cited)\b",
+    re.I,
+)
+
 # Word-internal NBSP between two lowercase letters.
 WORD_NBSP_RE = re.compile(r"[a-z] [a-z]")
 
@@ -202,10 +235,19 @@ def count_hyphen_artifacts(text: str) -> tuple[int, list[int]]:
 
 def count_case_errors(text: str) -> tuple[int, list[int]]:
     """Count mid-word case errors (camelCase mid-word). Skip command args
-    and math spans, and exclude matches that look like math-identifier
-    names (`posM`, `posMtxtM`)."""
+    and math spans, exclude math-identifier names (`posM`, `posMtxtM`),
+    skip the BRAND_NAME_ALLOWLIST (arXiv, ImageNet, …), and ignore the
+    References / Bibliography section entirely (where author names with
+    legitimate capitalization read as false positives)."""
+    # Truncate at the first References-like section so author lists
+    # aren't scanned. (kriegeskorte memo.)
+    body_end_match = REFS_SECTION_RE.search(text)
+    if body_end_match:
+        body = text[: body_end_match.start()]
+    else:
+        body = text
     # Strip LaTeX command bodies to avoid false positives on intended camelCase.
-    no_cmd = re.sub(r"\\[a-zA-Z]+\{[^}]*\}", "", text)
+    no_cmd = re.sub(r"\\[a-zA-Z]+\{[^}]*\}", "", body)
     # Strip math spans so identifiers like `posM` inside `$pos_M$` don't
     # show up. We replace with blanks (preserving line numbers).
     no_math = DISPLAY_MATH_RE.sub(
@@ -221,6 +263,9 @@ def count_case_errors(text: str) -> tuple[int, list[int]]:
             token = m.group(0)
             # Skip math-identifier-like prefixes (leong memo).
             if MATH_IDENT_PREFIX_RE.match(token):
+                continue
+            # Skip brand-name allowlist (kriegeskorte memo).
+            if token in BRAND_NAME_ALLOWLIST:
                 continue
             real_matches.append((line_no, token))
     samples = [ln for ln, _ in real_matches[:3]]
@@ -505,14 +550,87 @@ def audit_references_bib(bib_text: str) -> list[str]:
     return findings
 
 
+def _extract_balanced_title(tex: str) -> str | None:
+    r"""Extract `\title{...}` argument with proper brace balancing.
+
+    Naive `\title\{([^}]+)\}` truncates at the first `}` inside
+    `\title{...\thanks{...}}`, capturing garbage. This walks the
+    nested-brace structure and returns the outermost argument, after
+    stripping any inner `\thanks{...}` calls (which are
+    title-attached acknowledgements, not part of the title text).
+    """
+    m = re.search(r"\\title\s*\{", tex)
+    if not m:
+        return None
+    start = m.end()
+    depth = 1
+    i = start
+    n = len(tex)
+    while i < n and depth > 0:
+        ch = tex[i]
+        if ch == "\\" and i + 1 < n:
+            # Skip escaped braces and the leading backslash of any command.
+            i += 2
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                arg = tex[start:i]
+                # Strip nested \thanks{...} (brace-balanced) so the
+                # comparable title text isn't polluted by affiliation
+                # or acknowledgement boilerplate.
+                return _strip_balanced_command(arg, "thanks").strip()
+        i += 1
+    return None
+
+
+def _strip_balanced_command(text: str, cmd: str) -> str:
+    """Remove every `\\<cmd>{...}` (brace-balanced) from `text`."""
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    needle = f"\\{cmd}"
+    while i < n:
+        j = text.find(needle, i)
+        if j < 0:
+            out.append(text[i:])
+            break
+        # Confirm followed by `{` (skip whitespace).
+        k = j + len(needle)
+        while k < n and text[k] in " \t":
+            k += 1
+        if k >= n or text[k] != "{":
+            # Not a brace-arg form; keep the literal.
+            out.append(text[i:j + len(needle)])
+            i = j + len(needle)
+            continue
+        out.append(text[i:j])
+        depth = 1
+        k += 1
+        while k < n and depth > 0:
+            ch = text[k]
+            if ch == "\\" and k + 1 < n:
+                k += 2
+                continue
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+            k += 1
+        i = k
+    return "".join(out)
+
+
 def check_title_metadata(paper_dir: Path, citekey: str, library: Path) -> list[str]:
     """Verify \\title{} matches catalog title and master.bib title."""
     findings: list[str] = []
     tex = read_text(paper_dir / "main.tex")
-    title_m = re.search(r"\\title\{([^}]+)\}", tex)
-    if not title_m:
+    in_file_title = _extract_balanced_title(tex)
+    if in_file_title is None:
         return ["main.tex missing \\title{} field"]
-    in_file_title = title_m.group(1).strip()
+    in_file_title = in_file_title.strip()
     # Filename-shape leak.
     if re.match(r".+\.(dvi|pdf|ps|tex)$", in_file_title, re.I):
         findings.append(f"\\title{{}} appears filename-shaped: {in_file_title!r}")
@@ -669,17 +787,68 @@ def format_punch_list(result: dict) -> str:
     return "\n".join(lines)
 
 
+def _catalog_suppression_categories(library: Path, citekey: str) -> set[str]:
+    """Return the set of audit categories the catalog flagged as
+    `<category>-false-positive:` for this citekey. The convergence
+    loop uses this to filter "work remaining" from "work the previous
+    pass declared a false positive" — without it, shimojima2015semantic-
+    style suppressed findings re-block convergence.
+    """
+    catalog_path = library / ".virgil" / "catalog.json"
+    if not catalog_path.exists():
+        return set()
+    try:
+        catalog = json.loads(catalog_path.read_text())
+    except Exception:
+        return set()
+    suppressed: set[str] = set()
+    for e in catalog.get("entries", []):
+        if e.get("citekey") != citekey:
+            continue
+        indexed = e.get("indexed") or {}
+        for w in indexed.get("warnings", []) or []:
+            if not isinstance(w, str):
+                continue
+            m = re.match(r"^([a-z][a-z-]*)-false-positive:\s", w)
+            if m:
+                suppressed.add(m.group(1))
+        break
+    return suppressed
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
-        print("usage: audit_deepindex.py <paper-dir>", file=sys.stderr)
+        print(
+            "usage: audit_deepindex.py <paper-dir> [--exit-on-suppressed]",
+            file=sys.stderr,
+        )
         return 2
+    exit_on_suppressed = "--exit-on-suppressed" in argv[2:]
     paper_dir = Path(argv[1]).resolve()
     if not paper_dir.is_dir():
         print(f"not a directory: {paper_dir}", file=sys.stderr)
         return 2
     result = audit(paper_dir)
     print(format_punch_list(result))
-    return 0 if not result["findings"] else 1
+    findings = result["findings"]
+    if not findings:
+        return 0
+    # Suppression-aware exit: when all remaining findings sit in a
+    # category the catalog explicitly marked `*-false-positive:`,
+    # treat the audit as clean for convergence purposes. The findings
+    # still print so the user can see them.
+    library = resolve_library_root()
+    suppressed_cats = _catalog_suppression_categories(library, paper_dir.name)
+    unsuppressed = [
+        (cat, desc) for cat, desc in findings if cat not in suppressed_cats
+    ]
+    if not unsuppressed:
+        if exit_on_suppressed:
+            return 0
+        # Default behavior preserved for callers that don't opt-in;
+        # the convergence loop should always pass --exit-on-suppressed.
+        return 1
+    return 1
 
 
 if __name__ == "__main__":

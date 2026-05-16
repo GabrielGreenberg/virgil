@@ -165,6 +165,15 @@ End-of-book Notes with `\subsection{Chapter N}` sub-dividers:
 python3 .virgil/scripts/library/reattach_unified_chapter_notes.py $ARGUMENTS
 ```
 
+End-of-book unified `\section{Notes}` with `Notes to Chapter N`
+sub-headers (free-form bold/italic lines, *not* LaTeX subsection
+commands — Chalmers/Dennett/Searle/Hofstadter monograph pattern,
+chalmersramsey memo):
+
+```bash
+python3 .virgil/scripts/library/reattach_unified_endnotes.py papers/$ARGUMENTS/main.tex
+```
+
 End-of-document Notes with no per-chapter dividers:
 
 ```bash

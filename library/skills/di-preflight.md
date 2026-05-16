@@ -265,6 +265,23 @@ If `detect_genre.py` returns a label not in the primary list (script
 evolution), pass it through as-is and log it as an unrecognized
 genre in the catalog warnings — do not abort.
 
+## Step 0.6 — Pgmark coverage check
+
+Compare the actual pgmark count in `main.tex` against the catalog's
+recorded `indexed.pgmarkCount`. Drift here usually means a prior
+pass added or removed markers without updating the catalog; the
+audit needs to see the new total.
+
+```bash
+python3 .virgil/scripts/library/verify_pgmark_coverage.py $ARGUMENTS \\
+    --update-catalog
+```
+
+When the in-file count diverges from the catalog count, the script
+writes the in-file count back (under `lock_catalog`) and prints a
+`pgmark-coverage:` line. This runs before the main subskill chain
+so downstream audits see a current count.
+
 ## What runs next
 
 `/library/deep-index` (orchestrator) invokes in order:

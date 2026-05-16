@@ -161,7 +161,15 @@ directory).
    pattern `<base>.<N>.<ext>` (where `<N>` is a numeric suffix like
    `.1`, `.2`) AND `unsorted/<base>.<ext>` or `papers/<base>/<base>.<ext>`
    already exists, this is a duplicate scan/offprint of an already-indexed
-   paper:
+   paper.
+
+   **Degenerate-base safeguard.** Refuse the variant-copy classification
+   when the base stem has fewer than 2 letters (e.g., `-.<N>.pdf`,
+   `<digits>.<N>.pdf`). A real citekey has letters; placeholder-named
+   backlogs would otherwise collapse into a single ghost-parent cluster
+   (2026-05-16-triage-no-name-pdfs.md). `triage_batch.py` enforces
+   this automatically; if you're handling a single file manually and
+   the base looks degenerate, treat it as a fresh row (not a variant).
 
    1. Read `.virgil/catalog.json` and find the entry whose `pdf.filename ==
       "<base>.<ext>"` (or whose alternates list contains it).

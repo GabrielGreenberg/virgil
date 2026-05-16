@@ -30,6 +30,11 @@ Refuses to convert examples that:
 
 (kehler memo; davidson memo; chomsky memo.)
 
+This script ONLY converts paragraph-leading examples (`^(N) body`).
+Inline mid-paragraph examples (`...prose... (1) example ...prose...`)
+are not detected here — run `split_inline_numbered_examples.py` first
+to hoist them onto their own paragraphs (per abusch2013applying memo).
+
 Usage:
     python3 bulk_convert_numbered_examples.py <main.tex>
         [--propose-only] [--apply] [--out proposals.json]

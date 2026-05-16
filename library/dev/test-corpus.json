@@ -242,6 +242,104 @@
         "fix_roman_pgmarks fixes OCR-garbled Roman numerals",
         "reattach_leaked_footnotes bibliography-section guard avoids numbered bib entries"
       ]
+    },
+    {
+      "citekey": "casati1999parts",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["recover-footnotes"],
+      "memos": ["2026-05-15-deepindex-streamlining-casati1999parts.md"],
+      "regression_guards": [
+        "reattach_leaked_footnotes REFS_RE matches \\section*{} (A1)",
+        "reattach_unified_chapter_notes CHAPTER_SECTION_RE matches \\section*{} (A2)"
+      ]
+    },
+    {
+      "citekey": "cohenmscoherence",
+      "genre": "article",
+      "subskills_exercised": ["clean-bibliography", "di-validate"],
+      "memos": ["2026-05-16-deepindex-streamlining-cohenmscoherence.md"],
+      "regression_guards": [
+        "audit_deepindex brace-balanced title extractor handles \\title{...\\thanks{...}} (A3)",
+        "populate_references_bib --style=chicago-parens-comma handles \\textbf{Author, F. (Year),} (B)",
+        "rewrite_citations multi-year folding produces balanced parens (B)"
+      ]
+    },
+    {
+      "citekey": "kriegeskorte2015deep",
+      "genre": "article",
+      "subskills_exercised": ["di-validate"],
+      "memos": ["2026-05-15-deepindex-streamlining-kriegeskorte2015deep.md"],
+      "regression_guards": [
+        "audit_deepindex BRAND_NAME_ALLOWLIST suppresses arXiv/bioRxiv/ImageNet case-error false positives (A4)",
+        "audit_deepindex case-error scan skips References section (A4)"
+      ]
+    },
+    {
+      "citekey": "willats1997art",
+      "genre": "book",
+      "subskills_exercised": ["di-preflight"],
+      "memos": ["2026-05-15-deepindex-streamlining-willats1997art.md"],
+      "regression_guards": [
+        "repair_pgmarks --resume-baseline preserves body-page anchors on resume (A5)",
+        "deep-index always passes --resume-baseline so the 50% safeguard is stable across passes"
+      ]
+    },
+    {
+      "citekey": "abusch2013applying",
+      "genre": "formal-semantics-paper",
+      "subskills_exercised": ["di-preflight", "di-clean-prose", "di-examples"],
+      "memos": ["2026-05-15-deepindex-streamlining-abusch2013applying.md"],
+      "regression_guards": [
+        "deep_preprocess.normalize_line_endings normalizes CR-only input (A6)",
+        "fix_invisibles bulk-NBSP normalization fires when NBSP density >= 50% (A7)",
+        "split_inline_numbered_examples hoists inline (N) examples (C2)"
+      ]
+    },
+    {
+      "citekey": "metz1974film",
+      "genre": "book",
+      "subskills_exercised": ["recover-footnotes"],
+      "memos": ["2026-05-15-deepindex-streamlining-metz1974film.md"],
+      "regression_guards": [
+        "reattach_leaked_footnotes Tier 4 caps body candidate at 500 chars (A8)"
+      ]
+    },
+    {
+      "citekey": "1976-Tichý",
+      "genre": "article",
+      "subskills_exercised": ["di-preflight"],
+      "memos": ["2026-05-15-deepindex-streamlining-1976-Tichý.md"],
+      "regression_guards": [
+        "_tools normalize_citekey + citekey_matches handle NFC/NFD diacritic drift (A9)",
+        "update_master_bib_entry looks up under both NFC and NFD"
+      ]
+    },
+    {
+      "citekey": "chalmersramsey",
+      "genre": "book-endnote-style",
+      "subskills_exercised": ["recover-footnotes"],
+      "memos": ["2026-05-16-deepindex-streamlining-chalmersramsey.md"],
+      "regression_guards": [
+        "reattach_unified_endnotes handles \\section{Notes} + free-form 'Notes to Chapter N' sub-headers (C1)"
+      ]
+    },
+    {
+      "citekey": "pylyshyn2003seeing",
+      "genre": "scanned-ocr",
+      "subskills_exercised": ["di-preflight"],
+      "memos": ["2026-05-15-deepindex-streamlining-pylyshyn2003seeing.md"],
+      "regression_guards": [
+        "recover_low_confidence_pgmarks --cascade promotes through 0.30 → 0.05 thresholds on OCR genre (B)"
+      ]
+    },
+    {
+      "citekey": "haugeland1991representational",
+      "genre": "journal-article-offset-pagination",
+      "subskills_exercised": ["deep-index"],
+      "memos": ["2026-05-16-deepindex-streamlining-haugeland1991representational.md"],
+      "regression_guards": [
+        "deep-index resume short-circuits on identical fingerprint to prevent 5x duplicate-pass churn"
+      ]
     }
   ]
 }

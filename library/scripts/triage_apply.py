@@ -369,6 +369,27 @@ def apply_row(row: dict[str, Any], library: Path) -> dict[str, str]:
         })
         return {"status": "needs-title", "summary": f"{filename}: parked in _pending/ (no title extracted)"}
 
+    # ── Needs-metadata: quarantine to _needs-metadata/ instead of
+    # minting `papers/unnamed-N/` garbage directories. See
+    # 2026-05-16-triage-no-name-pdfs.md.
+    if "needs-metadata" in flags or not row.get("proposedCitekey"):
+        quarantine = library / "unsorted" / "_needs-metadata"
+        quarantine.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(src), str(quarantine / filename))
+        append_inbox_item(library, {
+            "kind": "triage-needs-metadata",
+            "filename": filename,
+            "byline": row.get("byline", []),
+            "at": _now(),
+        })
+        return {
+            "status": "needs-metadata",
+            "summary": (
+                f"{filename}: quarantined to _needs-metadata/ "
+                f"(heuristic could not derive citekey)"
+            ),
+        }
+
     # ── Normal flow: bib stub + file move + queue ──────────────────────
     citekey = row.get("proposedCitekey", "")
     entry_type = row.get("proposedType") or "article"
@@ -445,6 +466,40 @@ def main() -> int:
     if not rows:
         print("No rows to apply.", file=sys.stderr)
         return 0
+
+    # Cluster-size guard: when >10 rows claim to be variants of the
+    # same sibling, the variant-copy heuristic almost certainly
+    # mis-fired (placeholder-named backlog where every file matched
+    # `<base>.<N>.<ext>` against a phantom parent). Strip the
+    # variant-copy flag from all the children so they get re-derived
+    # citekeys normally. See 2026-05-16-triage-no-name-pdfs.md.
+    from collections import Counter
+    sibling_counter: Counter[str] = Counter()
+    for r in rows:
+        if "variant-copy" in (r.get("flags") or []):
+            sib = r.get("siblingFilename", "")
+            if sib:
+                sibling_counter[sib] += 1
+    suspicious = {sib for sib, c in sibling_counter.items() if c > 10}
+    if suspicious:
+        print(
+            f"Cluster-size guard: stripping variant-copy from {sum(sibling_counter[s] for s in suspicious)} "
+            f"rows across {len(suspicious)} suspicious parents: "
+            f"{sorted(suspicious)[:5]}{'…' if len(suspicious) > 5 else ''}",
+            file=sys.stderr,
+        )
+        for r in rows:
+            if "variant-copy" in (r.get("flags") or []):
+                sib = r.get("siblingFilename", "")
+                if sib in suspicious:
+                    r["flags"] = [f for f in r["flags"] if f != "variant-copy"]
+                    r["notes"] = (r.get("notes") or []) + [
+                        f"variant-copy stripped: parent {sib!r} had "
+                        f"{sibling_counter[sib]} children (cluster-size guard)"
+                    ]
+                    # If we have no citekey at all now, mark for quarantine.
+                    if not r.get("proposedCitekey"):
+                        r["flags"].append("needs-metadata")
 
     counts: dict[str, int] = {}
     # Track which source .bib files in unsorted/ have been touched, and
