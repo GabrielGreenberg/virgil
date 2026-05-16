@@ -1,5 +1,17 @@
 ---
-description: Closed-loop iteration on a Library skill. Runs the target skill (index-paper / deep-index / authenticate-bib, or one of the deep-index subskills: di-preflight / di-clean-prose / recover-footnotes / clean-bibliography / di-examples / di-validate) on each citekey via a fresh subagent, reads the subagent's memo, edits the skill markdown to fix flagged ambiguities, then continues. Args: <skill-name> <citekey1> [citekey2] ...
+description: |
+  Developer-only meta-skill — stress-test and refine a Virgil Library
+  skill against a corpus of citekeys. Triggers on: "iterate on
+  library:<skill>", "tune /library/deep-index against the corpus",
+  "stress-test authenticate-bib on these papers" — i.e., when a Virgil
+  maintainer is working on the skill files themselves. Runs the target
+  skill (index-paper / deep-index / authenticate-bib, or one of the
+  deep-index subskills) on each citekey via a fresh subagent, reads
+  the subagent's critique memo, edits the skill markdown to fix
+  flagged ambiguities, and loops. Heavy — runs from inside the library
+  folder. Does NOT trigger for end-user requests like "process this
+  paper" — that's /index-paper or /deep-index. Args: <skill-name>
+  <citekey1> [citekey2] ...
 ---
 
 # /iterate-skill $ARGUMENTS

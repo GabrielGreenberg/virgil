@@ -1,5 +1,15 @@
 ---
-description: Drain ~/Virgil-Library/.virgil/queue/ in one pass — process every queued indexing request, then exit. For batch backlogs use this; for steady-state polling use /loop /index-pending.
+description: |
+  Drain the Virgil Library's queue in one pass — process every pending
+  request (triage, index, authenticate, deep-index, bib-edit, paper-
+  review) and exit. Triggers on: "drain the library queue", "process
+  pending library work", "run the library inbox", "Virgil, work
+  through my pending papers", "catch up the library". Heavy operation
+  — must run from inside the library folder. For steady-state polling
+  pair with `/loop /index-pending`. If invoked from a paper-only
+  session, prompt the user to mount the library first. Does NOT
+  trigger for editor-side AI requests in a single paper (use
+  /editor/review).
 ---
 
 # /index-pending

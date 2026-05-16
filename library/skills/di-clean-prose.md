@@ -1,5 +1,13 @@
 ---
-description: Deep-index prose cleanup (Step 3a/3b/3c) — title/header cleanup, heading hierarchy, drop caps, pgmark alignment basics. Phase 3 of the deep-index split.
+description: |
+  Clean up the prose of an indexed library paper — fix the title and
+  headings, restore the heading hierarchy, handle drop caps, and
+  align pagination anchors. Triggers on: "clean the prose for
+  <citekey>", "fix the headings in this paper", "tidy the title and
+  drop caps for X". Phase 3 of the /deep-index pipeline; invoke
+  directly when only prose-level cleanup is needed. Does NOT trigger
+  for footnote recovery (use /recover-footnotes) or bibliography
+  cleanup (use /clean-bibliography).
 arguments: <citekey>
 ---
 

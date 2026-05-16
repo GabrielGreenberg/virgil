@@ -1,5 +1,13 @@
 ---
-description: Answer a flagged Cutter comment — drafts a CutterSuggestionCard responding to the comment's request. Args - <docPath> <requestId>.
+description: |
+  Respond to a comment the user flagged on a cut/excerpt in Virgil's
+  Cutter panel. Triggers on: "answer my cutter comment", "respond to
+  the comment on this cut", "address my question about this excerpt"
+  — when the user is asking Virgil to follow up on something they
+  noted on a Cutter card. Drafts a suggestion card responding to the
+  comment's request. Does NOT trigger for revision comments (use
+  answer-revision-comment) or general notes (use answer-note-request).
+  Args: <docPath> <requestId>.
 ---
 
 # /editor/answer-cutter-comment $ARGUMENTS

@@ -1,5 +1,13 @@
 ---
-description: Answer a `kind: todo` AI request — decides whether the todo asks for a doc edit (→ suggestion card), a footnote/citation (→ delegate), or analysis (→ sibling note). Args - <docPath> <requestId>.
+description: |
+  Take care of a todo the user marked for AI in Virgil's Todos panel.
+  Triggers on: "do this todo", "knock out my todo about X", "handle the
+  AI todo here", "address the todo I flagged", or when there's a pending
+  `kind: todo` request in the paper's AI-request inbox. Decides whether
+  the todo asks for a doc edit (drafts a suggestion card), a footnote/
+  citation (delegates to the matching specialist), or analysis (drafts
+  a sibling note). Does NOT trigger for the user's own task-management
+  todos outside of Virgil. Args: <docPath> <requestId>.
 ---
 
 # /editor/answer-todo-request $ARGUMENTS

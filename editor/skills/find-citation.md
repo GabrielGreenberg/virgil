@@ -1,5 +1,15 @@
 ---
-description: Resolve a `kind: citation` AI request — find an authoritative source matching the user's description, add it to references.bib, and create a citation card linked to the anchor paragraph. Args - <docPath> <requestId>.
+description: |
+  Find a citation matching the user's description and add it to a
+  Virgil paper. Triggers on: "Virgil, find me a citation for X",
+  "look up the source for this claim", "what's the citation for the
+  paper on Y", "add a citation here for Z", or when there's a pending
+  `kind: citation` request in the paper's AI-request inbox. Searches
+  Crossref/OpenAlex/Semantic Scholar/arXiv, adds the entry to
+  references.bib, and creates a citation card linked to the anchor
+  paragraph. Does NOT trigger for verifying an existing bib entry
+  (use answer-bib-review) or pulling a quotation (use draft-quotation).
+  Args: <docPath> <requestId>.
 ---
 
 # /editor/find-citation $ARGUMENTS

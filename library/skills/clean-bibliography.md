@@ -1,5 +1,13 @@
 ---
-description: Bibliography cleanup — References itemization, references.bib emission, inline citation rewriting (every style).
+description: |
+  Clean up the bibliography of an indexed library paper — itemize the
+  References section, emit a clean references.bib, and rewrite inline
+  citations to a uniform style. Triggers on: "clean the bibliography
+  for <citekey>", "fix the references in this paper", "tidy the bib
+  in <citekey>". Subskill of /deep-index; can be invoked directly when
+  only the bibliography needs work. Does NOT trigger for syncing a
+  paper's bib against the library (use /editor/sync-bib-to-library) or
+  for authenticating a single entry (use /authenticate-bib).
 arguments: <citekey>
 ---
 

@@ -1,5 +1,13 @@
 ---
-description: Pgmark validation + audit punch-list + outstanding-work classification (Step 3i + Step 9.5).
+description: |
+  Validate the pagination anchors and audit outstanding work on an
+  already-deep-indexed library paper. Triggers on: "validate
+  <citekey>", "audit the deep-index for X", "check if <citekey> needs
+  more cleanup", "run the validator on this paper". Produces a
+  punch-list of any remaining issues and classifies outstanding work
+  by category. Subskill of /deep-index; invoke directly when you just
+  want a status check. Does NOT trigger for running the structural
+  cleanup itself (use /deep-index).
 arguments: <citekey>
 ---
 

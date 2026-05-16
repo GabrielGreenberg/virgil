@@ -1,5 +1,13 @@
 ---
-description: Fuse \pgmark{N} pagination from a PDF alternate into an already-indexed paper's main.tex. Use when the primary source is DOCX or TEX (no pgmarks) and a PDF alternate exists. Args: <citekey>.
+description: |
+  Add printed-page anchors from a PDF source to a library paper that
+  was originally indexed from a DOCX or TEX source (which carry no
+  pagination). Triggers on: "fuse the PDF alternate for <citekey>",
+  "add pgmarks from the PDF version of X", "Virgil, attach page
+  numbers from the PDF to this paper". Reads the PDF alternate from
+  `papers/<citekey>/variants/`, lines up the pagination, and inserts
+  `\pgmark{N}` anchors into main.tex. Does NOT trigger for first-time
+  indexing (use /index-paper). Args: <citekey>.
 ---
 
 # /fuse-alternate $ARGUMENTS

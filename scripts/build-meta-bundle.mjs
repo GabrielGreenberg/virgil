@@ -30,7 +30,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 const bundleRoot = join(repoRoot, "public", "skill-bundle");
 
-const SUBSYSTEMS = ["library", "editor"];
+const SUBSYSTEMS = ["library", "editor", "virgil"];
 
 async function loadSubManifest(name) {
   const path = join(bundleRoot, name, "bundle-manifest.json");

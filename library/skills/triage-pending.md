@@ -1,5 +1,14 @@
 ---
-description: Batch-triage every file in ~/Virgil-Library/unsorted/. Produces a JSONL of proposed citekeys + flags for review, then applies the (possibly edited) decisions in one transaction. Args (optional): "auto" to skip review and apply directly.
+description: |
+  Batch-triage every file in the library's unsorted/ folder at once —
+  propose citekeys for the whole inbox, surface them for review, then
+  apply the (possibly edited) decisions in a single transaction.
+  Triggers on: "triage everything in unsorted", "process my pending
+  uploads", "name all the papers I dropped", "Virgil, batch-triage
+  the inbox", "drain the unsorted folder". Heavy — must run from
+  inside the library folder. Pass `auto` to skip the review step.
+  Does NOT trigger for single files (use /triage-pdf). Args: optional
+  `auto`.
 ---
 
 # /triage-pending $ARGUMENTS

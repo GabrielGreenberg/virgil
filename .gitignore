@@ -61,6 +61,15 @@ next-env.d.ts
 /editor/dev/sandboxes/*
 !/editor/dev/sandboxes/.gitkeep
 
+# virgil/dev — scratch diffs from the description-rewrite tooling + future
+# closed-loop iteration output. The rewrite-descriptions.mjs script and any
+# trigger-fitness corpora stay checked in; their generated output does not.
+/virgil/dev/*.diff
+/virgil/dev/iterations/*
+!/virgil/dev/iterations/.gitkeep
+/virgil/dev/sandboxes/*
+!/virgil/dev/sandboxes/.gitkeep
+
 # personal-prefs pipeline — Gabriel's localStorage mirror, regenerated
 # constantly by the dev preview. The promote-defaults cron reads it locally
 # to update the shipped defaults; the snapshot itself stays out of git.

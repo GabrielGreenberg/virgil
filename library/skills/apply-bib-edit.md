@@ -1,5 +1,14 @@
 ---
-description: Apply a queued manual bib edit to master.bib and references.bib. Args: <citekey>. Reads .virgil/queue/<citekey>-bibedit.json for the new entry type + field map.
+description: |
+  Save a manual bib edit the user made through the library UI's "Edit"
+  button. Triggers on: "apply the bib edit for <citekey>", "save my
+  manual edit", or when the queue has a `<citekey>-bibedit.json` entry
+  to drain. Reads `.virgil/queue/<citekey>-bibedit.json` for the new
+  entry type + field map, rewrites the master.bib block, re-emits
+  references.bib, and bumps the catalog version. Does NOT trigger for
+  external-source verification (use /authenticate-bib) or for
+  bibliography cleanup of a paper (use /clean-bibliography). Light —
+  safe to invoke from a paper session with --library. Args: <citekey>.
 ---
 
 # /apply-bib-edit $ARGUMENTS

@@ -1,5 +1,13 @@
 ---
-description: Respond to a note-kind AI request in a Virgil document — drafts a sibling note (or a suggestion card if the user asked for an edit) anchored to the same paragraph. Args - <docPath> <requestId>.
+description: |
+  Answer a note the user left in Virgil's Notes panel asking for AI
+  help. Triggers on: "answer my note", "respond to the note I marked
+  for AI", "address my margin question", or when there's a pending
+  `kind: note` request in the paper's AI-request inbox. Drafts a
+  sibling note anchored to the same paragraph (or a suggestion card if
+  the user is asking for a doc edit). Does NOT trigger for todos (use
+  answer-todo-request), revision comments (use answer-revision-comment),
+  or footnote insertions (use draft-footnote). Args: <docPath> <requestId>.
 ---
 
 # /editor/answer-note-request $ARGUMENTS

@@ -1,5 +1,14 @@
 ---
-description: Draft a `kind: suggestion` AI request — creates a RevisionSuggestionCard with author=ai for the user to accept or reject. Args - <docPath> <requestId>.
+description: |
+  Propose a revision to a paragraph in a Virgil paper. Triggers on:
+  "Virgil, suggest a rewrite here", "propose an edit to this passage",
+  "draft a revision of this paragraph", "tighten this for me", or when
+  there's a pending `kind: suggestion` request in the paper's
+  AI-request inbox. Creates a revision-suggestion card with author=ai
+  for the user to accept or reject — does NOT edit the document
+  directly. Use answer-revision-comment instead for responding to a
+  revision-thread comment, or answer-note-request for adding a note.
+  Args: <docPath> <requestId>.
 ---
 
 # /editor/draft-suggestion $ARGUMENTS

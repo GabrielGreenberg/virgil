@@ -1,5 +1,16 @@
 ---
-description: Index a single source (PDF, DOCX, or .tex) in the Virgil Library — produces papers/<citekey>/main.tex (with \pgmark{} anchors for PDFs), a single-entry references.bib, empty Virgil sidecars, and an authenticated catalog row. Args: <citekey>.
+description: |
+  Index a paper into the Virgil Library — extract LaTeX from a PDF,
+  DOCX, or .tex source and produce a Virgil-compatible paper folder.
+  Triggers on: "index <citekey>", "process the paper for X", "extract
+  this PDF into the library", "Virgil, index <author year>", "add
+  <citekey> to my library". Produces `papers/<citekey>/main.tex` (with
+  `\pgmark{N}` anchors for PDFs), a single-entry references.bib,
+  empty Virgil sidecars, and an authenticated catalog row. Light —
+  safe to invoke from a paper session with --library. Does NOT trigger
+  for newly-dropped files in unsorted/ (use /triage-pdf first) or for
+  cleaning up an already-indexed paper (use /deep-index). Args:
+  <citekey>.
 ---
 
 # /index-paper $ARGUMENTS

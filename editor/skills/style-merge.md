@@ -1,5 +1,14 @@
 ---
-description: Drain pending style-merge AI requests from a Virgil document — intelligently merges the user's local preamble customizations onto the target style and rewrites the .tex.
+description: |
+  Apply the user's preamble customizations to a Virgil document's
+  current style. Triggers on: "merge my style", "apply my preamble
+  customizations", "do the style merge", "rebase my preamble onto the
+  new style", or when there's a pending `kind: style-merge` request in
+  the paper's AI-request inbox. Intelligently merges the user's local
+  LaTeX preamble tweaks onto the target style and rewrites the .tex.
+  Does NOT trigger for general formatting changes ("make headers
+  bigger") — those need a manual preamble edit by the user first.
+  Args: <docPath>.
 ---
 
 # /editor/style-merge

@@ -1,5 +1,14 @@
 ---
-description: Footnote recovery — full tier ladder (Tier 0 → Tier 4) including endnote-style sub-tiers.
+description: |
+  Recover orphan footnotes in an indexed library paper — re-attach
+  footnotes to their callouts, handle endnote-style sources, and fix
+  truncated/leaked footnote text. Triggers on: "recover footnotes for
+  <citekey>", "fix the footnotes in this paper", "reattach the
+  endnotes for X", "Virgil, the footnotes in <citekey> are broken".
+  Walks the full Tier 0 → Tier 4 ladder including endnote-style
+  sub-tiers. Subskill of /deep-index; invoke directly when only
+  footnote recovery is needed. Does NOT trigger for prose cleanup
+  (use /di-clean-prose) or bibliography work (use /clean-bibliography).
 arguments: <citekey>
 ---
 

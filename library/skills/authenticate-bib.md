@@ -1,5 +1,16 @@
 ---
-description: Authenticate a .bib entry against Crossref/OpenAlex/Semantic Scholar/arXiv — verify DOI, cross-check fields, log diffs. Args: <citekey>.
+description: |
+  Verify and look up a bibliography entry in the Virgil Library against
+  external authoritative sources. Triggers on: "authenticate <citekey>",
+  "verify this bib entry", "look up the metadata for <citekey>",
+  "Virgil, check this reference against Crossref", "fix the fields for
+  X". Searches Crossref/OpenAlex/Semantic Scholar/arXiv, verifies any
+  DOI, cross-checks fields, logs diffs, and updates master.bib +
+  catalog status. Does NOT trigger for adding a new citation by
+  description (use /editor/find-citation in a paper context), for
+  applying a manual user edit (use /apply-bib-edit), or for
+  whole-paper bibliography cleanup (use /clean-bibliography). Light —
+  safe to invoke from a paper session with --library. Args: <citekey>.
 ---
 
 # /authenticate-bib $ARGUMENTS

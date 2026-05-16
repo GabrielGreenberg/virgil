@@ -1,5 +1,13 @@
 ---
-description: Numbered examples / expex conversion, formal-semantics math, user note processing (Step 3.h).
+description: |
+  Convert numbered examples to the `expex` package and format
+  formal-semantics math in a linguistics or philosophy paper.
+  Triggers on: "convert examples for <citekey>", "format the linguistic
+  examples in this paper", "do the expex pass on X", "Virgil, mathify
+  the formal semantics in <citekey>". Subskill of /deep-index;
+  invoke directly when only example/math conversion is needed. Does
+  NOT trigger for general prose cleanup (use /di-clean-prose) or
+  footnote recovery (use /recover-footnotes).
 arguments: <citekey>
 ---
 

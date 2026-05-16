@@ -1,5 +1,15 @@
 ---
-description: Tidy a paper's references.bib against the Virgil Library — swap matched entries to library-authoritative versions (renaming citekeys throughout the doc), and add missing entries to the library via the bib-only triage + authentication pipeline. Args - <docPath> [--dry-run] [--library <path>].
+description: |
+  Tidy a Virgil paper's bibliography against the user's Virgil Library
+  — swap matched entries to the library's authoritative version,
+  rename citekeys throughout the document accordingly, and add any
+  missing entries to the library. Triggers on: "Virgil, sync my
+  bibliography", "tidy my refs against the library", "fix my bib",
+  "clean up my references", "merge my refs with the library", "make
+  sure my citekeys match the library". Run with --dry-run first if the
+  user hasn't confirmed they want writes. Does NOT trigger for
+  verifying a single bib entry (use answer-bib-review). Args:
+  <docPath> [--dry-run] [--library <path>].
 ---
 
 # /editor/sync-bib-to-library $ARGUMENTS

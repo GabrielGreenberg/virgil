@@ -1,5 +1,16 @@
 ---
-description: Triage one source file (PDF, DOCX, .tex, or .bib) in unsorted/ — propose a citekey, move the file into its paper folder, and emit an index or authenticate queue entry. Args: <filename> (relative to unsorted/).
+description: |
+  Triage one newly-dropped source file in the library's unsorted/
+  folder — propose a citekey, move the file into its paper folder, and
+  queue it for indexing (or authentication, for .bib drops). Triggers
+  on: "triage <filename>", "process the file I just dropped", "name
+  this paper", "Virgil, what should we call this PDF". Accepts PDF,
+  DOCX, .tex, and .bib drops. For .bib files (multi-entry fan-out),
+  each entry becomes a bib-only catalog row. Light — safe to invoke
+  from a paper session with --library, though the file needs to be in
+  the library's unsorted/. Does NOT trigger for already-indexed papers
+  (use /deep-index) or batch processing (use /triage-pending). Args:
+  <filename> (relative to unsorted/).
 ---
 
 # /triage-pdf $ARGUMENTS

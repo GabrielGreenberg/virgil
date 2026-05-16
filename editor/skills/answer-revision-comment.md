@@ -1,5 +1,13 @@
 ---
-description: Answer a flagged Revisions-panel comment — drafts a sibling RevisionCommentCard (or a RevisionSuggestionCard if the user asked for a doc edit). Args - <docPath> <requestId>.
+description: |
+  Respond to a comment the user flagged in Virgil's Revisions panel.
+  Triggers on: "answer my revision comment", "respond to the revision
+  question on this paragraph", "address my comment in revisions", or
+  when the request asks for follow-up on a previously logged revision
+  exchange. Drafts a sibling revision-comment card (or a revision-
+  suggestion card if the user asked for an actual doc edit). Does NOT
+  trigger for cuts (use answer-cutter-comment) or general notes
+  (use answer-note-request). Args: <docPath> <requestId>.
 ---
 
 # /editor/answer-revision-comment $ARGUMENTS

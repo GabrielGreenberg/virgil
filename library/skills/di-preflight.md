@@ -1,5 +1,12 @@
 ---
-description: Deep-index preflight (Step 0/0.5) — metadata mismatch detection, lending-slip / JSTOR / multi-article / OCR-recovery dispatch, genre routing.
+description: |
+  Run preflight checks before deep-indexing a library paper — detect
+  metadata mismatches, strip lending-slip / JSTOR boilerplate, identify
+  multi-article scans, dispatch OCR recovery, and route by genre.
+  Triggers on: "preflight <citekey>", "check the metadata for X before
+  deep-index", "run the deep-index preflight on this paper". Subskill
+  of /deep-index. Does NOT trigger for the full structural cleanup
+  pass (use /deep-index).
 arguments: <citekey>
 ---
 

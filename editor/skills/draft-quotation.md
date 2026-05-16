@@ -1,5 +1,13 @@
 ---
-description: Draft a `kind: quotation` AI request — assembles a QuotationGroup with the requested quote(s) anchored to the paragraph. Args - <docPath> <requestId>.
+description: |
+  Pull a quotation (or several) from a source into a Virgil paragraph.
+  Triggers on: "Virgil, quote this passage from <source>", "pull a
+  quote from X on Y", "find me a quotation about Z", "block-quote that
+  passage here", or when there's a pending `kind: quotation` request
+  in the paper's AI-request inbox. Assembles a QuotationGroup with
+  the requested quote(s) anchored to the paragraph. Does NOT trigger
+  for adding a citation without quoted text (use find-citation) or for
+  general notes (use answer-note-request). Args: <docPath> <requestId>.
 ---
 
 # /editor/draft-quotation $ARGUMENTS

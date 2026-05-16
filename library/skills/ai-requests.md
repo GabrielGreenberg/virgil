@@ -1,5 +1,14 @@
 ---
-description: Drain only user-authored AI requests in ~/Virgil-Library/.virgil/queue/ — entries with a `note` field, plus all `paper-review` entries. Skips general indexing/triage. Pair with /loop for steady-state polling.
+description: |
+  Take a pass on AI requests the user has left on library papers
+  (notes attached to queue entries + paper-review requests). Triggers
+  on: "drain my library AI requests", "handle the notes I left on my
+  library papers", "process my paper-review requests", "Virgil, look
+  at the notes in my library queue". Pair with /loop for steady-state
+  polling. Does NOT trigger for editor-side requests in a single paper
+  folder (use /editor/review) or for general queue draining of
+  triage/index/authenticate work (use /index-pending). Heavy
+  operation — only run from inside the library folder.
 ---
 
 # /ai-requests

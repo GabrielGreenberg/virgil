@@ -1,5 +1,17 @@
 ---
-description: Apply structural cleanup to an already-indexed paper — produces a human-readable LaTeX document from raw extraction. Runs an internal convergence loop (no cap), persistently working through every recoverable issue until two consecutive passes produce no new findings. Emits a clear "Deep indexing complete" banner (or stall report) when done. Args: <citekey> [--fresh]
+description: |
+  Polish an already-indexed library paper — clean up its structure,
+  headings, footnotes, pagination, and bibliography so the LaTeX is
+  human-readable. Triggers on: "deep-index <citekey>", "polish this
+  paper", "clean up the extraction for <citekey>", "do a deep pass on
+  X", "make this paper readable", "Virgil, finish processing <citekey>".
+  Runs a convergence loop (no cap), persistently working through every
+  recoverable issue until two consecutive passes find nothing new.
+  HEAVY operation — must run from inside the library folder (cd
+  ~/Virgil-Library). If the user asks for this from a paper-only
+  session, prompt them to mount the library or offer to queue it.
+  Does NOT trigger for first-time indexing of a fresh source (use
+  /index-paper). Args: <citekey> [--fresh]
 ---
 
 # /deep-index

@@ -1,5 +1,13 @@
 ---
-description: Draft a footnote in response to a `kind: footnote` AI request — writes the footnote into footnotes.json and inserts the LaTeX command into document.tex at the anchor position. Args - <docPath> <requestId>.
+description: |
+  Add a footnote to a paragraph in a Virgil document. Triggers on:
+  "Virgil, add a footnote here", "draft me a footnote on X", "footnote
+  this claim", "write a footnote about Y", or when there's a pending
+  `kind: footnote` request in the paper's AI-request inbox. Writes the
+  footnote into footnotes.json and inserts the LaTeX command at the
+  anchor paragraph. Does NOT trigger for adding a citation (use
+  find-citation) or a margin note (use answer-note-request). Args:
+  <docPath> <requestId>.
 ---
 
 # /editor/draft-footnote $ARGUMENTS

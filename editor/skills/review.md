@@ -1,5 +1,14 @@
 ---
-description: Drain every open AI request in a Virgil paper folder — dispatches each request to the appropriate per-kind subskill (footnote / citation / note / suggestion / bib-review / style-merge). Pair with /loop for steady-state polling.
+description: |
+  Take a pass on a Virgil paper folder — handle every open AI request the
+  user has filed. Triggers on: "review my doc / paper", "go through my AI
+  requests", "drain my inbox", "handle my open requests", "take a look at
+  my paper" (when the user is working inside a Virgil paper folder).
+  Walks the unified request inbox (footnotes, citations, notes, todos,
+  suggestions, bib reviews, style merges) and dispatches each one to the
+  matching specialist as a subagent. Does NOT trigger for "review my
+  code", "review this PR", or any non-Virgil "review" request. Args:
+  <docPath> (optional, falls back to cwd if it has a virgil/ subdir).
 ---
 
 # /editor/review

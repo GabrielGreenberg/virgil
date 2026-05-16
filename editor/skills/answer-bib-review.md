@@ -1,5 +1,15 @@
 ---
-description: Resolve one bib-review request — verifies/fills bibliography fields (type=fields), drafts an annotation note (type=notes), or swaps the entry in from the library (--library-sync). Args - <docPath> <bibKey> [--library-sync <libraryCitekey> --library <path>].
+description: |
+  Fill in or verify a single bibliography entry that's been flagged for
+  review in a Virgil paper. Triggers on: "verify this bib entry",
+  "answer the bib review for <citekey>", "look up the fields for this
+  reference", "annotate this source", "pull this entry from the library".
+  Verifies/fills fields against external sources (type=fields), drafts
+  an annotation note (type=notes), or swaps in a library entry
+  (--library-sync). Does NOT trigger for syncing the *whole* bibliography
+  (use sync-bib-to-library) or for adding a new citation by description
+  (use find-citation). Args: <docPath> <bibKey> [--library-sync
+  <libraryCitekey> --library <path>].
 ---
 
 # /editor/answer-bib-review $ARGUMENTS

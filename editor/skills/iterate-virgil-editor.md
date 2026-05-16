@@ -1,5 +1,15 @@
 ---
-description: Closed-loop iteration on the editor skill set. Synthesizes user requests, runs the target skill in a sandboxed copy of samples/annotation-history via fresh subagents, reads critique memos, edits skill markdown, and re-runs until each test case is clean. Args - [<skill-name>] [<max-attempts>].
+description: |
+  Developer-only meta-skill — stress-test and refine Virgil's editor
+  skill set in a sandboxed sample paper. Triggers on: "iterate on the
+  editor skills", "stress-test draft-footnote", "tune /editor/<skill>",
+  "improve the editor skill markdown" — i.e., when a Virgil maintainer
+  is working on the skill files themselves. Synthesizes representative
+  AI requests, runs the target skill against a sandboxed copy of
+  samples/annotation-history via fresh subagents, reads critique memos,
+  edits skill markdown, and loops until each test case is clean. Does
+  NOT trigger for end-user requests like "review my doc" — that's
+  /editor/review. Args: [<skill-name>] [<max-attempts>].
 ---
 
 # /editor/iterate-virgil-editor $ARGUMENTS
