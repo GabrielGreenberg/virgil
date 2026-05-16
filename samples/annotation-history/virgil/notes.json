@@ -1,6 +1,7 @@
 {
-  "notes": [
+  "cards": [
     {
+      "kind": "note",
       "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be",
       "title": "On Carolingian glossae",
       "content": {
@@ -18,24 +19,33 @@
         ]
       },
       "createdAt": "2026-04-24T19:00:00.000Z",
+      "aiRequest": false,
       "links": [
         {
           "id": "d78b52cc-8daf-4ede-920e-28758338c2d6",
           "kind": "anchor",
           "anchor": {
             "type": "anchor",
-            "paragraphIds": ["f1c5"],
-            "margin": { "side": "right" }
+            "paragraphIds": [
+              "f1c5"
+            ],
+            "margin": {
+              "side": "right"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "note", "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be" }
+            "ref": {
+              "kind": "note",
+              "id": "18ab85f6-d9e8-41b1-86bd-822add6dc4be"
+            }
           },
           "createdAt": "2026-04-24T19:00:00.000Z"
         }
       ]
     },
     {
+      "kind": "note",
       "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2",
       "title": "Third tradition?",
       "content": {
@@ -53,24 +63,33 @@
         ]
       },
       "createdAt": "2026-04-24T19:01:00.000Z",
+      "aiRequest": false,
       "links": [
         {
           "id": "2aff4024-efb0-4959-88e2-d4787932a65d",
           "kind": "anchor",
           "anchor": {
             "type": "anchor",
-            "paragraphIds": ["6d1e"],
-            "margin": { "side": "right" }
+            "paragraphIds": [
+              "6d1e"
+            ],
+            "margin": {
+              "side": "right"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "note", "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2" }
+            "ref": {
+              "kind": "note",
+              "id": "ed82253f-9002-44e7-8f80-6ed1ce22d7d2"
+            }
           },
           "createdAt": "2026-04-24T19:01:00.000Z"
         }
       ]
     },
     {
+      "kind": "note",
       "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3",
       "title": "Marshall vs. Genette",
       "content": {
@@ -88,24 +107,33 @@
         ]
       },
       "createdAt": "2026-04-24T19:02:00.000Z",
+      "aiRequest": false,
       "links": [
         {
           "id": "5faaf8bc-9b93-46c8-8014-da78ffa2f325",
           "kind": "anchor",
           "anchor": {
             "type": "anchor",
-            "paragraphIds": ["aa5b"],
-            "margin": { "side": "right" }
+            "paragraphIds": [
+              "aa5b"
+            ],
+            "margin": {
+              "side": "right"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "note", "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3" }
+            "ref": {
+              "kind": "note",
+              "id": "694cfc1f-d966-4c80-8090-1dc9ca1210a3"
+            }
           },
           "createdAt": "2026-04-24T19:02:00.000Z"
         }
       ]
     },
     {
+      "kind": "note",
       "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671",
       "title": "Hypothes.is",
       "content": {
@@ -123,20 +151,54 @@
         ]
       },
       "createdAt": "2026-04-24T19:03:00.000Z",
+      "aiRequest": false,
       "links": [
         {
           "id": "0b217cfa-d8c5-44a5-8aff-b5e7b77d000f",
           "kind": "anchor",
           "anchor": {
             "type": "anchor",
-            "paragraphIds": ["aeb6"],
-            "margin": { "side": "right" }
+            "paragraphIds": [
+              "aeb6"
+            ],
+            "margin": {
+              "side": "right"
+            }
           },
           "target": {
             "type": "card",
-            "ref": { "kind": "note", "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671" }
+            "ref": {
+              "kind": "note",
+              "id": "b283f751-63b6-4d38-8ee5-6db7e0dc2671"
+            }
           },
           "createdAt": "2026-04-24T19:03:00.000Z"
+        }
+      ]
+    },
+    {
+      "kind": "highlight",
+      "id": "c3d7a812-4f55-4c11-9e3a-1a4b5c6d7e8f",
+      "createdAt": "2026-04-24T19:04:00.000Z",
+      "highlightColor": null,
+      "aiRequest": false,
+      "links": [
+        {
+          "id": "7b3c9e54-2d1a-48f6-b7c0-1e9d8a3b6f25",
+          "kind": "anchor",
+          "anchor": {
+            "type": "anchor",
+            "paragraphIds": ["fb8f"],
+            "textRange": {
+              "anchorId": "7b3c9e54-2d1a-48f6-b7c0-1e9d8a3b6f25",
+              "textSnapshot": "the second voice that every serious text learns to carry on its back"
+            }
+          },
+          "target": {
+            "type": "card",
+            "ref": { "kind": "highlight", "id": "c3d7a812-4f55-4c11-9e3a-1a4b5c6d7e8f" }
+          },
+          "createdAt": "2026-04-24T19:04:00.000Z"
         }
       ]
     }
