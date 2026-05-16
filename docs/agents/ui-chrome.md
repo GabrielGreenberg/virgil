@@ -1,4 +1,4 @@
-<!-- last-verified: 3027077 2026-05-15 -->
+<!-- last-verified: fa9e124 2026-05-16 -->
 
 # UI Chrome
 
@@ -10,8 +10,8 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 The orchestrator role is now split across two files:
 
-- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5250 lines) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts ~line 5091, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles ~line 5112), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (multi-copy tear-off state).
-- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~4750 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3105), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2524) / `CardLiftOutline`.
+- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5290 lines) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts ~line 5091, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles ~line 5112), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (vestigial tear-off state — see MenuBar section below).
+- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~5190 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3567), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2524) / `CardLiftOutline`.
 
 When anything touches UI layout, chrome, or panel placement: if it's a tab/dialog/Virgil-bar concern → EditorLayout; if it's a per-document chrome / panel / popout / MenuBar concern → EditorPane. The full split is documented in `architecture.md` → "EditorPane vs EditorLayout".
 
@@ -39,9 +39,10 @@ EditorPane (canonical editor surface)
 ├─ PaneRail side="left" (icon strip, OmniFilterMenu)
 ├─ PanelColumn side="left" (active panel(s); top/bottom split; MarginActionToolbar overlay)
 ├─ Editor column
-│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3105
+│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3567
 │   ├─ MarginActionToolbar (left + right action segments)            — ~line 3010
 │   ├─ VirgilEditor (the TipTap editor itself)
+│   ├─ SelectionActionsMenu (auto-pops right of any non-empty selection) — Editor.tsx:3610
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatCard portals (popped-out cards)
 │   ├─ FloatingPanel portals (popped-out panels)
@@ -116,15 +117,15 @@ Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/pa
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 
-Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3105). No portal. Renders in `atHome` mode — orientation locked horizontal; rotation knob and tab silhouette suppressed; no drop shadow; bare icons sit on the canvas. The home-bar grab handle was dropped in c40d8d2, so the home MenuBar no longer tears off.
+Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3567). No portal. 24px tall, right-aligned (slimmed from 32px and re-aligned in ae15791). Bare icons sit on the canvas — no enclosing pod, no grab handle, no rotation knob.
 
-Detached copies still spawn from the Format and Actions popovers' grab bars — those become free-floating `DetachedMenuToolbar`/`DetachedFormattingToolbar`/`DetachedActionsToolbar` instances mounted via portals to `document.body`. State arrays still live in the EditorLayout shell (not EditorPane): `detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]` (each `{id, pos}`, multi-instance). Reader passes no `menuBar` bundle, so the docked MenuBar and detached toolbars stay dormant for paper renders.
+ae15791 dropped the home Format and Actions popovers from the docked bar. The actions/formatting vocabulary now lives in `SelectionActionsMenu` (auto-popping right-of-selection, see below) and `DragHandleMenu` (click-the-handle popover on the left of each paragraph). `AttachedPopover` in [MenuBar.tsx:677](../../src/components/MenuBar.tsx) is unused; `DetachedMenuToolbar` / `DetachedFormattingToolbar` / `DetachedActionsToolbar` still render via portals from the EditorLayout state arrays (`detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]`), but no UI path currently spawns new entries. Reader passes no `menuBar` bundle, so docked MenuBar and detached toolbars stay dormant for paper renders.
 
-`prefs.menuLocation` still exists in `useViewPrefs` (default `{kind:"home"}`) but the "free" branch is effectively unreachable now that the home grab handle is gone.
+`prefs.menuLocation` still exists in `useViewPrefs` (default `{kind:"home"}`) but the "free" branch is now effectively unreachable.
 
-### Contents in order (horizontal)
+### Contents in order (horizontal, right-aligned)
 
-Format popup, Actions popup, paragraph back/forward, Split toggle, Close-all, then the View menu (three-dot kebab moved to the **end** of the row in c40d8d2 — not the start). The home-bar grab handle and its rotation knob were dropped in the same commit.
+Collab status pill, paragraph back/forward (stemmed arrows), Split toggle, then the View menu kebab (three-dot, at the end via `kebabAtEnd`). Close-all-panels and Fonts… moved into the View menu.
 
 A **Style** mode toggle button sits in the right cluster of the Virgil bar (alongside the file/zen/version buttons), not inside the MenuBar pod itself. Click it to open [ManageStylesModal](../../src/components/ManageStylesModal.tsx) (the inline `DocStyleDropdown` was folded into this modal by `9744b71`) — apply a style to the active doc, edit/duplicate/delete entries, save the current preamble as a new entry, or pick the default for new docs. Drift between the picked style and the doc's preamble routes through [StyleApplyDialog](../../src/components/StyleApplyDialog.tsx). State: per-doc id in [useDocumentStyle](../../src/hooks/useDocumentStyle.ts); user style library in [useStyleLibrary](../../src/hooks/useStyleLibrary.ts); preset catalog in [document-styles.ts](../../src/lib/document-styles.ts). Mount + open state at `EditorLayout.tsx` ~line 4737 / ~line 5112.
 
@@ -132,7 +133,17 @@ A **Print** button (printer icon) lives in the same right cluster. It opens `Pri
 
 The **View menu** (three-dot kebab) gained a **Highlights** sub-menu of per-kind toggles. Each toggle hides linked-anchor highlights for one card kind (`quotation`, `note`, `todo`, `comment`, `cut`); the active set lives in `prefs.hiddenHighlightTypes` via `useViewPrefs` and is read by `useLinkHighlight`.
 
-The **Format popup** (A-glyph) and **Actions popup** (8-ray star) are `AttachedPopover` instances; each has a grab bar on its right edge — dragging spawns a new `DetachedFormattingToolbar` / `DetachedActionsToolbar` instance (the anchor button continues to function as a plain popover toggle). Paragraph back/forward chevrons sit between the popups and are disabled at history bounds. The View menu's orientation toggle was also dropped in c40d8d2.
+Paragraph back/forward chevrons (now stemmed arrows after ae15791) sit between collab status and split toggle; disabled at history bounds. The View menu's orientation toggle was dropped in c40d8d2.
+
+## SelectionActionsMenu (auto-popping right-of-selection menu)
+
+[src/components/SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx) — Notion-style popup that auto-appears beside any non-empty text selection in the main editor (mounted from `Editor.tsx` ~line 3610). Counterpart to `SelectionDragHandle` / `DragHandleMenu` on the left.
+
+Two sections:
+- **Top grid** (4×3): inline formatting (bold/italic/underline), block-type dropdown (reused from MenuBar), math inserters (`$x$` / `$$` / `ex` — wrap selection rather than insert placeholder), text-color swatches via `SelectionColorPopover` (MRU palette persisted to localStorage at `virgil:selection-menu-color-palette`).
+- **Bottom action list**: same vocabulary as `DragHandleMenu` (footnote / archive / note / todo / cut / quotation / citation / etc.), dispatched through `DragHandleMenuApi.dispatch` so both menus stay in lockstep.
+
+Adaptive placement: gutter when the selection reaches the column edge, otherwise below or above the line (whichever fits). Deferred show: hidden during mouse-down drag; appears ~250ms after mouse-up. Outside-click collapses the selection to dismiss.
 
 ## Action buttons (the "action toolbar")
 

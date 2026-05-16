@@ -1,4 +1,4 @@
-<!-- last-verified: 3027077 2026-05-15 -->
+<!-- last-verified: fa9e124 2026-05-16 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3400 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3610 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts `SelectionActionsMenu` at the editor root (~line 3610).
 
 After Path A 7.8, the Library Reader mounts the canonical `<EditorPane>` (which wraps `Editor.tsx`), so there is no longer a parallel `library/tiptap/` extension set. PgMarkChip — the only Library-only extension — has been folded into the unified set at [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts); it's harmless on docs without `\pgmark{N}`.
 
@@ -19,7 +19,7 @@ All carry a `uuid` attr so they can serve as marginalia anchors. `uuid` detectio
 | Node | LaTeX | Notes |
 |---|---|---|
 | `paragraph` | (plain) | Baseline text container |
-| `heading` | `\chapter` / `\section` / `\subsection` / `\subsubsection` | Levels 1–4; supports `label` mark (`\label{}`) |
+| `heading` | `\part` / `\chapter` / `\section` / `\subsection` / `\subsubsection` / `\paragraph` / `\subparagraph` | Levels 0–6 (vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts)); supports `label` mark (`\label{}`). Per-heading control strip uses [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx) |
 | `bulletList` / `orderedList` | `\itemize` / `\enumerate` | Nested; optional `listPreamble` |
 | `blockquote` | `\begin{quote}…\end{quote}` | |
 | `codeBlock` | `\begin{verbatim}…\end{verbatim}` | |
@@ -45,6 +45,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
 | `linkedAnchor` | mark | (invisible by default; a `tintColor` attr makes the mark paint its range with a persistent color — used by Highlight cards for the Adobe-style yellow swatch. The tint survives kind transitions, so spawning a sibling note over a highlight's range keeps the yellow) | `linked-anchor.ts` |
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
+| `textColor` | mark | `\textcolor[HTML]{RRGGBB}{…}` (round-trips through the serializer; `\usepackage{xcolor}` auto-injected into preambles missing it, and `CLASSIC_PREAMBLE` ships it). Driven by the `SelectionActionsMenu` color swatch + `SelectionColorPopover`. | `text-color.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
 | `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. | `expex.ts` |

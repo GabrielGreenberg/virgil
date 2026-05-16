@@ -1,4 +1,4 @@
-<!-- last-verified: 3027077 2026-05-15 -->
+<!-- last-verified: fa9e124 2026-05-16 -->
 
 # Glossary
 
@@ -13,8 +13,8 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Virgil bar** / **top bar** (horizontal strip across the top, containing the VIRGIL logo, tabs, and the docked menu pod) | No dedicated component — inline `<div class="virgil-bar">` | `EditorLayout.tsx` ~line 4013; fill styled by `--topbar-bg` / `--topbar-bg-bottom` in [src/app/globals.css](../../src/app/globals.css) |
-| **Upper tool strip** (the continuous opaque manilla band directly under the Virgil bar; one rectangle running edge-to-edge across the row, containing — left to right — left action buttons, text tool bar, right action buttons, plus the icon strips at the outer edges; pinned at viewport top so document content scrolls under it) | Three sticky segments that share `background: var(--background)`: `[data-tool-strip="left-action"]`, `[data-tool-strip="text"]`, `[data-tool-strip="right-action"]` | Mounted in [EditorPane.tsx](../../src/components/EditorPane.tsx) (text segment ~line 3105); left/right action segments rendered by `MarginActionToolbar` inside `PaneRail` |
-| **Text tool bar** (center segment of the upper tool strip, sitting above the editor; holds File/Edit/format/split-screen/etc. action buttons) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** as the sticky `[data-tool-strip="text"]` in [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx) ~line 3105. Detached copies (`DetachedMenuToolbar`, multi-instance) still spawn from popover grab bars; their state lives in `detachedMenus[]` (in EditorLayout shell). `prefs.menuLocation` is now effectively home-only |
+| **Upper tool strip** (the continuous opaque manilla band directly under the Virgil bar; one rectangle running edge-to-edge across the row, containing — left to right — left action buttons, text tool bar, right action buttons, plus the icon strips at the outer edges; pinned at viewport top so document content scrolls under it) | Three sticky segments that share `background: var(--background)`: `[data-tool-strip="left-action"]`, `[data-tool-strip="text"]`, `[data-tool-strip="right-action"]` | Mounted in [EditorPane.tsx](../../src/components/EditorPane.tsx) (text segment ~line 3567); left/right action segments rendered by `MarginActionToolbar` inside `PaneRail` |
+| **Text tool bar** (center segment of the upper tool strip, sitting above the editor; right-aligned 24px-tall row of paragraph-nav arrows, split toggle, and the View menu kebab) | `MenuBar` (code name refers to the pod, not the strip) | [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) (default export); mounted **inline** as the sticky `[data-tool-strip="text"]` in [src/components/EditorPane.tsx](../../src/components/EditorPane.tsx) ~line 3567. ae15791 slimmed the bar to 24px and dropped the home Format/Actions popups; the actions/formatting vocabulary now lives in `SelectionActionsMenu` (auto-popping right-of-selection) and `DragHandleMenu` (left-of-paragraph click handle). Detached `DetachedMenuToolbar` / `DetachedFormattingToolbar` / `DetachedActionsToolbar` portal renderers still exist in EditorLayout state but have no current spawn path from the docked bar |
 | **Left action buttons** / **right action buttons** (per-column segments of the upper tool strip, sitting above each side panel; small icon row for "Add footnote", "Add citation", etc.) | `MarginActionToolbar` — rendered as the sticky `[data-tool-strip="left-action"]` / `[data-tool-strip="right-action"]` inside `PaneRail` | [src/components/MarginActionToolbar.tsx](../../src/components/MarginActionToolbar.tsx); mounted in `EditorPane.tsx` ~line 3010 |
 | **Menu pod** / **menu bar** / **main toolbar** / **menu toolbar** / **floating toolbar** | Same as **Text tool bar** above | Same |
 | **Left tool strip** / **left icon strip** / **sidebar navigation** (left) | Inline `<div data-strip-side="left">` — no dedicated component | Rendered by `PaneRail` in `EditorPane.tsx` ~line 3878 |
@@ -31,9 +31,10 @@ If a user term isn't yet in this file, add it under **Pending terminology** at t
 
 | User term | Code name(s) | Where |
 |---|---|---|
-| **Formatting toolbar** / **format popup** | `AttachedPopover` anchored to A-glyph (no dedicated component) | `MenuBar.tsx` ~line 1509 (inside `MenuBarContent`) |
-| **Action toolbar** / **actions popup** (attached to Virgil bar) | `ActionButtonsRow` rendered inside an `AttachedPopover` anchored to 8-ray star | `ActionButtonsRow` at `MenuBar.tsx:953` |
-| **Detached actions toolbar** (torn off and floating) | `DetachedActionsToolbar` — multi-instance; each tear-off spawns a new copy stored in `detachedActions[]` with its own id | `MenuBar.tsx:1077`; mounted via portal in `EditorLayout.tsx` |
+| **Selection actions menu** (Notion-style auto-popping menu beside any non-empty selection; right of the editor column or at the gutter when the selection extends to the edge) | `SelectionActionsMenu` — 4×3 inline-formatting grid (bold/italic/links/math/text-color, etc.) plus a vertical action list reusing `MENU_ENTRIES` from `DragHandleMenu`. Dispatches through `DragHandleMenuApi.dispatch` | [src/components/SelectionActionsMenu.tsx](../../src/components/SelectionActionsMenu.tsx); paired with [src/components/SelectionColorPopover.tsx](../../src/components/SelectionColorPopover.tsx); mounted from `Editor.tsx` ~line 3610 |
+| **Formatting toolbar** / **format popup** (no longer in the docked MenuBar; vocabulary moved into `SelectionActionsMenu` and `DragHandleMenu`) | `FormatButtonsRow` still exported for use inside `DetachedFormattingToolbar` (vestigial — has no current home-bar spawn path) | `MenuBar.tsx` ~line 993 |
+| **Action toolbar** / **actions popup** (no longer in the docked MenuBar; vocabulary moved into `SelectionActionsMenu`, `DragHandleMenu`, and the margin `ActionButtonsRow` row above each panel column) | `ActionButtonsRow` shared by `MarginActionToolbar` and `DetachedActionsToolbar`; defs in `ACTION_BUTTON_DEFS` | `MenuBar.tsx:930` |
+| **Detached actions toolbar** (legacy floating multi-instance toolbar) | `DetachedActionsToolbar` — state still lives in `detachedActions[]` in EditorLayout, but no UI path currently spawns it after ae15791 | `MenuBar.tsx:1077`; portal mount in `EditorLayout.tsx` |
 | **Margin action toolbar** | Same as **Left action buttons** / **Right action buttons** above | Same |
 | **View menu** / **three-dot menu** (on Virgil bar) | `ViewMenu` | `MenuBar.tsx:1140` |
 | **Block-type dropdown** (body/chapter/section/subsection) | `BlockTypeDropdown` | `MenuBar.tsx` ~line 471 |
@@ -85,7 +86,8 @@ Each panel lives in `src/panels/<PanelFolder>/`.
 | User term | Code name(s) | Where |
 |---|---|---|
 | **Main text** | The TipTap editor document | [src/components/Editor.tsx](../../src/components/Editor.tsx) |
-| **Heading** | TipTap `heading` node (levels 1–4 = Chapter/Section/Subsection/Subsubsection) | TipTap schema; block-type dropdown at `MenuBar.tsx` ~line 451 |
+| **Heading** | TipTap `heading` node (levels 0–6 = Part / Chapter / Section / Subsection / Subsubsection / Paragraph / Subparagraph; declared in [src/lib/heading-types.ts](../../src/lib/heading-types.ts)) | TipTap schema; block-type dropdown at `MenuBar.tsx` ~line 463; per-heading lozenge picker at `HeadingTypeMenu.tsx` |
+| **Heading lozenge** / **heading control strip** (the floating strip above each heading: type-dropdown chip + numbered (#) toggle + label slot + × delete; f59756b replaced the old redundant-section-number lozenge) | `HeadingTypeMenu` for the type dropdown; lozenge controls inline in `Editor.tsx` heading node-view | [src/components/HeadingTypeMenu.tsx](../../src/components/HeadingTypeMenu.tsx); heading-level vocabulary in [src/lib/heading-types.ts](../../src/lib/heading-types.ts) |
 | **Paragraph** | TipTap `paragraph` node (carries `uuid` attr) | See `main-text.md` |
 | **Paragraph title** | Stored in `virgil.json` sidecar (`ParagraphMeta.title`), **not** a Tiptap attr | Loaded in [src/hooks/useDocument.ts](../../src/hooks/useDocument.ts); shown in Omni view + search breadcrumbs |
 | **Marginalia** | Gutter icons in left/right margin of main text, anchored to paragraphs | [src/components/Marginalia.tsx](../../src/components/Marginalia.tsx); metadata in [src/lib/marginalia.ts](../../src/lib/marginalia.ts); grid math in [src/lib/marginalia-grid.ts](../../src/lib/marginalia-grid.ts) |
@@ -208,8 +210,8 @@ Self-contained subsystem under `library/` (sibling of `src/`). See [library/AGEN
 
 - **"Virgil bar"** (user) = the whole horizontal top strip (`<div class="virgil-bar">`, inline in EditorLayout.tsx) — **not** the `MenuBar` component. The `MenuBar` is the menu pod that docks inside the Virgil bar by default. Don't confuse either with the three-dot View menu.
 - **"Navigation strip"** (user) — no single component. Paragraph-nav chevrons are inline in `MenuBar`. Panel navigation (what's open) is split between left/right strips plus the Outline panel.
-- **"Action toolbar"** (user) — three different shapes depending on state: attached popover (inside MenuBar), `ActionButtonsRow` (the buttons themselves), and `DetachedActionsToolbar` (when torn off — **multiple can coexist** after successive tear-offs).
-- **"Formatting toolbar"** (user) — not a dedicated component, just an `AttachedPopover` with inline buttons.
+- **"Action toolbar"** (user) — `ActionButtonsRow` is the buttons themselves; rendered today by `MarginActionToolbar` above each panel column (and by the now-unreachable `DetachedActionsToolbar`). The home Virgil-bar attached popover was dropped in ae15791.
+- **"Formatting toolbar"** (user) — `FormatButtonsRow`; no docked home today (only the vestigial `DetachedFormattingToolbar`). Live formatting is via `SelectionActionsMenu` (auto-popping right-of-selection).
 
 ## Pending terminology
 
