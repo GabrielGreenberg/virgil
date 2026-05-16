@@ -133,6 +133,10 @@ import { resolveCardData, cardKeyPrefixToStackKind } from "@/lib/stack/resolve-c
 import { useDragHandleActions, type DragHandlePassage } from "./editor-layout/card-actions/drag-handle-actions";
 import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { DragHandleMenu } from "./DragHandleMenu";
+import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
+import { useConfirmDialog } from "./ConfirmDialog";
+import { resolveStyle } from "@/lib/style-library";
+import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn, type PanelSlot } from "./editor-layout/panel-column";
 import { PanelChromeProvider } from "./panel-primitives";
 import FloatingPanel from "./FloatingPanel";
@@ -1680,6 +1684,53 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => ({ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }),
     [openDragHandleMenu, dragHandleActions.dispatch],
   );
+
+  // Heading-lozenge type-menu state. The vanilla DOM node view inside
+  // VirgilEditor calls `openHeadingTypeMenu` with the chip's rect plus a
+  // `onPick` callback; we render the React `<HeadingTypeMenu>` here and
+  // route the user's pick back through the callback into the node view.
+  const [headingTypeMenuState, setHeadingTypeMenuState] = useState<{
+    anchorRect: DOMRect;
+    currentLevel: number;
+    onPick: (pick: HeadingTypePick) => void;
+  } | null>(null);
+  const openHeadingTypeMenu = useCallback(
+    (params: { anchorRect: DOMRect; currentLevel: number; onPick: (pick: HeadingTypePick) => void }) => {
+      setHeadingTypeMenuState(params);
+    },
+    [],
+  );
+  const closeHeadingTypeMenu = useCallback(() => setHeadingTypeMenuState(null), []);
+
+  // Shared confirm-dialog instance for the heading lozenge's × button
+  // and any other prompt-from-node-view flows that land here later.
+  const { confirm: confirmHeadingDelete, dialog: confirmHeadingDeleteDialog } = useConfirmDialog();
+  const handleConfirmHeadingDelete = useCallback(
+    (typeName: string) =>
+      confirmHeadingDelete({
+        title: "Delete heading?",
+        message: `Remove this ${typeName} heading. The body underneath stays in place.`,
+        confirmLabel: "Delete heading",
+        tone: "danger",
+      }),
+    [confirmHeadingDelete],
+  );
+
+  // Documentclass extracted from the resolved style preamble. Drives the
+  // heading-type dropdown's per-entry enable/disable. Users who heavily
+  // customise their in-doc preamble may diverge from this — the worst
+  // case is the dropdown shows an entry as enabled when the class can't
+  // render it; the existing `DocumentClassMismatchDialog` catches the
+  // mismatch on next compile.
+  const documentClassName = useMemo(() => {
+    if (!documentStyleHook.styleId) return null;
+    try {
+      const preset = resolveStyle(documentStyleHook.styleId);
+      return extractDocumentClass(preset.preamble)?.className ?? null;
+    } catch {
+      return null;
+    }
+  }, [documentStyleHook.styleId]);
 
   // ─── Detached-toolbar machinery (Path A 7.6 finish) ────────────────
   // Per-pane state for the three torn-off floating toolbars (Actions,
@@ -3809,6 +3860,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     exampleIsPoppedRef={exampleIsPoppedRef}
                     onToggleExamplePopout={handleToggleExamplePopout}
                     onDragHandleClick={openDragHandleMenu}
+                    onOpenHeadingTypeMenu={openHeadingTypeMenu}
+                    onConfirmHeadingDelete={handleConfirmHeadingDelete}
+                    documentClass={documentClassName}
                   />
                 )}
                 {/* Print appendices — hidden in live UI (`.print-only`),
@@ -4096,6 +4150,19 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
               onClose={closeDragHandleMenu}
             />
           )}
+          {headingTypeMenuState && (
+            <HeadingTypeMenu
+              anchorRect={headingTypeMenuState.anchorRect}
+              currentLevel={headingTypeMenuState.currentLevel}
+              documentClass={documentClassName}
+              onPick={(pick) => {
+                headingTypeMenuState.onPick(pick);
+                closeHeadingTypeMenu();
+              }}
+              onClose={closeHeadingTypeMenu}
+            />
+          )}
+          {confirmHeadingDeleteDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>

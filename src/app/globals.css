@@ -790,20 +790,67 @@ textarea,
 }
 
 .heading-annotation {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   font-size: 0.68rem;
   font-weight: 400;
   color: var(--heading-annotation-color, #6b9ac4);
   font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
   letter-spacing: 0.04em;
   margin-bottom: 1.2em;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   border: 1px solid var(--heading-annotation-border, #a8c4de);
   border-radius: 3px;
   padding: 1px 6px;
 }
 
+.heading-annotation-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.heading-annotation-type-chip:hover {
+  background: var(--heading-annotation-border, #a8c4de);
+  color: #fff;
+}
+
+.heading-annotation-caret {
+  font-size: 0.55rem;
+  opacity: 0.75;
+  margin-left: 1px;
+}
+
+.heading-annotation-numbered-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 13px;
+  height: 13px;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
+.heading-annotation-numbered-toggle:hover {
+  background: var(--heading-annotation-border, #a8c4de);
+  color: #fff;
+}
+
+.heading-annotation-numbered-toggle.is-off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.heading-annotation-sep {
+  white-space: pre;
+}
 
 .heading-label-text {
   cursor: pointer;
@@ -826,6 +873,29 @@ textarea,
 
 .heading-annotation:hover .heading-label-add {
   display: inline;
+}
+
+.heading-annotation-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  min-width: 14px;
+  height: 14px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--heading-annotation-color, #6b9ac4);
+}
+
+.heading-annotation:hover .heading-annotation-delete {
+  display: inline-flex;
+}
+
+.heading-annotation-delete:hover {
+  background: #b45757;
+  color: #fff;
 }
 
 .heading-label-input {

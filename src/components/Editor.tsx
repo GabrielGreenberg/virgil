@@ -61,6 +61,8 @@ import {
   getSectionFoldingState,
 } from "@/lib/section-folding";
 import { getSectionRangeByUuid } from "@/lib/section-range";
+import { HEADING_TYPES, headingTypeName } from "@/lib/heading-types";
+import type { HeadingTypePick } from "./HeadingTypeMenu";
 
 /**
  * Resolve a ProseMirror position to the nearest anchorable node, handling
@@ -222,6 +224,29 @@ interface EditorProps {
    * automatic — both flip to read-only via the same `setEditable` API.
    */
   editable?: boolean;
+  /**
+   * Open the heading-type dropdown for the lozenge's type chip. Called
+   * from the vanilla DOM node view; the EditorPane layer renders the
+   * React `<HeadingTypeMenu>` and routes the user's pick back via
+   * `onPick`. Omit to disable the dropdown (chip becomes static text).
+   */
+  onOpenHeadingTypeMenu?: (params: {
+    anchorRect: DOMRect;
+    currentLevel: number;
+    onPick: (pick: HeadingTypePick) => void;
+  }) => void;
+  /**
+   * Confirmation for the lozenge `×` button. Resolving `false` cancels
+   * the delete. When omitted, the delete fires without prompting.
+   */
+  onConfirmHeadingDelete?: (typeName: string) => Promise<boolean>;
+  /**
+   * Documentclass name (e.g. "article", "report") used by the heading-
+   * type dropdown to disable entries the class doesn't support. Pass
+   * `null` (or omit) to show every entry as enabled — appropriate when
+   * the class isn't known or is a custom `.cls`.
+   */
+  documentClass?: string | null;
 }
 
 export interface FootnoteInfo {
@@ -416,7 +441,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, editable = true },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -493,6 +518,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   // synchronously on every keystroke inside the heading label input.
   const isLabelTakenRef = useRef(isLabelTaken);
   isLabelTakenRef.current = isLabelTaken;
+  // Heading lozenge controls: type-menu opener, delete confirmation, and
+  // the live documentclass name. All consumed from inside the vanilla
+  // DOM heading node view through the standard ref-mirror pattern.
+  const onOpenHeadingTypeMenuRef = useRef(onOpenHeadingTypeMenu);
+  onOpenHeadingTypeMenuRef.current = onOpenHeadingTypeMenu;
+  const onConfirmHeadingDeleteRef = useRef(onConfirmHeadingDelete);
+  onConfirmHeadingDeleteRef.current = onConfirmHeadingDelete;
+  const documentClassRef = useRef<string | null>(documentClass ?? null);
+  documentClassRef.current = documentClass ?? null;
 
   // Stashes pending capture-drag payloads. ProseMirror's internal
   // dragstart handler rewrites DataTransfer (setting text/html +
@@ -1146,8 +1180,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     },
     addNodeView() {
       return ({ node, getPos, editor: nodeEditor }) => {
-        // Indexed by level 0..6 (Part..Subparagraph).
-        const TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
         let currentNode = node;
 
         const wrapper = document.createElement("div");
@@ -1375,8 +1407,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         });
 
         function getTypeName(n: typeof node) {
-          const lvl = n.attrs.level as number;
-          return TYPE_NAMES[Math.max(0, Math.min(lvl, 6))];
+          return headingTypeName(n.attrs.level as number);
         }
 
         function enterEditMode(targetSpan: HTMLElement) {
@@ -1526,22 +1557,41 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         function renderAnnot() {
           const typeName = getTypeName(currentNode);
           const isNumbered = currentNode.attrs.numbered !== false;
-          const secNum = currentNode.attrs.sectionNumber as string | null;
           const label = currentNode.attrs.label as string | null;
           annot.innerHTML = "";
 
-          const typeSpan = document.createElement("span");
-          if (isNumbered && secNum) {
-            typeSpan.textContent = `${typeName} ${secNum}`;
-          } else if (!isNumbered) {
-            typeSpan.textContent = `${typeName}*`;
-          } else {
-            typeSpan.textContent = typeName;
-          }
-          annot.appendChild(typeSpan);
+          // 1. Type chip — clickable dropdown trigger.
+          const typeChip = document.createElement("span");
+          typeChip.className = "heading-annotation-type-chip";
+          typeChip.dataset.action = "type-menu";
+          typeChip.setAttribute("role", "button");
+          typeChip.setAttribute("aria-haspopup", "menu");
+          typeChip.title = "Change heading type";
+          const typeText = document.createElement("span");
+          typeText.textContent = typeName;
+          typeChip.appendChild(typeText);
+          const caret = document.createElement("span");
+          caret.className = "heading-annotation-caret";
+          caret.textContent = "▾";
+          typeChip.appendChild(caret);
+          annot.appendChild(typeChip);
 
+          // 2. Numbered on/off toggle — drives \section{} vs \section*{}
+          // and the CSS-rendered section number on the heading itself.
+          const numToggle = document.createElement("span");
+          numToggle.className = "heading-annotation-numbered-toggle";
+          if (!isNumbered) numToggle.classList.add("is-off");
+          numToggle.dataset.action = "toggle-numbered";
+          numToggle.setAttribute("role", "button");
+          numToggle.setAttribute("aria-pressed", isNumbered ? "true" : "false");
+          numToggle.title = isNumbered ? "Hide section number" : "Show section number";
+          numToggle.textContent = "#";
+          annot.appendChild(numToggle);
+
+          // 3. Label slot (unchanged behaviour).
           if (label) {
             const sep = document.createElement("span");
+            sep.className = "heading-annotation-sep";
             sep.textContent = "  ·  label: ";
             annot.appendChild(sep);
 
@@ -1555,9 +1605,90 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             addBtn.textContent = "Label +";
             annot.appendChild(addBtn);
           }
+
+          // 4. Trailing × delete button.
+          const deleteBtn = document.createElement("span");
+          deleteBtn.className = "heading-annotation-delete";
+          deleteBtn.dataset.action = "delete";
+          deleteBtn.setAttribute("role", "button");
+          deleteBtn.title = "Delete heading";
+          deleteBtn.textContent = "×";
+          annot.appendChild(deleteBtn);
         }
 
         renderAnnot();
+
+        function toggleNumbered() {
+          const p = typeof getPos === "function" ? getPos() : null;
+          if (p == null) return;
+          const headingNode = nodeEditor.state.doc.nodeAt(p);
+          if (!headingNode || headingNode.type.name !== "heading") return;
+          const tr = nodeEditor.state.tr.setNodeMarkup(p, undefined, {
+            ...headingNode.attrs,
+            numbered: !(headingNode.attrs.numbered !== false),
+          });
+          nodeEditor.view.dispatch(tr);
+        }
+
+        function applyLevelChange(newLevel: number) {
+          const p = typeof getPos === "function" ? getPos() : null;
+          if (p == null) return;
+          const headingNode = nodeEditor.state.doc.nodeAt(p);
+          if (!headingNode || headingNode.type.name !== "heading") return;
+          if (headingNode.attrs.level === newLevel) return;
+          const tr = nodeEditor.state.tr.setNodeMarkup(p, undefined, {
+            ...headingNode.attrs,
+            level: newLevel,
+          });
+          nodeEditor.view.dispatch(tr);
+        }
+
+        function demoteToParagraph() {
+          const p = typeof getPos === "function" ? getPos() : null;
+          if (p == null) return;
+          const headingNode = nodeEditor.state.doc.nodeAt(p);
+          if (!headingNode || headingNode.type.name !== "heading") return;
+          const paragraphType = nodeEditor.state.schema.nodes.paragraph;
+          if (!paragraphType) return;
+          const tr = nodeEditor.state.tr.setBlockType(p, p + 1, paragraphType);
+          nodeEditor.view.dispatch(tr);
+        }
+
+        async function requestDelete() {
+          const p = typeof getPos === "function" ? getPos() : null;
+          if (p == null) return;
+          const headingNode = nodeEditor.state.doc.nodeAt(p);
+          if (!headingNode || headingNode.type.name !== "heading") return;
+          const typeName = headingTypeName(headingNode.attrs.level as number);
+          const confirmFn = onConfirmHeadingDeleteRef.current;
+          const ok = confirmFn ? await confirmFn(typeName) : true;
+          if (!ok) return;
+          // Re-resolve after the modal — the doc shouldn't have shifted
+          // while the user was deciding, but cheap insurance.
+          const pos2 = typeof getPos === "function" ? getPos() : null;
+          if (pos2 == null) return;
+          const hn = nodeEditor.state.doc.nodeAt(pos2);
+          if (!hn || hn.type.name !== "heading") return;
+          const tr = nodeEditor.state.tr.delete(pos2, pos2 + hn.nodeSize);
+          nodeEditor.view.dispatch(tr);
+        }
+
+        function openTypeMenu(target: HTMLElement) {
+          const opener = onOpenHeadingTypeMenuRef.current;
+          if (!opener) return;
+          const rect = target.getBoundingClientRect();
+          opener({
+            anchorRect: rect,
+            currentLevel: currentNode.attrs.level as number,
+            onPick: (pick) => {
+              if (pick.kind === "no-heading") {
+                demoteToParagraph();
+              } else {
+                applyLevelChange(pick.level);
+              }
+            },
+          });
+        }
 
         // Phase 1: prevent browser default on mousedown so the contenteditable
         // doesn't receive focus (which would let PM steal it back later).
@@ -1566,21 +1697,41 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           e.stopPropagation();
         });
 
-        // Phase 2: on click, enter edit mode if clicking on a label or the add button.
+        // Phase 2: dispatch on click. Walks up from the click target so a
+        // click on the type chip's text or caret still resolves to the
+        // chip's `data-action`.
         annot.addEventListener("click", (e) => {
           e.preventDefault();
           e.stopPropagation();
-          const target = e.target as HTMLElement;
-          if (target.classList.contains("heading-label-text")) {
-            enterEditMode(target);
-          } else if (target.classList.contains("heading-label-add")) {
-            // For new label, we need to insert a label area first
+          const start = e.target as HTMLElement;
+          let cursor: HTMLElement | null = start;
+          while (cursor && cursor !== annot) {
+            const action = cursor.dataset?.action;
+            if (action === "type-menu") {
+              openTypeMenu(cursor);
+              return;
+            }
+            if (action === "toggle-numbered") {
+              toggleNumbered();
+              return;
+            }
+            if (action === "delete") {
+              void requestDelete();
+              return;
+            }
+            cursor = cursor.parentElement;
+          }
+          if (start.classList.contains("heading-label-text")) {
+            enterEditMode(start);
+          } else if (start.classList.contains("heading-label-add")) {
+            // Materialize the label slot, then enter edit mode on the
+            // freshly-inserted empty label span.
             const labelSpan = document.createElement("span");
             labelSpan.className = "heading-label-text";
-            // Add separator before label
             const sep = document.createElement("span");
+            sep.className = "heading-annotation-sep";
             sep.textContent = "  ·  label: ";
-            target.replaceWith(sep);
+            start.replaceWith(sep);
             sep.after(labelSpan);
             enterEditMode(labelSpan);
           }

@@ -48,4 +48,18 @@ describe("heading levels 0..6 (\\part .. \\subparagraph)", () => {
     expect(out).toContain("\\paragraph{Pg}");
     expect(out).toContain("\\subparagraph{Sb}");
   });
+
+  it("round-trips the starred (unnumbered) variant at every level", () => {
+    const src =
+      "\\part*{Pa}\n\\chapter*{Ch}\n\\section*{Se}\n\\subsection*{Su}\n\\subsubsection*{Ss}\n\\paragraph*{Pg}\n\\subparagraph*{Sb}\n";
+    const json = parseBody(src);
+    const out = serializeBodyOnly(json);
+    expect(out).toContain("\\part*{Pa}");
+    expect(out).toContain("\\chapter*{Ch}");
+    expect(out).toContain("\\section*{Se}");
+    expect(out).toContain("\\subsection*{Su}");
+    expect(out).toContain("\\subsubsection*{Ss}");
+    expect(out).toContain("\\paragraph*{Pg}");
+    expect(out).toContain("\\subparagraph*{Sb}");
+  });
 });

@@ -69,7 +69,7 @@ export function rewriteDocumentClass(latex: string, newClass: string): string {
 // Sectioning commands a class accepts. `letter` has none. `beamer` allows
 // \part/\section/\subsection for navigation but no \chapter. `slides` is
 // article-shaped.
-const CLASS_COMMANDS: Record<string, Set<SectioningCommand>> = {
+export const CLASS_COMMANDS: Record<string, Set<SectioningCommand>> = {
   article: new Set(["part", "section", "subsection", "subsubsection", "paragraph", "subparagraph"]),
   slides: new Set(["part", "section", "subsection", "subsubsection", "paragraph", "subparagraph"]),
   report: new Set(["part", "chapter", "section", "subsection", "subsubsection", "paragraph", "subparagraph"]),

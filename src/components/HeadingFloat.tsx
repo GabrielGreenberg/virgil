@@ -64,9 +64,7 @@ import { getSectionRangeByUuid } from "@/lib/section-range";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
-
-// Indexed by heading level 0..6 (Part..Subparagraph).
-const TYPE_NAMES = ["Part", "Chapter", "Section", "Subsection", "Subsubsection", "Paragraph", "Subparagraph"];
+import { headingTypeName } from "@/lib/heading-types";
 
 export function HeadingFloat({
   cardKey,
@@ -240,7 +238,7 @@ export function HeadingFloat({
     readSource,
   });
 
-  const typeName = TYPE_NAMES[Math.max(0, Math.min(initial.level, 6))];
+  const typeName = headingTypeName(initial.level);
 
   return (
     <FloatCard cardKey={cardKey} surface="card">
