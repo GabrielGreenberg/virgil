@@ -16,7 +16,7 @@
  * fallback: first in source order).
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { resolveLink } from "../links";
 import { alignEntryToY } from "@/components/editor-layout/layout-scroll";
@@ -67,11 +67,32 @@ export interface UsePlacementArgs {
 
 export function usePlacement({ editor, collections }: UsePlacementArgs): void {
   const selection = useSelection();
-  // Track the previous selection so we only scroll when it actually
-  // changes (including null → ref). Hover changes never run this effect.
+  // Magnetism guard: this effect's deps re-fire on every render because
+  // `collections` is a fresh object literal at the call site. Without
+  // this ref, the scroll would re-run on every render and drag the user
+  // back to the selected card whenever they tried to scroll away. Only
+  // scroll on an actual selection change.
+  const lastScrolledRef = useRef<AnchoredCardRef | null>(null);
   useEffect(() => {
-    if (!selection) return;
+    if (!selection) {
+      // Cleared on deselect so re-selecting the same card later still
+      // counts as a fresh change worth scrolling for.
+      lastScrolledRef.current = null;
+      consumeSuppressFlag();
+      return;
+    }
     if (!editor || editor.isDestroyed || !editor.isInitialized) return;
+
+    const prev = lastScrolledRef.current;
+    if (prev && prev.kind === selection.kind && prev.id === selection.id) return;
+
+    // Mark before doing work — abortive paths (no DOM yet, no anchor)
+    // shouldn't keep retrying us on every following render.
+    lastScrolledRef.current = selection;
+
+    // Search / deep-link callers set this to update selection without
+    // pulling the document around.
+    if (consumeSuppressFlag()) return;
 
     // Locate the card element. Multiple matches are possible (popped
     // float + native panel mount); pick the first that's actually
