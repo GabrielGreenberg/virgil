@@ -1677,8 +1677,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   );
   const closeDragHandleMenu = useCallback(() => setDragHandleMenuState(null), []);
   const dragHandleMenuApi = useMemo<DragHandleMenuApi>(
-    () => ({ open: openDragHandleMenu }),
-    [openDragHandleMenu],
+    () => ({ open: openDragHandleMenu, dispatch: dragHandleActions.dispatch }),
+    [openDragHandleMenu, dragHandleActions.dispatch],
   );
 
   // ─── Detached-toolbar machinery (Path A 7.6 finish) ────────────────

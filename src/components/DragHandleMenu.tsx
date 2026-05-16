@@ -38,7 +38,7 @@ export type DragHandleAction =
   | "cutter"
   | "archive";
 
-interface MenuEntry {
+export interface MenuEntry {
   action: DragHandleAction;
   label: string;
   letter: string;
@@ -48,7 +48,7 @@ interface MenuEntry {
   separator?: boolean;
 }
 
-const MENU_ENTRIES: MenuEntry[] = [
+export const MENU_ENTRIES: MenuEntry[] = [
   { action: "highlight", label: "Highlight", letter: "H", icon: <IconHighlight size={16} /> },
   { action: "note", label: "Note", letter: "N", icon: <IconNotes size={16} /> },
   { action: "footnote", label: "Footnote", letter: "F", icon: <IconFootnote size={16} /> },

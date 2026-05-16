@@ -16,12 +16,17 @@
 
 import { createContext, useContext } from "react";
 import type { DragHandlePassage } from "./drag-handle-actions";
+import type { DragHandleAction } from "@/components/DragHandleMenu";
 
 export interface DragHandleMenuApi {
   /** Open the action menu anchored to a handle. The caller passes the
    *  handle's bounding rect (for positioning) and a Passage describing
    *  what the menu should act on. */
   open: (passage: DragHandlePassage, anchorRect: DOMRect) => void;
+  /** Run a passage action directly without opening the menu first.
+   *  Used by SelectionActionsMenu (which renders its own button row and
+   *  doesn't need the popover step). */
+  dispatch: (action: DragHandleAction, passage: DragHandlePassage) => void;
 }
 
 const DragHandleMenuContext = createContext<DragHandleMenuApi | null>(null);

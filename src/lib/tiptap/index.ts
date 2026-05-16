@@ -26,3 +26,4 @@ export { LinkedAnchor, LinkedAnchorGuard, MarginaliaAnchorGuard } from "./linked
 export { PgMarkChip } from "./pgmark";
 export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
+export { TextColor } from "./text-color";

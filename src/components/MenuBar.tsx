@@ -470,7 +470,7 @@ const BLOCK_TYPES = [
   { value: "6", label: "Subparagraph heading" },
 ];
 
-function BlockTypeDropdown({ editor }: { editor: Editor }) {
+export function BlockTypeDropdown({ editor }: { editor: Editor }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top?: number; bottom?: number; left?: number; right?: number }>({});

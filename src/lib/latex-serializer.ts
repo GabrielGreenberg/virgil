@@ -25,13 +25,19 @@ function ensureVirgilCommands(preamble: string): string {
   const hasVfid = /\\(?:provide|new|renew)command\{\\vfid\}/.test(preamble);
   const hasVcid = /\\(?:provide|new|renew)command\{\\vcid\}/.test(preamble);
   const hasVexid = /\\(?:provide|new|renew)command\{\\vexid\}/.test(preamble);
-  if (hasVfid && hasVcid && hasVexid) return preamble;
+  // xcolor is needed for `\textcolor[HTML]{...}` emitted by the textColor
+  // mark. New docs get it from CLASSIC_PREAMBLE; older docs get it
+  // injected lazily on first save.
+  const hasXcolor = /\\usepackage(?:\[[^\]]*\])?\{xcolor\}/.test(preamble);
+  if (hasVfid && hasVcid && hasVexid && hasXcolor) return preamble;
 
   const beginMarker = "\\begin{document}";
   const beginIdx = preamble.indexOf(beginMarker);
   if (beginIdx === -1) return preamble;
 
   const additions: string[] = [];
+  // Packages first, then `\providecommand`s — conventional preamble order.
+  if (!hasXcolor) additions.push("\\usepackage{xcolor}");
   if (!hasVfid) additions.push("\\providecommand{\\vfid}[1]{}");
   if (!hasVcid) additions.push("\\providecommand{\\vcid}[1]{}");
   if (!hasVexid) additions.push("\\providecommand{\\vexid}[1]{}");
@@ -74,6 +80,15 @@ function serializeMarks(
       case "code":
         result = `\\texttt{${result}}`;
         break;
+      case "textColor": {
+        const c = (mark.attrs?.color as string | undefined) ?? "";
+        // \textcolor[HTML] expects 6 uppercase hex digits, no leading "#".
+        const hex = c.replace(/^#/, "").toUpperCase();
+        if (/^[0-9A-F]{6}$/.test(hex)) {
+          result = `\\textcolor[HTML]{${hex}}{${result}}`;
+        }
+        break;
+      }
     }
   }
   return result;

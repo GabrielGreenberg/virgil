@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -54,6 +54,7 @@ import MenuBar from "./MenuBar";
 import { createPopoutButtonEl } from "./panel-primitives";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { SelectionDragHandle } from "./SelectionDragHandle";
+import { SelectionActionsMenu } from "./SelectionActionsMenu";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -1796,6 +1797,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       Highlight.configure({
         multicolor: true,
       }),
+      TextColor,
       InlineMath,
       DisplayMath,
       Footnote,
@@ -3454,6 +3456,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     <div className="flex flex-col flex-1 min-w-0">
       <EditorContent editor={editor} />
       <SelectionDragHandle editorRef={editorInstanceRef} />
+      <SelectionActionsMenu editorRef={editorInstanceRef} />
     </div>
   );
 });

@@ -22,6 +22,7 @@ export const CLASSIC_PREAMBLE = `\\documentclass{article}
 \\usepackage[utf8]{inputenc}
 \\usepackage{amsmath}
 \\usepackage{amssymb}
+\\usepackage{xcolor}
 
 % Virgil entity-id markers — no-op commands that carry stable UUIDs for
 % inline entities (footnotes, citations, examples) across .tex parse

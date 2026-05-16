@@ -299,6 +299,33 @@ function parseInlineContent(text: string): JSONContent[] {
         }
       }
 
+      // \textcolor[HTML]{RRGGBB}{...} — emitted by the textColor mark.
+      // Named-color variants (\textcolor{red}{...}) are intentionally
+      // skipped; they round-trip as plain text without a mark.
+      const tcMatch = rest.match(/^\\textcolor\[HTML\]\{([0-9A-Fa-f]{6})\}\{/);
+      if (tcMatch) {
+        flush();
+        const colorHex = tcMatch[1].toUpperCase();
+        // tcMatch[0] ends with the opening "{" of the inner arg; rewind
+        // one char so extractBraced lands on that brace.
+        const argStart = i + tcMatch[0].length - 1;
+        const inner = extractBraced(text, argStart);
+        if (inner !== null) {
+          const innerNodes = parseInlineContent(inner.content);
+          for (const n of innerNodes) {
+            nodes.push({
+              ...n,
+              marks: [
+                ...(n.marks || []),
+                { type: "textColor", attrs: { color: `#${colorHex}` } },
+              ],
+            });
+          }
+          i = inner.end;
+          continue;
+        }
+      }
+
       // \vfid{uuid} — no-op marker stashing a stable footnoteId for the
       // next \footnote{...} in the stream. Emitted by the serializer.
       const vfidMatch = rest.match(/^\\vfid\{/);
