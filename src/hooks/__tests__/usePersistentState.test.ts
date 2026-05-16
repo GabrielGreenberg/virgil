@@ -171,7 +171,7 @@ describe("usePersistentState", () => {
     // Make writeSidecar throw a StalePipelineError as the storage layer
     // would once the handle is invalidated. The hook should swallow it.
     const { StalePipelineError } = await import("@/lib/multi-window/doc-pipeline");
-    mockWrite.mockRejectedValue(new StalePipelineError("doc-1", h.pipelineId));
+    mockWrite.mockRejectedValue(new StalePipelineError("doc-1", h.pipelineId, "ended", null));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const { result } = renderHook(() =>

@@ -42,7 +42,23 @@ export function DocPipeline({ docId, children }: DocPipelineProps) {
   // would invalidate every render.
   const handle = useMemo(() => beginDocPipeline(docId), [docId]);
 
+  // Also call beginDocPipeline on every effect-mount. Idempotent: when
+  // the pipeline is still alive, this returns the existing handle and
+  // — critically — cancels any pendingEnd token from the matching
+  // cleanup that just fired in this same tick.
+  //
+  // Without this, React StrictMode's effect double-invoke (and Fast
+  // Refresh's equivalent re-mount) silently kills the pipeline: the
+  // first-pass cleanup schedules `endDocPipeline`'s deferred delete,
+  // useMemo doesn't re-run because deps haven't changed, the
+  // second-pass effect mount registers a new cleanup but never re-
+  // touches the registry, and the queued microtask then flushes the
+  // delete — leaving the still-mounted useDocument with a handle that
+  // no longer matches anything in `active`. Every subsequent autosave
+  // throws `StalePipelineError` and useDocument's catch silently drops
+  // the user's edits.
   useEffect(() => {
+    beginDocPipeline(handle.docId);
     return () => endDocPipeline(handle);
   }, [handle]);
 

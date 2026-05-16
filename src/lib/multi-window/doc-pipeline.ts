@@ -20,8 +20,6 @@
  *    queued tasks that survive a doc switch.
  */
 
-const active = new Map<string, string>();
-
 /**
  * Pipelines pending end. React StrictMode (dev) and Fast Refresh (HMR)
  * synchronously unmount then remount the same component — if we deleted
@@ -43,8 +41,25 @@ const active = new Map<string, string>();
  * via `[save]` cleanup with the OLD handle, the OLD pipeline is still
  * in `active` (delete is scheduled, not yet fired) so `assertActive`
  * passes and the user's pending edit lands in the right doc's file.
+ *
+ * Registry storage is parked on `globalThis` so that Next.js HMR module
+ * re-evaluation (a routine event when working in the dev preview)
+ * preserves the same `Map`/`Set` instances. Without this, an HMR cycle
+ * would silently re-mint the module's `active` Map, leaving React's
+ * already-captured `DocWriteHandle`s stranded under a stale pipelineId
+ * and turning every subsequent save into a `StalePipelineError` that
+ * `useDocument` swallows — i.e. the data-loss bug we're fixing.
  */
-const pendingEnd = new Set<string>();
+interface VirgilPipelineRegistry {
+  active: Map<string, string>;
+  pendingEnd: Set<string>;
+}
+const g = globalThis as unknown as { __virgilDocPipelines?: VirgilPipelineRegistry };
+const registry: VirgilPipelineRegistry = (g.__virgilDocPipelines ??= {
+  active: new Map(),
+  pendingEnd: new Set(),
+});
+const { active, pendingEnd } = registry;
 
 /**
  * An opaque token bundling the destination doc with the pipeline it was
@@ -56,11 +71,30 @@ export interface DocWriteHandle {
   readonly pipelineId: string;
 }
 
+/**
+ * Why the captured handle is no longer the active pipeline.
+ *  - "ended": no pipeline is registered for this docId at all. After the
+ *    globalThis-stable registry change, this should only happen at a
+ *    genuine unmount whose flush ran first — i.e. it's a regression
+ *    signal if it surfaces in normal editing.
+ *  - "superseded": a *different* pipelineId is now registered for the
+ *    same docId. Expected on a real doc reopen; dropping the write is
+ *    correct (the newer pipeline has loaded fresh content).
+ */
+export type StaleReason = "ended" | "superseded";
+
 export class StalePipelineError extends Error {
-  constructor(public readonly docId: string, public readonly pipelineId: string) {
+  constructor(
+    public readonly docId: string,
+    public readonly pipelineId: string,
+    public readonly reason: StaleReason,
+    public readonly currentPipelineId: string | null,
+  ) {
     super(
       `Stale doc pipeline for ${docId}: write was authored under pipeline ` +
-        `${pipelineId.slice(0, 8)} but that pipeline has ended or been superseded.`,
+        `${pipelineId.slice(0, 8)} but that pipeline has ${
+          reason === "ended" ? "ended" : "been superseded"
+        }.`,
     );
     this.name = "StalePipelineError";
   }
@@ -131,8 +165,10 @@ export function endDocPipeline(h: DocWriteHandle): void {
 
 /** Throws StalePipelineError if `h` is no longer the active pipeline. */
 export function assertActive(h: DocWriteHandle): void {
-  if (active.get(h.docId) !== h.pipelineId) {
-    throw new StalePipelineError(h.docId, h.pipelineId);
+  const current = active.get(h.docId);
+  if (current !== h.pipelineId) {
+    const reason: StaleReason = current === undefined ? "ended" : "superseded";
+    throw new StalePipelineError(h.docId, h.pipelineId, reason, current ?? null);
   }
 }
 
@@ -151,7 +187,7 @@ export function assertActive(h: DocWriteHandle): void {
 export function assertNotSuperseded(h: DocWriteHandle): void {
   const current = active.get(h.docId);
   if (current !== undefined && current !== h.pipelineId) {
-    throw new StalePipelineError(h.docId, h.pipelineId);
+    throw new StalePipelineError(h.docId, h.pipelineId, "superseded", current);
   }
 }
 

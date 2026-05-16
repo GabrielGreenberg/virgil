@@ -58,13 +58,23 @@ export function useDocument() {
         }, 2000);
       } catch (err) {
         if (isStalePipelineError(err)) {
-          // A newer pipeline took over for the same docId before our
-          // write landed. Expected when reopening the same doc rapidly;
-          // the newer pipeline will load fresh content and our stale
-          // write would have corrupted it. Log so the case is visible.
-          console.warn(
-            `[useDocument] Stale save dropped — pipeline ${handle.pipelineId.slice(0, 8)} for "${handle.docId}" was superseded before write landed`,
-          );
+          if (err.reason === "superseded") {
+            // A newer pipeline took over for the same docId before our
+            // write landed. Expected when reopening the same doc rapidly;
+            // the newer pipeline has loaded fresh content and our stale
+            // write would have corrupted it. Log so the case is visible.
+            console.warn(
+              `[useDocument] Stale save dropped — pipeline ${handle.pipelineId.slice(0, 8)} for "${handle.docId}" was superseded by ${err.currentPipelineId?.slice(0, 8) ?? "?"} before write landed`,
+            );
+          } else {
+            // No replacement pipeline — registry has simply forgotten
+            // about us. With the globalThis-stable registry this should
+            // not occur in normal editing; if it does, the unmount-flush
+            // ordering has regressed and edits are being silently lost.
+            console.error(
+              `[useDocument] Save dropped — pipeline ${handle.pipelineId.slice(0, 8)} for "${handle.docId}" had already ended with no replacement. This is unexpected and indicates a regression in the pipeline lifecycle.`,
+            );
+          }
           return;
         }
         console.error("Failed to save document:", err);

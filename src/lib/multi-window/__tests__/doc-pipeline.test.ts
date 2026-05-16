@@ -63,6 +63,28 @@ describe("doc-pipeline", () => {
       assertActive(h2);
     });
 
+    it("end then revive then microtask-flush keeps the captured handle alive", async () => {
+      // The DocPipeline scenario this guards against:
+      //   1. Render 1: useMemo runs beginDocPipeline → H1.
+      //   2. Commit 1: useEffect registers cleanup `endDocPipeline(H1)`.
+      //   3. StrictMode/HMR simulated unmount: cleanup fires → end is
+      //      scheduled in pendingEnd.
+      //   4. StrictMode/HMR simulated remount: useMemo does NOT re-run
+      //      (deps unchanged, cache survives), but the effect re-mounts.
+      //      The effect body must call beginDocPipeline for the same
+      //      docId, which cancels the pendingEnd token.
+      //   5. Microtask fires: token is gone, no-op. Pipeline survives.
+      // Without step 4's beginDocPipeline call, the microtask would
+      // delete the still-needed `active` entry, leaving the still-mounted
+      // useDocument with a now-stale handle.
+      const h1 = beginDocPipeline("doc-A");
+      endDocPipeline(h1);
+      beginDocPipeline("doc-A"); // simulates the effect body's revive call
+      await flushMicrotasks();
+      expect(isActive(h1)).toBe(true);
+      assertActive(h1); // does not throw
+    });
+
     it("end then microtask-flush then begin creates a fresh pipeline", async () => {
       const h1 = beginDocPipeline("doc-A");
       endDocPipeline(h1);
@@ -150,6 +172,38 @@ describe("doc-pipeline", () => {
       expect(isStalePipelineError(new Error("nope"))).toBe(false);
       expect(isStalePipelineError("string")).toBe(false);
       expect(isStalePipelineError(null)).toBe(false);
+    });
+
+    it("ended pipeline (no replacement) throws with reason=ended and currentPipelineId=null", async () => {
+      const h = beginDocPipeline("doc-A");
+      endDocPipeline(h);
+      await flushMicrotasks();
+      try {
+        assertActive(h);
+        expect.fail("assertActive should have thrown");
+      } catch (err) {
+        expect(isStalePipelineError(err)).toBe(true);
+        const e = err as StalePipelineError;
+        expect(e.reason).toBe("ended");
+        expect(e.currentPipelineId).toBeNull();
+      }
+    });
+
+    it("superseded pipeline throws with reason=superseded and currentPipelineId=new", async () => {
+      const h1 = beginDocPipeline("doc-A");
+      endDocPipeline(h1);
+      await flushMicrotasks();
+      const h2 = beginDocPipeline("doc-A");
+      expect(h2.pipelineId).not.toBe(h1.pipelineId);
+      try {
+        assertActive(h1);
+        expect.fail("assertActive should have thrown");
+      } catch (err) {
+        expect(isStalePipelineError(err)).toBe(true);
+        const e = err as StalePipelineError;
+        expect(e.reason).toBe("superseded");
+        expect(e.currentPipelineId).toBe(h2.pipelineId);
+      }
     });
   });
 
