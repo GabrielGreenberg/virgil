@@ -568,6 +568,7 @@ export default function EditorLayout() {
   const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
   const {
     notes,
+    highlights,
     addNote,
     addHighlight,
     addNoteParagraphId,
@@ -3848,7 +3849,7 @@ export default function EditorLayout() {
     if (!editorInstance || !editorRef.current || !docIdForHooks) return;
     if (anchorsAppliedDocRef.current === docIdForHooks) return;
     anchorsAppliedDocRef.current = docIdForHooks;
-    const records: Array<{ anchorId: string; kind: "note" | "revision" | "cutter-comment" | "cutter-suggestion"; text: string }> = [];
+    const records: Array<{ anchorId: string; kind: "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion"; text: string }> = [];
     for (const n of notes) {
       const ta = getTextAnchor(n);
       if (ta && ta.anchorText) {
@@ -3871,6 +3872,17 @@ export default function EditorLayout() {
         });
       }
     }
+    // Highlights are applied last so a highlight whose range sits inside a
+    // broader revision/cutter selection wins the overlap. (setMark replaces
+    // earlier linkedAnchor marks in the overlap, and if a highlight mark
+    // were overwritten LinkedAnchorGuard would fire an orphan event and
+    // strip the textRange from the sidecar.)
+    for (const h of highlights) {
+      const ta = getTextAnchor(h);
+      if (ta && ta.anchorText) {
+        records.push({ anchorId: ta.anchorId, kind: "highlight", text: ta.anchorText });
+      }
+    }
     if (records.length > 0) {
       editorRef.current.applyLinkedAnchors(records);
     }
@@ -3878,7 +3890,7 @@ export default function EditorLayout() {
     // Legacy anchored comments path retired with the revisions cutter rewrite.
     // Mode B (selection) anchors now persist via the unified link helpers,
     // so there's nothing to reanchor here.
-  }, [editorInstance, docIdForHooks, notes, comments, cutterCards]);
+  }, [editorInstance, docIdForHooks, notes, highlights, comments, cutterCards]);
 
   // Filter marginalia by visibility settings
   const visibleMarginaliaMarkers = useMemo(() => {
