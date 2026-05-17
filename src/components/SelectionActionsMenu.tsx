@@ -31,7 +31,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
-import { TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { MENU_ENTRIES } from "./DragHandleMenu";
@@ -119,10 +119,11 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 }
 
 function computePlacement(editor: Editor, menuHeight: number): Placement {
-  const { from, to } = editor.state.selection;
-  if (from === to) {
+  const sel = editor.state.selection;
+  if (sel.empty || sel instanceof NodeSelection) {
     return { visible: false, left: 0, top: 0, paragraphUuid: null, range: null };
   }
+  const { from, to } = sel;
   const $from = editor.state.doc.resolve(from);
   let blockUuid: string | null = null;
   for (let depth = $from.depth; depth >= 0; depth--) {
