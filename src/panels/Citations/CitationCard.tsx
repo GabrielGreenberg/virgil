@@ -143,8 +143,12 @@ export function CitationCard({
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
-  const isSelectedEffective = ac.selected || isSelected;
-  const compressed = !isSelectedEffective && !isPoppedOut;
+  // `expanded` controls open/closed (multi-card). `haloed` controls the
+  // single-card focus styling on PanelCard. They diverge when a card is
+  // sticky but not the primary — open, no halo.
+  const isExpanded = ac.expanded || isSelected;
+  const isHaloed = ac.selected || isSelected;
+  const compressed = !isExpanded && !isPoppedOut;
 
   const bibEntryMap = useMemo(
     () => new Map(bibEntries.map((e) => [e.key, e])),
@@ -364,7 +368,7 @@ export function CitationCard({
       data-card-key={cardKey}
       {...(extraDataAttrs || {})}
       theme={theme}
-      selected={isSelectedEffective}
+      selected={isHaloed}
       isPoppedOut={isPoppedOut}
       onTogglePopout={onToggleFromCtx}
       onTrashClick={!compressed && onDelete ? () => onDelete(cit.id) : undefined}
@@ -380,10 +384,10 @@ export function CitationCard({
       style={wrapperStyle}
       onClick={(e) => {
         cardStore.toggleSelection(ac.ref);
-        // If the toggle just cleared the selection ("click again to close"),
-        // skip the secondary affirmations — they would re-set the
-        // selection back to transient.
-        if (cardStore.getState().selection === null) return;
+        // If the toggle just closed this card (no longer expanded), skip
+        // the secondary affirmations — they would re-set selection and
+        // the editor would scroll to a card we just dismissed.
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
         if (isAnchored) {
           onJump(

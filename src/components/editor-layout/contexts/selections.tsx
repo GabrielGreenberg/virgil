@@ -51,21 +51,52 @@ export interface SelectionsProviderInputs {
 
 /** Build a per-kind setter that routes through the global store. The
  *  setter accepts a value or an updater, matching React's setState shape
- *  so existing callers keep compiling unchanged. */
+ *  so existing callers keep compiling unchanged.
+ *
+ *  Writes target the `transient` slot only — sticky cards are managed
+ *  separately via `cardStore.toggleSelection` (direct card click) and
+ *  `markSticky` (focus promotion). The slot setter's read side derives
+ *  from the primary focus (transient || newest sticky), so per-kind
+ *  callers still see the currently-focused id for their kind. */
 function makeKindSetter(kind: EntityKind): Dispatch<SetStateAction<string | null>> {
   return (action) => {
-    const cur = cardStore.getState().selection;
-    const curId = cur && cur.kind === kind ? cur.id : null;
+    const sel = primarySelectionFor(kind);
+    const curId = sel ? sel.id : null;
     const nextId = typeof action === "function" ? action(curId) : action;
     if (nextId == null) {
-      // Only clear if the currently-selected card is of this kind. This
-      // matches the previous per-kind slot semantics: clearing the note
-      // slot shouldn't affect a footnote selection.
-      if (cur && cur.kind === kind) cardStore.setSelection(null);
+      // Clear the transient if it currently refers to this kind. Sticky
+      // entries of this kind are not cleared — close them by clicking the
+      // card again, which goes through toggleSelection.
+      const t = cardStore.getState().transient;
+      if (t && t.kind === kind) cardStore.setTransient(null);
       return;
     }
-    cardStore.setSelection({ kind, id: nextId });
+    cardStore.setTransient({ kind, id: nextId });
   };
+}
+
+function primarySelectionFor(kind: EntityKind): { kind: EntityKind; id: string } | null {
+  const s = cardStore.getState();
+  if (s.transient && s.transient.kind === kind) return s.transient;
+  for (let i = s.stickySet.length - 1; i >= 0; i--) {
+    const ref = s.stickySet[i];
+    if (ref.kind === kind) return ref;
+  }
+  return null;
+}
+
+/** Like `primarySelectionFor` but matches any of a set of kinds — for the
+ *  polymorphic Cutter and Revisions slots that accept two kinds each. */
+function polymorphicFocusFor(
+  kinds: ReadonlyArray<EntityKind>,
+): { kind: EntityKind; id: string } | null {
+  const s = cardStore.getState();
+  if (s.transient && kinds.includes(s.transient.kind)) return s.transient;
+  for (let i = s.stickySet.length - 1; i >= 0; i--) {
+    const ref = s.stickySet[i];
+    if (kinds.includes(ref.kind)) return ref;
+  }
+  return null;
 }
 
 /** Public hook for components that own per-kind selection slots in their
@@ -115,44 +146,40 @@ function useSelectionsValue(inputs: SelectionsProviderInputs): SelectionsContext
   // or defaults to the comment kind on a fresh select.
   const setSelectedCutterCardId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const cur = cardStore.getState().selection;
-      const curId =
-        cur && (cur.kind === "cutter-comment" || cur.kind === "cutter-suggestion")
-          ? cur.id
-          : null;
+      const focused = polymorphicFocusFor(["cutter-comment", "cutter-suggestion"]);
+      const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        if (cur && (cur.kind === "cutter-comment" || cur.kind === "cutter-suggestion")) {
-          cardStore.setSelection(null);
+        const t = cardStore.getState().transient;
+        if (t && (t.kind === "cutter-comment" || t.kind === "cutter-suggestion")) {
+          cardStore.setTransient(null);
         }
         return;
       }
       // Preserve the kind discriminator if the store already has a cutter
-      // card selected; otherwise default to "cutter-comment". (Polymorphic
+      // card focused; otherwise default to "cutter-comment". (Polymorphic
       //-aware callers should set the store directly with the right kind.)
       const kind: EntityKind =
-        cur && cur.kind === "cutter-suggestion" ? "cutter-suggestion" : "cutter-comment";
-      cardStore.setSelection({ kind, id: nextId });
+        focused && focused.kind === "cutter-suggestion" ? "cutter-suggestion" : "cutter-comment";
+      cardStore.setTransient({ kind, id: nextId });
     },
     [],
   );
   const setSelectedCommentId = useCallback<Dispatch<SetStateAction<string | null>>>(
     (action) => {
-      const cur = cardStore.getState().selection;
-      const curId =
-        cur && (cur.kind === "comment" || cur.kind === "revision-suggestion")
-          ? cur.id
-          : null;
+      const focused = polymorphicFocusFor(["comment", "revision-suggestion"]);
+      const curId = focused ? focused.id : null;
       const nextId = typeof action === "function" ? action(curId) : action;
       if (nextId == null) {
-        if (cur && (cur.kind === "comment" || cur.kind === "revision-suggestion")) {
-          cardStore.setSelection(null);
+        const t = cardStore.getState().transient;
+        if (t && (t.kind === "comment" || t.kind === "revision-suggestion")) {
+          cardStore.setTransient(null);
         }
         return;
       }
       const kind: EntityKind =
-        cur && cur.kind === "revision-suggestion" ? "revision-suggestion" : "comment";
-      cardStore.setSelection({ kind, id: nextId });
+        focused && focused.kind === "revision-suggestion" ? "revision-suggestion" : "comment";
+      cardStore.setTransient({ kind, id: nextId });
     },
     [],
   );

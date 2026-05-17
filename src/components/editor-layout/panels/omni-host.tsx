@@ -179,35 +179,14 @@ export function OmniHost(p: OmniHostProps) {
   } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
 
-  // Omniview is a single-selection surface: selecting any card clears the
-  // other omni-eligible selections. Non-omni fields (bib, comments, cuts)
-  // are left alone.
-  const clearAllOmniSelections = useCallback(() => {
-    setSelectedFootnoteId(null);
-    setSelectedCitationId(null);
-    setSelectedQuotationGroupId(null);
-    setSelectedNoteId(null);
-    setSelectedArchiveId(null);
-    setSelectedTodoId(null);
-    setSelectedExampleId(null);
-  }, [
-    setSelectedFootnoteId,
-    setSelectedCitationId,
-    setSelectedQuotationGroupId,
-    setSelectedNoteId,
-    setSelectedArchiveId,
-    setSelectedTodoId,
-    setSelectedExampleId,
-  ]);
-  // Click-away dismiss is gated on the sticky flag: a card the user
-  // opened directly (or has been working in) survives empty-omni clicks.
-  // A card opened transiently via a marker click is dismissed as before.
+  // Click-away in the omni panel clears the transient selection only.
+  // Sticky cards (hand-clicked or focus-promoted) survive — they stay
+  // expanded until the user clicks the card again to close.
   const handleBackgroundClick = useCallback(() => {
-    if (cardStore.getState().selectionSticky) return;
-    clearAllOmniSelections();
-  }, [clearAllOmniSelections]);
-  // Focus moving into a card body promotes a transient selection to
-  // sticky. Wired from OmniViewPanel's focusin listener.
+    cardStore.setTransient(null);
+  }, []);
+  // Focus moving into a card body promotes a transient selection into
+  // the sticky set. Wired from OmniViewPanel's focusin listener.
   const handleCardFocus = useCallback(() => {
     cardStore.markSticky();
   }, []);

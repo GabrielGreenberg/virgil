@@ -68,9 +68,10 @@ export function ArchiveCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "archive", id: snippet.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
   const compressedLines = useCompressedLines();
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed
     ? (makeCompressedSummary(snippet.content, compressedLines) || "")
     : undefined;
@@ -90,7 +91,7 @@ export function ArchiveCard({
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={() => {
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(snippet.id);
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}

@@ -79,8 +79,9 @@ export function TodoRow({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "todo", id: item.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
 
   const card = (
     <PanelCard
@@ -102,7 +103,7 @@ export function TodoRow({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(item.id);
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}

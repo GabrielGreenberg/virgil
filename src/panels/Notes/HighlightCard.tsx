@@ -59,8 +59,9 @@ export function HighlightCard({
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
   const ac = useAnchoredCard({ kind: "highlight", id: card.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
 
   // The card body renders the highlighted text in the document's serif
@@ -102,7 +103,7 @@ export function HighlightCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(card.id);
       }}
       onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}

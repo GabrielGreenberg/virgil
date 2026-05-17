@@ -731,8 +731,9 @@ export function QuotationGroupCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "quotation", id: group.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle("quote");
   const refCount = group.references.length;
@@ -756,7 +757,7 @@ export function QuotationGroupCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}

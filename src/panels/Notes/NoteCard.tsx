@@ -72,10 +72,11 @@ export function NoteCard({
   );
 
   const ac = useAnchoredCard({ kind: "note", id: note.id });
-  // ac.selected is the new source of truth; keep the legacy `selected`
-  // prop accepted for API compatibility but prefer ac.selected for
-  // visuals. They stay in sync because the parent's selected*Id is
-  // derived from the same cardStore.
+  // ac.expanded drives open/closed (multi-card); ac.selected drives halo
+  // (single primary). Keep the legacy `selected` prop accepted for back-
+  // compat — it folds into both because parent panels derive it from the
+  // same cardStore primary focus.
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
   // isOrphaned was previously surfaced as a BadgeOrphaned in the header;
   // unified-chrome cards have no badge so this state isn't rendered, but
@@ -84,7 +85,7 @@ export function NoteCard({
   void _isOrphaned;
   const theme = useCardTheme("note");
   const compressedLines = useCompressedLines();
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed
     ? (makeCompressedSummary(note.content, compressedLines) || "")
     : undefined;
@@ -111,7 +112,7 @@ export function NoteCard({
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
       onClick={() => {
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(note.id);
       }}
       // TODO(grip-redesign): drop-into-document via the grip is disabled

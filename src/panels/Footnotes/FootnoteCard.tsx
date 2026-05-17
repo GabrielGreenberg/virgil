@@ -102,9 +102,10 @@ export function FootnoteCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "footnote", id: fn.footnoteId });
-  const isSelectedEffective = ac.selected || isSelected;
+  const isExpanded = ac.expanded || isSelected;
+  const isHaloed = ac.selected || isSelected;
   const compressedLines = useCompressedLines();
-  const compressed = !isSelectedEffective && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedSummary = compressed
     ? (makeCompressedSummary(fn.content, compressedLines) || "")
     : undefined;
@@ -115,7 +116,7 @@ export function FootnoteCard({
       cardKind="footnote"
       kind="footnote"
       kindLabelOverride={fn.thanks ? "Acknowledgement" : undefined}
-      selected={isSelectedEffective}
+      selected={isHaloed}
       theme={theme}
       hideToolbar
       inlineDelete
@@ -127,7 +128,7 @@ export function FootnoteCard({
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
       onClick={() => {
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}

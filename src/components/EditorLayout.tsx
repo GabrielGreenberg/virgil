@@ -1510,15 +1510,11 @@ export default function EditorLayout() {
     setSelectedErrorId((cur) => (cur === id ? null : cur));
   }, []);
 
-  // Click-away: clear selection when the user clicks outside any anchored
-  // surface. The global cardStore enforces single-selection intrinsically
-  // (setSelection replaces, never merges), so the previous per-slot
-  // enforcer is gone. Bib and error are non-anchored — they get their own
-  // local clear so unrelated selection is cleared too.
-  //
-  // Sticky selections (cards the user opened directly in omni, or has been
-  // working in) survive click-away. Transient selections (from a marker
-  // click in main text) do not.
+  // Click-away: clear the transient selection when the user clicks
+  // outside any anchored surface. Sticky selections (hand-clicked cards
+  // and transients promoted via focus-in) are never touched here — they
+  // close only by clicking the card again. Bib and error are non-anchored
+  // — they get their own local clear so unrelated selection is cleared too.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target;
@@ -1532,9 +1528,7 @@ export default function EditorLayout() {
       ) {
         return;
       }
-      if (!cardStore.getState().selectionSticky) {
-        cardStore.setSelection(null);
-      }
+      cardStore.setTransient(null);
       setSelectedBibKey(null);
       setSelectedErrorId(null);
     };

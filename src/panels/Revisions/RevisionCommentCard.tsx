@@ -78,8 +78,9 @@ export function RevisionCommentCard({
   const [originalFolded, setOriginalFolded] = useState(false);
   const [commentFolded, setCommentFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "comment", id: card.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
   useEffect(() => {
     if (isSelected && !card.text) taRef.current?.focus();
@@ -105,7 +106,7 @@ export function RevisionCommentCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(card.id);
       }}
       onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}

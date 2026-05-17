@@ -22,6 +22,7 @@ import { CARD_KEY_PREFIXES } from "@/panels/panel-registry";
 import type { CardKind } from "@/panels/_shared/types";
 import {
   cardStore,
+  useIsExpanded,
   useIsHovered,
   useIsSelected,
   type AnchoredCardRef,
@@ -36,7 +37,10 @@ export interface UseAnchoredCardResult {
     onClick: (e: MouseEvent) => void;
     "aria-selected"?: true;
   };
+  /** Primary focus: true only for the single haloed card. */
   selected: boolean;
+  /** Open/expanded: true for any card in stickySet ∪ {transient}. Multi-card. */
+  expanded: boolean;
   hovered: boolean;
   /** Imperative ref builder for callers that need to set/toggle this
    *  exact card programmatically (e.g. from a keyboard shortcut). */
@@ -45,6 +49,7 @@ export interface UseAnchoredCardResult {
 
 export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
   const selected = useIsSelected(ref);
+  const expanded = useIsExpanded(ref);
   const hovered = useIsHovered(ref);
 
   // The CardKind union is a superset of EntityKind; every EntityKind value
@@ -69,5 +74,5 @@ export function useAnchoredCard(ref: AnchoredCardRef): UseAnchoredCardResult {
     [cardKey, ref.kind, ref.id, selected],
   );
 
-  return { props, selected, hovered, ref };
+  return { props, selected, expanded, hovered, ref };
 }

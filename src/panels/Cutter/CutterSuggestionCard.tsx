@@ -316,8 +316,9 @@ export function CutterSuggestionCard({
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
   const ac = useAnchoredCard({ kind: "cutter-suggestion", id: card.id });
+  const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
-  const compressed = !isSelected && !isPoppedOut;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
   const cardBodyStyle = usePanelBodyStyle("cut");
 
@@ -348,7 +349,7 @@ export function CutterSuggestionCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(card.id);
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}

@@ -56,8 +56,9 @@ export function ExampleCard({
       ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
       : undefined);
   const ac = useAnchoredCard({ kind: "example", id: example.exampleId });
-  const isSelectedEffective = ac.selected || isSelected;
-  const compressed = !isSelectedEffective && !isPoppedOut;
+  const isExpanded = ac.expanded || isSelected;
+  const isHaloed = ac.selected || isSelected;
+  const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -113,10 +114,10 @@ export function ExampleCard({
   const card = (
     <PanelCard
       theme={theme}
-      selected={isSelectedEffective}
+      selected={isHaloed}
       onClick={() => {
         cardStore.toggleSelection(ac.ref);
-        if (cardStore.getState().selection === null) return;
+        if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
