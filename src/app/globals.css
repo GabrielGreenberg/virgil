@@ -121,9 +121,9 @@
   --comment-border: rgba(96, 165, 250, 0.5);
   --latex-comment-color: #7191b0;
   --latex-comment-bg: #f0f5fa;
-  --citation-color: #6b6245;
-  --citation-bg: var(--amber-50);
-  --citation-border-color: #e0d5a8;
+  --citation-color: #555;
+  --citation-bg: #ffffff;
+  --citation-border-color: #a8c4de;
   --footnote-color: var(--footnote-500);
   --footnote-bg: var(--footnote-50);
   --note-color: #15803d;
@@ -242,8 +242,8 @@
   --math-prefix-color: #a090c0;
   --comment-color: #93c5fd;
   --latex-comment-color: #7191b0;
-  --citation-color: #6b6245;
-  --citation-border-color: #e0d5a8;
+  --citation-color: #555;
+  --citation-border-color: #a8c4de;
   --note-color: #15803d;
   --note-marker-border: #86efac;
   --ai-marker-text: #92400e;
@@ -1655,6 +1655,7 @@ textarea,
   cursor: pointer;
   font-weight: 600;
   font-family: var(--font-sans-override, var(--font-sans)), system-ui, sans-serif;
+  --link-anchor-color: var(--footnote-color, #b45757);
 }
 
 .footnote-marker[data-thanks="true"] {
@@ -1698,12 +1699,20 @@ textarea,
 
 /* SELECTED ─────────────────────────────────────────────────────────── */
 
-/* Inline atoms (footnote, citation) — ring only (chip background
- * preserved). Stronger than hover. */
-.footnote-marker[data-card-selected="true"],
-[data-type="citation"][data-card-selected="true"] {
+/* Inline atoms (footnote) — ring only (chip background preserved).
+ * Stronger than hover. Citations get a different treatment below: they
+ * lock the hover yellow on instead of a blue ring. */
+.footnote-marker[data-card-selected="true"] {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--link-anchor-color) 80%, transparent);
   border-radius: 3px;
+}
+
+/* Citation selected — same yellow as :hover, locked on. */
+.citation-node[data-card-selected="true"],
+[data-type="citation"][data-card-selected="true"] {
+  background: #fef3c3;
+  border-color: #d4a843;
+  color: #4a3f20;
 }
 
 /* Mode B text-range spans — wash + ring. */
@@ -1748,11 +1757,21 @@ textarea,
 /* HOVER ────────────────────────────────────────────────────────────── */
 /* Selection wins — these rules use `:not([data-card-selected])`. */
 
-/* Inline atoms — softer ring than the selected variant. */
-.footnote-marker[data-card-hovered="true"]:not([data-card-selected="true"]),
-[data-type="citation"][data-card-hovered="true"]:not([data-card-selected="true"]) {
+/* Inline atoms (footnote) — softer ring than the selected variant.
+ * Citations are excluded: their native :hover already provides yellow,
+ * and data-card-hovered would otherwise add a blue ring we don't want. */
+.footnote-marker[data-card-hovered="true"]:not([data-card-selected="true"]) {
   box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--link-anchor-color) 50%, transparent);
   border-radius: 3px;
+}
+
+/* Citation hovered-from-card — match the :hover yellow so card-side
+ * hover lights up the citation the same way as direct mouseover. */
+.citation-node[data-card-hovered="true"]:not([data-card-selected="true"]),
+[data-type="citation"][data-card-hovered="true"]:not([data-card-selected="true"]) {
+  background: #fef3c3;
+  border-color: #d4a843;
+  color: #4a3f20;
 }
 
 /* Mode B text-range spans — softer wash. */
@@ -2219,19 +2238,27 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
 /* Citation inline nodes */
 .citation-node {
   display: inline;
-  background: var(--citation-bg, #fdf8e1);
+  background: var(--citation-bg, #ffffff);
   border-radius: 3px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
-  border: 1px solid var(--citation-border-color, #e0d5a8);
+  border: 1px solid var(--citation-border-color, #a8c4de);
   padding: 0px 4px;
-  color: var(--citation-color, #6b6245);
+  color: var(--citation-color, #555);
 }
 
 .citation-node:hover {
   background: #fef3c3;
   border-color: #d4a843;
   color: #4a3f20;
+}
+
+/* Let text selection paint across citation pills so a sentence
+ * containing a citation reads as one selection. */
+.citation-node::selection,
+.citation-node *::selection {
+  background: var(--selection-bg, #b3d4fc);
+  color: inherit;
 }
 
 .citation-highlight-bib {

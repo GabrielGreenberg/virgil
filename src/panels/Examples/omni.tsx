@@ -29,9 +29,7 @@ export function buildExampleOmniItems(a: BuildArgs): OmniItem[] {
           key={omniId}
           example={ex}
           isSelected={isSelected}
-          onSelect={() =>
-            a.setSelectedExampleId(isSelected ? null : ex.exampleId)
-          }
+          onSelect={() => a.setSelectedExampleId(ex.exampleId)}
           onJump={() => a.onJump(ex.exampleId)}
           onUpdateLatex={
             a.onUpdateLatex

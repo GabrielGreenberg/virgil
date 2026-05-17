@@ -109,7 +109,11 @@ export function NoteCard({
       onBodyTitleChange={(t) => onUpdateTitle(note.id, t)}
       canJump={!!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : note.id); }}
+      onClick={() => {
+        cardStore.toggleSelection(ac.ref);
+        if (cardStore.getState().selection === null) return;
+        onSelect(note.id);
+      }}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via
       // a separate body-level affordance, not the grip.

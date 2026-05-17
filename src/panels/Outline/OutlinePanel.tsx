@@ -1635,16 +1635,16 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
   );
 
   const headerTitleAfter = (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 ml-2">
       {onReorderBlocks && (
         <button
           onClick={() => { if (focusState?.active) return; setEditMode(!editMode); }}
-          className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+          className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             editMode
               ? "bg-[var(--accent)] text-white"
               : focusState?.active
-                ? "text-ink-faint cursor-not-allowed"
-                : "text-[var(--muted)] hover:text-ink-body hover-on-light"
+                ? "bg-surface/50 text-ink-faint cursor-not-allowed"
+                : "bg-surface/50 text-ink-body hover:bg-surface/80 hover:text-ink-strong"
           }`}
           title={focusState?.active ? "Exit Focus to use Edit" : undefined}
           data-helper="Edit mode"
@@ -1662,12 +1662,12 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               onFocusActivate();
             }
           }}
-          className={`text-[11px] px-2 py-0.5 rounded-md transition-colors ${
+          className={`text-[11px] px-1.5 py-0 rounded-md transition-colors ${
             focusState?.active
               ? "bg-[var(--accent)] text-white"
               : editMode
-                ? "text-ink-faint cursor-not-allowed"
-                : "text-[var(--muted)] hover:text-ink-body hover-on-light"
+                ? "bg-surface/50 text-ink-faint cursor-not-allowed"
+                : "bg-surface/50 text-ink-body hover:bg-surface/80 hover:text-ink-strong"
           }`}
           title={editMode ? "Exit Edit to use Focus" : focusState?.active ? "Exit Focus mode" : "Enter Focus mode"}
           data-helper="Focus mode"

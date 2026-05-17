@@ -37,6 +37,7 @@ import type { FocusState } from "@/hooks/useFocusMode";
 import { useEditorRefContext } from "../contexts/editor-ref";
 import { useSelectionsContext } from "../contexts/selections";
 import { useCitationDisplayContext } from "../contexts/citation-display";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 
 const EMPTY_HIDDEN: ReadonlySet<number> = new Set<number>();
 
@@ -198,6 +199,18 @@ export function OmniHost(p: OmniHostProps) {
     setSelectedTodoId,
     setSelectedExampleId,
   ]);
+  // Click-away dismiss is gated on the sticky flag: a card the user
+  // opened directly (or has been working in) survives empty-omni clicks.
+  // A card opened transiently via a marker click is dismissed as before.
+  const handleBackgroundClick = useCallback(() => {
+    if (cardStore.getState().selectionSticky) return;
+    clearAllOmniSelections();
+  }, [clearAllOmniSelections]);
+  // Focus moving into a card body promotes a transient selection to
+  // sticky. Wired from OmniViewPanel's focusin listener.
+  const handleCardFocus = useCallback(() => {
+    cardStore.markSticky();
+  }, []);
   const setFootnoteInOmni = useCallback((id: string | null) => {
     setSelectedFootnoteId(id);
     if (id !== null) {
@@ -675,7 +688,8 @@ export function OmniHost(p: OmniHostProps) {
       editor={editorInstance}
       enabledCategories={p.getOmniEnabled(p.side)}
       hideAllCards={p.getOmniHideAll(p.side)}
-      onBackgroundClick={clearAllOmniSelections}
+      onBackgroundClick={handleBackgroundClick}
+      onCardFocus={handleCardFocus}
       cardsOffset={p.cardsOffset}
       cardsSilent={p.cardsSilent}
     />

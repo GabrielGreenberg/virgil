@@ -255,7 +255,8 @@ export function RevisionSuggestionCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        onSelect(isSelected ? null : card.id);
+        if (cardStore.getState().selection === null) return;
+        onSelect(card.id);
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

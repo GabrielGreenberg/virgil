@@ -114,7 +114,11 @@ export function ExampleCard({
     <PanelCard
       theme={theme}
       selected={isSelectedEffective}
-      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
+      onClick={() => {
+        cardStore.toggleSelection(ac.ref);
+        if (cardStore.getState().selection === null) return;
+        onSelect();
+      }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
         const h = cardStore.getState().hover;

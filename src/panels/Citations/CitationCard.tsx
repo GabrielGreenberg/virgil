@@ -378,7 +378,19 @@ export function CitationCard({
       onDrop={handleCardDrop}
       className={wrapperClassName}
       style={wrapperStyle}
-      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(); }}
+      onClick={(e) => {
+        cardStore.toggleSelection(ac.ref);
+        // If the toggle just cleared the selection ("click again to close"),
+        // skip the secondary affirmations — they would re-set the
+        // selection back to transient.
+        if (cardStore.getState().selection === null) return;
+        onSelect();
+        if (isAnchored) {
+          onJump(
+            (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null,
+          );
+        }
+      }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
         const h = cardStore.getState().hover;

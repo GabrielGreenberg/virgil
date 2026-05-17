@@ -1515,6 +1515,10 @@ export default function EditorLayout() {
   // (setSelection replaces, never merges), so the previous per-slot
   // enforcer is gone. Bib and error are non-anchored — they get their own
   // local clear so unrelated selection is cleared too.
+  //
+  // Sticky selections (cards the user opened directly in omni, or has been
+  // working in) survive click-away. Transient selections (from a marker
+  // click in main text) do not.
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       const t = e.target;
@@ -1528,7 +1532,9 @@ export default function EditorLayout() {
       ) {
         return;
       }
-      cardStore.setSelection(null);
+      if (!cardStore.getState().selectionSticky) {
+        cardStore.setSelection(null);
+      }
       setSelectedBibKey(null);
       setSelectedErrorId(null);
     };

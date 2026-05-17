@@ -38,9 +38,7 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
           key={id}
           footnote={fn}
           isSelected={isSelected}
-          onSelect={() =>
-            a.setSelectedFootnoteId(isSelected ? null : fn.footnoteId)
-          }
+          onSelect={() => a.setSelectedFootnoteId(fn.footnoteId)}
           onJump={(sourceEl) => a.scrollToFootnote(fn.footnoteId, sourceEl)}
           onEdit={(json) => a.onEditFootnote(fn.footnoteId, json)}
           onDelete={() => a.onDeleteFootnote(fn.footnoteId)}
@@ -65,9 +63,7 @@ export function buildFootnoteOmniItems(a: BuildArgs): OmniItem[] {
           key={id}
           orphan={orphan}
           isSelected={isSelected}
-          onSelect={() =>
-            a.setSelectedFootnoteId(isSelected ? null : orphan.footnoteId)
-          }
+          onSelect={() => a.setSelectedFootnoteId(orphan.footnoteId)}
           onEdit={(json) => a.onEditOrphan(orphan.footnoteId, json)}
           onDelete={() => a.onDeleteOrphan(orphan.footnoteId)}
           onEditTitle={(title) => a.onEditOrphanTitle(orphan.footnoteId, title)}

@@ -102,6 +102,10 @@ interface OmniViewPanelProps {
    *  presentation-tools pod. */
   hideAllCards?: boolean;
   onBackgroundClick?: () => void;
+  /** Fired when focus moves into any `[data-omni-entry]` card body. The
+   *  host uses this to promote a transient selection to sticky once the
+   *  user starts working inside the card. */
+  onCardFocus?: () => void;
   /** Vertical offset (in px) applied to the anchored-cards group as a
    *  whole — set by main-text marker clicks so the clicked card visually
    *  aligns with the click without scrolling the document. The cards'
@@ -276,9 +280,21 @@ function OmniViewPanel({
   enabledCategories,
   hideAllCards,
   onBackgroundClick,
+  onCardFocus,
   cardsOffset,
   cardsSilent,
 }: OmniViewPanelProps) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || !onCardFocus) return;
+    const handler = (e: FocusEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && t.closest("[data-omni-entry]")) onCardFocus();
+    };
+    root.addEventListener("focusin", handler);
+    return () => root.removeEventListener("focusin", handler);
+  }, [onCardFocus]);
   const visibleItems = useMemo(() => {
     if (hideAllCards) return [];
     return items.filter((item) => {
@@ -318,6 +334,7 @@ function OmniViewPanel({
     <OmniProvider value={{ side }}>
     <CardDisplayProvider value={{ compressedLines: 2 }}>
     <div
+      ref={rootRef}
       className="relative w-full"
       onMouseDown={(e) => {
         if (!onBackgroundClick) return;

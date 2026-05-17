@@ -29,10 +29,17 @@ export interface AnchoredCardRef {
 
 interface CardInteractionState {
   selection: AnchoredCardRef | null;
+  /**
+   * "Sticky" selection survives an omni click-away. Meaningful only when
+   * `selection !== null`; reset to false whenever selection is cleared or
+   * a new ref is selected. Set true via `toggleSelection` (direct card
+   * click) and `markSticky` (focus moved into a card body).
+   */
+  selectionSticky: boolean;
   hover: AnchoredCardRef | null;
 }
 
-let _state: CardInteractionState = { selection: null, hover: null };
+let _state: CardInteractionState = { selection: null, selectionSticky: false, hover: null };
 const _listeners = new Set<() => void>();
 
 function subscribe(fn: () => void): () => void {
@@ -53,9 +60,25 @@ function refsEqual(a: AnchoredCardRef | null, b: AnchoredCardRef | null): boolea
 export const cardStore = {
   getState: (): CardInteractionState => _state,
 
-  setSelection(next: AnchoredCardRef | null): void {
-    if (refsEqual(_state.selection, next)) return;
-    _state = { ..._state, selection: next ? { ...next } : null };
+  /**
+   * Set the selected card. `opts.sticky` is honored explicitly; otherwise
+   * a same-ref re-set preserves the current sticky flag (so a direct
+   * card click that runs `toggleSelection` followed by a slot-setter
+   * affirmation doesn't lose its sticky bit), and a new-ref selection
+   * defaults to transient (sticky=false), matching the marker-click path.
+   */
+  setSelection(next: AnchoredCardRef | null, opts?: { sticky?: boolean }): void {
+    if (next === null) {
+      if (_state.selection === null) return;
+      _state = { ..._state, selection: null, selectionSticky: false };
+      emit();
+      return;
+    }
+    const same = refsEqual(_state.selection, next);
+    const nextSticky =
+      opts?.sticky !== undefined ? opts.sticky : same ? _state.selectionSticky : false;
+    if (same && _state.selectionSticky === nextSticky) return;
+    _state = { ..._state, selection: { ...next }, selectionSticky: nextSticky };
     emit();
   },
 
@@ -65,11 +88,30 @@ export const cardStore = {
     emit();
   },
 
-  /** Click-to-toggle: select if not selected; clear if already selected. */
+  /**
+   * Click-to-toggle from a user card click. Three-way:
+   *  - Not selected → select sticky.
+   *  - Selected & transient (from a marker click) → promote to sticky.
+   *    Promote is invisible at the selection-ref level but flips
+   *    `selectionSticky` so omni click-away no longer dismisses.
+   *  - Selected & sticky → clear (the "click again to close" path).
+   */
   toggleSelection(ref: AnchoredCardRef): void {
     const cur = _state.selection;
     const same = !!cur && cur.kind === ref.kind && cur.id === ref.id;
-    cardStore.setSelection(same ? null : ref);
+    if (same && _state.selectionSticky) {
+      cardStore.setSelection(null);
+    } else {
+      cardStore.setSelection(ref, { sticky: true });
+    }
+  },
+
+  /** Promote the current selection to sticky. No-op if no selection or
+   *  already sticky. Called when focus moves into a card body. */
+  markSticky(): void {
+    if (!_state.selection || _state.selectionSticky) return;
+    _state = { ..._state, selectionSticky: true };
+    emit();
   },
 
   subscribe,

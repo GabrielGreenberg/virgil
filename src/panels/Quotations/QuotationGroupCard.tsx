@@ -756,6 +756,7 @@ export function QuotationGroupCard({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
+        if (cardStore.getState().selection === null) return;
         onSelect();
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}

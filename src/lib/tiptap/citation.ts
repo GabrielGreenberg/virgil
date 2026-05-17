@@ -82,6 +82,38 @@ export const Citation = Node.create<CitationOptions>({
     const idGenerator = this.options.idGenerator;
     return [
       new Plugin({
+        key: new PluginKey("citationClipboardText"),
+        props: {
+          // Plain-text clipboard: substitute citation atoms with their
+          // displayText so copy-paste preserves the visible reference
+          // (e.g. "Smith 2020") instead of dropping the atom entirely.
+          // HTML clipboard already round-trips via renderHTML/parseHTML.
+          clipboardTextSerializer(slice) {
+            let out = "";
+            let firstBlock = true;
+            slice.content.descendants((node) => {
+              if (node.type.name === "citation") {
+                out +=
+                  (node.attrs.displayText as string) ||
+                  (node.attrs.command as string) ||
+                  "";
+                return false;
+              }
+              if (node.isText) {
+                out += node.text ?? "";
+                return false;
+              }
+              if (node.isBlock) {
+                if (!firstBlock && !out.endsWith("\n")) out += "\n";
+                firstBlock = false;
+              }
+              return true;
+            });
+            return out;
+          },
+        },
+      }),
+      new Plugin({
         key: new PluginKey("citationInput"),
         props: {
           handleTextInput(view, from, to, text) {

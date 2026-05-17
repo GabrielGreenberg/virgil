@@ -57,9 +57,7 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
             bibEntries={a.bibEntries}
             bibPackage={a.bibPackage}
             selected={isSelected}
-            onSelect={() =>
-              a.setSelectedQuotationGroupId(isSelected ? null : group.id)
-            }
+            onSelect={() => a.setSelectedQuotationGroupId(group.id)}
             onDelete={() => a.deleteQuotationGroup(group.id)}
             onUpdateGroupTitle={a.updateQuotationGroupTitle}
             onAddReference={a.addQuotationReference}
@@ -89,9 +87,7 @@ export function buildQuotationOmniItems(a: BuildArgs): OmniItem[] {
               bibEntries={a.bibEntries}
               bibPackage={a.bibPackage}
               selected={isSelected}
-              onSelect={() =>
-                a.setSelectedQuotationGroupId(isSelected ? null : group.id)
-              }
+              onSelect={() => a.setSelectedQuotationGroupId(group.id)}
               onDelete={() => a.deleteQuotationGroup(group.id)}
               onJump={(sourceEl) => a.jumpToCard(group, sourceEl)}
               onUpdateGroupTitle={a.updateQuotationGroupTitle}

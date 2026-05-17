@@ -102,7 +102,8 @@ export function TodoRow({
       onClick={(e) => {
         e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
-        onSelect(isSelected ? null : item.id);
+        if (cardStore.getState().selection === null) return;
+        onSelect(item.id);
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

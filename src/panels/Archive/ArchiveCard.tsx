@@ -88,7 +88,11 @@ export function ArchiveCard({
       onBodyTitleChange={(t) => onUpdateTitle(snippet.id, t)}
       canJump={isAnchored && !!onJump}
       onJump={onJump ? (e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null) : undefined}
-      onClick={() => { cardStore.toggleSelection(ac.ref); onSelect(isSelected ? null : snippet.id); }}
+      onClick={() => {
+        cardStore.toggleSelection(ac.ref);
+        if (cardStore.getState().selection === null) return;
+        onSelect(snippet.id);
+      }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled
       // during the unified header redesign. Re-introduce thoughtfully via

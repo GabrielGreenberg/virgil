@@ -52,9 +52,7 @@ export function buildCitationOmniItems(a: BuildArgs): OmniItem[] {
           bibEntries={a.bibEntries}
           bibPackage={a.bibPackage}
           getDisplayText={a.getCitationDisplayText}
-          onSelect={() =>
-            a.setSelectedCitationId(isSelected ? null : cit.id)
-          }
+          onSelect={() => a.setSelectedCitationId(cit.id)}
           onJump={(sourceEl) => {
             a.setSelectedCitationId(cit.id);
             a.scrollToCitation(cit.id, sourceEl);
