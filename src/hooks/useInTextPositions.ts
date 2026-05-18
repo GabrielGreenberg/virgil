@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedParagraphIds } from "@/links/links";
@@ -95,11 +95,22 @@ const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
  *   - `panelScrollRef`: ref for the panel pod (the `position: relative`
  *     container hosting absolute children).
  */
+/** Optional pin: force one card's `top` to a fixed viewport-Y (converted
+ *  to pod-relative inside compute). Cards AFTER the pinned card in
+ *  source-anchor-order cascade off the pinned card's bottom, so the deck
+ *  reflows to make room. Cards BEFORE are unaffected. */
+export interface Pinned {
+  id: string;
+  /** Viewport Y (in px). */
+  clickY: number;
+}
+
 export function useInTextPositions(
   editor: Editor | null,
   items: PositionItem[],
   enabled: boolean,
   entry: string | ((id: string) => string) = DEFAULT_ENTRY,
+  pinned: Pinned | null = null,
 ) {
   const [positions, setPositions] = useState<Map<string, number>>(new Map());
   const [editorContentHeight, setEditorContentHeight] = useState(0);
@@ -173,12 +184,21 @@ export function useInTextPositions(
       }
     }
 
-    // Resolve overlaps — push items down so they don't overlap
-    for (let i = 1; i < raw.length; i++) {
-      const prevHeight = entryHeights.get(raw[i - 1].id) || DEFAULT_ENTRY_HEIGHT;
-      const minTop = raw[i - 1].top + prevHeight + MIN_GAP;
-      if (raw[i].top < minTop) {
-        raw[i].top = minTop;
+    // Resolve overlaps — push items down so they don't overlap.
+    // Pin: when we hit the pinned card, force its top to the pin Y AFTER
+    // its own cascade-from-above (so cards BEFORE pinned are not pushed
+    // up) but BEFORE the next iteration (so cards AFTER pinned see pin
+    // Y + heightOfPinned as their minTop and pack below the pin). Net
+    // effect: the deck reflows around the pin instead of overlapping.
+    const pinTop = pinned ? pinned.clickY - podRect.top : null;
+    for (let i = 0; i < raw.length; i++) {
+      if (i > 0) {
+        const prevHeight = entryHeights.get(raw[i - 1].id) || DEFAULT_ENTRY_HEIGHT;
+        const minTop = raw[i - 1].top + prevHeight + MIN_GAP;
+        if (raw[i].top < minTop) raw[i].top = minTop;
+      }
+      if (pinned && pinTop !== null && raw[i].id === pinned.id) {
+        raw[i].top = pinTop;
       }
     }
 
@@ -187,12 +207,20 @@ export function useInTextPositions(
       map.set(r.id, r.top);
     }
     setPositions(map);
-  }, [editor, items, enabled, ready, entry]);
+  }, [editor, items, enabled, ready, entry, pinned]);
 
   // Recompute on editor changes, viewport resize, and editor content
   // height changes. Positions are scroll-invariant (formula uses
   // viewport-relative coords on both sides, so scroll cancels out).
-  useEffect(() => {
+  //
+  // useLayoutEffect (not useEffect): when `pinned` changes, `compute`'s
+  // identity changes (it's in compute's useCallback deps), so this
+  // effect re-runs. With useLayoutEffect, compute runs synchronously
+  // after the render commit, before paint — setPositions schedules a
+  // second render+commit, all before paint, so the user never sees a
+  // frame of stale positions. With useEffect (passive), the user would
+  // see one frame of old positions before compute catches up.
+  useLayoutEffect(() => {
     if (!enabled) {
       setPositions(new Map());
       return;

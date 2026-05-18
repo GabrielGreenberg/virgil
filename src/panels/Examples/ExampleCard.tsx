@@ -115,10 +115,11 @@ export function ExampleCard({
     <PanelCard
       theme={theme}
       selected={isHaloed}
-      onClick={() => {
+      onClick={(e) => {
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
+        onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

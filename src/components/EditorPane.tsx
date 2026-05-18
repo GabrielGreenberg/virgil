@@ -93,6 +93,8 @@ import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useDropActions } from "./editor-layout/card-actions/drops";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { useCitations } from "@/hooks/useCitations";
+import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
+import { useLibraryMasterBib } from "@/hooks/useLibrary";
 import { useAnnotations } from "@/hooks/useAnnotations";
 import { useBibReview } from "@/hooks/useBibReview";
 import { useBibSettings } from "@/hooks/useBibSettings";
@@ -245,11 +247,6 @@ export interface EditorPaneViewPrefs {
   focusedHalfLeft: Half;
   focusedHalfRight: Half;
   isResizingPanels: boolean;
-  /** Cards animation offset for the omni view per side. Transient. */
-  cardsOffset?: { left?: number; right?: number };
-  /** When true, the next cardsOffset change is applied without the
-   *  150ms transition. Used by jump-to. */
-  cardsSilent?: { left?: boolean; right?: boolean };
   /** From useFocusMode. Drives focus-aware dimming/hiding. */
   focusState: FocusState | null;
 
@@ -726,6 +723,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // routing for the dev preview); for main-app docs they resolve
   // through the regular FsaDocIndex.
   const citationsHook = useCitations(docId);
+  const { entries: libraryMasterBibEntries } = useLibraryMasterBib();
+  useAutoAddLibraryEntriesForCitations({
+    citations: citationsHook.citations,
+    bibEntries: citationsHook.bibEntries,
+    libraryEntries: libraryMasterBibEntries,
+    addBibEntry: citationsHook.addBibEntry,
+  });
   const annotationsHook = useAnnotations(docId);
   const bibReviewHook = useBibReview(docId);
   const bibSettingsHook = useBibSettings(docId);
@@ -2695,6 +2699,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       getBibReviewStatus: bibReviewHook.getRequestStatus,
       updateBibEntry: citationsHook.updateBibEntry,
       updateBibKeyAndType: citationsHook.updateBibKeyAndType,
+      addBibEntry: citationsHook.addBibEntry,
 
       // Citations
       updateCitation: citationsHook.updateCitation,
@@ -4504,12 +4509,6 @@ function PaneRail({
     const splitRatio = side === "left"
       ? viewPrefs.prefs.splitLeftRatio
       : viewPrefs.prefs.splitRightRatio;
-    const cardsOffset = (side === "left"
-      ? viewPrefs.cardsOffset?.left
-      : viewPrefs.cardsOffset?.right);
-    const cardsSilent = (side === "left"
-      ? viewPrefs.cardsSilent?.left
-      : viewPrefs.cardsSilent?.right);
 
     // Live examples list — matches OmniHost's `examples` prop. Cheap
     // re-derivation; OmniHost's outer useMemo on its `items` array
@@ -4593,8 +4592,6 @@ function PaneRail({
           deleteCutterCard={cutterHook.deleteCard}
           getOmniEnabled={viewPrefs.getOmniEnabled}
           getOmniHideAll={viewPrefs.getOmniHideAll}
-          cardsOffset={cardsOffset}
-          cardsSilent={cardsSilent}
           focusState={viewPrefs.focusState}
         />
       ),
@@ -4932,6 +4929,7 @@ function PaneRailBody({
         setBibPackage={citationsHook.setBibPackage}
         updateBibEntry={citationsHook.updateBibEntry}
         updateBibKeyAndType={citationsHook.updateBibKeyAndType}
+        addBibEntry={citationsHook.addBibEntry}
         getFormattedBib={citationsHook.getFormattedBib}
         getAnnotation={annotationsHook.getAnnotation}
         setAnnotation={annotationsHook.setAnnotation}

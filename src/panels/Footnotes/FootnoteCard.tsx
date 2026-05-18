@@ -126,10 +126,13 @@ export function FootnoteCard({
       onBodyTitleChange={onEditTitle ?? undefined}
       canJump
       onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
-      onClick={() => {
+      onClick={(e) => {
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
+        if (onJump) {
+          onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
+        }
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
       // TODO(grip-redesign): drop-into-document via the grip is disabled

@@ -3,6 +3,7 @@ import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { OmniCategory } from "@/panels/Omni";
 import type { CardKind } from "@/panels/_shared/types";
 import type { EntityKind } from "@/links/_shared/entity-hover";
+import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "./open-for-card";
 
 /** EntityKind → routing config for `virgil-linked-anchor-click`. Mode B
@@ -79,6 +80,14 @@ export function useMarkerClickBridges(deps: {
   setActiveRefLabel: Dispatch<SetStateAction<string | null>>;
   setActiveRefRect: Dispatch<SetStateAction<DOMRect | null>>;
   setActiveRefCommand: Dispatch<SetStateAction<"ref" | "getref" | "getfullref">>;
+  setActiveMath: Dispatch<
+    SetStateAction<{
+      kind: "inline" | "display";
+      latex: string;
+      pos: number;
+      rect: DOMRect;
+    } | null>
+  >;
   /** Pulls the omni card with the given id to align with `clickY` by
    *  shifting the gutter's cards as a group. No document scroll. The
    *  source element (the clicked citation marker, etc.) is tracked so
@@ -101,6 +110,7 @@ export function useMarkerClickBridges(deps: {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    setActiveMath,
     alignOmniCardWithClick,
   } = deps;
 
@@ -108,14 +118,22 @@ export function useMarkerClickBridges(deps: {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.archiveId) return;
+      // Marker click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row and drag
+      // the editor). See usePlacement's asymmetry-rule docstring.
+      suppressNextPlacement();
       setSelectedArchiveId(detail.archiveId);
+      const clickY: number | undefined =
+        typeof detail.clickY === "number" ? detail.clickY : undefined;
       openForCard(
         {
           omniKey: `archive:${detail.archiveId}`,
           entrySelector: `[data-archive-entry="${detail.archiveId}"]`,
           panelId: "archive",
           cardKind: "archive",
-          targetY: typeof detail.clickY === "number" ? detail.clickY : undefined,
+          // skipScroll: alignment is handled by shifting the omni cards
+          // group (alignOmniCardWithClick) so the document stays put.
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -126,23 +144,38 @@ export function useMarkerClickBridges(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `[data-type="archive-marker"][data-archive-id="${detail.archiveId}"]`,
+        ) as HTMLElement | null;
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`archive:${detail.archiveId}`, clickY, sourceEl);
+      }
     };
     window.addEventListener("virgil-archive-click", handler);
     return () => window.removeEventListener("virgil-archive-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedArchiveId]);
+  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedArchiveId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.footnoteId) return;
+      // Marker click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row and drag
+      // the editor). See usePlacement's asymmetry-rule docstring.
+      suppressNextPlacement();
       setSelectedFootnoteId(detail.footnoteId);
+      const clickY: number | undefined =
+        typeof detail.clickY === "number" ? detail.clickY : undefined;
       openForCard(
         {
           omniKey: `footnote:${detail.footnoteId}`,
           entrySelector: `[data-footnote-entry="${detail.footnoteId}"], [data-link-card="footnote:${detail.footnoteId}"]`,
           panelId: "footnotes",
           cardKind: "footnote",
-          targetY: typeof detail.clickY === "number" ? detail.clickY : undefined,
+          // skipScroll: alignment is handled by shifting the omni cards
+          // group (alignOmniCardWithClick) so the document stays put.
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -153,15 +186,26 @@ export function useMarkerClickBridges(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `.footnote-marker[data-footnote-id="${detail.footnoteId}"]`,
+        ) as HTMLElement | null;
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`footnote:${detail.footnoteId}`, clickY, sourceEl);
+      }
     };
     window.addEventListener("virgil-footnote-click", handler);
     return () => window.removeEventListener("virgil-footnote-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId]);
+  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedFootnoteId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.citationId) return;
+      // Marker click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row and drag
+      // the editor). See usePlacement's asymmetry-rule docstring.
+      suppressNextPlacement();
       setSelectedCitationId(detail.citationId);
       const clickY: number | undefined =
         typeof detail.clickY === "number" ? detail.clickY : undefined;
@@ -192,15 +236,15 @@ export function useMarkerClickBridges(deps: {
         },
       );
       // After openForCard mounts the omni column (or confirms it's already
-      // open), pull the card to align with the click. We rAF to let the
-      // panel render before we measure the card's current Y.
+      // open), pull the card to align with the click. alignOmniCardWithClick
+      // defers internally with double rAF so it measures AFTER React has
+      // committed the new selection state AND useInTextPositions has
+      // recomputed card positions.
       if (typeof clickY === "number") {
         const sourceEl = document.querySelector(
           `.citation-node[data-citation-id="${detail.citationId}"]`,
         ) as HTMLElement | null;
-        requestAnimationFrame(() => {
-          alignOmniCardWithClick(`citation:${detail.citationId}`, clickY, sourceEl);
-        });
+        alignOmniCardWithClick(`citation:${detail.citationId}`, clickY, sourceEl);
       }
     };
     window.addEventListener("virgil-citation-click", handler);
@@ -229,6 +273,23 @@ export function useMarkerClickBridges(deps: {
     return () => window.removeEventListener("virgil-label-ref-click", handler);
   }, [setActiveRefLabel, setActiveRefRect, setActiveRefCommand]);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail.pos !== "number") return;
+      if (detail.kind !== "inline" && detail.kind !== "display") return;
+      if (!(detail.rect instanceof DOMRect)) return;
+      setActiveMath({
+        kind: detail.kind,
+        latex: typeof detail.latex === "string" ? detail.latex : "",
+        pos: detail.pos,
+        rect: detail.rect,
+      });
+    };
+    window.addEventListener("virgil-math-click", handler);
+    return () => window.removeEventListener("virgil-math-click", handler);
+  }, [setActiveMath]);
+
   // Generic linked-anchor click bridge — `useTextHoverBridge` dispatches
   // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span
   // is clicked. We select the corresponding card and route through
@@ -244,6 +305,10 @@ export function useMarkerClickBridges(deps: {
       if (!route) return;
 
       const id = detail.entityId;
+      // Marker click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row and drag
+      // the editor). See usePlacement's asymmetry-rule docstring.
+      suppressNextPlacement();
       switch (detail.kind) {
         case "note": setSelectedNoteId(id); break;
         case "cutter-comment":
@@ -257,13 +322,18 @@ export function useMarkerClickBridges(deps: {
           ? `[data-card-key="${route.omniPrefix}:${id}"]`
           : `[${route.entrySelectorBase}="${id}"]`;
 
+      const clickY: number | undefined =
+        typeof detail.clickY === "number" ? detail.clickY : undefined;
+      const omniKey = `${route.omniPrefix}:${id}`;
       openForCard(
         {
-          omniKey: `${route.omniPrefix}:${id}`,
+          omniKey,
           entrySelector,
           panelId: route.panelId,
           cardKind: route.cardKind,
-          targetY: typeof detail.clickY === "number" ? detail.clickY : undefined,
+          // skipScroll: alignment is handled by shifting the omni cards
+          // group (alignOmniCardWithClick) so the document stays put.
+          skipScroll: true,
         },
         {
           prefs: prefsRef.current,
@@ -274,6 +344,13 @@ export function useMarkerClickBridges(deps: {
           getOmniEnabled,
         },
       );
+      if (typeof clickY === "number") {
+        const sourceEl = document.querySelector(
+          `.linked-anchor[data-link-id="${id}"]`,
+        ) as HTMLElement | null;
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(omniKey, clickY, sourceEl);
+      }
     };
     window.addEventListener("virgil-linked-anchor-click", handler);
     return () => window.removeEventListener("virgil-linked-anchor-click", handler);
@@ -287,5 +364,6 @@ export function useMarkerClickBridges(deps: {
     setSelectedNoteId,
     setSelectedCutterCardId,
     setSelectedCommentId,
+    alignOmniCardWithClick,
   ]);
 }

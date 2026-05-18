@@ -266,8 +266,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       focusedHalfLeft: "top",
       focusedHalfRight: "top",
       isResizingPanels: false,
-      cardsOffset: undefined,
-      cardsSilent: undefined,
       focusState: null,
       activeSectionPath: [],
       activeParTitleIndex: null,

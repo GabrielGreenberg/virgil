@@ -74,11 +74,18 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
   // scroll on an actual selection change.
   const lastScrolledRef = useRef<AnchoredCardRef | null>(null);
   useEffect(() => {
+    // Consume the suppress flag UP FRONT, on every effect run. This is the
+    // only consumer of `_suppressNextPlacement`, so consuming here on
+    // every entry means callers that set the flag right before a setter
+    // (suppressNextPlacement → setSelected*Id, or setSelectionWithoutPlacement)
+    // get reliable suppression even though `useEffect` is a passive
+    // effect that runs in a macrotask after paint. The earlier
+    // microtask-clear design lost the flag before this effect ran.
+    const wasSuppressed = consumeSuppressFlag();
     if (!selection) {
       // Cleared on deselect so re-selecting the same card later still
       // counts as a fresh change worth scrolling for.
       lastScrolledRef.current = null;
-      consumeSuppressFlag();
       return;
     }
     if (!editor || editor.isDestroyed || !editor.isInitialized) return;
@@ -87,12 +94,14 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
     if (prev && prev.kind === selection.kind && prev.id === selection.id) return;
 
     // Mark before doing work — abortive paths (no DOM yet, no anchor)
-    // shouldn't keep retrying us on every following render.
+    // shouldn't keep retrying us on every following render. Also keeps
+    // suppressed selections from re-firing on later effect runs (the
+    // `prev === selection` short-circuit above takes over).
     lastScrolledRef.current = selection;
 
-    // Search / deep-link callers set this to update selection without
-    // pulling the document around.
-    if (consumeSuppressFlag()) return;
+    // Suppression takes effect AFTER marking lastScrolledRef so future
+    // effect runs for the same selection short-circuit cleanly.
+    if (wasSuppressed) return;
 
     // Locate the card element. Multiple matches are possible (popped
     // float + native panel mount); pick the first that's actually
@@ -143,17 +152,36 @@ export function usePlacement({ editor, collections }: UsePlacementArgs): void {
 }
 
 /** Imperative escape hatch for callers that need to set selection without
- *  triggering placement (e.g. Search → openItemInPanel). The placement
- *  effect runs from React state changes; setting via this helper bypasses
- *  by writing the next-tick flag the effect honors. */
+ *  triggering placement (e.g. Search → openItemInPanel). The flag is
+ *  consumed by `usePlacement`'s effect on every entry (including the entry
+ *  triggered by this very setSelection call), so the suppression is
+ *  reliable. No microtask clear: `useEffect` is a passive (macrotask)
+ *  effect, so a microtask clear would race and consume the flag BEFORE
+ *  the effect runs. */
 let _suppressNextPlacement = false;
 export function setSelectionWithoutPlacement(ref: AnchoredCardRef | null): void {
   _suppressNextPlacement = true;
   cardStore.setSelection(ref);
-  // The flag is consumed by the placement effect on its next run; if no
-  // selection actually changes (refsEqual short-circuits in cardStore),
-  // we still clear it on the next tick so we don't poison a later select.
-  queueMicrotask(() => { _suppressNextPlacement = false; });
+}
+
+/** Imperative escape hatch for callers that change selection via the
+ *  legacy slot setters (which route through cardStore.setTransient) and
+ *  don't want placement to fire. The usual case is a marker click in the
+ *  editor or a gutter icon click in the panel column: alignment is
+ *  handled by `alignOmniCardWithClick` (offset-based card shift), not by
+ *  scrolling the row (which would drag the editor too — both views share
+ *  the row scroll). Honors the asymmetry rule in this hook's docstring:
+ *  text/marginalia → card alignment is the caller's responsibility;
+ *  usePlacement only handles card → text alignment.
+ *
+ *  Call BEFORE the selection-changing setter:
+ *      suppressNextPlacement();
+ *      setSelectedCitationId(id);
+ *
+ *  Flag is consumed at the top of every `usePlacement` effect entry, so
+ *  the next run (triggered by the suppressed setter) skips alignment. */
+export function suppressNextPlacement(): void {
+  _suppressNextPlacement = true;
 }
 
 /** Read-side helper used by the placement effect to honor the suppress flag. */

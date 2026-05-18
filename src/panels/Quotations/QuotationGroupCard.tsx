@@ -759,6 +759,9 @@ export function QuotationGroupCard({
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
+        if (onJump) {
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        }
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

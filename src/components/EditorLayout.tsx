@@ -131,6 +131,7 @@ import {
   scrollEntryIntoView,
   findEditorScrollFor,
 } from "./editor-layout/layout-scroll";
+import { omniPinStore } from "./editor-layout/omni-pin-store";
 import {
   IconX,
   IconLibrary,
@@ -196,6 +197,7 @@ import { FULL_CHROME } from "./editor-layout/chrome-config";
 import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
+import MathPopover from "./MathPopover";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -1148,54 +1150,50 @@ export default function EditorLayout() {
   const [orphanedFootnotes, setOrphanedFootnotes] = useState<OrphanedFootnote[]>([]);
   const suppressOrphanRef = useRef<Set<string>>(new Set());
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
-  // Per-side vertical offset applied to the omni cards as a group. Set by
-  // main-text marker clicks: clicking a citation/footnote/etc. shifts the
-  // gutter's cards so the clicked card visually aligns with the click,
-  // without scrolling the document. The card's natural Y comes from
-  // `useInTextPositions` (overlap-resolved), so even when overlap pushes
-  // a card down from its anchor, the offset re-aligns it with the click.
-  const [omniOffsets, setOmniOffsets] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
-  const omniOffsetsRef = useRef(omniOffsets);
-  omniOffsetsRef.current = omniOffsets;
-  // Per-side flag: when true, the cards-inner transform updates without the
-  // 150ms ease transition. Used for jump-to (card-fixed) so the card stays
-  // perfectly stable while the document scrolls underneath. The marker-click
-  // path (card pulls to click) leaves it false so the card animates.
-  const [omniSilent, setOmniSilent] = useState<{ left: boolean; right: boolean }>({ left: false, right: false });
-  // Track the click target element per side so we can clear the offset
-  // once the user has scrolled the click target out of view.
-  const omniAnchorElsRef = useRef<{ left: HTMLElement | null; right: HTMLElement | null }>({
-    left: null,
-    right: null,
-  });
-  // Caller provides the card id, clickY, and the source element (the
-  // clicked citation marker, etc.). We look up the card element here,
-  // find which side it's on, compute the additive delta, and update.
+  // Marker-click → omni card alignment. The user clicked at viewport Y
+  // `clickY` and we want the corresponding omni card to lock there.
+  // We publish a pin request to `omniPinStore`; the OmniViewPanel for
+  // the relevant side reads it via `usePinRequest` and overrides that
+  // one card's `top` style. No global offset, no transform, no
+  // measurement race — the pin is in pod-relative coordinates and the
+  // panel computes the conversion inside a useLayoutEffect.
+  //
+  // The wrapper lookup just resolves which side the card is on. If the
+  // panel isn't yet mounted (omni column was activated this render), we
+  // retry one frame later — that's enough for `openForCard`'s
+  // setActiveLeft/setActiveRight to commit and the OmniViewPanel to
+  // render its first frame.
   const alignOmniCardWithClick = useCallback(
-    (cardId: string, clickY: number, sourceEl: HTMLElement | null) => {
-      const wrapper = document.querySelector(
-        `[data-omni-entry-wrapper="${cardId}"]`,
-      ) as HTMLElement | null;
-      if (!wrapper) return;
-      const sideEl = wrapper.closest("[data-panel-column-side]") as HTMLElement | null;
-      const side = sideEl?.dataset.panelColumnSide;
-      if (side !== "left" && side !== "right") return;
-      const delta = clickY - wrapper.getBoundingClientRect().top;
-      omniAnchorElsRef.current[side] = sourceEl;
-      if (Math.abs(delta) < 0.5) return;
-      setOmniOffsets((prev) => ({ ...prev, [side]: prev[side] + delta }));
+    (cardId: string, clickY: number, _sourceEl: HTMLElement | null) => {
+      let tried = false;
+      const apply = () => {
+        const wrapper = document.querySelector(
+          `[data-omni-entry-wrapper="${cardId}"]`,
+        );
+        const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
+        const side = sideEl?.dataset.panelColumnSide;
+        if (side !== "left" && side !== "right") {
+          if (!tried) {
+            tried = true;
+            requestAnimationFrame(apply);
+          }
+          return;
+        }
+        omniPinStore.requestPin(side, cardId, clickY);
+      };
+      apply();
     },
     [],
   );
-  // Inverse of marker → card alignment. The "Jump to" button on an omni
-  // card calls `alignEntryToY` to scroll the document so the linked text
-  // lands at the card's pre-jump Y. The scroll drags the card's natural
-  // position with it; we compensate here by bumping the cards offset.
-  // We also flip `omniSilent[side]` true for THIS update so the cards
-  // transform changes without the 150ms ease — otherwise the card slides
-  // visibly toward its compensated position instead of staying still.
-  // Reset the silent flag on the next animation frame so subsequent
-  // marker-clicks animate as usual.
+
+  // Card-body click → editor scroll alignment. `jumpToLink`/`jumpToCard`
+  // (links.ts) scroll the row so the in-text anchor lands at the card's
+  // pre-jump viewport Y (`clickY`). The card itself moves with the row
+  // scroll, ending up at `clickY - scrollDelta`. To keep the card visually
+  // stable at `clickY`, we publish a pin request — same mechanism as
+  // marker clicks. One rAF delay so the row scroll has finished and
+  // `podTop` reflects the post-scroll position when OmniViewPanel
+  // converts clickY → pod-relative.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
@@ -1203,20 +1201,14 @@ export default function EditorLayout() {
         | undefined;
       if (!detail?.omniKey || typeof detail.clickY !== "number") return;
       const { omniKey, clickY } = detail;
-      const wrapper = document.querySelector(
-        `[data-omni-entry-wrapper="${omniKey}"]`,
-      ) as HTMLElement | null;
-      if (!wrapper) return;
-      const sideEl = wrapper.closest("[data-panel-column-side]") as HTMLElement | null;
-      const side = sideEl?.dataset.panelColumnSide;
-      if (side !== "left" && side !== "right") return;
-      const delta = clickY - wrapper.getBoundingClientRect().top;
-      if (Math.abs(delta) < 0.5) return;
-      omniAnchorElsRef.current[side] = wrapper;
-      setOmniSilent((prev) => ({ ...prev, [side]: true }));
-      setOmniOffsets((prev) => ({ ...prev, [side]: prev[side] + delta }));
       requestAnimationFrame(() => {
-        setOmniSilent((prev) => ({ ...prev, [side]: false }));
+        const wrapper = document.querySelector(
+          `[data-omni-entry-wrapper="${omniKey}"]`,
+        );
+        const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
+        const side = sideEl?.dataset.panelColumnSide;
+        if (side !== "left" && side !== "right") return;
+        omniPinStore.requestPin(side, omniKey, clickY);
       });
     };
     window.addEventListener("virgil-card-jumped", handler);
@@ -1296,6 +1288,13 @@ export default function EditorLayout() {
   const [activeRefCommand, setActiveRefCommand] = useState<
     "ref" | "getref" | "getfullref"
   >("ref");
+  // ── Math popover state ──
+  const [activeMath, setActiveMath] = useState<{
+    kind: "inline" | "display";
+    latex: string;
+    pos: number;
+    rect: DOMRect;
+  } | null>(null);
   const [bibActiveCitationId, setBibActiveCitationId] = useState<string | null>(null);
   const [pendingCitationCreate, setPendingCitationCreate] = useState<string | null>(null);
   // Whether the in-flight pending create should be inserted into the
@@ -2641,6 +2640,7 @@ export default function EditorLayout() {
     setActiveRefLabel,
     setActiveRefRect,
     setActiveRefCommand,
+    setActiveMath,
     alignOmniCardWithClick,
   });
 
@@ -2688,6 +2688,21 @@ export default function EditorLayout() {
     editorRef,
     setActiveRefLabel,
   });
+
+  // ── Math popover save handler ──
+  const handleMathSave = useCallback((pos: number, newLatex: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    const node = editor.state.doc.nodeAt(pos);
+    if (!node) return;
+    if (node.type.name !== "inlineMath" && node.type.name !== "displayMath") return;
+    editor.view.dispatch(
+      editor.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        latex: newLatex,
+      }),
+    );
+  }, []);
 
   useCommandInputBridges({
     editorRef,
@@ -2998,8 +3013,6 @@ export default function EditorLayout() {
     focusedHalfLeft,
     focusedHalfRight,
     isResizingPanels,
-    cardsOffset: { left: omniOffsets.left, right: omniOffsets.right },
-    cardsSilent: { left: omniSilent.left, right: omniSilent.right },
     focusState: focusMode.state,
     activeSectionPath: currentSectionPath,
     activeParTitleIndex: currentParTitleIndex,
@@ -3074,10 +3087,6 @@ export default function EditorLayout() {
     focusedHalfLeft,
     focusedHalfRight,
     isResizingPanels,
-    omniOffsets.left,
-    omniOffsets.right,
-    omniSilent.left,
-    omniSilent.right,
     focusMode.state,
     focusMode.deactivate,
     focusMode.toggleLock,
@@ -5180,6 +5189,15 @@ export default function EditorLayout() {
             setActiveRefLabel(null);
             setActiveRefRect(null);
           }}
+        />
+      )}
+      {activeMath && (
+        <MathPopover
+          kind={activeMath.kind}
+          latex={activeMath.latex}
+          anchorRect={activeMath.rect}
+          onSave={(newLatex) => handleMathSave(activeMath.pos, newLatex)}
+          onClose={() => setActiveMath(null)}
         />
       )}
       {pendingFolderPick && !newDocModal && (

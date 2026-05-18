@@ -11,6 +11,12 @@ import {
 import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
+import {
+  omniPinStore,
+  usePinRequest,
+  type PinSide,
+} from "@/components/editor-layout/omni-pin-store";
+import { useTransient } from "@/links/_shared/anchored-card-store";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -106,16 +112,8 @@ interface OmniViewPanelProps {
    *  host uses this to promote a transient selection to sticky once the
    *  user starts working inside the card. */
   onCardFocus?: () => void;
-  /** Vertical offset (in px) applied to the anchored-cards group as a
-   *  whole — set by main-text marker clicks so the clicked card visually
-   *  aligns with the click without scrolling the document. The cards'
-   *  natural overlap-resolved positions are unchanged; only their visual
-   *  position shifts via a transform on the cards container. */
-  cardsOffset?: number;
-  /** When true, the cards transform updates without the 150ms ease.
-   *  Used for jump-to so the card stays perfectly still while the document
-   *  scrolls underneath; the marker-click path leaves it false. */
-  cardsSilent?: boolean;
+  // Pin-driven per-card positioning replaces the old global `cardsOffset`
+  // and `cardsSilent` props. See `@/components/editor-layout/omni-pin-store`.
 }
 
 /** Reverse map from card-key prefix → owning PanelKind, built from the
@@ -281,8 +279,6 @@ function OmniViewPanel({
   hideAllCards,
   onBackgroundClick,
   onCardFocus,
-  cardsOffset,
-  cardsSilent,
 }: OmniViewPanelProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -327,8 +323,38 @@ function OmniViewPanel({
     [anchored],
   );
 
+  // Per-card pin: when a marker is clicked in the editor (or a card jump
+  // fires `virgil-card-jumped`), the pin store gains an entry with the
+  // viewport-Y the user clicked. We pass it through to useInTextPositions,
+  // which converts to pod-relative and bakes it into the cascade —
+  // cards AFTER the pinned card pack below it; cards before are
+  // unaffected. Result: the whole deck reflows around the pin instead of
+  // overlapping it.
+  const pinRequest = usePinRequest(side as PinSide);
+  const pinned = useMemo(
+    () => (pinRequest
+      ? { id: pinRequest.cardId, clickY: pinRequest.clickY }
+      : null),
+    [pinRequest],
+  );
+
   const { positions, editorContentHeight, panelScrollRef } =
-    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper");
+    useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned);
+
+  // Clear the pin when the transient selection on this side stops
+  // matching the pinned card — pin lifecycle follows transient focus.
+  const transient = useTransient();
+  useEffect(() => {
+    if (!pinRequest) return;
+    if (!transient) {
+      omniPinStore.clearPin(side as PinSide);
+      return;
+    }
+    const transientKey = `${transient.kind}:${transient.id}`;
+    if (transientKey !== pinRequest.cardId) {
+      omniPinStore.clearPin(side as PinSide, pinRequest.cardId);
+    }
+  }, [transient, pinRequest, side]);
 
   return (
     <OmniProvider value={{ side }}>
@@ -364,40 +390,30 @@ function OmniViewPanel({
           matches the editor content height so the panel column extends
           alongside the document. The hook computes Y via
           `coords.top - thisRect.top`, scroll-invariant under unified row scroll.
-          The inner wrapper carries `cardsOffset` as a translateY so a click
-          in the main text can pull the relevant card to the click without
-          scrolling the document. */}
+          When a card is pinned (marker click or card jump), its `top` is
+          overridden with the pod-relative click-Y from `omniPinStore`.
+          Only that one card moves; the rest of the deck stays put. No
+          group transform, no transition, no global offset. */}
       <div
         ref={panelScrollRef}
         className="relative"
         style={{ minHeight: editorContentHeight || undefined }}
       >
-        <div
-          style={{
-            position: 'relative',
-            // Transition listed BEFORE transform so React processes the
-            // (un)set of transition first when a jump-to flips silent on:
-            // by the time the transform changes, transition is already
-            // undefined and the change is instant — no 150ms slide.
-            transition: cardsOffset && !cardsSilent ? 'transform 0.15s ease' : undefined,
-            transform: cardsOffset ? `translateY(${cardsOffset}px)` : undefined,
-          }}
-        >
-          {anchored.map((item) => {
-            const top = positions.get(item.id);
-            if (top === undefined) return null;
-            return (
-              <div
-                key={item.id}
-                data-omni-entry-wrapper={item.id}
-                className="absolute left-2 right-2"
-                style={{ top }}
-              >
-                {item.content}
-              </div>
-            );
-          })}
-        </div>
+        {anchored.map((item) => {
+          const isPinned = pinRequest?.cardId === item.id;
+          const top = positions.get(item.id);
+          if (top === undefined) return null;
+          return (
+            <div
+              key={item.id}
+              data-omni-entry-wrapper={item.id}
+              className="absolute left-2 right-2"
+              style={{ top, zIndex: isPinned ? 10 : undefined }}
+            >
+              {item.content}
+            </div>
+          );
+        })}
       </div>
     </div>
     </CardDisplayProvider>

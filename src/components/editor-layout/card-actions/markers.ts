@@ -3,6 +3,7 @@ import type { PanelId, Side, Half, ViewPrefs } from "@/hooks/useViewPrefs";
 import type { UserNote, CutterCard, QuotationGroup } from "@/lib/types";
 import type { OmniCategory } from "@/panels/Omni";
 import { getTextAnchor } from "@/links/links";
+import { suppressNextPlacement } from "@/links/_shared/usePlacement";
 import { openForCard } from "../event-bridges/open-for-card";
 
 type AnchorKind = "note" | "highlight" | "revision" | "cutter-comment" | "cutter-suggestion" | null;
@@ -67,6 +68,9 @@ export function useMarkerActions(deps: {
 
   const handleQuotationMarkerClick = useCallback(
     (groupId: string, clickY?: number) => {
+      // Gutter click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row).
+      suppressNextPlacement();
       setSelectedQuotationGroupId(groupId);
       openForCard(
         {
@@ -90,9 +94,8 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="quote:${groupId}:"]`,
         ) as HTMLElement | null;
-        requestAnimationFrame(() => {
-          alignOmniCardWithClick(`quotation:${groupId}`, clickY, sourceEl);
-        });
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`quotation:${groupId}`, clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedQuotationGroupId, alignOmniCardWithClick],
@@ -101,6 +104,9 @@ export function useMarkerActions(deps: {
   const handleNoteMarkerClick = useCallback(
     (noteId: string, clickY?: number) => {
       const nextSelected = selectedNoteId === noteId ? null : noteId;
+      // Gutter click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row).
+      suppressNextPlacement();
       setSelectedNoteId(nextSelected);
       const note = notes.find((n) => n.id === noteId);
       const anchorId = note ? getTextAnchor(note)?.anchorId : undefined;
@@ -135,9 +141,8 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="note:${noteId}:"]`,
         ) as HTMLElement | null;
-        requestAnimationFrame(() => {
-          alignOmniCardWithClick(`note:${noteId}`, clickY, sourceEl);
-        });
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`note:${noteId}`, clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedNoteId, setSelectedNoteId, notes, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
@@ -146,6 +151,9 @@ export function useMarkerActions(deps: {
   const handleCutMarkerClick = useCallback(
     (cardId: string, clickY?: number) => {
       const nextSelected = selectedCutterCardId === cardId ? null : cardId;
+      // Gutter click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row).
+      suppressNextPlacement();
       setSelectedCutterCardId(nextSelected);
       const card = cutterCards.find((c) => c.id === cardId);
       const anchorId = card ? getTextAnchor(card)?.anchorId : undefined;
@@ -185,9 +193,8 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="cut:${cardId}:"]`,
         ) as HTMLElement | null;
-        requestAnimationFrame(() => {
-          alignOmniCardWithClick(`${kind}:${cardId}`, clickY, sourceEl);
-        });
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`${kind}:${cardId}`, clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, cutterCards, selectedCutterCardId, setSelectedCutterCardId, tryScrollOmniEntry, getOmniEnabled, setActiveAnchorId, setActiveAnchorKind, alignOmniCardWithClick],
@@ -196,6 +203,9 @@ export function useMarkerActions(deps: {
   const handleTodoMarkerClick = useCallback(
     (todoId: string, clickY?: number) => {
       const nextSelected = selectedTodoId === todoId ? null : todoId;
+      // Gutter click → card alignment goes through alignOmniCardWithClick
+      // below, NOT through usePlacement (which would scroll the row).
+      suppressNextPlacement();
       setSelectedTodoId(nextSelected);
       if (!nextSelected) return;
       openForCard(
@@ -219,9 +229,8 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="todo:${todoId}:"]`,
         ) as HTMLElement | null;
-        requestAnimationFrame(() => {
-          alignOmniCardWithClick(`todo:${todoId}`, clickY, sourceEl);
-        });
+        // alignOmniCardWithClick defers internally with double rAF.
+        alignOmniCardWithClick(`todo:${todoId}`, clickY, sourceEl);
       }
     },
     [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, selectedTodoId, setSelectedTodoId, tryScrollOmniEntry, getOmniEnabled, alignOmniCardWithClick],

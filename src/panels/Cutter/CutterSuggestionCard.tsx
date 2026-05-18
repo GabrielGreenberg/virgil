@@ -351,6 +351,9 @@ export function CutterSuggestionCard({
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(card.id);
+        if (isAnchored && onJump) {
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        }
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {

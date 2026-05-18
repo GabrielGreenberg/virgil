@@ -139,12 +139,6 @@ export interface OmniHostProps {
   // Shell
   getOmniEnabled: (side: Side) => Set<OmniCategory>;
   getOmniHideAll: (side: Side) => boolean;
-  /** Vertical offset applied to the cards group so the recently-clicked
-   *  card aligns with the click in the main text. */
-  cardsOffset?: number;
-  /** When true, the next cardsOffset change is applied without the 150ms
-   *  transition. Used by jump-to so the card stays visually stable. */
-  cardsSilent?: boolean;
   /** When focus mode is active, anchored cards outside the focused block
    *  range are dimmed (unlocked) or hidden (locked) — mirroring the
    *  editor's own focus-dim/hide behavior. Unanchored cards are unaffected. */
@@ -669,8 +663,6 @@ export function OmniHost(p: OmniHostProps) {
       hideAllCards={p.getOmniHideAll(p.side)}
       onBackgroundClick={handleBackgroundClick}
       onCardFocus={handleCardFocus}
-      cardsOffset={p.cardsOffset}
-      cardsSilent={p.cardsSilent}
     />
   );
 }

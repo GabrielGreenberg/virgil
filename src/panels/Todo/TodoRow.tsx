@@ -105,6 +105,9 @@ export function TodoRow({
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(item.id);
+        if (isAnchored && onJump) {
+          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        }
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
