@@ -270,20 +270,11 @@ export async function deleteDocHandle(id: string): Promise<void> {
   await del(DOC_HANDLE_PREFIX + id, store);
 }
 
-// --- Per-doc general-bibliography file handle ----------------------------
-
-export async function getGeneralBibHandle(
-  id: string,
-): Promise<FileSystemFileHandle | undefined> {
-  return get<FileSystemFileHandle>(GENERAL_BIB_HANDLE_PREFIX + id, store);
-}
-
-export async function setGeneralBibHandle(
-  id: string,
-  handle: FileSystemFileHandle,
-): Promise<void> {
-  await set(GENERAL_BIB_HANDLE_PREFIX + id, handle, store);
-}
+// --- Per-doc general-bibliography file handle (legacy) -------------------
+// The "general bibliography" feature was a user-picked external .bib file
+// per doc — superseded by the central Virgil Library (which IS the global
+// bib). We keep `deleteGeneralBibHandle` so `purgeDoc` can still tidy up
+// legacy IndexedDB rows from documents that pre-date the migration.
 
 export async function deleteGeneralBibHandle(id: string): Promise<void> {
   await del(GENERAL_BIB_HANDLE_PREFIX + id, store);

@@ -33,8 +33,6 @@ export const readDocBundle = backend.readDocBundle;
 export const writeDocBundle = backend.writeDocBundle;
 export const readBib = backend.readBib;
 export const writeBib = backend.writeBib;
-export const readGeneralBib = backend.readGeneralBib;
-export const pickGeneralBib = backend.pickGeneralBib;
 export const createDocFromPicker = backend.createDocFromPicker;
 export const createDocInFolder = backend.createDocInFolder;
 export const pickProjectFolder = backend.pickProjectFolder;
@@ -66,7 +64,7 @@ export const getPdfFilename = backend.getPdfFilename;
 export const pdfFilenameFromTex = backend.pdfFilenameFromTex;
 
 // Re-export types (these are the same in both backends).
-export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents, FolderPickResult, PaperFile } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile } from "@/lib/storage-fsa";
 
 // Re-export the pipeline handle type so storage callers don't need to
 // import from the multi-window subdirectory.

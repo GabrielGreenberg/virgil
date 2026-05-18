@@ -24,8 +24,6 @@ import type { FolderPickResult } from "@/lib/storage-fsa";
 import {
   detectBibPackage,
   type BibReadResult,
-  type GeneralBibPickResult,
-  type GeneralBibContents,
 } from "@/lib/storage-fsa";
 import {
   DOCUMENT_TEMPLATES,
@@ -41,7 +39,7 @@ import {
 
 // Re-export types that consumers import alongside functions.
 export type { FsaDocMeta } from "@/lib/doc-index";
-export type { DocBundle, BibReadResult, BibPackage, GeneralBibPickResult, GeneralBibContents } from "@/lib/storage-fsa";
+export type { DocBundle, BibReadResult, BibPackage } from "@/lib/storage-fsa";
 // Re-export the pure function that doesn't touch FSA.
 export { detectBibPackage };
 
@@ -393,23 +391,6 @@ export async function readPdf(docId: string): Promise<Uint8Array | null> {
   } catch {
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// General bibliography — no-op in dev mode (requires picker)
-// ---------------------------------------------------------------------------
-
-export async function pickGeneralBib(
-  _docId: string,
-): Promise<GeneralBibPickResult | null> {
-  console.warn("[dev-storage] pickGeneralBib is a no-op in dev mode");
-  return null;
-}
-
-export async function readGeneralBib(
-  _docId: string,
-): Promise<GeneralBibContents | null> {
-  return null;
 }
 
 // ---------------------------------------------------------------------------

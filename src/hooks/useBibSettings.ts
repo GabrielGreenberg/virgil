@@ -11,6 +11,8 @@ const EMPTY: BibSettings = { generalBibPath: null, entryRequests: [] };
 function migrate(raw: unknown): BibSettings {
   const s = raw as Partial<BibSettings>;
   return {
+    // Legacy field — preserved on read so old sidecars round-trip, but
+    // never set from the UI anymore. See [BibliographyPanel.tsx] notes.
     generalBibPath: s.generalBibPath ?? null,
     entryRequests: Array.isArray(s.entryRequests) ? s.entryRequests : [],
   };
@@ -31,13 +33,6 @@ export function useBibSettings(docId: string | null) {
       .then((data) => setState(migrate(data)))
       .catch(() => {});
   }, [docId, setState]);
-
-  const setGeneralBibPath = useCallback(
-    (path: string | null) => {
-      update((prev) => ({ ...prev, generalBibPath: path }));
-    },
-    [update],
-  );
 
   const addEntryRequest = useCallback(
     (description: string) => {
@@ -63,9 +58,7 @@ export function useBibSettings(docId: string | null) {
   );
 
   return {
-    generalBibPath: state.generalBibPath,
     entryRequests: state.entryRequests,
-    setGeneralBibPath,
     addEntryRequest,
     removeEntryRequest,
     refresh,

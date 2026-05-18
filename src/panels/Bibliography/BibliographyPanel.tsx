@@ -5,16 +5,190 @@ import type { BibEntry, BibEntryRequest, CitationRef } from "@/lib/types";
 import { ItemMenu, PANEL, clearStaleHover } from "@/components/panel-primitives";
 import BibEntryCard from "@/components/BibEntryCard";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import { searchGeneralBib, searchLocalBib } from "@/lib/bib-search";
-import { pickGeneralBib } from "@/lib/storage";
+import { searchCentralLibrary, searchLocalBib } from "@/lib/bib-search";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
-import { useLibraryItems } from "@/hooks/useLibrary";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import {
-  BibLibraryChip,
-  type BibLibraryChipKind,
-} from "@/components/library/BibLibraryChip";
-import type { LibraryIndexItem } from "@/lib/library/library-types";
+  useLibraryItems,
+  useLibraryMasterBib,
+  useLibraryMemberships,
+  type LibraryMembership,
+} from "@/hooks/useLibrary";
+import { useTabIndent } from "@/hooks/useTabIndent";
+import type {
+  LibraryBibState,
+  LibraryIndexItem,
+} from "@/lib/library/library-types";
+
+/** True when two bib entries describe the same record at field level —
+ *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
+ *  field order) don't count as a conflict. */
+function bibEntryFieldsEqual(a: BibEntry, b: BibEntry): boolean {
+  if (a.type !== b.type) return false;
+  const aKeys = Object.keys(a.fields);
+  const bKeys = Object.keys(b.fields);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const k of aKeys) {
+    if (a.fields[k] !== b.fields[k]) return false;
+  }
+  return true;
+}
+
+/** Fallback formatter used when `entry.raw` isn't available (e.g. for an
+ *  entry assembled in-memory). Produces a BibTeX-ish block suitable for
+ *  embedding in `requestNotes`. */
+function formatBibEntryForNote(entry: BibEntry): string {
+  const lines = [`@${entry.type}{${entry.key},`];
+  for (const [field, value] of Object.entries(entry.fields)) {
+    lines.push(`  ${field} = {${value}},`);
+  }
+  lines.push("}");
+  return lines.join("\n");
+}
+
+// ─── Provenance chips ────────────────────────────────────────────────
+//
+// Each library-scope or local-scope search result can carry up to three
+// kinds of provenance chip, surfacing where the citekey lives so the
+// user can spot index-gardening issues (a paper indexed under two
+// citekeys, only one of which is also Local; a citekey only in Central
+// vs. one that's also in a curated custom library, …).
+//
+// Ambient suppression: in `library` scope we don't draw the implicit
+// "Central" chip (every result is in Central by definition — would be
+// noise on every row). In `local` scope we don't draw the implicit
+// "Local" chip for the same reason. Custom-library chips always render
+// when applicable — that's the whole point of multi-membership
+// visibility.
+
+type ProvenanceChip =
+  | { kind: "local" }
+  | { kind: "central" }
+  | { kind: "custom"; id: string; label: string }
+  | { kind: "bib-state"; state: LibraryBibState };
+
+function provenanceFor(
+  _citekey: string,
+  scope: "local" | "library",
+  info: {
+    inLocal: boolean;
+    inCentral: boolean;
+    customLibraries: LibraryMembership[] | undefined;
+    bibState: LibraryBibState | undefined;
+  },
+): ProvenanceChip[] {
+  const chips: ProvenanceChip[] = [];
+  if (info.inLocal && scope !== "local") chips.push({ kind: "local" });
+  if (info.inCentral && scope !== "library") chips.push({ kind: "central" });
+  for (const m of info.customLibraries ?? []) {
+    chips.push({ kind: "custom", id: m.id, label: m.label });
+  }
+  if (info.bibState && info.bibState !== "none") {
+    chips.push({ kind: "bib-state", state: info.bibState });
+  }
+  return chips;
+}
+
+function provenanceChipKey(chip: ProvenanceChip): string {
+  switch (chip.kind) {
+    case "local":
+      return "local";
+    case "central":
+      return "central";
+    case "custom":
+      return `custom:${chip.id}`;
+    case "bib-state":
+      return `bib:${chip.state}`;
+  }
+}
+
+function provenanceChipStyle(
+  chip: ProvenanceChip,
+): { text: string; tooltip: string; className: string } {
+  switch (chip.kind) {
+    case "local":
+      return {
+        text: "local",
+        tooltip: "This citekey is in your paper's references.bib",
+        className: "text-slate-700 bg-slate-50 border border-slate-200",
+      };
+    case "central":
+      return {
+        text: "central",
+        tooltip: "This citekey is in your central library's master.bib",
+        className: "text-blue-700 bg-blue-50 border border-blue-200",
+      };
+    case "custom":
+      return {
+        text: chip.label,
+        tooltip: `Member of custom library "${chip.label}"`,
+        className: "text-violet-700 bg-violet-50 border border-violet-200",
+      };
+    case "bib-state":
+      switch (chip.state) {
+        case "authenticated":
+          return {
+            text: "auth",
+            tooltip:
+              "Library entry verified against authoritative sources (Crossref / OpenAlex / etc.)",
+            className:
+              "text-emerald-700 bg-emerald-50 border border-emerald-200",
+          };
+        case "unverified":
+          return {
+            text: "unverified",
+            tooltip:
+              "Library entry partially matched a source — fields are best-effort",
+            className: "text-amber-700 bg-amber-50 border border-amber-200",
+          };
+        case "failed":
+          return {
+            text: "unverified",
+            tooltip:
+              "Library entry couldn't be verified against external sources",
+            className: "text-rose-700 bg-rose-50 border border-rose-200",
+          };
+        case "manuscript":
+          return {
+            text: "manuscript",
+            tooltip:
+              "Unpublished or forthcoming work — no external source applies",
+            className: "text-sky-700 bg-sky-50 border border-sky-200",
+          };
+        case "canonical":
+          return {
+            text: "canonical",
+            tooltip:
+              "Pre-digital classic — no DOI/ISBN registry will ever index it",
+            className: "text-indigo-700 bg-indigo-50 border border-indigo-200",
+          };
+        default:
+          return {
+            text: chip.state,
+            tooltip: chip.state,
+            className: "text-ink-muted bg-surface border border-edge-subtle",
+          };
+      }
+  }
+}
+
+function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      {chips.map((c) => {
+        const style = provenanceChipStyle(c);
+        return (
+          <span
+            key={provenanceChipKey(c)}
+            className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${style.className}`}
+            title={style.tooltip}
+          >
+            {style.text}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 interface BibliographyPanelProps {
   citations: CitationRef[];
@@ -35,8 +209,6 @@ interface BibliographyPanelProps {
   bibPackage?: string;
   onAddBibEntry?: (entry: BibEntry) => void;
   docId: string | null;
-  generalBibPath: string | null;
-  onSetGeneralBibPath: (path: string | null) => void;
   entryRequests: BibEntryRequest[];
   onAddEntryRequest: (description: string) => void;
   onRemoveEntryRequest: (id: string) => void;
@@ -61,8 +233,6 @@ function BibliographyPanel({
   bibPackage,
   onAddBibEntry,
   docId,
-  generalBibPath,
-  onSetGeneralBibPath,
   entryRequests,
   onAddEntryRequest,
   onRemoveEntryRequest,
@@ -75,15 +245,23 @@ function BibliographyPanel({
 
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchScope, setSearchScope] = useState<"local" | "global">("local");
-  const [searchResults, setSearchResults] = useState<BibEntry[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchScope, setSearchScope] = useState<"local" | "library">("local");
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [showRequestForm, setShowRequestForm] = useState(false);
   const [requestText, setRequestText] = useState("");
   const requestInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Citekey-conflict inline confirmation strip: shown when the user clicks
+  // "Add" on a library result whose citekey already exists locally but with
+  // different fields. Null means no conflict pending.
+  const [conflictDecision, setConflictDecision] = useState<
+    | {
+        libraryEntry: BibEntry;
+        localEntry: BibEntry;
+      }
+    | null
+  >(null);
 
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -104,38 +282,6 @@ function BibliographyPanel({
   useEffect(() => {
     if (showRequestForm) requestInputRef.current?.focus();
   }, [showRequestForm]);
-
-  useEffect(() => {
-    if (!showSearch || searchScope !== "global" || !generalBibPath || !docId) {
-      return;
-    }
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    setSearchLoading(true);
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        const data = await searchGeneralBib(docId, searchQuery);
-        setSearchResults(data?.results ?? []);
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 300);
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    };
-  }, [searchQuery, showSearch, searchScope, generalBibPath, docId]);
-
-  useEffect(() => {
-    if (searchScope === "local") {
-      setSearchResults([]);
-      setSearchLoading(false);
-    }
-  }, [searchScope]);
 
   const keyToCitationIds = useCallback(() => {
     const map: Record<string, string[]> = {};
@@ -227,28 +373,48 @@ function BibliographyPanel({
     });
   }, [bibEntries, citedKeys, filter]);
 
+  // Central-library master.bib — parsed once via the catalog-store's
+  // FSA handle. Empty when no library is connected. Declared before
+  // `displayedEntries` so the library-search branch can read it.
+  const { entries: libraryBibEntries } = useLibraryMasterBib();
+
+  // Custom-library memberships: `citekey → [{ id, label }, …]`. Central
+  // is implicit (everything in master.bib belongs to Central) and is
+  // NOT in this map; the panel renders the Central chip directly when
+  // appropriate.
+  const { membershipMap } = useLibraryMemberships();
+
   // The list actually rendered by CardListPanel and walked by keyboard nav.
   // Drives selectedIdx, goNext/goPrev, in-text positions, and PrevNextCounter
-  // so that local-search filtering and global-search results both flow
+  // so that local-search filtering and central-library results both flow
   // through the same path.
   const displayedEntries = useMemo(() => {
     if (showSearch && searchScope === "local" && searchQuery.trim()) {
       return searchLocalBib(sortedEntries, searchQuery);
     }
-    if (showSearch && searchScope === "global") {
-      return searchResults;
+    if (showSearch && searchScope === "library") {
+      if (!searchQuery.trim()) return [];
+      return searchCentralLibrary(libraryBibEntries, searchQuery);
     }
     return sortedEntries;
-  }, [showSearch, searchScope, searchQuery, sortedEntries, searchResults]);
+  }, [
+    showSearch,
+    searchScope,
+    searchQuery,
+    sortedEntries,
+    libraryBibEntries,
+  ]);
 
   const existingKeys = useMemo(
     () => new Set(bibEntries.map((e) => e.key)),
     [bibEntries],
   );
 
-  // Library-status lookup: citekey → chip info. The library is global,
-  // so a single item's state applies to every doc that cites it.
-  const { items: libraryItems } = useLibraryItems();
+  // Library-status lookup: citekey → catalog row. Used for the
+  // provenance chips (a citekey in master.bib gets a `central` chip,
+  // and we surface bib auth state from the same row).
+  const { items: libraryItems, hasFolder: isLibraryConnected } =
+    useLibraryItems();
   const libraryByCitekey = useMemo(() => {
     const out = new Map<string, LibraryIndexItem>();
     for (const item of libraryItems) {
@@ -256,16 +422,6 @@ function BibliographyPanel({
     }
     return out;
   }, [libraryItems]);
-  const libraryChipFor = useCallback(
-    (key: string): BibLibraryChipKind => {
-      const item = libraryByCitekey.get(key);
-      if (!item) return { kind: "missing" };
-      if (item.status === "ready") return { kind: "ready", itemId: item.id };
-      if (item.status === "failed") return { kind: "failed", itemId: item.id };
-      return { kind: "processing", itemId: item.id, status: item.status };
-    },
-    [libraryByCitekey],
-  );
 
   const selectedIdx = useMemo(() => {
     if (!selectedBibKey) return -1;
@@ -322,17 +478,6 @@ function BibliographyPanel({
     [displayedEntries, goNext, goPrev],
   );
 
-  const handlePickGeneralBib = useCallback(async () => {
-    if (!docId) return;
-    try {
-      const result = await pickGeneralBib(docId);
-      if (result) onSetGeneralBibPath(result.filename);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      console.error("Failed to pick general bib:", err);
-    }
-  }, [docId, onSetGeneralBibPath]);
-
   const handleExportCited = useCallback(() => {
     const seen = new Set<string>();
     const cited = bibEntries.filter((e) => {
@@ -359,13 +504,13 @@ function BibliographyPanel({
     URL.revokeObjectURL(url);
   }, [bibEntries, citedKeys]);
 
-  const handleAddFromGeneralBib = useCallback(() => {
+  const handleAddFromCentralLibrary = useCallback(() => {
     setAddMenuOpen(false);
     setShowRequestForm(false);
     setShowSearch(true);
-    setSearchScope("global");
+    setSearchScope("library");
     setSearchQuery("");
-    setSearchResults([]);
+    setConflictDecision(null);
   }, []);
 
   const handleToggleSearch = useCallback(() => {
@@ -373,7 +518,6 @@ function BibliographyPanel({
       const next = !prev;
       if (!next) {
         setSearchQuery("");
-        setSearchResults([]);
         setSearchScope("local");
       } else {
         setShowRequestForm(false);
@@ -385,7 +529,6 @@ function BibliographyPanel({
   const closeSearch = useCallback(() => {
     setShowSearch(false);
     setSearchQuery("");
-    setSearchResults([]);
     setSearchScope("local");
   }, []);
 
@@ -411,19 +554,89 @@ function BibliographyPanel({
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmitRequest();
   });
 
+  const localEntryByKey = useMemo(() => {
+    const out = new Map<string, BibEntry>();
+    for (const e of bibEntries) out.set(e.key, e);
+    return out;
+  }, [bibEntries]);
+
   const handleAddEntry = useCallback(
     (entry: BibEntry) => {
+      // Library-scope: if the citekey already exists locally and the
+      // fields differ, surface the four-option conflict strip instead
+      // of silently double-adding.
+      if (searchScope === "library") {
+        const local = localEntryByKey.get(entry.key);
+        if (local) {
+          if (bibEntryFieldsEqual(local, entry)) {
+            // Byte-identical — silent no-op, navigate to it.
+            handleSelectBibKey(entry.key);
+            return;
+          }
+          setConflictDecision({ libraryEntry: entry, localEntry: local });
+          return;
+        }
+      }
       onAddBibEntry?.(entry);
-      // Keep the entry in the global results — existingKeys re-render flips
-      // the chip from "Add" to "Added" so the list doesn't shift under the
-      // user's cursor while they're typing.
+      // Keep the entry in the global/library results — existingKeys
+      // re-render flips the chip from "Add" to "Added" so the list
+      // doesn't shift under the user's cursor while they're typing.
     },
-    [onAddBibEntry],
+    [
+      onAddBibEntry,
+      searchScope,
+      localEntryByKey,
+      handleSelectBibKey,
+    ],
   );
 
-  const generalBibFilename = generalBibPath
-    ? generalBibPath.split("/").pop()
-    : null;
+  const dismissConflict = useCallback(() => setConflictDecision(null), []);
+
+  const handleConflictReplace = useCallback(() => {
+    if (!conflictDecision) return;
+    const { libraryEntry, localEntry } = conflictDecision;
+    onUpdateBibEntry(localEntry.key, libraryEntry.fields);
+    if (libraryEntry.type !== localEntry.type) {
+      onUpdateBibKeyAndType(localEntry.key, localEntry.key, libraryEntry.type);
+    }
+    setConflictDecision(null);
+    handleSelectBibKey(localEntry.key);
+  }, [
+    conflictDecision,
+    onUpdateBibEntry,
+    onUpdateBibKeyAndType,
+    handleSelectBibKey,
+  ]);
+
+  const handleConflictNewCitekey = useCallback(() => {
+    if (!conflictDecision) return;
+    const { libraryEntry } = conflictDecision;
+    const existing = new Set(bibEntries.map((e) => e.key));
+    let suffix = 2;
+    let next = `${libraryEntry.key}-${suffix}`;
+    while (existing.has(next)) {
+      suffix += 1;
+      next = `${libraryEntry.key}-${suffix}`;
+    }
+    // Drop `raw` so the serializer rebuilds the block from fields and the
+    // new citekey — keeping `raw` would re-emit the library's original
+    // `@type{<originalKey>,…}` and the suffix would never reach disk.
+    onAddBibEntry?.({ ...libraryEntry, key: next, raw: "" });
+    setConflictDecision(null);
+    handleSelectBibKey(next);
+  }, [conflictDecision, bibEntries, onAddBibEntry, handleSelectBibKey]);
+
+  const handleConflictRequestMerge = useCallback(() => {
+    if (!conflictDecision) return;
+    const { libraryEntry, localEntry } = conflictDecision;
+    const libRaw = libraryEntry.raw?.trim() || formatBibEntryForNote(libraryEntry);
+    const notes =
+      `Merge with library entry ${libraryEntry.key}. The user's Virgil Library has an alternate version of this entry — please reconcile the two and verify against authoritative sources. ` +
+      `\n\nLibrary version:\n${libRaw}`;
+    onRequestReview(localEntry.key, "fields", notes);
+    setConflictDecision(null);
+    handleSelectBibKey(localEntry.key);
+  }, [conflictDecision, onRequestReview, handleSelectBibKey]);
 
   const headerLeading = (
     <ItemMenu align="left">
@@ -470,31 +683,6 @@ function BibliographyPanel({
         </svg>
         Export cited.bib
       </button>
-      <div className="my-1 border-t border-edge-subtle" />
-      <button
-        className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light"
-        onClick={handlePickGeneralBib}
-      >
-        {generalBibPath
-          ? "Change general bibliography..."
-          : "Set general bibliography..."}
-      </button>
-      {generalBibPath && (
-        <>
-          <div
-            className="px-3 py-1 text-[10px] text-ink-muted truncate"
-            title={generalBibPath}
-          >
-            {generalBibFilename}
-          </div>
-          <button
-            className="w-full text-left px-3 py-1.5 text-xs text-danger hover:bg-danger-soft"
-            onClick={() => onSetGeneralBibPath(null)}
-          >
-            Clear general bibliography
-          </button>
-        </>
-      )}
     </ItemMenu>
   );
 
@@ -523,19 +711,25 @@ function BibliographyPanel({
             <div className="absolute right-0 top-full mt-1 bg-surface border border-[var(--border)] rounded-lg shadow-lg py-1 z-30 min-w-[200px]">
               <button
                 className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 ${
-                  generalBibPath
+                  isLibraryConnected
                     ? "text-ink-body hover-on-light"
                     : "text-ink-faint cursor-not-allowed"
                 }`}
-                onClick={generalBibPath ? handleAddFromGeneralBib : undefined}
-                title={generalBibPath ? undefined : "Set general bibliography first"}
-                data-helper="Search general"
+                onClick={
+                  isLibraryConnected ? handleAddFromCentralLibrary : undefined
+                }
+                title={
+                  isLibraryConnected
+                    ? undefined
+                    : "Connect the central library first…"
+                }
+                data-helper="Search library"
               >
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
                 </svg>
-                Search general bibliography…
+                Search library…
               </button>
               <button
                 className="w-full text-left px-3 py-1.5 text-xs text-ink-body hover-on-light flex items-center gap-2"
@@ -585,7 +779,7 @@ function BibliographyPanel({
               placeholder={
                 searchScope === "local"
                   ? "Search local bibliography…"
-                  : "Search general bibliography…"
+                  : "Search library…"
               }
               className="flex-1 min-w-0 text-xs bg-surface border border-edge-subtle rounded px-2 py-1 outline-none focus:border-edge-strong"
             />
@@ -606,24 +800,24 @@ function BibliographyPanel({
               <button
                 type="button"
                 onClick={() => {
-                  if (generalBibPath) setSearchScope("global");
-                  else handlePickGeneralBib();
+                  if (isLibraryConnected) setSearchScope("library");
                 }}
+                disabled={!isLibraryConnected}
                 className={`text-[10px] px-1.5 py-1 border-l border-edge-subtle ${
-                  searchScope === "global"
+                  searchScope === "library"
                     ? "bg-surface-muted text-ink-body"
-                    : generalBibPath
+                    : isLibraryConnected
                       ? "text-ink-muted hover:text-ink-body"
-                      : "text-ink-faint hover:text-ink-body"
+                      : "text-ink-faint cursor-not-allowed"
                 }`}
                 title={
-                  generalBibPath
-                    ? "Search the user-wide general bibliography"
-                    : "Set a general bibliography first…"
+                  isLibraryConnected
+                    ? "Search the central Virgil Library (the global bib)"
+                    : "Connect the central library first…"
                 }
-                data-helper="Search global"
+                data-helper="Search library"
               >
-                Global
+                Library
               </button>
             </div>
             <button
@@ -638,22 +832,60 @@ function BibliographyPanel({
               </svg>
             </button>
           </div>
-          {searchScope === "global" && searchLoading && (
-            <div className="text-[10px] text-ink-muted mt-1.5">Searching…</div>
-          )}
-          {searchScope === "global" && !generalBibPath && (
+          {searchScope === "library" && !isLibraryConnected && (
             <div className="text-[10px] text-ink-muted mt-1.5">
-              No general bibliography is set. Click Global to choose one.
+              Connect the central library to search master.bib.
             </div>
           )}
-          {searchScope === "global" &&
-            !searchLoading &&
-            generalBibPath &&
+          {searchScope === "library" &&
+            isLibraryConnected &&
             !searchQuery.trim() && (
               <div className="text-[10px] text-ink-muted mt-1.5">
-                Type to search the general bibliography.
+                Type to search the central library ({libraryBibEntries.length}{" "}
+                entries).
               </div>
             )}
+        </div>
+      )}
+
+      {conflictDecision && (
+        <div className="px-3 py-2 border-b border-amber-200 bg-amber-50/50">
+          <div className="text-[11px] text-ink-body mb-1.5">
+            <span className="font-mono text-ink-muted">
+              {conflictDecision.libraryEntry.key}
+            </span>{" "}
+            is already in your bib with different fields.
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={handleConflictReplace}
+              className="text-[10px] text-white bg-amber-600 hover:bg-amber-700 px-2 py-1 rounded"
+              title="Overwrite local fields with the library version (citekey unchanged)"
+            >
+              Replace with library
+            </button>
+            <button
+              onClick={dismissConflict}
+              className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
+              title="Keep your existing local entry as-is"
+            >
+              Keep yours
+            </button>
+            <button
+              onClick={handleConflictNewCitekey}
+              className="text-[10px] text-ink-body bg-surface border border-edge-subtle hover-on-light px-2 py-1 rounded"
+              title="Add the library entry alongside under an auto-suffixed citekey"
+            >
+              Save under new citekey
+            </button>
+            <button
+              onClick={handleConflictRequestMerge}
+              className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 px-2 py-1 rounded"
+              title="File an AI bib-review request to merge both versions and authenticate"
+            >
+              Request AI merge &amp; authentication
+            </button>
+          </div>
         </div>
       )}
 
@@ -768,10 +1000,10 @@ function BibliographyPanel({
         <div className={PANEL.empty}>
           {showSearch && searchScope === "local" && searchQuery.trim()
             ? `No local entries match "${searchQuery}"${filter === "cited" ? " (cited only — switch to Full bibliography to widen)" : ""}.`
-            : showSearch && searchScope === "global" && searchQuery.trim() && !searchLoading
-              ? `No general-bib entries match "${searchQuery}".`
-              : showSearch && searchScope === "global" && !searchQuery.trim() && generalBibPath
-                ? "Type to search the general bibliography."
+            : showSearch && searchScope === "library" && searchQuery.trim()
+              ? `No library entries match "${searchQuery}".`
+              : showSearch && searchScope === "library" && !searchQuery.trim() && isLibraryConnected
+                ? "Type to search the library."
                 : filter === "cited"
                   ? "No cited entries found. Add citations in the editor and ensure a .bib file is available."
                   : "No entries found in the .bib file."}
@@ -785,14 +1017,36 @@ function BibliographyPanel({
         const ids = keyToCitationIds()[entry.key] || [];
         const idx = keyOccurrenceIdx[entry.key] || 0;
         const isCited = citedKeys.has(entry.key);
-        const libInfo = libraryChipFor(entry.key);
-        const isGlobalResult = showSearch && searchScope === "global";
-        const addAction = isGlobalResult
+        const isLibraryResult = showSearch && searchScope === "library";
+        const isPreviewResult = isLibraryResult;
+        // For library results we keep the Add affordance even when the
+        // citekey already exists locally, IF the fields differ — clicking
+        // it then routes into the conflict-resolution strip. Only when the
+        // local + library fields are byte-identical does the chip flip to
+        // "Added" (a click would be a no-op anyway).
+        const alreadyAddedFlag = (() => {
+          if (!isPreviewResult) return false;
+          if (!existingKeys.has(entry.key)) return false;
+          if (!isLibraryResult) return true;
+          const local = localEntryByKey.get(entry.key);
+          return !!local && bibEntryFieldsEqual(local, entry);
+        })();
+        const addAction = isPreviewResult
           ? {
               onAdd: () => handleAddEntry(entry),
-              alreadyAdded: existingKeys.has(entry.key),
+              alreadyAdded: alreadyAddedFlag,
             }
           : undefined;
+        const provenance = provenanceFor(
+          entry.key,
+          searchScope,
+          {
+            inLocal: localEntryByKey.has(entry.key),
+            inCentral: libraryByCitekey.has(entry.key),
+            customLibraries: membershipMap.get(entry.key),
+            bibState: libraryByCitekey.get(entry.key)?.bibState,
+          },
+        );
         return (
           <BibEntryCard
             entry={entry}
@@ -814,12 +1068,12 @@ function BibliographyPanel({
             bibEntries={bibEntries}
             isCited={isCited}
             libraryChip={
-              libInfo.kind === "missing"
-                ? undefined
-                : <BibLibraryChip citekey={entry.key} info={libInfo} />
+              provenance.length > 0 ? (
+                <ProvenanceChips chips={provenance} />
+              ) : undefined
             }
             addAction={addAction}
-            draggable={!isGlobalResult}
+            draggable={!isPreviewResult}
             occurrenceInfo={
               ids.length > 1
                 ? {

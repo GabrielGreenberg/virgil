@@ -1,80 +1,19 @@
 /**
- * Client-side search over a user's general bibliography file.
+ * Client-side search across a paper's local bib and the central Virgil
+ * Library. Both scopes delegate to one fuzzy ranked-search primitive
+ * (`searchBibFuzzy` in `bib-searcher.ts`), so the bar feels consistent
+ * regardless of which scope is active.
  *
- * Replaces `POST /api/bib/search`. The cache is keyed by `(docId,
- * lastModified)` so we re-parse only when the underlying .bib file
- * actually changes on disk.
+ * (The old `searchGeneralBib` over a user-picked external `.bib` file
+ * is gone — its concept is now covered by "search the central library,"
+ * which IS the global bib.)
  */
 
-import { parseBibFile } from "@/lib/bib-parser";
-import { readGeneralBib } from "@/lib/storage";
+import { searchBibFuzzy } from "@/lib/bib-searcher";
 import type { BibEntry } from "@/lib/types";
 
-interface CacheEntry {
-  entries: BibEntry[];
-  lastModified: number;
-}
-
-const cache = new Map<string, CacheEntry>();
-
-async function getEntries(docId: string): Promise<BibEntry[] | null> {
-  const bib = await readGeneralBib(docId);
-  if (!bib) return null;
-
-  const cached = cache.get(docId);
-  if (cached && cached.lastModified === bib.lastModified) return cached.entries;
-
-  const entries = parseBibFile(bib.bibText);
-  cache.set(docId, { entries, lastModified: bib.lastModified });
-  return entries;
-}
-
-export interface BibSearchResult {
-  results: BibEntry[];
-}
-
 /**
- * Search the general bib for entries whose key, author, title, or year
- * contains the query string. Returns up to `limit` results.
- *
- * Returns null if no general bib has been picked for this doc yet.
- */
-export async function searchGeneralBib(
-  docId: string,
-  query: string,
-  limit = 20,
-): Promise<BibSearchResult | null> {
-  const entries = await getEntries(docId);
-  if (entries === null) return null;
-
-  if (!query || !query.trim()) {
-    return { results: entries.slice(0, limit) };
-  }
-
-  const q = query.toLowerCase().trim();
-  const results: BibEntry[] = [];
-  for (const entry of entries) {
-    if (results.length >= limit) break;
-    const haystack = [
-      entry.key,
-      entry.fields.author || "",
-      entry.fields.title || "",
-      entry.fields.year || "",
-      entry.fields.journal || "",
-      entry.fields.booktitle || "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    if (haystack.includes(q)) results.push(entry);
-  }
-  return { results };
-}
-
-/**
- * Search a list of already-loaded BibEntry objects (the local paper bib)
- * for entries whose key, author, title, year, journal, or booktitle
- * contains the query string.
- *
+ * Search a list of already-loaded BibEntry objects (the local paper bib).
  * Synchronous — operates on the in-memory list passed by the caller.
  */
 export function searchLocalBib(
@@ -82,27 +21,21 @@ export function searchLocalBib(
   query: string,
   limit = Infinity,
 ): BibEntry[] {
-  if (!query || !query.trim()) return entries;
-  const q = query.toLowerCase().trim();
-  const out: BibEntry[] = [];
-  for (const entry of entries) {
-    if (out.length >= limit) break;
-    const haystack = [
-      entry.key,
-      entry.fields.author || "",
-      entry.fields.title || "",
-      entry.fields.year || "",
-      entry.fields.journal || "",
-      entry.fields.booktitle || "",
-    ]
-      .join(" ")
-      .toLowerCase();
-    if (haystack.includes(q)) out.push(entry);
-  }
-  return out;
+  return searchBibFuzzy(entries, query, limit);
 }
 
-/** Drop the cache entry for a doc. Called when the user picks a new file. */
-export function invalidateBibSearchCache(docId: string): void {
-  cache.delete(docId);
+/**
+ * Search the central Virgil Library's master.bib (already parsed into a
+ * BibEntry[] by the caller via useMasterBib). Same engine as the local
+ * search; the wrapper exists so the call site at the BibliographyPanel
+ * reads semantically.
+ *
+ * Synchronous — operates on the in-memory list passed by the caller.
+ */
+export function searchCentralLibrary(
+  entries: BibEntry[],
+  query: string,
+  limit = 50,
+): BibEntry[] {
+  return searchBibFuzzy(entries, query, limit);
 }

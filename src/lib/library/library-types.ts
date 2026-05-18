@@ -14,6 +14,15 @@ export type LibraryItemStatus =
   | "ready"
   | "failed";
 
+/** Bib-authentication state mirrored from `catalog.json`'s `bib.state`. */
+export type LibraryBibState =
+  | "none"
+  | "unverified"
+  | "authenticated"
+  | "manuscript"
+  | "canonical"
+  | "failed";
+
 /** One row in `library-index.json` — the manifest Virgil polls. */
 export interface LibraryIndexItem {
   /** Stable UUID assigned by Cowork; also the folder name for this item. */
@@ -30,6 +39,8 @@ export interface LibraryIndexItem {
   hasPrintPageNumbers?: boolean;
   /** ISO timestamp of the last Cowork-side write to this item's files. */
   updatedAt?: string;
+  /** Auth state for the matching `master.bib` entry, when known. */
+  bibState?: LibraryBibState;
 }
 
 /** Whole-manifest shape written at `library-index.json`. */

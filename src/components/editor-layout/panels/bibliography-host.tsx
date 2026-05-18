@@ -34,8 +34,6 @@ export interface BibliographyHostProps {
   citationPositionMap: Map<string, number>;
   setBibActiveCitationId: Dispatch<SetStateAction<string | null>>;
   currentDocId: string | null;
-  generalBibPath: BibSettingsHook["generalBibPath"];
-  setGeneralBibPath: BibSettingsHook["setGeneralBibPath"];
   entryRequests: BibSettingsHook["entryRequests"];
   addEntryRequest: BibSettingsHook["addEntryRequest"];
   removeEntryRequest: BibSettingsHook["removeEntryRequest"];
@@ -64,8 +62,6 @@ export function BibliographyHost(p: BibliographyHostProps) {
       bibPackage={p.bibPackage}
       onAddBibEntry={p.addBibEntry}
       docId={p.currentDocId}
-      generalBibPath={p.generalBibPath}
-      onSetGeneralBibPath={p.setGeneralBibPath}
       entryRequests={p.entryRequests}
       onAddEntryRequest={p.addEntryRequest}
       onRemoveEntryRequest={p.removeEntryRequest}

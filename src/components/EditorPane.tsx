@@ -5124,8 +5124,6 @@ function PaneRailBody({
         citationPositionMap={citationPositionMap}
         setBibActiveCitationId={setBibActiveCitationId}
         currentDocId={docId}
-        generalBibPath={bibSettingsHook.generalBibPath}
-        setGeneralBibPath={bibSettingsHook.setGeneralBibPath}
         entryRequests={bibSettingsHook.entryRequests}
         addEntryRequest={bibSettingsHook.addEntryRequest}
         removeEntryRequest={bibSettingsHook.removeEntryRequest}

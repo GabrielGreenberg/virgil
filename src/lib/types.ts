@@ -473,6 +473,10 @@ export interface BibEntryRequest {
 }
 
 export interface BibSettings {
+  /** @deprecated The "general bibliography" feature (a user-picked
+   *  external .bib file per doc) has been superseded by the central
+   *  Virgil Library, which is now the only "global" bib. Preserved on
+   *  read so old sidecars round-trip, but never written from the UI. */
   generalBibPath: string | null;
   entryRequests: BibEntryRequest[];
 }

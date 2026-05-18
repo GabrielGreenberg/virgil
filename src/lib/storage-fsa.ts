@@ -43,8 +43,6 @@ import {
   getDocHandle,
   setDocHandle,
   purgeDoc,
-  getGeneralBibHandle,
-  setGeneralBibHandle,
   type FsaDocMeta,
 } from "@/lib/doc-index";
 import { enqueueWrite, flushPrefix } from "@/lib/write-queue";
@@ -479,59 +477,6 @@ export async function readPdf(docId: string): Promise<Uint8Array | null> {
     const fh = await docHandle.getFileHandle(filename);
     const file = await fh.getFile();
     return new Uint8Array(await file.arrayBuffer());
-  } catch (e) {
-    if (isNotFound(e)) return null;
-    throw e;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// General bibliography (a separate .bib file the user picked for searching)
-// ---------------------------------------------------------------------------
-
-/** Result of a successful general-bib pick. */
-export interface GeneralBibPickResult {
-  filename: string;
-}
-
-/**
- * Show a file picker for a .bib and store the resulting handle in idb,
- * keyed by docId. Must be called from inside a user gesture.
- */
-export async function pickGeneralBib(
-  docId: string,
-): Promise<GeneralBibPickResult | null> {
-  const [handle] = await window.showOpenFilePicker({
-    multiple: false,
-    types: [
-      {
-        description: "BibTeX file",
-        accept: { "text/x-bibtex": [".bib"], "application/x-bibtex": [".bib"] },
-      },
-    ],
-    excludeAcceptAllOption: false,
-  });
-  if (!handle) return null;
-  await setGeneralBibHandle(docId, handle);
-  return { filename: handle.name };
-}
-
-export interface GeneralBibContents {
-  bibText: string;
-  filename: string;
-  lastModified: number;
-}
-
-/** Read the user's general bib file (if one was picked). */
-export async function readGeneralBib(
-  docId: string,
-): Promise<GeneralBibContents | null> {
-  const handle = await getGeneralBibHandle(docId);
-  if (!handle) return null;
-  try {
-    const file = await handle.getFile();
-    const bibText = await file.text();
-    return { bibText, filename: handle.name, lastModified: file.lastModified };
   } catch (e) {
     if (isNotFound(e)) return null;
     throw e;
