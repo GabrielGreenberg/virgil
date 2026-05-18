@@ -12,11 +12,9 @@ import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
 import {
-  omniPinStore,
   usePinRequest,
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
-import { useSelection } from "@/links/_shared/anchored-card-store";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -340,25 +338,11 @@ function OmniViewPanel({
   const { positions, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned);
 
-  // Clear the pin when the primary selection stops matching the pinned
-  // card. Pin lifecycle follows `useSelection()` (transient ?? newest
-  // sticky) — not just `useTransient`, because card-body clicks move
-  // the selection from transient → sticky and the pin should survive
-  // that transition. The pin only clears when focus moves to a different
-  // card entirely (different cardId).
-  const selection = useSelection();
-  useEffect(() => {
-    if (!pinRequest) return;
-    if (!selection) {
-      omniPinStore.clearPin(side as PinSide);
-      return;
-    }
-    const selectionKey = `${selection.kind}:${selection.id}`;
-    if (selectionKey !== pinRequest.cardId) {
-      omniPinStore.clearPin(side as PinSide, pinRequest.cardId);
-    }
-  }, [selection, pinRequest, side]);
-
+  // Pin lifecycle: a pin is a persistent "deck anchor" cleared only when a
+  // new pin replaces it (handled by `omniPinStore.requestPin` itself when
+  // the cardId differs). Untying it from selection means collapse-toggling
+  // a pinned card no longer snaps it back to its cascaded position — pin
+  // stays put. New marker/card-jump interactions still replace cleanly.
   return (
     <OmniProvider value={{ side }}>
     <CardDisplayProvider value={{ compressedLines: 2 }}>
