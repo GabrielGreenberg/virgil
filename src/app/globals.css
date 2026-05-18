@@ -2,6 +2,8 @@
 
 @import "../../library/styles/library.css";
 
+@import "katex/dist/katex.min.css";
+
 :root {
   /* Canvas & Layout */
   --background: #f8f3ed;
@@ -1507,49 +1509,120 @@ textarea,
   margin-top: 1.5em;
 }
 
-/* Math nodes */
+/* Math nodes — rendered via KaTeX; click opens MathPopover for editing. */
 .inline-math {
-  display: inline;
-  background: var(--code-bg, #f0eeeb);
-  color: var(--math-color, #6b4fa0);
-  border-radius: 0.25rem;
-  padding: 0.1em 0.35em;
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.9em;
+  display: inline-block;
   cursor: pointer;
+  border-radius: 0.25rem;
+  padding: 0 0.15em;
+  transition: background 120ms ease;
 }
 
-.inline-math-editable {
-  outline: none;
-}
-
-.inline-math-prefix,
-.inline-math-suffix {
-  color: var(--math-prefix-color, #a090c0);
-  font-size: 0.9em;
+.inline-math:hover,
+.inline-math.selected {
+  background: var(--code-bg, #f0eeeb);
 }
 
 .display-math {
   display: block;
-  background: var(--code-block-bg, #f5f3f0);
-  color: var(--math-color, #6b4fa0);
-  border: 1px solid var(--border);
-  border-radius: 0.375rem;
-  padding: 0.75em 1em;
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  text-align: center;
   cursor: pointer;
+  margin: 0.75em 0;
+  padding: 0.5em 1em;
+  border-radius: 0.375rem;
+  text-align: center;
+  transition: background 120ms ease;
 }
 
-.display-math-editable {
+.display-math:hover,
+.display-math.selected {
+  background: var(--code-block-bg, #f5f3f0);
+}
+
+/* KaTeX wraps display math in .katex-display which adds its own vertical
+ * margin; collapse it so our .display-math padding is what's visible. */
+.display-math .katex-display {
+  margin: 0;
+}
+
+.math-placeholder {
+  color: var(--text-muted, #9a8f80);
+  font-style: italic;
+  font-size: 0.9em;
+}
+
+.math-error {
+  color: #cc0000;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 0.9em;
+}
+
+/* Math edit popover — modeled on .label-ref-popover. */
+.math-popover {
+  background: var(--panel-bg, #ffffff);
+  border: 1px solid var(--border, #d9d3c8);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.math-popover-preview {
+  min-height: 2em;
+  padding: 0.5em 0.6em;
+  background: var(--code-bg, #f0eeeb);
+  border-radius: 0.25rem;
+  overflow-x: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.math-popover-preview-inline {
+  text-align: center;
+}
+
+.math-popover-preview-display .katex-display {
+  margin: 0;
+}
+
+.math-popover-preview-placeholder {
+  color: var(--text-muted, #9a8f80);
+  font-style: italic;
+}
+
+.math-popover-input {
+  width: 100%;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 0.85rem;
+  padding: 0.4em 0.5em;
+  border: 1px solid var(--border, #d9d3c8);
+  border-radius: 0.25rem;
   outline: none;
+  resize: vertical;
+  box-sizing: border-box;
+  background: var(--input-bg, #ffffff);
+  color: var(--text, #1a1a1a);
 }
 
-.display-math-prefix,
-.display-math-suffix {
-  color: var(--math-prefix-color, #a090c0);
-  display: block;
-  font-size: 0.85em;
+.math-popover-input:focus {
+  border-color: var(--accent, #6b4fa0);
+}
+
+.math-popover-hint {
+  font-size: 0.72rem;
+  color: var(--text-muted, #9a8f80);
+}
+
+.math-popover-hint kbd {
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 0.9em;
+  padding: 0 0.3em;
+  border-radius: 0.2em;
+  background: var(--code-bg, #f0eeeb);
+  border: 1px solid var(--border, #d9d3c8);
 }
 
 /* Linked-anchor spans (Mode B anchor links).
