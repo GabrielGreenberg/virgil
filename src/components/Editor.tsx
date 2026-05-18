@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -55,6 +55,7 @@ import { createPopoutButtonEl } from "./panel-primitives";
 import { setCardLiftTarget, setCardLiftHandoff } from "./card-lift";
 import { SelectionDragHandle } from "./SelectionDragHandle";
 import { SelectionActionsMenu } from "./SelectionActionsMenu";
+import { SlashCommandPopup } from "./SlashCommandPopup";
 import {
   sectionFoldingPlugin,
   sectionFoldingPluginKey,
@@ -1970,6 +1971,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       ExpexNumbering,
       AiRequestMarker,
       LatexCommandMark,
+      SlashPopupExtension,
       SmartQuotes,
       LinkedAnchor,
       LinkedAnchorGuard,
@@ -3608,6 +3610,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       <EditorContent editor={editor} />
       <SelectionDragHandle editorRef={editorInstanceRef} />
       <SelectionActionsMenu editorRef={editorInstanceRef} />
+      <SlashCommandPopup editorRef={editorInstanceRef} />
     </div>
   );
 });

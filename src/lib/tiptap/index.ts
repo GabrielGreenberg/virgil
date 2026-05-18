@@ -4,6 +4,7 @@
 
 export { VIRGIL_COMMANDS, VIRGIL_COMMAND_NAMES, COMMAND_MAP, type VirgilCommand } from "./commands";
 export { LatexCommandMark } from "./latex-command";
+export { SlashPopupExtension } from "./slash-popup";
 export { InlineMath, DisplayMath } from "./math";
 export { Footnote } from "./footnote";
 export { LatexComment } from "./latex-comment";
