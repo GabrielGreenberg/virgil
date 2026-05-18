@@ -16,7 +16,7 @@ import {
   usePinRequest,
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
-import { useTransient } from "@/links/_shared/anchored-card-store";
+import { useSelection } from "@/links/_shared/anchored-card-store";
 
 /**
  * The Omni-view threads pods from several other panels into a single
@@ -325,15 +325,14 @@ function OmniViewPanel({
 
   // Per-card pin: when a marker is clicked in the editor (or a card jump
   // fires `virgil-card-jumped`), the pin store gains an entry with the
-  // viewport-Y the user clicked. We pass it through to useInTextPositions,
-  // which converts to pod-relative and bakes it into the cascade —
-  // cards AFTER the pinned card pack below it; cards before are
-  // unaffected. Result: the whole deck reflows around the pin instead of
-  // overlapping it.
+  // pod-relative Y the publisher computed at click time. We pass it
+  // through to useInTextPositions, which bakes it into the cascade —
+  // cards AFTER the pinned card pack below it; cards BEFORE pack above
+  // it. Result: the whole deck reflows around the pin without overlap.
   const pinRequest = usePinRequest(side as PinSide);
   const pinned = useMemo(
     () => (pinRequest
-      ? { id: pinRequest.cardId, clickY: pinRequest.clickY }
+      ? { id: pinRequest.cardId, pinTop: pinRequest.pinTop }
       : null),
     [pinRequest],
   );
@@ -341,20 +340,24 @@ function OmniViewPanel({
   const { positions, editorContentHeight, panelScrollRef } =
     useInTextPositions(editor, inTextItems, true, "data-omni-entry-wrapper", pinned);
 
-  // Clear the pin when the transient selection on this side stops
-  // matching the pinned card — pin lifecycle follows transient focus.
-  const transient = useTransient();
+  // Clear the pin when the primary selection stops matching the pinned
+  // card. Pin lifecycle follows `useSelection()` (transient ?? newest
+  // sticky) — not just `useTransient`, because card-body clicks move
+  // the selection from transient → sticky and the pin should survive
+  // that transition. The pin only clears when focus moves to a different
+  // card entirely (different cardId).
+  const selection = useSelection();
   useEffect(() => {
     if (!pinRequest) return;
-    if (!transient) {
+    if (!selection) {
       omniPinStore.clearPin(side as PinSide);
       return;
     }
-    const transientKey = `${transient.kind}:${transient.id}`;
-    if (transientKey !== pinRequest.cardId) {
+    const selectionKey = `${selection.kind}:${selection.id}`;
+    if (selectionKey !== pinRequest.cardId) {
       omniPinStore.clearPin(side as PinSide, pinRequest.cardId);
     }
-  }, [transient, pinRequest, side]);
+  }, [selection, pinRequest, side]);
 
   return (
     <OmniProvider value={{ side }}>
@@ -385,15 +388,13 @@ function OmniViewPanel({
           ))}
         </div>
       )}
-      {/* Anchored region: cards absolute-positioned at Y values relative
-          to this container, matching their paragraph anchors. The min-height
-          matches the editor content height so the panel column extends
-          alongside the document. The hook computes Y via
-          `coords.top - thisRect.top`, scroll-invariant under unified row scroll.
-          When a card is pinned (marker click or card jump), its `top` is
-          overridden with the pod-relative click-Y from `omniPinStore`.
-          Only that one card moves; the rest of the deck stays put. No
-          group transform, no transition, no global offset. */}
+      {/* Anchored region: cards absolute-positioned at the pod's top,
+          translated to their Y via `transform: translateY(...)`. Using
+          `transform` (not `top`) means position changes are composite-
+          only — pin clicks don't invalidate layout, so the cascade
+          reflow paints in one frame even with many cards.
+          The min-height matches the editor content height so the panel
+          column extends alongside the document. */}
       <div
         ref={panelScrollRef}
         className="relative"
@@ -408,7 +409,11 @@ function OmniViewPanel({
               key={item.id}
               data-omni-entry-wrapper={item.id}
               className="absolute left-2 right-2"
-              style={{ top, zIndex: isPinned ? 10 : undefined }}
+              style={{
+                top: 0,
+                transform: `translateY(${top}px)`,
+                zIndex: isPinned ? 10 : undefined,
+              }}
             >
               {item.content}
             </div>

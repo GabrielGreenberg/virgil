@@ -3,21 +3,21 @@
 /**
  * Module-scope store for per-card pin requests in the omni view.
  *
- * A "pin" is a one-shot "place this card at this viewport-Y" request.
+ * A "pin" is a one-shot "place this card at this pod-relative Y" request.
  * Marker clicks in the editor and the `virgil-card-jumped` event (from
  * card-body click jumps) both publish pin requests; `OmniViewPanel`
- * subscribes and overrides the card's natural `top` style for the pinned
+ * subscribes and overrides the card's natural transform for the pinned
  * card only. Other cards keep their `useInTextPositions`-computed natural
  * Y. No group transform, no global offset, no compensation listener.
  *
- * Architecture rationale: the previous design used a per-side
- * `cardsOffset` (translateY on a wrapper around ALL cards), which meant
- * shifting one card meant shifting the entire deck. It also raced against
- * `useInTextPositions`' rAF-driven recompute pipeline — measurements
- * taken in the click handler were stale by the time the offset committed.
- * The fix: position cards individually. Pinning the clicked card is a
- * single per-card `top` override that the renderer applies directly. No
- * measurement, no race.
+ * Pod-relative coordinates: the pin's Y is in the same space that
+ * `useInTextPositions` produces (relative to the panel pod's top). The
+ * viewport → pod conversion happens once at the publish site, against
+ * the pod rect currently on screen. The cascade then reads a pre-baked
+ * number and never re-derives from a live `podRect.top` — so pin changes
+ * don't trigger DOM measurement, and the pin is scroll-invariant under
+ * the unified row scroll (the pod moves with the row, so pod-relative
+ * stays valid as the user scrolls naturally).
  *
  * Single pin per side: marker clicks track the transient selection, and
  * there's at most one transient at a time. When the transient changes,
@@ -33,8 +33,10 @@ export type PinSide = "left" | "right";
 export interface PinRequest {
   /** `data-omni-entry-wrapper` key — e.g. "citation:abc123". */
   cardId: string;
-  /** Viewport Y the user clicked (or wants the card pinned at). */
-  clickY: number;
+  /** Pod-relative Y (px) the card should be pinned at. Computed by the
+   *  publisher as `viewportY - podRect.top` against the pod that hosts
+   *  the absolute card wrappers. Scroll-invariant under unified scroll. */
+  pinTop: number;
   /** Monotonically increasing version, so an identical-payload re-request
    *  still triggers an update via `useSyncExternalStore`. */
   version: number;
@@ -53,11 +55,11 @@ export const omniPinStore = {
     return _pins[side];
   },
 
-  /** Pin a card at the given viewport-Y. Replaces any existing pin on
-   *  this side. */
-  requestPin(side: PinSide, cardId: string, clickY: number): void {
+  /** Pin a card at the given pod-relative Y. Replaces any existing pin
+   *  on this side. */
+  requestPin(side: PinSide, cardId: string, pinTop: number): void {
     const cur = _pins[side];
-    if (cur && cur.cardId === cardId && cur.clickY === clickY) {
+    if (cur && cur.cardId === cardId && cur.pinTop === pinTop) {
       // Same payload — still bump version so any subscriber treats it as
       // a fresh request (e.g. user re-clicked the same marker after
       // scroll, intending to re-pin at the original Y).
@@ -65,7 +67,7 @@ export const omniPinStore = {
       emit();
       return;
     }
-    _pins[side] = { cardId, clickY, version: ++_nextVersion };
+    _pins[side] = { cardId, pinTop, version: ++_nextVersion };
     emit();
   },
 

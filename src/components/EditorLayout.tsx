@@ -1152,15 +1152,15 @@ export default function EditorLayout() {
   const [selectedBibKey, setSelectedBibKey] = useState<string | null>(null);
   // Marker-click → omni card alignment. The user clicked at viewport Y
   // `clickY` and we want the corresponding omni card to lock there.
-  // We publish a pin request to `omniPinStore`; the OmniViewPanel for
-  // the relevant side reads it via `usePinRequest` and overrides that
-  // one card's `top` style. No global offset, no transform, no
-  // measurement race — the pin is in pod-relative coordinates and the
-  // panel computes the conversion inside a useLayoutEffect.
+  // Conversion to pod-relative happens here, at the publish site: the
+  // wrapper's `.parentElement` is the pod that hosts all absolute card
+  // wrappers, and `clickY - podRect.top` is the pod-relative Y that the
+  // OmniViewPanel renders directly (no further conversion in the hook).
+  // Scroll-invariant by construction — the pod scrolls with the row, so
+  // pod-relative stays valid through any subsequent natural scroll.
   //
-  // The wrapper lookup just resolves which side the card is on. If the
-  // panel isn't yet mounted (omni column was activated this render), we
-  // retry one frame later — that's enough for `openForCard`'s
+  // If the panel isn't yet mounted (omni column was activated this
+  // render), retry one frame later — that's enough for `openForCard`'s
   // setActiveLeft/setActiveRight to commit and the OmniViewPanel to
   // render its first frame.
   const alignOmniCardWithClick = useCallback(
@@ -1169,17 +1169,19 @@ export default function EditorLayout() {
       const apply = () => {
         const wrapper = document.querySelector(
           `[data-omni-entry-wrapper="${cardId}"]`,
-        );
+        ) as HTMLElement | null;
         const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
         const side = sideEl?.dataset.panelColumnSide;
-        if (side !== "left" && side !== "right") {
+        const pod = wrapper?.parentElement as HTMLElement | null;
+        if ((side !== "left" && side !== "right") || !pod) {
           if (!tried) {
             tried = true;
             requestAnimationFrame(apply);
           }
           return;
         }
-        omniPinStore.requestPin(side, cardId, clickY);
+        const pinTop = clickY - pod.getBoundingClientRect().top;
+        omniPinStore.requestPin(side, cardId, pinTop);
       };
       apply();
     },
@@ -1188,28 +1190,25 @@ export default function EditorLayout() {
 
   // Card-body click → editor scroll alignment. `jumpToLink`/`jumpToCard`
   // (links.ts) scroll the row so the in-text anchor lands at the card's
-  // pre-jump viewport Y (`clickY`). The card itself moves with the row
-  // scroll, ending up at `clickY - scrollDelta`. To keep the card visually
-  // stable at `clickY`, we publish a pin request — same mechanism as
-  // marker clicks. One rAF delay so the row scroll has finished and
-  // `podTop` reflects the post-scroll position when OmniViewPanel
-  // converts clickY → pod-relative.
+  // pre-jump viewport Y. The publisher there computes `pinTop` from the
+  // pre-scroll pod rect (pod-relative is scroll-invariant under unified
+  // scroll, so the pre-scroll value is already correct post-scroll) and
+  // hands it to us as `detail.pinTop`. We just route to the right side
+  // and publish — no rAF, no post-scroll measurement.
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail as
-        | { omniKey?: string; clickY?: number }
+        | { omniKey?: string; pinTop?: number }
         | undefined;
-      if (!detail?.omniKey || typeof detail.clickY !== "number") return;
-      const { omniKey, clickY } = detail;
-      requestAnimationFrame(() => {
-        const wrapper = document.querySelector(
-          `[data-omni-entry-wrapper="${omniKey}"]`,
-        );
-        const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
-        const side = sideEl?.dataset.panelColumnSide;
-        if (side !== "left" && side !== "right") return;
-        omniPinStore.requestPin(side, omniKey, clickY);
-      });
+      if (!detail?.omniKey || typeof detail.pinTop !== "number") return;
+      const { omniKey, pinTop } = detail;
+      const wrapper = document.querySelector(
+        `[data-omni-entry-wrapper="${omniKey}"]`,
+      );
+      const sideEl = wrapper?.closest("[data-panel-column-side]") as HTMLElement | null;
+      const side = sideEl?.dataset.panelColumnSide;
+      if (side !== "left" && side !== "right") return;
+      omniPinStore.requestPin(side, omniKey, pinTop);
     };
     window.addEventListener("virgil-card-jumped", handler);
     return () => window.removeEventListener("virgil-card-jumped", handler);

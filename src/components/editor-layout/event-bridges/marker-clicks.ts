@@ -88,10 +88,10 @@ export function useMarkerClickBridges(deps: {
       rect: DOMRect;
     } | null>
   >;
-  /** Pulls the omni card with the given id to align with `clickY` by
-   *  shifting the gutter's cards as a group. No document scroll. The
-   *  source element (the clicked citation marker, etc.) is tracked so
-   *  the offset can clear once it scrolls out of view. */
+  /** Pins the omni card with the given id at `clickY` (viewport-Y).
+   *  Converts to pod-relative internally and publishes to omniPinStore;
+   *  OmniViewPanel reads the pin and overrides that one card's transform.
+   *  No document scroll. */
   alignOmniCardWithClick: (cardId: string, clickY: number, sourceEl: HTMLElement | null) => void;
 }) {
   const {
@@ -148,7 +148,9 @@ export function useMarkerClickBridges(deps: {
         const sourceEl = document.querySelector(
           `[data-type="archive-marker"][data-archive-id="${detail.archiveId}"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF later if the panel
+        // column hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`archive:${detail.archiveId}`, clickY, sourceEl);
       }
     };
@@ -190,7 +192,9 @@ export function useMarkerClickBridges(deps: {
         const sourceEl = document.querySelector(
           `.footnote-marker[data-footnote-id="${detail.footnoteId}"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF later if the panel
+        // column hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`footnote:${detail.footnoteId}`, clickY, sourceEl);
       }
     };
@@ -348,7 +352,9 @@ export function useMarkerClickBridges(deps: {
         const sourceEl = document.querySelector(
           `.linked-anchor[data-link-id="${id}"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF later if the panel
+        // column hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(omniKey, clickY, sourceEl);
       }
     };

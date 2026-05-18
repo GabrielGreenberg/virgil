@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from "react";
 import type { Editor } from "@tiptap/react";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { getLinkedParagraphIds } from "@/links/links";
@@ -74,37 +74,120 @@ const DEFAULT_ENTRY_HEIGHT = 60; // fallback before entries are rendered
 
 const DEFAULT_ENTRY = (id: string) => `[data-link-card$=":${id}"]`;
 
+/** Optional pin: force one card's `top` to a fixed pod-relative Y. Cards
+ *  AFTER the pinned card in source-anchor-order cascade off the pinned
+ *  card's bottom; cards BEFORE cascade upward off the pinned card's top.
+ *  Net effect: the deck reflows around the pin without overlap. */
+export interface Pinned {
+  id: string;
+  /** Pod-relative Y (px). Computed at publish time against the pod that
+   *  hosts the absolute card wrappers — same coordinate space as the
+   *  natural positions this hook returns. */
+  pinTop: number;
+}
+
+/** Per-item measurement consumed by the pure cascade resolver. */
+interface NaturalEntry {
+  /** Pod-relative top from `coordsAtPos(pos).top - podRect.top`,
+   *  clamped to 0 (negative values appear when an unanchored block sits
+   *  above the pod). */
+  naturalTop: number;
+  /** Measured card height, or `DEFAULT_ENTRY_HEIGHT` if not yet rendered. */
+  height: number;
+}
+
 /**
- * Computes Y positions for panel items so they align with their
- * corresponding paragraphs in the TipTap editor.
+ * Pure-JS cascade resolver. Given measured natural positions + heights
+ * and the current item list, returns a Map of final pod-relative Y
+ * values. If `pinned` is set, the pinned card's position is forced to
+ * `pinTop` and the cascade reflows in both directions to avoid overlap.
  *
- * Under the unified row scroll (A.1+A.2), the panel column and the editor
- * column share the same scroll source — both move together. So positions
- * are computed relative to the panel pod's own bounding rect:
- * `coords.top - podRect.top`. This is scroll-invariant: as the row scrolls,
- * both `coords.top` (paragraph) and `podRect.top` (omni pod) shift by the
- * same amount.
+ * This is the hot path on every pin change. NO DOM reads — operates
+ * entirely on numbers measured separately.
+ */
+function resolveCascade(
+  natural: Map<string, NaturalEntry>,
+  items: ReadonlyArray<PositionItem>,
+  pinned: Pinned | null,
+): Map<string, number> {
+  if (items.length === 0 || natural.size === 0) return new Map();
+
+  // Build sorted list by natural top (so cascade-after is well-defined).
+  // Skip items we haven't measured yet — they're not renderable.
+  type Row = { id: string; top: number; height: number };
+  const rows: Row[] = [];
+  for (const it of items) {
+    const nat = natural.get(it.id);
+    if (!nat) continue;
+    rows.push({ id: it.id, top: nat.naturalTop, height: nat.height });
+  }
+  rows.sort((a, b) => a.top - b.top);
+
+  // Forward pass: push cards down to avoid overlap with their predecessor.
+  // Apply the pin override mid-loop so cards AFTER the pinned one pack
+  // below the pinned card's actual top, not below its natural top.
+  for (let i = 0; i < rows.length; i++) {
+    if (i > 0) {
+      const prev = rows[i - 1];
+      const minTop = prev.top + prev.height + MIN_GAP;
+      if (rows[i].top < minTop) rows[i].top = minTop;
+    }
+    if (pinned && rows[i].id === pinned.id) {
+      rows[i].top = pinned.pinTop;
+    }
+  }
+
+  // Backward pass: when pinning moved the pinned card UP, cards anchored
+  // BEFORE it can now overlap. Pull them upward (in source-anchor order,
+  // bottom-up) until they clear. With `transform: translateY` positioning
+  // this is essentially free; the deck stays symmetric around the pin
+  // instead of overlapping on the upward side.
+  if (pinned) {
+    for (let i = rows.length - 1; i > 0; i--) {
+      const cur = rows[i];
+      const prev = rows[i - 1];
+      const maxPrevTop = cur.top - prev.height - MIN_GAP;
+      if (prev.top > maxPrevTop) prev.top = maxPrevTop;
+    }
+  }
+
+  const map = new Map<string, number>();
+  for (const r of rows) map.set(r.id, r.top);
+  return map;
+}
+
+/**
+ * Computes pod-relative Y positions for panel items so they align with
+ * their corresponding paragraphs in the TipTap editor.
+ *
+ * Architecture: measurement and resolution are split.
+ *
+ *   1. **Measurement** (DOM-touching, slow): `coordsAtPos` per item and
+ *      `getBoundingClientRect` per card. Writes a ref and bumps a
+ *      version counter. Runs on editor content change, card-size change
+ *      (ResizeObserver), window resize, or items-list change.
+ *
+ *   2. **Resolution** (pure JS, fast): cascade + optional pin override.
+ *      Runs in `useMemo` on every render of the consumer. Pin changes
+ *      flow through here in O(N) JS with no layout flush — that's the
+ *      whole point: clicking a marker should not measure the DOM.
+ *
+ * Under the unified row scroll, the panel column and the editor column
+ * share the same scroll source. Positions are computed pod-relative
+ * (`coords.top - podRect.top`), which is scroll-invariant: both rects
+ * shift by the same amount on natural scroll, so the cached map stays
+ * correct without recompute.
  *
  * Returns:
- *   - `positions`: Map<id, topPx> in pod-relative coordinates (use with
- *     `position: absolute; top: ${px}` inside a `position: relative`
- *     container of height `editorContentHeight`).
- *   - `editorContentHeight`: the editor view's natural DOM height,
- *     used to size the positioned region so the panel column extends
- *     through the document.
+ *   - `positions`: Map<id, topPx> in pod-relative coordinates. Render
+ *     each card with `transform: translateY(${px}px)` inside a
+ *     `position: relative` container of height `editorContentHeight`.
+ *   - `editorContentHeight`: the editor view's natural DOM height, used
+ *     to size the positioned region so the panel column extends through
+ *     the document.
  *   - `panelScrollRef`: ref for the panel pod (the `position: relative`
  *     container hosting absolute children).
  */
-/** Optional pin: force one card's `top` to a fixed viewport-Y (converted
- *  to pod-relative inside compute). Cards AFTER the pinned card in
- *  source-anchor-order cascade off the pinned card's bottom, so the deck
- *  reflows to make room. Cards BEFORE are unaffected. */
-export interface Pinned {
-  id: string;
-  /** Viewport Y (in px). */
-  clickY: number;
-}
-
 export function useInTextPositions(
   editor: Editor | null,
   items: PositionItem[],
@@ -112,134 +195,90 @@ export function useInTextPositions(
   entry: string | ((id: string) => string) = DEFAULT_ENTRY,
   pinned: Pinned | null = null,
 ) {
-  const [positions, setPositions] = useState<Map<string, number>>(new Map());
   const [editorContentHeight, setEditorContentHeight] = useState(0);
   const panelScrollRef = useRef<HTMLDivElement>(null);
+  const naturalRef = useRef<Map<string, NaturalEntry>>(new Map());
+  const [measureVersion, setMeasureVersion] = useState(0);
   const computeRafRef = useRef(0);
 
-  // Delay activation to avoid state updates during initial mount
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    if (enabled) {
-      const t = setTimeout(() => setReady(true), 100);
-      return () => clearTimeout(t);
-    }
-    setReady(false);
-  }, [enabled]);
-
-  const compute = useCallback(() => {
-    if (!editor || !enabled || !ready || items.length === 0) {
-      setPositions(new Map());
+  const measure = useCallback(() => {
+    if (!editor || !enabled || items.length === 0) {
+      if (naturalRef.current.size > 0) {
+        naturalRef.current = new Map();
+        setMeasureVersion((v) => v + 1);
+      }
       setEditorContentHeight(0);
       return;
     }
 
     const panelEl = panelScrollRef.current;
-    if (!panelEl) {
-      setPositions(new Map());
-      return;
-    }
+    if (!panelEl) return;
 
     const podRect = panelEl.getBoundingClientRect();
     const editorDom = editor.view.dom as HTMLElement;
     const nextContentHeight = editorDom.scrollHeight;
-    setEditorContentHeight(prev =>
+    setEditorContentHeight((prev) =>
       prev === nextContentHeight ? prev : nextContentHeight,
     );
 
-    // Compute positions using coordsAtPos for all items.
-    // ProseMirror renders all nodes to the DOM (no virtualization),
-    // so coordsAtPos works for the entire document.
-    const raw: Array<{ id: string; top: number }> = [];
+    const next = new Map<string, NaturalEntry>();
     for (const item of items) {
       const pos = Math.min(item.pos, editor.state.doc.content.size);
+      let naturalTop: number;
       try {
         const coords = editor.view.coordsAtPos(pos);
-        // Pod-relative Y (scroll-invariant).
-        const top = coords.top - podRect.top;
-        raw.push({ id: item.id, top });
+        naturalTop = coords.top - podRect.top;
       } catch {
-        // Skip items with invalid positions
+        continue; // skip items with invalid positions
       }
-    }
+      // Clamp negative tops. When an unanchored block (e.g. in
+      // OmniViewPanel) sits above panelScrollRef, podRect.top is pushed
+      // down past nodes near the top of the doc (notably titleField).
+      // Without clamping, those cards get a negative `top` and render
+      // upward into the unanchored block — visual overlap.
+      if (naturalTop < 0) naturalTop = 0;
 
-    raw.sort((a, b) => a.top - b.top);
-
-    // Clamp negative tops to 0. When an unanchored block (e.g. in
-    // OmniViewPanel) sits above panelScrollRef, podRect.top is pushed
-    // down past nodes near the top of the doc (notably titleField).
-    // Without clamping, those cards get a negative `top` and render
-    // upward into the unanchored block — visual overlap. The cascade
-    // below then spaces multiple clamped cards apart.
-    for (const r of raw) if (r.top < 0) r.top = 0;
-
-    // Measure rendered entry heights from the DOM for accurate overlap resolution
-    const entryHeights = new Map<string, number>();
-    for (const r of raw) {
+      // Measure rendered card height. Cards not yet rendered fall back
+      // to DEFAULT_ENTRY_HEIGHT; their resize observer (below) will
+      // re-trigger measure once they paint.
       const selector =
-        typeof entry === "string" ? `[${entry}="${r.id}"]` : entry(r.id);
+        typeof entry === "string" ? `[${entry}="${item.id}"]` : entry(item.id);
       const el = panelEl.querySelector(selector) as HTMLElement | null;
-      if (el) {
-        entryHeights.set(r.id, el.getBoundingClientRect().height);
-      }
+      const height = el ? el.getBoundingClientRect().height : DEFAULT_ENTRY_HEIGHT;
+
+      next.set(item.id, { naturalTop, height });
     }
 
-    // Resolve overlaps — push items down so they don't overlap.
-    // Pin: when we hit the pinned card, force its top to the pin Y AFTER
-    // its own cascade-from-above (so cards BEFORE pinned are not pushed
-    // up) but BEFORE the next iteration (so cards AFTER pinned see pin
-    // Y + heightOfPinned as their minTop and pack below the pin). Net
-    // effect: the deck reflows around the pin instead of overlapping.
-    const pinTop = pinned ? pinned.clickY - podRect.top : null;
-    for (let i = 0; i < raw.length; i++) {
-      if (i > 0) {
-        const prevHeight = entryHeights.get(raw[i - 1].id) || DEFAULT_ENTRY_HEIGHT;
-        const minTop = raw[i - 1].top + prevHeight + MIN_GAP;
-        if (raw[i].top < minTop) raw[i].top = minTop;
-      }
-      if (pinned && pinTop !== null && raw[i].id === pinned.id) {
-        raw[i].top = pinTop;
-      }
-    }
+    naturalRef.current = next;
+    setMeasureVersion((v) => v + 1);
+  }, [editor, items, enabled, entry]);
 
-    const map = new Map<string, number>();
-    for (const r of raw) {
-      map.set(r.id, r.top);
-    }
-    setPositions(map);
-  }, [editor, items, enabled, ready, entry, pinned]);
-
-  // Recompute on editor changes, viewport resize, and editor content
-  // height changes. Positions are scroll-invariant (formula uses
-  // viewport-relative coords on both sides, so scroll cancels out).
-  //
-  // useLayoutEffect (not useEffect): when `pinned` changes, `compute`'s
-  // identity changes (it's in compute's useCallback deps), so this
-  // effect re-runs. With useLayoutEffect, compute runs synchronously
-  // after the render commit, before paint — setPositions schedules a
-  // second render+commit, all before paint, so the user never sees a
-  // frame of stale positions. With useEffect (passive), the user would
-  // see one frame of old positions before compute catches up.
+  // Trigger measurement on editor updates, viewport resize, editor
+  // content-height changes, and on the next paint after items change.
+  // useLayoutEffect so the first measure runs synchronously after commit;
+  // setMeasureVersion schedules a re-render that picks up the new natural
+  // data via the useMemo below.
   useLayoutEffect(() => {
     if (!enabled) {
-      setPositions(new Map());
+      if (naturalRef.current.size > 0) {
+        naturalRef.current = new Map();
+        setMeasureVersion((v) => v + 1);
+      }
       return;
     }
 
-    compute();
+    measure();
 
     if (!editor) return;
 
     const onUpdate = () => {
       cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(compute);
+      computeRafRef.current = requestAnimationFrame(measure);
     };
 
     editor.on("update", onUpdate);
     window.addEventListener("resize", onUpdate);
 
-    // Watch editor content height — paragraphs added/removed change the
-    // layout in ways `update` may not catch (e.g. async images loading).
     let editorObs: ResizeObserver | null = null;
     try {
       const editorDom = editor.view?.dom as HTMLElement | undefined;
@@ -257,24 +296,32 @@ export function useInTextPositions(
       window.removeEventListener("resize", onUpdate);
       editorObs?.disconnect();
     };
-  }, [editor, compute, enabled]);
+  }, [editor, measure, enabled]);
 
-  // Observe card size changes (e.g. bibliography pod expanding) so we can
-  // re-resolve overlaps. Depends on `positions` because cards only render
-  // once positions has entries for them.
+  // Observe card-size changes (e.g. bibliography pod expanding) so the
+  // cascade reflows correctly. Dep on `measureVersion` so we re-observe
+  // whenever cards mount/unmount.
   useEffect(() => {
     if (!enabled) return;
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof ResizeObserver === "undefined") return;
     const onResize = () => {
       cancelAnimationFrame(computeRafRef.current);
-      computeRafRef.current = requestAnimationFrame(compute);
+      computeRafRef.current = requestAnimationFrame(measure);
     };
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : "data-link-card";
     panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => obs.observe(el));
     return () => obs.disconnect();
-  }, [positions, enabled, entry, compute]);
+  }, [measureVersion, enabled, entry, measure]);
+
+  // Pure-JS resolution. On a pin change, this is the ONLY thing that
+  // re-runs — no DOM reads, no layout flush, no second commit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const positions = useMemo(
+    () => resolveCascade(naturalRef.current, items, pinned),
+    [measureVersion, items, pinned],
+  );
 
   return { positions, editorContentHeight, panelScrollRef };
 }

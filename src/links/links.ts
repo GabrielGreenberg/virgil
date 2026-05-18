@@ -500,19 +500,30 @@ export function jumpToLink(
     const resolved = resolveLink(editor, link);
     if (resolved?.domEl) {
       if (sourceY != null) {
-        alignEntryToY(resolved.domEl, sourceY);
-        // If sourceEl is inside an omni-entry wrapper (citations / footnotes
-        // shown in OmniView), keep the card visually fixed at sourceY by
-        // bumping the omni cards offset to cancel the natural shift caused
-        // by the scroll. Mirrors the jumpToCard path. EditorLayout listens.
+        // Compute the pin's pod-relative Y from the marker's pre-scroll
+        // position (NOT the card's). After alignEntryToY scrolls the row
+        // by `markerY - sourceY`, the pinned card's viewport Y will land
+        // at sourceY iff its pod-relative top equals
+        // `markerY - podTop` (both measured pre-scroll). Derivation:
+        //   newPodTop = podTop - scrollDelta = podTop - (markerY - sourceY)
+        //   card viewportY = newPodTop + pinTop
+        //                  = podTop - markerY + sourceY + markerY - podTop
+        //                  = sourceY  ✓
         const omniWrapper = sourceEl?.closest(
           "[data-omni-entry-wrapper]",
         ) as HTMLElement | null;
+        const pod = omniWrapper?.parentElement as HTMLElement | null;
         const omniKey = omniWrapper?.dataset.omniEntryWrapper;
-        if (omniKey) {
+        const pinTop =
+          omniKey && pod
+            ? resolved.domEl.getBoundingClientRect().top -
+              pod.getBoundingClientRect().top
+            : null;
+        alignEntryToY(resolved.domEl, sourceY);
+        if (omniKey && pinTop !== null) {
           window.dispatchEvent(
             new CustomEvent("virgil-card-jumped", {
-              detail: { omniKey, clickY: sourceY },
+              detail: { omniKey, pinTop },
             }),
           );
         }
@@ -548,10 +559,11 @@ export function jumpToLink(
  *  marker is centered in the viewport (legacy behavior).
  *
  *  When `sourceEl` is an omni-entry wrapper (`data-omni-entry-wrapper`),
- *  fires a `virgil-card-jumped` event so EditorLayout can compensate the
- *  omni cards offset and keep the card visually fixed during the scroll.
- *  Without that compensation the card's natural Y would shift along with
- *  the text and slide away from the click point. */
+ *  computes the card's pod-relative Y BEFORE the row scrolls and fires
+ *  a `virgil-card-jumped` event with it; EditorLayout pins the card at
+ *  that pod-Y so it stays visually fixed during the scroll. Pod-relative
+ *  is scroll-invariant under unified scroll, so the pre-scroll value is
+ *  the post-scroll value — no rAF needed. */
 export function jumpToCard(
   editor: Editor,
   card: CardWithLinks,
@@ -563,19 +575,26 @@ export function jumpToCard(
     if (resolved?.domEl) {
       if (sourceEl) {
         const preY = sourceEl.getBoundingClientRect().top;
-        alignEntryToY(resolved.domEl, preY);
-        // sourceEl is the [data-card] element; the omni wrapper (if any)
-        // is an ancestor. Native-panel cards have no omni wrapper and skip
-        // the compensation — their cards live in the panel's own scroll
-        // container so the editor scroll doesn't drag them off the click.
+        // Pin pod-rel = marker's pre-scroll pod-relative Y. After the
+        // row scrolls (by `markerY - preY`), the pod moves with it, and
+        // pin Y = `markerY_pre - podTop_pre` lands the card at preY
+        // viewport-Y — the card's original click position. See the same
+        // derivation in jumpToLink above.
         const omniWrapper = sourceEl.closest(
           "[data-omni-entry-wrapper]",
         ) as HTMLElement | null;
+        const pod = omniWrapper?.parentElement as HTMLElement | null;
         const omniKey = omniWrapper?.dataset.omniEntryWrapper;
-        if (omniKey) {
+        const pinTop =
+          omniKey && pod
+            ? resolved.domEl.getBoundingClientRect().top -
+              pod.getBoundingClientRect().top
+            : null;
+        alignEntryToY(resolved.domEl, preY);
+        if (omniKey && pinTop !== null) {
           window.dispatchEvent(
             new CustomEvent("virgil-card-jumped", {
-              detail: { omniKey, clickY: preY },
+              detail: { omniKey, pinTop },
             }),
           );
         }

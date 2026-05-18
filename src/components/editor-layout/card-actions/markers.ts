@@ -94,7 +94,9 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="quote:${groupId}:"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF if the panel column
+        // hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`quotation:${groupId}`, clickY, sourceEl);
       }
     },
@@ -141,7 +143,9 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="note:${noteId}:"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF if the panel column
+        // hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`note:${noteId}`, clickY, sourceEl);
       }
     },
@@ -193,7 +197,9 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="cut:${cardId}:"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF if the panel column
+        // hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`${kind}:${cardId}`, clickY, sourceEl);
       }
     },
@@ -229,7 +235,9 @@ export function useMarkerActions(deps: {
         const sourceEl = document.querySelector(
           `[data-marginalia-marker^="todo:${todoId}:"]`,
         ) as HTMLElement | null;
-        // alignOmniCardWithClick defers internally with double rAF.
+        // alignOmniCardWithClick converts clickY → pod-relative and
+        // publishes a pin request. Retries one rAF if the panel column
+        // hasn't rendered yet (cold-mount case).
         alignOmniCardWithClick(`todo:${todoId}`, clickY, sourceEl);
       }
     },
