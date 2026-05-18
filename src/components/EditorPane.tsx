@@ -921,21 +921,42 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     addCitation: citationsHook.addCitation,
   });
 
-  // Fill `displayText` on every citation node once `bibEntries` load,
-  // so chips render as "Author Year" instead of falling back to the
-  // raw `\cite{...}` command. Lives here (shared layer) so the Reader
-  // — which mounts EditorPane without EditorLayout — inherits it.
+  // Sync every editor citation node with the panel's CitationRef store:
+  //   - displayText follows whatever getDisplayText(command) yields
+  //   - command follows the panel's latest CitationRef.command, so that
+  //     changing the cite-type in the citation card (e.g. \citet → \citep)
+  //     refreshes the inline citation in the editor body
+  // Runs whenever bibEntries, citations, or the display-formatter change.
+  // Lives here (shared layer) so the Reader — which mounts EditorPane
+  // without EditorLayout — inherits it.
   useEffect(() => {
-    if (!editor || citationsHook.bibEntries.length === 0) return;
+    if (!editor) return;
     const cits = innerRef.current?.getCitations() ?? [];
+    if (cits.length === 0) return;
+    const panelById = new Map(
+      citationsHook.citations.map((c) => [c.id, c]),
+    );
     for (const c of cits) {
-      const display = citationsHook.getDisplayText(c.command);
-      if (display !== c.displayText) {
-        innerRef.current?.updateCitationDisplay(c.citationId, display);
+      const panelRef = panelById.get(c.citationId);
+      const nextCommand = panelRef?.command ?? c.command;
+      const nextDisplay = citationsHook.getDisplayText(nextCommand);
+      const commandChanged = nextCommand !== c.command;
+      const displayChanged = nextDisplay !== c.displayText;
+      if (commandChanged || displayChanged) {
+        innerRef.current?.updateCitationDisplay(
+          c.citationId,
+          nextDisplay,
+          commandChanged ? nextCommand : undefined,
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [citationsHook.bibEntries, editor, citationsHook.getDisplayText]);
+  }, [
+    citationsHook.bibEntries,
+    citationsHook.citations,
+    citationsHook.getDisplayText,
+    editor,
+  ]);
 
   // Sync citation nodes from the editor into `citationsHook.citations`
   // (the sidecar-backed CitationRef list the Citations / Bibliography

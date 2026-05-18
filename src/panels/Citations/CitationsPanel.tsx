@@ -9,7 +9,6 @@ import {
   clearStaleHover,
 } from "@/components/panel-primitives";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import CitationBuilder from "@/components/CitationBuilder";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { CitationCard } from "./CitationCard";
@@ -50,6 +49,7 @@ interface CitationsPanelProps {
   ) => "none" | "pending" | "complete";
   onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
   onUpdateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  onAddBibEntry: (entry: BibEntry) => void;
   aiRequests?: AiRequest[];
   onUpdateAiRequestText?: (id: string, text: string) => void;
   onDeleteAiRequest?: (id: string) => void;
@@ -95,6 +95,7 @@ function CitationsPanel({
   getReviewStatus,
   onUpdateBibEntry,
   onUpdateBibKeyAndType,
+  onAddBibEntry,
   aiRequests,
   onUpdateAiRequestText,
   onDeleteAiRequest,
@@ -188,6 +189,7 @@ function CitationsPanel({
     bibPackage,
     getDisplayText,
     onUpdateCitation,
+    onAddBibEntry,
     getFormattedBib,
     getAnnotation,
     setAnnotation,
@@ -197,6 +199,41 @@ function CitationsPanel({
     onUpdateBibEntry,
     onUpdateBibKeyAndType,
   };
+
+  const DRAFT_ID = "__virgil_draft_citation__";
+  const draftCitation: CitationRef | null = useMemo(() => {
+    if (pendingCreate === null) return null;
+    return {
+      id: DRAFT_ID,
+      command: pendingCreate.includes("{") ? pendingCreate : "",
+      keys: [],
+      createdAt: new Date().toISOString(),
+      unanchored: pendingCreateMode === "unanchored",
+    };
+  }, [pendingCreate, pendingCreateMode]);
+
+  /** When the draft serialises to its first valid command, promote it to
+   *  a real citation. Subsequent updates fall through harmlessly because
+   *  pendingCreate is cleared by then. */
+  const handleDraftUpdate = useCallback(
+    (id: string, command: string) => {
+      if (id !== DRAFT_ID) return;
+      if (!command) return;
+      const newId = onCreateCitation(command);
+      if (pendingCreateMode === "anchored") {
+        const display = getDisplayText(command);
+        onInsertCitation(command, newId, display);
+      }
+      onClearPendingCreate();
+    },
+    [
+      onCreateCitation,
+      pendingCreateMode,
+      getDisplayText,
+      onInsertCitation,
+      onClearPendingCreate,
+    ],
+  );
 
   return (
     <CardListPanel
@@ -245,21 +282,21 @@ function CitationsPanel({
         </ItemMenu>
       }
       panelExtras={
-        pendingCreate !== null ? (
+        draftCitation ? (
           <div className="mx-2 mt-2">
             <div className="text-xs font-medium text-ink-subtle mb-1">
               New citation
             </div>
-            <CitationBuilder
-              initialCommand={
-                pendingCreate.includes("{") ? pendingCreate : undefined
-              }
-              bibPackage={bibPackage}
-              bibEntries={bibEntries}
-              getDisplayText={getDisplayText}
-              onSave={handleBuilderCreate}
-              onCancel={onClearPendingCreate}
-              saveLabel="Add citation"
+            <CitationCard
+              citation={draftCitation}
+              isSelected
+              isDraft
+              isAnchored={false}
+              {...sharedCardProps}
+              onUpdateCitation={handleDraftUpdate}
+              onSelect={() => {}}
+              onJump={() => {}}
+              onDelete={() => onClearPendingCreate()}
             />
           </div>
         ) : null

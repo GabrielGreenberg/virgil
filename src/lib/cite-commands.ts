@@ -26,7 +26,7 @@ export const MULTI_CITE_NAMES = new Set<string>([
 ]);
 
 // Canonical lowercase command names this app understands. Used for the
-// CitationBuilder dropdowns and to drive command-name → display-format
+// citation card's type dropdown and to drive command-name → display-format
 // dispatch in formatInlineCitation.
 export const KNOWN_CITE_COMMANDS = [
   // natbib

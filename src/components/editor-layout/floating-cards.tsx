@@ -142,6 +142,7 @@ export interface PoppedCardDeps {
   getBibReviewStatus: (bibKey: string, type: "fields" | "notes") => "none" | "pending" | "complete";
   updateBibEntry: (key: string, fields: Record<string, string>) => void;
   updateBibKeyAndType: (oldKey: string, newKey: string, newType: string) => void;
+  addBibEntry: (entry: import("@/lib/types").BibEntry) => void;
 
   // Citations
   updateCitation: (id: string, command: string) => void;
@@ -406,6 +407,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           getReviewStatus={d.getBibReviewStatus}
           onUpdateBibEntry={d.updateBibEntry}
           onUpdateBibKeyAndType={d.updateBibKeyAndType}
+          onAddBibEntry={d.addBibEntry}
           isPoppedOut
         />
       );

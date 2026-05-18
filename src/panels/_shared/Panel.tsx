@@ -38,7 +38,7 @@ export interface PanelProps {
   headerTitleAfter?: ReactNode;
   /** Right-aligned header content (counter, view toggle, …). */
   headerExtras?: ReactNode;
-  /** Content rendered above the scroll body (e.g. CitationBuilder, search input). */
+  /** Content rendered above the scroll body (e.g. draft card, search input). */
   panelExtras?: ReactNode;
   /** "list" applies PANEL.list scroll container. "raw" lets the child own scroll. */
   variant?: "list" | "raw";

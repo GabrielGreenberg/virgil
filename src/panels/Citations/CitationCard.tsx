@@ -1,17 +1,18 @@
 "use client";
 
 import {
-  useState,
+  useCallback,
+  useEffect,
   useMemo,
   useRef,
-  useEffect,
-  useCallback,
+  useState,
 } from "react";
 import type { BibEntry, CitationRef } from "@/lib/types";
 import {
   formatMediumCitationParts,
   parseCiteCommand,
   serializeCiteCommand,
+  type ParsedCiteKey,
 } from "@/lib/bib-parser";
 import {
   PanelCard,
@@ -22,13 +23,54 @@ import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "@/components/FloatingCards";
 import BibEntryCard from "@/components/BibEntryCard";
-import CitationBuilder, {
-  type CitationBuilderHandle,
-} from "@/components/CitationBuilder";
 import { MIME_CITATION } from "@/lib/marginalia";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { CitekeyPicker } from "./CitekeyPicker";
+
+/* ── Command type options per package ─────────────────────────────── */
+
+const NATBIB_TYPES = [
+  { value: "cite", label: "\\cite" },
+  { value: "citep", label: "\\citep" },
+  { value: "citet", label: "\\citet" },
+  { value: "citealt", label: "\\citealt" },
+  { value: "citealp", label: "\\citealp" },
+  { value: "citeauthor", label: "\\citeauthor" },
+  { value: "citeyear", label: "\\citeyear" },
+  { value: "citeyearpar", label: "\\citeyearpar" },
+];
+
+const BIBLATEX_TYPES = [
+  { value: "cite", label: "\\cite" },
+  { value: "autocite", label: "\\autocite" },
+  { value: "textcite", label: "\\textcite" },
+  { value: "parencite", label: "\\parencite" },
+  { value: "footcite", label: "\\footcite" },
+  { value: "smartcite", label: "\\smartcite" },
+  { value: "fullcite", label: "\\fullcite" },
+  { value: "footfullcite", label: "\\footfullcite" },
+  { value: "citeauthor", label: "\\citeauthor" },
+  { value: "citeyear", label: "\\citeyear" },
+  { value: "citetitle", label: "\\citetitle" },
+  { value: "citedate", label: "\\citedate" },
+  { value: "citeurl", label: "\\citeurl" },
+  { value: "nocite", label: "\\nocite" },
+];
+
+/** Biblatex command bases that have a `\xxxs` plural form, so per-key
+ *  postnotes survive serialization. */
+const HAS_PLURAL = new Set([
+  "cite",
+  "textcite",
+  "parencite",
+  "autocite",
+  "footcite",
+  "smartcite",
+]);
+
+/* ── Helpers ──────────────────────────────────────────────────────── */
 
 function lastNameOf(author: string): string {
   const commaParts = author.split(",");
@@ -46,9 +88,76 @@ function firstThreeAuthorLastNames(authorField: string): string {
   const names = authors.slice(0, 3).map(lastNameOf);
   if (authors.length === 1) return names[0];
   if (authors.length === 2) return `${names[0]} and ${names[1]}`;
-  if (authors.length === 3) return `${names[0]}, ${names[1]}, and ${names[2]}`;
+  if (authors.length === 3)
+    return `${names[0]}, ${names[1]}, and ${names[2]}`;
   return `${names[0]}, ${names[1]}, ${names[2]}, et al.`;
 }
+
+function fullAuthorsForRow(authorField: string): string {
+  const authors = authorField
+    .split(" and ")
+    .map((a) => a.trim())
+    .filter(Boolean);
+  if (authors.length === 0) return "";
+  if (authors.length === 1) return authors[0];
+  if (authors.length === 2) return `${authors[0]} and ${authors[1]}`;
+  if (authors.length === 3)
+    return `${authors[0]}, ${authors[1]}, and ${authors[2]}`;
+  return `${authors[0]}, ${authors[1]}, ${authors[2]}, et al.`;
+}
+
+function venueForRow(entry: BibEntry | undefined): string {
+  if (!entry) return "";
+  const f = entry.fields;
+  const journal = f.journal || f.booktitle || f.series || "";
+  const bits: string[] = [];
+  if (journal) bits.push(journal);
+  if (f.volume) bits.push(`vol. ${f.volume}${f.number ? `, no. ${f.number}` : ""}`);
+  else if (f.number) bits.push(`no. ${f.number}`);
+  if (f.pages) bits.push(`pp. ${f.pages}`);
+  if (f.publisher) bits.push(f.publisher);
+  return bits.join(", ");
+}
+
+let _rowIdCounter = 0;
+const nextRowId = () => `row_${++_rowIdCounter}`;
+
+interface UiRow {
+  id: string;
+  key: string;
+  prenote?: string;
+  postnote?: string;
+}
+
+function inferTypeFromBare(command: string): {
+  type: string;
+  starred: boolean;
+  capitalized: boolean;
+} | null {
+  const m = command.match(/^\\([A-Za-z]+)(\*?)$/);
+  if (!m) return null;
+  let name = m[1];
+  const isUpper = name[0] >= "A" && name[0] <= "Z";
+  if (isUpper) name = name[0].toLowerCase() + name.slice(1);
+  return { type: name, starred: m[2] === "*", capitalized: isUpper };
+}
+
+function rowsFromCommand(command: string): UiRow[] {
+  const parsed = parseCiteCommand(command);
+  if (!parsed || parsed.entries.length === 0) return [{ id: nextRowId(), key: "" }];
+  // For natbib, the parser puts pre/post at the top level. Mirror that
+  // onto each row so the UI shows the shared value uniformly.
+  const sharedPre = parsed.entries[0]?.prenote ?? parsed.prenote;
+  const sharedPost = parsed.entries[0]?.postnote ?? parsed.postnote;
+  return parsed.entries.map((e) => ({
+    id: nextRowId(),
+    key: e.key,
+    prenote: e.prenote ?? sharedPre,
+    postnote: e.postnote ?? sharedPost,
+  }));
+}
+
+/* ── Card props ───────────────────────────────────────────────────── */
 
 export interface CitationCardProps {
   citation: CitationRef;
@@ -59,21 +168,27 @@ export interface CitationCardProps {
   onSelect: () => void;
   onJump: (sourceEl: HTMLElement | null) => void;
   onUpdateCitation: (id: string, command: string) => void;
-  getFormattedBib: (entry: BibEntry) => string;
-  getAnnotation: (key: string) => string;
-  setAnnotation: (key: string, text: string) => void;
-  onRequestReview: (
+  /** Add a library-only entry into the paper's references.bib. Used when
+   *  the citekey picker locks onto an entry that doesn't yet exist in the
+   *  local bib. */
+  onAddBibEntry?: (entry: BibEntry) => void;
+  /** Unused in the new layout (the inline BibEntryCard expansion is gone)
+   *  but kept so the panel host can keep passing the callbacks for now. */
+  getFormattedBib?: (entry: BibEntry) => string;
+  getAnnotation?: (key: string) => string;
+  setAnnotation?: (key: string, text: string) => void;
+  onRequestReview?: (
     bibKey: string,
     type: "fields" | "notes",
     requestNotes?: string,
   ) => void;
-  onCancelReview: (bibKey: string, type: "fields" | "notes") => void;
-  getReviewStatus: (
+  onCancelReview?: (bibKey: string, type: "fields" | "notes") => void;
+  getReviewStatus?: (
     bibKey: string,
     type: "fields" | "notes",
   ) => "none" | "pending" | "complete";
-  onUpdateBibEntry: (key: string, fields: Record<string, string>) => void;
-  onUpdateBibKeyAndType: (
+  onUpdateBibEntry?: (key: string, fields: Record<string, string>) => void;
+  onUpdateBibKeyAndType?: (
     oldKey: string,
     newKey: string,
     newType: string,
@@ -85,6 +200,10 @@ export interface CitationCardProps {
   onTogglePopout?: (anchor: DOMRect) => void;
   isPoppedOut?: boolean;
   onDelete?: (id: string) => void;
+  /** True when this card is a placeholder for a not-yet-created citation
+   *  (rendered by the panel's "+ Add citation" flow). Forces expanded
+   *  layout. */
+  isDraft?: boolean;
 }
 
 export function CitationCard({
@@ -96,6 +215,7 @@ export function CitationCard({
   onSelect,
   onJump,
   onUpdateCitation,
+  onAddBibEntry,
   getFormattedBib,
   getAnnotation,
   setAnnotation,
@@ -111,42 +231,14 @@ export function CitationCard({
   onTogglePopout,
   isPoppedOut,
   onDelete,
+  isDraft = false,
 }: CitationCardProps) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
-  const [isDropTarget, setIsDropTarget] = useState(false);
-  const editWrapperRef = useRef<HTMLDivElement>(null);
-  const builderHandleRef = useRef<CitationBuilderHandle>(null);
-
-  // Editable LaTeX command in the footer. Debounced auto-save: each
-  // keystroke schedules an onUpdateCitation; subsequent keystrokes
-  // cancel and reschedule. Done/click-outside flushes any pending save
-  // before closing.
-  const [latexDraft, setLatexDraft] = useState(cit.command);
-  const latexDraftRef = useRef(cit.command);
-  const latexDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latexInputRef = useRef<HTMLInputElement>(null);
-  // Pin the cit.command at edit-open so re-renders triggered by the
-  // auto-save itself don't reset the LaTeX input mid-typing.
-  const editOpenCommandRef = useRef(cit.command);
-  const updateDraft = useCallback((v: string) => {
-    latexDraftRef.current = v;
-    setLatexDraft(v);
-    if (latexDebounceRef.current) clearTimeout(latexDebounceRef.current);
-    latexDebounceRef.current = setTimeout(() => {
-      latexDebounceRef.current = null;
-      if (v) onUpdateCitation(cit.id, v);
-    }, 250);
-  }, [cit.id, onUpdateCitation]);
   const theme = useCardTheme("citation");
   const bodyStyle = usePanelBodyStyle("citation");
   const popped = usePoppedCards();
   const cardKey = popKey("citations", cit.id);
   const ac = useAnchoredCard({ kind: "citation", id: cit.id });
-  // `expanded` controls open/closed (multi-card). `haloed` controls the
-  // single-card focus styling on PanelCard. They diverge when a card is
-  // sticky but not the primary — open, no halo.
-  const isExpanded = ac.expanded || isSelected;
+  const isExpanded = isDraft || ac.expanded || isSelected;
   const isHaloed = ac.selected || isSelected;
   const compressed = !isExpanded && !isPoppedOut;
 
@@ -154,6 +246,186 @@ export function CitationCard({
     () => new Map(bibEntries.map((e) => [e.key, e])),
     [bibEntries],
   );
+
+  /* ── Local UI state synced from cit.command ──────────────────────── */
+
+  const [rows, setRows] = useState<UiRow[]>(() => rowsFromCommand(cit.command));
+  const initialParsed = useMemo(
+    () => parseCiteCommand(cit.command),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const initialBare = useMemo(
+    () => (initialParsed ? null : inferTypeFromBare(cit.command)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [type, setType] = useState(
+    initialParsed?.type || initialBare?.type || "cite",
+  );
+  const [starred, setStarred] = useState(
+    initialParsed?.starred ?? initialBare?.starred ?? false,
+  );
+  const [capitalized, setCapitalized] = useState(
+    initialParsed?.capitalized ?? initialBare?.capitalized ?? false,
+  );
+
+  /** Track the last command we wrote so we don't re-sync on our own
+   *  writes (the panel echoes them back through cit.command). */
+  const lastWrittenRef = useRef(cit.command);
+
+  useEffect(() => {
+    if (cit.command === lastWrittenRef.current) return;
+    const fresh = parseCiteCommand(cit.command);
+    setRows(rowsFromCommand(cit.command));
+    setType(fresh?.type || "cite");
+    setStarred(fresh?.starred ?? false);
+    setCapitalized(fresh?.capitalized ?? false);
+    lastWrittenRef.current = cit.command;
+  }, [cit.command]);
+
+  /** Serialize and emit. If validRows is empty, emit "" (won't survive
+   *  in the parent store but the draft flow uses this to know it's empty). */
+  const persist = useCallback(
+    (overrides: {
+      rows?: UiRow[];
+      type?: string;
+      starred?: boolean;
+      capitalized?: boolean;
+    }) => {
+      const nextRows = overrides.rows ?? rows;
+      const nextType = overrides.type ?? type;
+      const nextStarred = overrides.starred ?? starred;
+      const nextCapitalized = overrides.capitalized ?? capitalized;
+
+      const validRows = nextRows.filter((r) => r.key.trim());
+      if (validRows.length === 0) {
+        if (cit.command !== "") {
+          lastWrittenRef.current = "";
+          onUpdateCitation(cit.id, "");
+        }
+        return;
+      }
+      const entries: ParsedCiteKey[] = validRows.map((r) => ({
+        key: r.key.trim(),
+        prenote: r.prenote || undefined,
+        postnote: r.postnote || undefined,
+      }));
+      const command = serializeCiteCommand(
+        {
+          type: nextType,
+          starred: nextStarred,
+          capitalized: nextCapitalized,
+          entries,
+        },
+        bibPackage,
+      );
+      lastWrittenRef.current = command;
+      onUpdateCitation(cit.id, command);
+    },
+    [
+      rows,
+      type,
+      starred,
+      capitalized,
+      cit.command,
+      cit.id,
+      bibPackage,
+      onUpdateCitation,
+    ],
+  );
+
+  /* ── Row mutations ───────────────────────────────────────────────── */
+
+  const setRowKey = useCallback(
+    (rowId: string, key: string) => {
+      setRows((prev) => {
+        const next = prev.map((r) => (r.id === rowId ? { ...r, key } : r));
+        persist({ rows: next });
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  const setRowPostnote = useCallback(
+    (rowId: string, postnote: string) => {
+      setRows((prev) => {
+        const isMultiCite =
+          bibPackage !== "natbib" &&
+          prev.length >= 2 &&
+          HAS_PLURAL.has(type.replace(/s$/, ""));
+        let next: UiRow[];
+        if (isMultiCite) {
+          // Per-key postnote.
+          next = prev.map((r) =>
+            r.id === rowId ? { ...r, postnote } : r,
+          );
+        } else {
+          // Shared postnote — propagate to every row so the UI mirrors
+          // what the format will actually carry after a round-trip.
+          next = prev.map((r) => ({ ...r, postnote }));
+        }
+        persist({ rows: next });
+        return next;
+      });
+    },
+    [persist, bibPackage, type],
+  );
+
+  const removeRow = useCallback(
+    (rowId: string) => {
+      setRows((prev) => {
+        if (prev.length <= 1) {
+          // Don't drop the last row entirely — clear it instead so the
+          // empty card still has one slot to type into.
+          const next = [{ id: nextRowId(), key: "" }];
+          persist({ rows: next });
+          return next;
+        }
+        const next = prev.filter((r) => r.id !== rowId);
+        persist({ rows: next });
+        return next;
+      });
+    },
+    [persist],
+  );
+
+  const addRow = useCallback(() => {
+    setRows((prev) => [...prev, { id: nextRowId(), key: "" }]);
+  }, []);
+
+  /* ── Picker ──────────────────────────────────────────────────────── */
+
+  const [pickerRowId, setPickerRowId] = useState<string | null>(null);
+  const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
+  const rowAnchorRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const openPickerFor = useCallback((rowId: string) => {
+    setPickerRowId(rowId);
+    setPickerAnchor(rowAnchorRefs.current.get(rowId) ?? null);
+  }, []);
+  const closePicker = useCallback(() => {
+    setPickerRowId(null);
+    setPickerAnchor(null);
+  }, []);
+
+  /* ── Inline BibEntryCard expansion ───────────────────────────────── */
+
+  const [expandedBibKey, setExpandedBibKey] = useState<string | null>(null);
+  const toggleBibKey = useCallback((key: string) => {
+    setExpandedBibKey((prev) => (prev === key ? null : key));
+  }, []);
+  // Clear the expansion when the row's key disappears (e.g. row removed
+  // or citekey replaced via the picker).
+  useEffect(() => {
+    if (expandedBibKey && !rows.some((r) => r.key === expandedBibKey)) {
+      setExpandedBibKey(null);
+    }
+  }, [expandedBibKey, rows]);
+
+  /* ── Drag and drop (merge a dragged bib key into the card) ───────── */
+
+  const [isDropTarget, setIsDropTarget] = useState(false);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -167,7 +439,7 @@ export function CitationCard({
       e.dataTransfer.effectAllowed = "copy";
       const ghost = document.createElement("div");
       ghost.textContent =
-        plain.length > 80 ? plain.slice(0, 80) + "\u2026" : plain;
+        plain.length > 80 ? plain.slice(0, 80) + "…" : plain;
       ghost.style.cssText =
         "position:absolute;top:-9999px;left:-9999px;max-width:260px;padding:4px 8px;background:#fdf8e1;border:1px solid #e0d5a8;border-radius:3px;font-size:12px;color:#6b6245;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       document.body.appendChild(ghost);
@@ -176,69 +448,6 @@ export function CitationCard({
     },
     [cit, getDisplayText],
   );
-
-  // Reset the editable LaTeX draft each time the user re-enters edit mode.
-  // Intentionally NOT depending on cit.command — auto-save updates that
-  // mid-edit, and resetting on every cit.command change would clobber the
-  // user's in-progress typing.
-  useEffect(() => {
-    if (isEditing) {
-      editOpenCommandRef.current = cit.command;
-      latexDraftRef.current = cit.command;
-      setLatexDraft(cit.command);
-    } else {
-      // Cancel any pending debounced save when leaving edit mode.
-      if (latexDebounceRef.current) {
-        clearTimeout(latexDebounceRef.current);
-        latexDebounceRef.current = null;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditing]);
-
-  // Close the editor extension. Flushes any pending debounced LaTeX save
-  // synchronously so nothing is lost on quick Done/click-outside.
-  const closeEditor = useCallback(() => {
-    if (latexDebounceRef.current) {
-      clearTimeout(latexDebounceRef.current);
-      latexDebounceRef.current = null;
-      const v = latexDraftRef.current;
-      if (v) onUpdateCitation(cit.id, v);
-    }
-    setIsEditing(false);
-  }, [cit.id, onUpdateCitation]);
-
-  // Bridge for the structured editor's auto-save: forward the command,
-  // and also update the LaTeX input to reflect the new command — but
-  // only if the user isn't currently typing in the LaTeX input (in
-  // which case their typing wins).
-  const handleStructuredSave = useCallback((command: string) => {
-    if (!command) return;
-    onUpdateCitation(cit.id, command);
-    if (document.activeElement !== latexInputRef.current) {
-      latexDraftRef.current = command;
-      setLatexDraft(command);
-    }
-  }, [cit.id, onUpdateCitation]);
-
-  useEffect(() => {
-    if (!isEditing) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      // Treat clicks anywhere on this same citation card (Bib buttons,
-      // header, footer input, Done button) as "inside" — only clicks
-      // outside the card should close the editor.
-      if (target.closest(`[data-link-card="citation:${cit.id}"]`)) return;
-      closeEditor();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [isEditing, cit.id, closeEditor]);
-
-  const toggleBibKey = useCallback((key: string) => {
-    setExpandedBibKey((prev) => (prev === key ? null : key));
-  }, []);
 
   const handleCardDragOver = useCallback(
     (e: React.DragEvent) => {
@@ -270,33 +479,78 @@ export function CitationCard({
       e.preventDefault();
       e.stopPropagation();
       setIsDropTarget(false);
-      const current = parseCiteCommand(cit.command);
-      if (!current) return;
-      if (current.entries.some((en) => en.key === parsed.bibKey)) return;
-      const newCommand = serializeCiteCommand(
-        {
-          type: current.type,
-          starred: current.starred,
-          capitalized: current.capitalized,
-          entries: [...current.entries, { key: parsed.bibKey! }],
-        },
-        bibPackage,
-      );
-      onUpdateCitation(cit.id, newCommand);
+      setRows((prev) => {
+        if (prev.some((r) => r.key === parsed.bibKey)) return prev;
+        // If the only row is empty, fill it instead of adding a new row.
+        const allEmpty = prev.every((r) => !r.key.trim());
+        const next = allEmpty
+          ? [{ id: nextRowId(), key: parsed.bibKey! }]
+          : [...prev, { id: nextRowId(), key: parsed.bibKey! }];
+        persist({ rows: next });
+        return next;
+      });
     },
-    [cit.id, cit.command, bibPackage, onUpdateCitation],
+    [persist],
   );
 
-  const stateClass = isDropTarget
-    ? "ring-2 ring-drag-target ring-offset-0"
-    : !isAnchored
-      ? "border-dashed opacity-80"
-      : "";
+  /* ── Code line (raw LaTeX editor) ────────────────────────────────── */
 
-  const onToggleFromCtx = onTogglePopout
-    ?? (popped
-      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
-      : undefined);
+  const [codeDraft, setCodeDraft] = useState<string | null>(null);
+  const codeDraftRef = useRef<string | null>(null);
+  const codeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codeInputRef = useRef<HTMLInputElement>(null);
+
+  const commitCodeDraft = useCallback(() => {
+    const v = codeDraftRef.current;
+    if (codeDebounceRef.current) {
+      clearTimeout(codeDebounceRef.current);
+      codeDebounceRef.current = null;
+    }
+    if (v !== null && v !== cit.command) {
+      lastWrittenRef.current = v;
+      onUpdateCitation(cit.id, v);
+    }
+    codeDraftRef.current = null;
+    setCodeDraft(null);
+  }, [cit.command, cit.id, onUpdateCitation]);
+
+  const updateCodeDraft = useCallback(
+    (v: string) => {
+      codeDraftRef.current = v;
+      setCodeDraft(v);
+      if (codeDebounceRef.current) clearTimeout(codeDebounceRef.current);
+      codeDebounceRef.current = setTimeout(() => {
+        codeDebounceRef.current = null;
+        lastWrittenRef.current = v;
+        onUpdateCitation(cit.id, v);
+      }, 250);
+    },
+    [cit.id, onUpdateCitation],
+  );
+
+  /* ── Overflow popover (* and Aa) ─────────────────────────────────── */
+
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const overflowAnchorRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!overflowAnchorRef.current) return;
+      const target = e.target as Node;
+      if (overflowAnchorRef.current.contains(target)) return;
+      // The popover is a sibling inside the same card — allow clicks
+      // inside the card; otherwise close.
+      const card = overflowAnchorRef.current.closest(
+        `[data-link-card="citation:${cit.id}"]`,
+      );
+      if (card && card.contains(target)) return;
+      setOverflowOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [overflowOpen, cit.id]);
+
+  /* ── Header (matches the compressed view in both states) ─────────── */
 
   const headerStyle: React.CSSProperties = {
     fontSize: "var(--par-title-size, 0.78rem)",
@@ -306,15 +560,19 @@ export function CitationCard({
     letterSpacing: "0.02em",
     ...bodyStyle,
   };
-  const firstHeaderKey = cit.keys[0];
-  const firstHeaderEntry = firstHeaderKey ? bibEntryMap.get(firstHeaderKey) : undefined;
+  const firstHeaderKey = rows[0]?.key || cit.keys[0];
+  const firstHeaderEntry = firstHeaderKey
+    ? bibEntryMap.get(firstHeaderKey)
+    : undefined;
   const headerAuthor = firstHeaderEntry
     ? firstThreeAuthorLastNames(firstHeaderEntry.fields.author || "")
     : "";
-  const headerYear = firstHeaderEntry?.fields.year || firstHeaderEntry?.fields.date || "";
+  const headerYear =
+    firstHeaderEntry?.fields.year || firstHeaderEntry?.fields.date || "";
   const headerTitle = firstHeaderEntry?.fields.title || "";
-  const headerMore = cit.keys.length > 1 ? ` +${cit.keys.length - 1}` : "";
-  const headerContent = compressed ? (
+  const validKeyCount = rows.filter((r) => r.key.trim()).length;
+  const headerMore = validKeyCount > 1 ? ` +${validKeyCount - 1}` : "";
+  const headerContent = (
     <div
       data-panel-kind="citation"
       className="leading-snug"
@@ -326,40 +584,78 @@ export function CitationCard({
         overflow: "hidden",
         overflowWrap: "anywhere",
       }}
-      title={[headerAuthor || firstHeaderKey, headerYear, headerTitle]
-        .filter(Boolean)
-        .join(" · ") + headerMore}
+      title={
+        firstHeaderKey
+          ? [headerAuthor || firstHeaderKey, headerYear, headerTitle]
+              .filter(Boolean)
+              .join(" · ") + headerMore
+          : "Citation"
+      }
     >
       {firstHeaderKey ? (
         <>
-          <span className="font-semibold">{headerAuthor || firstHeaderKey}</span>
+          <span className="font-semibold">
+            {headerAuthor || firstHeaderKey}
+          </span>
           {headerYear && (
             <>
-              <span className="text-ink-muted mx-1">&middot;</span>
+              <span className="text-ink-body mx-1">&middot;</span>
               <span className="font-semibold">{headerYear}</span>
             </>
           )}
           {headerTitle && (
             <>
-              <span className="text-ink-muted mx-1">&middot;</span>
-              <span className="italic text-ink-subtle">{headerTitle}</span>
+              <span className="text-ink-body mx-1">&middot;</span>
+              <span className="italic text-ink-body">{headerTitle}</span>
             </>
           )}
-          {headerMore && <span className="text-ink-muted">{headerMore}</span>}
+          {headerMore && (
+            <span className="text-ink-body">{headerMore}</span>
+          )}
         </>
       ) : (
-        <span className="text-ink-faint italic">no keys</span>
+        <span className="text-ink-faint italic">Citation</span>
       )}
     </div>
-  ) : (
-    <div
-      data-panel-kind="citation"
-      className="overflow-hidden text-ellipsis whitespace-nowrap"
-      style={headerStyle}
-      title={getDisplayText(cit.command).replace(/<[^>]+>/g, "")}
-      dangerouslySetInnerHTML={{ __html: getDisplayText(cit.command) }}
-    />
   );
+
+  /* ── Visual state classes ────────────────────────────────────────── */
+
+  const stateClass = isDropTarget
+    ? "ring-2 ring-drag-target ring-offset-0"
+    : !isAnchored
+      ? "border-dashed opacity-80"
+      : "";
+
+  const onToggleFromCtx =
+    onTogglePopout ??
+    (popped
+      ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor)
+      : undefined);
+
+  const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
+
+  /* ── Postnote shared-vs-per-row classification ──────────────────── */
+
+  const isMultiCite =
+    bibPackage !== "natbib" &&
+    rows.length >= 2 &&
+    HAS_PLURAL.has(type.replace(/s$/, ""));
+
+  const sharedPostnoteTooltip = isMultiCite
+    ? undefined
+    : bibPackage === "natbib"
+      ? "Natbib shares this page note across all keys in the citation."
+      : `\\${type} doesn’t have a multi-cite plural form — the page note is shared across all keys.`;
+
+  /* ── Preview (rendered HTML) ─────────────────────────────────────── */
+
+  const preview = useMemo(() => {
+    if (!cit.command) return "";
+    return getDisplayText(cit.command);
+  }, [cit.command, getDisplayText]);
+
+  /* ── Render ──────────────────────────────────────────────────────── */
 
   const card = (
     <PanelCard
@@ -375,7 +671,7 @@ export function CitationCard({
       cardKey={cardKey}
       isCollapsed={compressed}
       extraCardClass={`cursor-pointer cursor-grab active:cursor-grabbing ${stateClass}`}
-      draggable={!isEditing}
+      draggable={!isDraft && pickerRowId === null && codeDraft === null}
       onDragStart={handleDragStart}
       onDragOver={handleCardDragOver}
       onDragLeave={handleCardDragLeave}
@@ -383,28 +679,35 @@ export function CitationCard({
       className={wrapperClassName}
       style={wrapperStyle}
       onClick={(e) => {
+        if (isDraft) return;
         cardStore.toggleSelection(ac.ref);
-        // If the toggle just closed this card (no longer expanded), skip
-        // the secondary affirmations — they would re-set selection and
-        // the editor would scroll to a card we just dismissed.
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect();
         if (isAnchored) {
           onJump(
-            (e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null,
+            (e.currentTarget as HTMLElement).closest(
+              "[data-card]",
+            ) as HTMLElement | null,
           );
         }
       }}
       onMouseEnter={() => cardStore.setHover(ac.ref)}
       onMouseLeave={() => {
         const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
+        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id)
+          cardStore.setHover(null);
       }}
       kind="citation"
-      canJump
-      onJump={(e) => onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null)}
+      canJump={!isDraft}
+      onJump={(e) =>
+        onJump(
+          (e.currentTarget as HTMLElement).closest(
+            "[data-card]",
+          ) as HTMLElement | null,
+        )
+      }
       title={
-        !isAnchored
+        !isAnchored && !isDraft
           ? "Unanchored citation — drag into the editor to anchor it"
           : undefined
       }
@@ -412,202 +715,622 @@ export function CitationCard({
       {compressed ? (
         <div className="px-3 py-1.5">{headerContent}</div>
       ) : (
-      <>
-      <div
-        className={`${PANEL.cardInner}${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-      >
-        <div className="mb-1.5">{headerContent}</div>
-        <ul className="flex flex-col gap-1 list-none m-0 p-0">
-          {cit.keys.map((key, idx) => {
-            const entry = bibEntryMap.get(key);
-            const isActive = expandedBibKey === key;
-            const { author, year, title } = formatMediumCitationParts(
-              key,
-              bibEntries,
-            );
-            return (
-              <li key={`${idx}:${key}`} className="flex flex-col gap-1">
-                <div className="flex items-start gap-2">
-                  <div
-                    className={`flex-1 min-w-0 text-xs leading-snug ${
-                      !entry ? "text-danger" : "text-ink-body"
-                    }`}
-                  >
-                    {entry ? (
-                      <>
-                        <span className="font-medium">{author}</span>
-                        <span className="text-ink-subtle"> ({year})</span>
-                        {title && (
-                          <span className="text-ink-subtle">
-                            {" — "}
-                            <span className="italic">{title}</span>
-                          </span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="font-mono">{key}</span>
-                    )}
-                  </div>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!entry) return;
-                      toggleBibKey(key);
-                    }}
-                    disabled={!entry}
-                    className={`shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border transition-colors ${
-                      !entry
-                        ? "border-dashed border-red-300 text-danger/70 bg-danger-soft/30 cursor-not-allowed"
-                        : isActive
-                          ? "bg-[#fef3c3] border-[#d4a843] text-[#4a3f20]"
-                          : "bg-[#fdf8e1] border-[#e0d5a8] text-[#6b6245] hover:bg-[#fef3c3] hover:border-[#d4a843]"
-                    }`}
-                    title={
-                      entry
-                        ? isActive
-                          ? "Hide BibTeX entry"
-                          : "Show BibTeX entry"
-                        : "Entry not found in .bib"
-                    }
-                    data-helper={entry ? (isActive ? "Hide bib" : "Show bib") : "Not found"}
-                    data-helper-pos="above"
-                  >
-                    Bib
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-
-        {cit.keys
-          .filter((k) => !bibEntryMap.has(k))
-          .map((k) => (
-            <div key={k} className="text-xs text-danger mt-1">
-              Key not found in .bib:{" "}
-              <span className="font-mono">{k}</span>
-            </div>
-          ))}
-      </div>
-
-      <div
-        className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-        style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-      />
-
-      <div className="flex items-center gap-1.5 min-w-0 pl-3 pr-9 py-1 bg-surface-muted/30">
-        {isEditing ? (
-          <input
-            ref={latexInputRef}
-            type="text"
-            value={latexDraft}
-            onChange={(e) => updateDraft(e.target.value)}
+        <>
+          <div
+            className={`${PANEL.cardInner}${
+              isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""
+            }`}
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                closeEditor();
-              } else if (e.key === "Escape") {
-                e.preventDefault();
-                closeEditor();
-              }
-            }}
-            spellCheck={false}
-            className="text-[11px] font-mono text-ink-body bg-transparent border-0 outline-none flex-1 min-w-0 p-0 focus:ring-0"
-            title="Edit raw LaTeX command (auto-saves)"
+          >
+            <ul className="flex flex-col gap-2 list-none m-0 p-0">
+              {rows.map((row, idx) => (
+                <CitationKeyRow
+                  key={row.id}
+                  row={row}
+                  index={idx}
+                  bibEntryMap={bibEntryMap}
+                  perRowPostnote={isMultiCite}
+                  postnoteTooltip={sharedPostnoteTooltip}
+                  canRemove={rows.length > 1 || row.key.trim().length > 0}
+                  bibExpanded={
+                    !!row.key.trim() && expandedBibKey === row.key.trim()
+                  }
+                  onToggleBib={() => toggleBibKey(row.key.trim())}
+                  onOpenPicker={() => openPickerFor(row.id)}
+                  onChangePostnote={(p) => setRowPostnote(row.id, p)}
+                  onRemove={() => removeRow(row.id)}
+                  registerAnchor={(el) => {
+                    if (el) rowAnchorRefs.current.set(row.id, el);
+                    else rowAnchorRefs.current.delete(row.id);
+                  }}
+                />
+              ))}
+            </ul>
+
+            <button
+              type="button"
+              onClick={addRow}
+              className="mt-2 inline-flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
+              title="Add another reference"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add reference…
+            </button>
+          </div>
+
+          <div
+            className={`border-t transition-colors ${
+              isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"
+            }`}
+            style={
+              isSelected
+                ? { borderTopColor: theme.separatorSelected }
+                : undefined
+            }
           />
-        ) : (
+
+          <div
+            className="px-3 py-2 bg-surface-muted/30 space-y-1.5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
+                Type
+              </span>
+              <select
+                value={type}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setType(v);
+                  persist({ type: v });
+                }}
+                className="text-xs font-mono border border-edge-hover rounded px-1.5 py-0.5 bg-surface min-w-0"
+              >
+                {types.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <div className="relative">
+                <button
+                  ref={overflowAnchorRef}
+                  type="button"
+                  onClick={() => setOverflowOpen((v) => !v)}
+                  className="iconbtn-sm text-ink-body"
+                  title="More options"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                  >
+                    <circle cx="5" cy="12" r="1.6" />
+                    <circle cx="12" cy="12" r="1.6" />
+                    <circle cx="19" cy="12" r="1.6" />
+                  </svg>
+                </button>
+                {overflowOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-50 bg-surface border border-edge-subtle rounded-md shadow-md p-2 space-y-1 w-44">
+                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={starred}
+                        onChange={(e) => {
+                          setStarred(e.target.checked);
+                          persist({ starred: e.target.checked });
+                        }}
+                        className="rounded border-edge-hover"
+                      />
+                      <span>
+                        <span className="font-mono">*</span> Full author list
+                      </span>
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-ink-body cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={capitalized}
+                        onChange={(e) => {
+                          setCapitalized(e.target.checked);
+                          persist({ capitalized: e.target.checked });
+                        }}
+                        className="rounded border-edge-hover"
+                      />
+                      <span>
+                        <span className="font-mono">Aa</span> Sentence start
+                      </span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
+                Code
+              </span>
+              {codeDraft !== null ? (
+                <input
+                  ref={codeInputRef}
+                  autoFocus
+                  type="text"
+                  value={codeDraft}
+                  onChange={(e) => updateCodeDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === "Escape") {
+                      e.preventDefault();
+                      commitCodeDraft();
+                    }
+                  }}
+                  onBlur={commitCodeDraft}
+                  spellCheck={false}
+                  className="text-[11px] font-mono text-ink-body bg-transparent border-0 outline-none flex-1 min-w-0 p-0 focus:ring-0"
+                />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    codeDraftRef.current = cit.command;
+                    setCodeDraft(cit.command);
+                  }}
+                  className="text-[11px] font-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-text"
+                  title="Edit raw LaTeX"
+                >
+                  {cit.command || (
+                    <span className="text-ink-body italic">
+                      no command yet
+                    </span>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {preview && (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] uppercase tracking-wide text-ink-body shrink-0">
+                  Preview
+                </span>
+                <span
+                  className="text-[13px] text-ink-body truncate"
+                  style={{
+                    fontFamily:
+                      "var(--font-serif-override, var(--font-serif)), 'Source Serif 4', Georgia, serif",
+                  }}
+                  dangerouslySetInnerHTML={{
+                    __html: preview.replace(
+                      /<\/?(?!\/?[ib]>)[^>]+>/gi,
+                      "",
+                    ),
+                  }}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </PanelCard>
+  );
+
+  const expandedBibEntry = expandedBibKey
+    ? bibEntryMap.get(expandedBibKey)
+    : undefined;
+  const canRenderBib =
+    !!expandedBibEntry &&
+    !!getFormattedBib &&
+    !!getAnnotation &&
+    !!setAnnotation &&
+    !!onRequestReview &&
+    !!onCancelReview &&
+    !!getReviewStatus &&
+    !!onUpdateBibEntry &&
+    !!onUpdateBibKeyAndType;
+
+  const bibInline = canRenderBib ? (
+    <div
+      className="ml-4 overflow-y-auto"
+      style={
+        isPoppedOut
+          ? undefined
+          : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }
+      }
+      onClick={(e) => e.stopPropagation()}
+    >
+      <BibEntryCard
+        entry={expandedBibEntry!}
+        isSelected={false}
+        onClick={() => {}}
+        getFormattedBib={getFormattedBib!}
+        getAnnotation={getAnnotation!}
+        setAnnotation={setAnnotation!}
+        onRequestReview={onRequestReview!}
+        onCancelReview={onCancelReview!}
+        getReviewStatus={getReviewStatus!}
+        onUpdateBibEntry={onUpdateBibEntry!}
+        onUpdateBibKeyAndType={onUpdateBibKeyAndType!}
+        bibPackage={bibPackage}
+        bibEntries={bibEntries}
+        isCited
+      />
+    </div>
+  ) : null;
+
+  const cardEl = (
+    <>
+      {bibInline ? (
+        <div className="space-y-2">
+          {card}
+          {bibInline}
+        </div>
+      ) : (
+        card
+      )}
+      <CitekeyPicker
+        open={pickerRowId !== null}
+        anchorEl={pickerAnchor}
+        onClose={closePicker}
+        paperBibEntries={bibEntries}
+        initialQuery={
+          pickerRowId
+            ? rows.find((r) => r.id === pickerRowId)?.key || ""
+            : ""
+        }
+        onSelectKey={(k) => {
+          if (pickerRowId) setRowKey(pickerRowId, k);
+        }}
+        onAddBibEntry={onAddBibEntry}
+      />
+    </>
+  );
+
+  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
+  return cardEl;
+}
+
+/* ── CitationKeyRow ──────────────────────────────────────────────── */
+
+interface CitationKeyRowProps {
+  row: UiRow;
+  index: number;
+  bibEntryMap: Map<string, BibEntry>;
+  /** True when each row owns its own postnote (biblatex multi-cite with
+   *  plural form). False = shared postnote across all rows. */
+  perRowPostnote: boolean;
+  /** Tooltip to show on +pg inputs when the postnote is shared. */
+  postnoteTooltip: string | undefined;
+  canRemove: boolean;
+  bibExpanded: boolean;
+  onToggleBib: () => void;
+  onOpenPicker: () => void;
+  onChangePostnote: (postnote: string) => void;
+  onRemove: () => void;
+  registerAnchor: (el: HTMLElement | null) => void;
+}
+
+function CitationKeyRow({
+  row,
+  index,
+  bibEntryMap,
+  perRowPostnote,
+  postnoteTooltip,
+  canRemove,
+  bibExpanded,
+  onToggleBib,
+  onOpenPicker,
+  onChangePostnote,
+  onRemove,
+  registerAnchor,
+}: CitationKeyRowProps) {
+  const trimmed = row.key.trim();
+  const entry = trimmed ? bibEntryMap.get(trimmed) : undefined;
+  const [pgOpen, setPgOpen] = useState(!!row.postnote);
+  const [pgDraft, setPgDraft] = useState(row.postnote || "");
+  const pgInputRef = useRef<HTMLInputElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setPgDraft(row.postnote || "");
+    if (row.postnote) setPgOpen(true);
+  }, [row.postnote]);
+
+  useEffect(() => {
+    if (pgOpen && !row.postnote) {
+      pgInputRef.current?.focus();
+    }
+  }, [pgOpen, row.postnote]);
+
+  const commitPg = () => {
+    if (pgDraft === (row.postnote || "")) return;
+    onChangePostnote(pgDraft);
+  };
+
+  // The +pg slot is dimmed when the postnote is shared and the current
+  // row isn't index 0 — visually it's still present (so multi-key cites
+  // feel symmetric) but the user understands that only the shared value
+  // matters.
+  const pgDim = !perRowPostnote && index > 0;
+
+  const copyCitekey = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!trimmed) return;
+    void navigator.clipboard.writeText(trimmed).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <li className="group/row flex flex-col gap-0.5">
+      {/* Top line: filled = formatted citation. Empty = search input. */}
+      {trimmed ? (
+        <div className="flex items-start gap-2">
+          <span
+            aria-hidden
+            className="text-ink-body mt-[1px] select-none text-[12px] leading-none"
+          >
+            •
+          </span>
+          <div className="flex-1 min-w-0 text-[12px] leading-snug">
+            {entry ? (
+              <div className="text-ink-body">
+                <span className="font-medium">
+                  {fullAuthorsForRow(entry.fields.author || "") || trimmed}
+                </span>
+                {(entry.fields.year || entry.fields.date) && (
+                  <>
+                    <span className="text-ink-body">. </span>
+                    <span className="font-medium">
+                      {entry.fields.year || entry.fields.date}
+                    </span>
+                  </>
+                )}
+                {entry.fields.title && (
+                  <>
+                    <span className="text-ink-body">. </span>
+                    <span className="italic">
+                      “{entry.fields.title}”
+                    </span>
+                  </>
+                )}
+                {venueForRow(entry) && (
+                  <>
+                    <span className="text-ink-body">. </span>
+                    <span>
+                      {venueForRow(entry)}
+                      {/\.$/.test(venueForRow(entry)) ? "" : "."}
+                    </span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="text-danger text-[11.5px]">
+                <span className="font-mono">{trimmed}</span> — not in your
+                bibliography
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="text-ink-body select-none text-[12px] leading-none"
+          >
+            •
+          </span>
+          <button
+            type="button"
+            ref={(el) => registerAnchor(el)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPicker();
+            }}
+            className="flex-1 min-w-0 text-left text-[12px] text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 hover:border-edge-hover"
+            title="Add from library"
+          >
+            Add from library…
+          </button>
+          {canRemove && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              className="shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-body hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity"
+              title="Remove this row"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Bottom line: citekey controls. Only shown when row has a key. */}
+      {trimmed && (
+        <div className="pl-[14px] flex items-center gap-1.5 text-[10.5px] text-ink-muted">
+          <button
+            type="button"
+            ref={(el) => registerAnchor(el)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenPicker();
+            }}
+            className="font-mono text-ink-muted hover:text-ink-body underline decoration-dotted decoration-edge-hover underline-offset-2"
+            title="Click to change"
+          >
+            {trimmed}
+          </button>
+          <button
+            type="button"
+            onClick={copyCitekey}
+            className="iconbtn-sm text-ink-muted hover:text-ink-body"
+            title={copied ? "Copied" : "Copy citekey"}
+          >
+            {copied ? (
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="text-emerald-600"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            ) : (
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="9" y="9" width="12" height="12" rx="2" ry="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+            )}
+          </button>
+          {entry && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleBib();
+              }}
+              className={`text-[10px] uppercase tracking-wide px-1 py-0 rounded ${
+                bibExpanded
+                  ? "text-ink-body bg-edge-subtle"
+                  : "text-ink-muted hover:text-ink-body hover:bg-edge-subtle"
+              }`}
+              title={bibExpanded ? "Hide bib entry" : "Show bib entry"}
+            >
+              Bib
+            </button>
+          )}
+          {pgOpen ? (
+            <span
+              className={`flex items-center gap-1 ${pgDim ? "opacity-50" : ""}`}
+              title={pgDim ? postnoteTooltip : undefined}
+            >
+              <span className="font-mono text-ink-muted">p.</span>
+              <input
+                ref={pgInputRef}
+                type="text"
+                value={pgDraft}
+                onChange={(e) => setPgDraft(e.target.value)}
+                onBlur={commitPg}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commitPg();
+                    pgInputRef.current?.blur();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setPgDraft(row.postnote || "");
+                    setPgOpen(!!row.postnote);
+                    pgInputRef.current?.blur();
+                  }
+                }}
+                placeholder="page"
+                className="w-12 text-[10.5px] font-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
+              />
+              {!row.postnote && pgDraft === "" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPgOpen(false);
+                  }}
+                  className="text-ink-muted hover:text-ink-body p-0.5"
+                  title="Close"
+                >
+                  <svg
+                    width="9"
+                    height="9"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPgOpen(true);
+              }}
+              className={`text-[10px] tracking-wide text-ink-muted hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle ${pgDim ? "opacity-50" : ""}`}
+              title={pgDim ? postnoteTooltip : "Add a page note"}
+            >
+              +pg
+            </button>
+          )}
+          <div className="flex-1" aria-hidden />
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setIsEditing(true);
+              onRemove();
             }}
-            className="text-[11px] font-mono text-ink-subtle truncate flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-text hover:text-ink-body"
-            title="Edit citation"
+            className={`shrink-0 w-5 h-5 flex items-center justify-center rounded text-ink-muted hover:text-danger hover:bg-edge-subtle opacity-0 group-hover/row:opacity-100 transition-opacity ${
+              !canRemove ? "pointer-events-none" : ""
+            }`}
+            title="Remove this key"
           >
-            {cit.command}
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
           </button>
-        )}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (isEditing) {
-              closeEditor();
-            } else {
-              setIsEditing(true);
-            }
-          }}
-          className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border border-edge-subtle text-ink-muted hover:text-ink-body hover-on-light hover:border-edge-hover flex-shrink-0"
-          title={isEditing ? "Finish editing" : "Edit citation"}
-          data-helper={isEditing ? "Done" : "Edit"}
-          data-helper-pos="above"
-        >
-          {isEditing ? "Done" : "Edit"}
-        </button>
-      </div>
-
-      {isEditing && (
-        <>
-          <div
-            className={`border-t transition-colors ${isSelected ? "" : "border-edge-subtle group-hover:border-edge-hover"}`}
-            style={isSelected ? { borderTopColor: theme.separatorSelected } : undefined}
-          />
-          <div ref={editWrapperRef} onClick={(e) => e.stopPropagation()}>
-            <CitationBuilder
-              ref={builderHandleRef}
-              initialCommand={cit.command}
-              bibPackage={bibPackage}
-              bibEntries={bibEntries}
-              getDisplayText={getDisplayText}
-              onSave={handleStructuredSave}
-              onCancel={closeEditor}
-              variant="inline"
-            />
-          </div>
-        </>
+        </div>
       )}
-      </>
-      )}
-    </PanelCard>
+    </li>
   );
-  const expandedEntry = expandedBibKey
-    ? bibEntryMap.get(expandedBibKey)
-    : undefined;
-
-  const grouped = expandedEntry ? (
-    <div className="space-y-2">
-      {card}
-      <div
-        className="ml-4 overflow-y-auto"
-        style={
-          isPoppedOut
-            ? undefined
-            : { maxHeight: "max(0px, calc(var(--dock-slot-frame-h, 80vh) - 160px))" }
-        }
-      >
-        <BibEntryCard
-          entry={expandedEntry}
-          isSelected={false}
-          onClick={() => {}}
-          getFormattedBib={getFormattedBib}
-          getAnnotation={getAnnotation}
-          setAnnotation={setAnnotation}
-          onRequestReview={onRequestReview}
-          onCancelReview={onCancelReview}
-          getReviewStatus={getReviewStatus}
-          onUpdateBibEntry={onUpdateBibEntry}
-          onUpdateBibKeyAndType={onUpdateBibKeyAndType}
-          bibPackage={bibPackage}
-          bibEntries={bibEntries}
-          isCited
-        />
-      </div>
-    </div>
-  ) : (
-    card
-  );
-
-  if (isPoppedOut) return <FloatCard cardKey={cardKey}>{grouped}</FloatCard>;
-  return grouped;
 }

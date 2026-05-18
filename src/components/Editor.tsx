@@ -324,7 +324,7 @@ export interface EditorHandle {
   replaceExampleLatex: (exampleId: string, latex: string) => boolean;
   getCitations: () => { citationId: string; command: string; displayText: string; pos: number }[];
   scrollToCitation: (citationId: string, sourceEl?: HTMLElement | null) => void;
-  updateCitationDisplay: (citationId: string, displayText: string) => void;
+  updateCitationDisplay: (citationId: string, displayText: string, command?: string) => void;
   getCitationIds: () => Set<string>;
   getCitationOrder: () => string[];
   insertCitation: (command: string, citationId: string, displayText: string) => void;
@@ -1995,7 +1995,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
             new Plugin({
               key: new PluginKey("readOnlyEnforcer"),
               filterTransaction(tr) {
-                return !(readOnlyRef.current && tr.docChanged);
+                if (!readOnlyRef.current) return true;
+                if (!tr.docChanged) return true;
+                // Programmatic citation attribute syncs (panel-driven
+                // type changes refreshing the inline citation's command
+                // / displayText) tag their transactions with this meta
+                // so they pass through even in collaborator read-only
+                // mode. They don't touch document text, just node attrs.
+                if (tr.getMeta("ignoreReadOnly")) return true;
+                return false;
               },
             }),
           ];
@@ -3176,14 +3184,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       jumpToLink(editor, link, "to-marker", sourceEl);
     },
 
-    updateCitationDisplay(citationId: string, displayText: string): void {
+    updateCitationDisplay(citationId: string, displayText: string, command?: string): void {
       if (!editor) return;
       editor.state.doc.descendants((node, pos) => {
         if (node.type.name === "citation" && node.attrs.citationId === citationId) {
           const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
             ...node.attrs,
             displayText,
+            ...(command !== undefined ? { command } : {}),
           });
+          // Tag so the readOnlyEnforcer plugin lets this attr-only
+          // update through even in collaborator read-only mode.
+          tr.setMeta("ignoreReadOnly", true);
           editor.view.dispatch(tr);
           return false;
         }
