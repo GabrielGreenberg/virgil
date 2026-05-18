@@ -11,13 +11,17 @@ import {
   useLibraryItems,
   useLibraryMasterBib,
   useLibraryMemberships,
-  type LibraryMembership,
 } from "@/hooks/useLibrary";
 import { useTabIndent } from "@/hooks/useTabIndent";
-import type {
-  LibraryBibState,
-  LibraryIndexItem,
-} from "@/lib/library/library-types";
+import type { LibraryIndexItem } from "@/lib/library/library-types";
+import {
+  ProvenanceChips,
+  provenanceFor,
+} from "@/components/library/provenance-chips";
+import {
+  LibraryEntryMenu,
+  type RowState,
+} from "@/components/library/LibraryEntryMenu";
 
 /** True when two bib entries describe the same record at field level —
  *  same `@type` and exact field/value pairs. `raw` differences (whitespace,
@@ -43,151 +47,6 @@ function formatBibEntryForNote(entry: BibEntry): string {
   }
   lines.push("}");
   return lines.join("\n");
-}
-
-// ─── Provenance chips ────────────────────────────────────────────────
-//
-// Each library-scope or local-scope search result can carry up to three
-// kinds of provenance chip, surfacing where the citekey lives so the
-// user can spot index-gardening issues (a paper indexed under two
-// citekeys, only one of which is also Local; a citekey only in Central
-// vs. one that's also in a curated custom library, …).
-//
-// Ambient suppression: in `library` scope we don't draw the implicit
-// "Central" chip (every result is in Central by definition — would be
-// noise on every row). In `local` scope we don't draw the implicit
-// "Local" chip for the same reason. Custom-library chips always render
-// when applicable — that's the whole point of multi-membership
-// visibility.
-
-type ProvenanceChip =
-  | { kind: "local" }
-  | { kind: "central" }
-  | { kind: "custom"; id: string; label: string }
-  | { kind: "bib-state"; state: LibraryBibState };
-
-function provenanceFor(
-  _citekey: string,
-  scope: "local" | "library",
-  info: {
-    inLocal: boolean;
-    inCentral: boolean;
-    customLibraries: LibraryMembership[] | undefined;
-    bibState: LibraryBibState | undefined;
-  },
-): ProvenanceChip[] {
-  const chips: ProvenanceChip[] = [];
-  if (info.inLocal && scope !== "local") chips.push({ kind: "local" });
-  if (info.inCentral && scope !== "library") chips.push({ kind: "central" });
-  for (const m of info.customLibraries ?? []) {
-    chips.push({ kind: "custom", id: m.id, label: m.label });
-  }
-  if (info.bibState && info.bibState !== "none") {
-    chips.push({ kind: "bib-state", state: info.bibState });
-  }
-  return chips;
-}
-
-function provenanceChipKey(chip: ProvenanceChip): string {
-  switch (chip.kind) {
-    case "local":
-      return "local";
-    case "central":
-      return "central";
-    case "custom":
-      return `custom:${chip.id}`;
-    case "bib-state":
-      return `bib:${chip.state}`;
-  }
-}
-
-function provenanceChipStyle(
-  chip: ProvenanceChip,
-): { text: string; tooltip: string; className: string } {
-  switch (chip.kind) {
-    case "local":
-      return {
-        text: "local",
-        tooltip: "This citekey is in your paper's references.bib",
-        className: "text-slate-700 bg-slate-50 border border-slate-200",
-      };
-    case "central":
-      return {
-        text: "central",
-        tooltip: "This citekey is in your central library's master.bib",
-        className: "text-blue-700 bg-blue-50 border border-blue-200",
-      };
-    case "custom":
-      return {
-        text: chip.label,
-        tooltip: `Member of custom library "${chip.label}"`,
-        className: "text-violet-700 bg-violet-50 border border-violet-200",
-      };
-    case "bib-state":
-      switch (chip.state) {
-        case "authenticated":
-          return {
-            text: "auth",
-            tooltip:
-              "Library entry verified against authoritative sources (Crossref / OpenAlex / etc.)",
-            className:
-              "text-emerald-700 bg-emerald-50 border border-emerald-200",
-          };
-        case "unverified":
-          return {
-            text: "unverified",
-            tooltip:
-              "Library entry partially matched a source — fields are best-effort",
-            className: "text-amber-700 bg-amber-50 border border-amber-200",
-          };
-        case "failed":
-          return {
-            text: "unverified",
-            tooltip:
-              "Library entry couldn't be verified against external sources",
-            className: "text-rose-700 bg-rose-50 border border-rose-200",
-          };
-        case "manuscript":
-          return {
-            text: "manuscript",
-            tooltip:
-              "Unpublished or forthcoming work — no external source applies",
-            className: "text-sky-700 bg-sky-50 border border-sky-200",
-          };
-        case "canonical":
-          return {
-            text: "canonical",
-            tooltip:
-              "Pre-digital classic — no DOI/ISBN registry will ever index it",
-            className: "text-indigo-700 bg-indigo-50 border border-indigo-200",
-          };
-        default:
-          return {
-            text: chip.state,
-            tooltip: chip.state,
-            className: "text-ink-muted bg-surface border border-edge-subtle",
-          };
-      }
-  }
-}
-
-function ProvenanceChips({ chips }: { chips: ProvenanceChip[] }) {
-  return (
-    <div className="flex items-center gap-1 shrink-0">
-      {chips.map((c) => {
-        const style = provenanceChipStyle(c);
-        return (
-          <span
-            key={provenanceChipKey(c)}
-            className={`text-[9px] uppercase tracking-wide px-1 py-0.5 rounded whitespace-nowrap ${style.className}`}
-            title={style.tooltip}
-          >
-            {style.text}
-          </span>
-        );
-      })}
-    </div>
-  );
 }
 
 interface BibliographyPanelProps {
@@ -262,6 +121,15 @@ function BibliographyPanel({
       }
     | null
   >(null);
+
+  // Cross-library picker dropdown — opens from the addMenu's "Search
+  // library…" item. Anchored to the rect of that menu item at click
+  // time so the popover lands under the user's gesture even though the
+  // addMenu itself closes immediately after.
+  const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
+  const [libraryMenuAnchor, setLibraryMenuAnchor] = useState<DOMRect | null>(
+    null,
+  );
 
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -504,14 +372,16 @@ function BibliographyPanel({
     URL.revokeObjectURL(url);
   }, [bibEntries, citedKeys]);
 
-  const handleAddFromCentralLibrary = useCallback(() => {
-    setAddMenuOpen(false);
-    setShowRequestForm(false);
-    setShowSearch(true);
-    setSearchScope("library");
-    setSearchQuery("");
-    setConflictDecision(null);
-  }, []);
+  const handleAddFromCentralLibrary = useCallback(
+    (anchor: DOMRect | null) => {
+      setAddMenuOpen(false);
+      setShowRequestForm(false);
+      setConflictDecision(null);
+      setLibraryMenuAnchor(anchor);
+      setLibraryMenuOpen(true);
+    },
+    [],
+  );
 
   const handleToggleSearch = useCallback(() => {
     setShowSearch((prev) => {
@@ -588,6 +458,36 @@ function BibliographyPanel({
       localEntryByKey,
       handleSelectBibKey,
     ],
+  );
+
+  // Pick handler for the cross-library dropdown. Returns the row state
+  // the menu should adopt afterward — "added" on a clean add, "conflict"
+  // when the local citekey diverges and the conflict strip takes over.
+  const handlePickFromLibrary = useCallback(
+    (entry: BibEntry): RowState => {
+      const local = localEntryByKey.get(entry.key);
+      if (local) {
+        if (bibEntryFieldsEqual(local, entry)) {
+          handleSelectBibKey(entry.key);
+          return "added";
+        }
+        setConflictDecision({ libraryEntry: entry, localEntry: local });
+        setLibraryMenuOpen(false);
+        return "conflict";
+      }
+      onAddBibEntry?.(entry);
+      return "added";
+    },
+    [localEntryByKey, handleSelectBibKey, onAddBibEntry],
+  );
+
+  const getLibraryRowState = useCallback(
+    (entry: BibEntry): RowState => {
+      const local = localEntryByKey.get(entry.key);
+      if (!local) return "addable";
+      return bibEntryFieldsEqual(local, entry) ? "added" : "conflict";
+    },
+    [localEntryByKey],
   );
 
   const dismissConflict = useCallback(() => setConflictDecision(null), []);
@@ -716,7 +616,14 @@ function BibliographyPanel({
                     : "text-ink-faint cursor-not-allowed"
                 }`}
                 onClick={
-                  isLibraryConnected ? handleAddFromCentralLibrary : undefined
+                  isLibraryConnected
+                    ? (e) => {
+                        const rect = (
+                          e.currentTarget as HTMLElement
+                        ).getBoundingClientRect();
+                        handleAddFromCentralLibrary(rect);
+                      }
+                    : undefined
                 }
                 title={
                   isLibraryConnected
@@ -985,6 +892,7 @@ function BibliographyPanel({
     ) : null;
 
   return (
+    <>
     <CardListPanel
       kind="bibliography"
       count={displayedEntries.length}
@@ -1087,6 +995,15 @@ function BibliographyPanel({
         );
       }}
     />
+    <LibraryEntryMenu
+      open={libraryMenuOpen}
+      anchorRect={libraryMenuAnchor}
+      onClose={() => setLibraryMenuOpen(false)}
+      onPick={handlePickFromLibrary}
+      getRowState={getLibraryRowState}
+      placeholder="Search library…"
+    />
+    </>
   );
 }
 

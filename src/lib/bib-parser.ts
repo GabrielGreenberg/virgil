@@ -345,6 +345,33 @@ function getEntryYear(entry: BibEntry | undefined): string {
   return entry?.fields.year || "n.d.";
 }
 
+/**
+ * Format an author field as comma-joined last names, truncated to the
+ * first `maxNames` then ", …". Used by the cross-library picker row
+ * where a single line must read at a glance.
+ *
+ *   1 author:   "Smith"
+ *   2 authors:  "Smith and Jones"
+ *   3 authors:  "Smith, Jones, and Brown"
+ *   N > max:    "Smith, Jones, Brown, …"
+ */
+export function formatAuthorsTruncated(authorStr: string, maxNames = 3): string {
+  if (!authorStr) return "";
+  const authors = authorStr.split(" and ").map((a) => a.trim()).filter(Boolean);
+  if (authors.length === 0) return "";
+  if (authors.length === 1) return lastNameOf(authors[0]);
+  if (authors.length === 2)
+    return lastNameOf(authors[0]) + " and " + lastNameOf(authors[1]);
+  if (authors.length <= maxNames) {
+    return (
+      authors.slice(0, -1).map(lastNameOf).join(", ") +
+      ", and " +
+      lastNameOf(authors[authors.length - 1])
+    );
+  }
+  return authors.slice(0, maxNames).map(lastNameOf).join(", ") + ", …";
+}
+
 /** Always returns "Author (Year)" format for a single bib key, regardless of citation command. */
 export function formatMinimalCitation(key: string, bibEntries: BibEntry[]): string {
   const entry = bibEntries.find((e) => e.key === key);
