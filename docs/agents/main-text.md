@@ -1,4 +1,4 @@
-<!-- last-verified: fa9e124 2026-05-16 -->
+<!-- last-verified: b5f6038 2026-05-19 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,7 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3610 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts `SelectionActionsMenu` at the editor root (~line 3610).
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3870 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts the gutter `SelectionActionsMenu` (lightning-bolt button → `ActionsMenuPanel`) at the editor root.
 
 After Path A 7.8, the Library Reader mounts the canonical `<EditorPane>` (which wraps `Editor.tsx`), so there is no longer a parallel `library/tiptap/` extension set. PgMarkChip — the only Library-only extension — has been folded into the unified set at [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts); it's harmless on docs without `\pgmark{N}`.
 
@@ -24,6 +24,7 @@ All carry a `uuid` attr so they can serve as marginalia anchors. `uuid` detectio
 | `blockquote` | `\begin{quote}…\end{quote}` | |
 | `codeBlock` | `\begin{verbatim}…\end{verbatim}` | |
 | `displayMath` | `$$…$$` | Atom node |
+| `texBlock` | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` (block-level raw LaTeX passthrough, edited inside a CodeMirror pod; popoutable like `exampleBlock`) | Atom block; `selectable:false`; node-view in `TexBlockNodeView.tsx` |
 | `titleField` | hoisted `\title{}` / `\author{}` / `\date{}` | Has `fromPreamble` flag |
 | `maketitleMarker` | `\maketitle` | |
 | `latexComment` | `%…` | Atom node |
@@ -38,14 +39,16 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 |---|---|---|---|
 | `footnote` | atom node | `\footnote{…}` (also `\thanks{…}` via the `thanks: true` attr — round-trips through the same node, surfaces as an "ACKNOWLEDGEMENT" card in the Footnotes panel/omni with badge "A", and does **not** consume the footnote counter) | `footnote.ts` |
 | `citation` | atom node | `\citep{…}` etc. | `citation.ts` |
-| `inlineMath` | atom node | `$…$` | `math.ts` |
-| `displayMath` | atom node | `$$…$$` | `math.ts` |
+| `inlineMath` | atom node | `$…$` (rendered via KaTeX after ef8a8ce; click opens an inline edit popover) | `math.ts` |
+| `displayMath` | atom node | `$$…$$` and `\[…\]` (KaTeX-rendered, click-to-edit) | `math.ts` |
+| `texBlock` | atom block | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` raw LaTeX passthrough | `tex-block.ts` |
 | `latexComment` | node | `%…` | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |
 | `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
 | `linkedAnchor` | mark | (invisible by default; a `tintColor` attr makes the mark paint its range with a persistent color — used by Highlight cards for the Adobe-style yellow swatch. The tint survives kind transitions, so spawning a sibling note over a highlight's range keeps the yellow) | `linked-anchor.ts` |
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
-| `textColor` | mark | `\textcolor[HTML]{RRGGBB}{…}` (round-trips through the serializer; `\usepackage{xcolor}` auto-injected into preambles missing it, and `CLASSIC_PREAMBLE` ships it). Driven by the `SelectionActionsMenu` color swatch + `SelectionColorPopover`. | `text-color.ts` |
+| `textColor` | mark | `\textcolor[HTML]{RRGGBB}{…}` (round-trips through the serializer; `\usepackage{xcolor}` auto-injected into preambles missing it, and `CLASSIC_PREAMBLE` ships it). Driven by the `ActionsMenuPanel` color swatch + `SelectionColorPopover`. | `text-color.ts` |
+| `SlashPopupExtension` | PM plugin | typing `\` in prose opens an inline popup of Virgil's `VIRGIL_COMMANDS` list (declared in `commands.ts`); arrows + Enter inserts. Suppressed inside an unmatched `{` group or up against another `\name`. State lives in module-level `slashPopupStore`. | `slash-popup.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
 | `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. | `expex.ts` |

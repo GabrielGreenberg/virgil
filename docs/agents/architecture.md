@@ -1,4 +1,4 @@
-<!-- last-verified: fa9e124 2026-05-16 -->
+<!-- last-verified: b5f6038 2026-05-19 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -52,6 +52,8 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useStack` | Cross-doc visual clipboard at the editor's bottom-left. Versioned envelope in localStorage (`virgil-stack-v1`), 200-item FIFO cap, cross-tab sync via the `storage` event. See `ui-chrome.md` → Stack |
 | `useScrollActivityTracker` | Auto-hide scrollbars: paints `data-scroll-active` on the container while the user is actively scrolling/hovering, fades when idle |
 | `useUpdateAvailable` | Service-worker update polling; exposes a "new version available" flag that drives the in-app refresh banner (per-folder skill sync) |
+| `useAutoAddLibraryEntriesForCitations` | Watches new citation keys in the doc and auto-adds matching entries from the user's Virgil Library into the paper's bibliography (after the bibliography-search redesign in 91f253c / 240bfda) |
+| `useEditorUIState` | Per-doc UI state hook factored out of EditorPane — tracks click-time selection / focus-mode / hover state etc. that several sibling hooks consume |
 
 ## Persistence layers
 
@@ -80,7 +82,7 @@ All are JSON files. Schemas in [src/lib/types.ts](../../src/lib/types.ts).
 | `ai-requests.json` | Queued requests for an agent to resolve | Per-panel "ask" affordances (Footnotes, Notes, Quotations, Citations, Todo). Also fed by the **AI request bridge** ([src/lib/ai-request-bridge.ts](../../src/lib/ai-request-bridge.ts)), which collapses per-card sticky `aiRequest:true` flags on notes/todos/cutter-comments/revision-comments into a single drainable queue with `linkedTo`. Editor-side skills under `editor/` (see [editor/AGENTS.md](../../editor/AGENTS.md)) drain it |
 | `notifications.json` | Per-doc inbox of completion entries written by editor-side skills | [src/hooks/useDocNotificationStream.ts](../../src/hooks/useDocNotificationStream.ts) polls and toasts unseen items |
 | `bib-review-requests.json` | Per-entry bibliography field/note reviews | Bibliography cards |
-| `editor-state.json` | Cursor position, selection, misc editor state | Restored on reopen |
+| `editor-state.json` | Last-edited paragraph + collapsed section folds + misc editor state. Schema moved from PM positions to paragraph UUIDs in 7d702de so structural edits between sessions don't lose the target | Restored on reopen — scrolls back to the last paragraph and reapplies folds |
 | `cutter.json` | Cutter cards (comments + suggestions) and optional word-count goal | Cutter panel; [src/hooks/useCutter.ts](../../src/hooks/useCutter.ts) |
 | `collab.json` | Turn-taking collab state: pen holder, heartbeat timestamps, per-user presence entries (cursor paragraph, card focus claims) | [src/hooks/useCollab.ts](../../src/hooks/useCollab.ts); types/constants in [src/lib/collab.ts](../../src/lib/collab.ts) |
 | `doc-settings.json` | Per-document settings (currently: `style` id for the preamble preset) | `useDocumentStyle` reads/writes; schema in [src/lib/document-settings.ts](../../src/lib/document-settings.ts) |
