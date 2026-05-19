@@ -360,15 +360,22 @@ export function CitationCard({
 
   const setRowPostnote = useCallback(
     (rowId: string, postnote: string) => {
-      const isMultiCite =
-        bibPackage !== "natbib" &&
-        rows.length >= 2 &&
-        HAS_PLURAL.has(type.replace(/s$/, ""));
-      const next = isMultiCite
-        ? rows.map((r) => (r.id === rowId ? { ...r, postnote } : r))
-        : rows.map((r) => ({ ...r, postnote }));
+      const next = rows.map((r) => (r.id === rowId ? { ...r, postnote } : r));
+
+      // Auto-promote singular biblatex → plural form when rows now have
+      // distinct postnotes, so each per-key range survives serialize.
+      const distinctPostnotes =
+        new Set(next.map((r) => r.postnote || "")).size > 1;
+      const shouldPromote =
+        bibPackage === "biblatex" &&
+        HAS_PLURAL.has(type) &&
+        next.length >= 2 &&
+        distinctPostnotes;
+      const nextType = shouldPromote ? type + "s" : type;
+
       setRows(next);
-      persist({ rows: next });
+      if (shouldPromote) setType(nextType);
+      persist({ rows: next, type: nextType });
     },
     [rows, persist, bibPackage, type],
   );
@@ -575,59 +582,62 @@ export function CitationCard({
     letterSpacing: "0.02em",
     ...bodyStyle,
   };
-  const firstHeaderKey = rows[0]?.key || cit.keys[0];
-  const firstHeaderEntry = firstHeaderKey
-    ? bibEntryMap.get(firstHeaderKey)
-    : undefined;
-  const headerAuthor = firstHeaderEntry
-    ? firstThreeAuthorLastNames(firstHeaderEntry.fields.author || "")
-    : "";
-  const headerYear =
-    firstHeaderEntry?.fields.year || firstHeaderEntry?.fields.date || "";
-  const headerTitle = firstHeaderEntry?.fields.title || "";
-  const validKeyCount = rows.filter((r) => r.key.trim()).length;
-  const headerMore = validKeyCount > 1 ? ` +${validKeyCount - 1}` : "";
+  const headerRowSources = rows.filter((r) => r.key.trim());
+  const headerRowData = (headerRowSources.length > 0
+    ? headerRowSources
+    : [{ id: "h_fallback", key: cit.keys[0] || "" }]
+  ).map((r) => {
+    const key = r.key.trim();
+    const entry = key ? bibEntryMap.get(key) : undefined;
+    return {
+      id: r.id,
+      key,
+      author: entry
+        ? firstThreeAuthorLastNames(entry.fields.author || "")
+        : "",
+      year: entry?.fields.year || entry?.fields.date || "",
+      title: entry?.fields.title || "",
+    };
+  });
+  const hasAnyHeaderKey = headerRowData.some((r) => r.key);
   const headerContent = (
     <div
       data-panel-kind="citation"
-      className="leading-snug"
+      className="leading-snug space-y-0.5"
       style={{
         ...headerStyle,
-        display: "-webkit-box",
-        WebkitLineClamp: 2,
-        WebkitBoxOrient: "vertical",
-        overflow: "hidden",
         overflowWrap: "anywhere",
       }}
       title={
-        firstHeaderKey
-          ? [headerAuthor || firstHeaderKey, headerYear, headerTitle]
-              .filter(Boolean)
-              .join(" · ") + headerMore
+        hasAnyHeaderKey
+          ? headerRowData
+              .map((r) =>
+                [r.author || r.key, r.year, r.title]
+                  .filter(Boolean)
+                  .join(" · "),
+              )
+              .join("\n")
           : "Citation"
       }
     >
-      {firstHeaderKey ? (
-        <>
-          <span className="font-semibold">
-            {headerAuthor || firstHeaderKey}
-          </span>
-          {headerYear && (
-            <>
-              <span className="text-ink-body mx-1">&middot;</span>
-              <span className="font-semibold">{headerYear}</span>
-            </>
-          )}
-          {headerTitle && (
-            <>
-              <span className="text-ink-body mx-1">&middot;</span>
-              <span className="italic text-ink-body">{headerTitle}</span>
-            </>
-          )}
-          {headerMore && (
-            <span className="text-ink-body">{headerMore}</span>
-          )}
-        </>
+      {hasAnyHeaderKey ? (
+        headerRowData.map((r) => (
+          <div key={r.id}>
+            <span className="font-semibold">{r.author || r.key}</span>
+            {r.year && (
+              <>
+                <span className="text-ink-body mx-1">&middot;</span>
+                <span className="font-semibold">{r.year}</span>
+              </>
+            )}
+            {r.title && (
+              <>
+                <span className="text-ink-body mx-1">&middot;</span>
+                <span className="italic text-ink-body">{r.title}</span>
+              </>
+            )}
+          </div>
+        ))
       ) : (
         <span className="text-ink-faint italic">Citation</span>
       )}

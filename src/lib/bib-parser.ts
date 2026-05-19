@@ -276,8 +276,12 @@ export function serializeCiteCommand(
   const star = starred ? "*" : "";
 
   if (bibPackage === "natbib") {
-    // Natbib: \citep[pre][post]{key1,key2} — shared pre/post from first entry
-    const brackets = bracketsFor(entries[0]?.prenote, entries[0]?.postnote);
+    // Natbib: \citep[pre][post]{key1,key2}. Prenote renders before the first
+    // cite, postnote after the last — so pull each from where natbib will put
+    // it. When per-row ranges diverge, the last row wins.
+    const pre = entries[0]?.prenote;
+    const post = entries[entries.length - 1]?.postnote;
+    const brackets = bracketsFor(pre, post);
     const keys = entries.map((e) => e.key).join(",");
     return `\\${cmdBase}${star}${brackets}{${keys}}`;
   }
@@ -295,7 +299,11 @@ export function serializeCiteCommand(
   const hasPlural = HAS_PLURAL_FORM.has(baseLower);
 
   if (!hasPlural) {
-    const brackets = bracketsFor(entries[0]?.prenote, entries[0]?.postnote);
+    // Shared-pagination fallback (commands like \citeauthor / \nocite with no
+    // plural form): prenote before the first cite, postnote after the last.
+    const pre = entries[0]?.prenote;
+    const post = entries[entries.length - 1]?.postnote;
+    const brackets = bracketsFor(pre, post);
     const keys = entries.map((e) => e.key).join(",");
     return `\\${cmdBase}${star}${brackets}{${keys}}`;
   }
