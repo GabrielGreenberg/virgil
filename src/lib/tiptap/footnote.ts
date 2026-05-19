@@ -16,6 +16,14 @@ export const Footnote = Node.create<FootnoteOptions>({
   group: "inline",
   inline: true,
   atom: true,
+  // PM otherwise creates a NodeSelection on mousedown for inline atoms,
+  // and that selection transaction defaults to `scrollIntoView: true` —
+  // which scrolls the row by ~100px before our click handler can route
+  // to alignOmniCardWithClick. `atom: true` still keeps Backspace
+  // deletion working (single-unit deletion), and `draggable: true` is
+  // officially compatible with `selectable: false` as long as the node
+  // is an atom (PM docs). Matches archive-marker.ts.
+  selectable: false,
   draggable: true,
 
   addOptions() {
