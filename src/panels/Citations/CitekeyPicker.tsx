@@ -46,6 +46,9 @@ export interface CitekeyPickerProps {
   /** Initial query — set to the current row's citekey when re-opening the
    *  picker on a filled citation row. */
   initialQuery?: string;
+  /** External-input mode (see `BibEntryPickerMenuProps.externalQuery`). */
+  externalQuery?: string;
+  externalInputEl?: HTMLElement | null;
 }
 
 export function CitekeyPicker({
@@ -57,6 +60,8 @@ export function CitekeyPicker({
   onSelectKey,
   onAddBibEntry,
   initialQuery,
+  externalQuery,
+  externalInputEl,
 }: CitekeyPickerProps) {
   const { entries: libraryBibEntries } = useLibraryMasterBib();
   const { items: libraryItems } = useLibraryItems();
@@ -152,6 +157,8 @@ export function CitekeyPicker({
         noEntries: "No bibliography entries available.",
         typeToSearch: "Type to search your bibliography and library.",
       }}
+      externalQuery={externalQuery}
+      externalInputEl={externalInputEl}
     />
   );
 }

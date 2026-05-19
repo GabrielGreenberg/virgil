@@ -33,6 +33,8 @@ import {
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import type { ArchivedSnippet } from "@/lib/types";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { generateShortId } from "@/lib/uuid";
+import { focusNewCard } from "@/lib/focus-new-card";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
 
 export type DragHandlePassage =
@@ -150,9 +152,24 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "citation": {
-          // Mirrors the Actions-toolbar Insert Citation flow: creates an
-          // unanchored citation card the user fills in with a \cite{key}.
-          const ref = cardCreation.createCitation({ mode: "omni" });
+          // Drop a [cite] placeholder pill at the end of the captured
+          // passage (matches the footnote convention above), then register
+          // an *anchored* panel ref with the same citationId so the card
+          // appears under the anchored group with the picker open.
+          try {
+            ed.commands.setTextSelection(range.to);
+          } catch {
+            /* ignore */
+          }
+          const existingIds = handle.getCitationIds();
+          const citationId = generateShortId(existingIds);
+          handle.insertCitation("\\cite{}", citationId, "");
+          const ref = cardCreation.createCitation({
+            command: "\\cite{}",
+            citationId,
+            unanchored: false,
+            mode: "omni",
+          });
           panelId = "citations";
           focusCardKey = `citation:${ref.id}`;
           break;
@@ -305,118 +322,6 @@ function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
   const record = createLinkedAnchor(ed, kind);
   if (!record) return undefined;
   return { anchorId: record.anchorId, anchorText: record.text };
-}
-
-/**
- * Drop the caret into the main editable field of a newly-created card
- * (note body, footnote body, citation command input, todo title,
- * comment textarea, …). The card mounts asynchronously after the
- * underlying React state update, so we retry across a few frames
- * before giving up.
- */
-function focusNewCard(cardKey: string): void {
-  const kind = cardKey.split(":")[0] ?? "";
-  let attempts = 0;
-  const MAX_ATTEMPTS = 12;
-  const tryFocus = () => {
-    const card = document.querySelector<HTMLElement>(
-      `[data-card-key="${CSS.escape(cardKey)}"]`,
-    );
-    if (!card) {
-      if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
-      return;
-    }
-    const target = pickFocusTarget(card, kind);
-    if (!target) {
-      if (++attempts < MAX_ATTEMPTS) requestAnimationFrame(tryFocus);
-      return;
-    }
-    try {
-      target.focus({ preventScroll: true });
-    } catch {
-      /* ignore */
-    }
-    // Contenteditable / ProseMirror: drop the caret at the end of the
-    // existing content so the user starts typing into the body, not
-    // before it.
-    if (target.isContentEditable) {
-      try {
-        const sel = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(target);
-        range.collapse(false);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      } catch {
-        /* ignore */
-      }
-    } else if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
-      // Place caret at end of any pre-seeded text.
-      try {
-        const len = target.value.length;
-        target.setSelectionRange(len, len);
-      } catch {
-        /* ignore */
-      }
-    }
-  };
-  // Two RAFs to let React commit + the panel re-render before we hunt
-  // for the card.
-  requestAnimationFrame(() => requestAnimationFrame(tryFocus));
-}
-
-/** Pick the most-likely "main editing field" inside a card's DOM,
- *  per card kind. Order of preference inside each kind matches the
- *  way each card lays out its primary editable. */
-function pickFocusTarget(card: HTMLElement, kind: string): HTMLElement | null {
-  const findEditable = () =>
-    card.querySelector<HTMLElement>('[contenteditable="true"]');
-  const findTextarea = () => card.querySelector<HTMLTextAreaElement>("textarea");
-  const findTextInput = () =>
-    card.querySelector<HTMLInputElement>(
-      'input[type="text"], input:not([type])',
-    );
-
-  switch (kind) {
-    case "note":
-    case "footnote":
-    case "archive":
-      // Rich-text body lives in a contenteditable ProseMirror element.
-      return findEditable() ?? findTextarea() ?? findTextInput();
-    case "todo":
-      // Todo text lives in the title input.
-      return findTextInput() ?? findTextarea() ?? findEditable();
-    case "revision":
-    case "comment":
-    case "cutter-comment":
-    case "revision-suggestion":
-    case "cutter-suggestion":
-      // Comment/suggestion cards use a textarea for the dialogue/body.
-      return findTextarea() ?? findEditable() ?? findTextInput();
-    case "citation":
-      // Citation cards show the raw \cite{} in a small inline editor
-      // gated behind an "EDIT" affordance. Prefer any pre-rendered
-      // text input; fall back to clicking the Edit button.
-      {
-        const input = findTextInput() ?? findTextarea();
-        if (input) return input;
-        const editBtn = Array.from(
-          card.querySelectorAll<HTMLButtonElement>("button"),
-        ).find((b) => /^\s*edit\s*$/i.test(b.textContent ?? ""));
-        if (editBtn) {
-          editBtn.click();
-          // Retry on next frame so the input rendered by Edit mode can
-          // be found.
-          return null;
-        }
-        return findEditable();
-      }
-    case "quotation":
-      // Quotation groups: first textarea (cite key / notes) or input.
-      return findTextarea() ?? findTextInput() ?? findEditable();
-    default:
-      return findEditable() ?? findTextarea() ?? findTextInput();
-  }
 }
 
 /**

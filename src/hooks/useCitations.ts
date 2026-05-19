@@ -276,10 +276,15 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [bibEntries],
   );
 
+  const bibEntryMap = useMemo(
+    () => new Map(bibEntries.map((e) => [e.key, e])),
+    [bibEntries],
+  );
+
   const getDisplayText = useCallback(
     (command: string): string =>
-      formatInlineCitation(command, bibEntries, stateRef.current.bibPackage),
-    [bibEntries, stateRef],
+      formatInlineCitation(command, bibEntries, stateRef.current.bibPackage, bibEntryMap),
+    [bibEntries, bibEntryMap, stateRef],
   );
 
   const getFormattedBib = useCallback(

@@ -2320,17 +2320,57 @@ body[data-drop-mode-active="true"] [data-floating-panel="true"][data-drop-mode-s
   color: var(--citation-color, #555);
 }
 
-.citation-node:hover {
+.citation-node:not([data-text-drag-paint="true"]):not([data-text-selected="true"]):hover {
   background: #fef3c3;
   border-color: #d4a843;
   color: #4a3f20;
 }
 
+/* Empty placeholder pill — when the user typed \cite/\cite-slash with no
+ * key yet. Dotted outline + faded fill so the anchor is visible but reads
+ * as "awaiting input". Flips to the normal pill style once a key lands. */
+.citation-node[data-empty="true"] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--ink-muted, #8a8678);
+  font-style: italic;
+  opacity: 0.85;
+}
+
 /* Let text selection paint across citation pills so a sentence
- * containing a citation reads as one selection. */
+ * containing a citation reads as one selection. The ::selection rule
+ * works in browsers that paint pseudo-selection over contentEditable
+ * elements (Firefox, mostly). For Chrome/Safari we rely on the
+ * citationTextSelectionPaint PM plugin to apply the data-text-selected
+ * attribute below. */
 .citation-node::selection,
 .citation-node *::selection {
-  background: var(--selection-bg, #b3d4fc);
+  background: #b3d4fc;
+  color: inherit;
+}
+
+/* Citation inside an active text selection — wins over hover/card-selected
+ * because the user is actively drag-selecting. Border matches the fill so
+ * the pill doesn't show a "double border" at its edges during selection.
+ * Two attributes both trigger the paint:
+ *   - data-text-selected: set by the citationTextSelectionPaint plugin when
+ *     the atom is actually inside PM's TextSelection. Source of truth for
+ *     copy/paste, and what takes over after the drag ends.
+ *   - data-text-drag-paint: set by a window-level mousemove handler at the
+ *     top of citation.ts (gated by a module-level _citationDragging flag set
+ *     on window mousedown, cleared on mouseup/blur). Iterates cached pill
+ *     rects against the cursor each mousemove — paints the pill blue the
+ *     instant the drag cursor enters its bounding box, bypassing PM's
+ *     midpoint-snap and avoiding the phantom mouseenter/mouseleave pairs
+ *     that browsers fire on contentEditable=false atoms during drag. The
+ *     `.citation-node:hover` selector above is gated by :not() on these
+ *     attributes so it cannot win during a drag. */
+.citation-node[data-text-selected="true"],
+[data-type="citation"][data-text-selected="true"],
+.citation-node[data-text-drag-paint="true"],
+[data-type="citation"][data-text-drag-paint="true"] {
+  background: #b3d4fc;
+  border-color: #b3d4fc;
   color: inherit;
 }
 

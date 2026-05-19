@@ -48,17 +48,31 @@ export function useCommandInputBridges(deps: {
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.partial) {
+      const detail = (e as CustomEvent).detail as
+        | { partial?: string; citationId?: string }
+        | undefined;
+      if (!detail?.partial) return;
+      // Soft routing: only expand the citations side if it's collapsed
+      // or blank. If the user already has omni mode (or any other panel)
+      // active on that side, leave it. Mirrors the
+      // `ensureOmniActiveForPanel` pattern used by the drag-handle path.
+      const p = prefsRef.current;
+      const citPlacement = p.placements.find((pl) => pl.id === "citations");
+      const side = citPlacement?.side ?? "right";
+      const active = side === "left" ? p.activeLeft : p.activeRight;
+      if (active == null || active === "blank") {
+        if (side === "left") setActiveLeft("citations");
+        else setActiveRight("citations");
+      }
+      if (!detail.citationId) {
+        // Legacy path: no inline atom — open a panel-only draft card.
+        // (When `citationId` IS present, the atom is already in the
+        // editor; CitationsHost has its own listener that routes the
+        // event through `cardCreation.createCitation` so the card lands
+        // in the panel with the same pin / focus behavior as the
+        // drag-handle "Citation" action.)
         setPendingCitationMode("anchored");
         setPendingCitationCreate(detail.partial);
-        const p = prefsRef.current;
-        const citPlacement = p.placements.find((pl) => pl.id === "citations");
-        if (citPlacement?.side === "left") {
-          if (p.activeLeft !== "citations") setActiveLeft("citations");
-        } else {
-          if (p.activeRight !== "citations") setActiveRight("citations");
-        }
       }
     };
     window.addEventListener("virgil-citation-create", handler);

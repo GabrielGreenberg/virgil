@@ -64,6 +64,16 @@ export interface BibEntryPickerMenuProps {
     noEntries: string;
     typeToSearch: string;
   };
+  /** External-input mode — when set, the picker omits its own search input
+   *  and reads the query from this prop. The caller (e.g. a citation card)
+   *  renders the input so picker + trigger look like one field. The picker
+   *  also attaches a keydown listener to `externalInputEl` to handle
+   *  arrow navigation / Enter / Escape from the external input. */
+  externalQuery?: string;
+  /** Input element the caller owns. Required when `externalQuery` is set.
+   *  The picker uses it both as the dismiss-exclusion zone (clicking the
+   *  input doesn't close the picker) and as the keydown listener target. */
+  externalInputEl?: HTMLElement | null;
 }
 
 const POPUP_WIDTH = 360;
@@ -101,8 +111,13 @@ function BibEntryPickerMenuInner({
   placeholder = "Search…",
   ariaLabel = "Search entries",
   emptyHint = DEFAULT_HINTS,
+  externalQuery,
+  externalInputEl,
 }: BibEntryPickerMenuProps) {
-  const [query, setQuery] = useState(initialQuery ?? "");
+  const isExternalInput = externalQuery !== undefined;
+  const [internalQuery, setInternalQuery] = useState(initialQuery ?? "");
+  const query = isExternalInput ? externalQuery! : internalQuery;
+  const setQuery = isExternalInput ? () => {} : setInternalQuery;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [localAdded, setLocalAdded] = useState<Set<string>>(new Set());
@@ -117,20 +132,30 @@ function BibEntryPickerMenuInner({
     return searchBibFuzzy(entries, query, 50);
   }, [entries, query]);
 
+  // Reset the highlighted row whenever the (external) query changes so the
+  // first match is selected by default.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query]);
+
   const safeSelectedIndex =
     filtered.length === 0
       ? 0
       : Math.min(Math.max(0, selectedIndex), filtered.length - 1);
 
   useEffect(() => {
+    if (isExternalInput) return;
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, []);
+  }, [isExternalInput]);
 
   useLayoutEffect(() => {
     const update = () => {
-      const rect =
-        anchorRect ?? (anchorEl ? anchorEl.getBoundingClientRect() : null);
+      // Anchor priority: externalInputEl (external-input mode) > anchorRect
+      // > anchorEl. The external input visually owns the search field, so
+      // the popover must drop directly beneath it.
+      const sourceEl = externalInputEl ?? anchorEl ?? null;
+      const rect = anchorRect ?? (sourceEl ? sourceEl.getBoundingClientRect() : null);
       if (!rect) {
         setCoords(null);
         return;
@@ -144,18 +169,19 @@ function BibEntryPickerMenuInner({
       window.removeEventListener("scroll", update, true);
       window.removeEventListener("resize", update);
     };
-  }, [anchorEl, anchorRect]);
+  }, [anchorEl, anchorRect, externalInputEl]);
 
   useEffect(() => {
     const onMouseDown = (e: MouseEvent) => {
       if (!popupRef.current) return;
       if (popupRef.current.contains(e.target as Node)) return;
       if (anchorEl && anchorEl.contains(e.target as Node)) return;
+      if (externalInputEl && externalInputEl.contains(e.target as Node)) return;
       onClose();
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [anchorEl, onClose]);
+  }, [anchorEl, externalInputEl, onClose]);
 
   const rowStateFor = useCallback(
     (entry: BibEntry): RowState => {
@@ -227,6 +253,23 @@ function BibEntryPickerMenuInner({
     row?.scrollIntoView({ block: "nearest" });
   }, [safeSelectedIndex]);
 
+  // External-input mode: forward keyboard events from the caller-owned input
+  // to the picker's onKeyDown handler so ArrowUp/Down/Enter/Escape work from
+  // the merged search field.
+  useEffect(() => {
+    if (!isExternalInput || !externalInputEl) return;
+    const handler = (e: KeyboardEvent) => {
+      // Coerce DOM KeyboardEvent into a React-like shape for the existing
+      // onKeyDown callback. Only the keys it inspects need to exist.
+      onKeyDown({
+        key: e.key,
+        preventDefault: () => e.preventDefault(),
+      } as unknown as React.KeyboardEvent);
+    };
+    externalInputEl.addEventListener("keydown", handler);
+    return () => externalInputEl.removeEventListener("keydown", handler);
+  }, [isExternalInput, externalInputEl, onKeyDown]);
+
   if (!coords) return null;
 
   const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
@@ -267,6 +310,7 @@ function BibEntryPickerMenuInner({
       }}
       onKeyDown={onKeyDown}
     >
+      {!isExternalInput && (
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-edge-subtle shrink-0">
         <svg
           width="12"
@@ -312,6 +356,7 @@ function BibEntryPickerMenuInner({
           </svg>
         </button>
       </div>
+      )}
 
       <div
         ref={listRef}

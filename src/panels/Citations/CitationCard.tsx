@@ -44,11 +44,17 @@ const NATBIB_TYPES = [
 
 const BIBLATEX_TYPES = [
   { value: "cite", label: "\\cite" },
+  { value: "cites", label: "\\cites" },
   { value: "autocite", label: "\\autocite" },
+  { value: "autocites", label: "\\autocites" },
   { value: "textcite", label: "\\textcite" },
+  { value: "textcites", label: "\\textcites" },
   { value: "parencite", label: "\\parencite" },
+  { value: "parencites", label: "\\parencites" },
   { value: "footcite", label: "\\footcite" },
+  { value: "footcites", label: "\\footcites" },
   { value: "smartcite", label: "\\smartcite" },
+  { value: "smartcites", label: "\\smartcites" },
   { value: "fullcite", label: "\\fullcite" },
   { value: "footfullcite", label: "\\footfullcite" },
   { value: "citeauthor", label: "\\citeauthor" },
@@ -337,58 +343,46 @@ export function CitationCard({
 
   /* ── Row mutations ───────────────────────────────────────────────── */
 
+  // Each mutator computes `next` from the closure's current `rows`, calls
+  // `setRows(next)`, then calls `persist({ rows: next })` — both at event
+  // time. Calling `persist` from *inside* a `setRows` updater would invoke
+  // `onUpdateCitation` (a parent setState) during React's reducer phase,
+  // which React 18+ warns about as "Cannot update a component while
+  // rendering a different component".
   const setRowKey = useCallback(
     (rowId: string, key: string) => {
-      setRows((prev) => {
-        const next = prev.map((r) => (r.id === rowId ? { ...r, key } : r));
-        persist({ rows: next });
-        return next;
-      });
+      const next = rows.map((r) => (r.id === rowId ? { ...r, key } : r));
+      setRows(next);
+      persist({ rows: next });
     },
-    [persist],
+    [rows, persist],
   );
 
   const setRowPostnote = useCallback(
     (rowId: string, postnote: string) => {
-      setRows((prev) => {
-        const isMultiCite =
-          bibPackage !== "natbib" &&
-          prev.length >= 2 &&
-          HAS_PLURAL.has(type.replace(/s$/, ""));
-        let next: UiRow[];
-        if (isMultiCite) {
-          // Per-key postnote.
-          next = prev.map((r) =>
-            r.id === rowId ? { ...r, postnote } : r,
-          );
-        } else {
-          // Shared postnote — propagate to every row so the UI mirrors
-          // what the format will actually carry after a round-trip.
-          next = prev.map((r) => ({ ...r, postnote }));
-        }
-        persist({ rows: next });
-        return next;
-      });
+      const isMultiCite =
+        bibPackage !== "natbib" &&
+        rows.length >= 2 &&
+        HAS_PLURAL.has(type.replace(/s$/, ""));
+      const next = isMultiCite
+        ? rows.map((r) => (r.id === rowId ? { ...r, postnote } : r))
+        : rows.map((r) => ({ ...r, postnote }));
+      setRows(next);
+      persist({ rows: next });
     },
-    [persist, bibPackage, type],
+    [rows, persist, bibPackage, type],
   );
 
   const removeRow = useCallback(
     (rowId: string) => {
-      setRows((prev) => {
-        if (prev.length <= 1) {
-          // Don't drop the last row entirely — clear it instead so the
-          // empty card still has one slot to type into.
-          const next = [{ id: nextRowId(), key: "" }];
-          persist({ rows: next });
-          return next;
-        }
-        const next = prev.filter((r) => r.id !== rowId);
-        persist({ rows: next });
-        return next;
-      });
+      const next =
+        rows.length <= 1
+          ? [{ id: nextRowId(), key: "" }]
+          : rows.filter((r) => r.id !== rowId);
+      setRows(next);
+      persist({ rows: next });
     },
-    [persist],
+    [rows, persist],
   );
 
   const addRow = useCallback(() => {
@@ -399,14 +393,35 @@ export function CitationCard({
 
   const [pickerRowId, setPickerRowId] = useState<string | null>(null);
   const [pickerAnchor, setPickerAnchor] = useState<HTMLElement | null>(null);
+  /** When the picker is opened from the empty-row's merged search input,
+   *  this is the live query text. The input is owned by `CitationKeyRow`;
+   *  the value lives here so the picker can read it via `externalQuery`. */
+  const [pickerExternalQuery, setPickerExternalQuery] = useState<string | null>(null);
+  const [pickerExternalInputEl, setPickerExternalInputEl] = useState<HTMLInputElement | null>(null);
   const rowAnchorRefs = useRef<Map<string, HTMLElement>>(new Map());
   const openPickerFor = useCallback((rowId: string) => {
     setPickerRowId(rowId);
     setPickerAnchor(rowAnchorRefs.current.get(rowId) ?? null);
+    // Reset the external-input plumbing — set by the empty-row input on focus.
+    setPickerExternalQuery(null);
+    setPickerExternalInputEl(null);
   }, []);
+  /** Opened from the merged "Add from library…" input. The input itself
+   *  drives the query; the picker dropdown anchors beneath it. */
+  const openPickerForInput = useCallback(
+    (rowId: string, inputEl: HTMLInputElement, initialQuery: string) => {
+      setPickerRowId(rowId);
+      setPickerAnchor(inputEl);
+      setPickerExternalQuery(initialQuery);
+      setPickerExternalInputEl(inputEl);
+    },
+    [],
+  );
   const closePicker = useCallback(() => {
     setPickerRowId(null);
     setPickerAnchor(null);
+    setPickerExternalQuery(null);
+    setPickerExternalInputEl(null);
   }, []);
 
   /* ── Inline BibEntryCard expansion ───────────────────────────────── */
@@ -635,19 +650,6 @@ export function CitationCard({
 
   const types = bibPackage === "natbib" ? NATBIB_TYPES : BIBLATEX_TYPES;
 
-  /* ── Postnote shared-vs-per-row classification ──────────────────── */
-
-  const isMultiCite =
-    bibPackage !== "natbib" &&
-    rows.length >= 2 &&
-    HAS_PLURAL.has(type.replace(/s$/, ""));
-
-  const sharedPostnoteTooltip = isMultiCite
-    ? undefined
-    : bibPackage === "natbib"
-      ? "Natbib shares this page note across all keys in the citation."
-      : `\\${type} doesn’t have a multi-cite plural form — the page note is shared across all keys.`;
-
   /* ── Preview (rendered HTML) ─────────────────────────────────────── */
 
   const preview = useMemo(() => {
@@ -723,20 +725,21 @@ export function CitationCard({
             onClick={(e) => e.stopPropagation()}
           >
             <ul className="flex flex-col gap-2 list-none m-0 p-0">
-              {rows.map((row, idx) => (
+              {rows.map((row) => (
                 <CitationKeyRow
                   key={row.id}
                   row={row}
-                  index={idx}
                   bibEntryMap={bibEntryMap}
-                  perRowPostnote={isMultiCite}
-                  postnoteTooltip={sharedPostnoteTooltip}
                   canRemove={rows.length > 1 || row.key.trim().length > 0}
                   bibExpanded={
                     !!row.key.trim() && expandedBibKey === row.key.trim()
                   }
+                  pickerOpenHere={pickerRowId === row.id && pickerExternalInputEl !== null}
+                  pickerQuery={pickerRowId === row.id ? pickerExternalQuery : null}
                   onToggleBib={() => toggleBibKey(row.key.trim())}
                   onOpenPicker={() => openPickerFor(row.id)}
+                  onOpenPickerForInput={(el, q) => openPickerForInput(row.id, el, q)}
+                  onPickerQueryChange={(q) => setPickerExternalQuery(q)}
                   onChangePostnote={(p) => setRowPostnote(row.id, p)}
                   onRemove={() => removeRow(row.id)}
                   registerAnchor={(el) => {
@@ -747,27 +750,29 @@ export function CitationCard({
               ))}
             </ul>
 
-            <button
-              type="button"
-              onClick={addRow}
-              className="mt-2 inline-flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
-              title="Add another reference"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
+            {rows.some((r) => r.key.trim()) && (
+              <button
+                type="button"
+                onClick={addRow}
+                className="mt-2 inline-flex items-center gap-1 text-xs text-ink-subtle hover:text-ink-body transition-colors"
+                title="Add another reference"
               >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-              </svg>
-              Add reference…
-            </button>
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Add reference…
+              </button>
+            )}
           </div>
 
           <div
@@ -877,7 +882,7 @@ export function CitationCard({
                   }}
                   onBlur={commitCodeDraft}
                   spellCheck={false}
-                  className="text-[11px] font-mono text-ink-body bg-transparent border-0 outline-none flex-1 min-w-0 p-0 focus:ring-0"
+                  className="text-[11px] font-mono text-ink-body bg-surface border border-edge-strong rounded px-1 py-0 outline-none flex-1 min-w-0 focus:ring-0"
                 />
               ) : (
                 <button
@@ -886,7 +891,7 @@ export function CitationCard({
                     codeDraftRef.current = cit.command;
                     setCodeDraft(cit.command);
                   }}
-                  className="text-[11px] font-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border-0 p-0 cursor-text"
+                  className="text-[11px] font-mono text-ink-body truncate flex-1 min-w-0 text-left bg-transparent border border-transparent rounded px-1 py-0 cursor-text hover:border-edge-hover hover:bg-surface transition-colors"
                   title="Edit raw LaTeX"
                 >
                   {cit.command || (
@@ -991,6 +996,8 @@ export function CitationCard({
           if (pickerRowId) setRowKey(pickerRowId, k);
         }}
         onAddBibEntry={onAddBibEntry}
+        externalQuery={pickerExternalQuery ?? undefined}
+        externalInputEl={pickerExternalInputEl}
       />
     </>
   );
@@ -1003,17 +1010,20 @@ export function CitationCard({
 
 interface CitationKeyRowProps {
   row: UiRow;
-  index: number;
   bibEntryMap: Map<string, BibEntry>;
-  /** True when each row owns its own postnote (biblatex multi-cite with
-   *  plural form). False = shared postnote across all rows. */
-  perRowPostnote: boolean;
-  /** Tooltip to show on +pg inputs when the postnote is shared. */
-  postnoteTooltip: string | undefined;
   canRemove: boolean;
   bibExpanded: boolean;
+  /** True iff the picker is currently open on this row's empty input. The
+   *  card owns the open/close state; the row uses this to know whether
+   *  its input is the live search field. */
+  pickerOpenHere: boolean;
+  pickerQuery: string | null;
   onToggleBib: () => void;
+  /** Open the picker for a filled-row citekey button (jump-to-change). */
   onOpenPicker: () => void;
+  /** Open the picker from this row's empty merged input. */
+  onOpenPickerForInput: (inputEl: HTMLInputElement, initialQuery: string) => void;
+  onPickerQueryChange: (q: string) => void;
   onChangePostnote: (postnote: string) => void;
   onRemove: () => void;
   registerAnchor: (el: HTMLElement | null) => void;
@@ -1021,14 +1031,15 @@ interface CitationKeyRowProps {
 
 function CitationKeyRow({
   row,
-  index,
   bibEntryMap,
-  perRowPostnote,
-  postnoteTooltip,
   canRemove,
   bibExpanded,
+  pickerOpenHere,
+  pickerQuery,
   onToggleBib,
   onOpenPicker,
+  onOpenPickerForInput,
+  onPickerQueryChange,
   onChangePostnote,
   onRemove,
   registerAnchor,
@@ -1055,12 +1066,6 @@ function CitationKeyRow({
     if (pgDraft === (row.postnote || "")) return;
     onChangePostnote(pgDraft);
   };
-
-  // The +pg slot is dimmed when the postnote is shared and the current
-  // row isn't index 0 — visually it's still present (so multi-key cites
-  // feel symmetric) but the user understands that only the shared value
-  // matters.
-  const pgDim = !perRowPostnote && index > 0;
 
   const copyCitekey = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1130,18 +1135,13 @@ function CitationKeyRow({
           >
             •
           </span>
-          <button
-            type="button"
-            ref={(el) => registerAnchor(el)}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenPicker();
-            }}
-            className="flex-1 min-w-0 text-left text-[12px] text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 hover:border-edge-hover"
-            title="Add from library"
-          >
-            Add from library…
-          </button>
+          <EmptyRowSearchInput
+            pickerOpenHere={pickerOpenHere}
+            pickerQuery={pickerQuery}
+            onOpenPickerForInput={onOpenPickerForInput}
+            onPickerQueryChange={onPickerQueryChange}
+            registerAnchor={registerAnchor}
+          />
           {canRemove && (
             <button
               type="button"
@@ -1239,11 +1239,7 @@ function CitationKeyRow({
             </button>
           )}
           {pgOpen ? (
-            <span
-              className={`flex items-center gap-1 ${pgDim ? "opacity-50" : ""}`}
-              title={pgDim ? postnoteTooltip : undefined}
-            >
-              <span className="font-mono text-ink-muted">p.</span>
+            <span className="flex items-center gap-1">
               <input
                 ref={pgInputRef}
                 type="text"
@@ -1262,8 +1258,8 @@ function CitationKeyRow({
                     pgInputRef.current?.blur();
                   }
                 }}
-                placeholder="page"
-                className="w-12 text-[10.5px] font-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
+                placeholder="range"
+                className="w-14 text-[10.5px] font-mono border border-edge-subtle rounded px-1 py-0 bg-surface focus:border-edge-strong outline-none"
               />
               {!row.postnote && pgDraft === "" && (
                 <button
@@ -1297,10 +1293,10 @@ function CitationKeyRow({
                 e.stopPropagation();
                 setPgOpen(true);
               }}
-              className={`text-[10px] tracking-wide text-ink-muted hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle ${pgDim ? "opacity-50" : ""}`}
-              title={pgDim ? postnoteTooltip : "Add a page note"}
+              className="text-[10px] tracking-wide text-ink-muted hover:text-ink-body px-1 py-0 rounded hover:bg-edge-subtle"
+              title="Add a page range or locator"
             >
-              +pg
+              +range
             </button>
           )}
           <div className="flex-1" aria-hidden />
@@ -1332,5 +1328,54 @@ function CitationKeyRow({
         </div>
       )}
     </li>
+  );
+}
+
+/* ── EmptyRowSearchInput ─────────────────────────────────────────── */
+
+/** Merged "Add from library…" + search field. When the user focuses it,
+ *  the card opens its picker with this input as the external search field
+ *  (so the dropdown sprouts directly beneath, with no second input). */
+function EmptyRowSearchInput({
+  pickerOpenHere,
+  pickerQuery,
+  onOpenPickerForInput,
+  onPickerQueryChange,
+  registerAnchor,
+}: {
+  pickerOpenHere: boolean;
+  pickerQuery: string | null;
+  onOpenPickerForInput: (inputEl: HTMLInputElement, initialQuery: string) => void;
+  onPickerQueryChange: (q: string) => void;
+  registerAnchor: (el: HTMLElement | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // The picker owns the query when open; we display whatever it has.
+  const displayValue = pickerOpenHere ? pickerQuery ?? "" : "";
+
+  return (
+    <input
+      ref={(el) => {
+        inputRef.current = el;
+        registerAnchor(el);
+      }}
+      type="text"
+      value={displayValue}
+      placeholder="Add from library…"
+      onFocus={(e) => {
+        if (!pickerOpenHere) {
+          onOpenPickerForInput(e.currentTarget, "");
+        }
+      }}
+      onChange={(e) => {
+        if (!pickerOpenHere) {
+          onOpenPickerForInput(e.currentTarget, e.target.value);
+        } else {
+          onPickerQueryChange(e.target.value);
+        }
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className="flex-1 min-w-0 text-[12px] text-ink-body placeholder:text-ink-body bg-transparent border border-dashed border-edge-subtle rounded px-2 py-1 outline-none hover:border-edge-hover focus:border-edge-strong focus:border-solid"
+    />
   );
 }

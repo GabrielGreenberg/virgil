@@ -1,5 +1,5 @@
 import type { EditorView } from "@tiptap/pm/view";
-import { markPendingCitationCreate } from "./citation";
+import { generateShortId } from "@/lib/uuid";
 
 export interface VirgilCommand {
   /** The command name without backslash (e.g. "section") */
@@ -67,10 +67,30 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
   },
   {
     name: "cite",
-    action: () => {
-      markPendingCitationCreate("\\cite");
+    action: (view) => {
+      const { state } = view;
+      const citationNodeType = state.schema.nodes.citation;
+      if (!citationNodeType) return;
+      const existing = new Set<string>();
+      state.doc.descendants((node) => {
+        if (node.type.name === "citation" && node.attrs.citationId) {
+          existing.add(node.attrs.citationId as string);
+        }
+        return true;
+      });
+      const citationId = generateShortId(existing);
+      const tr = state.tr.replaceSelectionWith(
+        citationNodeType.create({
+          citationId,
+          command: "\\cite{}",
+          displayText: "",
+        }),
+      );
+      view.dispatch(tr);
       window.dispatchEvent(
-        new CustomEvent("virgil-citation-create", { detail: { partial: "\\cite" } }),
+        new CustomEvent("virgil-citation-create", {
+          detail: { partial: "\\cite", citationId },
+        }),
       );
     },
   },

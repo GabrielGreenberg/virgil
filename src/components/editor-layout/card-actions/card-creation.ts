@@ -187,6 +187,11 @@ export interface CardCreationApi {
   }) => QuotationGroup;
   createCitation: (opts: {
     command?: string;
+    /** Pre-allocated id for the panel ref. Use when the caller has
+     *  already inserted the matching inline citation atom into the editor
+     *  with this id, so the panel ref and the atom share an identity and
+     *  the card renders as anchored. */
+    citationId?: string;
     unanchored?: boolean;
     anchorRect?: DOMRect | null;
     mode?: CardCreateMode;
@@ -477,7 +482,11 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
 
   const createCitation = useCallback<CardCreationApi["createCitation"]>(
     (opts) => {
-      const ref = addCitation(opts.command ?? "\\cite{}", undefined, opts.unanchored ?? true);
+      const ref = addCitation(
+        opts.command ?? "\\cite{}",
+        opts.citationId,
+        opts.unanchored ?? true,
+      );
       setSelectedCitationId(ref.id);
       pin("citation", ref.id);
       if (opts.mode === "omni") return ref;

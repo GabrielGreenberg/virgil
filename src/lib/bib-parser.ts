@@ -449,12 +449,13 @@ function renderFullEntry(
 export function formatInlineCitation(
   command: string,
   bibEntries: BibEntry[],
-  bibPackage: string = "natbib"
+  bibPackage: string = "natbib",
+  entryMap?: Map<string, BibEntry>,
 ): string {
   const parsed = parseCiteCommand(command);
   if (!parsed) return command; // fallback: show raw command
 
-  const entryMap = new Map(bibEntries.map((e) => [e.key, e]));
+  const map = entryMap ?? new Map(bibEntries.map((e) => [e.key, e]));
   const formatAuthor = (entry: BibEntry | undefined, star: boolean, cap: boolean) =>
     formatAuthorLastNames(entry, star, cap);
   const getYear = (entry: BibEntry | undefined) => getEntryYear(entry);
@@ -474,7 +475,7 @@ export function formatInlineCitation(
     isNatbib || (parsedEntries.length === 1 && !MULTI_CITE_NAMES.has(type));
 
   const resolved = parsedEntries.map((pe, i) => ({
-    bib: entryMap.get(pe.key),
+    bib: map.get(pe.key),
     prenote: useTopLevelBrackets
       ? (i === 0 ? prenote : undefined)
       : pe.prenote,
