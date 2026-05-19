@@ -195,7 +195,9 @@ export function TexBlockFloat({
     const ed = editorRef.current?.getEditor();
     if (!ed) return;
     const myFloatId = `texBlock:${uuid}`;
-    const unsubscribe = () => ed.off("transaction", onTx);
+    const unsubscribe = () => {
+      ed.off("transaction", onTx);
+    };
     const onTx = ({ transaction }: { transaction: { getMeta: (k: string) => unknown } }) => {
       // Skip our own echo.
       if (transaction.getMeta(FLOAT_WRITE_META) === myFloatId) return;
