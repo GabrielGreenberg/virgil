@@ -226,10 +226,10 @@ export const CARD_TYPE_LABELS: Record<CardKind, string> = {
   bib: "Bibliography",
   citation: "Citation",
   comment: "Comment",
-  suggestion: "Suggestion",
+  suggestion: "Revision",
   "cutter-comment": "Comment",
   "cutter-suggestion": "Suggestion",
-  "revision-suggestion": "Suggestion",
+  "revision-suggestion": "Revision",
   quotation: "Quotation",
   example: "Example",
   ai: "AI Request",
@@ -295,6 +295,7 @@ export function cardPopKey(cardKind: CardKind, id: string): string {
 const POLYMORPHIC_CARD_PANEL: Partial<Record<CardKind, PanelKind>> = {
   "cutter-comment": "cutter",
   "cutter-suggestion": "cutter",
+  "revision-suggestion": "revisions",
   note: "notes",
   highlight: "notes",
 };
