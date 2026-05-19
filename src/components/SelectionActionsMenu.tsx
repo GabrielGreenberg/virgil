@@ -83,11 +83,6 @@ const ABOVE_GAP = 6;
 const FORMATTING_ROW_H = 34;
 // 3 rows + small inter-row gap accumulated by `gap: 2`.
 const FORMATTING_SECTION_H = FORMATTING_ROW_H * 3 + 4;
-// Beat between mouse-up (or candidate becoming visible while mouse is
-// up) and the menu actually appearing. Long enough that a quick
-// drag-select doesn't pop the menu before the user looks for it; short
-// enough to feel responsive once they've finished selecting.
-const SHOW_BEAT_MS = 250;
 
 const INVISIBLE_PLACEMENT: Placement = {
   visible: false,
@@ -276,13 +271,12 @@ export function SelectionActionsMenu({
   const [, setActiveTick] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const subscribedEditorRef = useRef<Editor | null>(null);
-  // Deferred-show state machine: candidate placement is computed
-  // continuously from the live selection, but the rendered `placement`
-  // only updates once the mouse is up and the show-beat has elapsed.
+  // Candidate placement is computed continuously from the live
+  // selection; `mouseDownRef` freezes the rendered placement while the
+  // user is mid-drag so the menu doesn't flicker across a drag-select.
   // See applyVisibility() below for the transition table.
   const candidateRef = useRef<Placement>(INVISIBLE_PLACEMENT);
   const mouseDownRef = useRef(false);
-  const showTimerRef = useRef<number | null>(null);
   const placementRef = useRef<Placement>(placement);
   useEffect(() => {
     placementRef.current = placement;
@@ -334,18 +328,11 @@ export function SelectionActionsMenu({
         prevEditor.off("update", schedule);
       }
     };
-    const clearShowTimer = () => {
-      if (showTimerRef.current != null) {
-        window.clearTimeout(showTimerRef.current);
-        showTimerRef.current = null;
-      }
-    };
     const applyVisibility = () => {
       const next = candidateRef.current;
       const current = placementRef.current;
       // Selection collapsed or otherwise hidden → hide immediately.
       if (!next.visible) {
-        clearShowTimer();
         if (current.visible) setPlacement(next);
         return;
       }
@@ -353,22 +340,9 @@ export function SelectionActionsMenu({
       // either it's hidden (drag-selecting from scratch) or visible
       // (shift-drag-extending an existing selection), and we want to
       // keep that state until mouse-up.
-      if (mouseDownRef.current) {
-        clearShowTimer();
-        return;
-      }
-      // Mouse is up. If already visible, smooth-update placement.
-      if (current.visible) {
-        setPlacement(next);
-        return;
-      }
-      // Otherwise debounce the show by a beat.
-      if (showTimerRef.current == null) {
-        showTimerRef.current = window.setTimeout(() => {
-          showTimerRef.current = null;
-          setPlacement(candidateRef.current);
-        }, SHOW_BEAT_MS);
-      }
+      if (mouseDownRef.current) return;
+      // Mouse is up — show / update placement immediately.
+      setPlacement(next);
     };
     const schedule = () => {
       const editor = editorRef.current;
@@ -460,7 +434,6 @@ export function SelectionActionsMenu({
       cleanupListeners();
       subscribedEditorRef.current = null;
       prevEditor = null;
-      clearShowTimer();
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("selectionchange", onDocSelectionChange);
