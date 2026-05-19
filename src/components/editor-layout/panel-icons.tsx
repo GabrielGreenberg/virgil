@@ -317,11 +317,19 @@ export function IconExample({
   );
 }
 
-// Lightning-bolt glyph used on the contextual action button that
-// expands into the SelectionActionsMenu. Filled yellow with a darker
-// outline; color is hardcoded since this is the only place we render
-// a yellow icon.
-export function IconZap({ size = 16 }: { size?: number }) {
+// Lightning-bolt glyph used on the action triggers that expand into the
+// SelectionActionsMenu. The contextual gutter trigger uses the filled
+// yellow variant (default); the stable MenuBar-strip trigger passes
+// `muted` to get a stroked currentColor outline that inherits the
+// strip's ink-muted/hover-ink-body palette like its sibling buttons.
+export function IconZap({ size = 16, muted = false }: { size?: number; muted?: boolean }) {
+  if (muted) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z" />
+      </svg>
+    );
+  }
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="#eab308" stroke="#a16207" strokeWidth="1.25" strokeLinejoin="round">
       <path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z" />

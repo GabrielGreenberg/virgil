@@ -30,6 +30,7 @@ import { isActionCallbackVisible } from "./editor-layout/chrome-config";
 import type { PanelThemeKey } from "@/lib/panel-theme";
 import { usePanelMarkerPalette } from "@/hooks/usePanelTheme";
 import { MARGINALIA_ICON_SIZE, MARGINALIA_COL_GAP } from "@/lib/marginalia";
+import { ActionsStripButton } from "./ActionsStripButton";
 
 export { type ToolbarOrientation };
 
@@ -1513,9 +1514,12 @@ function MenuBarContent({
       {/* Collaborator-mode status pill — at the bar's leading edge. */}
       {collabStatus}
 
-      {/* Paragraph navigation — back/forward stacked along the main axis. */}
+      {/* Paragraph navigation — back/forward stacked along the main axis.
+          Action button leads the group as a stable always-visible trigger
+          for the SelectionActionsMenu vocabulary. */}
       {(onParaNavBack || onParaNavForward) && (
         <div className={`flex items-stretch gap-1 ${isVert ? "flex-col" : "flex-row"}`}>
+          <ActionsStripButton editor={editor} />
           {onParaNavBack && (
             <button
               onClick={onParaNavBack}
