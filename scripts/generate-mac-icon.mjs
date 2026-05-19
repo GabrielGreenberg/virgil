@@ -20,9 +20,16 @@ const ICONSET_DIR = join(repoRoot, "icons/Virgil.iconset");
 const ICNS_OUT = join(repoRoot, "icons/Virgil.icns");
 const MASTER_1024 = join(repoRoot, "icons/app-icon-1024.png");
 
-// Inset the squircle inside the canvas so the shadow has breathing
-// room. Kept modest (~6%) so the icon still looks big at small sizes.
-const INSET_PCT = 0.06;
+// macOS 26 Tahoe template: 10% transparent margin around the squircle
+// inside the canvas (so the squircle fills the inner 80%). Tahoe gray-
+// boxes icons whose painted region either runs closer to the edge or
+// doesn't match Apple's expected squircle shape.
+const INSET_PCT = 0.10;
+// Corner radius as fraction of full canvas edge. Apple's continuous-
+// curve squircle has corner radius ≈ 22.37% of the squircle edge; at
+// 80% squircle size that's 17.9% of canvas (matches the existing math
+// in generate-app-icons.mjs).
+const CORNER_RADIUS_PCT = 0.1790;
 // Subtle ambient shadow.
 const SHADOW_BLUR_PCT = 0.014;  // stdDeviation, ~14px at 1024
 const SHADOW_DY_PCT = 0.006;    // vertical offset, ~6px at 1024
@@ -77,15 +84,31 @@ async function makeShadow(artwork, artSize, blurPx) {
     .toBuffer();
 }
 
-/** Resize art → inset canvas, add soft drop shadow, emit PNG. */
+/** Resize art → inset canvas, mask to Apple's squircle, add soft drop
+ *  shadow, emit PNG. The squircle mask makes the icon's outline exactly
+ *  match Tahoe's expected shape; otherwise the system gray-boxes it. */
 async function composeIcon(srcSquare, size) {
   const inset = Math.round(size * INSET_PCT);
   const artSize = size - 2 * inset;
+  const cornerRadius = Math.round(size * CORNER_RADIUS_PCT);
   const blurPx = Math.max(1, size * SHADOW_BLUR_PCT);
   const dy = Math.max(1, Math.round(size * SHADOW_DY_PCT));
 
-  const artwork = await sharp(srcSquare)
+  const resized = await sharp(srcSquare)
     .resize(artSize, artSize, { fit: "contain" })
+    .png()
+    .toBuffer();
+
+  // Squircle mask sized to the artwork. dest-in keeps only the pixels
+  // inside the rounded rect, wiping the parchment's ragged outer edge.
+  const maskSvg = Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${artSize}" height="${artSize}">
+      <rect width="${artSize}" height="${artSize}"
+        rx="${cornerRadius}" ry="${cornerRadius}" fill="#fff"/>
+    </svg>`,
+  );
+  const artwork = await sharp(resized)
+    .composite([{ input: maskSvg, blend: "dest-in" }])
     .png()
     .toBuffer();
 

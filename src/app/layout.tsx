@@ -57,7 +57,7 @@ export default function RootLayout({
     >
       <head>
         <meta name="theme-color" content="#e5e4e1" />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=4" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=6" />
         {/* Picker-pool fonts for the Fonts… dialog. Loaded by their real
             family names (unlike next/font, which generates obfuscated
             names) so the FontPicker's by-name lookup resolves without
