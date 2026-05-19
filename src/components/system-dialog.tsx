@@ -42,6 +42,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { Button, type ButtonVariant } from "./panel-primitives";
 
 /* ── Tokens ──────────────────────────────────────────────────────────
@@ -122,6 +123,11 @@ export default function SystemDialog({
   const [anchorPos, setAnchorPos] = useState<
     { top: number; left: number } | null
   >(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const registerAutoFocus = useCallback((el: HTMLButtonElement | null) => {
     autoFocusRef.current = el;
@@ -174,11 +180,11 @@ export default function SystemDialog({
     [onClose],
   );
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
   const t = SYSTEM_DIALOG_TOKENS;
 
-  return (
+  return createPortal(
     <DialogCtx.Provider
       value={{ labelledBy, describedBy, registerAutoFocus, autoFocusRef }}
     >
@@ -206,7 +212,8 @@ export default function SystemDialog({
           {children}
         </div>
       </div>
-    </DialogCtx.Provider>
+    </DialogCtx.Provider>,
+    document.body,
   );
 }
 
