@@ -30,14 +30,13 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection } from "@tiptap/pm/state";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { MENU_ENTRIES } from "./DragHandleMenu";
@@ -79,21 +78,12 @@ function loadPalette(): string[] {
 const MENU_W = 170;
 const MENU_PAD_Y = 6;
 const ITEM_H = 28;
-const SEPARATOR_H = 9;
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
 // Action-button (collapsed state) dimensions — sized to match one menu row's
 // vertical rhythm so the button feels like a single seed of the menu it opens.
 const BUTTON_SIZE = 28;
-// Selection-right within this many px of the text-column right counts
-// as "reaches the right edge" → Mode 1 (right placement in the gutter).
-const REACH_RIGHT_THRESHOLD = 24;
-// Vertical gaps for below / above placement modes.
-const BELOW_GAP = 6;
-const ABOVE_GAP = 6;
 const FORMATTING_ROW_H = 34;
-// 3 rows + small inter-row gap accumulated by `gap: 2`.
-const FORMATTING_SECTION_H = FORMATTING_ROW_H * 3 + 4;
 
 const INVISIBLE_PLACEMENT: Placement = {
   visible: false,
@@ -129,173 +119,80 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-function computePlacement(editor: Editor, menuHeight: number): Placement {
+/**
+ * Single placement rule: far-right gutter at the line containing the
+ * selection head (= cursor position for cursor mode, = drag endpoint for
+ * selection mode). One `coordsAtPos(head)`, one editor rect read, one
+ * scroll-parent rect read. Stable under tiny selection changes because
+ * the X coordinate is derived from the editor box, not from per-line
+ * geometry, and the Y is the head line's top.
+ */
+function computePlacement(editor: Editor): Placement {
   const sel = editor.state.selection;
-  if (sel instanceof NodeSelection) {
-    return INVISIBLE_PLACEMENT;
-  }
-  // Cursor-only mode is gated on focus so the button doesn't materialize at
-  // the document's default cursor position on first paint, before the user
-  // has ever clicked into the prose.
-  if (sel.empty && !editor.isFocused) {
-    return INVISIBLE_PLACEMENT;
-  }
-  const { from, to } = sel;
-  const $from = editor.state.doc.resolve(from);
-  let blockUuid: string | null = null;
-  for (let depth = $from.depth; depth >= 0; depth--) {
-    const node = $from.node(depth);
+  if (sel instanceof NodeSelection) return INVISIBLE_PLACEMENT;
+  // Cursor-only mode is gated on focus so the button doesn't materialize
+  // at the document's default cursor position on first paint, before the
+  // user has ever clicked into the prose.
+  if (sel.empty && !editor.isFocused) return INVISIBLE_PLACEMENT;
+
+  const { from, to, head } = sel;
+  let paragraphUuid: string | null = null;
+  const $head = editor.state.doc.resolve(head);
+  for (let depth = $head.depth; depth >= 0; depth--) {
+    const node = $head.node(depth);
     if (isAnchorableNode(node.type)) {
-      blockUuid = (node.attrs?.uuid as string | null) ?? null;
+      paragraphUuid = (node.attrs?.uuid as string | null) ?? null;
       break;
     }
   }
-  let fromCoords: { left: number; top: number; bottom: number };
-  let toCoords: { top: number; bottom: number };
+
+  let headCoords: { left: number; top: number; bottom: number };
   try {
-    fromCoords = editor.view.coordsAtPos(from);
-    toCoords = editor.view.coordsAtPos(to);
+    headCoords = editor.view.coordsAtPos(head);
   } catch {
     return INVISIBLE_PLACEMENT;
   }
-  const scrollParent = findScrollParent(editor.view.dom as HTMLElement);
-  const scrollRect = scrollParent?.getBoundingClientRect() ?? {
-    top: 0,
-    bottom: window.innerHeight,
-    left: 0,
-    right: window.innerWidth,
-  };
-  if (toCoords.bottom < scrollRect.top) {
-    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to }, mode: sel.empty ? "cursor" : "selection" };
-  }
-  if (fromCoords.top > scrollRect.bottom) {
-    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to }, mode: sel.empty ? "cursor" : "selection" };
-  }
+
   const editorEl = editor.view.dom as HTMLElement;
   const editorRect = editorEl.getBoundingClientRect();
   const padRight = parseFloat(window.getComputedStyle(editorEl).paddingRight) || 0;
-  const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 768;
   const textRight = editorRect.right - padRight;
+  const scrollParent = findScrollParent(editorEl);
+  const scrollTop = scrollParent ? scrollParent.getBoundingClientRect().top : 0;
+  const scrollBottom = scrollParent
+    ? scrollParent.getBoundingClientRect().bottom
+    : window.innerHeight;
 
-  // ── Cursor-only branch: anchor the button in the far-right gutter at the
-  // cursor's line. No mode fallbacks — the gutter always has room. ──
-  if (sel.empty) {
-    let cLeft = textRight + RIGHT_GAP;
-    // If the gutter is off-screen on a very narrow viewport, clamp the
-    // button into the viewport so it doesn't disappear entirely. The menu's
-    // own clamp will handle the expanded state when it opens.
-    if (cLeft + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
-      cLeft = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
-    }
-    let cTop = Math.max(fromCoords.top, scrollRect.top);
-    if (cTop + BUTTON_SIZE > vh - VIEWPORT_MARGIN) {
-      cTop = Math.max(VIEWPORT_MARGIN, vh - BUTTON_SIZE - VIEWPORT_MARGIN);
-    }
-    if (cTop < VIEWPORT_MARGIN) cTop = VIEWPORT_MARGIN;
+  // Off-screen relative to the scroll viewport → hide.
+  if (headCoords.bottom < scrollTop || headCoords.top > scrollBottom) {
     return {
-      visible: true,
-      left: cLeft,
-      top: cTop,
-      paragraphUuid: blockUuid,
+      visible: false,
+      left: 0,
+      top: 0,
+      paragraphUuid,
       range: { from, to },
-      mode: "cursor",
+      mode: sel.empty ? "cursor" : "selection",
     };
   }
-  // The visual selection rect — used both for deciding which placement
-  // mode wins and for the X/Y anchors of the below/above modes.
-  let selectionRect = {
-    left: fromCoords.left,
-    right: textRight,
-    top: fromCoords.top,
-    bottom: toCoords.bottom,
-  };
-  try {
-    const dFrom = editor.view.domAtPos(from);
-    const dTo = editor.view.domAtPos(to);
-    const r = document.createRange();
-    r.setStart(dFrom.node, dFrom.offset);
-    r.setEnd(dTo.node, dTo.offset);
-    const rr = r.getBoundingClientRect();
-    selectionRect = {
-      left: rr.left,
-      right: rr.right,
-      top: rr.top,
-      bottom: rr.bottom,
-    };
-  } catch {
-    /* fall through with the coord-derived rect */
+
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  let left = textRight + RIGHT_GAP;
+  if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
+  }
+  let top = Math.max(headCoords.top, scrollTop, VIEWPORT_MARGIN);
+  if (top + BUTTON_SIZE > vh - VIEWPORT_MARGIN) {
+    top = Math.max(VIEWPORT_MARGIN, vh - BUTTON_SIZE - VIEWPORT_MARGIN);
   }
 
-  // Clamp an X candidate to fit horizontally within the viewport.
-  const clampX = (x: number) =>
-    Math.max(
-      VIEWPORT_MARGIN,
-      Math.min(x, vw - MENU_W - VIEWPORT_MARGIN),
-    );
-  const visibleBottom = Math.min(vh, scrollRect.bottom);
-  const visibleTop = Math.max(0, scrollRect.top);
-
-  let left: number;
-  let top: number;
-  const reachesRight =
-    selectionRect.right >= textRight - REACH_RIGHT_THRESHOLD;
-
-  if (reachesRight) {
-    // ── Mode 1: right placement in the gutter (existing behavior). ──
-    left = textRight + RIGHT_GAP;
-    if (left + MENU_W > vw - VIEWPORT_MARGIN) {
-      // Narrow viewport — flip to left of the selection.
-      const flipLeft = fromCoords.left - MENU_W - RIGHT_GAP;
-      left = flipLeft >= VIEWPORT_MARGIN ? flipLeft : clampX(left);
-    }
-    // Sticky-to-visible-top.
-    top = Math.max(selectionRect.top, scrollRect.top);
-    if (top + menuHeight > vh - VIEWPORT_MARGIN) {
-      top = Math.max(VIEWPORT_MARGIN, vh - menuHeight - VIEWPORT_MARGIN);
-    }
-    if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
-  } else {
-    // Selection doesn't reach the right edge — would overlap trailing
-    // prose if placed right. Prefer below the line, then above, then
-    // fall back to right-with-overlap as a last resort.
-    const belowY = selectionRect.bottom + BELOW_GAP;
-    const aboveY = selectionRect.top - menuHeight - ABOVE_GAP;
-    const fitsBelow =
-      belowY + menuHeight <= visibleBottom - VIEWPORT_MARGIN;
-    const fitsAbove = aboveY >= visibleTop + VIEWPORT_MARGIN;
-    if (fitsBelow) {
-      // ── Mode 2: below the selection. ──
-      // Shift right of the selection's right edge so the menu has a
-      // consistent "off-to-the-right" feel matching Mode 1, rather than
-      // landing under the left of the selection.
-      left = clampX(selectionRect.right + RIGHT_GAP);
-      top = belowY;
-    } else if (fitsAbove) {
-      // ── Mode 3: above the selection. ──
-      left = clampX(selectionRect.right + RIGHT_GAP);
-      top = aboveY;
-    } else {
-      // ── Mode 4: fall back to right-of-selection (may overlap). ──
-      left = selectionRect.right + RIGHT_GAP;
-      if (left + MENU_W > vw - VIEWPORT_MARGIN) {
-        const flipLeft = selectionRect.left - MENU_W - RIGHT_GAP;
-        left = flipLeft >= VIEWPORT_MARGIN ? flipLeft : clampX(left);
-      }
-      top = Math.max(selectionRect.top, scrollRect.top);
-      if (top + menuHeight > vh - VIEWPORT_MARGIN) {
-        top = Math.max(VIEWPORT_MARGIN, vh - menuHeight - VIEWPORT_MARGIN);
-      }
-      if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
-    }
-  }
   return {
     visible: true,
     left,
     top,
-    paragraphUuid: blockUuid,
+    paragraphUuid,
     range: { from, to },
-    mode: "selection",
+    mode: sel.empty ? "cursor" : "selection",
   };
 }
 
@@ -308,27 +205,12 @@ export function SelectionActionsMenu({
   const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
   // The collapsed-by-default action button expands into the full menu on
   // click. Letter-key shortcuts and the menu content only render while
-  // `menuOpen === true`. Any placement change (selection change, cursor
-  // move, typing) closes the menu via the reset effect below.
+  // `menuOpen === true`. Any logical change (selection moved, cursor moved
+  // to a new paragraph, focus dropped) closes the menu via the reset
+  // effect below; scroll-only repositioning does not close it.
   const [menuOpen, setMenuOpen] = useState(false);
-  // Force a re-render on every editor transaction so `editor.isActive(...)`
-  // checks in the formatting row reflect the current marks at the
-  // selection. We piggyback the same selectionUpdate/update subscription
-  // already used for placement.
-  const [, setActiveTick] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const subscribedEditorRef = useRef<Editor | null>(null);
-  // Candidate placement is computed continuously from the live
-  // selection; `mouseDownRef` freezes the rendered placement while the
-  // user is mid-drag so the menu doesn't flicker across a drag-select.
-  // See applyVisibility() below for the transition table.
-  const candidateRef = useRef<Placement>(INVISIBLE_PLACEMENT);
-  const mouseDownRef = useRef(false);
-  const placementRef = useRef<Placement>(placement);
-  useEffect(() => {
-    placementRef.current = placement;
-  }, [placement]);
 
   // Display-color palette: 7 slots stored MRU-first (index 0 = most
   // recently used). Custom-picker picks evict the tail (LRU).
@@ -358,153 +240,77 @@ export function SelectionActionsMenu({
   // may have moved by the time the picker returns a color.
   const stashedRangeRef = useRef<{ from: number; to: number } | null>(null);
 
-  const menuHeight = useMemo(() => {
-    const base = MENU_PAD_Y * 2 + FORMATTING_SECTION_H + 9; // 9 for divider
-    let h = 0;
-    for (const entry of MENU_ENTRIES) {
-      if (entry.separator) h += SEPARATOR_H;
-      h += ITEM_H;
-    }
-    return base + h;
-  }, []);
-
+  // Single update pipeline: one RAF-coalesced compute on every event that
+  // could move or hide the button. No candidate/applyVisibility/freeze
+  // indirection — the button is small and tracks the cursor's head line
+  // smoothly without flicker even during drag-select.
   useEffect(() => {
-    let prevEditor: Editor | null = null;
-    const cleanupListeners = () => {
-      if (prevEditor) {
-        prevEditor.off("selectionUpdate", schedule);
-        prevEditor.off("update", schedule);
-        prevEditor.off("focus", schedule);
-        prevEditor.off("blur", schedule);
-      }
+    let rafId = 0;
+    let readyRaf = 0;
+    let subscribed: Editor | null = null;
+    const run = () => {
+      const ed = editorRef.current;
+      setPlacement(ed && !ed.isDestroyed ? computePlacement(ed) : INVISIBLE_PLACEMENT);
     };
-    const applyVisibility = () => {
-      const next = candidateRef.current;
-      const current = placementRef.current;
-      // Selection collapsed or otherwise hidden → hide immediately.
-      if (!next.visible) {
-        if (current.visible) setPlacement(next);
+    const update = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        run();
+      });
+    };
+    const subscribe = (ed: Editor) => {
+      subscribed = ed;
+      ed.on("selectionUpdate", update);
+      ed.on("update", update);
+      // Cursor-only mode is focus-gated, so focus/blur must retrigger.
+      ed.on("focus", update);
+      ed.on("blur", update);
+    };
+    const unsubscribe = () => {
+      if (!subscribed) return;
+      subscribed.off("selectionUpdate", update);
+      subscribed.off("update", update);
+      subscribed.off("focus", update);
+      subscribed.off("blur", update);
+      subscribed = null;
+    };
+    // The parent passes editorRef as a ref object; the actual Editor
+    // instance lands a tick later. Poll via RAF (not setTimeout) so we
+    // pick it up on the very next frame and clean up cleanly on unmount.
+    const waitForEditor = () => {
+      const ed = editorRef.current;
+      if (ed) {
+        subscribe(ed);
+        run();
         return;
       }
-      // Mouse is down — freeze. Don't change the rendered placement;
-      // either it's hidden (drag-selecting from scratch) or visible
-      // (shift-drag-extending an existing selection), and we want to
-      // keep that state until mouse-up.
-      if (mouseDownRef.current) return;
-      // Mouse is up — show / update placement immediately.
-      setPlacement(next);
+      readyRaf = requestAnimationFrame(waitForEditor);
     };
-    const schedule = () => {
-      const editor = editorRef.current;
-      if (!editor || editor.isDestroyed) {
-        candidateRef.current = INVISIBLE_PLACEMENT;
-        applyVisibility();
-        return;
-      }
-      candidateRef.current = computePlacement(editor, menuHeight);
-      applyVisibility();
-      setActiveTick((t) => (t + 1) & 0xffff);
-    };
-    const onMouseDown = () => {
-      mouseDownRef.current = true;
-      applyVisibility();
-    };
-    const onMouseUp = () => {
-      mouseDownRef.current = false;
-      applyVisibility();
-    };
-    const ensureSubscribed = () => {
-      const editor = editorRef.current;
-      if (editor === subscribedEditorRef.current) return;
-      cleanupListeners();
-      subscribedEditorRef.current = editor;
-      prevEditor = editor;
-      if (editor) {
-        editor.on("selectionUpdate", schedule);
-        editor.on("update", schedule);
-        // Cursor-only placement is gated on focus, so focus/blur must
-        // also retrigger placement — otherwise the button would linger
-        // after the editor loses focus or fail to appear on first focus.
-        editor.on("focus", schedule);
-        editor.on("blur", schedule);
-      }
-    };
-    let pollAttempts = 0;
-    const poll = () => {
-      ensureSubscribed();
-      schedule();
-      if (!editorRef.current && pollAttempts < 30) {
-        pollAttempts += 1;
-        window.setTimeout(poll, 50);
-      }
-    };
-    poll();
-    const onScroll = () => schedule();
-    const onResize = () => schedule();
-    // Mirror SelectionDragHandle's safety net: when the DOM selection
-    // changes but PM's view.state.selection lags behind, dispatch the
-    // equivalent TextSelection so the menu sees the live range.
-    const onDocSelectionChange = () => {
-      const editor = editorRef.current;
-      if (!editor || editor.isDestroyed) return;
-      const view = editor.view;
-      const domSel = window.getSelection();
-      if (!domSel || domSel.rangeCount === 0) {
-        schedule();
-        return;
-      }
-      const range = domSel.getRangeAt(0);
-      if (range.collapsed) {
-        schedule();
-        return;
-      }
-      const dom = view.dom as Node;
-      if (!dom.contains(range.startContainer) || !dom.contains(range.endContainer)) return;
-      try {
-        const a = view.posAtDOM(range.startContainer, range.startOffset, 1);
-        const b = view.posAtDOM(range.endContainer, range.endOffset, -1);
-        if (a < 0 || b < 0) return;
-        const pmFrom = Math.min(a, b);
-        const pmTo = Math.max(a, b);
-        if (pmFrom === pmTo) return;
-        const cur = view.state.selection;
-        if (cur.from === pmFrom && cur.to === pmTo) {
-          schedule();
-          return;
-        }
-        const tr = view.state.tr.setSelection(
-          TextSelection.create(view.state.doc, pmFrom, pmTo),
-        );
-        view.dispatch(tr);
-      } catch {
-        schedule();
-      }
-    };
-    window.addEventListener("scroll", onScroll, true);
-    window.addEventListener("resize", onResize);
-    document.addEventListener("selectionchange", onDocSelectionChange);
-    document.addEventListener("mousedown", onMouseDown, true);
-    document.addEventListener("mouseup", onMouseUp, true);
+    waitForEditor();
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
     return () => {
-      cleanupListeners();
-      subscribedEditorRef.current = null;
-      prevEditor = null;
-      window.removeEventListener("scroll", onScroll, true);
-      window.removeEventListener("resize", onResize);
-      document.removeEventListener("selectionchange", onDocSelectionChange);
-      document.removeEventListener("mousedown", onMouseDown, true);
-      document.removeEventListener("mouseup", onMouseUp, true);
+      if (rafId) cancelAnimationFrame(rafId);
+      if (readyRaf) cancelAnimationFrame(readyRaf);
+      unsubscribe();
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
     };
-  }, [editorRef, menuHeight]);
+  }, [editorRef]);
 
-  // Whenever the placement shifts (selection cleared, cursor moved, line
-  // change, scroll) close the menu and let the button take over. This is
-  // the single place that maps "the world changed" → "go back to the
-  // collapsed button" so we don't have to remember to close the menu in
-  // every individual handler.
+  // Close the menu on logical changes only — selection moved, paragraph
+  // changed, mode flipped, visibility dropped. `left/top` are intentionally
+  // excluded so scroll re-positions the open menu instead of collapsing it.
   useEffect(() => {
     setMenuOpen(false);
-  }, [placement.left, placement.top, placement.paragraphUuid, placement.mode, placement.visible]);
+  }, [
+    placement.range?.from,
+    placement.range?.to,
+    placement.paragraphUuid,
+    placement.mode,
+    placement.visible,
+  ]);
 
   // Letter-key shortcuts only fire while the menu is open. Escape closes
   // the menu (without collapsing the selection) so the user can dismiss
