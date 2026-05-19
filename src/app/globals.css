@@ -934,6 +934,24 @@ textarea,
   margin-top: 1.5em;
 }
 
+/* +T affordance on a docked, untitled tex block is hidden by default
+   and only appears when the cursor enters the title-annotation row
+   (the narrow strip above the pod) — NOT the whole tex pod row. The
+   .par-title-annotation div is block-level so it spans the full
+   editor width, giving the user a wide hover target without the +T
+   tracking pod hover. Scoped under .tex-block so the float
+   (.tex-block-float-title-host) keeps its always-visible +T. */
+.tex-block .par-title-add {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.tex-block .par-title-annotation:hover .par-title-add {
+  opacity: 0.6;
+}
+.tex-block .par-title-add:hover {
+  opacity: 1;
+}
+
 .heading-wrapper h1,
 .heading-wrapper h2,
 .heading-wrapper h3,
