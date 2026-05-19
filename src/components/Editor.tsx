@@ -200,6 +200,11 @@ interface EditorProps {
   onLiftHeading?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
   /** Same as paragraphIsPoppedRef, but for headings. */
   headingIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
+  /** Same as onLiftParagraph, but for bullet / ordered lists. Spawns a
+   *  `ListFloat` at the given cursor-anchored rect. */
+  onLiftList?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  /** Same as paragraphIsPoppedRef, but for lists. */
+  listIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
   /** Same as onToggleParagraphPopout, but for `\ex` / `\pex` example blocks. */
   onToggleExamplePopout?: (uuid: string, anchor?: DOMRect | null) => void;
   /** Same as paragraphIsPoppedRef, but for example blocks. */
@@ -450,7 +455,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -506,6 +511,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const headingIsPoppedPredicateRef = useRef(headingIsPoppedRef);
   headingIsPoppedPredicateRef.current = headingIsPoppedRef;
   const headingPopoutRefreshersRef = useRef<Set<() => void>>(new Set());
+  // Same triplet for lists. The list-level drag handle (added to
+  // createListTitleNodeView) uses these to power its lift-to-pop and
+  // "already popped" check.
+  const onLiftListRef = useRef(onLiftList);
+  onLiftListRef.current = onLiftList;
+  const listIsPoppedPredicateRef = useRef(listIsPoppedRef);
+  listIsPoppedPredicateRef.current = listIsPoppedRef;
   // Same triplet for example blocks (`\ex` / `\pex`). Threaded into the
   // ExampleBlock extension via .configure() so its node view can dispatch
   // popout toggles and read the current popped state.
@@ -954,12 +966,44 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   // --- List title node view factory (shared by bullet + ordered lists) ---
+  //
+  // List-level chrome (drag handle + +T title) is added for top-level
+  // lists only. Nested sublists (lists inside a `listItem`) return a
+  // bare `<ul>` / `<ol>` with no wrapper — matching the way paragraphs
+  // inside a `listItem` skip chrome (see ~line 572 above) so the inner
+  // structure reads as part of its parent's prose.
+  //
+  // Per-listItem affordances are intentionally NOT implemented here:
+  // `listItem` nodes have no `uuid` attr in the schema, and giving them
+  // one requires synchronized changes to the LaTeX parser + serializer
+  // so `\item` round-trips an identity. Deferred until a clear need.
   function createListTitleNodeView(tagName: "ul" | "ol", typeName: string) {
     return ({ node, getPos, editor: nodeEditor }: { node: any; getPos: (() => number | undefined) | boolean; editor: any }) => {
       let currentNode = node;
 
+      // Detect nesting — return a bare list element with no chrome.
+      const startPos = typeof getPos === "function" ? getPos() : null;
+      let isNested = false;
+      if (startPos != null) {
+        const resolved = nodeEditor.state.doc.resolve(startPos);
+        for (let d = resolved.depth; d >= 0; d--) {
+          if (resolved.node(d).type.name === "listItem") {
+            isNested = true;
+            break;
+          }
+        }
+      }
+      if (isNested) {
+        const bare = document.createElement(tagName);
+        return { dom: bare, contentDOM: bare };
+      }
+
       const wrapper = document.createElement("div");
       wrapper.className = "list-title-wrapper";
+      // Lists always have content; mark the wrapper accordingly so the
+      // editor-level hover-band delegation (see useEffect below) can
+      // detect it the same way it detects paragraph wrappers.
+      wrapper.classList.add("has-text");
 
       const titleAnnot = document.createElement("div");
       titleAnnot.className = "par-title-annotation";
@@ -968,6 +1012,128 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
       const listEl = document.createElement(tagName);
       wrapper.appendChild(listEl);
+
+      // 6-dot drag grip — mirrors the paragraph drag handle. The list
+      // wrapper is `position: relative` (see globals.css) and has no
+      // padding-left, so the standard `.par-drag-handle { left: -18px }`
+      // CSS rule places this handle in the same document gutter as
+      // paragraph handles. Bullets/numbers draw inside the inner
+      // `<ul>`/`<ol>` padding, so they don't overlap.
+      const SVG_NS = "http://www.w3.org/2000/svg";
+      const dragHandle = document.createElement("div");
+      dragHandle.className = "par-drag-handle";
+      dragHandle.setAttribute("data-drag-handle", "");
+      const initialListUuid = currentNode.attrs?.uuid as string | null;
+      if (initialListUuid) dragHandle.setAttribute("data-par-uuid", initialListUuid);
+      dragHandle.draggable = false;
+      const dhSvg = document.createElementNS(SVG_NS, "svg");
+      dhSvg.setAttribute("width", "10");
+      dhSvg.setAttribute("height", "14");
+      dhSvg.setAttribute("viewBox", "0 0 10 14");
+      dhSvg.setAttribute("fill", "currentColor");
+      for (const [cx, cy] of [[3,2],[7,2],[3,7],[7,7],[3,12],[7,12]]) {
+        const c = document.createElementNS(SVG_NS, "circle");
+        c.setAttribute("cx", String(cx));
+        c.setAttribute("cy", String(cy));
+        c.setAttribute("r", "1.2");
+        dhSvg.appendChild(c);
+      }
+      dragHandle.appendChild(dhSvg);
+      wrapper.appendChild(dragHandle);
+
+      const LIST_LIFT_THRESHOLD = 5;
+      const LIST_FLOAT_W = 480;
+      const LIST_FLOAT_H = 360;
+
+      // Button-like press feedback on the grip itself.
+      dragHandle.addEventListener("mousedown", () => {
+        dragHandle.classList.add("is-pressed");
+      });
+      dragHandle.addEventListener("mouseup", () => {
+        dragHandle.classList.remove("is-pressed");
+      });
+
+      // Click → open passage-action menu; drag past threshold → lift the
+      // whole list as a float. Mirrors the paragraph mousedown handler.
+      dragHandle.addEventListener("mousedown", (downEv) => {
+        if (downEv.button !== 0) return;
+        downEv.preventDefault();
+        const uuidNow = currentNode.attrs?.uuid as string | null;
+        const predicate = listIsPoppedPredicateRef.current?.current;
+        if (uuidNow && predicate?.(uuidNow)) return;
+        const startX = downEv.clientX;
+        const startY = downEv.clientY;
+        let triggered = false;
+        const onMove = (mv: MouseEvent) => {
+          if (triggered) return;
+          const dx = mv.clientX - startX;
+          const dy = mv.clientY - startY;
+          if (dx * dx + dy * dy < LIST_LIFT_THRESHOLD * LIST_LIFT_THRESHOLD) return;
+          triggered = true;
+          const handlePos = typeof getPos === "function" ? getPos() : null;
+          if (handlePos == null) { cleanup(); return; }
+          let ensuredUuid = currentNode.attrs?.uuid as string | null;
+          if (!ensuredUuid) {
+            ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+          }
+          if (!ensuredUuid) { cleanup(); return; }
+          const wrapperRect = wrapper.getBoundingClientRect();
+          setCardLiftTarget({
+            cardKey: `list:${ensuredUuid}`,
+            rect: {
+              left: wrapperRect.left,
+              top: wrapperRect.top,
+              width: wrapperRect.width,
+              height: wrapperRect.height,
+            },
+          });
+          window.setTimeout(() => setCardLiftTarget(null), 150);
+          const spawn = {
+            x: Math.round(mv.clientX - LIST_FLOAT_W / 2),
+            y: Math.round(mv.clientY - 16),
+            width: LIST_FLOAT_W,
+            height: LIST_FLOAT_H,
+          };
+          setCardLiftHandoff({
+            cardKey: `list:${ensuredUuid}`,
+            clientX: mv.clientX,
+            clientY: mv.clientY,
+            width: LIST_FLOAT_W,
+            height: LIST_FLOAT_H,
+          });
+          onLiftListRef.current?.(ensuredUuid, spawn);
+          cleanup();
+        };
+        const onUp = () => {
+          if (!triggered) {
+            const open = onDragHandleClickRef.current;
+            if (open) {
+              let ensuredUuid = currentNode.attrs?.uuid as string | null;
+              if (!ensuredUuid) {
+                const handlePos = typeof getPos === "function" ? getPos() : null;
+                if (handlePos != null) {
+                  ensuredUuid = ensureAnchorUuid(nodeEditor.view, handlePos + 1);
+                }
+              }
+              if (ensuredUuid) {
+                const rect = dragHandle.getBoundingClientRect();
+                open(
+                  { kind: "paragraph", paragraphId: ensuredUuid },
+                  rect,
+                );
+              }
+            }
+          }
+          cleanup();
+        };
+        const cleanup = () => {
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+          dragHandle.classList.remove("is-pressed");
+        };
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+      });
 
       function setTitle(newTitle: string | null) {
         const pos = typeof getPos === "function" ? getPos() : null;
@@ -1079,6 +1245,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         dom: wrapper,
         contentDOM: listEl,
         stopEvent(event: any) {
+          // Swallow events on the drag grip so PM doesn't prime a text
+          // selection on the bullet zone while the lift gesture runs.
+          if (dragHandle === event.target || dragHandle.contains(event.target as Node)) {
+            return true;
+          }
           return (
             titleAnnot === event.target || titleAnnot.contains(event.target as Node)
           );
@@ -1086,11 +1257,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ignoreMutation(mutation: any) {
           if (mutation.target && titleAnnot.contains(mutation.target)) return true;
           if (mutation.target === wrapper) return true;
+          if (dragHandle.contains(mutation.target as Node)) return true;
           return false;
         },
         update(updatedNode: any) {
           if (updatedNode.type.name !== typeName) return false;
           currentNode = updatedNode;
+          const uuidAttr = updatedNode.attrs?.uuid as string | null;
+          if (uuidAttr) {
+            dragHandle.setAttribute("data-par-uuid", uuidAttr);
+          } else {
+            dragHandle.removeAttribute("data-par-uuid");
+          }
           if (!titleAnnot.querySelector("input")) renderAnnot();
           return true;
         },
@@ -2556,7 +2734,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       prev = next;
     };
     const onMove = (e: MouseEvent) => {
-      const wrappers = dom.querySelectorAll(".par-title-wrapper.has-text");
+      const wrappers = dom.querySelectorAll(
+        ".par-title-wrapper.has-text, .list-title-wrapper.has-text",
+      );
       let found: Element | null = null;
       for (const w of Array.from(wrappers)) {
         const r = w.getBoundingClientRect();

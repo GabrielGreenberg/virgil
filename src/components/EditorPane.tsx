@@ -1043,6 +1043,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const headingIsPoppedRef = useRef<(uuid: string) => boolean>(
     () => false,
   );
+  const listIsPoppedRef = useRef<(uuid: string) => boolean>(
+    () => false,
+  );
   const exampleIsPoppedRef = useRef<(uuid: string) => boolean>(
     () => false,
   );
@@ -1050,6 +1053,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     const popped = viewPrefs.prefs.poppedOutCards;
     paragraphIsPoppedRef.current = (uuid) => popped.includes(`paragraph:${uuid}`);
     headingIsPoppedRef.current = (uuid) => popped.includes(`heading:${uuid}`);
+    listIsPoppedRef.current = (uuid) => popped.includes(`list:${uuid}`);
     exampleIsPoppedRef.current = (uuid) => popped.includes(`example:${uuid}`);
   }
   const handleToggleParagraphPopout = useCallback(
@@ -1085,6 +1089,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
       if (!viewPrefs) return;
       const key = `heading:${uuid}`;
+      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
+      viewPrefs.setCardFloatPosition(key, rect);
+      viewPrefs.toggleCardPopout(key);
+    },
+    [viewPrefs],
+  );
+  const handleLiftList = useCallback(
+    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
+      if (!viewPrefs) return;
+      const key = `list:${uuid}`;
       if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
       viewPrefs.setCardFloatPosition(key, rect);
       viewPrefs.toggleCardPopout(key);
@@ -3906,6 +3920,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     headingIsPoppedRef={headingIsPoppedRef}
                     onToggleHeadingPopout={handleToggleHeadingPopout}
                     onLiftHeading={handleLiftHeading}
+                    listIsPoppedRef={listIsPoppedRef}
+                    onLiftList={handleLiftList}
                     exampleIsPoppedRef={exampleIsPoppedRef}
                     onToggleExamplePopout={handleToggleExamplePopout}
                     onDragHandleClick={openDragHandleMenu}

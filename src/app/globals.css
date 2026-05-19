@@ -1110,7 +1110,9 @@ textarea,
 }
 
 .par-title-wrapper.has-text.hovered .par-drag-handle,
-.par-title-wrapper.has-text:hover .par-drag-handle {
+.par-title-wrapper.has-text:hover .par-drag-handle,
+.list-title-wrapper.has-text.hovered > .par-drag-handle,
+.list-title-wrapper.has-text:hover > .par-drag-handle {
   opacity: 1;
   pointer-events: auto;
 }

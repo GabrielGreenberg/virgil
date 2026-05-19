@@ -79,26 +79,61 @@ function computePlacement(editor: Editor): Placement {
       range: null,
     };
   }
-  // Resolve the first containing block (paragraph, heading, list item, …).
+  // Resolve the first containing anchorable block (paragraph, heading,
+  // list, …). Then, if that block sits inside a `listItem`, climb past
+  // the listItem(s) and inner list(s) to the OUTERMOST containing list
+  // — so the handle aligns to the document gutter (the same x where
+  // paragraph handles sit), not inside any inner list's bullet-zone
+  // padding.
   const $from = editor.state.doc.resolve(from);
   let blockStartPos = -1;
   let blockUuid: string | null = null;
+  let blockNodePos = -1; // position of the anchor node itself (for nodeDOM)
+  let anchorDepth = -1;
   for (let depth = $from.depth; depth >= 0; depth--) {
     const node = $from.node(depth);
     if (isAnchorableNode(node.type)) {
+      anchorDepth = depth;
       blockStartPos = $from.start(depth);
+      blockNodePos = depth === 0 ? 0 : $from.before(depth);
       blockUuid = (node.attrs?.uuid as string | null) ?? null;
       break;
     }
   }
+  // Climb past listItem ancestors: while parent is `listItem` and its
+  // parent is a list, hop the anchor up to that list. Repeat to reach
+  // the OUTERMOST containing list.
+  while (anchorDepth >= 2) {
+    const parent = $from.node(anchorDepth - 1);
+    if (parent.type.name !== "listItem") break;
+    const grand = $from.node(anchorDepth - 2);
+    if (grand.type.name !== "bulletList" && grand.type.name !== "orderedList") break;
+    anchorDepth = anchorDepth - 2;
+    blockStartPos = $from.start(anchorDepth);
+    blockNodePos = anchorDepth === 0 ? 0 : $from.before(anchorDepth);
+    blockUuid = (grand.attrs?.uuid as string | null) ?? null;
+  }
   let fromCoords: { left: number; top: number; bottom: number };
   let toCoords: { top: number; bottom: number };
   let blockStartCoords: { left: number; top: number } | null = null;
+  let anchorDomLeft: number | null = null;
   try {
     fromCoords = editor.view.coordsAtPos(from);
     toCoords = editor.view.coordsAtPos(to);
     if (blockStartPos >= 0) {
       blockStartCoords = editor.view.coordsAtPos(blockStartPos);
+    }
+    // Prefer the anchor node's DOM rect — for both `.par-title-wrapper`
+    // and `.list-title-wrapper` (and `.heading-wrapper`) the left edge
+    // equals the document gutter, with no list padding-left in the way.
+    // `coordsAtPos` returns the text-content edge, which for lists is
+    // INSIDE the bullet zone — exactly what we want to avoid.
+    if (blockNodePos >= 0) {
+      const dom = editor.view.nodeDOM(blockNodePos);
+      if (dom instanceof HTMLElement) {
+        const r = dom.getBoundingClientRect();
+        if (r.width > 0) anchorDomLeft = r.left;
+      }
     }
   } catch {
     return {
@@ -139,8 +174,10 @@ function computePlacement(editor: Editor): Placement {
       range: { from, to },
     };
   }
-  // Horizontal: align to the source paragraph's text-edge.
-  const baseLeft = blockStartCoords?.left ?? fromCoords.left;
+  // Horizontal: align to the anchor block's outer left edge (its
+  // wrapper's DOM rect). Falls back to coordsAtPos if `nodeDOM` was
+  // null or detached.
+  const baseLeft = anchorDomLeft ?? blockStartCoords?.left ?? fromCoords.left;
   const left = baseLeft - HANDLE_OFFSET_LEFT;
   // Vertical: pin to the topmost visible position. If the selection's
   // top is above the editor pane, stick at the pane's top.
