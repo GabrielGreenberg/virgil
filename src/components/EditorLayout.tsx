@@ -2249,17 +2249,6 @@ export default function EditorLayout() {
   const nameInputRef = useRef<HTMLInputElement>(null);
 
 
-  const hasSuggestions = suggestionsState.suggestions.length > 0;
-
-  // Auto-show the Revisions panel when suggestions load (suggestions
-  // now live inside that merged panel alongside comment cards).
-  useEffect(() => {
-    if (hasSuggestions) {
-      const hasPending = suggestionsState.suggestions.some((s) => s.status === "pending");
-      if (hasPending && prefsRef.current.activeRight !== "revisions") setActiveRight("revisions");
-    }
-  }, [suggestionsState.suggestions.length, hasSuggestions, setActiveRight]);
-
   useEffect(() => {
     if (editingTabId) {
       nameInputRef.current?.focus();
