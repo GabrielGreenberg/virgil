@@ -1,4 +1,6 @@
 import type { NextConfig } from "next";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 // Optional deploy-time URL prefix. Leave unset to serve from the
 // origin root (e.g. localhost:3000 or virgil.example.com); set to
@@ -12,7 +14,17 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
 const devStorage = !!process.env.NEXT_PUBLIC_DEV_STORAGE;
 
+// Worktrees don't carry their own node_modules — they read from the
+// main repo two dirs up. Detect that case so we only widen Turbopack's
+// root when we have to; otherwise root stays at the project dir and the
+// watcher doesn't scan all of $HOME.
+const isWorktree = !existsSync(join(__dirname, "node_modules"));
+
 const nextConfig: NextConfig = {
+  // Lets a second dev server (e.g. the Claude preview) run alongside the
+  // user's own `npm run dev` by giving each its own build cache + lockfile.
+  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
+
   // Fully static export — no Node runtime, no API routes, no SSR.
   // The whole storage layer runs in the browser via the FSA spec.
   // Disabled in dev-storage mode so the /api/dev route works.
@@ -34,10 +46,10 @@ const nextConfig: NextConfig = {
 
   devIndicators: false,
 
-  // Point Turbopack's workspace root at the parent repo so node_modules
-  // resolves there (worktrees don't have their own copy). CWD stays at
-  // the worktree, so src/ is served from the worktree.
-  turbopack: { root: require("path").resolve(__dirname, "../../..") },
+  // Only point Turbopack's workspace root at the parent repo when we're
+  // actually in a worktree — otherwise this widens the watcher to $HOME
+  // and every unrelated write triggers HMR.
+  ...(isWorktree ? { turbopack: { root: resolve(__dirname, "../../..") } } : {}),
 };
 
 export default nextConfig;
