@@ -1,21 +1,27 @@
 "use client";
 
 /**
- * Auto-popping action menu on the right side of any non-empty text
- * selection. Notion-style: appears the moment a selection is made,
- * hides as soon as the selection collapses. Anchors to the right edge
- * of the editor's text column (overlapping into the right gutter /
- * margin) at the top line of the selection.
+ * Action affordance on the right side of the editor. Collapsed by
+ * default to a small yellow-lightning-bolt button (the "action button")
+ * that expands into the full SelectionActionsMenu on click.
+ *
+ * Two visibility triggers:
+ *  - Non-empty selection — button anchors to the menu's four-mode
+ *    placement (right gutter / below / above / overlap fallback).
+ *  - Cursor-in-text (no selection) — button anchors to the far-right
+ *    gutter at the cursor's line. Highlight is greyed out in this mode
+ *    since it needs a real range; everything else attaches at the
+ *    cursor position.
+ *
+ * When the menu is open it renders at the button's coordinates so the
+ * two states feel like one component expanding in place. Letter
+ * shortcuts (H/N/F/C/Q/T/E/X/A) only fire while the menu is open.
  *
  * Counterpart to {@link SelectionDragHandle} (left side, click-to-open
  * popover). The two coexist by design — the left handle keeps its
  * drag-to-lift gesture and click-to-open DragHandleMenu; this right
- * menu is a faster path to the same vocabulary plus inline formatting.
- *
- * Two sections:
- *  - Top: compressed icon grid of inline-formatting commands.
- *  - Bottom: vertical list of passage actions (reuses MENU_ENTRIES
- *    from DragHandleMenu so the two menus stay in lockstep).
+ * affordance is a faster path to the same vocabulary plus inline
+ * formatting.
  *
  * Action dispatch goes through the same `dispatch` exposed via
  * DragHandleMenuApi that powers the click-on-handle popover — so
@@ -36,7 +42,9 @@ import { isAnchorableNode } from "@/lib/marginalia";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import { MENU_ENTRIES } from "./DragHandleMenu";
 import { BlockTypeDropdown, buildExampleTemplate } from "./MenuBar";
+import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
+import { IconZap } from "./editor-layout/panel-icons";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -74,6 +82,9 @@ const ITEM_H = 28;
 const SEPARATOR_H = 9;
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
+// Action-button (collapsed state) dimensions — sized to match one menu row's
+// vertical rhythm so the button feels like a single seed of the menu it opens.
+const BUTTON_SIZE = 28;
 // Selection-right within this many px of the text-column right counts
 // as "reaches the right edge" → Mode 1 (right placement in the gutter).
 const REACH_RIGHT_THRESHOLD = 24;
@@ -90,6 +101,7 @@ const INVISIBLE_PLACEMENT: Placement = {
   top: 0,
   paragraphUuid: null,
   range: null,
+  mode: "selection",
 };
 
 interface Placement {
@@ -98,6 +110,10 @@ interface Placement {
   top: number;
   paragraphUuid: string | null;
   range: { from: number; to: number } | null;
+  /** "cursor" when there's no text selection (button lives in the far-right
+   *  gutter at the cursor's line); "selection" for any non-empty selection
+   *  (uses the four-mode placement logic). */
+  mode: "selection" | "cursor";
 }
 
 function findScrollParent(el: HTMLElement | null): HTMLElement | null {
@@ -115,8 +131,14 @@ function findScrollParent(el: HTMLElement | null): HTMLElement | null {
 
 function computePlacement(editor: Editor, menuHeight: number): Placement {
   const sel = editor.state.selection;
-  if (sel.empty || sel instanceof NodeSelection) {
-    return { visible: false, left: 0, top: 0, paragraphUuid: null, range: null };
+  if (sel instanceof NodeSelection) {
+    return INVISIBLE_PLACEMENT;
+  }
+  // Cursor-only mode is gated on focus so the button doesn't materialize at
+  // the document's default cursor position on first paint, before the user
+  // has ever clicked into the prose.
+  if (sel.empty && !editor.isFocused) {
+    return INVISIBLE_PLACEMENT;
   }
   const { from, to } = sel;
   const $from = editor.state.doc.resolve(from);
@@ -134,7 +156,7 @@ function computePlacement(editor: Editor, menuHeight: number): Placement {
     fromCoords = editor.view.coordsAtPos(from);
     toCoords = editor.view.coordsAtPos(to);
   } catch {
-    return { visible: false, left: 0, top: 0, paragraphUuid: null, range: null };
+    return INVISIBLE_PLACEMENT;
   }
   const scrollParent = findScrollParent(editor.view.dom as HTMLElement);
   const scrollRect = scrollParent?.getBoundingClientRect() ?? {
@@ -144,10 +166,10 @@ function computePlacement(editor: Editor, menuHeight: number): Placement {
     right: window.innerWidth,
   };
   if (toCoords.bottom < scrollRect.top) {
-    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to } };
+    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to }, mode: sel.empty ? "cursor" : "selection" };
   }
   if (fromCoords.top > scrollRect.bottom) {
-    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to } };
+    return { visible: false, left: 0, top: 0, paragraphUuid: blockUuid, range: { from, to }, mode: sel.empty ? "cursor" : "selection" };
   }
   const editorEl = editor.view.dom as HTMLElement;
   const editorRect = editorEl.getBoundingClientRect();
@@ -155,6 +177,31 @@ function computePlacement(editor: Editor, menuHeight: number): Placement {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1024;
   const vh = typeof window !== "undefined" ? window.innerHeight : 768;
   const textRight = editorRect.right - padRight;
+
+  // ── Cursor-only branch: anchor the button in the far-right gutter at the
+  // cursor's line. No mode fallbacks — the gutter always has room. ──
+  if (sel.empty) {
+    let cLeft = textRight + RIGHT_GAP;
+    // If the gutter is off-screen on a very narrow viewport, clamp the
+    // button into the viewport so it doesn't disappear entirely. The menu's
+    // own clamp will handle the expanded state when it opens.
+    if (cLeft + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
+      cLeft = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
+    }
+    let cTop = Math.max(fromCoords.top, scrollRect.top);
+    if (cTop + BUTTON_SIZE > vh - VIEWPORT_MARGIN) {
+      cTop = Math.max(VIEWPORT_MARGIN, vh - BUTTON_SIZE - VIEWPORT_MARGIN);
+    }
+    if (cTop < VIEWPORT_MARGIN) cTop = VIEWPORT_MARGIN;
+    return {
+      visible: true,
+      left: cLeft,
+      top: cTop,
+      paragraphUuid: blockUuid,
+      range: { from, to },
+      mode: "cursor",
+    };
+  }
   // The visual selection rect — used both for deciding which placement
   // mode wins and for the X/Y anchors of the below/above modes.
   let selectionRect = {
@@ -248,6 +295,7 @@ function computePlacement(editor: Editor, menuHeight: number): Placement {
     top,
     paragraphUuid: blockUuid,
     range: { from, to },
+    mode: "selection",
   };
 }
 
@@ -257,19 +305,19 @@ export function SelectionActionsMenu({
   editorRef: RefObject<Editor | null>;
 }) {
   const dragHandleMenu = useDragHandleMenu();
-  const [placement, setPlacement] = useState<Placement>({
-    visible: false,
-    left: 0,
-    top: 0,
-    paragraphUuid: null,
-    range: null,
-  });
+  const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
+  // The collapsed-by-default action button expands into the full menu on
+  // click. Letter-key shortcuts and the menu content only render while
+  // `menuOpen === true`. Any placement change (selection change, cursor
+  // move, typing) closes the menu via the reset effect below.
+  const [menuOpen, setMenuOpen] = useState(false);
   // Force a re-render on every editor transaction so `editor.isActive(...)`
   // checks in the formatting row reflect the current marks at the
   // selection. We piggyback the same selectionUpdate/update subscription
   // already used for placement.
   const [, setActiveTick] = useState(0);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const subscribedEditorRef = useRef<Editor | null>(null);
   // Candidate placement is computed continuously from the live
   // selection; `mouseDownRef` freezes the rendered placement while the
@@ -326,6 +374,8 @@ export function SelectionActionsMenu({
       if (prevEditor) {
         prevEditor.off("selectionUpdate", schedule);
         prevEditor.off("update", schedule);
+        prevEditor.off("focus", schedule);
+        prevEditor.off("blur", schedule);
       }
     };
     const applyVisibility = () => {
@@ -372,6 +422,11 @@ export function SelectionActionsMenu({
       if (editor) {
         editor.on("selectionUpdate", schedule);
         editor.on("update", schedule);
+        // Cursor-only placement is gated on focus, so focus/blur must
+        // also retrigger placement — otherwise the button would linger
+        // after the editor loses focus or fail to appear on first focus.
+        editor.on("focus", schedule);
+        editor.on("blur", schedule);
       }
     };
     let pollAttempts = 0;
@@ -442,58 +497,54 @@ export function SelectionActionsMenu({
     };
   }, [editorRef, menuHeight]);
 
-  // Escape dismisses by collapsing the selection (which then naturally
-  // hides the menu via the selectionUpdate path). We also fire bare
-  // letter keys to match DragHandleMenu's keyboard hint behavior.
+  // Whenever the placement shifts (selection cleared, cursor moved, line
+  // change, scroll) close the menu and let the button take over. This is
+  // the single place that maps "the world changed" → "go back to the
+  // collapsed button" so we don't have to remember to close the menu in
+  // every individual handler.
   useEffect(() => {
-    if (!placement.visible) return;
+    setMenuOpen(false);
+  }, [placement.left, placement.top, placement.paragraphUuid, placement.mode, placement.visible]);
+
+  // Letter-key shortcuts only fire while the menu is open. Escape closes
+  // the menu (without collapsing the selection) so the user can dismiss
+  // the expanded state without losing what they had selected.
+  useEffect(() => {
+    if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        const editor = editorRef.current;
-        if (editor) {
-          // Collapse to the end of the selection so the menu hides.
-          try {
-            editor.chain().focus().setTextSelection(editor.state.selection.to).run();
-          } catch {
-            /* ignore */
-          }
-        }
+        e.preventDefault();
+        setMenuOpen(false);
         return;
       }
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // Only trigger letter shortcuts when focus isn't in an editable
-      // field — otherwise typing into the selection would trigger
-      // actions, which is the wrong behavior since the user expects
-      // to overwrite the selection by typing.
-      const target = e.target as HTMLElement | null;
-      const inEditable =
-        !!target &&
-        (target.isContentEditable ||
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA");
-      if (inEditable) return;
       if (e.key.length !== 1) return;
       const letter = e.key.toUpperCase();
       const hit = MENU_ENTRIES.find((m) => m.letter === letter);
-      if (hit) {
-        e.preventDefault();
-        runAction(hit.action);
-      }
+      if (!hit) return;
+      // The menu is only open because the user explicitly clicked the
+      // action button, so letter shortcuts always fire — even when focus
+      // is in the editor. Capture-phase + preventDefault + stopPropagation
+      // keeps the letter from also typing into the prose.
+      e.preventDefault();
+      e.stopPropagation();
+      // Highlight requires a real range — skip when the menu was opened
+      // from cursor-only mode so the row's disabled state agrees with
+      // its keyboard shortcut.
+      if (hit.action === "highlight" && placement.mode === "cursor") return;
+      runAction(hit.action);
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
     // runAction is stable enough — it reads refs at call time.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [placement.visible]);
+  }, [menuOpen, placement.mode]);
 
-  // Dismiss-on-outside-click. PM collapses the selection on its own when
-  // the user clicks back into prose, but clicks that land outside both
-  // the editor and the menu (gutter, panel chrome, page background)
-  // leave the selection alive, so the menu lingers. Collapse it
-  // explicitly in that case to give the popup the same modal-feel
-  // dismissal users expect.
+  // Click-outside-while-menu-is-open closes the menu. We never collapse
+  // the selection here — that would silently undo the user's selection
+  // and was the source of the prior popup's "modal-feel" frustration.
   useEffect(() => {
-    if (!placement.visible) return;
+    if (!menuOpen) return;
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (!target) return;
@@ -501,22 +552,10 @@ export function SelectionActionsMenu({
       // The color popover handles its own dismissal — let it.
       const colorPopover = document.querySelector('div[aria-label="Text color"]');
       if (colorPopover?.contains(target)) return;
-      const editor = editorRef.current;
-      const editorDom = editor?.view.dom as Node | undefined;
-      if (editorDom?.contains(target)) return;
-      // Target is truly outside — collapse the selection so the menu
-      // hides via its normal selectionUpdate path.
-      if (editor) {
-        try {
-          editor.chain().setTextSelection(editor.state.selection.to).run();
-        } catch {
-          /* ignore */
-        }
-      }
+      setMenuOpen(false);
     };
-    // Defer so the mousedown that opened a selection-driven menu (rare,
-    // but possible if the user clicks into existing colored text) doesn't
-    // immediately collapse it.
+    // Defer one tick so the mousedown that opened the menu (the button
+    // click) doesn't immediately close it.
     const t = window.setTimeout(() => {
       window.addEventListener("mousedown", onMouseDown, true);
     }, 0);
@@ -524,16 +563,25 @@ export function SelectionActionsMenu({
       window.clearTimeout(t);
       window.removeEventListener("mousedown", onMouseDown, true);
     };
-  }, [placement.visible, editorRef]);
+  }, [menuOpen]);
 
   const runAction = (action: (typeof MENU_ENTRIES)[number]["action"]) => {
     if (!dragHandleMenu || !placement.range || !placement.paragraphUuid) return;
-    dragHandleMenu.dispatch(action, {
-      kind: "selection",
-      paragraphId: placement.paragraphUuid,
-      from: placement.range.from,
-      to: placement.range.to,
-    });
+    // In cursor mode the range is zero-width, which the dispatcher's
+    // resolvePassageRange rejects. Route through "paragraph" instead so
+    // the action anchors to the cursor's paragraph — same payload shape
+    // the left-side DragHandleMenu uses.
+    const passage =
+      placement.mode === "cursor"
+        ? { kind: "paragraph" as const, paragraphId: placement.paragraphUuid }
+        : {
+            kind: "selection" as const,
+            paragraphId: placement.paragraphUuid,
+            from: placement.range.from,
+            to: placement.range.to,
+          };
+    dragHandleMenu.dispatch(action, passage);
+    setMenuOpen(false);
   };
 
   const runFormat = (cmd: (chain: ReturnType<Editor["chain"]>) => ReturnType<Editor["chain"]>) => {
@@ -656,7 +704,7 @@ export function SelectionActionsMenu({
       // not blur the editor or clear the selection.
       onMouseDown={(e) => e.preventDefault()}
     >
-      {/* ── Formatting icon grid (4 cols × 3 rows) ─────────────── */}
+      {/* ── Formatting icon grid (4 cols × 4 rows) ─────────────── */}
       <div
         style={{
           display: "grid",
@@ -754,7 +802,7 @@ export function SelectionActionsMenu({
           </svg>
         </FmtBtn>
 
-        {/* Row 3: example + math (1 blank cell) */}
+        {/* Row 3: example + math + color */}
         <FmtBtn
           title="Wrap selection in example block"
           onClick={() => wrapSelectionInExample()}
@@ -807,6 +855,22 @@ export function SelectionActionsMenu({
             }}
           />
         </button>
+
+        {/* Row 4: \tex insert (3 cells reserved for future expansion) */}
+        <FmtBtn
+          title="Insert raw LaTeX block"
+          onClick={() => {
+            if (!editor) return;
+            insertTexBlock(editor);
+          }}
+        >
+          <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+            \tex
+          </span>
+        </FmtBtn>
+        <div />
+        <div />
+        <div />
       </div>
 
       {/* ── Divider ────────────────────────────────────────────── */}
@@ -821,51 +885,96 @@ export function SelectionActionsMenu({
       />
 
       {/* ── Action list ────────────────────────────────────────── */}
-      {MENU_ENTRIES.map((entry) => (
-        <div key={entry.action}>
-          {entry.separator && (
-            <div
-              aria-hidden
-              style={{
-                height: 1,
-                margin: "4px 8px",
-                background: "var(--edge-hover)",
-                opacity: 0.5,
+      {MENU_ENTRIES.map((entry) => {
+        // Highlight needs a real text range; greyed-out (not hidden) in
+        // cursor-only mode so the menu's vocabulary stays predictable.
+        const disabled = placement.mode === "cursor" && entry.action === "highlight";
+        return (
+          <div key={entry.action}>
+            {entry.separator && (
+              <div
+                aria-hidden
+                style={{
+                  height: 1,
+                  margin: "4px 8px",
+                  background: "var(--edge-hover)",
+                  opacity: 0.5,
+                }}
+              />
+            )}
+            <button
+              type="button"
+              role="menuitem"
+              disabled={disabled}
+              onClick={() => {
+                if (disabled) return;
+                runAction(entry.action);
               }}
-            />
-          )}
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => runAction(entry.action)}
-            className="w-full flex items-center gap-2 px-2.5 text-left hover-on-light"
-            style={{
-              height: ITEM_H,
-              fontSize: 13,
-              color: entry.destructive ? "var(--danger, #b45757)" : "var(--ink-strong)",
-              background: "transparent",
-            }}
-          >
-            <span
-              className="shrink-0 flex items-center justify-center"
-              style={{ width: 16, height: 16 }}
+              className={`w-full flex items-center gap-2 px-2.5 text-left ${disabled ? "" : "hover-on-light"}`}
+              style={{
+                height: ITEM_H,
+                fontSize: 13,
+                color: entry.destructive ? "var(--danger, #b45757)" : "var(--ink-strong)",
+                background: "transparent",
+                opacity: disabled ? 0.4 : 1,
+                cursor: disabled ? "not-allowed" : "pointer",
+              }}
             >
-              {entry.icon}
-            </span>
-            <span className="flex-1">{entry.label}</span>
-            <span className="tabular-nums" style={{ fontSize: 11, color: "var(--ink-subtle)" }}>
-              {entry.letter}
-            </span>
-          </button>
-        </div>
-      ))}
+              <span
+                className="shrink-0 flex items-center justify-center"
+                style={{ width: 16, height: 16 }}
+              >
+                {entry.icon}
+              </span>
+              <span className="flex-1">{entry.label}</span>
+              <span className="tabular-nums" style={{ fontSize: 11, color: "var(--ink-subtle)" }}>
+                {entry.letter}
+              </span>
+            </button>
+          </div>
+        );
+      })}
     </div>,
+    document.body,
+  );
+
+  // Collapsed-state action button. Same chrome variables as the menu so
+  // the two states feel like one component: the menu expands out of the
+  // button, anchored at the same `left/top`.
+  const buttonPortal = createPortal(
+    <button
+      ref={buttonRef}
+      type="button"
+      aria-label="Open actions menu"
+      title="Actions"
+      // Prevent the mousedown from blurring the editor / clearing the
+      // selection before the click registers.
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={() => setMenuOpen(true)}
+      className="flex items-center justify-center hover-on-light"
+      style={{
+        position: "fixed",
+        left: placement.left,
+        top: placement.top,
+        width: BUTTON_SIZE,
+        height: BUTTON_SIZE,
+        zIndex: 2000,
+        background: "var(--pod-editor)",
+        border: "var(--pod-border)",
+        boxShadow: "var(--pod-shadow)",
+        borderRadius: "var(--pod-radius)",
+        padding: 0,
+        cursor: "pointer",
+      }}
+    >
+      <IconZap size={16} />
+    </button>,
     document.body,
   );
 
   return (
     <>
-      {menuPortal}
+      {menuOpen ? menuPortal : buttonPortal}
       {colorPopoverAnchor && editor && (
         <SelectionColorPopover
           editor={editor}

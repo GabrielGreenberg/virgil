@@ -317,6 +317,18 @@ export function IconExample({
   );
 }
 
+// Lightning-bolt glyph used on the contextual action button that
+// expands into the SelectionActionsMenu. Filled yellow with a darker
+// outline; color is hardcoded since this is the only place we render
+// a yellow icon.
+export function IconZap({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="#eab308" stroke="#a16207" strokeWidth="1.25" strokeLinejoin="round">
+      <path d="M13 2 L4 14 H11 L10 22 L20 9 H13 Z" />
+    </svg>
+  );
+}
+
 // Per-panel-id icon renderer for the strip + omni button. Labels for
 // these ids come from PANEL_REGISTRY (or the "Blank" fallback below);
 // only the icon factory lives here, since icons reference local
