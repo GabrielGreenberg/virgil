@@ -52,6 +52,7 @@ export const ANCHORABLE_NODES = new Set([
   "titleField",
   "blockquote",
   "codeBlock",
+  "texBlock",
 ]);
 
 /** @deprecated Use `isAnchorableAtom(node.type)` instead. */

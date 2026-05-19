@@ -1049,12 +1049,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const exampleIsPoppedRef = useRef<(uuid: string) => boolean>(
     () => false,
   );
+  const texBlockIsPoppedRef = useRef<(uuid: string) => boolean>(
+    () => false,
+  );
   if (viewPrefs) {
     const popped = viewPrefs.prefs.poppedOutCards;
     paragraphIsPoppedRef.current = (uuid) => popped.includes(`paragraph:${uuid}`);
     headingIsPoppedRef.current = (uuid) => popped.includes(`heading:${uuid}`);
     listIsPoppedRef.current = (uuid) => popped.includes(`list:${uuid}`);
     exampleIsPoppedRef.current = (uuid) => popped.includes(`example:${uuid}`);
+    texBlockIsPoppedRef.current = (uuid) => popped.includes(`texBlock:${uuid}`);
   }
   const handleToggleParagraphPopout = useCallback(
     (uuid: string, anchor?: DOMRect | null) => {
@@ -1099,6 +1103,16 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
       if (!viewPrefs) return;
       const key = `list:${uuid}`;
+      if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
+      viewPrefs.setCardFloatPosition(key, rect);
+      viewPrefs.toggleCardPopout(key);
+    },
+    [viewPrefs],
+  );
+  const handleLiftTexBlock = useCallback(
+    (uuid: string, rect: { x: number; y: number; width: number; height: number }) => {
+      if (!viewPrefs) return;
+      const key = `texBlock:${uuid}`;
       if (viewPrefs.prefs.poppedOutCards.includes(key)) return;
       viewPrefs.setCardFloatPosition(key, rect);
       viewPrefs.toggleCardPopout(key);
@@ -3924,6 +3938,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onLiftList={handleLiftList}
                     exampleIsPoppedRef={exampleIsPoppedRef}
                     onToggleExamplePopout={handleToggleExamplePopout}
+                    texBlockIsPoppedRef={texBlockIsPoppedRef}
+                    onLiftTexBlock={handleLiftTexBlock}
                     onDragHandleClick={openDragHandleMenu}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}

@@ -28,3 +28,4 @@ export { PgMarkChip } from "./pgmark";
 export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
 export { TextColor } from "./text-color";
+export { TexBlock, insertTexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";

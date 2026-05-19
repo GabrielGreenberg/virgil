@@ -196,6 +196,18 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       return `\\begin{verbatim}\n${inner}\n\\end{verbatim}${anchor}\n\n`;
     }
 
+    case "texBlock": {
+      // Raw LaTeX passthrough. Contents emit verbatim between comment
+      // sentinels so the compiler runs them as LaTeX; the parser
+      // recovers them by matching uuid. We escape any literal
+      // `%!vtex:end` in the body so a pasted snippet can't terminate
+      // the block early.
+      const uuid = (node.attrs?.uuid as string) || "";
+      const rawCode = (node.attrs?.code as string) || "";
+      const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
+      return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
+    }
+
     case "blockquote": {
       const inner = (node.content || []).map((n) => serializeNode(n, true)).join("");
       const uuid = node.attrs?.uuid as string | null;
@@ -636,10 +648,12 @@ export function extractSidecarData(doc: JSONContent): VirgilSidecar {
       const uuid = node.attrs.uuid as string;
       const fp = computeFingerprint(node);
       const title = node.attrs.parTitle as string | undefined;
-      if (title || fp) {
+      const collapsed = node.attrs.collapsed === true;
+      if (title || fp || collapsed) {
         paragraphs[uuid] = {
           ...(title ? { title } : {}),
           ...(fp ? { fingerprint: fp } : {}),
+          ...(collapsed ? { collapsed: true } : {}),
         };
       }
     }

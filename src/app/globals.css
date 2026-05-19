@@ -783,6 +783,157 @@ textarea,
   display: none !important;
 }
 
+/* ── tex-block chrome ─────────────────────────────────────────────
+   Mirrors the heading-* visuals (fold chevron + 6-dot drag grip) but
+   scoped to the tex-block wrapper so the heading selectors stay
+   semantically clean. The chrome is positioned relative to
+   .tex-block-pod (the container around the editor/preview) so its top
+   edge aligns with the pod's blue outline, not with any title slot
+   above. */
+.tex-block-pod {
+  position: relative;
+}
+
+/* Row-wide hover sensor — invisible div that covers the full editor
+   content row at the pod's Y band so `.tex-block:hover` (and the
+   grab-handle reveal it triggers) fires anywhere in the row, not
+   just over the visible blue outline. The extension matches the
+   editor's left/right padding so the sensor stays within the editor
+   pane and doesn't bleed into adjacent panels.
+   The sensor is the FIRST child of .tex-block-pod; in normal stacking
+   order the editor/preview (later siblings) sit on top in the overlap
+   area, so the pod still receives clicks. The sensor catches events
+   in the gutter (where the chevron + grab visually sit) — that's the
+   key path: the handle itself has `pointer-events: none` until the
+   parent is :hover, so cursor over the handle's visible position
+   hits the sensor instead and reveals the handle. */
+.tex-block-row-sensor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(-1 * var(--editor-pl, 88px));
+  right: calc(-1 * var(--editor-pr, 72px));
+  pointer-events: auto;
+}
+
+.tex-block-fold-chevron {
+  position: absolute;
+  left: -36px;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted-light, #b5b0aa);
+  transition: color 0.15s, transform 0.15s ease;
+  /* Expanded: chevron points down. */
+  transform: rotate(90deg);
+  z-index: 1;
+}
+.tex-block-fold-chevron:hover {
+  color: var(--muted, #8a8580);
+}
+.tex-block-fold-chevron.is-folded {
+  transform: rotate(0deg);
+  color: var(--footnote-color, #b45757);
+}
+.tex-block-fold-chevron.is-folded svg path {
+  stroke-width: 2;
+}
+.tex-block-fold-chevron.is-folded:hover {
+  color: var(--footnote-color, #b45757);
+  filter: brightness(0.85);
+}
+
+.tex-block-drag-handle {
+  position: absolute;
+  left: -18px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  cursor: grab;
+  user-select: none;
+  color: var(--muted-light, #b5b0aa);
+}
+.tex-block:hover .tex-block-drag-handle {
+  opacity: 1;
+  pointer-events: auto;
+}
+.tex-block-drag-handle:hover {
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.06);
+  border-radius: 3px;
+}
+.tex-block-drag-handle:active {
+  cursor: grabbing;
+  color: var(--ink, #3a362f);
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 3px;
+  transform: translateY(1px);
+}
+
+/* Collapsed preview — sits in place of the CodeMirror pod when the
+   block is folded. Reads as a quiet shadow of the real editor. */
+.tex-block-preview {
+  position: relative; /* stacks above .tex-block-row-sensor in overlap */
+  border: 1px dashed var(--heading-annotation-border, #a8c4de);
+  border-radius: 6px;
+  background: var(--code-block-bg, rgba(124, 94, 60, 0.04));
+  padding: 8px 12px;
+  cursor: pointer;
+  font-family: var(--font-mono), "SF Mono", "Fira Code", monospace;
+  font-size: 13px;
+  color: var(--ink-muted, #6b6660);
+  transition: background 0.15s;
+}
+.tex-block-preview:hover {
+  background: rgba(124, 94, 60, 0.07);
+}
+.tex-block-preview-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.tex-block-preview-empty {
+  font-style: italic;
+  opacity: 0.6;
+}
+.tex-block-preview-more {
+  color: var(--muted-light, #b5b0aa);
+  letter-spacing: 2px;
+  margin-top: 2px;
+  line-height: 1;
+}
+
+/* Popped state: the live editor is open in a floating card, so the
+   docked pod dims to signal "go look at the float". Click-to-undock
+   could be added later. */
+.tex-block.is-popped .tex-block-pod {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* Titled tex blocks get extra breathing room above so the title isn't
+   crammed against the preceding paragraph. The :has() selector gates
+   on title presence — .par-title-text only renders when parTitle is
+   set. */
+.tex-block:has(.par-title-text) {
+  margin-top: 1.5em;
+}
+
 .heading-wrapper h1,
 .heading-wrapper h2,
 .heading-wrapper h3,

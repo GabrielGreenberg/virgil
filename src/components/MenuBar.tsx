@@ -16,6 +16,7 @@ import {
   IconExample,
 } from "./editor-layout/panel-icons";
 import { generateShortId } from "@/lib/uuid";
+import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import type { HighlightType } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import {
@@ -1068,6 +1069,14 @@ export function FormatButtonsRow({ editor }: { editor: Editor }) {
         title="Insert display math"
       >
         $$
+      </TextBtn>
+      <TextBtn
+        onClick={() => insertTexBlock(editor)}
+        title="Insert raw LaTeX block"
+      >
+        <span style={{ fontFamily: "var(--font-mono), monospace", fontSize: 11 }}>
+          \tex
+        </span>
       </TextBtn>
     </>
   );

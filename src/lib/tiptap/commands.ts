@@ -100,6 +100,26 @@ export const VIRGIL_COMMANDS: VirgilCommand[] = [
       window.dispatchEvent(new CustomEvent("virgil-footnote-input"));
     },
   },
+  {
+    name: "tex",
+    action: (view) => {
+      const { state } = view;
+      const texBlockType = state.schema.nodes.texBlock;
+      if (!texBlockType) return;
+      const existing = new Set<string>();
+      state.doc.descendants((node) => {
+        if (node.type.name === "texBlock" && node.attrs.uuid) {
+          existing.add(node.attrs.uuid as string);
+        }
+        return true;
+      });
+      const uuid = generateShortId(existing);
+      const tr = state.tr.replaceSelectionWith(
+        texBlockType.create({ uuid, code: "" }),
+      );
+      view.dispatch(tr);
+    },
+  },
 ];
 
 /** Fast lookup by command name (without backslash). */

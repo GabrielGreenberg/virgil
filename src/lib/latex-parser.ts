@@ -688,11 +688,14 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
 }
 
 function mergeSidecarTitles(node: JSONContent, sidecar: VirgilSidecar): void {
-  const TITLED = new Set(["paragraph", "bulletList", "orderedList"]);
+  const TITLED = new Set(["paragraph", "bulletList", "orderedList", "texBlock"]);
   if (TITLED.has(node.type!) && node.attrs?.uuid) {
     const meta = sidecar.paragraphs[node.attrs.uuid as string];
     if (meta?.title) {
       node.attrs.parTitle = meta.title;
+    }
+    if (meta?.collapsed && node.type === "texBlock") {
+      node.attrs.collapsed = true;
     }
   }
   node.content?.forEach((child) => mergeSidecarTitles(child, sidecar));
@@ -1267,6 +1270,47 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
     // % comment line
     if (rest.startsWith("%")) {
+      // %!vtex:begin <uuid> ... raw LaTeX ... %!vtex:end <uuid>
+      // Round-trip marker for the texBlock node. Contents are slurped
+      // verbatim — do NOT recurse into parseBody, the whole point is to
+      // hold raw LaTeX the editor doesn't try to render.
+      const texBeginMatch = rest.match(/^%!vtex:begin[ \t]+([0-9a-f]+)/);
+      if (texBeginMatch) {
+        const uuid = texBeginMatch[1];
+        const eolAfterBegin = ctx.src.indexOf("\n", ctx.pos);
+        if (eolAfterBegin === -1) {
+          // Malformed: begin marker with no newline. Skip the line.
+          ctx.pos = ctx.src.length;
+          continue;
+        }
+        const bodyStart = eolAfterBegin + 1;
+        const endMarker = `%!vtex:end ${uuid}`;
+        const endIdx = ctx.src.indexOf(endMarker, bodyStart);
+        let bodyEnd: number;
+        let advanceTo: number;
+        if (endIdx === -1) {
+          // Unterminated. Recover by treating the rest of the source as body.
+          bodyEnd = ctx.src.length;
+          advanceTo = ctx.src.length;
+        } else {
+          bodyEnd = endIdx;
+          // Trim the single newline the serializer always emits before the end marker.
+          if (bodyEnd > bodyStart && ctx.src[bodyEnd - 1] === "\n") bodyEnd--;
+          const eolAfterEnd = ctx.src.indexOf("\n", endIdx);
+          advanceTo = eolAfterEnd === -1 ? ctx.src.length : eolAfterEnd + 1;
+        }
+        let code = ctx.src.slice(bodyStart, bodyEnd);
+        // Unescape any `%!v tex:end` → `%!vtex:end` that the serializer
+        // emitted to protect user-pasted markers from terminating early.
+        code = code.replace(/%!v tex:end/g, "%!vtex:end");
+        ctx.pos = advanceTo;
+        parent.content.push({
+          type: "texBlock",
+          attrs: { uuid, code },
+        });
+        continue;
+      }
+
       // Virgil markers
       if (rest.startsWith("%!v:")) {
         const eol = ctx.src.indexOf("\n", ctx.pos);

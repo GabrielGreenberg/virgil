@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -209,6 +209,10 @@ interface EditorProps {
   onToggleExamplePopout?: (uuid: string, anchor?: DOMRect | null) => void;
   /** Same as paragraphIsPoppedRef, but for example blocks. */
   exampleIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
+  /** Same as onLiftParagraph, but for texBlock atoms. */
+  onLiftTexBlock?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
+  /** Same as paragraphIsPoppedRef, but for texBlock atoms. */
+  texBlockIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
   /**
    * Callback invoked when the user clicks (without dragging) a
    * paragraph or heading drag grip. Opens the passage-action menu
@@ -455,7 +459,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -526,6 +530,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const exampleIsPoppedPredicateRef = useRef(exampleIsPoppedRef);
   exampleIsPoppedPredicateRef.current = exampleIsPoppedRef;
   const examplePopoutRefreshersRef = useRef<Set<() => void>>(new Set());
+  // Same triplet for texBlock atoms — wired into TexBlock via .configure().
+  const onLiftTexBlockRef = useRef(onLiftTexBlock);
+  onLiftTexBlockRef.current = onLiftTexBlock;
+  const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
+  texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
   // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
@@ -2129,6 +2138,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       OrderedListWithTitle,
       BlockquoteWithUuid,
       CodeBlockWithUuid,
+      TexBlock.configure({
+        onLiftRef: onLiftTexBlockRef,
+        isPoppedRef: texBlockIsPoppedPredicateRef,
+      }),
       Placeholder.configure({
         placeholder: "Start writing...",
       }),

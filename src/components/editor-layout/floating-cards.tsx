@@ -14,6 +14,7 @@ import { AiRequestCard } from "../panel-primitives";
 import { ParagraphFloat } from "../ParagraphFloat";
 import { HeadingFloat } from "../HeadingFloat";
 import { ListFloat } from "../ListFloat";
+import { TexBlockFloat } from "../TexBlockFloat";
 import { SelectionFloat } from "../SelectionFloat";
 import type { EditorHandle, FootnoteInfo, ExampleInfo } from "../Editor";
 import { getLinkedParagraphIds } from "@/links/links";
@@ -498,6 +499,9 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
     }
     case "list": {
       return <ListFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
+    }
+    case "texBlock": {
+      return <TexBlockFloat key={key} cardKey={key} uuid={id} editorRef={d.editorRef} />;
     }
     case "selection": {
       return (

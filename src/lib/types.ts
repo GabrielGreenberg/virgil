@@ -3,6 +3,9 @@ import type { Link } from "@/links/_shared/types";
 export interface ParagraphMeta {
   title?: string;
   fingerprint?: string;
+  /** Sticky collapse state. Currently only set by texBlock — true means the
+   *  block should render its compact preview instead of the full editor. */
+  collapsed?: boolean;
 }
 
 export interface VirgilSidecar {
