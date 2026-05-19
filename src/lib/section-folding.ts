@@ -13,7 +13,8 @@ export const sectionFoldingPluginKey = new PluginKey<SectionFoldingState>(
 type Meta =
   | { action: "toggle"; uuid: string }
   | { action: "collapseAll" }
-  | { action: "expandAll" };
+  | { action: "expandAll" }
+  | { action: "setFolded"; uuids: string[] };
 
 /**
  * Collect the UUIDs of every top-level heading in the document. Folding only
@@ -121,6 +122,12 @@ export function sectionFoldingPlugin(): Plugin<SectionFoldingState> {
           }
           if (meta.action === "expandAll") {
             return { folded: new Set() };
+          }
+          if (meta.action === "setFolded") {
+            const alive = new Set(collectHeadingUuids(newState.doc));
+            const next = new Set<string>();
+            for (const u of meta.uuids) if (alive.has(u)) next.add(u);
+            return { folded: next };
           }
         }
         // Doc may have changed — prune UUIDs that no longer exist so fold

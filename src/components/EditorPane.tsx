@@ -102,6 +102,7 @@ import { useNotes } from "@/hooks/useNotes";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import { useRecentlyAddedTracker } from "@/hooks/useRecentlyAddedTracker";
 import { useDocument } from "@/hooks/useDocument";
+import { useEditorUIState } from "@/hooks/useEditorUIState";
 import { useLatexCompile, type DocumentClassMismatchHandler } from "@/hooks/useLatexCompile";
 import { useWordCount } from "@/hooks/useWordCount";
 import { useTodos } from "@/hooks/useTodos";
@@ -861,6 +862,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // isn't supplied; the Reader supplies its own (UUID-tagged +
   // sidecar-aware parse) so that path stays unchanged.
   const docHook = useDocument();
+
+  // ── Per-doc editor UI state (last-edited paragraph + section folds) ──
+  // Captures cursor paragraph (debounced) and fold state (immediate) to
+  // `editor-state.json`. The restore effect below waits for the editor,
+  // the doc content, AND the sidecar load — the sidecar is async and
+  // can resolve after the editor mounts, so depending on `loaded` is
+  // mandatory to avoid restoring the pre-load default.
+  const uiStateHook = useEditorUIState(docId, editor);
+  const uiRestoredRef = useRef(false);
+  useEffect(() => {
+    if (uiRestoredRef.current) return;
+    if (!editor || !docHook.content || !uiStateHook.loaded) return;
+    const ui = uiStateHook.stateRef.current;
+    uiRestoredRef.current = true;
+    if (ui.foldedSections.length > 0) {
+      innerRef.current?.setFolded(ui.foldedSections);
+    }
+    if (ui.lastParagraphId) {
+      innerRef.current?.restoreCursorToParagraph(ui.lastParagraphId);
+    }
+  }, [editor, docHook.content, uiStateHook.loaded, uiStateHook.stateRef]);
 
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `lastEditTime`
   // live here so they bubble up via `paneState` for the shell's Virgil

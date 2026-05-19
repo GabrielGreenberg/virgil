@@ -10,9 +10,15 @@ export interface VirgilSidecar {
 }
 
 export interface EditorStateData {
-  cursorPosition: number;
-  selection: { anchor: number; head: number } | null;
+  /** Paragraph UUID the cursor was in at last write. null = unknown / top of doc. */
+  lastParagraphId: string | null;
+  /** UUIDs of top-level headings currently folded. */
+  foldedSections: string[];
   lastModified: string;
+  /** @deprecated kept optional so older on-disk sidecars don't error on read. */
+  cursorPosition?: number;
+  /** @deprecated kept optional so older on-disk sidecars don't error on read. */
+  selection?: { anchor: number; head: number } | null;
 }
 
 export interface Suggestion {

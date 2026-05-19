@@ -12,8 +12,6 @@ import {
 
 type SaveStatus = "idle" | "saving" | "saved";
 
-const DEFAULT_EDITOR_STATE = { cursorPosition: 0, selection: null, lastModified: "" };
-
 /**
  * Document load + autosave for the active doc.
  *
@@ -50,7 +48,7 @@ export function useDocument() {
     async (doc: JSONContent) => {
       setSaveStatus("saving");
       try {
-        await writeDocBundle(handle, doc, DEFAULT_EDITOR_STATE);
+        await writeDocBundle(handle, doc);
         lastSavedRef.current = doc;
         setSaveStatus("saved");
         setTimeout(() => {

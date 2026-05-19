@@ -77,8 +77,8 @@ Start writing here...
 `;
 
 const DEFAULT_EDITOR_STATE: EditorStateData = {
-  cursorPosition: 0,
-  selection: null,
+  lastParagraphId: null,
+  foldedSections: [],
   lastModified: new Date().toISOString(),
 };
 
@@ -290,7 +290,6 @@ export async function readDocBundle(docId: string): Promise<DocBundle> {
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  editorState: EditorStateData,
 ): Promise<void> {
   return enqueueDocWrite(h, "bundle", async () => {
     const docHandle = await requireDocHandle(h.docId);
@@ -346,17 +345,7 @@ export async function writeDocBundle(
     });
     await writeTextToHandle(sidecarFh, JSON.stringify(newSidecar, null, 2));
 
-    const stateFh = await virgil.getFileHandle("editor-state.json", {
-      create: true,
-    });
-    await writeTextToHandle(
-      stateFh,
-      JSON.stringify(
-        { ...editorState, lastModified: new Date().toISOString() },
-        null,
-        2,
-      ),
-    );
+    // editor-state.json is owned by useEditorUIState, not the bundle save.
 
     await touchDocTimestamp(h.docId);
   });

@@ -156,8 +156,8 @@ function findEntry(docs: DevIndexEntry[], docId: string): DevIndexEntry | undefi
 // ---------------------------------------------------------------------------
 
 const DEFAULT_EDITOR_STATE: EditorStateData = {
-  cursorPosition: 0,
-  selection: null,
+  lastParagraphId: null,
+  foldedSections: [],
   lastModified: new Date().toISOString(),
 };
 
@@ -274,7 +274,6 @@ export async function readDocBundle(docId: string): Promise<{ content: JSONConte
 export async function writeDocBundle(
   h: DocWriteHandle,
   content: JSONContent,
-  editorState: EditorStateData,
 ): Promise<void> {
   assertActive(h);
   const docs = await getDevIndex();
@@ -314,13 +313,10 @@ export async function writeDocBundle(
   // landed between the awaits above. Lenient: an ended-cleanly pipeline
   // is still safe to write to, only a SUPERSEDED one would corrupt.
   assertNotSuperseded(h);
+  // editor-state.json is owned by useEditorUIState, not the bundle save.
   await Promise.all([
     putText(`${API}/doc/${h.docId}/${texFilename}`, latex),
     putText(`${API}/doc/${h.docId}/virgil/virgil.json`, JSON.stringify(newSidecar, null, 2)),
-    putText(
-      `${API}/doc/${h.docId}/virgil/editor-state.json`,
-      JSON.stringify({ ...editorState, lastModified: new Date().toISOString() }, null, 2),
-    ),
   ]);
 }
 

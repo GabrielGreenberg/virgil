@@ -366,6 +366,14 @@ export interface EditorHandle {
   collapseAllSections: () => void;
   /** Expand all previously folded sections. */
   expandAllSections: () => void;
+  /** Set the folded-sections state to exactly the given heading UUIDs.
+   *  UUIDs that no longer exist in the doc are silently dropped. Used to
+   *  restore section folds from persisted UI state on reload. */
+  setFolded: (uuids: string[]) => void;
+  /** Scroll to the paragraph with this UUID and place the cursor at its
+   *  end. Silently no-ops if the UUID is no longer in the doc. Used to
+   *  restore the last-edited paragraph from persisted UI state on reload. */
+  restoreCursorToParagraph: (uuid: string) => void;
   /** Tell every paragraph node view to re-read the popped predicate.
    *  Called by EditorLayout whenever the popped-cards list changes so
    *  the gutter popout-button glyph (arrow ↔ X) stays in sync when the
@@ -3502,6 +3510,42 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       });
       tr.setMeta("addToHistory", false);
       editor.view.dispatch(tr);
+    },
+    setFolded(uuids: string[]): void {
+      if (!editor) return;
+      const tr = editor.state.tr.setMeta(sectionFoldingPluginKey, {
+        action: "setFolded",
+        uuids,
+      });
+      tr.setMeta("addToHistory", false);
+      editor.view.dispatch(tr);
+    },
+    restoreCursorToParagraph(uuid: string): void {
+      if (!editor) return;
+      let targetPos = -1;
+      let targetNodeSize = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (targetPos >= 0) return false;
+        if (node.attrs?.uuid === uuid) {
+          targetPos = pos;
+          targetNodeSize = node.nodeSize;
+        }
+        return true;
+      });
+      if (targetPos < 0) return;
+      const endPos = targetPos + targetNodeSize - 1;
+      try {
+        // Scroll first (moves selection to paragraph start internally),
+        // then place cursor at end + take DOM focus. Focus can silently
+        // no-op on the very first load if the browser blocks autofocus
+        // without a user gesture — the selection still lands correctly,
+        // so the cursor is ready the moment the user clicks anywhere.
+        (this as EditorHandle).scrollToParagraphId(uuid);
+        editor.commands.setTextSelection(endPos);
+        editor.view.focus();
+      } catch {
+        /* position out of range — silently skip */
+      }
     },
     refreshParagraphPopouts(): void {
       paragraphPopoutRefreshersRef.current.forEach((fn) => fn());
