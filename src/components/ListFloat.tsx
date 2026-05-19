@@ -126,8 +126,14 @@ export function ListFloat({
       } as JSONContent,
       typeName,
     };
+    // mainEditor is a ref-derived value (`editorRef.current?.getEditor()`),
+    // not React state — but it can flip null → editor between the first
+    // render (popout opens before EditorPane has populated the handle)
+    // and the second. Without `mainEditor` in deps, `initial` stays on
+    // the empty fallback even after the real editor is available, and
+    // the float's label + initial content lock to the wrong values.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uuid]);
+  }, [uuid, mainEditor]);
 
   const floatEditor = useEditor({
     extensions: [
@@ -280,7 +286,7 @@ export function ListFloat({
           />
         </div>
         {sourceMissing ? (
-          <SourceMissingBanner kind="section" onClose={() => popped?.close(cardKey)} />
+          <SourceMissingBanner kind="list" onClose={() => popped?.close(cardKey)} />
         ) : null}
         <div className="par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative">
           {/* Drag handle for the whole list. Same shape as HeadingFloat's
