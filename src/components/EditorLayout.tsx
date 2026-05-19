@@ -1918,57 +1918,82 @@ export default function EditorLayout() {
     return () => { editorInstance.off("focus", clearOverride); };
   }, [editorInstance]);
 
-  // ── Focus mode: inject a <style> tag to hide/dim editor blocks ───
-  // ProseMirror's DOM reconciliation strips classes and inline styles
-  // from its managed nodes. A <style> tag with nth-child selectors is
-  // immune to this since PM doesn't touch <style> elements.
+  // ── Focus mode: presentation-only ───────────────────────────────
+  // Focus view confines the visible band of the editor. It is a pure
+  // presentation layer: it never removes cards, blocks clicks, or moves
+  // the selection — except for one explicit one-shot at the moment the
+  // user toggles `locked`.
+  //
+  // Mechanism: a single static stylesheet plus a `data-virgil-focus-
+  // outside` attribute stamped on each top-level child of the editor
+  // that falls outside [startBlockIndex, endBlockIndex]. Stamps are
+  // re-applied on every PM transaction so they survive footnote-atom
+  // insertion, paragraph splits, drag reorders, etc. — anything that
+  // would have shifted the old nth-child indices.
   const focusStyleRef = useRef<HTMLStyleElement | null>(null);
   const focusStateRef = useRef(focusMode.state);
   focusStateRef.current = focusMode.state;
+  const prevLockedRef = useRef(false);
 
+  // Inject the single static stylesheet once.
   useEffect(() => {
-    const fs = focusMode.state;
+    if (focusStyleRef.current) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-virgil-focus", "true");
+    style.textContent = [
+      `.tiptap > [data-virgil-focus-outside="true"] { opacity: 0.25; transition: opacity 200ms ease; }`,
+      `.tiptap.virgil-focus-locked > [data-virgil-focus-outside="true"] { display: none; }`,
+    ].join("\n");
+    document.head.appendChild(style);
+    focusStyleRef.current = style;
+    return () => {
+      if (focusStyleRef.current) {
+        focusStyleRef.current.remove();
+        focusStyleRef.current = null;
+      }
+    };
+  }, []);
 
-    // Remove previous style tag
-    if (focusStyleRef.current) {
-      focusStyleRef.current.remove();
-      focusStyleRef.current = null;
-    }
-
-    if (!fs.active || !editorInstance) return;
-
-    // Guard against the editor being un-mounted: tiptap's `editor.view`
-    // getter throws if the view isn't ready yet, so peek defensively.
+  // Stamp outside-band children and toggle the locked class. Re-stamp
+  // on every transaction so the targeting survives DOM mutation.
+  useEffect(() => {
+    if (!editorInstance) return;
     let editorDom: HTMLElement | null = null;
     try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
     if (!editorDom) return;
 
-    const style = document.createElement("style");
-    style.setAttribute("data-virgil-focus", "true");
-
-    // Build CSS rules using nth-child to target blocks outside the range
-    const rules: string[] = [];
-    const selector = ".tiptap > *";
-    const totalChildren = editorDom.children.length;
-
-    for (let i = 0; i < totalChildren; i++) {
-      const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
-      if (outside) {
-        const nth = i + 1; // nth-child is 1-based
-        if (fs.locked) {
-          rules.push(`.tiptap > :nth-child(${nth}) { display: none !important; }`);
-        } else {
-          rules.push(`.tiptap > :nth-child(${nth}) { opacity: 0.25 !important; pointer-events: none !important; }`);
+    const stamp = () => {
+      if (!editorDom) return;
+      const fs = focusStateRef.current;
+      const children = editorDom.children;
+      if (!fs.active) {
+        for (let i = 0; i < children.length; i++) {
+          const el = children[i] as HTMLElement;
+          if (el.dataset.virgilFocusOutside) delete el.dataset.virgilFocusOutside;
         }
+        editorDom.classList.remove("virgil-focus-locked");
+        return;
       }
-    }
+      for (let i = 0; i < children.length; i++) {
+        const el = children[i] as HTMLElement;
+        const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
+        if (outside) el.dataset.virgilFocusOutside = "true";
+        else if (el.dataset.virgilFocusOutside) delete el.dataset.virgilFocusOutside;
+      }
+      editorDom.classList.toggle("virgil-focus-locked", fs.locked);
+    };
 
-    style.textContent = rules.join("\n");
-    document.head.appendChild(style);
-    focusStyleRef.current = style;
+    stamp();
+    const onTransaction = () => stamp();
+    editorInstance.on("transaction", onTransaction);
 
-    // When locking, move cursor into visible range if needed
-    if (fs.locked) {
+    // One-shot cursor coercion: fires only on the false→true lock
+    // transition, not on every focus-state change. This decouples it
+    // from range moves, expansions, and unlocks — and from any
+    // concurrent card-creation transaction that might race with it.
+    const fs = focusMode.state;
+    const nowLocked = fs.active && fs.locked;
+    if (nowLocked && !prevLockedRef.current) {
       const doc = editorInstance.view.state.doc;
       const { from } = editorInstance.view.state.selection;
       let firstVisiblePos = 0;
@@ -1985,12 +2010,10 @@ export default function EditorLayout() {
         try { editorInstance.commands.setTextSelection(firstVisiblePos); } catch {}
       }
     }
+    prevLockedRef.current = nowLocked;
 
     return () => {
-      if (focusStyleRef.current) {
-        focusStyleRef.current.remove();
-        focusStyleRef.current = null;
-      }
+      editorInstance.off("transaction", onTransaction);
     };
   }, [editorInstance, focusMode.state]);
 
