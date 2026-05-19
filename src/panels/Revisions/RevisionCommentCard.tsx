@@ -1,29 +1,24 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import type { Editor } from "@tiptap/react";
+import { useCallback, useEffect } from "react";
+import type { Editor, JSONContent } from "@tiptap/react";
 import type { RevisionCommentCard as RevisionCommentCardData } from "@/lib/types";
 import {
   AiRequestCheckbox,
-  PanelCard,
-  compressedBodyStyle,
+  EditableCard,
+  makeCompressedSummary,
+  startTextDrag,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
-import {
-  getAnchorSummary,
-  getLinkedParagraphIds,
-  hasTextAnchor,
-} from "@/links/links";
+import { getLinkedParagraphIds, hasTextAnchor } from "@/links/links";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
-import { usePanelBodyStyle } from "@/hooks/usePanelTypography";
-import { useTabIndent } from "@/hooks/useTabIndent";
 import { FloatCard } from "@/components/FloatingCards";
 import { popKey } from "@/panels/panel-registry";
 import { useAnchoredCard } from "@/links/_shared/useAnchoredCard";
 import { cardStore } from "@/links/_shared/anchored-card-store";
+import { normalizeRichContent } from "@/lib/footnote-content";
 import { MIME_REVISION } from "./mime";
-import { FieldTitleRow } from "@/panels/Cutter/CutterSuggestionCard";
 
 export function startRevisionCommentDrag(e: React.DragEvent, cardId: string) {
   e.dataTransfer.setData(
@@ -36,8 +31,9 @@ export function startRevisionCommentDrag(e: React.DragEvent, cardId: string) {
 export function RevisionCommentCard({
   card,
   selected,
-  onUpdateText,
+  onUpdateContent,
   onSetAiRequest,
+  onConvert,
   onDelete,
   onSelect,
   onJump,
@@ -49,8 +45,9 @@ export function RevisionCommentCard({
 }: {
   card: RevisionCommentCardData;
   selected: boolean;
-  onUpdateText: (id: string, text: string) => void;
+  onUpdateContent: (id: string, content: JSONContent) => void;
   onSetAiRequest: (id: string, value: boolean) => void;
+  onConvert: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -61,148 +58,116 @@ export function RevisionCommentCard({
   extraDataAttrs?: Record<string, string>;
 }) {
   const theme = useCardTheme("revision");
-  const revisionBodyStyle = usePanelBodyStyle("revision");
-  const cardRef = useRef<HTMLDivElement>(null);
   const isAnchored =
     getLinkedParagraphIds(card).length > 0 || hasTextAnchor(card);
   const isOrphaned = !isAnchored && !!card.selectedText;
-  const anchorSummary = getAnchorSummary(card, editor ?? null);
   const popped = usePoppedCards();
   const cardKey = popKey("revisions", card.id);
   const onToggleFromCtx =
     onTogglePopout ??
     (popped ? (anchor: DOMRect) => popped.toggleAtAnchor(cardKey, anchor) : undefined);
 
-  const taRef = useRef<HTMLTextAreaElement | null>(null);
-  const onTextareaKeyDown = useTabIndent<HTMLTextAreaElement>();
-  const [originalFolded, setOriginalFolded] = useState(false);
-  const [commentFolded, setCommentFolded] = useState(false);
   const ac = useAnchoredCard({ kind: "comment", id: card.id });
   const isExpanded = ac.expanded || selected;
   const isSelected = ac.selected || selected;
   const compressed = !isExpanded && !isPoppedOut;
   const compressedLines = useCompressedLines();
+  const compressedSummary = compressed
+    ? (makeCompressedSummary(card.content, compressedLines) || "")
+    : undefined;
+
+  void editor;
+  void isOrphaned;
+
+  const handleChange = useCallback(
+    (json: JSONContent) => {
+      onUpdateContent(card.id, normalizeRichContent(json));
+    },
+    [card.id, onUpdateContent],
+  );
+
+  // Focus the body when a brand-new (empty) card is selected — mirrors the
+  // textarea autofocus the old chrome did. Keeps the "click + → start
+  // typing" path snappy.
   useEffect(() => {
-    if (isSelected && !card.text) taRef.current?.focus();
-  }, [isSelected, card.text]);
+    if (!isSelected) return;
+    if (card.text) return;
+    const el = document.querySelector<HTMLElement>(
+      `[data-pristine-card-id="${card.id}"] [contenteditable="true"]`,
+    );
+    el?.focus();
+  }, [isSelected, card.id, card.text]);
 
   const cardEl = (
-    <PanelCard
-      ref={cardRef}
-      data-revision-comment-entry={card.id}
-      data-card-key={cardKey}
-      data-pristine-card-id={card.id}
-      {...(extraDataAttrs || {})}
-      theme={theme}
+    <EditableCard
+      id={card.id}
+      cardKind="comment"
+      kind="comment"
+      kindOptions={["comment", "suggestion"]}
+      onKindChange={(k) => {
+        if (k !== "comment") onConvert(card.id, k as "suggestion");
+      }}
       selected={isSelected}
-      isPoppedOut={isPoppedOut}
-      onTogglePopout={onToggleFromCtx}
-      cardKey={cardKey}
-      isCollapsed={compressed}
-      onTrashClick={() => onDelete(card.id)}
-      draggable={!isSelected}
-      onDragStart={(e) => startRevisionCommentDrag(e, card.id)}
-      tabIndex={isSelected ? 0 : -1}
+      theme={theme}
+      hideToolbar
+      inlineDelete
+      canJump={isAnchored && !isOrphaned && !!onJump}
+      onJump={
+        onJump && isAnchored && !isOrphaned
+          ? (e) =>
+              onJump(
+                (e.currentTarget as HTMLElement).closest(
+                  "[data-card]",
+                ) as HTMLElement | null,
+              )
+          : undefined
+      }
       onClick={(e) => {
-        e.stopPropagation();
         cardStore.toggleSelection(ac.ref);
         if (!cardStore.isExpanded(ac.ref)) return;
         onSelect(card.id);
-        if (isAnchored && !isOrphaned && onJump) {
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
+        if (onJump && isAnchored && !isOrphaned) {
+          onJump(
+            (e?.currentTarget as HTMLElement | undefined)?.closest(
+              "[data-card]",
+            ) as HTMLElement | null,
+          );
         }
       }}
-      onMouseEnter={() => { cardStore.setHover(ac.ref); onHoverChange?.(true); }}
-      onMouseLeave={() => {
-        const h = cardStore.getState().hover;
-        if (h && h.kind === ac.ref.kind && h.id === ac.ref.id) cardStore.setHover(null);
-        onHoverChange?.(false);
-      }}
-      onKeyDown={(e) => {
-        if (!isSelected) return;
-        if (e.key === "Delete" || e.key === "Backspace") {
-          e.preventDefault();
-          onDelete(card.id);
-        }
-      }}
-      className="focus:outline-none mb-2"
-      kind="comment"
-      canJump={isAnchored && !isOrphaned && !!onJump}
-      onJump={(e) => {
-        if (onJump && isAnchored && !isOrphaned)
-          onJump((e.currentTarget as HTMLElement).closest('[data-card]') as HTMLElement | null);
-      }}
-    >
-      {compressed ? (
-        <div className="px-3 pt-1.5 pb-1.5">
-          <div style={{ ...revisionBodyStyle, ...compressedBodyStyle(compressedLines) }}>
-            {card.selectedText ? (
-              <span className="text-red-700/80 italic">"{card.selectedText.replace(/\s+/g, " ").trim()}"</span>
-            ) : card.text ? (
-              <span className="text-ink-subtle">{card.text.replace(/\s+/g, " ").trim()}</span>
-            ) : (
-              <span className="text-ink-faint italic">empty comment</span>
-            )}
-          </div>
-        </div>
-      ) : (
-      <div
-        className={`px-3 pt-2 pb-2 space-y-2${isPoppedOut ? " flex-1 min-h-0 overflow-auto" : ""}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {card.selectedText && (
-          <div>
-            <FieldTitleRow
-              label="Original"
-              kindHint={anchorSummary?.kind ?? null}
-              text={card.selectedText}
-              showCopy={true}
-              showWordCount={true}
-              folded={originalFolded}
-              onToggleFold={() => setOriginalFolded((f) => !f)}
+      onTextDragStart={(e) => startTextDrag(e, card.content, card.text)}
+      onDelete={() => onDelete(card.id)}
+      footer={
+        !compressed ? (
+          <div className="px-3 pb-2 -mt-1">
+            <AiRequestCheckbox
+              checked={card.aiRequest}
+              onToggle={(next) => onSetAiRequest(card.id, next)}
             />
-            {!originalFolded && (
-              <div className="bg-danger-soft border border-red-200 rounded px-2 py-1.5 text-xs text-red-700 whitespace-pre-wrap break-words">
-                {card.selectedText}
-              </div>
-            )}
           </div>
-        )}
-
-        <div>
-          <FieldTitleRow
-            label="Comment"
-            text={card.text}
-            showCopy={false}
-            showWordCount={false}
-            folded={commentFolded}
-            onToggleFold={() => setCommentFolded((f) => !f)}
-          />
-          {!commentFolded && (
-            <textarea
-              ref={taRef}
-              value={card.text}
-              onChange={(e) => onUpdateText(card.id, e.target.value)}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={onTextareaKeyDown}
-              placeholder="Comment text…"
-              style={revisionBodyStyle}
-              className="w-full bg-surface border border-[var(--border)] rounded px-2 py-1.5 placeholder:text-ink-muted focus:outline-none focus:border-edge-strong resize-none min-h-[48px]"
-              rows={3}
-            />
-          )}
-        </div>
-
-        <AiRequestCheckbox
-          checked={card.aiRequest}
-          onToggle={(next) => onSetAiRequest(card.id, next)}
-        />
-      </div>
-      )}
-    </PanelCard>
+        ) : undefined
+      }
+      value={card.content}
+      variant="footnote"
+      panelKey="revision"
+      placeholder="Comment text…"
+      onChange={handleChange}
+      dataAttr={{ name: "revision-comment-entry", value: card.id }}
+      extraDataAttrs={{
+        "data-pristine-card-id": card.id,
+        "data-card-key": cardKey,
+        ...(extraDataAttrs || {}),
+      }}
+      onHoverChange={(h) => {
+        cardStore.setHover(h ? ac.ref : null);
+        onHoverChange?.(h);
+      }}
+      onTogglePopout={onToggleFromCtx}
+      isPoppedOut={isPoppedOut}
+      cardKey={cardKey}
+      compressed={compressed}
+      compressedSummary={compressedSummary}
+    />
   );
-
   if (isPoppedOut) return <FloatCard cardKey={cardKey}>{cardEl}</FloatCard>;
   return cardEl;
 }

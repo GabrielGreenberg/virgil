@@ -29,11 +29,12 @@ export default function RevisionsPanel({
   onSetTrackerTarget,
   onAddComment,
   onAddSuggestion,
-  onUpdateCommentText,
+  onUpdateCommentContent,
   onSetCommentAiRequest,
   onUpdateSuggestionField,
   onAcceptSuggestion,
   onRejectSuggestion,
+  onConvertCard,
   onDelete,
   onSelect,
   selectedId,
@@ -48,7 +49,7 @@ export default function RevisionsPanel({
   onSetTrackerTarget: (target: number | null) => void;
   onAddComment: (anchorRect?: DOMRect) => RevisionCommentCardData;
   onAddSuggestion: (anchorRect?: DOMRect) => RevisionSuggestionCardData;
-  onUpdateCommentText: (id: string, text: string) => void;
+  onUpdateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   onSetCommentAiRequest: (id: string, value: boolean) => void;
   onUpdateSuggestionField: (
     id: string,
@@ -62,6 +63,7 @@ export default function RevisionsPanel({
   ) => void;
   onAcceptSuggestion: (id: string) => void;
   onRejectSuggestion: (id: string) => void;
+  onConvertCard: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   selectedId: string | null;
@@ -156,7 +158,7 @@ export default function RevisionsPanel({
   const onAddOptions = useMemo(
     () => [
       { label: "Comment", onClick: (rect?: DOMRect) => onAddComment(rect) },
-      { label: "Suggestion", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
+      { label: "Revision", onClick: (rect?: DOMRect) => onAddSuggestion(rect) },
     ],
     [onAddComment, onAddSuggestion],
   );
@@ -187,7 +189,7 @@ export default function RevisionsPanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No comments or suggestions yet. Click + to add one, or drop a
+          No comments or revisions yet. Click + to add one, or drop a
           paragraph or selection here.
         </div>
       }
@@ -204,6 +206,7 @@ export default function RevisionsPanel({
               onUpdateField={onUpdateSuggestionField}
               onAccept={onAcceptSuggestion}
               onReject={onRejectSuggestion}
+              onConvert={onConvertCard}
               onDelete={onDelete}
               onSelect={onSelect}
               onJump={
@@ -219,8 +222,9 @@ export default function RevisionsPanel({
             card={it.data}
             selected={selected}
             editor={editor}
-            onUpdateText={onUpdateCommentText}
+            onUpdateContent={onUpdateCommentContent}
             onSetAiRequest={onSetCommentAiRequest}
+            onConvert={onConvertCard}
             onDelete={onDelete}
             onSelect={onSelect}
             onJump={

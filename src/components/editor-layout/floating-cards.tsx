@@ -166,6 +166,7 @@ export interface PoppedCardDeps {
     id: string,
     status: RevisionSuggestionCardData["status"],
   ) => void;
+  convertRevisionCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteRevisionCard: (id: string) => void;
 
   // Quotations
@@ -424,6 +425,7 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
             onUpdateField={d.updateRevisionSuggestionField}
             onAccept={(cid) => d.setRevisionSuggestionStatus(cid, "accepted")}
             onReject={(cid) => d.setRevisionSuggestionStatus(cid, "rejected")}
+            onConvert={d.convertRevisionCard}
             onDelete={d.deleteRevisionCard}
             onSelect={d.setSelectedCommentId}
             isPoppedOut
@@ -435,8 +437,9 @@ export function renderPoppedCard(key: string, d: PoppedCardDeps): ReactNode {
           key={key}
           card={card}
           selected={d.selectedCommentId === card.id}
-          onUpdateText={d.updateRevisionCommentText}
+          onUpdateContent={d.updateRevisionCommentContent}
           onSetAiRequest={d.setRevisionCommentAiRequest}
+          onConvert={d.convertRevisionCard}
           onDelete={d.deleteRevisionCard}
           onSelect={d.setSelectedCommentId}
           isPoppedOut

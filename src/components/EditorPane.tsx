@@ -2754,6 +2754,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       setRevisionCommentAiRequest: revisionsHook.setCommentAiRequest,
       updateRevisionSuggestionField: revisionsHook.updateSuggestionField,
       setRevisionSuggestionStatus: revisionsHook.setSuggestionStatus,
+      convertRevisionCard: revisionsHook.convertCard,
       deleteRevisionCard: revisionsHook.deleteCard,
 
       // Quotations
@@ -4614,10 +4615,11 @@ function PaneRail({
           deleteTodo={todosHook.deleteItem}
           examples={examples}
           revisionCards={revisionsHook.cards}
-          updateRevisionCommentText={revisionsHook.updateCommentText}
+          updateRevisionCommentContent={revisionsHook.updateCommentContent}
           setRevisionCommentAiRequest={revisionsHook.setCommentAiRequest}
           updateRevisionSuggestionField={revisionsHook.updateSuggestionField}
           setRevisionSuggestionStatus={revisionsHook.setSuggestionStatus}
+          convertRevisionCard={revisionsHook.convertCard}
           deleteRevisionCard={revisionsHook.deleteCard}
           latexErrors={latexErrors}
           paragraphByErrorId={paragraphByErrorId}
@@ -5069,10 +5071,11 @@ function PaneRailBody({
         cards={revisionsHook.cards}
         tracker={revisionsHook.tracker}
         setTrackerTarget={revisionsHook.setTrackerTarget}
-        updateCommentText={revisionsHook.updateCommentText}
+        updateCommentContent={revisionsHook.updateCommentContent}
         setCommentAiRequest={revisionsHook.setCommentAiRequest}
         updateSuggestionField={revisionsHook.updateSuggestionField}
         setSuggestionStatus={revisionsHook.setSuggestionStatus}
+        convertCard={revisionsHook.convertCard}
         deleteCard={revisionsHook.deleteCard}
         discardPristine={revisionsHook.discardPristineCards}
         onDropSelection={onDropSelectionOnRevisions}

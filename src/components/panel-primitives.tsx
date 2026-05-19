@@ -616,7 +616,7 @@ export interface EditableCardProps {
   menuContent?: ReactNode;
   onDelete?: () => void;
 
-  onClick?: () => void;
+  onClick?: (e?: React.MouseEvent) => void;
   /** When provided, the card is draggable (disabled while RichTextField is focused). */
   onDragStart?: (e: React.DragEvent) => void;
   /** When provided, renders a text-drag handle in the body area.
@@ -879,7 +879,7 @@ export function EditableCard({
       }}
       className={`focus:outline-none${wrapperClassName ? ` ${wrapperClassName}` : ""}`}
       style={wrapperStyle}
-      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+      onClick={(e) => { e.stopPropagation(); onClick?.(e); }}
       onMouseEnter={onHoverChange ? () => onHoverChange(true) : undefined}
       onMouseLeave={onHoverChange ? () => onHoverChange(false) : undefined}
     >

@@ -19,7 +19,7 @@ interface BuildArgs {
   jumpToCard: (card: RevisionCard, sourceEl?: HTMLElement | null) => void;
   findParagraphPos: (uuid: string | null) => number | null;
   editor: Editor | null;
-  updateCommentText: (id: string, text: string) => void;
+  updateCommentContent: (id: string, content: import("@tiptap/react").JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
     id: string,
@@ -33,6 +33,7 @@ interface BuildArgs {
   ) => void;
   acceptSuggestion: (id: string) => void;
   rejectSuggestion: (id: string) => void;
+  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
 }
 
@@ -59,6 +60,7 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
           onUpdateField={a.updateSuggestionField}
           onAccept={a.acceptSuggestion}
           onReject={a.rejectSuggestion}
+          onConvert={a.convertCard}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={
@@ -74,8 +76,9 @@ export function buildRevisionOmniItems(a: BuildArgs): OmniItem[] {
           card={card as RevisionCommentCardData}
           selected={isSelected}
           editor={a.editor}
-          onUpdateText={a.updateCommentText}
+          onUpdateContent={a.updateCommentContent}
           onSetAiRequest={a.setCommentAiRequest}
+          onConvert={a.convertCard}
           onDelete={a.deleteCard}
           onSelect={a.setSelectedId}
           onJump={

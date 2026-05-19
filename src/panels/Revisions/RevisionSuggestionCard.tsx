@@ -184,6 +184,7 @@ export function RevisionSuggestionCard({
   onUpdateField,
   onAccept,
   onReject,
+  onConvert,
   onDelete,
   onSelect,
   onJump,
@@ -200,6 +201,7 @@ export function RevisionSuggestionCard({
   ) => void;
   onAccept: (id: string) => void;
   onReject: (id: string) => void;
+  onConvert: (id: string, toKind: "comment" | "suggestion") => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onJump?: (sourceEl?: HTMLElement | null) => void;
@@ -276,6 +278,10 @@ export function RevisionSuggestionCard({
       }}
       className="focus:outline-none mb-2"
       kind="suggestion"
+      kindOptions={["comment", "suggestion"]}
+      onKindChange={(k) => {
+        if (k !== "suggestion") onConvert(card.id, k as "comment");
+      }}
       canJump={isAnchored && !!onJump}
       onJump={(e) => {
         if (onJump && isAnchored)

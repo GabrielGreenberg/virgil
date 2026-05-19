@@ -115,10 +115,11 @@ export interface OmniHostProps {
   examples: ExampleInfo[];
   // Revisions
   revisionCards: RevisionCard[];
-  updateRevisionCommentText: RevisionsHook["updateCommentText"];
+  updateRevisionCommentContent: RevisionsHook["updateCommentContent"];
   setRevisionCommentAiRequest: RevisionsHook["setCommentAiRequest"];
   updateRevisionSuggestionField: RevisionsHook["updateSuggestionField"];
   setRevisionSuggestionStatus: RevisionsHook["setSuggestionStatus"];
+  convertRevisionCard: RevisionsHook["convertCard"];
   deleteRevisionCard: RevisionsHook["deleteCard"];
   // Errors
   latexErrors: LatexError[];
@@ -497,11 +498,12 @@ export function OmniHost(p: OmniHostProps) {
       jumpToCard,
       findParagraphPos,
       editor: editorInstance,
-      updateCommentText: p.updateRevisionCommentText,
+      updateCommentContent: p.updateRevisionCommentContent,
       setCommentAiRequest: p.setRevisionCommentAiRequest,
       updateSuggestionField: p.updateRevisionSuggestionField,
       acceptSuggestion: acceptRevisionInOmni,
       rejectSuggestion: rejectRevisionInOmni,
+      convertCard: p.convertRevisionCard,
       deleteCard: p.deleteRevisionCard,
     }),
     ...buildErrorOmniItems({
@@ -574,8 +576,8 @@ export function OmniHost(p: OmniHostProps) {
     // Todo handlers
     p.toggleTodo, p.updateTodo, p.updateTodoNotes, p.setTodoAiRequest, p.deleteTodo,
     // Revision handlers
-    p.updateRevisionCommentText, p.setRevisionCommentAiRequest,
-    p.updateRevisionSuggestionField, p.deleteRevisionCard,
+    p.updateRevisionCommentContent, p.setRevisionCommentAiRequest,
+    p.updateRevisionSuggestionField, p.convertRevisionCard, p.deleteRevisionCard,
     // Error handlers
     p.dismissError, p.jumpToError,
     // Cutter handlers

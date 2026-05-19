@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
+import type { JSONContent } from "@tiptap/react";
 import RevisionsPanel from "@/panels/Revisions";
 import type {
   RevisionCard,
@@ -21,7 +22,7 @@ export interface RevisionsHostProps {
   cards: RevisionCard[];
   tracker: RevisionsTracker | null;
   setTrackerTarget: (target: number | null) => void;
-  updateCommentText: (id: string, text: string) => void;
+  updateCommentContent: (id: string, content: JSONContent) => void;
   setCommentAiRequest: (id: string, value: boolean) => void;
   updateSuggestionField: (
     id: string,
@@ -37,6 +38,7 @@ export interface RevisionsHostProps {
     id: string,
     status: RevisionSuggestionCard["status"],
   ) => void;
+  convertCard: (id: string, toKind: "comment" | "suggestion") => void;
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
@@ -119,11 +121,12 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onSetTrackerTarget={p.setTrackerTarget}
       onAddComment={onAddComment}
       onAddSuggestion={onAddSuggestion}
-      onUpdateCommentText={p.updateCommentText}
+      onUpdateCommentContent={p.updateCommentContent}
       onSetCommentAiRequest={p.setCommentAiRequest}
       onUpdateSuggestionField={p.updateSuggestionField}
       onAcceptSuggestion={onAcceptSuggestion}
       onRejectSuggestion={onRejectSuggestion}
+      onConvertCard={p.convertCard}
       onDelete={p.deleteCard}
       onSelect={setSelectedCommentId}
       selectedId={selectedCommentId}

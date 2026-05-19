@@ -319,6 +319,59 @@ export function useRevisions(
     [update, pristine],
   );
 
+  /** Flip a card's kind in place. Preserves id, createdAt, anchor and
+   *  paragraph links; salvages text fields across the shape change. */
+  const convertCard = useCallback(
+    (id: string, toKind: "comment" | "suggestion") => {
+      pristine.markDirty(id);
+      update((prev) => ({
+        ...prev,
+        cards: prev.cards.map((c) => {
+          if (c.id !== id || c.kind === toKind) return c;
+          if (c.kind === "comment" && toKind === "suggestion") {
+            const next: RevisionSuggestionCard = {
+              kind: "suggestion",
+              id: c.id,
+              createdAt: c.createdAt,
+              author: "human",
+              original_text: c.selectedText ?? "",
+              suggested_text: "",
+              explanation: "",
+              user_text: c.text,
+              instructions: "",
+              status: "pending",
+              selectedText: c.selectedText,
+              links: c.links,
+            };
+            return next;
+          }
+          const s = c as RevisionSuggestionCard;
+          const bodyText = s.user_text || s.suggested_text || "";
+          const content: JSONContent = bodyText
+            ? {
+                type: "doc",
+                content: [
+                  { type: "paragraph", content: [{ type: "text", text: bodyText }] },
+                ],
+              }
+            : emptyRichContent();
+          const next: RevisionCommentCard = {
+            kind: "comment",
+            id: s.id,
+            createdAt: s.createdAt,
+            text: bodyText,
+            content,
+            aiRequest: false,
+            selectedText: s.selectedText ?? s.original_text ?? undefined,
+            links: s.links,
+          };
+          return next;
+        }),
+      }));
+    },
+    [update, pristine],
+  );
+
   const setTrackerTarget = useCallback(
     (target: number | null) => {
       const valid =
@@ -434,6 +487,7 @@ export function useRevisions(
     setCommentAiRequest,
     updateSuggestionField,
     setSuggestionStatus,
+    convertCard,
     setTrackerTarget,
     addCardParagraphId,
     removeCardParagraphId,

@@ -229,22 +229,16 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
         }
         case "suggest-edit": {
           const anchor = wantRangeAnchor ? createAnchor(ed, "revision") : undefined;
-          const card = cardCreation.createRevisionSuggestion({
+          const card = cardCreation.createRevisionComment({
             paragraphId,
-            originalText: text || undefined,
             anchor,
             mode: "omni",
           });
           if (anchor) {
-            updateLinkedAnchorCard(
-              ed,
-              anchor.anchorId,
-              "revision-suggestion",
-              card.id,
-            );
+            updateLinkedAnchorCard(ed, anchor.anchorId, "comment", card.id);
           }
           panelId = "revisions";
-          focusCardKey = `revision-suggestion:${card.id}`;
+          focusCardKey = `revision:${card.id}`;
           break;
         }
         case "cutter": {
