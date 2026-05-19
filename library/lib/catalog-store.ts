@@ -88,8 +88,17 @@ async function reloadFromDisk(): Promise<void> {
   }
   try {
     const version = await readCatalogVersion(handle);
-    if (version === state.version && state.handle === handle && state.catalog !== null) {
-      // No change; just record the handle in case it was just adopted.
+    // `catalog-version.txt` is the canonical change signal — every Python
+    // skill that touches master.bib / catalog.json / inbox.json bumps it
+    // under `lock_catalog`. Don't gate on `state.handle === handle`: in
+    // dev-storage mode `devLibraryRootHandle()` returns a fresh synthetic
+    // handle on every call, so identity comparison there is always false
+    // and the short-circuit would never engage — driving a 6s re-parse
+    // cascade through `useLibraryMasterBib`. In production FSA the handle
+    // is stable via IDB-keyval, but the version check is sufficient.
+    if (version === state.version && state.catalog !== null) {
+      // No change. Adopt the new handle reference in case the previous
+      // resolve returned null or returned a fresh synthetic in dev mode.
       if (state.handle !== handle) {
         setState({ ...state, handle });
       }
