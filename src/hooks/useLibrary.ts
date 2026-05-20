@@ -78,8 +78,16 @@ export function useLibraryItems(): {
  *
  * The handle is also watched against `useLibraryItems().hasFolder` so
  * the entries refresh when the user (re)connects a library mid-session.
+ *
+ * Pass `enabled: false` (default `true`) to fully skip the master.bib
+ * parse — the hook still mounts (so the conditional-hook rule isn't
+ * violated) but resolves to an empty entries list. Callers that
+ * unconditionally mount but only need the entries on demand (e.g. the
+ * citation auto-add path, which only matters when the doc has citations
+ * referencing unresolved keys) use this to keep the editor session free
+ * of citation-js work until it's earned.
  */
-export function useLibraryMasterBib(): {
+export function useLibraryMasterBib(enabled: boolean = true): {
   entries: BibEntry[];
   error: Error | null;
 } {
@@ -88,7 +96,7 @@ export function useLibraryMasterBib(): {
 
   useEffect(() => {
     let cancelled = false;
-    if (!hasFolder) {
+    if (!enabled || !hasFolder) {
       setHandle(null);
       return;
     }
@@ -102,9 +110,12 @@ export function useLibraryMasterBib(): {
     // `revision` participates so a catalog version bump re-resolves the
     // handle (covers the rare case of the underlying handle being
     // replaced while a session is open).
-  }, [hasFolder, revision]);
+  }, [enabled, hasFolder, revision]);
 
-  const { entries, error } = useMasterBib(handle);
+  // When disabled, pass `null` to the parser hook so it short-circuits
+  // (it already returns `[]` for a null handle). Mounts unconditionally
+  // either way, so hook order stays stable.
+  const { entries, error } = useMasterBib(enabled ? handle : null);
   return { entries, error };
 }
 

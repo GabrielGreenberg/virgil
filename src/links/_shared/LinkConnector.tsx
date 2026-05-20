@@ -239,9 +239,23 @@ export default function LinkConnector({
       capture: true,
     });
     window.addEventListener("resize", scheduleCompute);
+    // In-text variant: the entry's vertical position depends on the
+    // anchor's DOM coords, which only shift on doc changes (not bare
+    // selection moves). Drop the selectionUpdate subscription —
+    // typing was firing this hook twice per keystroke (once for the
+    // text edit, once for the implied caret move). Also guard the
+    // remaining 'update' on `tr.docChanged` so mark-only / metadata-
+    // only transactions don't trigger a layout-reading recompute.
+    const onDocUpdate = ({
+      transaction,
+    }: {
+      transaction: import("@tiptap/pm/state").Transaction;
+    }) => {
+      if (!transaction.docChanged) return;
+      scheduleCompute();
+    };
     if (variant === "in-text" && editor) {
-      editor.on("update", scheduleCompute);
-      editor.on("selectionUpdate", scheduleCompute);
+      editor.on("update", onDocUpdate);
     }
     return () => {
       cancelAnimationFrame(rafRef.current);
@@ -249,8 +263,7 @@ export default function LinkConnector({
       main?.removeEventListener("scroll", scheduleCompute, { capture: true });
       window.removeEventListener("resize", scheduleCompute);
       if (variant === "in-text" && editor) {
-        editor.off("update", scheduleCompute);
-        editor.off("selectionUpdate", scheduleCompute);
+        editor.off("update", onDocUpdate);
       }
     };
   }, [editor, compute, scheduleCompute, mainRef, variant]);

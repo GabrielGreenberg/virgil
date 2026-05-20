@@ -645,32 +645,59 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const [editor, setEditor] = useState<Editor | null>(null);
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
 
-  // `docVersion` bumps on every editor `create` / `update` so memoized
-  // panel data (`getExamples`, `getFootnotes`, `getCitations`) refreshes
-  // when the live doc changes. In Reader mode `update` rarely fires —
-  // `create` runs once at mount which is enough to populate panels.
+  // `docVersion` bumps so memoized panel data (`getExamples`,
+  // `getFootnotes`, `getCitations`) refreshes when the live doc
+  // changes. `create` bumps synchronously so initial mount populates
+  // panels. `update` events are coalesced via a ~100 ms debounce —
+  // every keystroke fanning out to four full doc traversals + a LaTeX
+  // serializer was the dominant editor-lag cause. The visible delay
+  // (panels catching up after the user pauses) is below human
+  // perception in normal interaction.
   const [docVersion, setDocVersion] = useState(0);
+  const docVersionTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!editor) return;
-    const bump = () => setDocVersion((v) => v + 1);
-    const onUpdate = () => {
-      bump();
-      // Track wall-clock time of the last visual-editor edit so
-      // `pdfStale` can surface "PDF is out of date" once a compile
-      // has landed and the user keeps typing. Code-editor edits land
-      // separately when the code-editor work moves into EditorPane.
-      setLastEditTime(Date.now());
+    const bumpNow = () => {
+      if (docVersionTimerRef.current !== null) {
+        window.clearTimeout(docVersionTimerRef.current);
+        docVersionTimerRef.current = null;
+      }
+      setDocVersion((v) => v + 1);
     };
-    editor.on("create", bump);
+    const bumpDebounced = () => {
+      if (docVersionTimerRef.current !== null) {
+        window.clearTimeout(docVersionTimerRef.current);
+      }
+      docVersionTimerRef.current = window.setTimeout(() => {
+        docVersionTimerRef.current = null;
+        setDocVersion((v) => v + 1);
+      }, 100);
+    };
+    const onUpdate = () => {
+      bumpDebounced();
+      // Write the timestamp to a ref (no re-render). Only flip the
+      // `pdfStale` boolean false→true once per compile cycle — i.e.
+      // first keystroke after a compile lands. Subsequent keystrokes
+      // skip the state setter entirely.
+      lastEditTimeRef.current = Date.now();
+      if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
+        setPdfStale(true);
+      }
+    };
+    editor.on("create", bumpNow);
     editor.on("update", onUpdate);
     // Force a bump immediately in case 'create' already fired before
     // we subscribed (TipTap's lifecycle order varies across React
     // strict-mode mount/unmount/remount cycles).
-    bump();
+    bumpNow();
     return () => {
-      editor.off("create", bump);
+      editor.off("create", bumpNow);
       editor.off("update", onUpdate);
+      if (docVersionTimerRef.current !== null) {
+        window.clearTimeout(docVersionTimerRef.current);
+        docVersionTimerRef.current = null;
+      }
     };
   }, [editor]);
 
@@ -724,7 +751,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // routing for the dev preview); for main-app docs they resolve
   // through the regular FsaDocIndex.
   const citationsHook = useCitations(docId);
-  const { entries: libraryMasterBibEntries } = useLibraryMasterBib();
+  // Only consult the library's master.bib once the doc actually
+  // references at least one citation key. Parsing master.bib (citation-
+  // js) was firing for every editor session — including empty/scratch
+  // docs that have no use for it — and the parse + window-focus
+  // re-parse contributed measurable overhead. The auto-add hook below
+  // is purely reactive; bootstrapping the library on first-citation is
+  // sufficient because no work is wasted before that moment.
+  const hasAnyCitationKey = useMemo(
+    () => citationsHook.citations.some((c) => c.keys && c.keys.length > 0),
+    [citationsHook.citations],
+  );
+  const { entries: libraryMasterBibEntries } = useLibraryMasterBib(hasAnyCitationKey);
   useAutoAddLibraryEntriesForCitations({
     citations: citationsHook.citations,
     bibEntries: citationsHook.bibEntries,
@@ -884,20 +922,32 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }
   }, [editor, docHook.content, uiStateHook.loaded, uiStateHook.stateRef]);
 
-  // Compile state — `pdfBlobUrl`, `lastCompileTime`, `lastEditTime`
-  // live here so they bubble up via `paneState` for the shell's Virgil
-  // bar (PDF stale-dot, Compile spinner). Reset on docId change so
+  // Compile state — `pdfBlobUrl`, `lastCompileTime`, `pdfStale` live
+  // here so they bubble up via `paneState` for the shell's Virgil bar
+  // (PDF stale-dot, Compile spinner). Reset on docId change so
   // switching docs never carries stale PDF bytes between paper folders.
+  //
+  // `lastEditTime` is a ref, not state — it's written on every
+  // keystroke and was previously a `useState` setter, which forced a
+  // full EditorPane re-render per keystroke even though the only
+  // consumer of the value is the `pdfStale` boolean (which only
+  // transitions false→true once per compile cycle). The ref carries
+  // the timestamp; the boolean tracks the only thing React actually
+  // needs to know about.
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [lastCompileTime, setLastCompileTime] = useState<number | null>(null);
-  const [lastEditTime, setLastEditTime] = useState<number | null>(null);
+  const lastEditTimeRef = useRef<number | null>(null);
+  const [pdfStale, setPdfStale] = useState(false);
+  const pdfStaleRef = useRef(false);
+  pdfStaleRef.current = pdfStale;
+  const lastCompileTimeRef = useRef<number | null>(null);
+  lastCompileTimeRef.current = lastCompileTime;
   const latestPdfBytes = useRef<Uint8Array | null>(null);
-  const pdfStale =
-    lastEditTime != null && lastCompileTime != null && lastEditTime > lastCompileTime;
 
   useEffect(() => {
     setLastCompileTime(null);
-    setLastEditTime(null);
+    setPdfStale(false);
+    lastEditTimeRef.current = null;
     latestPdfBytes.current = null;
     return () => {
       // Revoke the previous doc's blob URL on switch / unmount so
@@ -920,6 +970,8 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         return URL.createObjectURL(blob);
       });
       setLastCompileTime(Date.now());
+      // Compile lands fresh → PDF is in sync until next edit.
+      setPdfStale(false);
     },
     [],
   );

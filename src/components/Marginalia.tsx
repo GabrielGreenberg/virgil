@@ -64,12 +64,24 @@ interface MarginaliaProps {
 function useMarginaliaHost(editor: Editor | null): HTMLElement | null {
   const subscribe = (notify: () => void) => {
     if (!editor) return () => {};
-    const recheck = () => notify();
+    // RAF-batch notify so a typing burst produces one notify per
+    // frame, not one per keystroke. The host element's identity
+    // doesn't change per character — at most it appears/disappears
+    // on mount/unmount, which RAF cadence handles fine.
+    let pending = 0;
+    const recheck = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        notify();
+      });
+    };
     editor.on("create", recheck);
     editor.on("update", recheck);
     const id = requestAnimationFrame(recheck);
     return () => {
       cancelAnimationFrame(id);
+      if (pending) cancelAnimationFrame(pending);
       editor.off("create", recheck);
       editor.off("update", recheck);
     };

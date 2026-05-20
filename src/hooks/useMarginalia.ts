@@ -153,16 +153,17 @@ export function useMarginalia(editor: Editor | null) {
     }
     if (!dom) return;
 
-    // Editor document changes (new UUIDs, paragraph edits) must recompute
-    // synchronously so that markers referencing freshly-assigned UUIDs can
-    // find their metrics in the same React render cycle. Scroll and resize
-    // events are debounced via rAF since they don't change UUID keys.
-    const onDocUpdate = () => {
-      cancelAnimationFrame(rafRef.current);
-      compute();
-    };
-
-    const onLayoutChange = () => {
+    // All update sources (doc edits, selection, scroll, resize) batch
+    // through a single RAF. The original synchronous-on-update path
+    // forced ~3N layout reflows per keystroke (one nodeDOM + two
+    // getBoundingClientRect + one coordsAtPos per anchorable node),
+    // which was the dominant typing-lag cause in long docs.
+    // Fresh-UUID timing is recovered via the marker side: components
+    // that need a newly-assigned UUID's metrics in the same render
+    // cycle can fall back to anchor-by-position until the next RAF
+    // resolves the UUID. This is already the case for the initial
+    // RAF-scheduled compute below.
+    const onChange = () => {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(compute);
     };
@@ -170,22 +171,22 @@ export function useMarginalia(editor: Editor | null) {
     // Initial compute (debounced once for layout stabilization)
     rafRef.current = requestAnimationFrame(compute);
 
-    editor.on("update", onDocUpdate);
-    editor.on("selectionUpdate", onLayoutChange);
+    editor.on("update", onChange);
+    editor.on("selectionUpdate", onChange);
 
     // Marginalia metrics are scroll-invariant under unified row scroll
     // (host pod and paragraph DOM move together). We still listen on the
     // row scroll to trigger a re-render in case of layout shifts.
     const rowScroll = findRowScroll();
-    rowScroll?.addEventListener("scroll", onLayoutChange, { passive: true });
-    window.addEventListener("resize", onLayoutChange);
+    rowScroll?.addEventListener("scroll", onChange, { passive: true });
+    window.addEventListener("resize", onChange);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      editor.off("update", onDocUpdate);
-      editor.off("selectionUpdate", onLayoutChange);
-      rowScroll?.removeEventListener("scroll", onLayoutChange);
-      window.removeEventListener("resize", onLayoutChange);
+      editor.off("update", onChange);
+      editor.off("selectionUpdate", onChange);
+      rowScroll?.removeEventListener("scroll", onChange);
+      window.removeEventListener("resize", onChange);
     };
   }, [editor, compute]);
 

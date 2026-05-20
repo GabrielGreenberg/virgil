@@ -30,6 +30,18 @@ export interface PersistentStateOptions<S> {
   persistMigrationOnLoad?: boolean;
   /** Label used in console errors; defaults to `filename`. */
   errorLabel?: string;
+  /**
+   * Coalesce consecutive `update()` calls into a single write that
+   * fires after this many milliseconds of idle. Defaults to 300ms.
+   * The functional update still applies to React state immediately —
+   * only the disk write debounces, so the UI stays responsive while
+   * a typing burst no longer triggers a write storm.
+   *
+   * Pending writes are flushed synchronously on unmount and on
+   * `docId` change so no data is lost. Pass `0` to disable debouncing
+   * (matches the pre-debounce write-on-every-update behavior).
+   */
+  debounceMs?: number;
 }
 
 export interface PersistentStateApi<S> {
@@ -66,10 +78,17 @@ export function usePersistentState<S>(
   defaultValue: S,
   opts: PersistentStateOptions<S> = {},
 ): PersistentStateApi<S> {
-  const { migrate, persistMigrationOnLoad, errorLabel } = opts;
+  const { migrate, persistMigrationOnLoad, errorLabel, debounceMs = 300 } = opts;
   const [state, setState] = useState<S>(defaultValue);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  // Debounce machinery: track the latest pending write so we can flush
+  // it (synchronously where needed) on doc switch / unmount. `pendingRef`
+  // is non-null iff a debounced write is scheduled; the timer id is
+  // stored separately so we can cancel without losing the payload.
+  const pendingRef = useRef<S | null>(null);
+  const pendingTimerRef = useRef<number | null>(null);
 
   // The write handle is pinned to the docId's currently-active
   // pipeline. If the user switches docs, the pipeline ends and this
@@ -125,16 +144,55 @@ export function usePersistentState<S>(
     [handle, filename, errorLabel],
   );
 
+  // Fire the pending write synchronously (the persist itself stays
+  // async; we just stop deferring it). Safe to call when nothing is
+  // pending. Used by the unmount/docId-change paths and could be
+  // exposed publicly later if a caller needs an explicit flush.
+  const flushPending = useCallback(() => {
+    if (pendingTimerRef.current !== null) {
+      window.clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+    const payload = pendingRef.current;
+    pendingRef.current = null;
+    if (payload !== null) void persist(payload);
+  }, [persist]);
+
   const update = useCallback(
     (fn: (prev: S) => S) => {
       setState((prev) => {
         const next = fn(prev);
-        void persist(next);
+        if (debounceMs <= 0) {
+          void persist(next);
+        } else {
+          pendingRef.current = next;
+          if (pendingTimerRef.current !== null) {
+            window.clearTimeout(pendingTimerRef.current);
+          }
+          pendingTimerRef.current = window.setTimeout(() => {
+            pendingTimerRef.current = null;
+            const payload = pendingRef.current;
+            pendingRef.current = null;
+            if (payload !== null) void persist(payload);
+          }, debounceMs);
+        }
         return next;
       });
     },
-    [persist],
+    [persist, debounceMs],
   );
+
+  // Flush any pending write whenever the doc id changes (the new doc's
+  // handle is different — writing then would either race or be dropped
+  // by the stale-pipeline guard). Same on unmount: hand the last value
+  // to the storage layer rather than dropping it. `enqueueWrite` inside
+  // writeSidecar serializes against the queue so order is preserved
+  // even if a switch happens mid-debounce.
+  useEffect(() => {
+    return () => {
+      flushPending();
+    };
+  }, [docId, flushPending]);
 
   return { state, setState, update, persist, stateRef };
 }

@@ -55,11 +55,22 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
   const btnRef = useRef<HTMLButtonElement>(null);
 
   // Re-render on every selection/focus change so the disabled state and
-  // the target snapshot reflect the live editor state.
+  // the target snapshot reflect the live editor state. RAF-batched so
+  // a typing burst (which fires selectionUpdate per keystroke via the
+  // implied caret move) produces one re-render per frame, not one
+  // per character. Sub-frame precision isn't needed for a button's
+  // disabled state.
   const [, bumpTick] = useState(0);
   useEffect(() => {
     if (!editor) return;
-    const tick = () => bumpTick((t) => (t + 1) & 0xffff);
+    let pending = 0;
+    const tick = () => {
+      if (pending) return;
+      pending = requestAnimationFrame(() => {
+        pending = 0;
+        bumpTick((t) => (t + 1) & 0xffff);
+      });
+    };
     editor.on("selectionUpdate", tick);
     editor.on("focus", tick);
     editor.on("blur", tick);
@@ -67,6 +78,7 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
       editor.off("selectionUpdate", tick);
       editor.off("focus", tick);
       editor.off("blur", tick);
+      if (pending) cancelAnimationFrame(pending);
     };
   }, [editor]);
 

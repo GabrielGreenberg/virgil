@@ -66,6 +66,17 @@ import { HEADING_TYPES, headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 
 /**
+ * Per-node LaTeX serialization cache for `\ex…\xe` example blocks.
+ * ProseMirror nodes are immutable, so the same node reference always
+ * produces the same LaTeX. The cache is hit on every `getExamples()`
+ * call for examples that weren't touched by the latest transaction —
+ * which is most of them, most of the time. Editing an example creates
+ * a fresh node and forces one re-serialization. WeakMap so old nodes
+ * are reclaimed when no longer referenced.
+ */
+const exampleLatexCache = new WeakMap<PMNode, string>();
+
+/**
  * Resolve a ProseMirror position to the nearest anchorable node, handling
  * both container nodes (paragraph, heading, list) and atom blocks
  * (displayMath, latexComment) where posAtCoords lands before/after the atom.
@@ -3148,14 +3159,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         const subs = items.map((it) => it.subLabel).filter(Boolean);
         const subLabelRange =
           subs.length > 1 ? `${subs[0]}–${subs[subs.length - 1]}` : subs[0] || "";
-        let latex = "";
-        try {
-          latex = serializeBodyOnly({
-            type: "doc",
-            content: [node.toJSON() as JSONContent],
-          });
-        } catch {
-          latex = "";
+        let latex = exampleLatexCache.get(node) ?? "";
+        if (!latex) {
+          try {
+            latex = serializeBodyOnly({
+              type: "doc",
+              content: [node.toJSON() as JSONContent],
+            });
+            exampleLatexCache.set(node, latex);
+          } catch {
+            latex = "";
+          }
         }
         out.push({
           exampleId: id,

@@ -130,6 +130,39 @@ export function refreshCatalogStore(): void {
   void reloadFromDisk();
 }
 
+// Single shared polling loop with refcounted consumers. Each
+// `useCatalogItems()` mount used to install its own 6-second interval
+// and focus listener; in a session with N library-aware components
+// (Bibliography, CitekeyPicker, LibraryEntryMenu, etc.) that meant N
+// duplicate version-file reads per cycle. With refcounting the disk
+// read fires once per cycle regardless of how many components are
+// listening, and the interval shuts down entirely when no one is
+// subscribed (editor-only sessions never poll).
+let activeConsumerCount = 0;
+let sharedPollIntervalId: number | null = null;
+let sharedFocusListener: (() => void) | null = null;
+
+function startSharedPolling() {
+  if (sharedPollIntervalId !== null) return;
+  sharedFocusListener = () => refreshCatalogStore();
+  window.addEventListener("focus", sharedFocusListener);
+  sharedPollIntervalId = window.setInterval(
+    () => refreshCatalogStore(),
+    POLL_MS,
+  );
+}
+
+function stopSharedPolling() {
+  if (sharedPollIntervalId !== null) {
+    window.clearInterval(sharedPollIntervalId);
+    sharedPollIntervalId = null;
+  }
+  if (sharedFocusListener) {
+    window.removeEventListener("focus", sharedFocusListener);
+    sharedFocusListener = null;
+  }
+}
+
 export interface UseCatalogItemsResult {
   entries: CatalogEntry[];
   /** Helpful for cache-bust keys / effect deps. */
@@ -142,12 +175,11 @@ export function useCatalogItems(): UseCatalogItemsResult {
   const snapshot = useSyncExternalStore(subscribe, getState, getState);
   useEffect(() => {
     ensureInitialized();
-    const onFocus = () => refreshCatalogStore();
-    window.addEventListener("focus", onFocus);
-    const id = window.setInterval(() => refreshCatalogStore(), POLL_MS);
+    activeConsumerCount += 1;
+    if (activeConsumerCount === 1) startSharedPolling();
     return () => {
-      window.removeEventListener("focus", onFocus);
-      window.clearInterval(id);
+      activeConsumerCount = Math.max(0, activeConsumerCount - 1);
+      if (activeConsumerCount === 0) stopSharedPolling();
     };
   }, []);
   return {

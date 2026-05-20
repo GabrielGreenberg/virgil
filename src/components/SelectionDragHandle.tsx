@@ -233,13 +233,18 @@ export function SelectionDragHandle({
   // Mirror placement.paragraphUuid so the lift gesture can read the source
   // paragraph id without re-resolving from a possibly-stale selection.
   const lastParagraphIdRef = useRef<string | null>(null);
+  // RAF handle for editor-event-driven recomputes — coalesces a typing
+  // burst into one placement compute per frame. Non-editor events
+  // (scroll, resize, DOM selectionchange) keep their existing sync
+  // path since they don't fire per-keystroke.
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     let prevEditor: Editor | null = null;
     const cleanupListeners = () => {
       if (prevEditor) {
-        prevEditor.off("selectionUpdate", schedule);
-        prevEditor.off("update", schedule);
+        prevEditor.off("selectionUpdate", onSelectionUpdate);
+        prevEditor.off("update", onDocUpdate);
       }
     };
     const schedule = () => {
@@ -264,6 +269,37 @@ export function SelectionDragHandle({
       }
       setPlacement(next);
     };
+    const scheduleRaf = () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = 0;
+        schedule();
+      });
+    };
+    // selectionUpdate fires on every caret move, including the implied
+    // move that accompanies every keystroke. Short-circuit when the
+    // PM selection's from/to exactly match what we already computed —
+    // placement geometry hasn't changed.
+    const onSelectionUpdate = () => {
+      const editor = editorRef.current;
+      if (editor && lastRangeRef.current) {
+        const sel = editor.state.selection;
+        const last = lastRangeRef.current;
+        if (sel.from === last.from && sel.to === last.to) return;
+      }
+      scheduleRaf();
+    };
+    // update fires for every transaction. Skip when the doc itself
+    // didn't change — mark-only / metadata-only transactions can't
+    // move the handle.
+    const onDocUpdate = ({
+      transaction,
+    }: {
+      transaction: import("@tiptap/pm/state").Transaction;
+    }) => {
+      if (!transaction.docChanged) return;
+      scheduleRaf();
+    };
     const ensureSubscribed = () => {
       const editor = editorRef.current;
       if (editor === subscribedEditorRef.current) return;
@@ -271,8 +307,8 @@ export function SelectionDragHandle({
       subscribedEditorRef.current = editor;
       prevEditor = editor;
       if (editor) {
-        editor.on("selectionUpdate", schedule);
-        editor.on("update", schedule);
+        editor.on("selectionUpdate", onSelectionUpdate);
+        editor.on("update", onDocUpdate);
       }
     };
     // Poll briefly until the editor instance is available (it's created
@@ -348,6 +384,10 @@ export function SelectionDragHandle({
     document.addEventListener("selectionchange", onDocSelectionChange);
     return () => {
       cleanupListeners();
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = 0;
+      }
       // Reset on cleanup so the next effect run (HMR remount or strict-
       // mode double-invocation) re-subscribes instead of seeing
       // editor === subscribedEditorRef.current and skipping.

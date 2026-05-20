@@ -74,16 +74,27 @@ export default function EditorMirror({ editor, onClose, onFocus, onViewReady }: 
     view.dom.addEventListener("focusin", onFocusIn);
     view.dom.addEventListener("mousedown", onFocusIn);
 
+    // Mirror's PM state needs to follow the canonical editor's state,
+    // but only at frame cadence — the mirror's contents don't need to
+    // be visually fresher than once per RAF. Without batching, a 30-
+    // character typing burst dispatches 30 `view.updateState` calls
+    // that each re-render the mirror's DOM.
+    let pendingTr = 0;
     const onTr = () => {
-      const v = viewRef.current;
-      if (v && v.state !== editor.state) {
-        v.updateState(editor.state);
-      }
+      if (pendingTr) return;
+      pendingTr = requestAnimationFrame(() => {
+        pendingTr = 0;
+        const v = viewRef.current;
+        if (v && v.state !== editor.state) {
+          v.updateState(editor.state);
+        }
+      });
     };
     editor.on("transaction", onTr);
 
     return () => {
       editor.off("transaction", onTr);
+      if (pendingTr) cancelAnimationFrame(pendingTr);
       view.dom.removeEventListener("focusin", onFocusIn);
       view.dom.removeEventListener("mousedown", onFocusIn);
       onViewReadyRef.current?.(null);

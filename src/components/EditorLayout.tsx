@@ -505,14 +505,22 @@ export default function EditorLayout() {
   const [pdfView, setPdfView] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [lastCompileTime, setLastCompileTime] = useState<number | null>(null);
-  const [lastEditTime, setLastEditTime] = useState<number | null>(null);
-  const pdfStale = lastEditTime != null && lastCompileTime != null && lastEditTime > lastCompileTime;
+  // See EditorPane.tsx for the rationale — `lastEditTime` is a ref so
+  // typing doesn't force a per-keystroke EditorLayout re-render. The
+  // `pdfStale` boolean carries the only observable signal React needs.
+  const lastEditTimeRef = useRef<number | null>(null);
+  const [pdfStale, setPdfStale] = useState(false);
+  const pdfStaleRef = useRef(false);
+  pdfStaleRef.current = pdfStale;
+  const lastCompileTimeRef = useRef<number | null>(null);
+  lastCompileTimeRef.current = lastCompileTime;
   const latestPdfBytes = useRef<Uint8Array | null>(null);
 
   useEffect(() => {
     setPdfView(false);
     setLastCompileTime(null);
-    setLastEditTime(null);
+    setPdfStale(false);
+    lastEditTimeRef.current = null;
     latestPdfBytes.current = null;
     return () => {
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
@@ -537,6 +545,8 @@ export default function EditorLayout() {
       const blob = new Blob([pdfBytes.buffer as ArrayBuffer], { type: "application/pdf" });
       setPdfBlobUrl(URL.createObjectURL(blob));
       setLastCompileTime(Date.now());
+      // Compile lands fresh → PDF is in sync until next edit.
+      setPdfStale(false);
       if (docIdForHooks) activateDocPane(docIdForHooks);
       setCodeView(false);
       setPdfView(true);
@@ -1458,7 +1468,13 @@ export default function EditorLayout() {
   const [codeEditorText, setCodeEditorText] = useState<string | null>(null);
   const handleCodeEditorTextChange = useCallback((text: string) => {
     setCodeEditorText(text);
-    setLastEditTime(Date.now());
+    // Write the edit timestamp to the ref (no re-render). Flip
+    // pdfStale false→true once per compile cycle, mirroring the
+    // visual-editor onUpdate handler below.
+    lastEditTimeRef.current = Date.now();
+    if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
+      setPdfStale(true);
+    }
   }, []);
   const knownBibKeys = useMemo(
     () => bibEntries.map((e) => e.key),
@@ -1984,8 +2000,13 @@ export default function EditorLayout() {
     };
 
     stamp();
-    const onTransaction = () => stamp();
-    editorInstance.on("transaction", onTransaction);
+    // `update` fires only on docChanged transactions — bare selection
+    // moves can't change which top-level blocks exist, so re-stamping
+    // per keystroke was firing on every caret position change too. The
+    // editor.children identity stays stable across mark-only and
+    // selection-only transactions, so this is safe.
+    const onUpdate = () => stamp();
+    editorInstance.on("update", onUpdate);
 
     // One-shot cursor coercion: fires only on the false→true lock
     // transition, not on every focus-state change. This decouples it
@@ -2013,7 +2034,7 @@ export default function EditorLayout() {
     prevLockedRef.current = nowLocked;
 
     return () => {
-      editorInstance.off("transaction", onTransaction);
+      editorInstance.off("update", onUpdate);
     };
   }, [editorInstance, focusMode.state]);
 
@@ -3470,16 +3491,39 @@ export default function EditorLayout() {
 
   // Bump a version counter on editor updates so marginalia markers recompute
   // (quotation/archive/todo markers depend on paragraph visibility metrics).
+  // Mirrors EditorPane's `docVersion` discipline — see the comment
+  // block there. Per-keystroke setEditorDocVersion was triggering the
+  // marginaliaMarkers useMemo (and several others) every character;
+  // debouncing to ~100ms keeps panels visibly fresh while clearing
+  // the keystroke hot path.
   const [editorDocVersion, setEditorDocVersion] = useState(0);
+  const editorDocVersionTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (!editorInstance) return;
+    const bumpDebounced = () => {
+      if (editorDocVersionTimerRef.current !== null) {
+        window.clearTimeout(editorDocVersionTimerRef.current);
+      }
+      editorDocVersionTimerRef.current = window.setTimeout(() => {
+        editorDocVersionTimerRef.current = null;
+        setEditorDocVersion((v) => v + 1);
+      }, 100);
+    };
     const bump = () => {
-      setEditorDocVersion((v) => v + 1);
-      setLastEditTime(Date.now());
+      bumpDebounced();
+      // Same ref-write + lazy pdfStale flip as EditorPane's onUpdate.
+      lastEditTimeRef.current = Date.now();
+      if (lastCompileTimeRef.current != null && !pdfStaleRef.current) {
+        setPdfStale(true);
+      }
     };
     editorInstance.on("update", bump);
     return () => {
       editorInstance.off("update", bump);
+      if (editorDocVersionTimerRef.current !== null) {
+        window.clearTimeout(editorDocVersionTimerRef.current);
+        editorDocVersionTimerRef.current = null;
+      }
     };
   }, [editorInstance]);
 

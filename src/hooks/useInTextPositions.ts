@@ -271,19 +271,30 @@ export function useInTextPositions(
 
     if (!editor) return;
 
-    const onUpdate = () => {
+    const schedule = () => {
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
+    // Card positions are anchored to PM coords, which only shift when
+    // the doc changes. Skip metadata-only transactions to avoid a
+    // layout-reading recompute per keystroke that doesn't change layout.
+    const onDocUpdate = ({
+      transaction,
+    }: {
+      transaction: import("@tiptap/pm/state").Transaction;
+    }) => {
+      if (!transaction.docChanged) return;
+      schedule();
+    };
 
-    editor.on("update", onUpdate);
-    window.addEventListener("resize", onUpdate);
+    editor.on("update", onDocUpdate);
+    window.addEventListener("resize", schedule);
 
     let editorObs: ResizeObserver | null = null;
     try {
       const editorDom = editor.view?.dom as HTMLElement | undefined;
       if (editorDom && typeof ResizeObserver !== "undefined") {
-        editorObs = new ResizeObserver(onUpdate);
+        editorObs = new ResizeObserver(schedule);
         editorObs.observe(editorDom);
       }
     } catch {
@@ -292,8 +303,8 @@ export function useInTextPositions(
 
     return () => {
       cancelAnimationFrame(computeRafRef.current);
-      editor.off("update", onUpdate);
-      window.removeEventListener("resize", onUpdate);
+      editor.off("update", onDocUpdate);
+      window.removeEventListener("resize", schedule);
       editorObs?.disconnect();
     };
   }, [editor, measure, enabled]);
