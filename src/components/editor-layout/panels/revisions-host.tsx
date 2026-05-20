@@ -42,12 +42,6 @@ export interface RevisionsHostProps {
   deleteCard: (id: string) => void;
   /** Called on host unmount to drop cards created via "+" but never edited. */
   discardPristine: () => void;
-  onDropSelection: (payload: {
-    from: number;
-    to: number;
-    selectedText: string;
-  }) => void;
-  onDropParagraph: (paragraphId: string) => void;
 }
 
 function buildSuggestionPrompt(s: RevisionSuggestionCard): string {
@@ -131,8 +125,6 @@ export function RevisionsHost(p: RevisionsHostProps) {
       onSelect={setSelectedCommentId}
       selectedId={selectedCommentId}
       onJumpToCard={(card, sourceEl) => editorRef.current?.jumpToCard(card, sourceEl)}
-      onDropSelection={p.onDropSelection}
-      onDropParagraph={p.onDropParagraph}
       editor={editorInstance}
       recentlyAddedId={recentlyAddedId}
     />

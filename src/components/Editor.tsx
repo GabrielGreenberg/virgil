@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, ArchiveMarker, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -39,10 +39,8 @@ import {
   MIME_AI_REQUEST,
   MIME_TEXT_INSERT,
   MIME_CUT,
-  MIME_SELECTION_ANCHOR,
   isAnchorDrag,
 } from "@/lib/marginalia";
-import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { generateShortId } from "@/lib/uuid";
 import { parseLatex } from "@/lib/latex-parser";
@@ -61,7 +59,6 @@ import {
   sectionFoldingPluginKey,
   getSectionFoldingState,
 } from "@/lib/section-folding";
-import { getSectionRangeByUuid } from "@/lib/section-range";
 import { HEADING_TYPES, headingTypeName } from "@/lib/heading-types";
 import type { HeadingTypePick } from "./HeadingTypeMenu";
 
@@ -569,24 +566,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   const documentClassRef = useRef<string | null>(documentClass ?? null);
   documentClassRef.current = documentClass ?? null;
 
-  // Stashes pending capture-drag payloads. ProseMirror's internal
-  // dragstart handler rewrites DataTransfer (setting text/html +
-  // text/plain) after our per-element listeners run, wiping any MIME we
-  // set there. We instead apply our MIME in a window-level dragstart
-  // listener (bubble phase), which fires AFTER PM's handler.
-  const pendingParCaptureUuidRef = useRef<string | null>(null);
-  const pendingTextCaptureRef = useRef<{ from: number; to: number; paragraphId: string | null; selectedText: string } | null>(null);
-
   const ParagraphWithTitle = Paragraph.extend({
-    // Gate the schema-level draggable on `editable`. In editable mode,
-    // ProseMirror's selection handling owns the initial mousedown-and-drag
-    // so the `draggable=true` attribute is benign. In read-only mode
-    // (`contenteditable="false"`, e.g., the Library Reader) the attribute
-    // wins — Chrome dispatches an HTML5 node-drag on every mousedown on
-    // paragraph text, which prevents the user from ever forming a text
-    // selection. Gating here restores native drag-to-select in the Reader
-    // while leaving paragraph reorder-by-grip working in the main editor.
-    draggable: editable,
+    // Paragraphs never participate in HTML5 drag. Pop-out (custom mousedown
+    // lift on the 6-dot grip) and drop-mode (shift-drag on a float header)
+    // own all paragraph repositioning; PM-native node-drag would be a third
+    // text-move surface and is suppressed at the schema root.
+    draggable: false,
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -623,10 +608,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
 
         const wrapper = document.createElement("div");
         wrapper.className = "par-title-wrapper";
-        // Mirror the schema-level `draggable` gate (see Paragraph.extend
-        // comment above) directly on the DOM, so PM's DOM renderer can't
-        // reapply `draggable="true"` from cached schema attributes.
-        wrapper.draggable = editable;
+        // Belt-and-suspenders with the schema `draggable: false`: the
+        // browser must never see this wrapper as a drag source.
+        wrapper.draggable = false;
 
         // Left-margin hover sensor — covers the gutter strip from the
         // text edge out to where the popout button sits, so the popout
@@ -661,7 +645,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         // supersession can address this exact handle via querySelector.
         const initialParUuid = currentNode.attrs?.uuid as string | null;
         if (initialParUuid) dragHandle.setAttribute("data-par-uuid", initialParUuid);
-        dragHandle.draggable = true;
         const svg = document.createElementNS(SVG_NS, "svg");
         svg.setAttribute("width", "10");
         svg.setAttribute("height", "14");
@@ -678,16 +661,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         pContainer.appendChild(dragHandle);
 
         // Lift-off gesture: grab the drag handle and drag past a small
-        // threshold to pop the paragraph out as a floating card. Replaces
-        // the old gutter pop-out button — there's no longer a button to
-        // click, the handle itself is the affordance. Once lifted, the
-        // FloatingPanel takes over the drag (see card-lift.ts) so the
-        // gesture continues seamlessly until release.
-        //
-        // HTML5 drag is left disabled here (`draggable = false`): the
-        // previous reorder/archive-by-drag from this handle is replaced
-        // by the lift gesture. Closing the float happens via the float's
-        // own X button.
+        // threshold to pop the paragraph out as a floating card. The
+        // handle is a pure mousedown-driven lift — HTML5 drag stays off.
         dragHandle.draggable = false;
         const LIFT_THRESHOLD = 5;
         const FLOAT_W = 360;
@@ -1343,12 +1318,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const HeadingWithLabel = Heading.extend({
-    // NOTE: deliberately not draggable at the schema level — we want the
-    // gutter drag handle to move the WHOLE section (heading + nested
-    // content) via the MIME_PAR_CAPTURE drop handler, not just the
-    // heading node. PM's internal node-drag would only move the
-    // heading; routing through our handler lets us look up the section
-    // range and move the entire span.
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -2164,7 +2133,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       DisplayMath,
       Footnote,
       LatexComment,
-      ArchiveMarker,
       Citation,
       LabelRef,
       ExampleBlock.configure({
@@ -2248,48 +2216,24 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         ...(editable ? {} : { spellcheck: "false" }),
       },
       handleDOMEvents: {
-        // Only allow node drags that originate from an explicit drag handle.
-        // ProseMirror's `draggable: true` on paragraph nodes otherwise lets
-        // drags start from margin/padding areas of the wrapper, causing
-        // inadvertent paragraph moves.
+        // The only two canonical text moves are drag-to-pop-out (custom
+        // mousedown lift on the 6-dot grip) and drop-mode (shift-drag on a
+        // float header). Both bypass HTML5 drag. Anything else — browser-
+        // native text-selection drag from contenteditable, an accidental
+        // node drag — is suppressed here. Intentional inline-node drags
+        // (footnote, ai-request, example block, tex-block) opt in via
+        // `draggable="true"` on their own NodeView DOM and are allowed.
         dragstart(view, event) {
-          // `event.target` may be a text node (e.g., Chrome often dispatches
-          // the dragstart with the deepest node under the cursor, which is
-          // a text node for selection drags). Normalize to an Element so
-          // `.closest()` is always callable.
           const rawTarget = event.target as Node | null;
           const target =
             rawTarget instanceof Element
               ? rawTarget
               : (rawTarget?.parentElement ?? null);
           if (!target) return false;
-          if (target.closest("[data-drag-handle]")) return false; // allow
-          const sel = view.state.selection;
-          // If a non-empty text selection exists, this is a text-selection
-          // drag — even when Chrome dispatches dragstart with target =
-          // `.par-title-wrapper` (because the wrapper has `draggable: true`,
-          // Chrome uses it as the drag source element regardless of where
-          // the cursor clicked). Stash the range and let the drag through;
-          // the window-level dragstart listener will attach MIME_SELECTION_ANCHOR.
-          if (!sel.empty) {
-            const paragraphId = ensureAnchorUuid(view, sel.from);
-            const selectedText = view.state.doc.textBetween(sel.from, sel.to, " ");
-            pendingTextCaptureRef.current = { from: sel.from, to: sel.to, paragraphId, selectedText };
-            // Clear any stale paragraph-capture stash so panels don't receive
-            // both MIMEs (they check MIME_PAR_CAPTURE first and would take
-            // the paragraph path instead of the selection path).
-            pendingParCaptureUuidRef.current = null;
-            return false;
-          }
-          // No text selection. If the drag started on the paragraph wrapper
-          // but NOT inside the content <p> or a drag handle, it's an
-          // inadvertent node drag from margins/padding — cancel it.
-          const nodeView = target.closest(".par-title-wrapper");
-          if (nodeView && !target.closest("p")) {
-            event.preventDefault();
-            return true; // handled — suppress
-          }
-          return false;
+          if (target.closest("[data-drag-handle]")) return false;
+          if (target.closest('[draggable="true"]')) return false;
+          event.preventDefault();
+          return true;
         },
       },
       handleDrop(view, event) {
@@ -2635,81 +2579,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           return true;
         }
 
-        // --- Paragraph / section capture drop, MOVE semantics ---
-        // Heading captures: ALWAYS handle these. Headings aren't
-        // schema-draggable, but PM may still set up a node-drag for
-        // them (selecting the heading node when the drag starts on the
-        // contenteditable child). Letting PM run its default would
-        // move only the heading; we want the whole section.
-        //
-        // Paragraph captures: only intercept when this isn't an
-        // in-editor PM-tracked drag (view.dragging set), so PM keeps
-        // ownership of paragraph reorders.
-        const parCapData = event.dataTransfer?.getData(MIME_PAR_CAPTURE);
-        if (parCapData) {
-          try {
-            const { uuid } = JSON.parse(parCapData) as { uuid: string };
-            if (uuid) {
-              const sectionRange = getSectionRangeByUuid(view.state.doc, uuid);
-              let start: number | null = null;
-              let end: number | null = null;
-              let movedNodes: PMNode[] = [];
-              let isSection = false;
-              if (sectionRange) {
-                start = sectionRange.start;
-                end = sectionRange.end;
-                movedNodes = sectionRange.nodes;
-                isSection = true;
-              } else if (!view.dragging) {
-                // Paragraph fallback — only when PM isn't already handling.
-                let parPos: number | null = null;
-                let parNode: PMNode | null = null;
-                view.state.doc.descendants((n, p) => {
-                  if (n.type.name === "paragraph" && n.attrs?.uuid === uuid) {
-                    parPos = p;
-                    parNode = n;
-                    return false;
-                  }
-                  return true;
-                });
-                if (parPos != null && parNode) {
-                  start = parPos;
-                  end = parPos + (parNode as PMNode).nodeSize;
-                  movedNodes = [parNode as PMNode];
-                }
-              }
-              if (start != null && end != null && movedNodes.length > 0) {
-                event.preventDefault();
-                if (isSection) {
-                  // PM may have tagged the drag as a node move of the
-                  // heading. Clear it so PM's default drop handler
-                  // doesn't ALSO try to insert the heading after our
-                  // section move runs.
-                  view.dragging = null;
-                }
-                const coords = { left: event.clientX, top: event.clientY };
-                const posResult = view.posAtCoords(coords);
-                if (!posResult) return true;
-                const $drop = view.state.doc.resolve(posResult.pos);
-                const blockStart = $drop.before(1);
-                const blockEnd = $drop.after(1);
-                const targetPos =
-                  posResult.pos - blockStart < blockEnd - posResult.pos
-                    ? blockStart
-                    : blockEnd;
-                if (targetPos >= start && targetPos <= end) return true;
-                const removedSize = end - start;
-                let tr = view.state.tr.delete(start, end);
-                const adjusted = targetPos > end ? targetPos - removedSize : targetPos;
-                tr = tr.insert(adjusted, movedNodes);
-                tr.scrollIntoView();
-                view.dispatch(tr);
-                return true;
-              }
-            }
-          } catch { /* fall through */ }
-        }
-
         return false;
       },
     },
@@ -2779,46 +2648,6 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       scroller!.removeEventListener("mouseleave", onLeave);
     };
   }, [editor]);
-
-  // Window-level dragstart fires in the bubble phase AFTER ProseMirror's
-  // editor-level dragstart (which rewrites DataTransfer for its own node
-  // drag). Apply the stashed capture MIME here so it survives.
-  useEffect(() => {
-    const onWindowDragStart = (e: DragEvent) => {
-      const dt = e.dataTransfer;
-      if (!dt) return;
-      const parUuid = pendingParCaptureUuidRef.current;
-      if (parUuid) {
-        try { dt.setData(MIME_PAR_CAPTURE, JSON.stringify({ uuid: parUuid })); } catch {}
-      }
-      const textPayload = pendingTextCaptureRef.current;
-      if (textPayload) {
-        try { dt.setData(MIME_TEXT_CAPTURE, JSON.stringify(textPayload)); } catch {}
-        try {
-          dt.setData(
-            MIME_SELECTION_ANCHOR,
-            JSON.stringify({
-              from: textPayload.from,
-              to: textPayload.to,
-              selectedText: textPayload.selectedText,
-            }),
-          );
-        } catch {}
-      }
-    };
-    const onWindowDragEnd = () => {
-      pendingParCaptureUuidRef.current = null;
-      pendingTextCaptureRef.current = null;
-    };
-    window.addEventListener("dragstart", onWindowDragStart);
-    window.addEventListener("dragend", onWindowDragEnd);
-    window.addEventListener("drop", onWindowDragEnd);
-    return () => {
-      window.removeEventListener("dragstart", onWindowDragStart);
-      window.removeEventListener("dragend", onWindowDragEnd);
-      window.removeEventListener("drop", onWindowDragEnd);
-    };
-  }, []);
 
   // Dev-only: expose window.__virgil.collectLinks() for ad-hoc inspection
   // while the Link system is being rolled out. Reads from the live editor.
@@ -2903,20 +2732,57 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         el?.scrollIntoView({ behavior: "instant", block: "center" });
       }
     },
-    archiveSelection(archiveId: string): { content: unknown; paragraphId: string | null } | null {
+    archiveSelection(_archiveId: string): { content: unknown; paragraphId: string | null } | null {
       if (!editor) return null;
       const sel = editor.state.selection;
 
-      // Helper: resolve paragraphId from a document position
-      const getParagraphId = (pos: number): string | null => {
-        const $pos = editor.state.doc.resolve(pos);
-        for (let depth = $pos.depth; depth >= 0; depth--) {
-          const node = $pos.node(depth);
+      // Snapshot every UUID currently in the doc so a fresh one (assigned
+      // below when the deletion lands the cursor outside any UUID-bearing
+      // anchorable node) can't collide.
+      const collectExistingUuids = (): Set<string> => {
+        const set = new Set<string>();
+        editor.state.doc.descendants((n) => {
+          const u = n.attrs?.uuid as string | undefined;
+          if (u) set.add(u);
+          return true;
+        });
+        return set;
+      };
+
+      // After the delete, resolve (or create) an empty-paragraph anchor at
+      // the cursor and return its UUID. Three cases:
+      //   1. Paragraph-archive: cursor lands inside the now-empty paragraph,
+      //      which still carries its original UUID. No-op.
+      //   2. Heading- or block-atom-archive: the host block was removed.
+      //      The cursor lands inside whatever paragraph survived at the
+      //      join — usually a UUID-less empty paragraph, which we stamp.
+      //   3. Edge case (e.g. atom was at doc end): no anchorable node at
+      //      cursor — insert a fresh empty paragraph with a UUID.
+      const resolveAnchor = (): string | null => {
+        const $from = editor.state.selection.$from;
+        for (let depth = $from.depth; depth >= 0; depth--) {
+          const node = $from.node(depth);
           if (isAnchorableNode(node.type)) {
-            return (node.attrs?.uuid as string | null) ?? null;
+            const existing = node.attrs?.uuid as string | null | undefined;
+            if (existing) return existing;
+            const pos = depth === 0 ? 0 : $from.before(depth);
+            const newUuid = generateShortId(collectExistingUuids());
+            const tr = editor.state.tr.setNodeMarkup(pos, null, {
+              ...node.attrs,
+              uuid: newUuid,
+            });
+            editor.view.dispatch(tr);
+            return newUuid;
           }
         }
-        return null;
+        // Cursor not inside any anchorable node — insert one.
+        const newUuid = generateShortId(collectExistingUuids());
+        editor
+          .chain()
+          .focus()
+          .insertContent({ type: "paragraph", attrs: { uuid: newUuid } })
+          .run();
+        return newUuid;
       };
 
       // Handle NodeSelection on block atom nodes (e.g. latexComment)
@@ -2926,8 +2792,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
           ? `% ${node.attrs.text || ""}`
           : node.textContent || "";
         if (!text.trim()) return null;
-        const paragraphId = getParagraphId(sel.from);
         editor.chain().focus().deleteSelection().run();
+        const paragraphId = resolveAnchor();
         return {
           content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
           paragraphId,
@@ -2938,11 +2804,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (from === to) return null;
       const text = editor.state.doc.textBetween(from, to, " ");
       if (!text.trim()) return null;
-      const paragraphId = getParagraphId(from);
       // Capture rich content before deleting
       const slice = editor.state.doc.slice(from, to);
       const richContent = { type: "doc", content: slice.content.toJSON() };
       editor.chain().focus().deleteSelection().run();
+      const paragraphId = resolveAnchor();
       return { content: richContent, paragraphId };
     },
     restoreArchive(content: unknown): void {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { Editor } from "@tiptap/react";
 import type {
   RevisionCard,
@@ -11,8 +11,6 @@ import type {
 import { ItemMenu, PANEL } from "@/components/panel-primitives";
 import { getLinkedParagraphIds } from "@/links/links";
 import PanelThemePicker from "@/components/PanelThemePicker";
-import { MIME_SELECTION_ANCHOR } from "@/lib/marginalia";
-import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import { CardListPanel } from "@/panels/_shared/CardListPanel";
 import { withRecentlyAddedFirst } from "@/hooks/useRecentlyAddedTracker";
 import { RevisionCommentCard } from "./RevisionCommentCard";
@@ -39,8 +37,6 @@ export default function RevisionsPanel({
   onSelect,
   selectedId,
   onJumpToCard,
-  onDropSelection,
-  onDropParagraph,
   editor,
   recentlyAddedId,
 }: {
@@ -68,12 +64,6 @@ export default function RevisionsPanel({
   onSelect: (id: string | null) => void;
   selectedId: string | null;
   onJumpToCard?: (card: RevisionCard, sourceEl?: HTMLElement | null) => void;
-  onDropSelection?: (payload: {
-    from: number;
-    to: number;
-    selectedText: string;
-  }) => void;
-  onDropParagraph?: (paragraphId: string) => void;
   editor?: Editor | null;
   recentlyAddedId?: string | null;
 }) {
@@ -96,64 +86,6 @@ export default function RevisionsPanel({
     () => cards.filter((c) => c.kind === "suggestion").length,
     [cards],
   );
-
-  const dropEnabled = onDropSelection || onDropParagraph;
-  const [isDragOver, setIsDragOver] = useState(false);
-  const handleDragOver = dropEnabled
-    ? (e: React.DragEvent) => {
-        const types = e.dataTransfer.types;
-        if (
-          (onDropSelection && types.includes(MIME_SELECTION_ANCHOR)) ||
-          (onDropParagraph && types.includes(MIME_PAR_CAPTURE))
-        ) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = "copy";
-          if (!isDragOver) setIsDragOver(true);
-        }
-      }
-    : undefined;
-  const handleDragLeave = dropEnabled
-    ? (e: React.DragEvent) => {
-        const current = e.currentTarget as HTMLElement;
-        const next = e.relatedTarget as Node | null;
-        if (!next || !current.contains(next)) setIsDragOver(false);
-      }
-    : undefined;
-  const handleDrop = dropEnabled
-    ? (e: React.DragEvent) => {
-        setIsDragOver(false);
-        if (onDropParagraph) {
-          const parRaw = e.dataTransfer.getData(MIME_PAR_CAPTURE);
-          if (parRaw) {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-              const { uuid } = JSON.parse(parRaw) as { uuid: string };
-              if (uuid) onDropParagraph(uuid);
-            } catch {
-              // ignore
-            }
-            return;
-          }
-        }
-        if (onDropSelection) {
-          const raw = e.dataTransfer.getData(MIME_SELECTION_ANCHOR);
-          if (!raw) return;
-          e.preventDefault();
-          try {
-            const payload = JSON.parse(raw);
-            if (
-              typeof payload.from === "number" &&
-              typeof payload.to === "number"
-            ) {
-              onDropSelection(payload);
-            }
-          } catch {
-            // ignore
-          }
-        }
-      }
-    : undefined;
 
   const onAddOptions = useMemo(
     () => [
@@ -189,14 +121,9 @@ export default function RevisionsPanel({
       onSelect={onSelect}
       emptyState={
         <div className={PANEL.empty}>
-          No comments or revisions yet. Click + to add one, or drop a
-          paragraph or selection here.
+          No comments or revisions yet. Click + to add one.
         </div>
       }
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      showDropPlaceholder={isDragOver}
       renderCard={(it, { selected }) => {
         if (it.kind === "suggestion") {
           return (

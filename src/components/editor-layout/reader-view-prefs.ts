@@ -335,8 +335,6 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       },
       toggleSplit: () => {},
       openPanelDocked,
-      iconDropMimesByPanel: {},
-      handleIconDrop: () => false,
       toggleOmniCategory,
       setOmniSideToDefault,
       categorySides: READER_CATEGORY_SIDES,

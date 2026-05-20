@@ -41,11 +41,9 @@ import {
   isAnchorableNode,
   MIME_ARCHIVE,
   MIME_ARCHIVE_ANCHOR,
-  MIME_SELECTION_ANCHOR,
   MARKER_META,
   type MarginaliaMarker,
 } from "@/lib/marginalia";
-import { MIME_PAR_CAPTURE, MIME_TEXT_CAPTURE, extractParagraphByUuid, extractRange } from "@/hooks/usePanelCapture";
 import { useSyncExternalStore } from "react";
 import {
   deriveMarkerPalette,
@@ -86,8 +84,6 @@ import {
   reanchorByText,
   getLinkedParagraphIds,
   getTextAnchor,
-  createLinkedAnchor,
-  updateLinkedAnchorCard,
 } from "@/links/links";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
@@ -142,20 +138,17 @@ import { useEditorOps } from "./editor-layout/card-actions/editor-ops";
 import { useFocusActions } from "./editor-layout/card-actions/focus";
 import { useCommentActions } from "./editor-layout/card-actions/comments";
 import { useFileActions } from "./editor-layout/card-actions/files";
-import { useArchiveActions } from "./editor-layout/card-actions/archive";
 import { useFootnoteActions } from "./editor-layout/card-actions/footnotes";
 import { useOrphanActions } from "./editor-layout/card-actions/orphans";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { useRefActions } from "./editor-layout/card-actions/ref";
 import { useMarkerActions } from "./editor-layout/card-actions/markers";
 import { openForCard } from "./editor-layout/event-bridges/open-for-card";
-import { useDropActions } from "./editor-layout/card-actions/drops";
 import { useSelectionToCardActions } from "./editor-layout/card-actions/selection-to-card";
 import { useLibraryBridge } from "./editor-layout/event-bridges/library";
 import { useMarkerClickBridges } from "./editor-layout/event-bridges/marker-clicks";
 import { useFootnoteSyncBridges } from "./editor-layout/event-bridges/footnote-sync";
 import { usePanelDropBridges } from "./editor-layout/event-bridges/panel-drops";
-import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
 import { useCommandInputBridges } from "./editor-layout/event-bridges/command-input";
 import { EditorLayoutProvider } from "./editor-layout/context";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
@@ -2404,24 +2397,6 @@ export default function EditorLayout() {
     setActiveRight,
   });
 
-  const {
-    handleArchiveCapture,
-  } = useArchiveActions({
-    editorRef,
-    archiveContent,
-    updateArchiveSnippet,
-    addArchiveParagraphId,
-    archiveSnippets,
-    deleteSnippet,
-    restoreSnippet,
-    setSelectedArchiveId,
-    prefs,
-    setActiveLeft,
-    setActiveRight,
-  });
-
-
-
   // Selection ↔ linked-anchor highlight binding for each panel-anchored entity
   // (notes, text revisions, cuts). Each hook:
   //   • syncs `activeAnchorId`/`activeAnchorKind` to the selected entity, so
@@ -2518,45 +2493,6 @@ export default function EditorLayout() {
   });
 
 
-  const {
-    handleDropSelectionOnNotes,
-    handleDropParagraphOnNotes,
-    handleDropSelectionOnCutter,
-    handleDropParagraphOnCutter,
-  } = useDropActions({
-    editorRef,
-    addNote,
-    addHighlight,
-    addCutterComment,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-  });
-
-  const handleDropSelectionOnRevisions = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      const ed = editorRef.current?.getEditor();
-      if (!ed) return;
-      const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
-      if (!record) return;
-      const created = addRevisionComment(null, undefined, {
-        anchorId: record.anchorId,
-        anchorText: payload.selectedText || record.text,
-      });
-      updateLinkedAnchorCard(ed, record.anchorId, "comment", created.id);
-      setSelectedCommentId(created.id);
-    },
-    [addRevisionComment, editorRef, setSelectedCommentId],
-  );
-
-  const handleDropParagraphOnRevisions = useCallback(
-    (paragraphId: string) => {
-      const created = addRevisionComment(paragraphId);
-      setSelectedCommentId(created.id);
-    },
-    [addRevisionComment, setSelectedCommentId],
-  );
-
-
 
 
 
@@ -2579,12 +2515,6 @@ export default function EditorLayout() {
   const { handleDeleteOrphan, handleEditOrphan, handleEditOrphanTitle } = useOrphanActions({
     setOrphanedFootnotes,
   });
-
-  // ─── Path A 7.8: bundle construction for EditorPane ────────────────
-  // The `editorPaneViewPrefs` bundle (which references handleIconDrop
-  // and iconDropMimesByPanel) is constructed later in the file, after
-  // those functions are declared. The MenuBar bundle has no such
-  // forward reference and is built here.
 
   const editorPaneMenuBar: EditorPaneMenuBarBundle = useMemo(() => ({
     showParTitles,
@@ -2656,7 +2586,6 @@ export default function EditorLayout() {
     setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedNoteId,
@@ -2680,14 +2609,6 @@ export default function EditorLayout() {
     setSelectedNoteId,
     addCardParagraphId,
     setSelectedCutterCardId,
-  });
-
-  useAnchorRebindBridge({
-    addQuotationParagraphId, removeQuotationParagraphId,
-    addTodoParagraphId, removeTodoParagraphId,
-    addNoteParagraphId, removeNoteParagraphId,
-    addArchiveParagraphId, removeArchiveParagraphId,
-    addCardParagraphId, removeCardParagraphId,
   });
 
   // Highlight the active \ref node with yellow while the popover is open
@@ -2807,28 +2728,6 @@ export default function EditorLayout() {
   // Todo drop actions — create a new todo, link its paragraph, seed its
   // text from the dropped selection where applicable. Used both by the
   // open TodoPanel (via onDropSelection/onDropParagraph props) and by
-  // the sidebar icon-drop router (`handleIconDrop`).
-  const handleDropSelectionOnTodo = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      if (!editorRef.current) return;
-      const paragraphId = editorRef.current.ensureParagraphUuid(payload.from);
-      const todo = addTodo();
-      if (payload.selectedText) updateTodo(todo.id, payload.selectedText);
-      if (paragraphId) addTodoParagraphId(todo.id, paragraphId);
-      setSelectedTodoId(todo.id);
-    },
-    [editorRef, addTodo, updateTodo, addTodoParagraphId, setSelectedTodoId],
-  );
-  const handleDropParagraphOnTodo = useCallback(
-    (paragraphId: string) => {
-      if (!paragraphId) return;
-      const todo = addTodo();
-      addTodoParagraphId(todo.id, paragraphId);
-      setSelectedTodoId(todo.id);
-    },
-    [addTodo, addTodoParagraphId, setSelectedTodoId],
-  );
-
   const pendingRevisionAnchorIdRef = useRef<string | null>(null);
 
   const { handleAddComment } = useCommentActions({
@@ -2863,176 +2762,6 @@ export default function EditorLayout() {
   // bag) moved into EditorPane along with the toolbar machinery they
   // serve. EditorLayout no longer needs them.
 
-  // ── Sidebar panel-icon drop routing ──────────────────────────────────
-  // Maps each drop-accepting panel to the MIME types its icon accepts,
-  // and a handler that takes the DataTransfer and routes to the same
-  // action the open panel would invoke. StripButton reads this per-icon
-  // and shows a blue pod highlight on dragover.
-  const iconDropMimesByPanel = useMemo<Partial<Record<PanelId, readonly string[]>>>(
-    () => ({
-      notes: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
-      cutter: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
-      revisions: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
-      todo: [MIME_SELECTION_ANCHOR, MIME_PAR_CAPTURE],
-      archive: [MIME_TEXT_CAPTURE, MIME_PAR_CAPTURE],
-    }),
-    [],
-  );
-  // Opens a panel on its placed side without toggling. Safe to call when
-  // the panel is already active (no-op in that case).
-  const ensurePanelActive = useCallback(
-    (id: PanelId) => {
-      clearBlankIfSet();
-      const placement = prefs.placements.find((p) => p.id === id);
-      const side = placement?.side ?? "right";
-      if (side === "left") {
-        if (prefs.activeLeft !== id) setActiveLeft(id);
-      } else {
-        if (prefs.activeRight !== id) setActiveRight(id);
-      }
-    },
-    [clearBlankIfSet, prefs.placements, prefs.activeLeft, prefs.activeRight, setActiveLeft, setActiveRight],
-  );
-  const handleIconDrop = useCallback(
-    (targetPanelId: PanelId, dt: DataTransfer): boolean => {
-      const ed = editorRef.current?.getEditor();
-      if (!ed || !editorRef.current) return false;
-      // Notes / Cutter / Todo use the same selection+paragraph MIME contract.
-      if (
-        targetPanelId === "notes" ||
-        targetPanelId === "cutter" ||
-        targetPanelId === "todo"
-      ) {
-        const parRaw = dt.getData(MIME_PAR_CAPTURE);
-        if (parRaw) {
-          try {
-            const { uuid } = JSON.parse(parRaw) as { uuid: string };
-            if (uuid) {
-              if (targetPanelId === "notes") handleDropParagraphOnNotes(uuid);
-              else if (targetPanelId === "cutter") handleDropParagraphOnCutter(uuid);
-              else handleDropParagraphOnTodo(uuid);
-              ensurePanelActive(targetPanelId);
-              return true;
-            }
-          } catch { /* fall through */ }
-        }
-        const selRaw = dt.getData(MIME_SELECTION_ANCHOR);
-        if (selRaw) {
-          try {
-            const payload = JSON.parse(selRaw) as { from: number; to: number; selectedText: string };
-            if (typeof payload.from === "number" && typeof payload.to === "number") {
-              if (targetPanelId === "notes") handleDropSelectionOnNotes(payload);
-              else if (targetPanelId === "cutter") handleDropSelectionOnCutter(payload);
-              else handleDropSelectionOnTodo(payload);
-              ensurePanelActive(targetPanelId);
-              return true;
-            }
-          } catch { /* ignore */ }
-        }
-        return false;
-      }
-      if (targetPanelId === "revisions") {
-        // Mirror the inline logic in revisions-host — stash anchorId in
-        // the ref and set pendingCommentText so the RevisionsHost effect
-        // creates an empty text revision anchored to the dropped range.
-        const parRaw = dt.getData(MIME_PAR_CAPTURE);
-        if (parRaw) {
-          try {
-            const { uuid } = JSON.parse(parRaw) as { uuid: string };
-            if (uuid) {
-              let from: number | null = null;
-              let to: number | null = null;
-              ed.state.doc.descendants((node, pos) => {
-                if (from !== null) return false;
-                if (node.attrs?.uuid === uuid) {
-                  from = pos + 1;
-                  to = pos + node.nodeSize - 1;
-                  return false;
-                }
-                return true;
-              });
-              if (from !== null && to !== null && from < to) {
-                const record = createLinkedAnchor(ed, "revision", { from, to });
-                if (record) {
-                  pendingRevisionAnchorIdRef.current = record.anchorId;
-                  setPendingCommentText(record.text);
-                  ensurePanelActive("revisions");
-                  return true;
-                }
-              }
-            }
-          } catch { /* fall through */ }
-        }
-        const selRaw = dt.getData(MIME_SELECTION_ANCHOR);
-        if (selRaw) {
-          try {
-            const payload = JSON.parse(selRaw) as { from: number; to: number; selectedText: string };
-            if (typeof payload.from === "number" && typeof payload.to === "number") {
-              const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
-              if (record) {
-                pendingRevisionAnchorIdRef.current = record.anchorId;
-                setPendingCommentText(payload.selectedText || record.text);
-                ensurePanelActive("revisions");
-                return true;
-              }
-            }
-          } catch { /* ignore */ }
-        }
-        return false;
-      }
-      if (targetPanelId === "archive") {
-        // Archive uses the capture flow — extract content and hand to
-        // handleArchiveCapture, which creates an archive snippet and
-        // already activates the panel. No `ensurePanelActive` call here.
-        const parRaw = dt.getData(MIME_PAR_CAPTURE);
-        if (parRaw) {
-          try {
-            const { uuid } = JSON.parse(parRaw) as { uuid: string };
-            if (uuid) {
-              const captured = extractParagraphByUuid(ed, uuid);
-              if (captured) {
-                handleArchiveCapture({ content: captured.content, paragraphId: captured.paragraphId });
-                return true;
-              }
-            }
-          } catch { /* fall through */ }
-        }
-        const textRaw = dt.getData(MIME_TEXT_CAPTURE);
-        if (textRaw) {
-          try {
-            const { from, to } = JSON.parse(textRaw) as { from: number; to: number };
-            if (typeof from === "number" && typeof to === "number") {
-              const captured = extractRange(ed, from, to);
-              if (captured) {
-                handleArchiveCapture({ content: captured.content, paragraphId: captured.paragraphId });
-                return true;
-              }
-            }
-          } catch { /* ignore */ }
-        }
-        return false;
-      }
-      return false;
-    },
-    [
-      editorRef,
-      handleDropSelectionOnNotes,
-      handleDropParagraphOnNotes,
-      handleDropSelectionOnCutter,
-      handleDropParagraphOnCutter,
-      handleDropSelectionOnTodo,
-      handleDropParagraphOnTodo,
-      handleArchiveCapture,
-      ensurePanelActive,
-      pendingRevisionAnchorIdRef,
-      setPendingCommentText,
-    ],
-  );
-
-  // ─── Path A 7.8: editorPaneViewPrefs bundle (post-handleIconDrop) ───
-  // Sits after `handleIconDrop` / `iconDropMimesByPanel` declarations
-  // because the bundle closes over them. The MenuBar bundle (above)
-  // has no such forward references.
   const editorPaneViewPrefs: EditorPaneViewPrefs = useMemo(() => ({
     prefs,
     focusedHalfLeft,
@@ -3102,8 +2831,6 @@ export default function EditorLayout() {
     clearBlankIfSet,
     toggleSplit,
     openPanelDocked,
-    iconDropMimesByPanel,
-    handleIconDrop,
     toggleOmniCategory,
     setOmniSideToDefault,
     categorySides,
@@ -3175,8 +2902,6 @@ export default function EditorLayout() {
     clearBlankIfSet,
     toggleSplit,
     openPanelDocked,
-    iconDropMimesByPanel,
-    handleIconDrop,
     toggleOmniCategory,
     setOmniSideToDefault,
     categorySides,

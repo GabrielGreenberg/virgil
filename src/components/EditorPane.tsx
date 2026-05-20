@@ -90,7 +90,6 @@ import { RecentlyAddedProvider } from "./editor-layout/contexts/recently-added";
 import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
-import { useDropActions } from "./editor-layout/card-actions/drops";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { useCitations } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
@@ -122,6 +121,7 @@ import { CardLiftOutline } from "./CardLiftOutline";
 import { renderPoppedCard, type PoppedCardDeps } from "./editor-layout/floating-cards";
 import { PoppedCardsContext, type PoppedCardsValue } from "@/hooks/usePoppedCards";
 import { DropModeProvider } from "./drop-mode/DropModeProvider";
+import { useAnchorRebindBridge } from "./editor-layout/event-bridges/anchor-rebind";
 import type { StackPullApi } from "./drop-mode/types";
 import { StackIcon } from "./stack/StackIcon";
 import { StackStrip } from "./stack/StackStrip";
@@ -371,12 +371,6 @@ export interface EditorPaneViewPrefs {
   toggleSplit: (side: Side) => void;
   /** Force-docks a panel into its gutter slot. Required by `useStripHandlers`. */
   openPanelDocked: (id: PanelId, side?: Side) => void;
-  /** Per-panel MIME-type table for icon drops (Notes, Cutter, Todo,
-   *  Revisions, Archive). */
-  iconDropMimesByPanel: Partial<Record<PanelId, readonly string[]>>;
-  /** Routes a DataTransfer dropped on a panel icon to the appropriate
-   *  card-creation flow. Returns true if the drop was handled. */
-  handleIconDrop: (panelId: PanelId, dt: DataTransfer) => boolean;
   /** OmniFilterMenu mutators for per-side category enablement. */
   toggleOmniCategory: (side: Side, cat: OmniCategory) => void;
   setOmniSideToDefault: (side: Side) => void;
@@ -1304,6 +1298,25 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     }),
     [revisionsHook.cards, revisionsHook.addCardParagraphId, revisionsHook.removeCardParagraphId],
   );
+
+  // Wire the marginalia gutter drag → reanchor bridge to THIS pane's hook
+  // instances. EditorLayout owns a duplicate copy of these hooks, but only
+  // the EditorPane instances feed the rendered <Marginalia>. Dispatching
+  // reanchor events into EditorLayout's mutators would update the wrong
+  // state and leave the on-screen marker frozen.
+  useAnchorRebindBridge({
+    addQuotationParagraphId: quotationsHook.addParagraphId,
+    removeQuotationParagraphId: quotationsHook.removeParagraphId,
+    addTodoParagraphId: todosHook.addParagraphId,
+    removeTodoParagraphId: todosHook.removeParagraphId,
+    addNoteParagraphId: notesHook.addNoteParagraphId,
+    removeNoteParagraphId: notesHook.removeNoteParagraphId,
+    addArchiveParagraphId: archiveHook.addParagraphId,
+    removeArchiveParagraphId: archiveHook.removeParagraphId,
+    addCardParagraphId: cutterHook.addCardParagraphId,
+    removeCardParagraphId: cutterHook.removeCardParagraphId,
+  });
+
   // Stack-pull API — surfaces per-doc card-creation factories so the
   // stack-pull DropSpec can materialize fresh entities on pull. Each
   // method here mirrors the corresponding sidecar hook, ignoring the
@@ -2400,72 +2413,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const [searchHighlightRange, setSearchHighlightRange] = useState<{ from: number; to: number } | null>(null);
   void searchHighlightRange; // surfaces in the editor's highlight overlay post-7.8
 
-  // Drop handlers for the per-panel hosts. The Reader doesn't expose
-  // panel drop targets (chrome filters most kinds), so these mostly
-  // sit dormant — but they exist so post-7.8 the main app's panels
-  // pick them up without re-wiring.
-  const {
-    handleDropSelectionOnNotes,
-    handleDropParagraphOnNotes,
-    handleDropSelectionOnCutter,
-    handleDropParagraphOnCutter,
-  } = useDropActions({
-    editorRef: innerRef,
-    addNote: notesHook.addNote,
-    addHighlight: notesHook.addHighlight,
-    addCutterComment: cutterHook.addComment,
-    setSelectedNoteId,
-    setSelectedCutterCardId,
-  });
-
-  // Todo drops — create a fresh todo, link its paragraph, seed text
-  // from the dropped selection where applicable. Mirrors EditorLayout.
-  const handleDropSelectionOnTodo = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      if (!innerRef.current) return;
-      const paragraphId = innerRef.current.ensureParagraphUuid(payload.from);
-      const todo = todosHook.addItem();
-      if (payload.selectedText) todosHook.updateItem(todo.id, payload.selectedText);
-      if (paragraphId) todosHook.addParagraphId(todo.id, paragraphId);
-      setSelectedTodoId(todo.id);
-    },
-    [todosHook],
-  );
-  const handleDropParagraphOnTodo = useCallback(
-    (paragraphId: string) => {
-      if (!paragraphId) return;
-      const todo = todosHook.addItem();
-      todosHook.addParagraphId(todo.id, paragraphId);
-      setSelectedTodoId(todo.id);
-    },
-    [todosHook],
-  );
-
-  // Revisions drops — anchor-aware comment seeding; matches
-  // EditorLayout's `handleDropSelectionOnRevisions` shape.
-  const handleDropSelectionOnRevisions = useCallback(
-    (payload: { from: number; to: number; selectedText: string }) => {
-      const ed = innerRef.current?.getEditor();
-      if (!ed) return;
-      const record = createLinkedAnchor(ed, "revision", { from: payload.from, to: payload.to });
-      if (!record) return;
-      const created = revisionsHook.addComment(null, undefined, {
-        anchorId: record.anchorId,
-        anchorText: payload.selectedText || record.text,
-      });
-      updateLinkedAnchorCard(ed, record.anchorId, "comment", created.id);
-      setSelectedCommentId(created.id);
-    },
-    [revisionsHook],
-  );
-  const handleDropParagraphOnRevisions = useCallback(
-    (paragraphId: string) => {
-      const created = revisionsHook.addComment(paragraphId);
-      setSelectedCommentId(created.id);
-    },
-    [revisionsHook],
-  );
-
   // Archive helpers — anchored-id set + paragraph-order sort matching
   // EditorLayout. The ArchivePanel uses these to surface anchored
   // snippets at the top of the list.
@@ -2522,20 +2469,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     archiveHook.deleteSnippet(id);
     setSelectedArchiveId(null);
   }, [archiveHook]);
-  const handleArchiveCapture = useCallback(
-    (payload: { content: unknown; paragraphId: string | null }) => {
-      // archiveContent seeds the snippet from a selection text; the
-      // ArchivePanel here hands us pre-built JSONContent which the
-      // hook stores directly. EditorLayout's full archive-from-editor
-      // flow lands when toolbar/popout state moves over.
-      const snippet = archiveHook.archiveContent(
-        typeof payload.content === "string" ? payload.content : "",
-      );
-      if (payload.paragraphId) archiveHook.addParagraphId(snippet.id, payload.paragraphId);
-      setSelectedArchiveId(snippet.id);
-    },
-    [archiveHook],
-  );
 
   // Footnote add/edit/delete bridges — wrap the editor handle's
   // imperative API. The Reader (`editable: false`) won't invoke
@@ -3319,14 +3252,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     todoPanelSide={todoPanelSide}
                     cutterPanelSide={cutterPanelSide}
                     revisionsPanelSide={revisionsPanelSide}
-                    onDropSelectionOnNotes={handleDropSelectionOnNotes}
-                    onDropParagraphOnNotes={handleDropParagraphOnNotes}
-                    onDropSelectionOnTodo={handleDropSelectionOnTodo}
-                    onDropParagraphOnTodo={handleDropParagraphOnTodo}
-                    onDropSelectionOnCutter={handleDropSelectionOnCutter}
-                    onDropParagraphOnCutter={handleDropParagraphOnCutter}
-                    onDropSelectionOnRevisions={handleDropSelectionOnRevisions}
-                    onDropParagraphOnRevisions={handleDropParagraphOnRevisions}
                     discardPristineNotes={notesHook.discardPristineNotes}
                     todosHook={todosHook}
                     archiveHook={archiveHook}
@@ -3338,7 +3263,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onArchiveInsert={handleArchiveInsert}
                     onArchiveRestore={handleArchiveRestore}
                     onArchiveDelete={handleArchiveDelete}
-                    onArchiveCapture={handleArchiveCapture}
                     onAddFootnote={handleAddFootnote}
                     onEditFootnote={handleEditFootnote}
                     onEditFootnoteTitle={handleEditFootnoteTitle}
@@ -3396,14 +3320,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       todoPanelSide={todoPanelSide}
                       cutterPanelSide={cutterPanelSide}
                       revisionsPanelSide={revisionsPanelSide}
-                      onDropSelectionOnNotes={handleDropSelectionOnNotes}
-                      onDropParagraphOnNotes={handleDropParagraphOnNotes}
-                      onDropSelectionOnTodo={handleDropSelectionOnTodo}
-                      onDropParagraphOnTodo={handleDropParagraphOnTodo}
-                      onDropSelectionOnCutter={handleDropSelectionOnCutter}
-                      onDropParagraphOnCutter={handleDropParagraphOnCutter}
-                      onDropSelectionOnRevisions={handleDropSelectionOnRevisions}
-                      onDropParagraphOnRevisions={handleDropParagraphOnRevisions}
                       discardPristineNotes={notesHook.discardPristineNotes}
                       todosHook={todosHook}
                       archiveHook={archiveHook}
@@ -3415,8 +3331,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                       onArchiveInsert={handleArchiveInsert}
                       onArchiveRestore={handleArchiveRestore}
                       onArchiveDelete={handleArchiveDelete}
-                      onArchiveCapture={handleArchiveCapture}
-                      onAddFootnote={handleAddFootnote}
+                        onAddFootnote={handleAddFootnote}
                       onEditFootnote={handleEditFootnote}
                       onEditFootnoteTitle={handleEditFootnoteTitle}
                       onDeleteFootnote={handleDeleteFootnote}
@@ -3516,14 +3431,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 todoPanelSide={todoPanelSide}
                 cutterPanelSide={cutterPanelSide}
                 revisionsPanelSide={revisionsPanelSide}
-                onDropSelectionOnNotes={handleDropSelectionOnNotes}
-                onDropParagraphOnNotes={handleDropParagraphOnNotes}
-                onDropSelectionOnTodo={handleDropSelectionOnTodo}
-                onDropParagraphOnTodo={handleDropParagraphOnTodo}
-                onDropSelectionOnCutter={handleDropSelectionOnCutter}
-                onDropParagraphOnCutter={handleDropParagraphOnCutter}
-                onDropSelectionOnRevisions={handleDropSelectionOnRevisions}
-                onDropParagraphOnRevisions={handleDropParagraphOnRevisions}
                 discardPristineNotes={notesHook.discardPristineNotes}
                 todosHook={todosHook}
                 archiveHook={archiveHook}
@@ -3535,7 +3442,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onArchiveInsert={handleArchiveInsert}
                 onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
-                onArchiveCapture={handleArchiveCapture}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
@@ -4036,14 +3942,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         todoPanelSide={todoPanelSide}
                         cutterPanelSide={cutterPanelSide}
                         revisionsPanelSide={revisionsPanelSide}
-                        onDropSelectionOnNotes={handleDropSelectionOnNotes}
-                        onDropParagraphOnNotes={handleDropParagraphOnNotes}
-                        onDropSelectionOnTodo={handleDropSelectionOnTodo}
-                        onDropParagraphOnTodo={handleDropParagraphOnTodo}
-                        onDropSelectionOnCutter={handleDropSelectionOnCutter}
-                        onDropParagraphOnCutter={handleDropParagraphOnCutter}
-                        onDropSelectionOnRevisions={handleDropSelectionOnRevisions}
-                        onDropParagraphOnRevisions={handleDropParagraphOnRevisions}
                         discardPristineNotes={notesHook.discardPristineNotes}
                         todosHook={todosHook}
                         archiveHook={archiveHook}
@@ -4055,8 +3953,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         onArchiveInsert={handleArchiveInsert}
                         onArchiveRestore={handleArchiveRestore}
                         onArchiveDelete={handleArchiveDelete}
-                        onArchiveCapture={handleArchiveCapture}
-                        onAddFootnote={handleAddFootnote}
+                            onAddFootnote={handleAddFootnote}
                         onEditFootnote={handleEditFootnote}
                         onEditFootnoteTitle={handleEditFootnoteTitle}
                         onDeleteFootnote={handleDeleteFootnote}
@@ -4208,14 +4105,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 todoPanelSide={todoPanelSide}
                 cutterPanelSide={cutterPanelSide}
                 revisionsPanelSide={revisionsPanelSide}
-                onDropSelectionOnNotes={handleDropSelectionOnNotes}
-                onDropParagraphOnNotes={handleDropParagraphOnNotes}
-                onDropSelectionOnTodo={handleDropSelectionOnTodo}
-                onDropParagraphOnTodo={handleDropParagraphOnTodo}
-                onDropSelectionOnCutter={handleDropSelectionOnCutter}
-                onDropParagraphOnCutter={handleDropParagraphOnCutter}
-                onDropSelectionOnRevisions={handleDropSelectionOnRevisions}
-                onDropParagraphOnRevisions={handleDropParagraphOnRevisions}
                 discardPristineNotes={notesHook.discardPristineNotes}
                 todosHook={todosHook}
                 archiveHook={archiveHook}
@@ -4227,7 +4116,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 onArchiveInsert={handleArchiveInsert}
                 onArchiveRestore={handleArchiveRestore}
                 onArchiveDelete={handleArchiveDelete}
-                onArchiveCapture={handleArchiveCapture}
                 onAddFootnote={handleAddFootnote}
                 onEditFootnote={handleEditFootnote}
                 onEditFootnoteTitle={handleEditFootnoteTitle}
@@ -4359,14 +4247,6 @@ interface PaneRailProps {
   todoPanelSide: "left" | "right" | null;
   cutterPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
-  onDropSelectionOnNotes: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnNotes: (paragraphId: string) => void;
-  onDropSelectionOnTodo: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnTodo: (paragraphId: string) => void;
-  onDropSelectionOnCutter: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnCutter: (paragraphId: string) => void;
-  onDropSelectionOnRevisions: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnRevisions: (paragraphId: string) => void;
   discardPristineNotes: () => void;
   todosHook: ReturnType<typeof useTodos>;
   archiveHook: ReturnType<typeof useArchive>;
@@ -4378,7 +4258,6 @@ interface PaneRailProps {
   onArchiveInsert: (id: string) => void;
   onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
-  onArchiveCapture: (payload: { content: unknown; paragraphId: string | null }) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
@@ -4512,8 +4391,6 @@ function IconStrip({
           onMove={handleMove}
           side={side}
           stripRef={null as unknown as React.RefObject<HTMLDivElement | null>}
-          iconDropMimes={viewPrefs.iconDropMimesByPanel[p]}
-          onIconDrop={(dt) => viewPrefs.handleIconDrop(p, dt)}
         />
       ))}
       <div className="mt-auto">
@@ -4559,14 +4436,6 @@ function PaneRail({
   todoPanelSide,
   cutterPanelSide,
   revisionsPanelSide,
-  onDropSelectionOnNotes,
-  onDropParagraphOnNotes,
-  onDropSelectionOnTodo,
-  onDropParagraphOnTodo,
-  onDropSelectionOnCutter,
-  onDropParagraphOnCutter,
-  onDropSelectionOnRevisions,
-  onDropParagraphOnRevisions,
   discardPristineNotes,
   todosHook,
   archiveHook,
@@ -4578,7 +4447,6 @@ function PaneRail({
   onArchiveInsert,
   onArchiveRestore,
   onArchiveDelete,
-  onArchiveCapture,
   onAddFootnote,
   onEditFootnote,
   onEditFootnoteTitle,
@@ -4854,14 +4722,6 @@ interface PaneRailBodyProps {
   todoPanelSide: "left" | "right" | null;
   cutterPanelSide: "left" | "right" | null;
   revisionsPanelSide: "left" | "right" | null;
-  onDropSelectionOnNotes: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnNotes: (paragraphId: string) => void;
-  onDropSelectionOnTodo: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnTodo: (paragraphId: string) => void;
-  onDropSelectionOnCutter: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnCutter: (paragraphId: string) => void;
-  onDropSelectionOnRevisions: (payload: { from: number; to: number; selectedText: string }) => void;
-  onDropParagraphOnRevisions: (paragraphId: string) => void;
   discardPristineNotes: () => void;
   todosHook: ReturnType<typeof useTodos>;
   archiveHook: ReturnType<typeof useArchive>;
@@ -4873,7 +4733,6 @@ interface PaneRailBodyProps {
   onArchiveInsert: (id: string) => void;
   onArchiveRestore: (id: string) => void;
   onArchiveDelete: (id: string) => void;
-  onArchiveCapture: (payload: { content: unknown; paragraphId: string | null }) => void;
   onAddFootnote: () => string;
   onEditFootnote: (id: string, newContent: JSONContent) => void;
   onEditFootnoteTitle: (id: string, title: string) => void;
@@ -4927,14 +4786,6 @@ function PaneRailBody({
   todoPanelSide,
   cutterPanelSide,
   revisionsPanelSide,
-  onDropSelectionOnNotes,
-  onDropParagraphOnNotes,
-  onDropSelectionOnTodo,
-  onDropParagraphOnTodo,
-  onDropSelectionOnCutter,
-  onDropParagraphOnCutter,
-  onDropSelectionOnRevisions,
-  onDropParagraphOnRevisions,
   discardPristineNotes,
   todosHook,
   archiveHook,
@@ -4946,7 +4797,6 @@ function PaneRailBody({
   onArchiveInsert,
   onArchiveRestore,
   onArchiveDelete,
-  onArchiveCapture,
   onAddFootnote,
   onEditFootnote,
   onEditFootnoteTitle,
@@ -5087,8 +4937,6 @@ function PaneRailBody({
         setHighlightAiRequest={notesHook.setHighlightAiRequest}
         deleteNote={notesHook.deleteNote}
         discardPristine={discardPristineNotes}
-        onDropSelection={onDropSelectionOnNotes}
-        onDropParagraph={onDropParagraphOnNotes}
       />
     );
   }
@@ -5106,8 +4954,6 @@ function PaneRailBody({
         deleteTodo={todosHook.deleteItem}
         archiveTodos={todosHook.archiveDone}
         discardPristine={todosHook.discardPristineTodos}
-        onDropSelection={onDropSelectionOnTodo}
-        onDropParagraph={onDropParagraphOnTodo}
       />
     );
   }
@@ -5123,7 +4969,6 @@ function PaneRailBody({
         onRestore={onArchiveRestore}
         onDelete={onArchiveDelete}
         anchoredIds={anchoredArchiveIds}
-        onCapture={onArchiveCapture}
       />
     );
   }
@@ -5142,8 +4987,6 @@ function PaneRailBody({
         setSuggestionStatus={cutterHook.setSuggestionStatus}
         deleteCard={cutterHook.deleteCard}
         discardPristine={cutterHook.discardPristineCards}
-        onDropSelection={onDropSelectionOnCutter}
-        onDropParagraph={onDropParagraphOnCutter}
       />
     );
   }
@@ -5162,8 +5005,6 @@ function PaneRailBody({
         convertCard={revisionsHook.convertCard}
         deleteCard={revisionsHook.deleteCard}
         discardPristine={revisionsHook.discardPristineCards}
-        onDropSelection={onDropSelectionOnRevisions}
-        onDropParagraph={onDropParagraphOnRevisions}
       />
     );
   }

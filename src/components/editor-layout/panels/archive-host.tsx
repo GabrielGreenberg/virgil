@@ -17,11 +17,10 @@ export interface ArchiveHostProps {
   onRestore: (id: string) => void;
   onDelete: (id: string) => void;
   anchoredIds: Set<string>;
-  onCapture: (payload: { content: unknown; paragraphId: string | null }) => void;
 }
 
 export function ArchiveHost(p: ArchiveHostProps) {
-  const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
+  const { editorRef, setOverrideEditor } = useEditorRefContext();
   const { selectedArchiveId, setSelectedArchiveId } = useSelectionsContext();
   const { getCitationDisplayText, onCitationCreated } = useCitationDisplayContext();
   return (
@@ -36,12 +35,10 @@ export function ArchiveHost(p: ArchiveHostProps) {
       onDelete={p.onDelete}
       onJumpToCard={(snippet, sourceEl) => editorRef.current?.jumpToCard(snippet, sourceEl)}
       anchoredIds={p.anchoredIds}
-      editor={editorInstance}
       panelSide={p.side}
       getCitationDisplayText={getCitationDisplayText}
       onCitationCreated={onCitationCreated}
       onEditorFocus={setOverrideEditor}
-      onCapture={p.onCapture}
     />
   );
 }

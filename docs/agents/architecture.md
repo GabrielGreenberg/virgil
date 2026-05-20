@@ -165,6 +165,13 @@ Paragraph-level anchor drops trigger the vertical drop indicator. Inline-insert 
 
 When wiring a new draggable type, pick a category and register it — the drop indicator behaves correctly for free.
 
+**Text moves** are deliberately narrow. The only two canonical text-move gestures are:
+
+1. **Drag-to-pop-out** — the lift gesture on a paragraph / heading / list / selection 6-dot grip pops the block out into a float ([src/components/SelectionDragHandle.tsx](../../src/components/SelectionDragHandle.tsx) + the in-editor grips in [src/components/Editor.tsx](../../src/components/Editor.tsx)). Custom mousedown protocol, NOT HTML5 drag.
+2. **Drop-mode** — shift-drag on a float's header re-drops the block back into the doc at a visible placement bar. Registry and specs in [src/components/drop-mode/](../../src/components/drop-mode/).
+
+The float-body grips inside `ParagraphFloat` / `HeadingFloat` / `ListFloat` / `SelectionFloat` are HTML5-draggable and emit `MIME_PAR_CAPTURE` / `MIME_TEXT_CAPTURE` ([src/hooks/usePanelCapture.ts](../../src/hooks/usePanelCapture.ts)) — but their *only* consumer is the StackIcon clipboard. There is no longer a strip-icon drop, panel-body drop, or in-editor HTML5 reposition from these MIMEs.
+
 ## Keyboard: Tab in prose fields
 
 Substantive prose fields (every TipTap editor, every multi-line `<textarea>`, the BibEntryCard annotation contentEditable) treat **Tab as indent**, not as focus-move. Tab inserts a literal `\t` at the cursor; Shift-Tab is a no-op in plain prose. The escape hatch is **Esc** — it blurs the field so the next Tab navigates panels normally. Single-line `<input>` fields (search, card titles, citation/bib keys, numeric/dialog inputs) are intentionally *not* affected and keep default focus-moving Tab.

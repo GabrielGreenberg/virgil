@@ -10,7 +10,7 @@
  * calls `onSelect(null)` so panels don't have to wire that themselves.
  */
 
-import { Fragment, useCallback, type HTMLAttributes, type ReactNode } from "react";
+import { Fragment, useCallback, type ReactNode } from "react";
 import type { AiRequest } from "@/lib/types";
 import {
   AiRequestCard,
@@ -59,15 +59,7 @@ export interface CardListPanelProps<T> {
   headerExtras?: ReactNode;
   panelExtras?: ReactNode;
   footer?: ReactNode;
-  wrapperClassName?: string;
-  wrapperProps?: HTMLAttributes<HTMLDivElement>;
   scrollRef?: React.Ref<HTMLDivElement>;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDragLeave?: (e: React.DragEvent) => void;
-  onDrop?: (e: React.DragEvent) => void;
-  /** When true, renders a blue "+" placeholder card at the top of the
-   *  list body, signalling that a drop will create a new card here. */
-  showDropPlaceholder?: boolean;
   onKeyDown?: (e: React.KeyboardEvent) => void;
   scrollTabIndex?: number;
 }
@@ -92,25 +84,12 @@ export function CardListPanel<T>({
   headerExtras,
   panelExtras,
   footer,
-  wrapperClassName,
-  wrapperProps,
   scrollRef,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  showDropPlaceholder,
   onKeyDown,
   scrollTabIndex,
 }: CardListPanelProps<T>) {
   const handleEmptyClick = useCallback(() => onSelect(null), [onSelect]);
   const hasAiRequests = aiRequests && aiRequests.length > 0;
-  const dropPlaceholder = showDropPlaceholder ? (
-    <div className="drop-placeholder-card" aria-hidden="true">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-        <path d="M12 5v14M5 12h14" />
-      </svg>
-    </div>
-  ) : null;
 
   const aiRequestsSection = hasAiRequests ? (
     <>
@@ -139,23 +118,17 @@ export function CardListPanel<T>({
       headerExtras={headerExtras}
       panelExtras={panelExtras}
       footer={footer}
-      wrapperClassName={wrapperClassName}
-      wrapperProps={wrapperProps}
       variant="list"
       scrollRef={scrollRef}
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
       onClickEmpty={handleEmptyClick}
       onKeyDown={onKeyDown}
       scrollTabIndex={scrollTabIndex}
     >
-      {showEmpty && !dropPlaceholder ? (
+      {showEmpty ? (
         emptyState
       ) : (
         <>
           {aiRequestsSection}
-          {dropPlaceholder}
           {items.map((item, index) => {
             const id = getId(item);
             return (
