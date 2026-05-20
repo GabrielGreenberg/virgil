@@ -32,7 +32,7 @@ import RichTextField from "./RichTextField";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
 import { useEnclosingPanelBodyKey } from "./panel-kind-context";
-import { MIME_AI_REQUEST, MIME_TEXT_INSERT } from "@/lib/marginalia";
+import { MIME_AI_REQUEST } from "@/lib/marginalia";
 import { normalizeRichContent, richJsonToPlainText } from "@/lib/footnote-content";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { FloatCard } from "./FloatingCards";
@@ -118,24 +118,6 @@ export function clearStaleHover(container: HTMLElement | null) {
     document.removeEventListener("pointermove", restore);
   };
   document.addEventListener("pointermove", restore);
-}
-
-/* ── Text-only drag helper ──────────────────────────────────────── */
-
-/** Start a text-only drag (no entity identity). Used by the body text handle. */
-export function startTextDrag(e: React.DragEvent, content: unknown, fallbackPlain?: string) {
-  const normalized = normalizeRichContent(content);
-  const plain = richJsonToPlainText(normalized) || fallbackPlain || "";
-  e.dataTransfer.setData("text/plain", plain);
-  e.dataTransfer.setData(MIME_TEXT_INSERT, JSON.stringify({ content: normalized }));
-  e.dataTransfer.effectAllowed = "copy";
-  const ghost = document.createElement("div");
-  ghost.textContent = plain.length > 60 ? plain.slice(0, 60) + "\u2026" : plain;
-  ghost.style.cssText =
-    "position:absolute;top:-9999px;left:-9999px;max-width:220px;padding:4px 8px;background:#fff;border:1px solid #d6d3d1;border-radius:3px;font-size:11px;color:#57534e;font-family:Georgia,serif;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
-  document.body.appendChild(ghost);
-  e.dataTransfer.setDragImage(ghost, 10, 10);
-  requestAnimationFrame(() => document.body.removeChild(ghost));
 }
 
 /* ── EditableCard — shared card for RichTextField-bearing panels ──── */
@@ -619,9 +601,6 @@ export interface EditableCardProps {
   onClick?: (e?: React.MouseEvent) => void;
   /** When provided, the card is draggable (disabled while RichTextField is focused). */
   onDragStart?: (e: React.DragEvent) => void;
-  /** When provided, renders a text-drag handle in the body area.
-   *  Drags only the text content for inline insertion (no entity identity). */
-  onTextDragStart?: (e: React.DragEvent) => void;
 
   // ── RichTextField props ──
   value: unknown;
@@ -702,7 +681,7 @@ export function EditableCard({
   id, selected, theme,
   footnoteBadge, headerTrailing, bodyTitle, onBodyTitleChange, footer,
   menuContent, onDelete,
-  onClick, onDragStart, onTextDragStart,
+  onClick, onDragStart,
   value, variant, placeholder, muted, panelKey, cardKind,
   onChange, onArchiveConsumed, getCitationDisplayText, onCitationCreated,
   dataAttr, extraDataAttrs, wrapperClassName, wrapperStyle,
@@ -920,48 +899,23 @@ export function EditableCard({
             theme={theme}
           />
         )}
-        <div className={onTextDragStart ? "flex items-start gap-1" : undefined}>
-          {/* Optional text-drag handle — drags only text content for inline insertion */}
-          {onTextDragStart && (
-            <div
-              draggable={!isFocused}
-              onDragStart={(e) => { onTextDragStart(e); }}
-              onClick={(e) => e.stopPropagation()}
-              className="cursor-grab active:cursor-grabbing p-0.5 pt-1 -ml-1 rounded text-ink-faint group-hover:text-ink-subtle transition-colors shrink-0"
-              title="Drag text into document"
-              data-helper="Drag text"
-              data-helper-pos="above"
-            >
-              <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-                <circle cx="3" cy="2" r="1.2" />
-                <circle cx="7" cy="2" r="1.2" />
-                <circle cx="3" cy="7" r="1.2" />
-                <circle cx="7" cy="7" r="1.2" />
-                <circle cx="3" cy="12" r="1.2" />
-                <circle cx="7" cy="12" r="1.2" />
-              </svg>
-            </div>
-          )}
-          <div className={onTextDragStart ? "flex-1 min-w-0" : undefined}>
-            <RichTextField
-              instanceKey={id}
-              value={value}
-              placeholder={placeholder}
-              variant={variant}
-              selected={selected}
-              muted={muted}
-              onChange={onChange}
-              onArchiveConsumed={onArchiveConsumed}
-              getCitationDisplayText={getCitationDisplayText}
-              onCitationCreated={onCitationCreated}
-              onFocusChange={handleFocusChange}
-              toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
-              hideToolbar={hideToolbar || !cardEditable}
-              panelKey={panelKey}
-              editable={cardEditable}
-            />
-          </div>
-        </div>
+        <RichTextField
+          instanceKey={id}
+          value={value}
+          placeholder={placeholder}
+          variant={variant}
+          selected={selected}
+          muted={muted}
+          onChange={onChange}
+          onArchiveConsumed={onArchiveConsumed}
+          getCitationDisplayText={getCitationDisplayText}
+          onCitationCreated={onCitationCreated}
+          onFocusChange={handleFocusChange}
+          toolbarPortalTarget={hideToolbar ? null : toolbarTarget}
+          hideToolbar={hideToolbar || !cardEditable}
+          panelKey={panelKey}
+          editable={cardEditable}
+        />
       </div>
       )}
 

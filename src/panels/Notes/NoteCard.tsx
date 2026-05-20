@@ -7,7 +7,6 @@ import {
   EditableCard,
   AiRequestCheckbox,
   makeCompressedSummary,
-  startTextDrag,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -118,11 +117,6 @@ export function NoteCard({
           onJump((e?.currentTarget as HTMLElement | undefined)?.closest('[data-card]') as HTMLElement | null);
         }
       }}
-      // TODO(grip-redesign): drop-into-document via the grip is disabled
-      // during the unified header redesign. Re-introduce thoughtfully via
-      // a separate body-level affordance, not the grip.
-      // onDragStart={(e) => startNoteDrag(e, note.id)}
-      onTextDragStart={(e) => startTextDrag(e, note.content, note.title)}
       onDelete={() => onDelete(note.id)}
       footer={
         onSetAiRequest && !compressed ? (

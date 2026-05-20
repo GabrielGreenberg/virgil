@@ -9,7 +9,6 @@ import {
   BadgeLabel,
   BadgeOrphaned,
   makeCompressedSummary,
-  startTextDrag,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -135,11 +134,6 @@ export function FootnoteCard({
         }
       }}
       onHoverChange={(h) => cardStore.setHover(h ? ac.ref : null)}
-      // TODO(grip-redesign): drop-into-document via the grip is disabled
-      // during the unified header redesign. Re-introduce thoughtfully via
-      // a separate body-level affordance, not the grip.
-      // onDragStart={(e) => startFootnoteDrag(e, fn.footnoteId, fn.content, false)}
-      onTextDragStart={(e) => startTextDrag(e, fn.content)}
       onDelete={onDelete}
       value={fn.content}
       variant="footnote"
@@ -218,13 +212,6 @@ export function OrphanedFootnoteCard({
       bodyTitle={orphan.title}
       onBodyTitleChange={onEditTitle ?? undefined}
       onClick={onSelect}
-      // TODO(grip-redesign): drop-into-document via the grip is disabled
-      // during the unified header redesign — see note on the FootnoteCard
-      // path above.
-      // onDragStart={(e) =>
-      //   startFootnoteDrag(e, orphan.footnoteId, orphan.content, true)
-      // }
-      onTextDragStart={(e) => startTextDrag(e, orphan.content)}
       onDelete={onDelete}
       value={orphan.content}
       variant="footnote"

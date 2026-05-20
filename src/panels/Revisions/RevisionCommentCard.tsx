@@ -7,7 +7,6 @@ import {
   AiRequestCheckbox,
   EditableCard,
   makeCompressedSummary,
-  startTextDrag,
 } from "@/components/panel-primitives";
 import { useCompressedLines } from "@/components/editor-layout/contexts/card-display";
 import { useCardTheme } from "@/hooks/usePanelTheme";
@@ -134,7 +133,6 @@ export function RevisionCommentCard({
           );
         }
       }}
-      onTextDragStart={(e) => startTextDrag(e, card.content, card.text)}
       onDelete={() => onDelete(card.id)}
       footer={
         !compressed ? (
