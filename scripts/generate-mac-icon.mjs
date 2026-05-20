@@ -1,10 +1,12 @@
 // Generate a macOS .icns (plus the PWA / apple-touch set) from the
 // parchment-V source at icons/updated_icon.png.
 //
-// The source art already carries its own squircle shape. We pad to
-// square, inset slightly to leave room for a soft ambient drop shadow
-// (standard macOS look), and composite: shadow → artwork on a
-// transparent canvas.
+// The source art is a complete icon design — parchment-V with its
+// own squircle-like outline and self-shadow. We ship it full-bleed
+// at each target size and let macOS 26 (and iOS) apply the squircle
+// clip and ambient drop shadow itself. Pre-Tahoe macOS will render
+// the .icns as-is, relying on the parchment outline for the rounded
+// shape.
 
 import sharp from "sharp";
 import { execFileSync } from "node:child_process";
@@ -19,21 +21,6 @@ const SOURCE = join(repoRoot, "icons/updated_icon.png");
 const ICONSET_DIR = join(repoRoot, "icons/Virgil.iconset");
 const ICNS_OUT = join(repoRoot, "icons/Virgil.icns");
 const MASTER_1024 = join(repoRoot, "icons/app-icon-1024.png");
-
-// macOS 26 Tahoe template: 10% transparent margin around the squircle
-// inside the canvas (so the squircle fills the inner 80%). Tahoe gray-
-// boxes icons whose painted region either runs closer to the edge or
-// doesn't match Apple's expected squircle shape.
-const INSET_PCT = 0.10;
-// Corner radius as fraction of full canvas edge. Apple's continuous-
-// curve squircle has corner radius ≈ 22.37% of the squircle edge; at
-// 80% squircle size that's 17.9% of canvas (matches the existing math
-// in generate-app-icons.mjs).
-const CORNER_RADIUS_PCT = 0.1790;
-// Subtle ambient shadow.
-const SHADOW_BLUR_PCT = 0.014;  // stdDeviation, ~14px at 1024
-const SHADOW_DY_PCT = 0.006;    // vertical offset, ~6px at 1024
-const SHADOW_OPACITY = 0.30;
 
 /** Pad source to a perfect square on a transparent canvas. */
 async function loadSquareSource() {
@@ -53,79 +40,15 @@ async function loadSquareSource() {
     .toBuffer();
 }
 
-/** Build a soft black silhouette of `artwork` (RGBA buffer, square). */
-async function makeShadow(artwork, artSize, blurPx) {
-  // Solid black square of the artwork's size, then mask it by the
-  // artwork's alpha using dest-in. The input to dest-in must be a
-  // full RGBA image (not a single-channel alpha), otherwise the
-  // blend degenerates into a filled square.
-  const blackBox = await sharp({
-    create: {
-      width: artSize,
-      height: artSize,
-      channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 1 },
-    },
-  })
-    .png()
-    .toBuffer();
-
-  const silhouette = await sharp(blackBox)
-    .composite([{ input: artwork, blend: "dest-in" }])
-    .png()
-    .toBuffer();
-
-  // Blur, then dim the alpha to SHADOW_OPACITY.
-  return sharp(silhouette)
-    .blur(blurPx)
-    .ensureAlpha()
-    .linear([1, 1, 1, SHADOW_OPACITY], [0, 0, 0, 0])
-    .png()
-    .toBuffer();
-}
-
-/** Resize art → inset canvas, mask to Apple's squircle, add soft drop
- *  shadow, emit PNG. The squircle mask makes the icon's outline exactly
- *  match Tahoe's expected shape; otherwise the system gray-boxes it. */
+/** Full-bleed resize. The source artwork's parchment edges already
+ *  form a squircle-like outline; macOS 26 applies its own squircle
+ *  clip and shadow. */
 async function composeIcon(srcSquare, size) {
-  const inset = Math.round(size * INSET_PCT);
-  const artSize = size - 2 * inset;
-  const cornerRadius = Math.round(size * CORNER_RADIUS_PCT);
-  const blurPx = Math.max(1, size * SHADOW_BLUR_PCT);
-  const dy = Math.max(1, Math.round(size * SHADOW_DY_PCT));
-
-  const resized = await sharp(srcSquare)
-    .resize(artSize, artSize, { fit: "contain" })
-    .png()
-    .toBuffer();
-
-  // Squircle mask sized to the artwork. dest-in keeps only the pixels
-  // inside the rounded rect, wiping the parchment's ragged outer edge.
-  const maskSvg = Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${artSize}" height="${artSize}">
-      <rect width="${artSize}" height="${artSize}"
-        rx="${cornerRadius}" ry="${cornerRadius}" fill="#fff"/>
-    </svg>`,
-  );
-  const artwork = await sharp(resized)
-    .composite([{ input: maskSvg, blend: "dest-in" }])
-    .png()
-    .toBuffer();
-
-  const shadow = await makeShadow(artwork, artSize, blurPx);
-
-  return sharp({
-    create: {
-      width: size,
-      height: size,
-      channels: 4,
+  return sharp(srcSquare)
+    .resize(size, size, {
+      fit: "contain",
       background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  })
-    .composite([
-      { input: shadow, left: inset, top: inset + dy },
-      { input: artwork, left: inset, top: inset },
-    ])
+    })
     .png();
 }
 

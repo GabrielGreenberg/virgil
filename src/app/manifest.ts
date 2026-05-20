@@ -30,12 +30,12 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#e5e4e1",
     icons: [
       {
-        src: `${basePath}/icon-192x192.png?v=6`,
+        src: `${basePath}/icon-192x192.png?v=7`,
         sizes: "192x192",
         type: "image/png",
       },
       {
-        src: `${basePath}/icon-512x512.png?v=6`,
+        src: `${basePath}/icon-512x512.png?v=7`,
         sizes: "512x512",
         type: "image/png",
       },
