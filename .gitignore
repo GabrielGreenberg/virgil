@@ -76,10 +76,35 @@ next-env.d.ts
 # to update the shipped defaults; the snapshot itself stays out of git.
 /tools/personal-snapshot.json
 
-# library-data — keep the static dev sample (catalog/master.bib/papers/),
-# but ignore the runtime artifacts the live app writes back into the folder
-# during a dev session (skill-bundle sync output, queue intent files, logs,
-# concurrency lock sidecars).
+# library-data — keep the static dev sample (catalog/master.bib +
+# bringhurst1992 paper folder), but ignore the runtime artifacts the
+# live app writes back into the folder during a dev session: ML model
+# cache (multi-GB), queue intent files + completion markers, dev memos,
+# merge reports, the machine-specific library-path, the runtime-synced
+# script subdirs, and untracked paper extractions.
+#
+# The block below uses the current `.virgil/` layout; the legacy
+# top-level paths (e.g. `/library-data/queue/`) are retained for
+# migration safety but no longer match anything in the working tree.
+/library-data/.virgil/models/
+/library-data/.virgil/queue/*.json
+/library-data/.virgil/queue/*.lock
+/library-data/.virgil/queue/*.done
+/library-data/.virgil/memos/
+/library-data/.virgil/merge-reports/
+/library-data/.virgil/library-path.json
+/library-data/.virgil/scripts/editor/
+/library-data/.virgil/scripts/library/
+/library-data/.virgil/catalog.json.lock
+/library-data/.virgil/notifications/inbox.json.lock
+/library-data/master.bib.lock
+# Untracked paper extractions accumulate during dev sessions. The
+# bringhurst1992 sample is already in the index and stays tracked
+# (gitignore doesn't un-track committed files); new paper folders
+# under here are dropped from `git status`.
+/library-data/papers/*
+!/library-data/papers/bringhurst1992/
+# Legacy / migration-safety patterns (the old top-level layout):
 /library-data/.skill-bundle-version.json
 /library-data/.claude/
 /library-data/scripts/
@@ -88,6 +113,3 @@ next-env.d.ts
 /library-data/queue/*.lock
 /library-data/queue/*.done
 /library-data/logs/
-/library-data/master.bib.lock
-/library-data/.virgil/catalog.json.lock
-/library-data/.virgil/notifications/inbox.json.lock
