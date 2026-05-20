@@ -375,6 +375,22 @@ function buildTree(headings: HeadingItem[]): TreeNode[] {
   return roots;
 }
 
+/**
+ * True when the node, any of its parTitles, or any descendant has an
+ * index inside the focused band. Used to decide whether a locked-mode
+ * outside heading should still render to host its in-focus children.
+ */
+function nodeIntersectsFocus(node: TreeNode, focus: FocusState): boolean {
+  if (node.heading.index >= focus.startBlockIndex && node.heading.index <= focus.endBlockIndex) return true;
+  for (const pt of node.heading.parTitles) {
+    if (pt.index >= focus.startBlockIndex && pt.index <= focus.endBlockIndex) return true;
+  }
+  for (const child of node.children) {
+    if (nodeIntersectsFocus(child, focus)) return true;
+  }
+  return false;
+}
+
 /* ── Per-section word counting (view mode) ─────────────────────────── */
 
 function countWords(text: string): number {
@@ -590,6 +606,15 @@ function OutlineNode({
     ? node.heading.index < focusState.startBlockIndex || node.heading.index > focusState.endBlockIndex
     : false;
 
+  // Locked mode: drop the entire subtree when nothing in it intersects
+  // the focused band. If something does intersect (e.g., focus on a
+  // sub-heading whose parent's index is outside the band), render the
+  // heading row at its existing dim so the in-focus children render in
+  // place with structural context.
+  if (focusState?.active && focusState.locked && isOutsideFocus && !nodeIntersectsFocus(node, focusState)) {
+    return null;
+  }
+
   const handleRowClick = (blockIndex: number) => (e: React.MouseEvent) => {
     if (isFocusEditing && onFocusMoveTo && onFocusExpandTo) {
       if (e.shiftKey) {
@@ -671,6 +696,7 @@ function OutlineNode({
             const ptOutside = focusState?.active
               ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
               : false;
+            if (focusState?.active && focusState.locked && ptOutside) return null;
             return (
               <div
                 key={`pt-${i}`}
@@ -1766,43 +1792,46 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
               </>
             )}
 
-            {/* Fixed top row — document start / title */}
-            <div
-              data-outline-pos="docstart"
-              className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
-              style={{
-                paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
-                opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
-                transition: "opacity 200ms ease",
-                position: "relative",
-                zIndex: 5,
-              }}
-              onClick={(e) => {
-                if (focusState?.active && !focusState.locked && onFocusMoveTo) {
-                  if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(0);
-                  else onFocusMoveTo(0);
-                } else {
-                  onScrollTo(-1);
-                }
-              }}
-            >
-              <span className="w-4 shrink-0" />
-              <div className="min-w-0 flex-1 text-sm leading-snug truncate">
-                {docTitle ? (
-                  <>
-                    <span className="font-normal text-ink-muted">Title: </span>
-                    <span className="font-semibold text-ink-strong">{docTitle}</span>
-                  </>
-                ) : (
-                  <span className="italic text-ink-muted">Document start</span>
+            {/* Fixed top row — document start / title. Hidden when locked
+                focus excludes block index 0. */}
+            {!(focusState?.active && focusState.locked && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex)) && (
+              <div
+                data-outline-pos="docstart"
+                className={`flex items-start gap-1 cursor-pointer rounded ${focusState?.active && !focusState.locked ? "" : "hover-on-light"}`}
+                style={{
+                  paddingLeft: 8, paddingRight: 8, paddingTop: 4, paddingBottom: 4,
+                  opacity: focusState?.active && headings.length > 0 && (0 < focusState.startBlockIndex || 0 > focusState.endBlockIndex) ? 0.3 : 1,
+                  transition: "opacity 200ms ease",
+                  position: "relative",
+                  zIndex: 5,
+                }}
+                onClick={(e) => {
+                  if (focusState?.active && !focusState.locked && onFocusMoveTo) {
+                    if (e.shiftKey && onFocusExpandTo) onFocusExpandTo(0);
+                    else onFocusMoveTo(0);
+                  } else {
+                    onScrollTo(-1);
+                  }
+                }}
+              >
+                <span className="w-4 shrink-0" />
+                <div className="min-w-0 flex-1 text-sm leading-snug truncate">
+                  {docTitle ? (
+                    <>
+                      <span className="font-normal text-ink-muted">Title: </span>
+                      <span className="font-semibold text-ink-strong">{docTitle}</span>
+                    </>
+                  ) : (
+                    <span className="italic text-ink-muted">Document start</span>
+                  )}
+                </div>
+                {showWordCount && (
+                  <span className="text-[10px] text-ink-muted shrink-0 mt-0.5">
+                    words
+                  </span>
                 )}
               </div>
-              {showWordCount && (
-                <span className="text-[10px] text-ink-muted shrink-0 mt-0.5">
-                  words
-                </span>
-              )}
-            </div>
+            )}
 
             {showTitles && preambleTitles.length > 0 && (
               <div>
@@ -1810,6 +1839,7 @@ function OutlinePanel({ content, onScrollTo, onReorderBlocks, onRenameHeading, o
                   const ptOutside = focusState?.active
                     ? pt.index < focusState.startBlockIndex || pt.index > focusState.endBlockIndex
                     : false;
+                  if (focusState?.active && focusState.locked && ptOutside) return null;
                   return (
                     <div
                       key={`preamble-pt-${i}`}

@@ -598,13 +598,15 @@ export function OmniHost(p: OmniHostProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorInstance, editorTick]);
 
-  // Focus view is presentation-only: it never removes or disables cards.
-  // Cards whose anchor falls outside [startBlockIndex, endBlockIndex] are
-  // tagged for a subtle visual dim that mirrors the editor's outside-band
-  // dimming. They remain fully interactive — clickable, editable, deletable.
+  // Focus view drops on-view cards whose anchor falls outside the focused
+  // band, matching the editor's `display: none` on outside blocks. Cards
+  // remain in the side panels (which consume their own data) — only the
+  // in-text omni mirror is filtered. The active/locked distinction is
+  // collapsed here: active === filter; the Outline panel is the only
+  // place that still treats locked differently.
   //
-  // Fold filter (pass 1) runs first and *does* drop cards: folding is an
-  // explicit user gesture to hide content; focus view is not.
+  // Fold filter (pass 1) runs first: cards in a collapsed section are
+  // dropped outright, independent of focus.
   const displayedItems: OmniItem[] = useMemo(() => {
     const doc = editorInstance?.state.doc ?? null;
 
@@ -625,29 +627,21 @@ export function OmniHost(p: OmniHostProps) {
       }
     }
 
-    // Pass 2: outside-focus tagging (visual only).
+    // Pass 2: focus filter.
     const fs = p.focusState;
     if (!fs?.active || !doc) return foldFiltered;
     const { startBlockIndex, endBlockIndex } = fs;
-    return foldFiltered.map((item) => {
-      if (item.pos == null) return item;
+    const out: OmniItem[] = [];
+    for (const item of foldFiltered) {
+      if (item.pos == null) { out.push(item); continue; }
       let bi: number | null = null;
-      try { bi = doc.resolve(item.pos).index(0); } catch { return item; }
-      if (bi == null) return item;
+      try { bi = doc.resolve(item.pos).index(0); } catch { /* stale */ }
+      if (bi == null) { out.push(item); continue; }
       const outside = bi < startBlockIndex || bi > endBlockIndex;
-      if (!outside) return item;
-      return {
-        ...item,
-        content: (
-          <div
-            data-omni-outside-focus="true"
-            style={{ opacity: 0.55, transition: "opacity 200ms ease" }}
-          >
-            {item.content}
-          </div>
-        ),
-      };
-    });
+      if (outside) continue;
+      out.push(item);
+    }
+    return out;
   }, [items, hiddenTopLevel, p.focusState, editorInstance]);
 
   return (

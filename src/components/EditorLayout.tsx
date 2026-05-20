@@ -1934,84 +1934,81 @@ export default function EditorLayout() {
     return () => { editorInstance.off("focus", clearOverride); };
   }, [editorInstance]);
 
-  // ── Focus mode: presentation-only ───────────────────────────────
-  // Focus view confines the visible band of the editor. It is a pure
-  // presentation layer: it never removes cards, blocks clicks, or moves
-  // the selection — except for one explicit one-shot at the moment the
-  // user toggles `locked`.
+  // ── Focus mode ──────────────────────────────────────────────────
+  // Focus view confines the visible band of the editor: when focus is
+  // active, top-level children outside [startBlockIndex, endBlockIndex]
+  // are hidden via `display: none`. The active/locked distinction lives
+  // only in the Outline panel — for the editor itself, active === hide.
   //
-  // Mechanism: a single static stylesheet plus a `data-virgil-focus-
-  // outside` attribute stamped on each top-level child of the editor
-  // that falls outside [startBlockIndex, endBlockIndex]. Stamps are
-  // re-applied on every PM transaction so they survive footnote-atom
-  // insertion, paragraph splits, drag reorders, etc. — anything that
-  // would have shifted the old nth-child indices.
+  // Mechanism: an injected <style> tag with nth-child selectors. We
+  // can't stamp a data attribute on the children themselves because
+  // ProseMirror's DOM reconciliation strips classes/attrs from its
+  // managed nodes. A <style> tag is outside the editor and immune.
+  //
+  // The stylesheet is rebuilt only when the focus range, the lock state,
+  // or the top-level child count change — not on every transaction.
   const focusStyleRef = useRef<HTMLStyleElement | null>(null);
   const focusStateRef = useRef(focusMode.state);
   focusStateRef.current = focusMode.state;
   const prevLockedRef = useRef(false);
 
-  // Inject the single static stylesheet once.
+  // Track the top-level child count so we rebuild the stylesheet when
+  // blocks are added/removed (only docChanged transactions can change
+  // it, so listening on `update` is sufficient).
+  const [editorChildCount, setEditorChildCount] = useState(0);
   useEffect(() => {
-    if (focusStyleRef.current) return;
+    if (!editorInstance) return;
+    let editorDom: HTMLElement | null = null;
+    try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
+    if (!editorDom) return;
+    setEditorChildCount(editorDom.children.length);
+    const onUpdate = () => {
+      if (!editorDom) return;
+      setEditorChildCount(editorDom.children.length);
+    };
+    editorInstance.on("update", onUpdate);
+    return () => { editorInstance.off("update", onUpdate); };
+  }, [editorInstance]);
+
+  useEffect(() => {
+    // Tear down any previous stylesheet.
+    if (focusStyleRef.current) {
+      focusStyleRef.current.remove();
+      focusStyleRef.current = null;
+    }
+
+    const fs = focusMode.state;
+    if (!fs.active || !editorInstance || editorChildCount === 0) return;
+
+    const rules: string[] = [];
+    for (let i = 0; i < editorChildCount; i++) {
+      const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
+      if (outside) {
+        rules.push(`.tiptap > :nth-child(${i + 1}) { display: none !important; }`);
+      }
+    }
+    if (rules.length === 0) return;
+
     const style = document.createElement("style");
     style.setAttribute("data-virgil-focus", "true");
-    style.textContent = [
-      `.tiptap > [data-virgil-focus-outside="true"] { opacity: 0.25; transition: opacity 200ms ease; }`,
-      `.tiptap.virgil-focus-locked > [data-virgil-focus-outside="true"] { display: none; }`,
-    ].join("\n");
+    style.textContent = rules.join("\n");
     document.head.appendChild(style);
     focusStyleRef.current = style;
+
     return () => {
       if (focusStyleRef.current) {
         focusStyleRef.current.remove();
         focusStyleRef.current = null;
       }
     };
-  }, []);
+  }, [editorInstance, focusMode.state, editorChildCount]);
 
-  // Stamp outside-band children and toggle the locked class. Re-stamp
-  // on every transaction so the targeting survives DOM mutation.
+  // One-shot cursor coercion: fires only on the false→true lock
+  // transition, not on every focus-state change. This decouples it
+  // from range moves, expansions, and unlocks — and from any
+  // concurrent card-creation transaction that might race with it.
   useEffect(() => {
     if (!editorInstance) return;
-    let editorDom: HTMLElement | null = null;
-    try { editorDom = editorInstance.view.dom; } catch { editorDom = null; }
-    if (!editorDom) return;
-
-    const stamp = () => {
-      if (!editorDom) return;
-      const fs = focusStateRef.current;
-      const children = editorDom.children;
-      if (!fs.active) {
-        for (let i = 0; i < children.length; i++) {
-          const el = children[i] as HTMLElement;
-          if (el.dataset.virgilFocusOutside) delete el.dataset.virgilFocusOutside;
-        }
-        editorDom.classList.remove("virgil-focus-locked");
-        return;
-      }
-      for (let i = 0; i < children.length; i++) {
-        const el = children[i] as HTMLElement;
-        const outside = i < fs.startBlockIndex || i > fs.endBlockIndex;
-        if (outside) el.dataset.virgilFocusOutside = "true";
-        else if (el.dataset.virgilFocusOutside) delete el.dataset.virgilFocusOutside;
-      }
-      editorDom.classList.toggle("virgil-focus-locked", fs.locked);
-    };
-
-    stamp();
-    // `update` fires only on docChanged transactions — bare selection
-    // moves can't change which top-level blocks exist, so re-stamping
-    // per keystroke was firing on every caret position change too. The
-    // editor.children identity stays stable across mark-only and
-    // selection-only transactions, so this is safe.
-    const onUpdate = () => stamp();
-    editorInstance.on("update", onUpdate);
-
-    // One-shot cursor coercion: fires only on the false→true lock
-    // transition, not on every focus-state change. This decouples it
-    // from range moves, expansions, and unlocks — and from any
-    // concurrent card-creation transaction that might race with it.
     const fs = focusMode.state;
     const nowLocked = fs.active && fs.locked;
     if (nowLocked && !prevLockedRef.current) {
@@ -2032,10 +2029,6 @@ export default function EditorLayout() {
       }
     }
     prevLockedRef.current = nowLocked;
-
-    return () => {
-      editorInstance.off("update", onUpdate);
-    };
   }, [editorInstance, focusMode.state]);
 
   // Current-section breadcrumb: tracks the heading chain of whatever
