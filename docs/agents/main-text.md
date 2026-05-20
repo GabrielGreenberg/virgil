@@ -1,4 +1,4 @@
-<!-- last-verified: b5f6038 2026-05-19 -->
+<!-- last-verified: 9dd0992 2026-05-19 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -51,7 +51,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `SlashPopupExtension` | PM plugin | typing `\` in prose opens an inline popup of Virgil's `VIRGIL_COMMANDS` list (declared in `commands.ts`); arrows + Enter inserts. Suppressed inside an unmatched `{` group or up against another `\name`. State lives in module-level `slashPopupStore`. | `slash-popup.ts` |
 | `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
-| `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. | `expex.ts` |
+| `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. `exampleBlock` content schema is `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*` after 9dd0992 — itemize/enumerate now interleave freely inside an example, with the parser dropping (not fallback-paragraphing) unknown block types so `\vfid{}` / `\vcid{}` markers no longer double on save → reload. | `expex.ts` |
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
 
 Barrel export in [src/lib/tiptap/index.ts](../../src/lib/tiptap/index.ts); also re-exported from [src/lib/tiptap-extensions.ts](../../src/lib/tiptap-extensions.ts).

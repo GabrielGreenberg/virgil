@@ -1,4 +1,4 @@
-<!-- last-verified: b5f6038 2026-05-19 -->
+<!-- last-verified: 9dd0992 2026-05-19 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -37,7 +37,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
 | `useLinkHighlight` / `useCardHoverHighlight` / `useCardSelectionHighlight` | Three-surface hover/selection coupling (text, margin icon, panel card). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
 | `useViewPrefs` | Panel visibility, layout state, placements, all user-layout prefs |
-| `usePersistentState` | IndexedDB persistence abstraction |
+| `usePersistentState` | IndexedDB persistence abstraction. `update()` debounces `persist()` ~300ms (2dc963d) with flush-on-unmount + flush-on-docId-change so safety isn't traded for the keystroke-cascade savings |
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
 | `useDocumentStyle` | Per-document preamble preset. Reads/writes the style id to the doc settings sidecar and rewrites the preamble in place when the user picks a new style |
@@ -54,6 +54,17 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useUpdateAvailable` | Service-worker update polling; exposes a "new version available" flag that drives the in-app refresh banner (per-folder skill sync) |
 | `useAutoAddLibraryEntriesForCitations` | Watches new citation keys in the doc and auto-adds matching entries from the user's Virgil Library into the paper's bibliography (after the bibliography-search redesign in 91f253c / 240bfda) |
 | `useEditorUIState` | Per-doc UI state hook factored out of EditorPane — tracks click-time selection / focus-mode / hover state etc. that several sibling hooks consume |
+
+## Editor hot-path conventions (2dc963d)
+
+Per-keystroke perf regressions chase one anti-pattern: a synchronous TipTap subscriber that does a doc traversal / LaTeX serialization / forced layout read / IndexedDB write / wide-tree React setter. The 2dc963d refactor codifies the shape of a well-behaved hot-path subscriber:
+
+- **Subscribe to `update`, not `transaction`/`selectionUpdate`**, and gate on `tr.docChanged` so mark-only / selection-only transactions don't trigger a layout-reading recompute (see `LinkConnector`, the EditorLayout focus-mode stamp).
+- **RAF-batch any compute that reads layout** (`useMarginalia.compute()`, `Marginalia` host-detection notify, `SelectionDragHandle` placement, `ActionsStripButton` tick, `EditorMirror.updateState()`).
+- **Debounce React state setters** that fan out via useMemos (`docVersion` in EditorPane and `editorDocVersion` in EditorLayout both ~100ms; `usePersistentState.update()` ~300ms with flush-on-unmount/docId-change).
+- **WeakMap-memoize per-node serialization** keyed on the immutable PM node (`getExamples()` runs once per edited example block instead of N-per-keystroke).
+- **`useRef` instead of `useState`** for values that are only read on transitions (`lastEditTime` → `pdfStale`); avoids a full re-render per character.
+- **Lazy hook activation**: `useLibraryMasterBib(enabled)` — pass `false` until the doc actually has unresolved citation keys; the hook stays mounted (no conditional-hook violation) but skips the citation-js parse. `catalog-store` polling is refcounted via a single shared interval, zero polling when no consumers are mounted.
 
 ## Persistence layers
 
