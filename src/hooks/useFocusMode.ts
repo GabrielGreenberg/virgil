@@ -74,7 +74,7 @@ export function useFocusMode(docId: string | null) {
     docId,
     "focus.json",
     INITIAL,
-    { migrate: migrateFocusState, errorLabel: "focus" },
+    { migrate: migrateFocusState, errorLabel: "focus", debounceMs: 0 },
   );
 
   const activate = useCallback(

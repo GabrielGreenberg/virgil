@@ -4,7 +4,6 @@ import {
   useState,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   type Dispatch,
   type SetStateAction,
@@ -90,16 +89,29 @@ export function usePersistentState<S>(
   const pendingRef = useRef<S | null>(null);
   const pendingTimerRef = useRef<number | null>(null);
 
+  // Tracks whether the user has mutated state via `update()` since the
+  // mount-effect loader was last started. Prevents the loader's async
+  // `.then()` from stomping a user's change with the (now-stale) on-disk
+  // value when the user interacts before the load completes. Reset on
+  // `docId`/`handle` change so the new doc's load is allowed to populate
+  // state on switch.
+  const hasMutatedRef = useRef(false);
+
   // The write handle is pinned to the docId's currently-active
-  // pipeline. If the user switches docs, the pipeline ends and this
-  // handle becomes stale; subsequent writes throw StalePipelineError
-  // and are dropped. Fresh handle per render that sees a new docId.
-  const handle = useMemo(
+  // pipeline. We resolve it live on every write rather than via
+  // `useMemo` — at hook-construction time the parent component runs
+  // *before* its <DocPipeline> child registers in the active registry,
+  // so a memoized handle captured during the first render is stuck at
+  // null even after the pipeline becomes available. Reading it fresh
+  // in `persist` (and the loader's write-back branch) sidesteps that
+  // ordering issue without changing the rest of the lifecycle.
+  const resolveHandle = useCallback(
     () => (docId ? getActiveHandle(docId) : null),
     [docId],
   );
 
   useEffect(() => {
+    hasMutatedRef.current = false;
     let cancelled = false;
     if (!docId) {
       setState(defaultValue);
@@ -115,10 +127,12 @@ export function usePersistentState<S>(
     readSidecarIfExists<S>(docId, filename)
       .then((raw) => {
         if (cancelled || raw === null) return;
+        if (hasMutatedRef.current) return;
         const migrated = migrate ? migrate(raw) : raw;
         setState(migrated);
-        if (persistMigrationOnLoad && handle) {
-          writeSidecar(handle, filename, migrated).catch(() => {});
+        if (persistMigrationOnLoad) {
+          const h = resolveHandle();
+          if (h) writeSidecar(h, filename, migrated).catch(() => {});
         }
       })
       .catch(() => {});
@@ -129,19 +143,20 @@ export function usePersistentState<S>(
     // be module-level constants. We intentionally only track `docId` so a
     // document switch reloads but a re-render does not.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId, handle]);
+  }, [docId, resolveHandle]);
 
   const persist = useCallback(
     async (s: S) => {
-      if (!handle) return;
+      const h = resolveHandle();
+      if (!h) return;
       try {
-        await writeSidecar(handle, filename, s);
+        await writeSidecar(h, filename, s);
       } catch (err) {
         if (isStalePipelineError(err)) return;
         console.error(`Failed to save ${errorLabel ?? filename}:`, err);
       }
     },
-    [handle, filename, errorLabel],
+    [resolveHandle, filename, errorLabel],
   );
 
   // Fire the pending write synchronously (the persist itself stays
@@ -160,6 +175,7 @@ export function usePersistentState<S>(
 
   const update = useCallback(
     (fn: (prev: S) => S) => {
+      hasMutatedRef.current = true;
       setState((prev) => {
         const next = fn(prev);
         if (debounceMs <= 0) {
