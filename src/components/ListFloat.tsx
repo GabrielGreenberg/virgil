@@ -26,7 +26,6 @@ import {
   DisplayMath,
   Footnote,
   LatexComment,
-  ArchiveMarker,
   Citation,
   LabelRef,
   LatexCommandMark,
@@ -46,8 +45,6 @@ import {
 import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
-import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
-import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
@@ -94,7 +91,6 @@ export function ListFloat({
   editorRef: RefObject<EditorHandle | null>;
 }) {
   const popped = usePoppedCards();
-  const dragHandleMenu = useDragHandleMenu();
   const mainEditor = editorRef.current?.getEditor() ?? null;
 
   // Read the list once to seed the float editor. After mount, the float
@@ -147,8 +143,7 @@ export function ListFloat({
       DisplayMath,
       Footnote,
       LatexComment,
-      ArchiveMarker,
-      Citation,
+          Citation,
       LabelRef,
       LatexCommandMark,
       AiRequestMarker,
@@ -289,43 +284,6 @@ export function ListFloat({
           <SourceMissingBanner kind="list" onClose={() => popped?.close(cardKey)} />
         ) : null}
         <div className="par-float-body heading-float-body flex-1 overflow-auto px-8 py-4 relative">
-          {/* Drag handle for the whole list. Same shape as HeadingFloat's
-              section handle — grab to drop the list back into the main
-              editor via the MIME_PAR_CAPTURE handler, or click for the
-              action menu. */}
-          <div
-            className="heading-drag-handle heading-float-section-handle"
-            aria-hidden="true"
-            title="Drag list or click for actions"
-            draggable
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              const rect = e.currentTarget.getBoundingClientRect();
-              dragHandleMenu?.open(
-                { kind: "paragraph", paragraphId: uuid },
-                rect,
-              );
-            }}
-            onDragStart={(e) => {
-              e.stopPropagation();
-              const dt = e.dataTransfer;
-              if (!dt) return;
-              dt.setData(MIME_PAR_CAPTURE, JSON.stringify({ uuid }));
-              const text = floatEditor?.getText() ?? "";
-              if (text) dt.setData("text/plain", text);
-              dt.effectAllowed = "copyMove";
-            }}
-          >
-            <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-              <circle cx="3" cy="2" r="1.2" />
-              <circle cx="7" cy="2" r="1.2" />
-              <circle cx="3" cy="7" r="1.2" />
-              <circle cx="7" cy="7" r="1.2" />
-              <circle cx="3" cy="12" r="1.2" />
-              <circle cx="7" cy="12" r="1.2" />
-            </svg>
-          </div>
           <EditorContent editor={floatEditor} />
         </div>
       </div>

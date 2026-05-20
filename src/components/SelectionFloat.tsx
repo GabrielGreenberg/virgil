@@ -16,8 +16,6 @@
  *    deleted), a banner appears in the float and sync pauses. Undo in
  *    main can restore the source — the float doesn't dispose its range
  *    ref, so a recovery is automatic.
- *  - Dragging the float emits MIME_TEXT_CAPTURE carrying the *live*
- *    range so panel drops still hit the right place after edits.
  */
 
 import {
@@ -34,7 +32,6 @@ import {
   InlineMath,
   Footnote,
   LatexComment,
-  ArchiveMarker,
   Citation,
   LabelRef,
   LatexCommandMark,
@@ -47,9 +44,7 @@ import {
 import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
-import { MIME_TEXT_CAPTURE } from "@/hooks/usePanelCapture";
 import { getSelectionFloatData, updateSelectionFloatRange } from "./selection-floats";
-import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { EditorHandle } from "./Editor";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
@@ -64,7 +59,6 @@ export function SelectionFloat({
   editorRef: RefObject<EditorHandle | null>;
 }) {
   const popped = usePoppedCards();
-  const dragHandleMenu = useDragHandleMenu();
   const mainEditor = editorRef.current?.getEditor() ?? null;
   const floatId = `sel:${selectionFloatId}`;
 
@@ -157,7 +151,6 @@ export function SelectionFloat({
       InlineMath,
       Footnote,
       LatexComment,
-      ArchiveMarker,
       Citation,
       LabelRef,
       LatexCommandMark,
@@ -307,83 +300,6 @@ export function SelectionFloat({
           <div className="par-title-wrapper has-text par-float-paragraph">
             <div className="par-body-container">
               <EditorContent editor={floatEditor} />
-              <div
-                className="par-drag-handle"
-                aria-hidden="true"
-                title="Drag selection or click for actions"
-                draggable
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const live = rangeRef.current;
-                  if (!live || !seed.paragraphId) return;
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  dragHandleMenu?.open(
-                    {
-                      kind: "selection",
-                      paragraphId: seed.paragraphId,
-                      from: live.from,
-                      to: live.to,
-                    },
-                    rect,
-                  );
-                }}
-                onDragStart={(e) => {
-                  e.stopPropagation();
-                  const dt = e.dataTransfer;
-                  if (!dt) return;
-                  const live = rangeRef.current;
-                  if (!live) return;
-                  // MIME_TEXT_CAPTURE payload matches usePanelCapture.onDrop's
-                  // parser — drops the *live* selection range out of the
-                  // main editor and into the receiving panel.
-                  dt.setData(
-                    MIME_TEXT_CAPTURE,
-                    JSON.stringify({
-                      from: live.from,
-                      to: live.to,
-                      paragraphId: seed.paragraphId,
-                    }),
-                  );
-                  if (seed.text) dt.setData("text/plain", seed.text);
-                  dt.effectAllowed = "copyMove";
-                  // Drag image: clone the float's paragraph DOM.
-                  const pmEl = floatEditor?.view?.dom?.querySelector("p");
-                  if (pmEl) {
-                    const ghost = pmEl.cloneNode(true) as HTMLElement;
-                    const cs = window.getComputedStyle(pmEl);
-                    const w = (pmEl as HTMLElement).offsetWidth;
-                    ghost.style.cssText =
-                      "position:absolute;top:-9999px;left:-9999px;" +
-                      (w > 0 ? `width:${w}px;` : "max-width:520px;") +
-                      "opacity:0.5;margin:0;padding:0;background:transparent;" +
-                      `color:${cs.color};` +
-                      `font-family:${cs.fontFamily};` +
-                      `font-size:${cs.fontSize};` +
-                      `font-weight:${cs.fontWeight};` +
-                      `font-style:${cs.fontStyle};` +
-                      `line-height:${cs.lineHeight};` +
-                      `letter-spacing:${cs.letterSpacing};` +
-                      "pointer-events:none;";
-                    document.body.appendChild(ghost);
-                    dt.setDragImage(ghost, 12, 12);
-                    requestAnimationFrame(() => {
-                      try {
-                        document.body.removeChild(ghost);
-                      } catch {}
-                    });
-                  }
-                }}
-              >
-                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-                  <circle cx="3" cy="2" r="1.2" />
-                  <circle cx="7" cy="2" r="1.2" />
-                  <circle cx="3" cy="7" r="1.2" />
-                  <circle cx="7" cy="7" r="1.2" />
-                  <circle cx="3" cy="12" r="1.2" />
-                  <circle cx="7" cy="12" r="1.2" />
-                </svg>
-              </div>
             </div>
           </div>
         </div>

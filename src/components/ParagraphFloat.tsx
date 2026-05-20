@@ -28,7 +28,6 @@ import {
   InlineMath,
   Footnote,
   LatexComment,
-  ArchiveMarker,
   Citation,
   LabelRef,
   LatexCommandMark,
@@ -42,11 +41,9 @@ import { FloatCard } from "./FloatingCards";
 import { usePoppedCards } from "@/hooks/usePoppedCards";
 import { PopoutButton } from "./panel-primitives";
 import { autoSizeInput } from "@/lib/autoSizeInput";
-import { MIME_PAR_CAPTURE } from "@/hooks/usePanelCapture";
 import type { EditorHandle } from "./Editor";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import { FLOAT_WRITE_META, SourceMissingBanner, useFloatMainSync } from "@/lib/float-sync";
-import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import type { Node as PMNode } from "@tiptap/pm/model";
 
 export function ParagraphFloat({
@@ -60,7 +57,6 @@ export function ParagraphFloat({
 }) {
   const popped = usePoppedCards();
   const chrome = useEditorChrome();
-  const dragHandleMenu = useDragHandleMenu();
   const mainEditor = editorRef.current?.getEditor() ?? null;
   const [title, setTitle] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -116,7 +112,6 @@ export function ParagraphFloat({
       InlineMath,
       Footnote,
       LatexComment,
-      ArchiveMarker,
       Citation,
       LabelRef,
       LatexCommandMark,
@@ -319,71 +314,6 @@ export function ParagraphFloat({
             />
             <div className="par-body-container">
               <EditorContent editor={floatEditor} />
-              <div
-                className="par-drag-handle"
-                aria-hidden="true"
-                title="Drag paragraph or click for actions"
-                draggable
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  dragHandleMenu?.open(
-                    { kind: "paragraph", paragraphId: uuid },
-                    rect,
-                  );
-                }}
-                onDragStart={(e) => {
-                  e.stopPropagation();
-                  const dt = e.dataTransfer;
-                  if (!dt) return;
-                  // Tag with paragraph-capture MIME so side panels (archive,
-                  // cuts, etc.) and the main editor's drop handler can act
-                  // on the source paragraph by uuid — same handshake the
-                  // main editor's drag handle uses. Format is JSON so it
-                  // matches usePanelCapture.onDrop's parser.
-                  dt.setData(MIME_PAR_CAPTURE, JSON.stringify({ uuid }));
-                  // Plain-text fallback so dropping into other apps yields
-                  // the paragraph's text.
-                  const text = floatEditor?.getText() ?? "";
-                  if (text) dt.setData("text/plain", text);
-                  dt.effectAllowed = "copyMove";
-                  // Drag image: clone the float's paragraph DOM so the user
-                  // sees the paragraph following the cursor.
-                  const pmEl = floatEditor?.view?.dom?.querySelector("p");
-                  if (pmEl) {
-                    const ghost = pmEl.cloneNode(true) as HTMLElement;
-                    const cs = window.getComputedStyle(pmEl);
-                    const w = (pmEl as HTMLElement).offsetWidth;
-                    ghost.style.cssText =
-                      "position:absolute;top:-9999px;left:-9999px;" +
-                      (w > 0 ? `width:${w}px;` : "max-width:520px;") +
-                      "opacity:0.5;margin:0;padding:0;background:transparent;" +
-                      `color:${cs.color};` +
-                      `font-family:${cs.fontFamily};` +
-                      `font-size:${cs.fontSize};` +
-                      `font-weight:${cs.fontWeight};` +
-                      `font-style:${cs.fontStyle};` +
-                      `line-height:${cs.lineHeight};` +
-                      `letter-spacing:${cs.letterSpacing};` +
-                      "pointer-events:none;";
-                    document.body.appendChild(ghost);
-                    dt.setDragImage(ghost, 12, 12);
-                    requestAnimationFrame(() => {
-                      try { document.body.removeChild(ghost); } catch {}
-                    });
-                  }
-                }}
-              >
-                <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
-                  <circle cx="3" cy="2" r="1.2" />
-                  <circle cx="7" cy="2" r="1.2" />
-                  <circle cx="3" cy="7" r="1.2" />
-                  <circle cx="7" cy="7" r="1.2" />
-                  <circle cx="3" cy="12" r="1.2" />
-                  <circle cx="7" cy="12" r="1.2" />
-                </svg>
-              </div>
             </div>
           </div>
         </div>
