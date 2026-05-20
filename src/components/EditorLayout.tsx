@@ -2586,6 +2586,7 @@ export default function EditorLayout() {
     setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
+    setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedNoteId,
