@@ -4169,18 +4169,6 @@ export default function EditorLayout() {
             openLibraryOuterTab(libId, dropIdx);
           }}
         >
-          {/* VIRGIL logo — vertically centered in the bar to match the
-              "+" menu and the right-cluster buttons. The tab strip
-              itself is items-end (tabs hang from the bottom), so we opt
-              the logo out with self-center. */}
-          <div className="flex items-center self-center gap-1.5 pl-1 pr-2 shrink-0">
-            <h1
-              className="text-base font-semibold tracking-widest"
-              style={{ fontFamily: "var(--font-logo), Cinzel, serif" }}
-            >
-              VIRGIL
-            </h1>
-          </div>
           <TabPlusMenu
             docs={docs}
             openTabIds={openTabs.map((t) => t.id)}
