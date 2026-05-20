@@ -386,9 +386,10 @@ function serializeExampleBlock(node: JSONContent): string {
   const label = (node.attrs?.label as string) || "";
   const labelStr = label ? `\\label{${label}}` : "";
 
-  // Walk children in document order — paragraphs, gloss blocks, and
-  // exampleItemLists can interleave freely. Schema:
-  // `(paragraph | exampleGloss | exampleItemList)*`.
+  // Walk children in document order — paragraphs, gloss blocks,
+  // exampleItemLists, and regular itemize/enumerate lists can interleave
+  // freely. Schema:
+  // `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*`.
   const children = node.content || [];
   const bodyPieces: string[] = [];
   for (const child of children) {
@@ -402,6 +403,8 @@ function serializeExampleBlock(node: JSONContent): string {
       );
       const itemsStr = items.map((it) => serializeExampleItem(it)).join("");
       if (itemsStr) bodyPieces.push(itemsStr.trimEnd());
+    } else if (child.type === "bulletList" || child.type === "orderedList") {
+      bodyPieces.push(serializeNode(child).trimEnd());
     }
   }
   const body = bodyPieces.join("\n");

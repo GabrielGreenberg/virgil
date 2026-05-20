@@ -1898,17 +1898,18 @@ function parseExampleBodyAsBlocks(body: string): JSONContent[] {
   parseBody(subCtx, sub);
   const out: JSONContent[] = [];
   for (const child of sub.content || []) {
-    // Only keep paragraph + exampleGloss children; anything else collapses
-    // to an inline latex-command fallback paragraph.
-    if (child.type === "paragraph" || child.type === "exampleGloss") {
+    if (
+      child.type === "paragraph" ||
+      child.type === "exampleGloss" ||
+      child.type === "bulletList" ||
+      child.type === "orderedList"
+    ) {
       out.push(child);
-      continue;
     }
-    out.push({
-      type: "paragraph",
-      content: [{ type: "text", text: body.trim(), marks: [{ type: "latexCommand" }] }],
-    });
-    break;
+    // Unknown block types are dropped. The previous fallback re-emitted
+    // `body.trim()` as a latex-command paragraph, which leaked every
+    // `\vfid{}` / `\vcid{}` marker back into the source verbatim and
+    // doubled the matched footnotes/citations on every save → reload.
   }
   return out;
 }

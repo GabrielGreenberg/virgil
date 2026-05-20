@@ -129,7 +129,7 @@ export const ExampleBlock = Node.create<ExampleBlockOptions>({
   // demote a middle item out of its list (which splits the list into
   // two). The serializer walks children in document order so the .tex
   // round-trip preserves the layout.
-  content: "(paragraph | exampleGloss | exampleItemList)*",
+  content: "(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*",
   defining: true,
   isolating: true,
   draggable: true,
