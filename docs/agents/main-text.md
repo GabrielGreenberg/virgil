@@ -1,4 +1,4 @@
-<!-- last-verified: 9dd0992 2026-05-19 -->
+<!-- last-verified: 2309137 2026-05-20 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -6,7 +6,9 @@ The main text is a TipTap/ProseMirror editor rendering LaTeX source meaningfully
 
 ## Editor
 
-**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3870 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts the gutter `SelectionActionsMenu` (lightning-bolt button → `ActionsMenuPanel`) at the editor root.
+**[src/components/Editor.tsx](../../src/components/Editor.tsx)** (~3760 lines) wraps TipTap's `useEditor`. It registers all custom extensions, keyboard shortcuts, selection handling, custom plugins, and wires up `onUpdate` → parent. Also mounts the gutter `SelectionActionsMenu` (lightning-bolt button → `ActionsMenuPanel`) at the editor root.
+
+After 2309137 the paragraph schema's `draggable` was flipped to `false` so PM no longer registers root-level paragraph DnD scaffolding; `handleDOMEvents.dragstart` is simplified to swallow residual native browser drags from `contenteditable`. The only surviving text-move paths are drag-to-pop-out (6-dot lift via `SelectionDragHandle` in the main editor margin) and drop-mode (shift-drag on a float header). Strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing are all gone.
 
 After Path A 7.8, the Library Reader mounts the canonical `<EditorPane>` (which wraps `Editor.tsx`), so there is no longer a parallel `library/tiptap/` extension set. PgMarkChip — the only Library-only extension — has been folded into the unified set at [src/lib/tiptap/pgmark.ts](../../src/lib/tiptap/pgmark.ts); it's harmless on docs without `\pgmark{N}`.
 

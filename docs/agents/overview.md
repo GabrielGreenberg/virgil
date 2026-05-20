@@ -1,4 +1,4 @@
-<!-- last-verified: 9dd0992 2026-05-19 -->
+<!-- last-verified: 2309137 2026-05-20 -->
 
 # Virgil Overview
 
@@ -27,7 +27,7 @@ Academic writers working in LaTeX who want to cowork with Claude or another agen
 ## Top-level `src/` map
 
 - `src/app/` — Next.js app router root, global styles (`globals.css`), manifest, layout, dev-only API routes
-- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5360 lines, shell wrapper after Path A 7.8), `EditorPane.tsx` (~5320 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~3880 lines, TipTap wrapper), `panel-primitives.tsx` (~2440 lines, card/panel design system; grew from the panel-header redesign + unified card chrome), `MenuBar.tsx` (~1640 lines, docked menu pod — slimmed in ae15791 when the home Format/Actions popups were dropped). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
+- `src/components/` — React components. Biggest files: `EditorLayout.tsx` (~5140 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode), `EditorPane.tsx` (~5160 lines, canonical editor surface used by both the main app and the Library Reader), `Editor.tsx` (~3760 lines, TipTap wrapper), `panel-primitives.tsx` (~2390 lines; lost the in-card text-drag grip and `onTextDragStart` prop in ec38210), `MenuBar.tsx` (~1640 lines, docked menu pod — slimmed in ae15791 when the home Format/Actions popups were dropped). See `architecture.md` → "EditorPane vs EditorLayout" for the split.
 - `src/hooks/` — React hooks for state management (~50 files)
 - `src/lib/` — Core business logic: LaTeX parse/serialize, TipTap extensions, storage, types (~50 files)
 - `src/links/` — Unified link architecture (link registry, resolvers, types) for cross-references between editor and panel cards

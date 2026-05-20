@@ -1,4 +1,4 @@
-<!-- last-verified: 9dd0992 2026-05-19 -->
+<!-- last-verified: 2309137 2026-05-20 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -59,7 +59,7 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 
 Per-keystroke perf regressions chase one anti-pattern: a synchronous TipTap subscriber that does a doc traversal / LaTeX serialization / forced layout read / IndexedDB write / wide-tree React setter. The 2dc963d refactor codifies the shape of a well-behaved hot-path subscriber:
 
-- **Subscribe to `update`, not `transaction`/`selectionUpdate`**, and gate on `tr.docChanged` so mark-only / selection-only transactions don't trigger a layout-reading recompute (see `LinkConnector`, the EditorLayout focus-mode stamp).
+- **Subscribe to `update`, not `transaction`/`selectionUpdate`**, and gate on `tr.docChanged` so mark-only / selection-only transactions don't trigger a layout-reading recompute (see `LinkConnector`). (The EditorLayout focus-mode logic switched back to a single injected `<style>` tag in 91ce009 — PM doesn't touch `<style>` elements so the rules survive transactions without needing a per-tx stamp pass.)
 - **RAF-batch any compute that reads layout** (`useMarginalia.compute()`, `Marginalia` host-detection notify, `SelectionDragHandle` placement, `ActionsStripButton` tick, `EditorMirror.updateState()`).
 - **Debounce React state setters** that fan out via useMemos (`docVersion` in EditorPane and `editorDocVersion` in EditorLayout both ~100ms; `usePersistentState.update()` ~300ms with flush-on-unmount/docId-change).
 - **WeakMap-memoize per-node serialization** keyed on the immutable PM node (`getExamples()` runs once per edited example block instead of N-per-keystroke).

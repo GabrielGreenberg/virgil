@@ -1,4 +1,4 @@
-<!-- last-verified: 9dd0992 2026-05-19 -->
+<!-- last-verified: 2309137 2026-05-20 -->
 
 # UI Chrome
 
@@ -10,8 +10,8 @@ See `glossary.md` for user-term ↔ code-name mapping.
 
 The orchestrator role is now split across two files:
 
-- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5360 lines) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts ~line 5091, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles ~line 5112), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (vestigial tear-off state — see MenuBar section below).
-- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~5320 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3696), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 3032) / `CardLiftOutline`.
+- **[src/components/EditorLayout.tsx](../../src/components/EditorLayout.tsx)** (~5140 lines, shrank in 2309137 when the strip-icon drops, panel-body drops, and main-editor selection HTML5 drag plumbing were all removed in favor of pop-out + drop-mode) — the **shell wrapper**. Owns tab/file management (`useFiles`), `useViewPrefs` ownership (handed to EditorPane via `viewPrefs` prop), the Virgil bar (~line 4013) and its DocTab/LibraryTab strip, the `activePane` switch (paper / library-outer / doc routing), top-bar dialogs (Preferences, Fonts, Margins, NewDoc, TexFilePicker, DocumentClassMismatch, ManageStyles), the PDF view branch, and the Code view branch. CodeMirror still lives in EditorLayout per Path A D1 (deferred). EditorLayout also still constructs the `detachedActions[]` / `detachedFormatting[]` / `detachedMenus[]` arrays (vestigial tear-off state — see MenuBar section below).
+- **[src/components/EditorPane.tsx](../../src/components/EditorPane.tsx)** (~5160 lines) — the **canonical editor surface** mounted by both the main app's doc branch (from EditorLayout) and the Library Reader (from `library/components/PaperRender.tsx`). EditorPane owns per-doc hooks (`useDocument`, `useLatexCompile`, `useNotes`, `useTodos`, `useCitations`, `useCollab`, `usePristineCardManager`, …), the docked `MenuBar` (~line 3602), the panel rail (`PaneRail` left + right), the floating-panel block, and the canonical `DockOutline` (~line 2965) / `CardLiftOutline`.
 
 When anything touches UI layout, chrome, or panel placement: if it's a tab/dialog/Virgil-bar concern → EditorLayout; if it's a per-document chrome / panel / popout / MenuBar concern → EditorPane. The full split is documented in `architecture.md` → "EditorPane vs EditorLayout".
 
@@ -39,22 +39,22 @@ EditorPane (canonical editor surface)
 ├─ PaneRail side="left" (icon strip, OmniFilterMenu)
 ├─ PanelColumn side="left" (active panel(s); top/bottom split; MarginActionToolbar overlay)
 ├─ Editor column
-│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3696
-│   ├─ MarginActionToolbar (left + right action segments)            — ~line 3561
+│   ├─ MenuBar — docked inline at sticky [data-tool-strip="text"]   — EditorPane.tsx:3602
+│   ├─ MarginActionToolbar (left + right action segments)            — ~line 3467
 │   ├─ VirgilEditor (the TipTap editor itself)
 │   ├─ SelectionActionsMenu (gutter lightning-bolt; click to expand ActionsMenuPanel)
 │   ├─ Marginalia gutters (left + right of text)
 │   ├─ FloatCard portals (popped-out cards)
 │   ├─ FloatingPanel portals (popped-out panels)
 │   ├─ ParagraphFloat / HeadingFloat / example-block / texBlock portals (popped-out blocks)
-│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:3032
+│   └─ DockOutline (body-portaled drag-target outline, suppressed in zen) — EditorPane.tsx:2965
 ├─ PanelColumn side="right"
 └─ PaneRail side="right" (icon strip, OmniFilterMenu)
 ```
 
 ## Tool strips (left & right)
 
-Rendered by `PaneRail` inside `EditorPane.tsx` (~line 4453 for `data-strip-side`). Identical structure on both sides:
+Rendered by `PaneRail` inside `EditorPane.tsx` (~line 4333 for `data-strip-side`). Identical structure on both sides:
 
 1. **View control pod** (grouped buttons at top):
    - Collapse/expand sidebar
@@ -117,7 +117,7 @@ Each omni-eligible panel owns its own `omni.tsx` next to the panel (e.g. [src/pa
 
 [src/components/MenuBar.tsx](../../src/components/MenuBar.tsx) — default export `MenuBar`.
 
-Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3696). No portal. 24px tall, right-aligned (slimmed from 32px and re-aligned in ae15791). Bare icons sit on the canvas — no enclosing pod, no grab handle, no rotation knob.
+Mounted **inline** at the top of the editor column inside `EditorPane.tsx` (~line 3602). No portal. 24px tall, right-aligned (slimmed from 32px and re-aligned in ae15791). Bare icons sit on the canvas — no enclosing pod, no grab handle, no rotation knob.
 
 ae15791 dropped the home Format and Actions popovers from the docked bar. The actions/formatting vocabulary now lives in `SelectionActionsMenu` (auto-popping right-of-selection, see below) and `DragHandleMenu` (click-the-handle popover on the left of each paragraph). `AttachedPopover` in [MenuBar.tsx:677](../../src/components/MenuBar.tsx) is unused; `DetachedMenuToolbar` / `DetachedFormattingToolbar` / `DetachedActionsToolbar` still render via portals from the EditorLayout state arrays (`detachedMenus[]`, `detachedFormatting[]`, `detachedActions[]`), but no UI path currently spawns new entries. Reader passes no `menuBar` bundle, so docked MenuBar and detached toolbars stay dormant for paper renders.
 
@@ -210,6 +210,7 @@ Behavior: click anchor toggles; fixed-positioned below-right by default; flips a
 - Popped-out card state centralized in `usePoppedCards()` hook reading `prefs.poppedOutCards`. EditorLayout iterates and renders each.
 - **Block popouts** (paragraph, heading, example) ride the same machinery but for editor blocks instead of card kinds. Keys are `paragraph:${uuid}`, `heading:${uuid}`, and `example:${uuid}`. `ParagraphFloat` (a single paragraph in its own editor with editable title + drag handle), `HeadingFloat` (a heading + the section body it dominates), and example floats (popped via the gutter button on the `exampleBlock` node-view) live in `src/components/`; the body-range extraction is in [src/lib/section-range.ts](../../src/lib/section-range.ts). The example-block popout is wired through `ExampleBlockOptions` on the expex extension ([src/lib/tiptap/expex.ts](../../src/lib/tiptap/expex.ts)).
 - **Spawn position**: when a card or block is popped out for the first time the floating window opens near the trigger element rather than at a fixed anchor. Logic in [src/components/editor-layout/spawn-position.ts](../../src/components/editor-layout/spawn-position.ts); position is forgotten on close so the next pop-out re-spawns near the (possibly new) trigger.
+- **No interior drag grip**: 5f2d357 dropped the 6-dot grip inside `ParagraphFloat` / `HeadingFloat` / `ListFloat` / `SelectionFloat`. The float header is the only drag/redock affordance now (shift-drag → drop-mode). Companion to ec38210, which removed the analogous `onTextDragStart` grip beside each `RichTextField` in `EditableCard`. Surviving text-move paths after 2309137: drag-to-pop-out (6-dot lift in the main-editor margin via `SelectionDragHandle`) and drop-mode (shift-drag on a float header).
 
 ## Per-panel text-size stepper
 
@@ -245,6 +246,12 @@ Pull-from-stack flow (thumbnail → editor):
 Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation / quotation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
 
 Hidden in zen mode (`viewPrefs.zenMode`).
+
+## Focus view
+
+Confines the visible band of the editor to `[startBlockIndex, endBlockIndex]`. State in [src/hooks/useFocusMode.ts](../../src/hooks/useFocusMode.ts); the view-prefs stash carries `{active, locked, startBlockIndex, endBlockIndex}`. Mechanism (after 91ce009): EditorLayout injects a single `<style>` tag with `nth-child` rules — PM doesn't touch `<style>` elements so the rules survive ProseMirror's DOM reconciliation; the stylesheet is rebuilt only when the range or top-level child count changes. The omni-host's pass-2 filter drops any on-view card whose anchor falls outside the band (list-level filter, alongside the existing fold-section drop). Outline panel uses the same band logic. The Active/Locked distinction collapses for the editor — active === hide outside; lock is now mostly a guard against accidentally exiting via caret motion.
+
+This is iteration 3 on focus mode: 1d9ed09 made it presentation-only (dimming, no hide), 2dc963d kept that frame, then 91ce009 reverted to band-confined hide because the dim-only mode left users with no clear visual signal of where the focus band ended.
 
 ## Dock-target outline
 
