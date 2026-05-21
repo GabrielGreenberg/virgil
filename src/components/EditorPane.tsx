@@ -139,6 +139,12 @@ import { DragHandleMenuProvider, type DragHandleMenuApi } from "./editor-layout/
 import { DragHandleMenu } from "./DragHandleMenu";
 import { HeadingTypeMenu, type HeadingTypePick } from "./HeadingTypeMenu";
 import { useConfirmDialog } from "./ConfirmDialog";
+import {
+  buildMarginItemHandlers,
+  deleteMarginItem,
+  type MarginItemHandlers,
+  type MarginItemKind,
+} from "@/lib/cards/delete-margin-item";
 import { resolveStyle } from "@/lib/style-library";
 import { extractDocumentClass } from "@/lib/document-class";
 import { PanelColumn, type PanelSlot } from "./editor-layout/panel-column";
@@ -186,7 +192,6 @@ import { useDragGap } from "@/hooks/useDragGap";
 import {
   getLinkedParagraphIds,
   getTextAnchor,
-  removeLinkedAnchor,
   createLinkedAnchor,
   updateLinkedAnchorCard,
 } from "@/links/links";
@@ -1487,6 +1492,55 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     // the code-editor work moves into EditorPane, this routes there.
   }, []);
 
+  // ── Confirm-dialog instance backing the shared `deleteMarginItem` ──
+  // Surfaces the "This item has text. Delete it?" warning when the user
+  // deletes the last anchor on a non-empty card via the gutter marker.
+  // Distinct from `confirmHeadingDelete` below so the two dialogs can
+  // coexist independently.
+  const { confirm: confirmMarginItemDelete, dialog: confirmMarginItemDeleteDialog } =
+    useConfirmDialog();
+
+  // Per-kind handler bundles for the shared margin-item delete utility.
+  // See `src/lib/cards/delete-margin-item.ts` — collapses the kind→hook
+  // wiring that was previously duplicated inline in every onDelete.
+  const marginItemHandlers = useMemo<Record<MarginItemKind, MarginItemHandlers>>(
+    () =>
+      buildMarginItemHandlers({
+        quotations: quotationsHook,
+        notes: notesHook,
+        archive: archiveHook,
+        cutter: cutterHook,
+        todos: todosHook,
+        revisions: revisionsHook,
+      }),
+    [
+      quotationsHook.groups, quotationsHook.removeParagraphId, quotationsHook.deleteGroup,
+      notesHook.notes, notesHook.removeNoteParagraphId, notesHook.deleteNote,
+      archiveHook.snippets, archiveHook.removeParagraphId, archiveHook.deleteSnippet,
+      cutterHook.cards, cutterHook.removeCardParagraphId, cutterHook.deleteCard,
+      todosHook.items, todosHook.removeParagraphId, todosHook.deleteItem,
+      revisionsHook.cards, revisionsHook.removeCardParagraphId, revisionsHook.deleteCard,
+      // The hook objects themselves change identity on every render; using
+      // their individual fields above keeps this memo stable across renders
+      // that don't actually change card state.
+      // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional, see above
+    ],
+  );
+
+  const handleMarginItemDelete = useCallback(
+    (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
+      deleteMarginItem({
+        kind,
+        cardId,
+        paragraphId,
+        anchorId,
+        handlers: marginItemHandlers[kind],
+        confirm: confirmMarginItemDelete,
+        editor: innerRef.current?.getEditor() ?? null,
+      }),
+    [marginItemHandlers, confirmMarginItemDelete],
+  );
+
   // ── Marginalia markers ───────────────────────────────────────────
   // Walks every card hook (notes, quotations, archive, todos, cutter,
   // revisions) plus the live latex-error list and emits one
@@ -1515,7 +1569,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setSelectedQuotationGroupId(g.id);
             setActivePanelKindBySide("quotations");
           },
-          onDelete: () => quotationsHook.removeParagraphId(g.id, pid),
+          onDelete: () => { void handleMarginItemDelete("quote", g.id, pid); },
         });
       }
     }
@@ -1538,9 +1592,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setActivePanelKindBySide("notes");
           },
           onDelete: () => {
-            const ed = innerRef.current?.getEditor();
-            if (ed && anchor) removeLinkedAnchor(ed, anchor.anchorId);
-            notesHook.removeNoteParagraphId(n.id, pid);
+            void handleMarginItemDelete("note", n.id, pid, anchor?.anchorId);
           },
           anchorId: anchor?.anchorId,
         });
@@ -1563,7 +1615,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setSelectedArchiveId(snippet.id);
             setActivePanelKindBySide("archive");
           },
-          onDelete: () => archiveHook.removeParagraphId(snippet.id, pid),
+          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
         });
       }
     }
@@ -1596,17 +1648,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
           });
         } catch { /* ignore */ }
         if (!paragraphId) continue;
+        const pid: string = paragraphId;
         result.push({
-          id: `${r.id}:${paragraphId}`,
+          id: `${r.id}:${pid}`,
           entityId: r.id,
           entityKind: r.kind === "suggestion" ? "revision-suggestion" : "comment",
           type: "revision",
-          paragraphId,
+          paragraphId: pid,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: () => {
             setSelectedCommentId(selectedCommentId === r.id ? null : r.id);
             setActivePanelKindBySide("revisions");
+          },
+          onDelete: () => {
+            void handleMarginItemDelete("revision", r.id, pid, anchorId);
           },
         });
       }
@@ -1633,9 +1689,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setActivePanelKindBySide("cutter");
           },
           onDelete: () => {
-            const ed2 = innerRef.current?.getEditor();
-            if (ed2 && cardAnchor) removeLinkedAnchor(ed2, cardAnchor.anchorId);
-            cutterHook.removeCardParagraphId(c.id, pid);
+            void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
         });
@@ -1659,7 +1713,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             setSelectedTodoId(item.id);
             setActivePanelKindBySide("todo");
           },
-          onDelete: () => todosHook.removeParagraphId(item.id, pid),
+          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
         });
       }
     }
@@ -1687,16 +1741,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     return result;
   }, [
     notesHook.notes,
-    notesHook.removeNoteParagraphId,
     quotationsHook.groups,
-    quotationsHook.removeParagraphId,
     archiveHook.snippets,
-    archiveHook.removeParagraphId,
     todosHook.items,
-    todosHook.removeParagraphId,
     cutterHook.cards,
-    cutterHook.removeCardParagraphId,
     revisionsHook.cards,
+    handleMarginItemDelete,
     allLatexErrors,
     dismissedErrorIds,
     paragraphByErrorId,
@@ -1723,6 +1773,21 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     },
     [effectivePlacements],
   );
+
+  // Snapshot of paragraph UUIDs that host at least one gutter marker.
+  // Read by the `MarginaliaAnchorGuard` ProseMirror plugin (see
+  // `src/lib/tiptap/linked-anchor.ts`) to preserve a placeholder
+  // paragraph with the same UUID when the user deletes the host
+  // paragraph — anchored cards stay attached through incidental
+  // editor edits. The plugin auto-discovers UUIDs that host
+  // `linkedAnchor` marks in addition to this set, so cards without a
+  // gutter icon (highlights) are also protected.
+  const anchoredUuidsRef = useRef(new Set<string>());
+  useMemo(() => {
+    const set = new Set<string>();
+    for (const m of marginaliaMarkers) set.add(m.paragraphId);
+    anchoredUuidsRef.current = set;
+  }, [marginaliaMarkers]);
 
   // Divider class derived from active divider levels — composes with the
   // editor-pane-column className below. Empty when no menuBar (Reader).
@@ -3892,6 +3957,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     highlightRange={highlightRange}
                     editable={editable}
                     onEditorReady={handleEditorReady}
+                    anchoredUuidsRef={anchoredUuidsRef}
                     paragraphIsPoppedRef={paragraphIsPoppedRef}
                     onToggleParagraphPopout={handleToggleParagraphPopout}
                     onLiftParagraph={handleLiftParagraph}
@@ -4192,6 +4258,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             />
           )}
           {confirmHeadingDeleteDialog}
+          {confirmMarginItemDeleteDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
         </SelectionsProvider>

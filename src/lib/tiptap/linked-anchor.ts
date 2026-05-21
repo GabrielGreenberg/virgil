@@ -153,10 +153,19 @@ export const LinkedAnchorGuard = Extension.create({
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MarginaliaAnchorGuard — prevents paragraph deletion from orphaning
-// margin elements. When a UUID-bearing paragraph vanishes and it has
-// marginalia anchored to it, the plugin re-inserts an empty paragraph
-// with the same UUID so the margin elements stay visible.
+// MarginaliaAnchorGuard — prevents paragraph deletion from orphaning the
+// cards attached to it. When a UUID-bearing block vanishes and it had
+// any kind of card anchor — a gutter marginalia marker (tracked via the
+// shared `anchoredUuidsRef`) OR an inline `linkedAnchor` mark inside it
+// (notes / cuts / revisions text-range anchors) — the plugin re-inserts
+// an empty paragraph carrying the same UUID at the deletion site. The
+// card's `links[].anchor.paragraphIds` entry therefore stays valid and
+// no card silently goes orphan through editor edits.
+//
+// To remove a card entirely, the user explicitly deletes it from the
+// gutter (see `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`)
+// or via the panel's trash button. This is the unified contract behind
+// "cut down on unanchored cards".
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const MarginaliaAnchorGuard = Extension.create<{
@@ -178,15 +187,36 @@ export const MarginaliaAnchorGuard = Extension.create<{
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
           const anchored = anchoredUuidsRef.current;
-          if (anchored.size === 0) return null;
+          // Cheap short-circuit: if nothing in the doc is anchored, there
+          // is nothing to preserve.
+          const oldHasAnchorIds = collectAnchorIds(oldState.doc).size > 0;
+          if (anchored.size === 0 && !oldHasAnchorIds) return null;
 
-          // Collect UUIDs in old and new states
-          const oldUuids = new Set<string>();
-          oldState.doc.descendants((node) => {
+          // Walk oldState: collect every UUID-bearing block with its
+          // start position and whether it hosted a linkedAnchor mark.
+          // A block is worth preserving if it had a gutter marker
+          // (anchored set) OR an inline text-range anchor (hasLinkedAnchor).
+          type OldBlock = { uuid: string; pos: number; hasLinkedAnchor: boolean };
+          const oldBlocks: OldBlock[] = [];
+          oldState.doc.descendants((node, pos) => {
             const uuid = node.attrs?.uuid as string | undefined;
-            if (uuid) oldUuids.add(uuid);
+            if (!uuid) return true;
+            let hasLinkedAnchor = false;
+            node.descendants((child) => {
+              if (hasLinkedAnchor) return false;
+              if (
+                child.isText &&
+                child.marks.some((m) => m.type.name === "linkedAnchor")
+              ) {
+                hasLinkedAnchor = true;
+                return false;
+              }
+              return true;
+            });
+            oldBlocks.push({ uuid, pos, hasLinkedAnchor });
             return true;
           });
+          if (oldBlocks.length === 0) return null;
 
           const newUuids = new Set<string>();
           newState.doc.descendants((node) => {
@@ -195,23 +225,58 @@ export const MarginaliaAnchorGuard = Extension.create<{
             return true;
           });
 
-          // Find anchored UUIDs that vanished
-          const vanished: string[] = [];
-          for (const uuid of oldUuids) {
-            if (!newUuids.has(uuid) && anchored.has(uuid)) {
-              vanished.push(uuid);
+          const vanished: OldBlock[] = [];
+          for (const ob of oldBlocks) {
+            if (newUuids.has(ob.uuid)) continue;
+            if (anchored.has(ob.uuid) || ob.hasLinkedAnchor) {
+              vanished.push(ob);
             }
           }
           if (vanished.length === 0) return null;
 
-          // Re-insert empty paragraphs at the end of the document
-          const tr = newState.tr;
           const paraType = newState.schema.nodes.paragraph;
           if (!paraType) return null;
+          const tr = newState.tr;
+          const docChangedMappings = transactions
+            .filter((t) => t.docChanged)
+            .map((t) => t.mapping);
 
-          for (const uuid of vanished) {
-            const emptyPara = paraType.create({ uuid });
-            tr.insert(tr.doc.content.size, emptyPara);
+          // Map each vanished block's old start-position forward through
+          // the transaction mapping to find where to drop the placeholder.
+          // Bias `-1` keeps us to the left of any deletion so the
+          // placeholder lands at the deletion site, not past it.
+          // Defensive fallback to end-of-doc if the result is out of range.
+          type InsertSpec = { pos: number; uuid: string };
+          const inserts: InsertSpec[] = [];
+          const docSize = tr.doc.content.size;
+          for (const v of vanished) {
+            let pos = v.pos;
+            for (const m of docChangedMappings) {
+              pos = m.map(pos, -1);
+            }
+            if (!Number.isFinite(pos) || pos < 0) pos = docSize;
+            if (pos > docSize) pos = docSize;
+            inserts.push({ pos, uuid: v.uuid });
+          }
+
+          // Insert from the highest position backwards so each insert
+          // doesn't shift the others. Earlier inserts at the same pos
+          // stack in document order.
+          inserts.sort((a, b) => b.pos - a.pos);
+          for (const spec of inserts) {
+            const emptyPara = paraType.create({ uuid: spec.uuid });
+            const insertPos = Math.min(spec.pos, tr.doc.content.size);
+            try {
+              tr.insert(insertPos, emptyPara);
+            } catch {
+              // Schema may reject (e.g. position inside a non-block-
+              // accepting container). Fall back to the end of the doc.
+              try {
+                tr.insert(tr.doc.content.size, emptyPara);
+              } catch {
+                /* give up on this one — better than crashing the doc */
+              }
+            }
           }
           tr.setMeta("addToHistory", false);
           return tr.steps.length > 0 ? tr : null;

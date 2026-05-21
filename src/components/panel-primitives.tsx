@@ -28,6 +28,7 @@ import { useDragGap } from "@/hooks/useDragGap";
 import { useTabIndent } from "@/hooks/useTabIndent";
 import { autoSizeInput } from "@/lib/autoSizeInput";
 import ConfirmDialog from "./ConfirmDialog";
+import { hasJsonContent } from "@/lib/cards/has-content";
 import RichTextField from "./RichTextField";
 import { useEditorChrome } from "./editor-layout/chrome-context";
 import PanelTextSizeRow from "./PanelTextSizeRow";
@@ -726,16 +727,10 @@ export function EditableCard({
     ? collabCtx.getCardSelections(panelKey, id)
     : [];
 
-  /** Check whether the value has any visible text content. */
-  const hasContent = useCallback(() => {
-    if (!value) return false;
-    const walk = (node: any): boolean => {
-      if (node.text && node.text.trim()) return true;
-      if (node.content) return node.content.some(walk);
-      return false;
-    };
-    return walk(value);
-  }, [value]);
+  /** Check whether the value has any visible text content. Delegates to
+   *  the shared `hasJsonContent` helper so the same predicate drives both
+   *  this trash-button flow and `deleteMarginItem`'s confirm decision. */
+  const hasContent = useCallback(() => hasJsonContent(value), [value]);
 
   /** Delete with confirmation if there is content. */
   const tryDelete = useCallback(() => {

@@ -143,7 +143,10 @@ export interface MarginaliaMarker {
    *  `clickY` is the viewport Y of the clicked gutter marker, used by
    *  the panel host to align the opened card next to the source. */
   onClick?: (clickY?: number) => void;
-  /** Remove this anchor (not the underlying data) */
+  /** Delete this anchor. If it's the last anchor on the underlying card,
+   *  delete the card (with a confirm dialog when the card has text); if
+   *  other anchors remain, just drop this paragraph link. Routes through
+   *  `deleteMarginItem` in `src/lib/cards/delete-margin-item.ts`. */
   onDelete?: () => void;
   /** Tooltip text */
   title?: string;

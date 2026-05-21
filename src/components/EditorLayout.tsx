@@ -81,11 +81,16 @@ const MARKER_KIND_TO_THEME_KEY: Partial<Record<string, PanelThemeKey>> = {
   "cutter-suggestion": "cut",
 };
 import {
-  removeLinkedAnchor,
   reanchorByText,
   getLinkedParagraphIds,
   getTextAnchor,
 } from "@/links/links";
+import {
+  buildMarginItemHandlers,
+  deleteMarginItem,
+  type MarginItemHandlers,
+  type MarginItemKind,
+} from "@/lib/cards/delete-margin-item";
 import dynamic from "next/dynamic";
 import type { CodeEditorHandle } from "./CodeEditor";
 const CodeEditor = dynamic(() => import("./CodeEditor"), { ssr: false });
@@ -559,6 +564,8 @@ export default function EditorLayout() {
     cards: revisionCards,
     addComment: addRevisionComment,
     addSuggestion: addRevisionSuggestion,
+    removeCardParagraphId: removeRevisionParagraphId,
+    deleteCard: deleteRevisionCard,
   } = useRevisions(docIdForHooks);
   const comments = revisionCards;
   // Unified pristine-card manager — tracks blank-on-create cards across all
@@ -3221,6 +3228,68 @@ export default function EditorLayout() {
     if (!editorSplit) setActiveSplitPane("top");
   }, [editorSplit]);
 
+  // ── Per-kind handler bundles for the shared margin-item delete utility ──
+  // Routes Delete/Backspace on a gutter marker through a uniform
+  // "if last anchor, confirm + delete card; otherwise just drop this
+  // link" path for every kind. See `src/lib/cards/delete-margin-item.ts`.
+  const marginItemHandlers = useMemo<Record<MarginItemKind, MarginItemHandlers>>(
+    () =>
+      buildMarginItemHandlers({
+        quotations: {
+          groups: quotationGroups,
+          removeParagraphId: removeQuotationParagraphId,
+          deleteGroup: deleteQuotationGroup,
+        },
+        notes: {
+          notes,
+          removeNoteParagraphId,
+          deleteNote,
+        },
+        archive: {
+          snippets: archiveSnippets,
+          removeParagraphId: removeArchiveParagraphId,
+          deleteSnippet,
+        },
+        cutter: {
+          cards: cutterCards,
+          removeCardParagraphId,
+          deleteCard: deleteCutterCard,
+        },
+        todos: {
+          items: todoItems,
+          removeParagraphId: removeTodoParagraphId,
+          deleteItem: deleteTodo,
+        },
+        revisions: {
+          cards: comments,
+          removeCardParagraphId: removeRevisionParagraphId,
+          deleteCard: deleteRevisionCard,
+        },
+      }),
+    [
+      quotationGroups, removeQuotationParagraphId, deleteQuotationGroup,
+      notes, removeNoteParagraphId, deleteNote,
+      archiveSnippets, removeArchiveParagraphId, deleteSnippet,
+      cutterCards, removeCardParagraphId, deleteCutterCard,
+      todoItems, removeTodoParagraphId, deleteTodo,
+      comments, removeRevisionParagraphId, deleteRevisionCard,
+    ],
+  );
+
+  const handleMarginItemDelete = useCallback(
+    (kind: MarginItemKind, cardId: string, paragraphId: string, anchorId?: string) =>
+      deleteMarginItem({
+        kind,
+        cardId,
+        paragraphId,
+        anchorId,
+        handlers: marginItemHandlers[kind],
+        confirm: runConfirm,
+        editor: editorRef.current?.getEditor() ?? null,
+      }),
+    [marginItemHandlers, runConfirm],
+  );
+
   const marginaliaMarkers = useMemo<MarginaliaMarker[]>(() => {
     // Touch editorDocVersion so this memo recomputes when the doc changes
     void editorDocVersion;
@@ -3246,7 +3315,7 @@ export default function EditorLayout() {
           paragraphId: pid,
           title: g.title || g.references[0]?.citeKey || "Quotation",
           onClick: (clickY?: number) => handleQuotationMarkerClick(g.id, clickY),
-          onDelete: () => removeQuotationParagraphId(g.id, pid),
+          onDelete: () => { void handleMarginItemDelete("quote", g.id, pid); },
           ...hoverPropsFor(g.id, "quotation"),
         });
       }
@@ -3266,13 +3335,7 @@ export default function EditorLayout() {
           title: n.title || "Note",
           onClick: (clickY?: number) => handleNoteMarkerClick(n.id, clickY),
           onDelete: () => {
-            // Drop the text anchor first so the highlight clears. The
-            // orphan guard fires `virgil-anchor-orphaned` which clears
-            // the note's text anchor via the useNotes listener; the
-            // selection-sync effect then releases `activeAnchorId`.
-            const ed = editorRef.current?.getEditor();
-            if (ed && noteAnchor) removeLinkedAnchor(ed, noteAnchor.anchorId);
-            removeNoteParagraphId(n.id, pid);
+            void handleMarginItemDelete("note", n.id, pid, noteAnchor?.anchorId);
           },
           anchorId: noteAnchor?.anchorId,
           ...hoverPropsFor(n.id, "note"),
@@ -3320,7 +3383,7 @@ export default function EditorLayout() {
               });
             }
           },
-          onDelete: () => removeArchiveParagraphId(snippet.id, pid),
+          onDelete: () => { void handleMarginItemDelete("archive", snippet.id, pid); },
           ...hoverPropsFor(snippet.id, "archive"),
         });
       }
@@ -3357,11 +3420,12 @@ export default function EditorLayout() {
           });
         } catch { /* ignore */ }
         if (!paragraphId) continue;
+        const pid: string = paragraphId;
         result.push({
-          id: `${r.id}:${paragraphId}`,
+          id: `${r.id}:${pid}`,
           entityId: r.id,
           type: "revision",
-          paragraphId,
+          paragraphId: pid,
           title: r.selectedText || "Revision",
           anchorId,
           onClick: (clickY?: number) => {
@@ -3406,6 +3470,9 @@ export default function EditorLayout() {
               });
             }
           },
+          onDelete: () => {
+            void handleMarginItemDelete("revision", r.id, pid, anchorId);
+          },
           ...hoverPropsFor(r.id, r.kind === "suggestion" ? "revision-suggestion" : "comment"),
         });
       }
@@ -3430,13 +3497,7 @@ export default function EditorLayout() {
           title,
           onClick: (clickY?: number) => handleCutMarkerClick(c.id, clickY),
           onDelete: () => {
-            // Drop the text anchor first: the orphan guard fires
-            // `virgil-anchor-orphaned`, useCutter clears the card's
-            // text-anchor link, and the selection-sync hook then releases
-            // `activeAnchorId` — so the highlight goes away.
-            const ed = editorRef.current?.getEditor();
-            if (ed && cardAnchor) removeLinkedAnchor(ed, cardAnchor.anchorId);
-            removeCardParagraphId(c.id, pid);
+            void handleMarginItemDelete("cut", c.id, pid, cardAnchor?.anchorId);
           },
           anchorId: cardAnchor?.anchorId,
           ...hoverPropsFor(c.id, c.kind === "suggestion" ? "cutter-suggestion" : "cutter-comment"),
@@ -3457,7 +3518,7 @@ export default function EditorLayout() {
           title: item.text || "Todo",
           muted: item.done,
           onClick: (clickY?: number) => handleTodoMarkerClick(item.id, clickY),
-          onDelete: () => removeTodoParagraphId(item.id, pid),
+          onDelete: () => { void handleMarginItemDelete("todo", item.id, pid); },
           ...hoverPropsFor(item.id, "todo"),
         });
       }
@@ -3501,20 +3562,17 @@ export default function EditorLayout() {
   }, [
     quotationGroups,
     selectedQuotationGroupId,
-    removeQuotationParagraphId,
     notes,
     selectedNoteId,
-    removeNoteParagraphId,
     archiveSnippets,
     selectedArchiveId,
-    removeArchiveParagraphId,
     todoItems,
     selectedTodoId,
-    removeTodoParagraphId,
     editorDocVersion,
     handleQuotationMarkerClick,
     handleNoteMarkerClick,
     handleTodoMarkerClick,
+    handleMarginItemDelete,
     comments,
     selectedCommentId,
     setActiveLeft,
@@ -3524,7 +3582,6 @@ export default function EditorLayout() {
     getOmniEnabled,
     cutterCards,
     selectedCutterCardId,
-    removeCardParagraphId,
     handleCutMarkerClick,
     allLatexErrors,
     dismissedErrorIds,
@@ -3637,16 +3694,6 @@ export default function EditorLayout() {
     if (hiddenMarginaliaTypes.size === 0) return marginaliaMarkers;
     return marginaliaMarkers.filter((m) => !hiddenMarginaliaTypes.has(m.type as MarginaliaType));
   }, [marginaliaMarkers, showMarginalia, hiddenMarginaliaTypes]);
-
-  // Compute the set of paragraph UUIDs that have marginalia anchored to them,
-  // used by MarginaliaAnchorGuard to preserve paragraphs on deletion.
-  // Use the full unfiltered list so hiding markers doesn't lose anchors.
-  const anchoredUuidsRef = useRef(new Set<string>());
-  useMemo(() => {
-    const set = new Set<string>();
-    for (const m of marginaliaMarkers) set.add(m.paragraphId);
-    anchoredUuidsRef.current = set;
-  }, [marginaliaMarkers]);
 
   // Loading
   if (filesLoading) {
