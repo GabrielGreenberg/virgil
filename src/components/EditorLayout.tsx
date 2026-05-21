@@ -2587,7 +2587,7 @@ export default function EditorLayout() {
     enterMarginEditMode,
   ]);
 
-  // Listen for archive marker clicks from the editor
+  // Listen for marker clicks from the editor
   useMarkerClickBridges({
     prefsRef,
     setActiveLeft,
@@ -2595,7 +2595,6 @@ export default function EditorLayout() {
     setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedNoteId,
