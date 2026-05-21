@@ -1456,26 +1456,7 @@ textarea,
 .heading-wrapper:has(h3) .heading-drag-handle { top: 0.6em; }
 .heading-wrapper:has(h4) .heading-drag-handle { top: 0.5em; }
 
-.heading-popout-btn {
-  position: absolute;
-  left: -36px;
-  top: 0;
-  opacity: 0;
-  pointer-events: auto;
-  transition: opacity 0.15s, color 0.15s;
-  z-index: 2;
-  color: var(--muted-light, #b5b0aa);
-}
-.heading-popout-btn:hover { color: var(--muted, #8a8580); }
-.heading-wrapper:has(h1) .heading-popout-btn { top: calc(0.85em - 2px); }
-.heading-wrapper:has(h2) .heading-popout-btn { top: calc(0.75em - 2px); }
-.heading-wrapper:has(h3) .heading-popout-btn { top: calc(0.6em - 2px); }
-.heading-wrapper:has(h4) .heading-popout-btn { top: calc(0.5em - 2px); }
-
-.heading-wrapper:hover .heading-drag-handle,
-.heading-wrapper:has(.heading-drag-handle:hover) .heading-popout-btn,
-.heading-wrapper:has(.heading-popout-btn:hover) .heading-popout-btn,
-.heading-wrapper:hover .heading-popout-btn {
+.heading-wrapper:hover .heading-drag-handle {
   opacity: 1;
   pointer-events: auto;
 }
@@ -3204,6 +3185,18 @@ html {
    heading-wrapper, drawn as a positioned pseudo-element so it can extend
    beyond the text column into the editor's px-20 padding without shifting
    the heading text. */
+/* Dividers live in the wrapper's outer margin, NOT in inner padding.
+   The wrapper's box stays tight around the heading content, so the
+   absolutely-positioned chrome (chevron, drag handle) — anchored at
+   the wrapper's content edge — stays aligned with the heading text
+   regardless of divider state. The h{level}'s own margin-top collapses
+   with the wrapper's outer margin, putting the content edge at the
+   text edge.
+
+   To add dividers to other block types in the future, mirror this
+   pattern: bump the outer margin-top, draw the divider as a ::before
+   with negative `top` so it paints in the margin area. Never inflate
+   the wrapper via padding-top — that breaks chrome alignment. */
 .show-dividers-0 .tiptap .heading-wrapper-l0,
 .show-dividers-1 .tiptap .heading-wrapper-l1,
 .show-dividers-2 .tiptap .heading-wrapper-l2,
@@ -3212,8 +3205,7 @@ html {
 .show-dividers-5 .tiptap .heading-wrapper-l5,
 .show-dividers-6 .tiptap .heading-wrapper-l6 {
   position: relative;
-  padding-top: 1.4em;
-  margin-top: 2.6em;
+  margin-top: 4.2em;
 }
 .show-dividers-0 .tiptap .heading-wrapper-l0::before,
 .show-dividers-1 .tiptap .heading-wrapper-l1::before,
@@ -3224,7 +3216,7 @@ html {
 .show-dividers-6 .tiptap .heading-wrapper-l6::before {
   content: "";
   position: absolute;
-  top: 0px;
+  top: -1.4em;
   /* Variables are set per width preference on an ancestor
      (.dividers-width-{full|mid|text}). Defaults match "full". */
   left: var(--divider-inset-left, -88px);
@@ -3248,93 +3240,22 @@ html {
   --divider-inset-right: 0px;
 }
 .show-dividers-0 .tiptap .heading-wrapper-l0 {
-  padding-top: 3em;
-  margin-top: 5em;
+  margin-top: 8.2em;
 }
 .show-dividers-0 .tiptap .heading-wrapper-l0::before {
+  top: -3em;
   height: 4px;
   background-color: #6e6a62;
 }
 .show-dividers-1 .tiptap .heading-wrapper-l1 {
-  padding-top: 2.4em;
-  margin-top: 4em;
+  margin-top: 6.6em;
 }
 .show-dividers-1 .tiptap .heading-wrapper-l1::before {
+  top: -2.4em;
   height: 3px;
   background-color: #8a857d;
 }
 
-/* Keep the fold chevron centered in the heading line even when
-   dividers push a padding-top onto the wrapper. Adds (a) the wrapper's
-   padding-top and (b) the heading's 0.2em margin-top — which normally
-   collapses with the wrapper's margin, but is exposed by the padding. */
-.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-fold-chevron {
-  top: calc(var(--font-headers-h0-size, 2.1rem) * 0.95 - 7px + 3em);
-}
-.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-fold-chevron {
-  top: calc(var(--font-headers-h1-size, 1.75rem) * 0.95 - 7px + 2.4em);
-}
-.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-fold-chevron {
-  top: calc(var(--font-headers-h2-size, 1.35rem) * 0.95 - 7px + 1.4em);
-}
-.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-fold-chevron {
-  top: calc(var(--font-headers-h3-size, 1.15rem) * 0.95 - 7px + 1.4em);
-}
-.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-fold-chevron {
-  top: calc(1rem * 0.75 - 7px + 1.4em);
-}
-.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-fold-chevron {
-  top: calc(var(--font-headers-h5-size, 1rem) * 0.75 - 7px + 1.4em);
-}
-.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-fold-chevron {
-  top: calc(var(--font-headers-h6-size, 0.95rem) * 0.75 - 7px + 1.4em);
-}
-/* Same compensation for the heading pop-out button and drag handle —
-   their `top` is measured from the wrapper's padding edge, so the
-   divider's padding-top would otherwise leave them stranded a row
-   above the heading text. */
-.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-popout-btn {
-  top: calc(0.95em - 2px + 3em);
-}
-.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-popout-btn {
-  top: calc(0.85em - 2px + 2.4em);
-}
-.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-popout-btn {
-  top: calc(0.75em - 2px + 1.4em);
-}
-.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-popout-btn {
-  top: calc(0.6em - 2px + 1.4em);
-}
-.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-popout-btn {
-  top: calc(0.5em - 2px + 1.4em);
-}
-.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-popout-btn {
-  top: calc(0.5em - 2px + 1.4em);
-}
-.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-popout-btn {
-  top: calc(0.5em - 2px + 1.4em);
-}
-.show-dividers-0 .tiptap .heading-wrapper-l0 .heading-drag-handle {
-  top: calc(0.95em + 3em);
-}
-.show-dividers-1 .tiptap .heading-wrapper-l1 .heading-drag-handle {
-  top: calc(0.85em + 2.4em);
-}
-.show-dividers-2 .tiptap .heading-wrapper-l2 .heading-drag-handle {
-  top: calc(0.75em + 1.4em);
-}
-.show-dividers-3 .tiptap .heading-wrapper-l3 .heading-drag-handle {
-  top: calc(0.6em + 1.4em);
-}
-.show-dividers-4 .tiptap .heading-wrapper-l4 .heading-drag-handle {
-  top: calc(0.5em + 1.4em);
-}
-.show-dividers-5 .tiptap .heading-wrapper-l5 .heading-drag-handle {
-  top: calc(0.5em + 1.4em);
-}
-.show-dividers-6 .tiptap .heading-wrapper-l6 .heading-drag-handle {
-  top: calc(0.5em + 1.4em);
-}
 .show-dividers-2 .tiptap .heading-wrapper-l2::before {
   height: 2px;
   background-color: #a8a29a;
