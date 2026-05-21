@@ -1,117 +1,7 @@
 import { Node, mergeAttributes } from "@tiptap/react";
-import {
-  Plugin,
-  PluginKey,
-  TextSelection,
-  type EditorState,
-} from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { CITE_RE_FULL, CITE_RE_BARE } from "@/lib/cite-commands";
 import { generateShortId } from "@/lib/uuid";
-
-// Drag-paint state. Window-wide because the drag is a property of the cursor.
-// We use mousemove (not mouseenter) because mouseenter doesn't fire reliably on
-// contentEditable=false inline atoms during a native text-selection drag in
-// Chromium/WebKit — and even when it does, the browser pairs it with phantom
-// mouseleaves that wipe any paint immediately.
-console.log("[citation drag-paint v2] loaded");
-let _citationDragging = false;
-let _citationPills: HTMLElement[] = [];
-let _paintedPill: HTMLElement | null = null;
-
-const clearAllCitationDragPaint = () => {
-  document
-    .querySelectorAll<HTMLElement>('.citation-node[data-text-drag-paint]')
-    .forEach((el) => el.removeAttribute("data-text-drag-paint"));
-  _paintedPill = null;
-};
-
-const updateCitationDragPaint = (cx: number, cy: number) => {
-  let hit: HTMLElement | null = null;
-  for (const pill of _citationPills) {
-    const rects = pill.getClientRects();
-    for (let i = 0; i < rects.length; i++) {
-      const r = rects[i];
-      if (cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom) {
-        hit = pill;
-        break;
-      }
-    }
-    if (hit) break;
-  }
-  if (hit === _paintedPill) return;
-  _paintedPill?.removeAttribute("data-text-drag-paint");
-  hit?.setAttribute("data-text-drag-paint", "true");
-  _paintedPill = hit;
-};
-
-if (typeof window !== "undefined") {
-  window.addEventListener(
-    "mousedown",
-    (e) => {
-      if (e.button !== 0) return;
-      _citationDragging = true;
-      // Cache pill list at drag-start — pills don't appear or disappear during a drag.
-      _citationPills = Array.from(
-        document.querySelectorAll<HTMLElement>(".citation-node"),
-      );
-    },
-    true,
-  );
-  window.addEventListener(
-    "mousemove",
-    (e) => {
-      if (!_citationDragging) return;
-      updateCitationDragPaint(e.clientX, e.clientY);
-    },
-    true,
-  );
-  window.addEventListener(
-    "mouseup",
-    () => {
-      if (!_citationDragging) return;
-      _citationDragging = false;
-      _citationPills = [];
-      clearAllCitationDragPaint();
-    },
-    true,
-  );
-  window.addEventListener("blur", () => {
-    _citationDragging = false;
-    _citationPills = [];
-    clearAllCitationDragPaint();
-  });
-}
-
-// Build node decorations marking every citation that falls inside the
-// current non-empty text selection. The citation nodeView's update()
-// applies the resulting `data-text-selected` attribute to its DOM, which
-// CSS then paints with the browser selection color. This is the fallback
-// for ::selection not painting reliably on contentEditable="false" atoms
-// in Chrome/Safari.
-function buildCitationSelectionDecos(state: EditorState): DecorationSet {
-  const { from, to } = state.selection;
-  if (from === to) return DecorationSet.empty;
-  const decos: Decoration[] = [];
-  state.doc.nodesBetween(from, to, (node, pos) => {
-    if (node.type.name === "citation") {
-      decos.push(
-        Decoration.node(
-          pos,
-          pos + node.nodeSize,
-          { "data-text-selected": "true" },
-          { isTextSelectionPaint: true },
-        ),
-      );
-    }
-  });
-  // Return the singleton when there's nothing to paint so PM can short-
-  // circuit decoration reconciliation by reference equality. Without this,
-  // every drag-select mousemove over text that doesn't contain a citation
-  // allocates a fresh empty DecorationSet, which PM still has to reconcile.
-  if (decos.length === 0) return DecorationSet.empty;
-  return DecorationSet.create(state.doc, decos);
-}
 
 // Flag: when a bare \cite is typed, signal the panel to open
 let _pendingCitationCreate: string | null = null;
@@ -229,36 +119,6 @@ export const Citation = Node.create<CitationOptions>({
           },
         },
       }),
-      new Plugin<DecorationSet>({
-        key: new PluginKey("citationTextSelectionPaint"),
-        state: {
-          init: (_, state) => buildCitationSelectionDecos(state),
-          apply: (tr, old, _oldState, newState) => {
-            if (!tr.docChanged && !tr.selectionSet) return old;
-            // Per-keystroke fast path: a collapsed selection paints nothing.
-            // Skip the build so typing transactions (where the selection
-            // collapses to the caret) don't enter nodesBetween at all.
-            // Reuse `old` when it's already empty so PM sees an unchanged
-            // reference and skips decoration reconciliation entirely.
-            if (newState.selection.from === newState.selection.to) {
-              return old === DecorationSet.empty ? old : DecorationSet.empty;
-            }
-            const next = buildCitationSelectionDecos(newState);
-            // Same reuse trick for the drag-select-over-text case:
-            // when the range doesn't intersect any citation, the build
-            // returns DecorationSet.empty. Keep the existing reference.
-            if (next === DecorationSet.empty && old === DecorationSet.empty) {
-              return old;
-            }
-            return next;
-          },
-        },
-        props: {
-          decorations(state) {
-            return this.getState(state);
-          },
-        },
-      }),
       new Plugin({
         key: new PluginKey("citationInput"),
         props: {
@@ -371,38 +231,13 @@ export const Citation = Node.create<CitationOptions>({
         el.textContent = text;
       }
     };
-    return ({ node, view, getPos }) => {
+    return ({ node, getPos }) => {
       const dom = document.createElement("span");
       dom.className = "citation-node";
       dom.dataset.type = "citation";
       dom.dataset.citationId = node.attrs.citationId || "";
       dom.contentEditable = "false";
       applyCitationContent(dom, node.attrs.displayText, node.attrs.command);
-
-      // Smooth-drag-through is handled entirely by the window-level
-      // mousemove handler at the top of this module — no per-pill listeners
-      // are involved. We keep mouseup here only to force PM's TextSelection
-      // to cover the atom when the user releases inside the pill, so
-      // copy/paste sees the citation.
-      const extendSelectionToCoverAtom = () => {
-        const pos = typeof getPos === "function" ? getPos() : undefined;
-        if (typeof pos !== "number") return;
-        const { state } = view;
-        const sel = state.selection;
-        if (!(sel instanceof TextSelection)) return;
-        if (sel.empty) return;
-        const atomFrom = pos;
-        const atomTo = pos + node.nodeSize;
-        if (sel.from <= atomFrom && sel.to >= atomTo) return;
-        const anchor = sel.anchor;
-        const head = anchor < atomFrom ? atomTo : atomFrom;
-        view.dispatch(
-          state.tr.setSelection(TextSelection.create(state.doc, anchor, head)),
-        );
-      };
-      dom.addEventListener("mouseup", () => {
-        extendSelectionToCoverAtom();
-      });
 
       dom.addEventListener("click", (e: Event) => {
         e.preventDefault();
@@ -435,20 +270,10 @@ export const Citation = Node.create<CitationOptions>({
 
       return {
         dom,
-        update(updatedNode: any, decorations: readonly Decoration[]) {
+        update(updatedNode: any) {
           if (updatedNode.type.name !== "citation") return false;
           dom.dataset.citationId = updatedNode.attrs.citationId || "";
           applyCitationContent(dom, updatedNode.attrs.displayText, updatedNode.attrs.command);
-          // Apply the text-selection paint attribute. The citationTextSelectionPaint
-          // plugin emits a Decoration.node with spec.isTextSelectionPaint when this
-          // citation falls inside a non-empty text selection.
-          const inTextSelection = decorations.some(
-            (d) =>
-              (d.spec as { isTextSelectionPaint?: boolean } | undefined)
-                ?.isTextSelectionPaint === true,
-          );
-          if (inTextSelection) dom.setAttribute("data-text-selected", "true");
-          else dom.removeAttribute("data-text-selected");
           return true;
         },
       };
