@@ -138,13 +138,16 @@ export interface ViewPrefs {
    *  touching the page's 400 min-height. */
   topGutter: number;
   bottomGutter: number;
-  /** In-editor text margins (left/right padding inside the editor pod),
-   *  in pixels. The left margin must clear the 72px marginalia gutter
-   *  plus an 8px breathing strip for heading fold-chevrons. The right
-   *  margin sits flush against the right gutter. Adjustable via the
-   *  ViewMenu → "Margins…" mode, which renders draggable in-text guides. */
+  /** In-editor text margins (padding inside the editor pod), in pixels.
+   *  The left margin must clear the 72px marginalia gutter plus an 8px
+   *  breathing strip for heading fold-chevrons. Top/bottom/right floor
+   *  at 24px (breathing room); all cap at 240px so the column can't
+   *  collapse. Adjustable via the ViewMenu → "Margins…" mode, which
+   *  renders draggable in-text guides on all four sides. */
   editorLeftMargin: number;
   editorRightMargin: number;
+  editorTopMargin: number;
+  editorBottomMargin: number;
   /** Last-used print options. The Print dialog reads and writes here so
    *  user choices persist across sessions. */
   printOptions: PrintOptions;
@@ -203,10 +206,11 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
  * etc. — so a draft window and a reviewer window on different monitors
  * can have totally different shapes.
  *
- * Page-layout keys (`pageWidth`, `editorLeftMargin`, `editorRightMargin`,
+ * Page-layout keys (`pageWidth`, `editor{Left,Right,Top,Bottom}Margin`,
  * `topGutter`, `bottomGutter`) are global because they're the values
  * the personal-prefs promotion pipeline reads to bake into shipped
- * defaults — see `tools/promote-defaults.mjs`.
+ * defaults — see `tools/promote-defaults.mjs` and the whitelist in
+ * `src/lib/dev-prefs-registry.json`.
  */
 const GLOBAL_PREF_KEYS = [
   "showHighlights",
@@ -216,6 +220,8 @@ const GLOBAL_PREF_KEYS = [
   "pageWidth",
   "editorLeftMargin",
   "editorRightMargin",
+  "editorTopMargin",
+  "editorBottomMargin",
   "topGutter",
   "bottomGutter",
   "showMarginalia",
@@ -259,6 +265,8 @@ function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
     pageWidth: p.pageWidth,
     editorLeftMargin: p.editorLeftMargin,
     editorRightMargin: p.editorRightMargin,
+    editorTopMargin: p.editorTopMargin,
+    editorBottomMargin: p.editorBottomMargin,
     topGutter: p.topGutter,
     bottomGutter: p.bottomGutter,
     showMarginalia: p.showMarginalia,
@@ -1338,6 +1346,14 @@ export function useViewPrefs() {
     update((p) => ({ ...p, editorRightMargin: Math.max(24, Math.min(240, Math.round(px))) }));
   }, [update]);
 
+  const setEditorTopMargin = useCallback((px: number) => {
+    update((p) => ({ ...p, editorTopMargin: Math.max(24, Math.min(240, Math.round(px))) }));
+  }, [update]);
+
+  const setEditorBottomMargin = useCallback((px: number) => {
+    update((p) => ({ ...p, editorBottomMargin: Math.max(24, Math.min(240, Math.round(px))) }));
+  }, [update]);
+
   const setPrintOptions = useCallback(
     (v: PrintOptions | ((prev: PrintOptions) => PrintOptions)) => {
       update((p) => ({
@@ -1389,6 +1405,8 @@ export function useViewPrefs() {
     setBottomGutter,
     setEditorLeftMargin,
     setEditorRightMargin,
+    setEditorTopMargin,
+    setEditorBottomMargin,
     setShowHighlights,
     toggleHighlightType,
     toggleMarginalia,

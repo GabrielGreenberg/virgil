@@ -2194,16 +2194,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     editable: true,
     editorProps: {
       attributes: {
-        // Horizontal padding driven by --editor-pl / --editor-pr (set on
-        // the editor column in EditorLayout from the persisted user
-        // prefs `editorLeftMargin` / `editorRightMargin`, defaults
-        // 88/72). The left default 88 = 72px marginalia gutter + 8px
-        // breathing strip for heading fold-chevron + extra. Right 72
-        // sits flush against the 72px right gutter. The "Margins…"
-        // ViewMenu mode renders draggable in-text guides that update
+        // Page padding driven by --editor-pl / --editor-pr / --editor-pt
+        // / --editor-pb (set on the editor column in EditorLayout from
+        // the persisted user prefs `editor{Left,Right,Top,Bottom}Margin`,
+        // defaults 88/72/40/40). The left default 88 = 72px marginalia
+        // gutter + 8px breathing strip for heading fold-chevron + extra.
+        // Right 72 sits flush against the 72px right gutter. Top/bottom
+        // 40 matches the original py-10. The "Margins…" ViewMenu mode
+        // renders draggable in-text guides on all four sides that update
         // these vars live.
         class:
-          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] py-10",
+          "prose prose-stone max-w-none focus:outline-none min-h-[calc(100vh-8rem)] pl-[var(--editor-pl,88px)] pr-[var(--editor-pr,72px)] pt-[var(--editor-pt,40px)] pb-[var(--editor-pb,40px)]",
         // PM keeps the DOM at `contenteditable="true"` even in Reader
         // mode (so native drag-to-select reaches `view.state.selection`,
         // and the SelectionDragHandle / SelectionFloat flow inherits

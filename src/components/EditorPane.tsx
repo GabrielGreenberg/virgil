@@ -205,6 +205,7 @@ import type {
   DockSlotKey,
 } from "@/hooks/useViewPrefs";
 import { dockSlotKey } from "@/hooks/useViewPrefs";
+import { useMarginEdit, MARGIN_SIDES, MARGIN_AXIS, type MarginSide } from "@/hooks/useMarginEdit";
 import type { FocusState } from "@/hooks/useFocusMode";
 import type { OmniCategory } from "@/panels/Omni";
 import type { SectionPathEntry } from "@/panels/Outline";
@@ -278,6 +279,8 @@ export interface EditorPaneViewPrefs {
   // ── Persisted page margins (driven by margin-edit mode) ────────
   setEditorLeftMargin: (px: number) => void;
   setEditorRightMargin: (px: number) => void;
+  setEditorTopMargin: (px: number) => void;
+  setEditorBottomMargin: (px: number) => void;
 
   // ── Top / bottom gutter (drag-resizable spacers above/below the
   //    editor pod). The user adjusts these to push the page down from
@@ -2031,120 +2034,27 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, [menuBar]);
 
   // ── In-text margin-edit mode ────────────────────────────────────
-  // Entered from ViewMenu → "Margins…". While active, two vertical
-  // guides render over the editor column at the live margin
-  // positions; dragging them updates `liveLeftMargin` /
-  // `liveRightMargin` (which the editor reads via `--editor-pl/pr`
-  // CSS vars on the column wrapper). Save commits to viewPrefs;
-  // Cancel/Escape restores the captured snapshot. Reader doesn't
-  // pass `viewPrefs` so this whole block stays dormant.
-  const [marginEditMode, setMarginEditMode] = useState(false);
-  const [liveLeftMargin, setLiveLeftMargin] = useState<number | null>(null);
-  const [liveRightMargin, setLiveRightMargin] = useState<number | null>(null);
-  // Refs mirror the live margin state so the drag handler (created
-  // once via useCallback) always reads the latest snap target without
-  // a stale closure.
-  const liveLeftMarginRef = useRef<number | null>(null);
-  const liveRightMarginRef = useRef<number | null>(null);
-  liveLeftMarginRef.current = liveLeftMargin;
-  liveRightMarginRef.current = liveRightMargin;
-  const marginSnapshotRef = useRef<{ left: number; right: number } | null>(null);
-  const persistedLeftMargin = viewPrefs?.prefs.editorLeftMargin ?? 88;
-  const persistedRightMargin = viewPrefs?.prefs.editorRightMargin ?? 72;
-  const effectiveLeftMargin =
-    marginEditMode && liveLeftMargin != null ? liveLeftMargin : persistedLeftMargin;
-  const effectiveRightMargin =
-    marginEditMode && liveRightMargin != null ? liveRightMargin : persistedRightMargin;
-  const enterMarginEditMode = useCallback(() => {
-    if (!viewPrefs) return;
-    const left = viewPrefs.prefs.editorLeftMargin;
-    const right = viewPrefs.prefs.editorRightMargin;
-    marginSnapshotRef.current = { left, right };
-    setLiveLeftMargin(left);
-    setLiveRightMargin(right);
-    setMarginEditMode(true);
-  }, [viewPrefs]);
-  const cancelMarginEdit = useCallback(() => {
-    marginSnapshotRef.current = null;
-    setLiveLeftMargin(null);
-    setLiveRightMargin(null);
-    setMarginEditMode(false);
-  }, []);
-  const saveMarginEdit = useCallback(() => {
-    if (viewPrefs) {
-      if (liveLeftMargin != null) viewPrefs.setEditorLeftMargin(liveLeftMargin);
-      if (liveRightMargin != null) viewPrefs.setEditorRightMargin(liveRightMargin);
-    }
-    marginSnapshotRef.current = null;
-    setLiveLeftMargin(null);
-    setLiveRightMargin(null);
-    setMarginEditMode(false);
-  }, [liveLeftMargin, liveRightMargin, viewPrefs]);
-  // Escape cancels margin-edit (mirror of the Cancel button).
-  useEffect(() => {
-    if (!marginEditMode) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        cancelMarginEdit();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [marginEditMode, cancelMarginEdit]);
-  // Mouse-drag handler for the margin guides. Captures the page rect
-  // at drag-start and clamps live values: left ≥ 72 (preserve
-  // marginalia gutter), right ≥ 24 (breathing room). Upper bound 240
-  // so the user can't accidentally collapse the text column. Two
-  // parallel writes per move: direct DOM via setProperty, plus React
-  // state via setLive*. rAF coalesces multiple mousemoves per frame.
-  const beginMarginDrag = useCallback((e: React.MouseEvent<HTMLElement>, side: "left" | "right") => {
-    e.preventDefault();
-    e.stopPropagation();
-    const page = (e.currentTarget.closest('[data-editor-page]')) as HTMLElement | null;
-    if (!page) return;
-    const col = page.closest('[data-editor-col]') as HTMLElement | null;
-    const rect = page.getBoundingClientRect();
-    const prevCursor = document.body.style.cursor;
-    document.body.style.cursor = "ew-resize";
-    const cssVar = side === "left" ? "--editor-pl" : "--editor-pr";
-    const SNAP_PX = 10;
-    const otherSide = side === "left"
-      ? (liveRightMarginRef.current ?? persistedRightMargin)
-      : (liveLeftMarginRef.current ?? persistedLeftMargin);
-    const dragSideMin = side === "left" ? 72 : 24;
-    let pendingNext: number | null = null;
-    let rafId: number | null = null;
-    const flush = () => {
-      rafId = null;
-      if (pendingNext == null) return;
-      const next = pendingNext;
-      col?.style.setProperty(cssVar, `${next}px`);
-      if (side === "left") setLiveLeftMargin(next);
-      else setLiveRightMargin(next);
-    };
-    const onMove = (mv: MouseEvent) => {
-      let next = side === "left"
-        ? Math.max(72, Math.min(240, mv.clientX - rect.left - 1))
-        : Math.max(24, Math.min(240, rect.right - mv.clientX - 1));
-      if (otherSide >= dragSideMin && Math.abs(next - otherSide) <= SNAP_PX) {
-        next = otherSide;
-      }
-      pendingNext = next;
-      if (rafId == null) rafId = requestAnimationFrame(flush);
-    };
-    const onUp = () => {
-      document.body.style.cursor = prevCursor;
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      if (rafId != null) {
-        cancelAnimationFrame(rafId);
-        flush();
-      }
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, [persistedLeftMargin, persistedRightMargin]);
+  // Entered from ViewMenu → "Margins…". While active, four guides
+  // render over the editor column (L/R vertical, T/B horizontal);
+  // dragging them updates `liveMargins`, which the editor reads via
+  // `--editor-pl/pr/pt/pb` CSS vars on the column wrapper. Save
+  // commits to viewPrefs; Cancel/Escape restores the captured
+  // snapshot. Reader doesn't pass `viewPrefs` so this whole block
+  // stays dormant. State machine lives in `useMarginEdit`.
+  const {
+    marginEditMode,
+    effective: effectiveMargins,
+    symmetricX: marginSymmetricX,
+    symmetricY: marginSymmetricY,
+    enter: enterMarginEditMode,
+    save: saveMarginEdit,
+    cancel: cancelMarginEdit,
+    beginDrag: beginMarginDrag,
+  } = useMarginEdit({ viewPrefs });
+  const effectiveLeftMargin = effectiveMargins.left;
+  const effectiveRightMargin = effectiveMargins.right;
+  const effectiveTopMargin = effectiveMargins.top;
+  const effectiveBottomMargin = effectiveMargins.bottom;
 
   // ── Top / bottom gutter drag ────────────────────────────────────
   // Restored from pre-extraction. The gutter spacers below sit above
@@ -3593,12 +3503,13 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 // whole declaration.
                 minHeight: 'var(--row-bound-h, 100vh)',
                 // In-editor text margins. Read by the prose class in
-                // Editor.tsx via pl-[var(--editor-pl,88px)] /
-                // pr-[var(--editor-pr,72px)]. Driven by persisted
-                // prefs, overridden by the live values during
-                // margin-edit mode.
+                // Editor.tsx via pl/pr/pt/pb-[var(--editor-pl/r/t/b)].
+                // Driven by persisted prefs, overridden by the live
+                // values during margin-edit mode.
                 ['--editor-pl' as string]: `${effectiveLeftMargin}px`,
                 ['--editor-pr' as string]: `${effectiveRightMargin}px`,
+                ['--editor-pt' as string]: `${effectiveTopMargin}px`,
+                ['--editor-pb' as string]: `${effectiveBottomMargin}px`,
                 // Live width of the docked MenuBar, measured by a
                 // ResizeObserver. Consumed by the sticky section-path
                 // lozenge to compute a max-width that keeps it from
@@ -3642,33 +3553,9 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   pointerEvents: "none",
                 }}
               >
-                {/* Margin-edit Save/Cancel — only renders during the
-                    transient margin-edit mode. Anchored absolutely to
-                    the left of the band so it doesn't displace the
-                    centered MenuBar pod. */}
-                {marginEditMode && (
-                  <div
-                    className="absolute left-2 top-0 h-full flex items-center gap-1 pointer-events-auto"
-                    style={{ paddingTop: 4 }}
-                  >
-                    <button
-                      type="button"
-                      onClick={cancelMarginEdit}
-                      className="text-[11px] px-2 py-0.5 rounded border border-[var(--border)] bg-surface text-ink-body hover-on-light"
-                      title="Discard margin changes (Esc)"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveMarginEdit}
-                      className="text-[11px] px-2 py-0.5 rounded border border-[var(--accent)] bg-[var(--accent)] text-white hover:opacity-90"
-                      title="Save margins"
-                    >
-                      Save
-                    </button>
-                  </div>
-                )}
+                {/* Margin-edit Save/Cancel renders in-page next to the
+                    drag guides (see the paper-render block below), so
+                    nothing lives in the menu band during margin edit. */}
                 <div ref={dockedMenuBarRef} className="pointer-events-auto">
                   <MenuBar
                     editor={overrideEditor ?? editor}
@@ -3865,19 +3752,71 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                 </div>
               )}
               <div className="paper-render" data-editor-page="true" style={{ position: "relative" }}>
-                {/* In-text margin guides — only render in the dedicated
-                    margin-edit mode. Each guide is a draggable hit
-                    area centered on a 1.5px line in drag-highlight
-                    blue. Positioned relative to the page wrapper
-                    (this div). The +1px offset accounts for the pod's
-                    left/right border so the line lands exactly at the
-                    prose text edge. */}
-                {marginEditMode && viewPrefs && (() => {
-                  const symmetric = effectiveLeftMargin === effectiveRightMargin;
-                  const Marker = (
-                    <div
-                      className="sticky pointer-events-none"
-                      style={{
+                {/* In-text margin guides — only render in margin-edit
+                    mode. Each guide is a 13px draggable hit area
+                    centered on a 1px glowing-blue line. L/R guides
+                    span the full page height; T/B guides span the
+                    prose width (between the L/R margins) so they
+                    visualize the text-block edge, not the pod edge.
+                    The +1px offset accounts for the pod's 1px border.
+                    Symmetry marker shows on a side when that side's
+                    axis is symmetric (L=R or T=B). */}
+                {marginEditMode && viewPrefs && MARGIN_SIDES.map((side: MarginSide) => {
+                  const axis = MARGIN_AXIS[side];
+                  const symmetric = axis === "x" ? marginSymmetricX : marginSymmetricY;
+                  const cssVarName =
+                    side === "left" ? "--editor-pl"
+                    : side === "right" ? "--editor-pr"
+                    : side === "top" ? "--editor-pt"
+                    : "--editor-pb";
+                  // (margin + 1px pod border) - half the 13px hit area.
+                  const offset = `calc(var(${cssVarName}) + 1px - 6px)`;
+                  // L/R: full-height vertical strip. T/B: horizontal
+                  // strip spanning the prose-text width.
+                  const positionStyle: React.CSSProperties = axis === "x"
+                    ? ({
+                        top: 0,
+                        bottom: 0,
+                        width: 13,
+                        cursor: "ew-resize",
+                        [side]: offset,
+                      } as React.CSSProperties)
+                    : ({
+                        left: "calc(var(--editor-pl) + 1px)",
+                        right: "calc(var(--editor-pr) + 1px)",
+                        height: 13,
+                        cursor: "ns-resize",
+                        [side]: offset,
+                      } as React.CSSProperties);
+                  // The 1px line, centered in the 13px hit area.
+                  const lineStyle: React.CSSProperties = axis === "x"
+                    ? {
+                        position: "absolute",
+                        top: 0,
+                        bottom: 0,
+                        left: 6.5,
+                        width: 1,
+                        background: "var(--drag-highlight)",
+                        boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                        pointerEvents: "none",
+                      }
+                    : {
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        top: 6.5,
+                        height: 1,
+                        background: "var(--drag-highlight)",
+                        boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
+                        pointerEvents: "none",
+                      };
+                  // The symmetry marker — a small blue dot with a
+                  // white ring at the line's sticky-anchored end. The
+                  // axis-major coordinate uses `sticky` so the marker
+                  // follows the viewport along the line's length.
+                  const markerStyle: React.CSSProperties = axis === "x"
+                    ? {
+                        position: "sticky",
                         top: 44,
                         left: 1.5,
                         width: 10,
@@ -3886,60 +3825,100 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                         background: "var(--drag-highlight)",
                         border: "1.5px solid #fff",
                         boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
-                      }}
-                    />
-                  );
+                        pointerEvents: "none",
+                      }
+                    : {
+                        position: "sticky",
+                        left: 12,
+                        top: 1.5,
+                        width: 10,
+                        height: 10,
+                        borderRadius: "50%",
+                        background: "var(--drag-highlight)",
+                        border: "1.5px solid #fff",
+                        boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                        pointerEvents: "none",
+                      };
                   return (
-                    <>
-                      <div
-                        data-margin-guide="left"
-                        data-margin-snap={symmetric ? "true" : undefined}
-                        className="absolute top-0 bottom-0 z-10 pointer-events-auto"
-                        style={{
-                          left: "calc(var(--editor-pl) + 1px - 6px)",
-                          width: 13,
-                          cursor: "ew-resize",
-                        }}
-                        onMouseDown={(e) => beginMarginDrag(e, "left")}
-                        title="Drag to set left margin"
-                      >
-                        <div
-                          className="absolute top-0 bottom-0 pointer-events-none"
-                          style={{
-                            left: 6.5,
-                            width: 1,
-                            background: "var(--drag-highlight)",
-                            boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
-                          }}
-                        />
-                        {symmetric && Marker}
-                      </div>
-                      <div
-                        data-margin-guide="right"
-                        data-margin-snap={symmetric ? "true" : undefined}
-                        className="absolute top-0 bottom-0 z-10 pointer-events-auto"
-                        style={{
-                          right: "calc(var(--editor-pr) + 1px - 6px)",
-                          width: 13,
-                          cursor: "ew-resize",
-                        }}
-                        onMouseDown={(e) => beginMarginDrag(e, "right")}
-                        title="Drag to set right margin"
-                      >
-                        <div
-                          className="absolute top-0 bottom-0 pointer-events-none"
-                          style={{
-                            left: 6.5,
-                            width: 1,
-                            background: "var(--drag-highlight)",
-                            boxShadow: "0 0 4px rgba(59, 130, 246, 0.35)",
-                          }}
-                        />
-                        {symmetric && Marker}
-                      </div>
-                    </>
+                    <div
+                      key={side}
+                      data-margin-guide={side}
+                      data-margin-snap={symmetric ? "true" : undefined}
+                      className="absolute z-10 pointer-events-auto"
+                      style={positionStyle}
+                      onMouseDown={(e) => beginMarginDrag(e, side)}
+                      title={`Drag to set ${side} margin`}
+                    >
+                      <div style={lineStyle} />
+                      {symmetric && <div style={markerStyle} />}
+                    </div>
                   );
-                })()}
+                })}
+                {/* Save/Cancel pill — sticky just below the menu band,
+                    centered over the page. Glowing-blue circular icon
+                    buttons reuse the symmetry-marker visual vocabulary
+                    so they read as "part of the margin tool" rather
+                    than as a generic dialog. Only renders while
+                    margin-edit is active. */}
+                {marginEditMode && viewPrefs && (
+                  <div
+                    className="sticky z-20 pointer-events-none"
+                    style={{
+                      top: menuBar ? 36 : 12,
+                      width: "100%",
+                      height: 0,
+                    }}
+                  >
+                    <div
+                      className="flex items-center justify-center gap-2 pointer-events-auto"
+                      style={{ transform: "translateY(0)" }}
+                    >
+                      <button
+                        type="button"
+                        onClick={cancelMarginEdit}
+                        title="Discard margin changes (Esc)"
+                        aria-label="Cancel margin edit"
+                        className="flex items-center justify-center"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: "var(--drag-highlight)",
+                          border: "1.5px solid #fff",
+                          boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                          color: "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 3 L11 11" />
+                          <path d="M11 3 L3 11" />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={saveMarginEdit}
+                        title="Save margins"
+                        aria-label="Save margins"
+                        className="flex items-center justify-center"
+                        style={{
+                          width: 28,
+                          height: 28,
+                          borderRadius: "50%",
+                          background: "var(--drag-highlight)",
+                          border: "1.5px solid #fff",
+                          boxShadow: "0 0 8px rgba(59, 130, 246, 0.7), 0 0 2px rgba(59, 130, 246, 0.9)",
+                          color: "#fff",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 7.5 L6 10.5 L11 4.5" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {(initialContent ?? docHook.content) != null && (
                   <VirgilEditor
                     ref={innerRef}

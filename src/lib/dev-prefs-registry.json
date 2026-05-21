@@ -12,6 +12,8 @@
         "pageWidth",
         "editorLeftMargin",
         "editorRightMargin",
+        "editorTopMargin",
+        "editorBottomMargin",
         "topGutter",
         "bottomGutter",
         "showMarginalia",

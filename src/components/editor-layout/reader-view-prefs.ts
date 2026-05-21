@@ -200,6 +200,8 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       bottomGutter,
       editorLeftMargin: 88,
       editorRightMargin: 72,
+      editorTopMargin: 40,
+      editorBottomMargin: 40,
       printOptions: DEFAULT_PRINT_OPTIONS,
       topbarRightCollapsed: false,
       // Reader exposes the same decoration schema as the editor, but
@@ -291,6 +293,8 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       setSplitRatio: () => {},
       setEditorLeftMargin: () => {},
       setEditorRightMargin: () => {},
+      setEditorTopMargin: () => {},
+      setEditorBottomMargin: () => {},
       topGutter,
       bottomGutter,
       setEditorTopGutter,
