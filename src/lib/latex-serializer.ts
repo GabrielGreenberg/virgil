@@ -216,18 +216,39 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
     }
 
     case "figureBlock": {
-      // Round-trip from `raw` (the verbatim env body) so we preserve
-      // whitespace, comments, and any nuances we don't structurally
-      // model (subfigures, \centering, etc.). v1 is read-only — when
-      // editing lands, we'll rebuild `raw` from structured attrs at
-      // save time and fall back here only when nothing changed.
-      const raw = (node.attrs?.raw as string) ?? "";
+      // Rebuild the env body from structured attrs + the caption sub-node.
+      // `extras` carries the env's unmodeled content (\centering, raw
+      // \includegraphics, TikZ blocks, comments) captured at parse time;
+      // \caption{...} and \label{...} are stripped before storing extras
+      // so we don't double-emit them here.
       const placement = (node.attrs?.placement as string) ?? "";
       const starred = node.attrs?.starred === true;
       const uuid = node.attrs?.uuid as string | null;
+      const label = (node.attrs?.label as string) ?? "";
+      const extras = ((node.attrs?.extras as string) ?? "").replace(/\s+$/, "");
+      const captionChild = (node.content || []).find(
+        (c) => c.type === "figureCaption",
+      );
+      const captionTex = captionChild
+        ? (captionChild.content || []).map(serializeInline).join("")
+        : "";
       const anchor = uuid ? ` %!v:${uuid}` : "";
       const envName = starred ? "figure*" : "figure";
-      return `\\begin{${envName}}${placement}${raw}\\end{${envName}}${anchor}\n\n`;
+      const bodyParts: string[] = [];
+      if (extras) {
+        bodyParts.push("\n");
+        bodyParts.push(extras);
+      }
+      if (captionChild) {
+        bodyParts.push("\n  ");
+        bodyParts.push(`\\caption{${captionTex}}`);
+      }
+      if (label) {
+        bodyParts.push("\n  ");
+        bodyParts.push(`\\label{${label}}`);
+      }
+      bodyParts.push("\n");
+      return `\\begin{${envName}}${placement}${bodyParts.join("")}\\end{${envName}}${anchor}\n\n`;
     }
 
     case "graphicsBlock": {

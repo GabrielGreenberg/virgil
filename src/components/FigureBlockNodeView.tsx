@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import { NodeViewContent, NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
 import {
   canEditWidthInOptions,
   extractFigureAttrs,
@@ -12,57 +12,71 @@ import {
 } from "@/lib/figures/parse-attrs";
 import { useResolvedFigureUrl } from "@/hooks/useResolvedFigureUrl";
 import { getDocWriteHandle, importFigureFile } from "@/lib/storage-fsa";
+import { parseInlineContent } from "@/lib/latex-parser";
 import type { FigureBlockOptions } from "@/lib/tiptap/figure-block";
+import { synthesizeFigureRaw } from "@/lib/tiptap/figure-block";
+import FigureAnnotation from "./FigureAnnotation";
 
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 100;
 const STEP_PERCENT = 10;
 
 // Shared node view for both `figureBlock` and `graphicsBlock`. The node
-// type drives whether caption/label chrome is shown and whether the source
-// of truth is `raw` (figureBlock env body) or `command` (single command).
-export default function FigureBlockNodeView({
+// type drives whether caption/label chrome is shown. For figureBlock the
+// caption is a `figureCaption` child sub-node (`content: "inline*"`) so
+// citations, marks, and footnotes work inside; `extras` carries the
+// non-caption non-label parts of the env body for the width-scaler / file-
+// picker mutators. For graphicsBlock the source-of-truth is the `command`
+// attr (a single `\includegraphics[...]{...}` string).
+//
+// The outer component is a thin dispatcher: in `cardContext` we render a
+// compact pill (no hooks needed); otherwise the full view with chrome,
+// caption sub-node, and label lozenge. Splitting like this keeps each
+// branch's hooks unconditional (rules-of-hooks).
+export default function FigureBlockNodeView(props: NodeViewProps) {
+  const opts = props.extension.options as FigureBlockOptions;
+  if (opts.cardContext === true) {
+    return <FigureCardPreview node={props.node} />;
+  }
+  return <FigureFullView {...props} />;
+}
+
+function FigureCardPreview({
   node,
-  getPos,
-  editor,
-  extension,
-}: NodeViewProps) {
+}: {
+  node: NodeViewProps["node"];
+}) {
+  const isFigure = node.type.name === "figureBlock";
+  const captionText = isFigure ? (node.firstChild?.textContent ?? "") : "";
+  const singleSource =
+    (node.attrs.source as string | null | undefined) ||
+    (((node.attrs.sources as FigureSource[] | undefined) || [])[0]?.path ?? "");
+  const labelText = isFigure
+    ? captionText || singleSource || "[figure]"
+    : singleSource || "[graphic]";
+  return (
+    <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
+      <div
+        className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
+        style={{
+          backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
+          borderColor: "var(--edge-subtle)",
+          color: "var(--ink-strong)",
+        }}
+      >
+        <span className="text-[var(--ink-muted)]">
+          {isFigure ? "Figure" : "Graphic"}:
+        </span>
+        <span className="truncate max-w-[28ch]">{labelText}</span>
+      </div>
+    </NodeViewWrapper>
+  );
+}
+
+function FigureFullView({ node, getPos, editor, extension }: NodeViewProps) {
   const opts = extension.options as FigureBlockOptions;
   const docId = opts.docIdRef?.current ?? null;
   const isFigure = node.type.name === "figureBlock";
-  const cardContext = opts.cardContext === true;
-
-  // Card-context preview: rendered inside a RichTextField or
-  // HeadingFloat. Show a compact "Figure: …" / "Graphic: …" pill
-  // instead of resolving the image — that keeps the node round-tripping
-  // through cards without needing `docIdRef` forwarded into every
-  // subordinate surface.
-  if (cardContext) {
-    const captionText = (node.attrs.caption as string | undefined) || "";
-    const singleSource =
-      (node.attrs.source as string | null | undefined) ||
-      (((node.attrs.sources as FigureSource[] | undefined) || [])[0]?.path ?? "");
-    const labelText = isFigure
-      ? captionText || singleSource || "[figure]"
-      : singleSource || "[graphic]";
-    return (
-      <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
-        <div
-          className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
-          style={{
-            backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
-            borderColor: "var(--edge-subtle)",
-            color: "var(--ink-strong)",
-          }}
-        >
-          <span className="text-[var(--ink-muted)]">
-            {isFigure ? "Figure" : "Graphic"}:
-          </span>
-          <span className="truncate max-w-[28ch]">{labelText}</span>
-        </div>
-      </NodeViewWrapper>
-    );
-  }
 
   const sources = useMemo<FigureSource[]>(() => {
     if (isFigure) {
@@ -81,11 +95,34 @@ export default function FigureBlockNodeView({
       : [];
   }, [isFigure, node.attrs.sources, node.attrs.source, node.attrs.widthPercent]);
 
-  const caption = (node.attrs.caption as string | undefined) || "";
   const label = (node.attrs.label as string | undefined) || "";
-  const raw = isFigure
-    ? (node.attrs.raw as string | undefined) || ""
+  const numbered = node.attrs.numbered !== false;
+  const figureNumber = node.attrs.figureNumber as string | number | null;
+  const extras = (node.attrs.extras as string | undefined) || "";
+
+  // The source-of-truth string for width/path mutators. For figureBlock this
+  // is `extras` (env body minus \caption{} and \label{}, both of which we
+  // own structurally now); for graphicsBlock it's the verbatim `command`.
+  // The mutators (`withUpdatedFigureWidth`, `withReplacedFigurePath`) only
+  // edit the `\includegraphics` line, so they're indifferent to whether
+  // \caption is present.
+  const mutableSource = isFigure
+    ? extras
     : (node.attrs.command as string | undefined) || "";
+
+  // The popover seed: a faithful view of the env body for the "edit raw"
+  // surface, synthesized from extras + caption text + label.
+  const captionChild = node.firstChild;
+  const captionTextContent =
+    isFigure && captionChild?.type.name === "figureCaption"
+      ? captionChild.textContent
+      : "";
+  const popoverRaw = useMemo(() => {
+    if (!isFigure) {
+      return (node.attrs.command as string | undefined) || "";
+    }
+    return synthesizeFigureRaw(extras, captionTextContent, label);
+  }, [isFigure, extras, captionTextContent, label, node.attrs.command]);
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
@@ -119,25 +156,70 @@ export default function FigureBlockNodeView({
   const currentPercent = clampPercent(firstSource?.widthPercent ?? 50);
 
   // ---- mutation helpers (close over editor + node + getPos) ----
+
+  const getFigurePos = useCallback((): number | null => {
+    const p = typeof getPos === "function" ? getPos() : null;
+    return p ?? null;
+  }, [getPos]);
+
   // `updateFromText` runs the appropriate extractor on the new text and
   // dispatches a setNodeMarkup transaction. Mirrors EditorLayout's
   // handleFigureSave so the popover and visual chrome stay in sync.
+  //
+  // For figureBlock: `newText` is a synthesised env body (caption + label
+  // included). We re-extract the structured attrs (extras, label, sources,
+  // …) and replace the figureCaption child with freshly-tokenized inline
+  // content. The chrome's width/path mutators feed in env-body strings with
+  // the caption intact, so re-tokenizing on every call is safe — it's a
+  // no-op in the common case.
   const updateFromText = (newText: string) => {
     const pos = typeof getPos === "function" ? getPos() : undefined;
     if (pos == null) return;
     if (isFigure) {
       const attrs = extractFigureAttrs(newText);
-      editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          raw: newText,
-          source: attrs.source,
-          widthPercent: attrs.widthPercent,
-          sources: attrs.sources,
-          caption: attrs.caption,
-          label: attrs.label,
-        }),
-      );
+      const captionInline = parseInlineContent(attrs.caption);
+      let captionNode: ReturnType<
+        typeof editor.state.schema.nodeFromJSON
+      > | null = null;
+      try {
+        captionNode = editor.state.schema.nodeFromJSON({
+          type: "figureCaption",
+          content: captionInline,
+        });
+      } catch {
+        // Schema rejection (e.g. unknown inline node) — fall back to plain
+        // text so the user's caption isn't lost on a malformed edit.
+        captionNode = editor.state.schema.nodeFromJSON({
+          type: "figureCaption",
+          content: attrs.caption
+            ? [{ type: "text", text: attrs.caption }]
+            : [],
+        });
+      }
+      const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        extras: attrs.extras,
+        source: attrs.source,
+        widthPercent: attrs.widthPercent,
+        sources: attrs.sources,
+        label: attrs.label,
+      });
+      if (captionNode) {
+        // Replace the existing figureCaption child (if any) with the new
+        // one. The first child's start position is pos + 1 inside the
+        // figureBlock node.
+        const refreshed = tr.doc.nodeAt(pos);
+        if (refreshed) {
+          const inside = pos + 1;
+          if (refreshed.firstChild?.type.name === "figureCaption") {
+            const captionEnd = inside + refreshed.firstChild.nodeSize;
+            tr.replaceWith(inside, captionEnd, captionNode);
+          } else {
+            tr.insert(inside, captionNode);
+          }
+        }
+      }
+      editor.view.dispatch(tr);
     } else {
       const attrs = extractGraphicsAttrs(newText.trim());
       if (!attrs) return;
@@ -155,15 +237,28 @@ export default function FigureBlockNodeView({
   const applyScale = (newPercent: number) => {
     const clamped = clampPercent(newPercent);
     if (clamped === currentPercent) return;
-    const next = withUpdatedFigureWidth(raw, clamped);
+    const next = withUpdatedFigureWidth(mutableSource, clamped);
     if (next == null) return;
-    updateFromText(next);
+    // The mutator only touched `\includegraphics`; for figureBlock the
+    // synthesized env body needs the current caption + label re-attached
+    // so updateFromText's extractor sees a complete env and rebuilds the
+    // figureCaption child faithfully (a no-op in this case since caption
+    // text didn't change).
+    if (isFigure) {
+      updateFromText(synthesizeFigureRaw(next, captionTextContent, label));
+    } else {
+      updateFromText(next);
+    }
   };
 
   const applyPath = (newPath: string) => {
-    const next = withReplacedFigurePath(raw, newPath);
+    const next = withReplacedFigurePath(mutableSource, newPath);
     if (next == null) return;
-    updateFromText(next);
+    if (isFigure) {
+      updateFromText(synthesizeFigureRaw(next, captionTextContent, label));
+    } else {
+      updateFromText(next);
+    }
   };
 
   const handleDelete = (e: React.MouseEvent) => {
@@ -224,11 +319,12 @@ export default function FigureBlockNodeView({
   };
 
   const handleBodyClick = (e: React.MouseEvent) => {
-    // Chrome controls and their children manage their own behavior. Clicking
-    // anywhere else opens the tex-mode popover (existing behavior).
+    // Chrome controls, the empty-state CTA, the editable caption, and the
+    // label lozenge all manage their own behaviour. Clicking anywhere else
+    // opens the tex-mode popover (existing behaviour).
     if (
       (e.target as HTMLElement).closest(
-        ".figure-chrome, .figure-empty-cta",
+        ".figure-chrome, .figure-empty-cta, .figure-caption, .figure-annotation",
       )
     )
       return;
@@ -240,7 +336,7 @@ export default function FigureBlockNodeView({
     if (!rect) return;
     window.dispatchEvent(
       new CustomEvent("virgil-figure-click", {
-        detail: { kind: node.type.name, raw, pos, rect },
+        detail: { kind: node.type.name, raw: popoverRaw, pos, rect },
       }),
     );
   };
@@ -277,6 +373,20 @@ export default function FigureBlockNodeView({
             <CloseIcon />
           </ChromeIconButton>
         </div>
+        {/* Empty figureBlock still has an editable caption sub-node and a
+         *  lozenge — rendered inside the NodeViewWrapper so PM keeps track
+         *  of the child. Hidden visually via CSS when the figure body is
+         *  empty (the user is mid-insert; show the caption once they pick a
+         *  source). The NodeViewContent must remain in the tree so PM
+         *  doesn't strip the child node. */}
+        {isFigure && (
+          <span
+            className="figure-caption-text figure-caption-text-hidden"
+            data-figure-caption-empty=""
+          >
+            <NodeViewContent<"span"> as="span" />
+          </span>
+        )}
       </NodeViewWrapper>
     );
   }
@@ -286,10 +396,9 @@ export default function FigureBlockNodeView({
       ref={wrapperRef as React.Ref<HTMLDivElement>}
       className={`figure-block ${isFigure ? "figure-block-wrapped" : "figure-block-bare"}`}
       onClick={handleBodyClick}
-      contentEditable={false}
       data-label={label || undefined}
     >
-      <div className="figure-row">
+      <div className="figure-row" contentEditable={false}>
         {sources.map((src, i) => (
           <FigurePanel
             key={`${src.path}:${i}`}
@@ -299,9 +408,14 @@ export default function FigureBlockNodeView({
           />
         ))}
       </div>
-      {isFigure && caption && (
+      {isFigure && (
         <div className="figure-caption">
-          <CaptionRender caption={caption} />
+          {numbered && figureNumber != null && (
+            <span className="figure-caption-label" contentEditable={false}>
+              Figure {figureNumber}:{" "}
+            </span>
+          )}
+          <NodeViewContent<"span"> as="span" className="figure-caption-text" />
         </div>
       )}
       <FigureChrome
@@ -312,6 +426,16 @@ export default function FigureBlockNodeView({
         onRefresh={handleRefreshAll}
         onDelete={handleDelete}
       />
+      {isFigure && (
+        <FigureAnnotation
+          editor={editor}
+          label={label}
+          numbered={numbered}
+          getFigurePos={getFigurePos}
+          onConfirmRename={opts.onConfirmLabelRenameRef?.current ?? null}
+          onConfirmDelete={opts.onConfirmFigureDeleteRef?.current ?? null}
+        />
+      )}
     </NodeViewWrapper>
   );
 }
@@ -399,7 +523,7 @@ function FigureChrome({
   const plusDisabled = !canScale || currentPercent >= MAX_PERCENT;
 
   return (
-    <div className="figure-chrome">
+    <div className="figure-chrome" contentEditable={false}>
       <ChromeIconButton title="Pick image file" onClick={onPickFile}>
         <FolderIcon />
       </ChromeIconButton>
@@ -495,22 +619,6 @@ function clampPercent(n: number): number {
   if (i < MIN_PERCENT) return MIN_PERCENT;
   if (i > MAX_PERCENT) return MAX_PERCENT;
   return i;
-}
-
-function CaptionRender({ caption }: { caption: string }) {
-  const html = useMemo(() => latexCaptionToHtml(caption), [caption]);
-  return <span dangerouslySetInnerHTML={{ __html: html }} />;
-}
-
-function latexCaptionToHtml(input: string): string {
-  const esc = input
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-  return esc
-    .replace(/\\textbf\{([^}]*)\}/g, "<strong>$1</strong>")
-    .replace(/\\(emph|textit)\{([^}]*)\}/g, "<em>$2</em>")
-    .replace(/\\\\/g, "<br>");
 }
 
 // ---- icons (inline SVG for crisp scaling, no extra deps) ----

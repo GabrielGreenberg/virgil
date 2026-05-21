@@ -24,6 +24,11 @@ export interface FigureAttrs {
   caption: string;
   /** `\label{...}` body. Empty string if none. */
   label: string;
+  /** Env body with `\caption{...}` and `\label{...}` stripped. Preserves
+   *  `\centering`, `\includegraphics`, TikZ blocks, and raw comments — so the
+   *  serializer can rebuild the env from `extras + \caption + \label` without
+   *  losing unmodeled content. Empty when the env was just caption+label. */
+  extras: string;
 }
 
 export interface GraphicsAttrs {
@@ -146,6 +151,36 @@ export function extractLabel(envContent: string): string {
   return m ? m[1] : "";
 }
 
+/** Strip the first `\caption{balanced}` and every `\label{...}` from an env
+ *  body so the serializer can rebuild them from structured attrs without
+ *  losing the surrounding `\centering` / `\includegraphics` / comments. */
+function extractExtras(envContent: string): string {
+  let out = envContent;
+  // Remove the first \caption{...} with balanced-brace handling.
+  const capIdx = out.indexOf("\\caption");
+  if (capIdx !== -1) {
+    let i = capIdx + "\\caption".length;
+    // optional [short] argument
+    if (out[i] === "[") {
+      const close = out.indexOf("]", i);
+      if (close !== -1) i = close + 1;
+    }
+    while (i < out.length && /\s/.test(out[i])) i++;
+    if (out[i] === "{") {
+      const braced = findBracedBody(out, i);
+      if (braced) {
+        out = out.slice(0, capIdx) + out.slice(braced.end);
+      }
+    }
+  }
+  // Remove every \label{...} (figures rarely have more than one, but cheap
+  // to be defensive).
+  out = out.replace(/\\label\{[^}]*\}/g, "");
+  // Collapse adjacent blank lines left by the stripping.
+  out = out.replace(/\n[ \t]*\n[ \t]*\n+/g, "\n\n");
+  return out;
+}
+
 /** Run the full structural extraction for a `\begin{figure}...\end{figure}` body. */
 export function extractFigureAttrs(envContent: string): FigureAttrs {
   const sources = extractFigureSources(envContent);
@@ -156,6 +191,7 @@ export function extractFigureAttrs(envContent: string): FigureAttrs {
     sources,
     caption: extractCaption(envContent),
     label: extractLabel(envContent),
+    extras: extractExtras(envContent),
   };
 }
 

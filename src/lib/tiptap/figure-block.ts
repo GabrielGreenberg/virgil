@@ -1,8 +1,15 @@
 import { Node, mergeAttributes, ReactNodeViewRenderer } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
-import type { RefObject } from "react";
+import type { MutableRefObject, RefObject } from "react";
 import { generateShortId } from "@/lib/uuid";
 import FigureBlockNodeView from "@/components/FigureBlockNodeView";
+
+type LabelRenameHandler = (
+  oldLabel: string,
+  newLabel: string,
+  refCount: number,
+) => Promise<boolean>;
+type DeleteHandler = () => Promise<boolean>;
 
 // Shared between FigureBlock and GraphicsBlock — the NodeView reads
 // `extension.options.docIdRef.current` to know which paper folder to
@@ -12,22 +19,34 @@ import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 // (caption / source filename) instead of resolving images. Set by every
 // card-bearing rich-text surface so figureBlock/graphicsBlock round-trip
 // without losing content and without needing docIdRef forwarded.
+//
+// The label-rename and delete confirmation refs are mirrored down from
+// EditorPane via Editor.tsx so the figure annotation lozenge can prompt
+// with the same modal surface as headings.
 export interface FigureBlockOptions {
   docIdRef: RefObject<string | null> | null;
   cardContext: boolean;
+  onConfirmLabelRenameRef: MutableRefObject<LabelRenameHandler | undefined> | null;
+  onConfirmFigureDeleteRef: MutableRefObject<DeleteHandler | undefined> | null;
 }
 
 // `figureBlock` — represents a `\begin{figure}...\end{figure}` (or
-// `\begin{figure*}...\end{figure*}`) environment. Holds the verbatim env
-// body in `raw` for byte-stable round-trip; structured attrs (`source`,
-// `widthPercent`, `caption`, `label`) drive display only.
+// `\begin{figure*}...\end{figure*}`) environment. Caption text lives as
+// a `figureCaption` child (`content: "inline*"`, so citations and marks
+// work inside). Structured attrs drive the rest of the env body.
+//
+// `extras` carries the parts of the env body we don't model structurally
+// (`\centering`, `\includegraphics`, TikZ blocks, raw comments). It is
+// derived at parse time by stripping `\caption{…}` and `\label{…}` from
+// the env body; the serializer always rebuilds the env as
+// `extras + \caption{<from sub-node>} + \label{<from attr>}`.
 //
 // Subfigures are represented by `sources: FigureSource[]`. The first one
 // is exposed as `source` for the common single-image case.
 export const FigureBlock = Node.create<FigureBlockOptions>({
   name: "figureBlock",
   group: "block",
-  atom: true,
+  content: "figureCaption?",
   draggable: true,
   selectable: true,
 
@@ -35,20 +54,23 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
     return {
       docIdRef: null,
       cardContext: false,
+      onConfirmLabelRenameRef: null,
+      onConfirmFigureDeleteRef: null,
     };
   },
 
   addAttributes() {
     return {
-      raw: { default: "" },
+      extras: { default: "" },
       placement: { default: "" },
       starred: { default: false, renderHTML: () => ({}) },
       uuid: { default: null, renderHTML: () => ({}) },
       source: { default: null, renderHTML: () => ({}) },
       widthPercent: { default: null, renderHTML: () => ({}) },
       sources: { default: [], renderHTML: () => ({}) },
-      caption: { default: "" },
       label: { default: "" },
+      numbered: { default: true, renderHTML: () => ({}) },
+      figureNumber: { default: null, renderHTML: () => ({}) },
     };
   },
 
@@ -60,11 +82,17 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
     return [
       "div",
       mergeAttributes(HTMLAttributes, { "data-type": "figure-block" }),
+      0,
     ];
   },
 
   addNodeView() {
-    return ReactNodeViewRenderer(FigureBlockNodeView);
+    // `contentDOMElementTag: "span"` so the figureCaption child node renders
+    // inline with the bolded `Figure N:` prefix instead of being wrapped in
+    // a block-level div (Tiptap's default for block-group nodes).
+    return ReactNodeViewRenderer(FigureBlockNodeView, {
+      contentDOMElementTag: "span",
+    });
   },
 });
 
@@ -83,44 +111,81 @@ export function collectFigureBlockUuids(doc: {
   return set;
 }
 
-// Stub `\begin{figure}` body: centered \includegraphics with an empty path,
-// plus an empty caption and a `fig:` label prefix so the user has the LaTeX
-// shape to fill in rather than reconstructing it from memory.
-const FIGURE_STUB_RAW =
-  "\n  \\centering\n  \\includegraphics[width=0.6\\textwidth]{}\n  \\caption{}\n  \\label{fig:}\n";
+// Initial `extras` body for a fresh figure: centered `\includegraphics` with
+// an empty path so the user has the LaTeX shape to fill in. `\caption{}` and
+// `\label{}` are NOT included here — those are stored on the sub-node and
+// the `label` attr respectively, and rebuilt by the serializer.
+const FIGURE_STUB_EXTRAS =
+  "\\centering\n  \\includegraphics[width=0.6\\textwidth]{}\n  ";
 
 export interface FreshFigureBlockAttrs {
-  raw: string;
+  extras: string;
   placement: string;
   starred: boolean;
   source: string | null;
   widthPercent: number;
   sources: unknown[];
-  caption: string;
   label: string;
+  numbered: boolean;
+  figureNumber: null;
   uuid: string;
 }
 
 export function freshFigureBlockAttrs(existing: Set<string>): FreshFigureBlockAttrs {
   return {
-    raw: FIGURE_STUB_RAW,
+    extras: FIGURE_STUB_EXTRAS,
     placement: "",
     starred: false,
     source: null,
     widthPercent: 60,
     sources: [],
-    caption: "",
     label: "fig:",
+    numbered: true,
+    figureNumber: null,
     uuid: generateShortId(existing),
   };
+}
+
+// Rebuild a verbatim `\begin{figure}` body from structured attrs + caption
+// text. Used by the serializer (at save time) AND by the popover surface
+// (when opening the source editor — the popover wants something to display
+// /edit even though the canonical content lives in attrs + sub-node).
+export function synthesizeFigureRaw(
+  extras: string,
+  captionTex: string,
+  label: string,
+): string {
+  const parts: string[] = ["\n  "];
+  const extrasBody = (extras || "").replace(/\s+$/, "");
+  if (extrasBody) {
+    // Re-indent so the extras body sits at the same 2-space indent as the
+    // rest of the env body we synthesise.
+    parts.push(extrasBody.replace(/\n/g, "\n  "));
+    parts.push("\n  ");
+  }
+  parts.push(`\\caption{${captionTex}}`);
+  if (label) {
+    parts.push("\n  ");
+    parts.push(`\\label{${label}}`);
+  }
+  parts.push("\n");
+  return parts.join("");
 }
 
 export function insertFigureBlock(editor: Editor): void {
   const attrs = freshFigureBlockAttrs(collectFigureBlockUuids(editor.state.doc));
   // `.deleteSelection()` first to match the `insertTexBlock` / example-block
-  // patterns — block-level atom inserts no-op when straddling a paragraph
-  // selection.
-  editor.chain().focus().deleteSelection().insertContent({ type: "figureBlock", attrs }).run();
+  // patterns — block-level inserts no-op when straddling a paragraph selection.
+  editor
+    .chain()
+    .focus()
+    .deleteSelection()
+    .insertContent({
+      type: "figureBlock",
+      attrs,
+      content: [{ type: "figureCaption" }],
+    })
+    .run();
   // Pop the tex-mode popover so the user can fill in the empty path
   // immediately. One rAF is enough — matches the popover's own focus rAF.
   // Look up the new node by uuid (unique to this insert) so we don't have
@@ -141,7 +206,11 @@ export function insertFigureBlock(editor: Editor): void {
       new CustomEvent("virgil-figure-click", {
         detail: {
           kind: "figureBlock",
-          raw: attrs.raw,
+          // The popover takes a `raw` field. Synthesize one from current
+          // attrs + (empty) caption so the source-editing surface stays
+          // available even though we no longer store the env body as a
+          // single string. Commit re-derives everything via extractFigureAttrs.
+          raw: synthesizeFigureRaw(attrs.extras, "", attrs.label),
           pos: foundPos,
           rect: dom.getBoundingClientRect(),
         },

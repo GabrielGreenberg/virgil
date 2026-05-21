@@ -197,6 +197,7 @@ import LabelRefPopover from "./LabelRefPopover";
 import MathPopover from "./MathPopover";
 import FigurePopover from "./FigurePopover";
 import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
+import { parseInlineContent as parseInlineLatexForCaption } from "@/lib/latex-parser";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -2579,17 +2580,44 @@ export default function EditorLayout() {
     if (!node) return;
     if (node.type.name === "figureBlock") {
       const attrs = extractFigureAttrs(newText);
-      editor.view.dispatch(
-        editor.state.tr.setNodeMarkup(pos, undefined, {
-          ...node.attrs,
-          raw: newText,
-          source: attrs.source,
-          widthPercent: attrs.widthPercent,
-          sources: attrs.sources,
-          caption: attrs.caption,
-          label: attrs.label,
-        }),
-      );
+      // Rebuild the figureCaption child node from the new caption text.
+      // The popover is one of two surfaces that can edit captions; re-
+      // tokenize the body so inline marks/citations end up as structured
+      // nodes (\cite{}, $math$, \textbf{}, etc.).
+      const captionInline = parseInlineLatexForCaption(attrs.caption);
+      let captionNode;
+      try {
+        captionNode = editor.state.schema.nodeFromJSON({
+          type: "figureCaption",
+          content: captionInline,
+        });
+      } catch {
+        // Fall back to plain text so the user's caption isn't lost on a
+        // malformed inline parse.
+        captionNode = editor.state.schema.nodeFromJSON({
+          type: "figureCaption",
+          content: attrs.caption ? [{ type: "text", text: attrs.caption }] : [],
+        });
+      }
+      const tr = editor.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        extras: attrs.extras,
+        source: attrs.source,
+        widthPercent: attrs.widthPercent,
+        sources: attrs.sources,
+        label: attrs.label,
+      });
+      const refreshed = tr.doc.nodeAt(pos);
+      if (refreshed) {
+        const inside = pos + 1;
+        if (refreshed.firstChild?.type.name === "figureCaption") {
+          const captionEnd = inside + refreshed.firstChild.nodeSize;
+          tr.replaceWith(inside, captionEnd, captionNode);
+        } else {
+          tr.insert(inside, captionNode);
+        }
+      }
+      editor.view.dispatch(tr);
     } else if (node.type.name === "graphicsBlock") {
       const attrs = extractGraphicsAttrs(newText.trim());
       if (attrs) {

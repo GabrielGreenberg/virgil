@@ -37,10 +37,20 @@ After.`;
     expect(figs).toHaveLength(1);
     expect(figs[0].attrs?.source).toBe("figures/fig1");
     expect(figs[0].attrs?.widthPercent).toBe(60);
-    expect(figs[0].attrs?.caption).toBe("A schematic.");
     expect(figs[0].attrs?.label).toBe("fig:bands");
     expect(figs[0].attrs?.placement).toBe("[ht]");
     expect(figs[0].attrs?.starred).toBe(false);
+    // Caption is now a child node, not a flat attr — assert against the
+    // child's inline text content.
+    const captions = findByType(figs[0], "figureCaption");
+    expect(captions).toHaveLength(1);
+    const captionText = (captions[0].content || [])
+      .filter((c) => c.type === "text")
+      .map((c) => c.text)
+      .join("");
+    expect(captionText).toBe("A schematic.");
+    // Parser-side numbering pass assigns figureNumber on first paint.
+    expect(figs[0].attrs?.figureNumber).toBe(1);
   });
 
   it("recognises `\\begin{figure*}` starred variant", () => {
@@ -84,6 +94,50 @@ After.`;
     const out = serializeBody(json);
     expect(out).toContain("\\begin{figure*}");
     expect(out).toContain("\\end{figure*}");
+  });
+
+  it("round-trips a \\cite inside the caption as a structured node", () => {
+    const input = `\\begin{figure}
+  \\centering
+  \\includegraphics[width=0.5\\textwidth]{plot}
+  \\caption{See \\cite{foo} for context.}
+  \\label{fig:plot}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const captions = findByType(json, "figureCaption");
+    expect(captions).toHaveLength(1);
+    const captionNodes = captions[0].content || [];
+    // Caption body should have split into text + citation + text.
+    const citationNodes = captionNodes.filter((c) => c.type === "citation");
+    expect(citationNodes).toHaveLength(1);
+    // Serializing back should reproduce the \cite{} marker (vcid marker
+    // prefix is acceptable — the citation node round-trips with a stable id).
+    const out = serializeBody(json);
+    // The serializer emits a \vcid{…} stable-id marker before the citation;
+    // accept anything between "See " and "\cite{foo}" so the assertion
+    // doesn't break when the marker changes shape.
+    expect(out).toMatch(/\\caption\{See .*?\\cite\{foo\}/);
+    expect(out).toContain("for context.");
+    expect(out).toContain("\\label{fig:plot}");
+  });
+
+  it("numbers multiple figures sequentially", () => {
+    const input = `\\begin{figure}
+  \\includegraphics{a}
+  \\caption{First}
+\\end{figure}
+
+Some text.
+
+\\begin{figure}
+  \\includegraphics{b}
+  \\caption{Second}
+\\end{figure}\n`;
+    const json = parseBody(input);
+    const figs = findByType(json, "figureBlock");
+    expect(figs).toHaveLength(2);
+    expect(figs[0].attrs?.figureNumber).toBe(1);
+    expect(figs[1].attrs?.figureNumber).toBe(2);
   });
 });
 

@@ -167,7 +167,7 @@ function parsePreambleTitleFields(preamble: string): JSONContent[] {
  * `generateShortId()` for legacy `.tex` files without markers — first
  * save will anchor the generated id back into the source.
  */
-function parseInlineContent(text: string): JSONContent[] {
+export function parseInlineContent(text: string): JSONContent[] {
   const nodes: JSONContent[] = [];
   let i = 0;
   let buffer = "";
@@ -663,6 +663,11 @@ export function parseLatex(latex: string, sidecar?: VirgilSidecar): JSONContent 
   // `resolveRefs` can look up their numbers.
   numberExamples(doc);
 
+  // Number figureBlocks in document order so the `Figure N:` prefix is
+  // ready on first paint. The live `sectionNumbers` plugin in Editor.tsx
+  // keeps this attr in sync after edits.
+  numberFigures(doc);
+
   // Resolve \ref / \getref / \getfullref display text
   resolveRefs(doc);
 
@@ -849,16 +854,45 @@ function numberExamples(node: JSONContent): void {
  *  - `ref` → bare text (`"3"`).
  *  - `getref` / `getfullref` → parenthesized (`"(3)"`, `"(3b)"`).
  */
+/** Assign sequential 1-based numbers to numbered figureBlocks in document
+ *  order. Mirrors the live `sectionNumbers` plugin in `Editor.tsx` so the
+ *  prefix is ready on first paint without waiting for a no-op edit. */
+function numberFigures(node: JSONContent): void {
+  let counter = 0;
+  function walk(n: JSONContent) {
+    if (n.type === "figureBlock") {
+      if (n.attrs?.numbered !== false) {
+        counter++;
+        n.attrs = { ...(n.attrs || {}), figureNumber: counter };
+      } else {
+        n.attrs = { ...(n.attrs || {}), figureNumber: null };
+      }
+      // figureBlock's only child is a figureCaption — no nested figures.
+      return;
+    }
+    n.content?.forEach(walk);
+  }
+  walk(node);
+}
+
 function resolveRefs(node: JSONContent): void {
   const headingMap = new Map<string, string>();
   const exampleMap = new Map<
     string,
     { number: string; items: Map<string, string> }
   >();
+  const figureMap = new Map<string, string>();
 
   function collect(n: JSONContent) {
     if (n.type === "heading" && n.attrs?.label && n.attrs?.sectionNumber) {
       headingMap.set(n.attrs.label as string, n.attrs.sectionNumber as string);
+    }
+    if (
+      n.type === "figureBlock" &&
+      n.attrs?.label &&
+      n.attrs?.figureNumber != null
+    ) {
+      figureMap.set(n.attrs.label as string, String(n.attrs.figureNumber));
     }
     if (n.type === "exampleBlock" && n.attrs?.number) {
       const num = String(n.attrs.number);
@@ -901,6 +935,8 @@ function resolveRefs(node: JSONContent): void {
     if (heading) return refCommand === "ref" ? heading : `(${heading})`;
     const ex = exampleMap.get(label);
     if (ex) return refCommand === "ref" ? ex.number : `(${ex.number})`;
+    const fig = figureMap.get(label);
+    if (fig) return refCommand === "ref" ? fig : `(${fig})`;
     const dot = label.lastIndexOf(".");
     if (dot > 0) {
       const parent = exampleMap.get(label.slice(0, dot));
@@ -921,11 +957,13 @@ function resolveRefs(node: JSONContent): void {
       // Set targetKind as advisory for the popover.
       const targetKind = headingMap.has(n.attrs.label as string)
         ? "heading"
-        : exampleMap.has(n.attrs.label as string)
-          ? "example"
-          : n.attrs.label && (n.attrs.label as string).includes(".")
+        : figureMap.has(n.attrs.label as string)
+          ? "figure"
+          : exampleMap.has(n.attrs.label as string)
             ? "example"
-            : null;
+            : n.attrs.label && (n.attrs.label as string).includes(".")
+              ? "example"
+              : null;
       n.attrs = { ...n.attrs, displayText: display, targetKind };
     }
     n.content?.forEach(fill);
@@ -1282,19 +1320,25 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
         case "figure":
         case "figure*": {
           const figAttrs = extractFigureAttrs(envContent);
+          const captionInline = parseInlineContent(figAttrs.caption);
           const figNode: JSONContent = {
             type: "figureBlock",
             attrs: {
-              raw: envContent,
+              extras: figAttrs.extras,
               placement: optArg,
               starred: env === "figure*",
               source: figAttrs.source,
               widthPercent: figAttrs.widthPercent,
               sources: figAttrs.sources,
-              caption: figAttrs.caption,
               label: figAttrs.label,
+              numbered: true,
+              figureNumber: null,
               ...(envUuid ? { uuid: envUuid } : {}),
             },
+            // Always emit a figureCaption child — the lozenge anchors under
+            // it, and the `Figure N:` prefix is rendered by the parent
+            // NodeView regardless of caption text presence.
+            content: [{ type: "figureCaption", content: captionInline }],
           };
           parent.content.push(figNode);
           break;

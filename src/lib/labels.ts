@@ -27,6 +27,11 @@ export function collectLabelKeys(editor: Editor): Set<string> {
       keys.add(nd.attrs.label as string);
       return true;
     }
+    if (nd.type.name === "figureBlock" && nd.attrs.label) {
+      keys.add(nd.attrs.label as string);
+      // Skip recursion — the figureCaption child doesn't declare labels.
+      return false;
+    }
     if (nd.type.name === "displayMath") {
       const src = (nd.attrs.latex as string | undefined) ?? "";
       if (src.includes("\\label{")) scanRaw(src, keys);

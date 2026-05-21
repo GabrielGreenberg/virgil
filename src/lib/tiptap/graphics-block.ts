@@ -20,6 +20,8 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
     return {
       docIdRef: null,
       cardContext: false,
+      onConfirmLabelRenameRef: null,
+      onConfirmFigureDeleteRef: null,
     };
   },
 

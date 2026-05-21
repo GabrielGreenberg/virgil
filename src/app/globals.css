@@ -1879,11 +1879,151 @@ textarea,
   margin-top: 0.5em;
   font-size: 0.92em;
   color: var(--ink-muted, #6b6258);
-  font-style: italic;
   text-align: center;
   max-width: 80%;
   margin-left: auto;
   margin-right: auto;
+}
+
+.figure-block .figure-caption-label {
+  font-weight: 700;
+  margin-right: 0.25em;
+}
+
+.figure-block .figure-caption-text {
+  font-style: normal;
+}
+
+/* Hidden caption stub kept in the DOM for empty figureBlocks so PM doesn't
+ * strip the figureCaption child. The lozenge is hidden in this state too. */
+.figure-block .figure-caption-text-hidden {
+  display: none;
+}
+
+/* Blue label lozenge under the caption — same family as the heading
+ * annotation (reusing `--heading-annotation-*` tokens). Centered under
+ * the caption with slightly tighter top margin than headings get. */
+.figure-block .figure-annotation {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
+  letter-spacing: 0.04em;
+  margin: 0.4em auto 0.6em;
+  cursor: default;
+  user-select: none;
+  border: 1px solid var(--heading-annotation-border, #a8c4de);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+
+.figure-block.figure-block-wrapped {
+  text-align: center;
+}
+
+.figure-block .figure-annotation-type-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.figure-block .figure-annotation-numbered-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  min-width: 13px;
+  height: 13px;
+  cursor: pointer;
+  border-radius: 2px;
+  padding: 0 3px;
+  font-weight: 600;
+}
+
+.figure-block .figure-annotation-numbered-toggle:hover {
+  background: var(--heading-annotation-border, #a8c4de);
+  color: #fff;
+}
+
+.figure-block .figure-annotation-numbered-toggle.is-off {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.figure-block .figure-annotation-sep {
+  white-space: pre;
+}
+
+.figure-block .figure-label-text {
+  cursor: pointer;
+}
+
+.figure-block .figure-label-text:hover {
+  text-decoration: underline;
+}
+
+.figure-block .figure-label-add {
+  margin-left: 0.5em;
+  cursor: pointer;
+  color: var(--heading-annotation-color, #6b9ac4);
+}
+
+.figure-block .figure-label-add:hover {
+  text-decoration: underline;
+}
+
+.figure-block .figure-label-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--heading-annotation-color, #6b9ac4);
+  outline: none;
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: var(--heading-annotation-color, #6b9ac4);
+  font-family: var(--font-sans-override, var(--font-sans)), Inter, sans-serif;
+  letter-spacing: 0.04em;
+  padding: 0;
+}
+
+.figure-block .figure-label-input.has-conflict {
+  border-bottom-color: #b45757;
+  color: #b45757;
+}
+
+.figure-block .figure-label-warning {
+  display: inline-block;
+  margin-left: 0.5em;
+  color: #b45757;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.figure-block .figure-annotation-delete {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  margin-left: 8px;
+  min-width: 14px;
+  height: 14px;
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--heading-annotation-color, #6b9ac4);
+}
+
+.figure-block .figure-annotation:hover .figure-annotation-delete {
+  display: inline-flex;
+}
+
+.figure-block .figure-annotation-delete:hover {
+  background: #b45757;
+  color: #fff;
 }
 
 .figure-block .figure-placeholder {

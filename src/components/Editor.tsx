@@ -15,7 +15,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, GraphicsBlock } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, FigureCaption, GraphicsBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -211,6 +211,11 @@ interface EditorProps {
    * the delete. When omitted, the delete fires without prompting.
    */
   onConfirmHeadingDelete?: (typeName: string) => Promise<boolean>;
+  /**
+   * Confirmation for the figure lozenge `×` button. Resolving `false`
+   * cancels the delete. When omitted, the delete fires without prompting.
+   */
+  onConfirmFigureDelete?: () => Promise<boolean>;
   /**
    * Documentclass name (e.g. "article", "report") used by the heading-
    * type dropdown to disable entries the class doesn't support. Pass
@@ -420,7 +425,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true, docId = null },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, onConfirmFigureDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -533,6 +538,9 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onOpenHeadingTypeMenuRef.current = onOpenHeadingTypeMenu;
   const onConfirmHeadingDeleteRef = useRef(onConfirmHeadingDelete);
   onConfirmHeadingDeleteRef.current = onConfirmHeadingDelete;
+
+  const onConfirmFigureDeleteRef = useRef(onConfirmFigureDelete);
+  onConfirmFigureDeleteRef.current = onConfirmFigureDelete;
   const documentClassRef = useRef<string | null>(documentClass ?? null);
   documentClassRef.current = documentClass ?? null;
 
@@ -1965,7 +1973,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
                 });
               }
             });
-            if (headings.length === 0) return null;
+            // Don't bail when there are no headings — figures still need
+            // numbering and label-ref resolution.
 
             // Find top-level among numbered headings (levels 0..6 — 7 sentinels "above all")
             let topLevel = 7;
@@ -2029,6 +2038,35 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               return false;
             });
 
+            // Walk figureBlocks in document order. Numbered figures get
+            // sequential 1-based numbers; unnumbered figures get
+            // `figureNumber: null` and are skipped by the counter.
+            const figureUpdates: { pos: number; figureNumber: number | null }[] = [];
+            const figureMap = new Map<string, string>();
+            let figureCounter = 0;
+            newState.doc.descendants((nd, pos) => {
+              if (nd.type.name !== "figureBlock") return true;
+              const isNumbered = nd.attrs.numbered !== false;
+              let next: number | null = null;
+              if (isNumbered) {
+                figureCounter += 1;
+                next = figureCounter;
+              }
+              const cur = nd.attrs.figureNumber as number | string | null;
+              const curNorm =
+                typeof cur === "string" && cur !== ""
+                  ? parseInt(cur, 10)
+                  : (cur as number | null);
+              if (next !== curNorm) {
+                figureUpdates.push({ pos, figureNumber: next });
+              }
+              const label = nd.attrs.label as string | undefined;
+              if (label && next != null) {
+                figureMap.set(label, String(next));
+              }
+              return false; // figureCaption child has no nested figures
+            });
+
             // Resolve a label + refCommand → display text.
             const resolveRef = (label: string, refCommand: string): string => {
               if (!label) return "??";
@@ -2040,6 +2078,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               const ex = exampleMap.get(label);
               if (ex) {
                 return refCommand === "ref" ? ex.number : `(${ex.number})`;
+              }
+              const fig = figureMap.get(label);
+              if (fig) {
+                return refCommand === "ref" ? fig : `(${fig})`;
               }
               // Dotted "parent.sub" form for \getfullref (and \ref if the user
               // typed the dotted form)
@@ -2071,11 +2113,20 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
               }
             });
 
-            if (updates.length === 0 && refUpdates.length === 0) return null;
+            if (
+              updates.length === 0 &&
+              refUpdates.length === 0 &&
+              figureUpdates.length === 0
+            )
+              return null;
             const tr = newState.tr;
             for (const { pos, num } of updates) {
               const nd = newState.doc.nodeAt(pos);
               if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, sectionNumber: num });
+            }
+            for (const { pos, figureNumber } of figureUpdates) {
+              const nd = newState.doc.nodeAt(pos);
+              if (nd) tr.setNodeMarkup(pos, undefined, { ...nd.attrs, figureNumber });
             }
             for (const { pos, display } of refUpdates) {
               const nd = newState.doc.nodeAt(pos);
@@ -2116,7 +2167,12 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         isPoppedRef: texBlockIsPoppedPredicateRef,
         onDragHandleClickRef: onTexBlockDragHandleClickRef,
       }),
-      FigureBlock.configure({ docIdRef }),
+      FigureBlock.configure({
+        docIdRef,
+        onConfirmLabelRenameRef,
+        onConfirmFigureDeleteRef,
+      }),
+      FigureCaption,
       GraphicsBlock.configure({ docIdRef }),
       Placeholder.configure({
         placeholder: "Start writing...",

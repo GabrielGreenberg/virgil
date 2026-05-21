@@ -1941,6 +1941,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     [confirmHeadingDelete],
   );
 
+  // Same shape for the figure annotation lozenge's × button.
+  const { confirm: confirmFigureDelete, dialog: confirmFigureDeleteDialog } =
+    useConfirmDialog();
+  const handleConfirmFigureDelete = useCallback(
+    () =>
+      confirmFigureDelete({
+        title: "Delete figure?",
+        message: "Remove this figure and its caption.",
+        confirmLabel: "Delete figure",
+        tone: "danger",
+      }),
+    [confirmFigureDelete],
+  );
+
   // Documentclass extracted from the resolved style preamble. Drives the
   // heading-type dropdown's per-entry enable/disable. Users who heavily
   // customise their in-doc preamble may diverge from this — the worst
@@ -3952,6 +3966,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onDragHandleClick={openDragHandleMenu}
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}
+                    onConfirmFigureDelete={handleConfirmFigureDelete}
                     documentClass={documentClassName}
                     docId={docId}
                   />
@@ -4237,6 +4252,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
             />
           )}
           {confirmHeadingDeleteDialog}
+          {confirmFigureDeleteDialog}
           {confirmMarginItemDeleteDialog}
         </PoppedCardsContext.Provider>
         </CollabProvider>
