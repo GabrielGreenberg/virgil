@@ -120,11 +120,34 @@ export async function GET(
     }
 
     try {
-      if (filePath.endsWith(".pdf")) {
-        const buf = fs.readFileSync(filePath);
-        return new NextResponse(buf, {
-          headers: { "Content-Type": "application/pdf" },
-        });
+      // Binary file types: read as a Buffer and send with the correct
+      // Content-Type. Reading these as utf-8 mangles bytes outside the
+      // 0x00-0x7F range (any high byte gets replaced with U+FFFD).
+      const binaryByExt: Record<string, string> = {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+        ".bmp": "image/bmp",
+        ".tif": "image/tiff",
+        ".tiff": "image/tiff",
+        ".eps": "application/postscript",
+      };
+      const lower = filePath.toLowerCase();
+      for (const [ext, mime] of Object.entries(binaryByExt)) {
+        if (lower.endsWith(ext)) {
+          const buf = fs.readFileSync(filePath);
+          const stat = fs.statSync(filePath);
+          return new NextResponse(buf, {
+            headers: {
+              "Content-Type": mime,
+              "Last-Modified": stat.mtime.toUTCString(),
+              "Content-Length": String(buf.length),
+            },
+          });
+        }
       }
       const content = fs.readFileSync(filePath, "utf-8");
       if (filePath.endsWith(".json")) {
@@ -253,6 +276,32 @@ export async function POST(
   return NextResponse.json({ error: "bad path" }, { status: 400 });
 }
 
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const segments = (await params).path;
+  if (segments[0] === "doc" && segments.length >= 3) {
+    const docId = segments[1];
+    const folder = resolveDocFolder(docId);
+    if (!folder) {
+      return NextResponse.json({ error: "doc not found" }, { status: 404 });
+    }
+    const filePath = path.join(DATA_DIR, folder, ...segments.slice(2));
+    if (!filePath.startsWith(DATA_DIR)) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 });
+    }
+    try {
+      fs.unlinkSync(filePath);
+    } catch {
+      // ENOENT is fine — same outcome as a successful delete from the
+      // caller's POV (the file isn't there).
+    }
+    return NextResponse.json({ ok: true });
+  }
+  return NextResponse.json({ error: "bad path" }, { status: 400 });
+}
+
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -282,7 +331,11 @@ export async function PUT(
     // Ensure parent dirs exist
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
     const contentType = req.headers.get("content-type") ?? "";
-    if (contentType.includes("octet-stream")) {
+    const isBinary =
+      contentType.includes("octet-stream") ||
+      contentType.startsWith("image/") ||
+      contentType === "application/pdf";
+    if (isBinary) {
       const buf = Buffer.from(await req.arrayBuffer());
       fs.writeFileSync(filePath, buf);
     } else {

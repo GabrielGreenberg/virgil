@@ -1,4 +1,5 @@
 import { Node, mergeAttributes } from "@tiptap/react";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { richJsonToPlainText, normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -22,7 +23,7 @@ export const Footnote = Node.create<FootnoteOptions>({
   // to alignOmniCardWithClick. `atom: true` still keeps Backspace
   // deletion working (single-unit deletion), and `draggable: true` is
   // officially compatible with `selectable: false` as long as the node
-  // is an atom (PM docs). Matches archive-marker.ts.
+  // is an atom (PM docs).
   selectable: false,
   draggable: true,
 
@@ -149,47 +150,27 @@ export const Footnote = Node.create<FootnoteOptions>({
           },
         },
       }),
-      // Orphan detector + auto-renumber plugin
+      // Orphan detector + auto-renumber plugin.
+      //
+      // Per-keystroke critical path: fires on every docChanged transaction.
+      // Reduced from 3-4 doc walks to 2: one consolidated newState walk
+      // that collects IDs, the (pos, node) list for renumbering, AND the
+      // renumber-needed flag; then a single oldState walk to emit orphan
+      // events. The renumber step reuses the already-collected node list.
       new Plugin({
         key: new PluginKey("footnoteOrphanDetector"),
         appendTransaction(transactions, oldState, newState) {
           if (!transactions.some((tr) => tr.docChanged)) return null;
 
-          const oldFootnotes = new Map<string, unknown>();
-          oldState.doc.descendants((node) => {
-            if (node.type.name === "footnote" && node.attrs.footnoteId) {
-              oldFootnotes.set(node.attrs.footnoteId, node.attrs.content);
-            }
-            return true;
-          });
-
           const newFootnotes = new Set<string>();
-          newState.doc.descendants((node) => {
-            if (node.type.name === "footnote" && node.attrs.footnoteId) {
-              newFootnotes.add(node.attrs.footnoteId);
-            }
-            return true;
-          });
-
-          for (const [id, content] of oldFootnotes) {
-            if (!newFootnotes.has(id) && richJsonToPlainText(content).trim()) {
-              setTimeout(() => {
-                window.dispatchEvent(
-                  new CustomEvent("virgil-footnote-orphaned", {
-                    detail: { footnoteId: id, content },
-                  })
-                );
-              }, 0);
-            }
-          }
-
+          const newNodes: Array<{ node: PMNode; pos: number }> = [];
           let counter = 1;
           let needsRenumber = false;
-          newState.doc.descendants((node) => {
+          newState.doc.descendants((node, pos) => {
             if (node.type.name === "footnote") {
+              if (node.attrs.footnoteId) newFootnotes.add(node.attrs.footnoteId);
+              newNodes.push({ node, pos });
               if (node.attrs.thanks) {
-                // Acknowledgements don't consume the counter; they're
-                // pinned to number 0 (rendered as "A" in the marker/badge).
                 if (node.attrs.number !== 0) needsRenumber = true;
               } else {
                 if (node.attrs.number !== counter) needsRenumber = true;
@@ -199,25 +180,41 @@ export const Footnote = Node.create<FootnoteOptions>({
             return true;
           });
 
-          if (!needsRenumber) return null;
-
-          const tr = newState.tr;
-          let num = 1;
-          newState.doc.descendants((node, pos) => {
-            if (node.type.name === "footnote") {
-              if (node.attrs.thanks) {
-                if (node.attrs.number !== 0) {
-                  tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
+          oldState.doc.descendants((node) => {
+            if (node.type.name === "footnote" && node.attrs.footnoteId) {
+              const id = node.attrs.footnoteId as string;
+              if (!newFootnotes.has(id)) {
+                const content = node.attrs.content;
+                if (richJsonToPlainText(content).trim()) {
+                  setTimeout(() => {
+                    window.dispatchEvent(
+                      new CustomEvent("virgil-footnote-orphaned", {
+                        detail: { footnoteId: id, content },
+                      })
+                    );
+                  }, 0);
                 }
-              } else {
-                if (node.attrs.number !== num) {
-                  tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
-                }
-                num++;
               }
             }
             return true;
           });
+
+          if (!needsRenumber) return null;
+
+          const tr = newState.tr;
+          let num = 1;
+          for (const { node, pos } of newNodes) {
+            if (node.attrs.thanks) {
+              if (node.attrs.number !== 0) {
+                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: 0 });
+              }
+            } else {
+              if (node.attrs.number !== num) {
+                tr.setNodeMarkup(pos, undefined, { ...node.attrs, number: num });
+              }
+              num++;
+            }
+          }
 
           return tr.steps.length > 0 ? tr : null;
         },

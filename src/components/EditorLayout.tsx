@@ -191,6 +191,8 @@ import { useConfirmDialog } from "./ConfirmDialog";
 import { useDocumentClassMismatchDialog } from "./DocumentClassMismatchDialog";
 import LabelRefPopover from "./LabelRefPopover";
 import MathPopover from "./MathPopover";
+import FigurePopover from "./FigurePopover";
+import { extractFigureAttrs, extractGraphicsAttrs } from "@/lib/figures/parse-attrs";
 import TexFilePickerModal from "./TexFilePickerModal";
 import NewDocumentModal from "./NewDocumentModal";
 import { useWordCount } from "@/hooks/useWordCount";
@@ -1294,6 +1296,13 @@ export default function EditorLayout() {
   const [activeMath, setActiveMath] = useState<{
     kind: "inline" | "display";
     latex: string;
+    pos: number;
+    rect: DOMRect;
+  } | null>(null);
+  // ── Figure tex-mode popover state ──
+  const [activeFigure, setActiveFigure] = useState<{
+    kind: string;
+    raw: string;
     pos: number;
     rect: DOMRect;
   } | null>(null);
@@ -2596,6 +2605,7 @@ export default function EditorLayout() {
     setActiveRefRect,
     setActiveRefCommand,
     setActiveMath,
+    setActiveFigure,
     alignOmniCardWithClick,
   });
 
@@ -2649,6 +2659,56 @@ export default function EditorLayout() {
         latex: newLatex,
       }),
     );
+  }, []);
+
+  // ── Figure tex-mode popover save handler ──
+  // For figureBlock: newText is the new `\begin{figure}…\end{figure}` body.
+  // For graphicsBlock: newText is the new `\includegraphics[...]{path}`.
+  // We re-extract structured attrs from the new text and dispatch a
+  // setNodeMarkup transaction; the NodeView's update hook picks up
+  // the change and re-rasterizes if `source` changed.
+  const handleFigureSave = useCallback((pos: number, newText: string) => {
+    const editor = editorRef.current?.getEditor();
+    if (!editor) return;
+    const node = editor.state.doc.nodeAt(pos);
+    if (!node) return;
+    if (node.type.name === "figureBlock") {
+      const attrs = extractFigureAttrs(newText);
+      editor.view.dispatch(
+        editor.state.tr.setNodeMarkup(pos, undefined, {
+          ...node.attrs,
+          raw: newText,
+          source: attrs.source,
+          widthPercent: attrs.widthPercent,
+          sources: attrs.sources,
+          caption: attrs.caption,
+          label: attrs.label,
+        }),
+      );
+    } else if (node.type.name === "graphicsBlock") {
+      const attrs = extractGraphicsAttrs(newText.trim());
+      if (attrs) {
+        editor.view.dispatch(
+          editor.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            command: attrs.command,
+            source: attrs.source,
+            widthPercent: attrs.widthPercent,
+          }),
+        );
+      } else {
+        // Couldn't parse — keep verbatim text on `command` so the user
+        // can fix the typo without losing their edit.
+        editor.view.dispatch(
+          editor.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            command: newText.trim(),
+            source: "",
+            widthPercent: null,
+          }),
+        );
+      }
+    }
   }, []);
 
   useCommandInputBridges({
@@ -4960,6 +5020,15 @@ export default function EditorLayout() {
           anchorRect={activeMath.rect}
           onSave={(newLatex) => handleMathSave(activeMath.pos, newLatex)}
           onClose={() => setActiveMath(null)}
+        />
+      )}
+      {activeFigure && (
+        <FigurePopover
+          kind={activeFigure.kind}
+          raw={activeFigure.raw}
+          anchorRect={activeFigure.rect}
+          onSave={(newText) => handleFigureSave(activeFigure.pos, newText)}
+          onClose={() => setActiveFigure(null)}
         />
       )}
       {pendingFolderPick && !newDocModal && (

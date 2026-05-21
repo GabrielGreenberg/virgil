@@ -82,17 +82,22 @@ function buildDecorations(doc: PMNode): DecorationSet {
 
   const decos: Decoration[] = [];
 
+  // Common case for docs without any pgmark anchors (most non-library
+  // docs): no matches → no decorations. Return the singleton so PM sees
+  // an unchanged decoration reference between docChanged transactions
+  // and skips reconciliation entirely. Without this, every keystroke
+  // allocated a fresh empty DecorationSet via `DecorationSet.create(doc, [])`.
+  if (matches.length === 0) return DecorationSet.empty;
+
   // Top-of-document synthetic rule (represents the start of the first
   // printed page). Always present whenever there's at least one pgmark
   // anywhere in the doc.
-  if (matches.length > 0) {
-    decos.push(
-      Decoration.widget(0, makeTopRuleWidget, {
-        side: -1,
-        key: "pgmark-rule-top",
-      }),
-    );
-  }
+  decos.push(
+    Decoration.widget(0, makeTopRuleWidget, {
+      side: -1,
+      key: "pgmark-rule-top",
+    }),
+  );
 
   matches.forEach((mt, idx) => {
     const isFirst = idx === 0;

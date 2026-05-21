@@ -213,14 +213,24 @@ export function useCardSelectionHighlight({
     // Defensive: also clear any stale data-card-selected attrs anywhere
     // in the document that we didn't just apply. Handles edges where a
     // previous render painted an element that's no longer in our applied
-    // set. (We don't do this for data-paragraph-kind because the hover
-    // hook can also write it; we only clean up our own writes.)
+    // set — e.g. a card was deleted while its paragraph was momentarily
+    // out of the DOM, so the cleanup closure's `applied` array didn't
+    // capture the element. Set lookup is O(1) vs Array.includes O(n).
+    //
+    // Also sweep `data-paragraph-kind` / `data-margin-side` on the same
+    // elements so the CSS accent bar can't render even if the kind/side
+    // attrs got left behind. Skip when the paragraph is hovered, since
+    // the hover hook owns those attrs in that case.
+    const expected = new Set<HTMLElement>([...applied, ...cardEls]);
     const stale = document.querySelectorAll<HTMLElement>(
       `[${DATA_CARD_SELECTED}]`,
     );
     for (const el of stale) {
-      if (!applied.includes(el) && !cardEls.includes(el)) {
-        el.removeAttribute(DATA_CARD_SELECTED);
+      if (expected.has(el)) continue;
+      el.removeAttribute(DATA_CARD_SELECTED);
+      if (!el.hasAttribute("data-card-hovered")) {
+        el.removeAttribute(DATA_PARAGRAPH_KIND);
+        el.removeAttribute(DATA_MARGIN_SIDE);
       }
     }
 

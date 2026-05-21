@@ -3,6 +3,11 @@ import type { VirgilSidecar } from "@/lib/types";
 import { richLatexToJson } from "@/lib/footnote-content";
 import { CITE_NAMES_RE_INLINE, MULTI_CITE_NAMES } from "@/lib/cite-commands";
 import { generateShortId, NODE_UUID_ANCHOR, NODE_UUID_REGEX } from "@/lib/uuid";
+import {
+  extractFigureAttrs,
+  extractGraphicsAttrs,
+  matchIncludegraphics,
+} from "@/lib/figures/parse-attrs";
 
 interface ParseContext {
   pos: number;
@@ -388,24 +393,6 @@ function parseInlineContent(text: string): JSONContent[] {
           pendingFootnoteId = null;
           i = inner.end;
           continue;
-        }
-      }
-
-      // \archivemarker{id}{preview}
-      const amMatch = rest.match(/^\\archivemarker\{/);
-      if (amMatch) {
-        flush();
-        const idArg = extractBraced(text, i + "\\archivemarker".length);
-        if (idArg !== null) {
-          const previewArg = extractBraced(text, idArg.end);
-          if (previewArg !== null) {
-            nodes.push({
-              type: "archiveMarker",
-              attrs: { archiveId: idArg.content, preview: previewArg.content.replace(/\\(\{|\}|\\)/g, "$1") },
-            });
-            i = previewArg.end;
-            continue;
-          }
         }
       }
 
@@ -1186,8 +1173,41 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       continue;
     }
 
+    // \includegraphics — standalone (block-level) graphics insertion not
+    // wrapped in a `figure` env. The render path is identical to a
+    // single-image figureBlock, so we emit a dedicated `graphicsBlock`
+    // node and let the shared NodeView handle display.
+    if (rest.startsWith("\\includegraphics")) {
+      const incl = matchIncludegraphics(ctx.src, ctx.pos);
+      if (incl) {
+        ctx.pos = incl.end;
+        const attrs = extractGraphicsAttrs(incl.command);
+        if (attrs) {
+          // Optional trailing UUID anchor (matches the env path).
+          let grUuid: string | null = null;
+          const afterCmd = ctx.src.slice(ctx.pos);
+          const uuidMatch = afterCmd.match(NODE_UUID_ANCHOR);
+          if (uuidMatch) {
+            grUuid = uuidMatch[1];
+            ctx.pos += uuidMatch[0].length;
+          }
+          parent.content.push({
+            type: "graphicsBlock",
+            attrs: {
+              command: attrs.command,
+              source: attrs.source,
+              widthPercent: attrs.widthPercent,
+              ...(grUuid ? { uuid: grUuid } : {}),
+            },
+          });
+          continue;
+        }
+      }
+    }
+
     // \begin{...}[optional]
-    const beginMatch = rest.match(/^\\begin\{(\w+)\}(\[[^\]]*\])?/);
+    // `\w+\*?` so starred envs (figure*, table*) match too.
+    const beginMatch = rest.match(/^\\begin\{(\w+\*?)\}(\[[^\]]*\])?/);
     if (beginMatch) {
       const env = beginMatch[1];
       const optArg = beginMatch[2] || "";
@@ -1202,7 +1222,14 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
 
       // Check for a trailing %!v:xxxx UUID anchor right after \end{env}
       let envUuid: string | null = null;
-      if (env === "itemize" || env === "enumerate" || env === "verbatim" || env === "quote") {
+      if (
+        env === "itemize" ||
+        env === "enumerate" ||
+        env === "verbatim" ||
+        env === "quote" ||
+        env === "figure" ||
+        env === "figure*"
+      ) {
         const afterEnd = ctx.src.slice(ctx.pos);
         const uuidMatch = afterEnd.match(NODE_UUID_ANCHOR);
         if (uuidMatch) {
@@ -1250,6 +1277,26 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
             listNode.attrs.uuid = envUuid;
           }
           parent.content.push(listNode);
+          break;
+        }
+        case "figure":
+        case "figure*": {
+          const figAttrs = extractFigureAttrs(envContent);
+          const figNode: JSONContent = {
+            type: "figureBlock",
+            attrs: {
+              raw: envContent,
+              placement: optArg,
+              starred: env === "figure*",
+              source: figAttrs.source,
+              widthPercent: figAttrs.widthPercent,
+              sources: figAttrs.sources,
+              caption: figAttrs.caption,
+              label: figAttrs.label,
+              ...(envUuid ? { uuid: envUuid } : {}),
+            },
+          };
+          parent.content.push(figNode);
           break;
         }
         default:
@@ -1314,11 +1361,27 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       // Virgil markers
       if (rest.startsWith("%!v:")) {
         const eol = ctx.src.indexOf("\n", ctx.pos);
-        // Blank paragraph marker
+        // Blank paragraph marker (legacy: empty paragraph with no UUID)
         if (rest.startsWith("%!v:blank")) {
           ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
           parent.content.push({ type: "paragraph" });
           continue;
+        }
+        // `%!v:<uuid>` on its own block-level line — an empty paragraph
+        // whose UUID we want to preserve (e.g. left behind by archive).
+        // We accept it as such only when the marker stands alone on the
+        // line (no trailing content), otherwise fall through to the
+        // silent-skip case below to keep trailing-anchor parsing intact.
+        const lineMatch = rest.match(NODE_UUID_REGEX);
+        if (lineMatch && lineMatch.index === 0) {
+          const afterUuidPos = ctx.pos + lineMatch[0].length;
+          const eolPos = eol !== -1 ? eol : ctx.src.length;
+          const trailing = ctx.src.slice(afterUuidPos, eolPos);
+          if (!trailing.trim()) {
+            ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
+            parent.content.push({ type: "paragraph", attrs: { uuid: lineMatch[1] } });
+            continue;
+          }
         }
         // Skip UUID anchor comments silently
         ctx.pos = eol !== -1 ? eol + 1 : ctx.src.length;
@@ -1343,29 +1406,6 @@ function parseBody(ctx: ParseContext, parent: JSONContent): void {
       parent.content.push({ type: "horizontalRule" });
       ctx.pos += "\\hrulefill".length;
       continue;
-    }
-
-    // \archivemarker{id}{preview} — handle at block level to avoid
-    // readParagraph breaking on escaped backslashes inside the preview
-    if (rest.startsWith("\\archivemarker{")) {
-      const idArg = extractBraced(ctx.src, ctx.pos + "\\archivemarker".length);
-      if (idArg !== null) {
-        const previewArg = extractBraced(ctx.src, idArg.end);
-        if (previewArg !== null) {
-          parent.content.push({
-            type: "paragraph",
-            content: [{
-              type: "archiveMarker",
-              attrs: {
-                archiveId: idArg.content,
-                preview: previewArg.content.replace(/\\(\{|\}|\\)/g, "$1"),
-              },
-            }],
-          });
-          ctx.pos = previewArg.end;
-          continue;
-        }
-      }
     }
 
     // \partitle{...} — legacy migration: attach title to following paragraph

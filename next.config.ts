@@ -58,11 +58,10 @@ const nextConfig: NextConfig = {
   // runs, the dev watcher's startup walk and ongoing fsevents are a
   // measurable source of dev-server instability. The structural fix
   // is to keep `library-data/` outside the project tree (the
-  // production default is `~/Virgil-Library/`) and repoint the dev
-  // API route's `DATA_DIR` via an env var. Documented here so a
-  // future session has the context — not changing the layout today
-  // since the dev API route hardcodes
-  // `path.join(process.cwd(), "library-data")`.
+  // production default is `~/Virgil-Library/`). The dev-library API
+  // route (`src/app/api/dev-library/[...path]/route.dev.ts`) honors
+  // `VIRGIL_LIBRARY_PATH`: relocate the directory and set the env var
+  // in `.env.local` (or your shell) to escape the watcher.
   ...(isWorktree ? { turbopack: { root: resolve(__dirname, "../../..") } } : {}),
 };
 

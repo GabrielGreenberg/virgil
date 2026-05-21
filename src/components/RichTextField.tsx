@@ -255,6 +255,10 @@ function RichTextFieldImpl({
           selected ? "rtf-selected" : ""
         } ${muted ? "rtf-muted" : ""}`.trim(),
       },
+      // (beforeinput interception is done in a capture-phase listener below,
+      // attached directly to view.dom in a useEffect — bubble-phase via
+      // handleDOMEvents fires too late to reliably suppress the browser's
+      // native split behavior on empty paragraphs.)
       handleDrop(view, event) {
         // Citation drop — insert as a Citation node directly so the styling
         // and click handlers work the same as in the main editor. We always
@@ -405,6 +409,43 @@ function RichTextFieldImpl({
       editor.commands.setContent(desired, { emitUpdate: false });
     }
   }, [editor, value, refreshCitationDisplay]);
+
+  // Intercept beforeinput in the CAPTURE phase, before the browser commits
+  // its native input handling and before PM's own bubble-phase handler
+  // runs. Why: PM's default beforeinput handler is a no-op for insertText
+  // (see prosemirror-view's `handlers.beforeinput`), so it lets the browser
+  // mutate the DOM and reconciles via DOMObserver. When the user types
+  // into an empty paragraph rendered as `<p class="is-empty"><br
+  // class="ProseMirror-trailingBreak"></p>` (Placeholder + PM trailing
+  // break), Chrome's native input splits the <p> into `<p>a</p><p><br></p>`
+  // — and PM faithfully reconstructs that as a multi-paragraph slice,
+  // i.e. one keystroke = one new paragraph.
+  //
+  // We sidestep the whole mess by intercepting the event at the earliest
+  // possible point: dispatch our own `insertText` transaction (clean
+  // text-only step, no split) and call preventDefault so the browser
+  // never gets to do its split. Composition / multi-line inserts /
+  // non-text inputs fall through to PM's default path.
+  useEffect(() => {
+    if (!editor) return;
+    const dom = editor.view.dom as HTMLElement;
+    const onBeforeInput = (e: InputEvent) => {
+      if (e.inputType !== "insertText") return;
+      if (e.isComposing) return;
+      const data = e.data;
+      if (data == null || data.length === 0) return;
+      if (/[\r\n]/.test(data)) return;
+      e.preventDefault();
+      const { from, to } = editor.view.state.selection;
+      editor.view.dispatch(
+        editor.view.state.tr.insertText(data, from, to).scrollIntoView()
+      );
+    };
+    dom.addEventListener("beforeinput", onBeforeInput, true);
+    return () => {
+      dom.removeEventListener("beforeinput", onBeforeInput, true);
+    };
+  }, [editor]);
 
   // Keep TipTap's `editable` flag in sync with the `editable` prop. The
   // initial value is set inside `useEditor`; this effect handles

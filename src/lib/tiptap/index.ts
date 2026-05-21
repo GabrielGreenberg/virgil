@@ -8,7 +8,6 @@ export { SlashPopupExtension } from "./slash-popup";
 export { InlineMath, DisplayMath } from "./math";
 export { Footnote } from "./footnote";
 export { LatexComment } from "./latex-comment";
-export { ArchiveMarker } from "./archive-marker";
 export { Citation, consumePendingCitationCreate, markPendingCitationCreate } from "./citation";
 export { LabelRef, LabelHandler } from "./label";
 export {
@@ -29,3 +28,5 @@ export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
 export { TextColor } from "./text-color";
 export { TexBlock, insertTexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";
+export { FigureBlock, type FigureBlockOptions } from "./figure-block";
+export { GraphicsBlock } from "./graphics-block";

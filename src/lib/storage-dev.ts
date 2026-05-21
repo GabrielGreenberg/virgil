@@ -390,6 +390,119 @@ export async function readPdf(docId: string): Promise<Uint8Array | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Figure raster cache (`<paper>/virgil/figures-cache/`) — dev-mode
+// implementation. Mirrors the storage-fsa surface but routes through the
+// dev HTTP endpoints. The cache is real files on disk so multiple windows
+// see the same cached webp.
+// ---------------------------------------------------------------------------
+
+const FIGURE_PROBE_EXTS = ["pdf", "png", "jpg", "jpeg", "webp"];
+
+export interface FigureSourceFile {
+  bytes: ArrayBuffer;
+  ext: string;
+  fingerprint: string;
+}
+
+export async function readFigureSource(
+  docId: string,
+  source: string,
+): Promise<FigureSourceFile | null> {
+  if (!source) return null;
+  const parts = source.split("/").filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  const filename = parts[parts.length - 1];
+  const subdir = parts.slice(0, -1).join("/");
+  const prefix = subdir ? `${subdir}/` : "";
+  const dotIdx = filename.lastIndexOf(".");
+  const candidates =
+    dotIdx > 0
+      ? [{ name: filename, ext: filename.slice(dotIdx + 1).toLowerCase() }]
+      : FIGURE_PROBE_EXTS.map((ext) => ({ name: `${filename}.${ext}`, ext }));
+  for (const c of candidates) {
+    const url = docFileUrl(docId, `${prefix}${c.name}`);
+    const resp = await fetch(url);
+    if (!resp.ok) continue;
+    const bytes = await resp.arrayBuffer();
+    // Server should send Last-Modified + Content-Length but we degrade to
+    // size+url if it doesn't (cache key will still be unique per URL).
+    const lastMod = resp.headers.get("last-modified") || "";
+    const len = resp.headers.get("content-length") || String(bytes.byteLength);
+    return { bytes, ext: c.ext, fingerprint: `${lastMod}:${len}` };
+  }
+  return null;
+}
+
+export async function readFigureRaster(
+  docId: string,
+  cacheKey: string,
+): Promise<Blob | null> {
+  const url = docFileUrl(docId, `virgil/figures-cache/${cacheKey}.webp`);
+  const resp = await fetch(url);
+  if (!resp.ok) return null;
+  return resp.blob();
+}
+
+export async function writeFigureRaster(
+  h: DocWriteHandle,
+  cacheKey: string,
+  blob: Blob,
+): Promise<void> {
+  assertActive(h);
+  assertNotSuperseded(h);
+  await fetch(docFileUrl(h.docId, `virgil/figures-cache/${cacheKey}.webp`), {
+    method: "PUT",
+    body: await blob.arrayBuffer(),
+    headers: { "Content-Type": "image/webp" },
+  });
+}
+
+export async function deleteFigureRaster(
+  h: DocWriteHandle,
+  cacheKey: string,
+): Promise<void> {
+  assertActive(h);
+  assertNotSuperseded(h);
+  await fetch(docFileUrl(h.docId, `virgil/figures-cache/${cacheKey}.webp`), {
+    method: "DELETE",
+  });
+}
+
+export async function readFigureIndex(
+  docId: string,
+): Promise<Record<string, { source: string; mtimeMs: number; size: number }>> {
+  const url = docFileUrl(docId, "virgil/figures-cache/index.json");
+  const text = await fetchText(url);
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
+}
+
+export async function writeFigureIndex(
+  h: DocWriteHandle,
+  index: Record<string, { source: string; mtimeMs: number; size: number }>,
+): Promise<void> {
+  assertActive(h);
+  assertNotSuperseded(h);
+  await putText(
+    docFileUrl(h.docId, "virgil/figures-cache/index.json"),
+    JSON.stringify(index, null, 2),
+  );
+}
+
+// Stub so the storage facade compiles — dev callers walk via HTTP.
+export async function requireDocHandleForRead(): Promise<never> {
+  throw new Error("requireDocHandleForRead is not available in dev storage mode");
+}
+
+// Re-export the same active-handle helper so the storage facade has it
+// regardless of backend.
+export { getActiveHandle as getDocWriteHandle } from "@/lib/multi-window/doc-pipeline";
+
+// ---------------------------------------------------------------------------
 // Document creation, opening, and index management
 // ---------------------------------------------------------------------------
 

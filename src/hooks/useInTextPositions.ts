@@ -249,8 +249,22 @@ export function useInTextPositions(
       next.set(item.id, { naturalTop, height });
     }
 
+    // Only bump measureVersion if measurements *actually* changed.
+    // Otherwise we feed back into the ResizeObserver and re-render loop:
+    // setState → commit → RO fires (the new wrapper transforms tickle
+    // layout) → schedule → measure → setState → … 60 fps.
+    let changed = next.size !== naturalRef.current.size;
+    if (!changed) {
+      for (const [id, entry] of next) {
+        const prev = naturalRef.current.get(id);
+        if (!prev || prev.naturalTop !== entry.naturalTop || prev.height !== entry.height) {
+          changed = true;
+          break;
+        }
+      }
+    }
     naturalRef.current = next;
-    setMeasureVersion((v) => v + 1);
+    if (changed) setMeasureVersion((v) => v + 1);
   }, [editor, items, enabled, entry]);
 
   // Trigger measurement on editor updates, viewport resize, editor
@@ -312,18 +326,48 @@ export function useInTextPositions(
   // Observe card-size changes (e.g. bibliography pod expanding) so the
   // cascade reflows correctly. Dep on `measureVersion` so we re-observe
   // whenever cards mount/unmount.
+  //
+  // Important: skip the recompute while the user is actively typing into
+  // a card editor inside this panel. Per-keystroke sub-pixel height jitter
+  // (different glyph widths) would otherwise tick `setMeasureVersion` and
+  // re-position every card every frame — visually the typed card "jumps"
+  // as the cascade reflows, which the user perceives as carriage-return
+  // behavior in the edit view. The effect is especially visible in focus
+  // mode where the cascade has few items and a single card's wobble isn't
+  // absorbed by neighbors. When the user blurs the editor, the focusout
+  // handler runs a final measure() so positions snap to truth.
   useEffect(() => {
     if (!enabled) return;
     const panelEl = panelScrollRef.current;
     if (!panelEl || typeof ResizeObserver === "undefined") return;
+    const isTypingInPanel = () => {
+      const active = document.activeElement as HTMLElement | null;
+      return !!(
+        active &&
+        panelEl.contains(active) &&
+        active.getAttribute("contenteditable") === "true"
+      );
+    };
     const onResize = () => {
+      if (isTypingInPanel()) return;
+      cancelAnimationFrame(computeRafRef.current);
+      computeRafRef.current = requestAnimationFrame(measure);
+    };
+    const onFocusOut = () => {
+      // Defer one frame so the activeElement transition settles before
+      // we re-measure (otherwise activeElement might still be the just-
+      // -blurred contenteditable).
       cancelAnimationFrame(computeRafRef.current);
       computeRafRef.current = requestAnimationFrame(measure);
     };
     const obs = new ResizeObserver(onResize);
     const bareAttr = typeof entry === "string" ? entry : "data-link-card";
     panelEl.querySelectorAll(`[${bareAttr}]`).forEach((el) => obs.observe(el));
-    return () => obs.disconnect();
+    panelEl.addEventListener("focusout", onFocusOut);
+    return () => {
+      obs.disconnect();
+      panelEl.removeEventListener("focusout", onFocusOut);
+    };
   }, [measureVersion, enabled, entry, measure]);
 
   // Pure-JS resolution. On a pin change, this is the ONLY thing that

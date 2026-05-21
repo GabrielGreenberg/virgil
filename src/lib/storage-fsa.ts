@@ -473,6 +473,174 @@ export async function readPdf(docId: string): Promise<Uint8Array | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Figure raster cache (`<paper>/virgil/figures-cache/`)
+//
+// One WebP per source file, keyed by SHA-1(source + mtime + size). The
+// raster is the on-screen-resolution version of the original — we never
+// load full-res PDFs / images into the editor view. An `index.json`
+// sidecar lets us cheaply prune orphans and surface debug info.
+//
+// All writes go through `enqueueDocWrite` with key prefix `figures/` for
+// per-key serialization; reads bypass the queue (they can race with
+// writes safely since FSA reads return a stable file snapshot).
+// ---------------------------------------------------------------------------
+
+const FIGURES_CACHE_DIR = "figures-cache";
+const FIGURE_INDEX_FILE = "index.json";
+
+async function getFiguresCacheDir(
+  docHandle: FileSystemDirectoryHandle,
+  opts: { create?: boolean } = {},
+): Promise<FileSystemDirectoryHandle> {
+  const virgil = await getVirgilSubdir(docHandle);
+  return virgil.getDirectoryHandle(FIGURES_CACHE_DIR, { create: opts.create ?? false });
+}
+
+/** Read a cached figure raster, or null if the entry hasn't been written. */
+export async function readFigureRaster(
+  docId: string,
+  cacheKey: string,
+): Promise<Blob | null> {
+  try {
+    const docHandle = await requireDocHandle(docId);
+    const cacheDir = await getFiguresCacheDir(docHandle);
+    const fh = await cacheDir.getFileHandle(`${cacheKey}.webp`);
+    return await fh.getFile();
+  } catch (e) {
+    if (isNotFound(e)) return null;
+    throw e;
+  }
+}
+
+export async function writeFigureRaster(
+  h: DocWriteHandle,
+  cacheKey: string,
+  blob: Blob,
+): Promise<void> {
+  return enqueueDocWrite(h, `figures/${cacheKey}`, async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const cacheDir = await getFiguresCacheDir(docHandle, { create: true });
+    const fh = await cacheDir.getFileHandle(`${cacheKey}.webp`, { create: true });
+    const writable = await fh.createWritable();
+    await writable.write(await blob.arrayBuffer());
+    await writable.close();
+  });
+}
+
+export async function deleteFigureRaster(
+  h: DocWriteHandle,
+  cacheKey: string,
+): Promise<void> {
+  return enqueueDocWrite(h, `figures/${cacheKey}`, async () => {
+    try {
+      const docHandle = await requireDocHandle(h.docId);
+      const cacheDir = await getFiguresCacheDir(docHandle);
+      await cacheDir.removeEntry(`${cacheKey}.webp`);
+    } catch (e) {
+      if (isNotFound(e)) return;
+      throw e;
+    }
+  });
+}
+
+export async function readFigureIndex(
+  docId: string,
+): Promise<Record<string, { source: string; mtimeMs: number; size: number }>> {
+  try {
+    const docHandle = await requireDocHandle(docId);
+    const cacheDir = await getFiguresCacheDir(docHandle);
+    const fh = await cacheDir.getFileHandle(FIGURE_INDEX_FILE);
+    const text = await readTextFromHandle(fh);
+    return JSON.parse(text);
+  } catch (e) {
+    if (isNotFound(e)) return {};
+    throw e;
+  }
+}
+
+export async function writeFigureIndex(
+  h: DocWriteHandle,
+  index: Record<string, { source: string; mtimeMs: number; size: number }>,
+): Promise<void> {
+  return enqueueDocWrite(h, "figures/index", async () => {
+    const docHandle = await requireDocHandle(h.docId);
+    const cacheDir = await getFiguresCacheDir(docHandle, { create: true });
+    const fh = await cacheDir.getFileHandle(FIGURE_INDEX_FILE, { create: true });
+    await writeTextToHandle(fh, JSON.stringify(index, null, 2));
+  });
+}
+
+/** Read-only directory handle for a doc, for callers that need to walk
+ *  arbitrary files (e.g. `\includegraphics` path resolution). Public
+ *  variant of the module-private `requireDocHandle`. */
+export async function requireDocHandleForRead(
+  docId: string,
+): Promise<FileSystemDirectoryHandle> {
+  return requireDocHandle(docId);
+}
+
+/** Backend-agnostic figure source reader.
+ *
+ * Used by the figure-rendering pipeline to read an `\includegraphics`
+ * target file. Tries extensions in the standard graphicx order when the
+ * source has none. Returns null on miss.
+ *
+ * `fingerprint` is the cache-key seed — for FSA we use mtime+size; the
+ * dev backend uses the Last-Modified header.
+ */
+export interface FigureSourceFile {
+  bytes: ArrayBuffer;
+  ext: string;
+  fingerprint: string;
+}
+
+const FIGURE_PROBE_EXTS = ["pdf", "png", "jpg", "jpeg", "webp"];
+
+export async function readFigureSource(
+  docId: string,
+  source: string,
+): Promise<FigureSourceFile | null> {
+  if (!source) return null;
+  const docHandle = await requireDocHandle(docId);
+  const parts = source.split("/").filter((p) => p.length > 0);
+  if (parts.length === 0) return null;
+  const filename = parts[parts.length - 1];
+  const dirParts = parts.slice(0, -1);
+  let dir = docHandle;
+  for (const part of dirParts) {
+    try {
+      dir = await dir.getDirectoryHandle(part);
+    } catch {
+      return null;
+    }
+  }
+  const dotIdx = filename.lastIndexOf(".");
+  const candidates =
+    dotIdx > 0
+      ? [{ name: filename, ext: filename.slice(dotIdx + 1).toLowerCase() }]
+      : FIGURE_PROBE_EXTS.map((ext) => ({ name: `${filename}.${ext}`, ext }));
+  for (const c of candidates) {
+    try {
+      const fh = await dir.getFileHandle(c.name);
+      const file = await fh.getFile();
+      return {
+        bytes: await file.arrayBuffer(),
+        ext: c.ext,
+        fingerprint: `${file.lastModified}:${file.size}`,
+      };
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+/** Helper for callers outside the React tree that need a DocWriteHandle —
+ *  e.g. the figure raster cache writes from a non-component hook context.
+ *  Returns null when no pipeline is active (read-only viewer, etc). */
+export { getActiveHandle as getDocWriteHandle } from "@/lib/multi-window/doc-pipeline";
+
+// ---------------------------------------------------------------------------
 // Document creation, opening, and index management
 // ---------------------------------------------------------------------------
 

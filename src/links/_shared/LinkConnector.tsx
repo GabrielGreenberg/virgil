@@ -48,8 +48,7 @@ interface LinkConnectorProps {
 
 /**
  * Unified SVG connector between an in-editor link marker and its panel
- * card. Replaces the per-kind `FootnoteConnectors`/`CitationConnectors`/
- * `ArchiveConnectors`.
+ * card. Replaces the per-kind `FootnoteConnectors`/`CitationConnectors`.
  *
  * DOM contract: the marker carries `data-link-id="<linkId>"`; the panel
  * card carries `data-link-card="<cardKind>:<cardId>"`. Both are uniform

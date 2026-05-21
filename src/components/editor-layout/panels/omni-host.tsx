@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { getHiddenTopLevelIndices } from "@/lib/section-folding";
+import { getHiddenTopLevelIndices, sectionFoldingPluginKey } from "@/lib/section-folding";
 import type { Side } from "@/hooks/useViewPrefs";
 import OmniViewPanel, { type OmniItem, type OmniCategory } from "@/panels/Omni";
 import { buildCitationOmniItems } from "@/panels/Citations";
@@ -23,6 +23,7 @@ import type { useBibReview } from "@/hooks/useBibReview";
 import type { useRevisions } from "@/hooks/useRevisions";
 import type { useCutter } from "@/hooks/useCutter";
 import type { JSONContent } from "@tiptap/react";
+import type { Transaction } from "@tiptap/pm/state";
 import type {
   ArchivedSnippet,
   OrphanedFootnote,
@@ -149,13 +150,21 @@ export interface OmniHostProps {
 export function OmniHost(p: OmniHostProps) {
   const { editorInstance, editorRef, setOverrideEditor } = useEditorRefContext();
 
-  // Re-render on every editor transaction so we can re-read
-  // ProseMirror plugin state (e.g. section-folding) that doesn't
-  // change the `editorInstance` reference itself.
+  // Re-render only when the doc actually changed or the section-folding
+  // plugin state was touched — those are the two inputs `hiddenTopLevel`
+  // (the downstream memo) actually reads. Listening to every transaction
+  // (selection moves, decoration recomputes, plugin housekeeping) caused
+  // thousands of idle re-renders, surfacing as a duplicate-key warning
+  // storm whenever the doc happened to contain any colliding inline ids.
   const [editorTick, setEditorTick] = useState(0);
   useEffect(() => {
     if (!editorInstance) return;
-    const onTr = () => setEditorTick((v) => v + 1);
+    const onTr = (props: { transaction: Transaction }) => {
+      const tr = props.transaction;
+      if (tr.docChanged || tr.getMeta(sectionFoldingPluginKey) !== undefined) {
+        setEditorTick((v) => v + 1);
+      }
+    };
     editorInstance.on("transaction", onTr);
     return () => {
       editorInstance.off("transaction", onTr);

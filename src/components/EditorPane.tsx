@@ -3910,6 +3910,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                     onOpenHeadingTypeMenu={openHeadingTypeMenu}
                     onConfirmHeadingDelete={handleConfirmHeadingDelete}
                     documentClass={documentClassName}
+                    docId={docId}
                   />
                 )}
                 {/* Print appendices — hidden in live UI (`.print-only`),

@@ -62,6 +62,15 @@ export const writePdf = backend.writePdf;
 export const readPdf = backend.readPdf;
 export const getPdfFilename = backend.getPdfFilename;
 export const pdfFilenameFromTex = backend.pdfFilenameFromTex;
+// Figure raster cache + source reader. Backend-agnostic surface used by
+// the figure-rendering pipeline; see src/hooks/useResolvedFigureUrl.ts.
+export const readFigureSource = backend.readFigureSource;
+export const readFigureRaster = backend.readFigureRaster;
+export const writeFigureRaster = backend.writeFigureRaster;
+export const deleteFigureRaster = backend.deleteFigureRaster;
+export const readFigureIndex = backend.readFigureIndex;
+export const writeFigureIndex = backend.writeFigureIndex;
+export const getDocWriteHandle = backend.getDocWriteHandle;
 
 // Re-export types (these are the same in both backends).
 export type { DocBundle, BibReadResult, BibPackage, FolderPickResult, PaperFile } from "@/lib/storage-fsa";

@@ -38,6 +38,10 @@ import { registerSelectionFloat } from "./selection-floats";
 import { generateShortId } from "@/lib/uuid";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
+import {
+  useEditorViewportCache,
+  type EditorViewportCache,
+} from "@/hooks/useEditorViewportCache";
 
 const LIFT_THRESHOLD = 5;
 const FLOAT_W = 360;
@@ -54,20 +58,19 @@ interface Placement {
   range: { from: number; to: number } | null;
 }
 
-function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  let cur = el?.parentElement ?? null;
-  while (cur) {
-    const cs = window.getComputedStyle(cur);
-    const ov = cs.overflowY;
-    if ((ov === "auto" || ov === "scroll") && cur.scrollHeight > cur.clientHeight) {
-      return cur;
-    }
-    cur = cur.parentElement;
-  }
-  return null;
+function placementsEqual(a: Placement, b: Placement): boolean {
+  return (
+    a.visible === b.visible &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.paragraphUuid === b.paragraphUuid &&
+    a.superseded === b.superseded &&
+    (a.range?.from ?? null) === (b.range?.from ?? null) &&
+    (a.range?.to ?? null) === (b.range?.to ?? null)
+  );
 }
 
-function computePlacement(editor: Editor): Placement {
+function computePlacement(editor: Editor, cache: EditorViewportCache): Placement {
   const { from, to } = editor.state.selection;
   if (from === to) {
     return {
@@ -145,15 +148,16 @@ function computePlacement(editor: Editor): Placement {
       range: null,
     };
   }
-  const scrollParent = findScrollParent(editor.view.dom as HTMLElement);
-  const scrollRect = scrollParent?.getBoundingClientRect() ?? {
-    top: 0,
-    bottom: window.innerHeight,
-    left: 0,
-    right: window.innerWidth,
-  };
+  // Scroll-parent rect comes from the shared viewport cache instead of a
+  // live findScrollParent + getBoundingClientRect — those values are
+  // stable across keystrokes and per-mousemove drag updates, so reading
+  // them every RAF was the heaviest cost on the drag-select path. The
+  // cache refreshes only on resize / ResizeObserver-detected layout
+  // shifts.
+  const scrollTop = cache.scrollTop;
+  const scrollBottom = cache.scrollBottom;
   // Hide entirely if selection is fully above the visible editor pane.
-  if (toCoords.bottom < scrollRect.top) {
+  if (toCoords.bottom < scrollTop) {
     return {
       visible: false,
       left: 0,
@@ -164,7 +168,7 @@ function computePlacement(editor: Editor): Placement {
     };
   }
   // Hide if entirely below the visible pane.
-  if (fromCoords.top > scrollRect.bottom) {
+  if (fromCoords.top > scrollBottom) {
     return {
       visible: false,
       left: 0,
@@ -181,7 +185,7 @@ function computePlacement(editor: Editor): Placement {
   const left = baseLeft - HANDLE_OFFSET_LEFT;
   // Vertical: pin to the topmost visible position. If the selection's
   // top is above the editor pane, stick at the pane's top.
-  const top = Math.max(fromCoords.top, scrollRect.top);
+  const top = Math.max(fromCoords.top, scrollTop);
   // First-line supersession: only when the selection's top is still on
   // its source paragraph's first visual line.
   let superseded = false;
@@ -239,6 +243,15 @@ export function SelectionDragHandle({
   // path since they don't fire per-keystroke.
   const rafRef = useRef<number>(0);
 
+  // Shared viewport-metrics cache (editorRight, scrollTop/Bottom). Reading
+  // it from a ref keeps the per-mousemove drag-select path off the
+  // per-frame layout-read treadmill. The cache refreshes only on resize
+  // / ResizeObserver-detected layout changes (window resize, sidebar
+  // toggle, pane drag).
+  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+    editorRef.current,
+  );
+
   useEffect(() => {
     let prevEditor: Editor | null = null;
     const cleanupListeners = () => {
@@ -259,7 +272,7 @@ export function SelectionDragHandle({
         );
         return;
       }
-      const next = computePlacement(editor);
+      const next = computePlacement(editor, cacheRef.current);
       if (next.visible && next.range) {
         lastRangeRef.current = next.range;
         lastParagraphIdRef.current = next.paragraphUuid;
@@ -267,7 +280,11 @@ export function SelectionDragHandle({
         lastRangeRef.current = null;
         lastParagraphIdRef.current = null;
       }
-      setPlacement(next);
+      // Structural equality: skip the setState (and the React re-render
+      // of the portaled handle) when nothing in the placement actually
+      // changed. Most per-frame drag-select mousemoves with the cursor
+      // staying on the same visual line hit this fast path.
+      setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
     };
     const scheduleRaf = () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -277,15 +294,23 @@ export function SelectionDragHandle({
       });
     };
     // selectionUpdate fires on every caret move, including the implied
-    // move that accompanies every keystroke. Short-circuit when the
-    // PM selection's from/to exactly match what we already computed —
-    // placement geometry hasn't changed.
+    // move that accompanies every keystroke. Short-circuit two cases:
+    //   1. The PM selection's from/to exactly match what we already
+    //      computed — placement geometry hasn't changed.
+    //   2. There's no prior range AND the new selection is collapsed —
+    //      the handle stays hidden, so placement compute would be a
+    //      no-op. (This is the per-keystroke arrow-key / cursor-move
+    //      path, fired on every transaction in plain typing.)
     const onSelectionUpdate = () => {
       const editor = editorRef.current;
-      if (editor && lastRangeRef.current) {
+      if (editor) {
         const sel = editor.state.selection;
-        const last = lastRangeRef.current;
-        if (sel.from === last.from && sel.to === last.to) return;
+        if (lastRangeRef.current) {
+          const last = lastRangeRef.current;
+          if (sel.from === last.from && sel.to === last.to) return;
+        } else if (sel.from === sel.to) {
+          return;
+        }
       }
       scheduleRaf();
     };
@@ -397,7 +422,10 @@ export function SelectionDragHandle({
       window.removeEventListener("resize", onResize);
       document.removeEventListener("selectionchange", onDocSelectionChange);
     };
-  }, [editorRef]);
+    // cacheVersion re-runs the effect when the shared viewport cache
+    // changes (window resize, sidebar toggle). cacheRef itself is a
+    // stable ref so it's safe in deps.
+  }, [editorRef, cacheRef, cacheVersion]);
 
   // Drive the `.is-superseded` class on the matching paragraph drag handle.
   useLayoutEffect(() => {

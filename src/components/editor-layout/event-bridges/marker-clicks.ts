@@ -71,7 +71,6 @@ export function useMarkerClickBridges(deps: {
   setActiveHalf: (side: Side, half: Half, id: PanelId) => void;
   tryScrollOmniEntry: (key: string, targetY?: number) => boolean;
   getOmniEnabled: (side: "left" | "right") => Set<OmniCategory>;
-  setSelectedArchiveId: Dispatch<SetStateAction<string | null>>;
   setSelectedFootnoteId: Dispatch<SetStateAction<string | null>>;
   setSelectedCitationId: Dispatch<SetStateAction<string | null>>;
   setSelectedNoteId: Dispatch<SetStateAction<string | null>>;
@@ -84,6 +83,14 @@ export function useMarkerClickBridges(deps: {
     SetStateAction<{
       kind: "inline" | "display";
       latex: string;
+      pos: number;
+      rect: DOMRect;
+    } | null>
+  >;
+  setActiveFigure: Dispatch<
+    SetStateAction<{
+      kind: string;
+      raw: string;
       pos: number;
       rect: DOMRect;
     } | null>
@@ -101,7 +108,6 @@ export function useMarkerClickBridges(deps: {
     setActiveHalf,
     tryScrollOmniEntry,
     getOmniEnabled,
-    setSelectedArchiveId,
     setSelectedFootnoteId,
     setSelectedCitationId,
     setSelectedNoteId,
@@ -111,52 +117,9 @@ export function useMarkerClickBridges(deps: {
     setActiveRefRect,
     setActiveRefCommand,
     setActiveMath,
+    setActiveFigure,
     alignOmniCardWithClick,
   } = deps;
-
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (!detail?.archiveId) return;
-      // Marker click → card alignment goes through alignOmniCardWithClick
-      // below, NOT through usePlacement (which would scroll the row and drag
-      // the editor). See usePlacement's asymmetry-rule docstring.
-      suppressNextPlacement();
-      setSelectedArchiveId(detail.archiveId);
-      const clickY: number | undefined =
-        typeof detail.clickY === "number" ? detail.clickY : undefined;
-      openForCard(
-        {
-          omniKey: `archive:${detail.archiveId}`,
-          entrySelector: `[data-archive-entry="${detail.archiveId}"]`,
-          panelId: "archive",
-          cardKind: "archive",
-          // skipScroll: alignment is handled by shifting the omni cards
-          // group (alignOmniCardWithClick) so the document stays put.
-          skipScroll: true,
-        },
-        {
-          prefs: prefsRef.current,
-          setActiveLeft,
-          setActiveRight,
-          setActiveHalf,
-          tryScrollOmniEntry,
-          getOmniEnabled,
-        },
-      );
-      if (typeof clickY === "number") {
-        const sourceEl = document.querySelector(
-          `[data-type="archive-marker"][data-archive-id="${detail.archiveId}"]`,
-        ) as HTMLElement | null;
-        // alignOmniCardWithClick converts clickY → pod-relative and
-        // publishes a pin request. Retries one rAF later if the panel
-        // column hasn't rendered yet (cold-mount case).
-        alignOmniCardWithClick(`archive:${detail.archiveId}`, clickY, sourceEl);
-      }
-    };
-    window.addEventListener("virgil-archive-click", handler);
-    return () => window.removeEventListener("virgil-archive-click", handler);
-  }, [prefsRef, setActiveLeft, setActiveRight, setActiveHalf, tryScrollOmniEntry, getOmniEnabled, setSelectedArchiveId, alignOmniCardWithClick]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -293,6 +256,23 @@ export function useMarkerClickBridges(deps: {
     window.addEventListener("virgil-math-click", handler);
     return () => window.removeEventListener("virgil-math-click", handler);
   }, [setActiveMath]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail || typeof detail.pos !== "number") return;
+      if (typeof detail.kind !== "string") return;
+      if (!(detail.rect instanceof DOMRect)) return;
+      setActiveFigure({
+        kind: detail.kind,
+        raw: typeof detail.raw === "string" ? detail.raw : "",
+        pos: detail.pos,
+        rect: detail.rect,
+      });
+    };
+    window.addEventListener("virgil-figure-click", handler);
+    return () => window.removeEventListener("virgil-figure-click", handler);
+  }, [setActiveFigure]);
 
   // Generic linked-anchor click bridge — `useTextHoverBridge` dispatches
   // `virgil-linked-anchor-click` whenever a Mode B `.linked-anchor` span

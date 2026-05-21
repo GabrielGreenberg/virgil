@@ -22,7 +22,16 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const DATA_DIR = path.join(process.cwd(), "library-data");
+// Library root for dev mode. Defaults to the in-repo `library-data/`
+// so existing setups keep working without env-var configuration. Set
+// `VIRGIL_LIBRARY_PATH` to point at a relocated library outside the
+// repo — recommended to escape the Turbopack watcher's startup walk
+// when `library-data/.virgil/models/` (multi-GB ML weights) and
+// `library-data/.virgil/queue/` (churning under skill runs) cause
+// dev-server instability. See the comment in next.config.ts.
+const DATA_DIR = process.env.VIRGIL_LIBRARY_PATH
+  ? path.resolve(process.env.VIRGIL_LIBRARY_PATH)
+  : path.join(process.cwd(), "library-data");
 
 function safeJoin(...segments: string[]): string | null {
   const joined = path.join(DATA_DIR, ...segments);

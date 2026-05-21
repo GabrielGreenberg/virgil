@@ -105,6 +105,11 @@ function buildCitationSelectionDecos(state: EditorState): DecorationSet {
       );
     }
   });
+  // Return the singleton when there's nothing to paint so PM can short-
+  // circuit decoration reconciliation by reference equality. Without this,
+  // every drag-select mousemove over text that doesn't contain a citation
+  // allocates a fresh empty DecorationSet, which PM still has to reconcile.
+  if (decos.length === 0) return DecorationSet.empty;
   return DecorationSet.create(state.doc, decos);
 }
 
@@ -142,7 +147,7 @@ export const Citation = Node.create<CitationOptions>({
   // and that selection transaction defaults to `scrollIntoView: true`,
   // scrolling the row ~70px before our click handler can route to
   // alignOmniCardWithClick. `atom: true` keeps Backspace deletion working
-  // as a single unit. Matches archive-marker.ts and footnote.ts.
+  // as a single unit. Matches footnote.ts.
   selectable: false,
 
   addOptions() {
@@ -230,7 +235,22 @@ export const Citation = Node.create<CitationOptions>({
           init: (_, state) => buildCitationSelectionDecos(state),
           apply: (tr, old, _oldState, newState) => {
             if (!tr.docChanged && !tr.selectionSet) return old;
-            return buildCitationSelectionDecos(newState);
+            // Per-keystroke fast path: a collapsed selection paints nothing.
+            // Skip the build so typing transactions (where the selection
+            // collapses to the caret) don't enter nodesBetween at all.
+            // Reuse `old` when it's already empty so PM sees an unchanged
+            // reference and skips decoration reconciliation entirely.
+            if (newState.selection.from === newState.selection.to) {
+              return old === DecorationSet.empty ? old : DecorationSet.empty;
+            }
+            const next = buildCitationSelectionDecos(newState);
+            // Same reuse trick for the drag-select-over-text case:
+            // when the range doesn't intersect any citation, the build
+            // returns DecorationSet.empty. Keep the existing reference.
+            if (next === DecorationSet.empty && old === DecorationSet.empty) {
+              return old;
+            }
+            return next;
           },
         },
         props: {

@@ -22,6 +22,7 @@ export function useMarginalia(editor: Editor | null) {
     new Map()
   );
   const rafRef = useRef(0);
+  const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const compute = useCallback(() => {
     if (!editor) {
@@ -153,17 +154,32 @@ export function useMarginalia(editor: Editor | null) {
     }
     if (!dom) return;
 
-    // All update sources (doc edits, selection, scroll, resize) batch
-    // through a single RAF. The original synchronous-on-update path
-    // forced ~3N layout reflows per keystroke (one nodeDOM + two
-    // getBoundingClientRect + one coordsAtPos per anchorable node),
-    // which was the dominant typing-lag cause in long docs.
-    // Fresh-UUID timing is recovered via the marker side: components
-    // that need a newly-assigned UUID's metrics in the same render
-    // cycle can fall back to anchor-by-position until the next RAF
-    // resolves the UUID. This is already the case for the initial
-    // RAF-scheduled compute below.
-    const onChange = () => {
+    // Two paths for invalidation:
+    //
+    //   - Editor `update` (doc edits): debounced ~120ms. Compute walks
+    //     every anchorable node with `nodeDOM` + `getBoundingClientRect`
+    //     + `coordsAtPos` + `getComputedStyle` — a full layout pass in
+    //     practice. Doing it per keystroke (even RAF-batched) eats most
+    //     of one frame on a long doc, which the user feels as typing
+    //     chop. Marginalia icons are anchored to paragraphs and don't
+    //     need frame-perfect tracking during a typing burst; settling
+    //     ~120ms after the last keystroke is well below perceptual
+    //     thresholds and removes the per-keystroke layout cost entirely.
+    //
+    //   - Scroll / resize: RAF-immediate. These are direct user actions
+    //     where any lag is visible.
+    //
+    // selectionUpdate was dropped previously — paragraph metrics depend
+    // on layout, not selection.
+    const onUpdateDebounced = () => {
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+      updateTimerRef.current = setTimeout(() => {
+        updateTimerRef.current = null;
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(compute);
+      }, 120);
+    };
+    const onImmediate = () => {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = requestAnimationFrame(compute);
     };
@@ -171,22 +187,21 @@ export function useMarginalia(editor: Editor | null) {
     // Initial compute (debounced once for layout stabilization)
     rafRef.current = requestAnimationFrame(compute);
 
-    editor.on("update", onChange);
-    editor.on("selectionUpdate", onChange);
+    editor.on("update", onUpdateDebounced);
 
     // Marginalia metrics are scroll-invariant under unified row scroll
     // (host pod and paragraph DOM move together). We still listen on the
     // row scroll to trigger a re-render in case of layout shifts.
     const rowScroll = findRowScroll();
-    rowScroll?.addEventListener("scroll", onChange, { passive: true });
-    window.addEventListener("resize", onChange);
+    rowScroll?.addEventListener("scroll", onImmediate, { passive: true });
+    window.addEventListener("resize", onImmediate);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
-      editor.off("update", onChange);
-      editor.off("selectionUpdate", onChange);
-      rowScroll?.removeEventListener("scroll", onChange);
-      window.removeEventListener("resize", onChange);
+      if (updateTimerRef.current) clearTimeout(updateTimerRef.current);
+      editor.off("update", onUpdateDebounced);
+      rowScroll?.removeEventListener("scroll", onImmediate);
+      window.removeEventListener("resize", onImmediate);
     };
   }, [editor, compute]);
 

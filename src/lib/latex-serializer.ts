@@ -150,7 +150,14 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       return (node.content || []).map((n) => serializeNode(n)).join("");
 
     case "paragraph": {
-      if (!node.content || node.content.length === 0) return suppressChildUuids ? "" : "%!v:blank\n";
+      if (!node.content || node.content.length === 0) {
+        if (suppressChildUuids) return "";
+        // Preserve the paragraph's UUID even when empty — archive snippets
+        // anchor on UUIDs, and load-bearing empty paragraphs (left behind
+        // by archive) need to round-trip without losing their identity.
+        const uuid = node.attrs?.uuid as string | null;
+        return uuid ? `%!v:${uuid}\n` : "%!v:blank\n";
+      }
       const inner = (node.content || []).map(serializeInline).join("");
       if (suppressChildUuids) return inner;
       const uuid = node.attrs?.uuid as string | null;
@@ -206,6 +213,30 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const rawCode = (node.attrs?.code as string) || "";
       const escaped = rawCode.replace(/%!vtex:end/g, "%!v tex:end");
       return `%!vtex:begin ${uuid}\n${escaped}\n%!vtex:end ${uuid}\n\n`;
+    }
+
+    case "figureBlock": {
+      // Round-trip from `raw` (the verbatim env body) so we preserve
+      // whitespace, comments, and any nuances we don't structurally
+      // model (subfigures, \centering, etc.). v1 is read-only — when
+      // editing lands, we'll rebuild `raw` from structured attrs at
+      // save time and fall back here only when nothing changed.
+      const raw = (node.attrs?.raw as string) ?? "";
+      const placement = (node.attrs?.placement as string) ?? "";
+      const starred = node.attrs?.starred === true;
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      const envName = starred ? "figure*" : "figure";
+      return `\\begin{${envName}}${placement}${raw}\\end{${envName}}${anchor}\n\n`;
+    }
+
+    case "graphicsBlock": {
+      // Standalone `\includegraphics` — emit the verbatim command from
+      // `command`, with the trailing UUID anchor if present.
+      const command = (node.attrs?.command as string) ?? "";
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
+      return `${command}${anchor}\n\n`;
     }
 
     case "blockquote": {
@@ -289,11 +320,6 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
       const uuid = node.attrs?.uuid as string | null;
       const anchor = uuid ? ` %!v:${uuid}` : "";
       return `% ${node.attrs?.text || ""}${anchor}\n`;
-    }
-
-    case "archiveMarker": {
-      const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
-      return `\\archivemarker{${node.attrs?.archiveId || ""}}{${preview}}`;
     }
 
     case "citation": {
@@ -489,10 +515,6 @@ function serializeInline(node: JSONContent): string {
     const cmd = node.attrs?.thanks ? "thanks" : "footnote";
     return `${idMarker}\\${cmd}{${richJsonToLatex(normalizeRichContent(node.attrs?.content))}}`;
   }
-  if (node.type === "archiveMarker") {
-    const preview = (node.attrs?.preview || "").replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
-    return `\\archivemarker{${node.attrs?.archiveId || ""}}{${preview}}`;
-  }
   if (node.type === "citation") {
     const cid = node.attrs?.citationId as string | undefined;
     const idMarker = cid ? `\\vcid{${cid}}` : "";
@@ -543,7 +565,14 @@ export function serializeBodyOnly(doc: JSONContent): string {
 
 /** Assign UUIDs to all block-level nodes that lack one. Mutates the doc in place.
  *  Container nodes (lists, blockquote) get a single UUID — inner paragraphs are suppressed.
- *  Headings, titleFields, atom blocks (displayMath, latexComment, codeBlock) always get a UUID. */
+ *  Headings, titleFields, atom blocks (displayMath, latexComment, codeBlock) always get a UUID.
+ *
+ *  Also dedups inline `citationId` and `footnoteId` attrs. The 4-char hex id
+ *  space (65K) starts seeing collisions in modest-sized docs, and once two
+ *  citations or footnotes share an id the React keys collide in Marginalia /
+ *  Omni. Each kind is deduped within its own namespace (React keys are
+ *  prefixed `citation:` / `footnote:`, so cross-kind collisions are not a
+ *  rendering problem). */
 export function assignUuids(doc: JSONContent): void {
   const CONTAINER_TYPES = new Set(["bulletList", "orderedList", "blockquote"]);
   const existing = new Set<string>();
@@ -609,7 +638,12 @@ export function assignUuids(doc: JSONContent): void {
     }
     // Atom-like block nodes always get a UUID
     if (
-      (node.type === "displayMath" || node.type === "latexComment" || node.type === "codeBlock") &&
+      (node.type === "displayMath" ||
+        node.type === "latexComment" ||
+        node.type === "codeBlock" ||
+        node.type === "exampleBlock" ||
+        node.type === "figureBlock" ||
+        node.type === "graphicsBlock") &&
       !node.attrs?.uuid
     ) {
       ensureUuid(node);
@@ -617,6 +651,62 @@ export function assignUuids(doc: JSONContent): void {
     node.content?.forEach((child) => assign(child, insideContainer));
   }
   assign(doc);
+
+  // Inline id dedup (separate id space per kind, since React keys are
+  // namespaced `citation:` / `footnote:`). For each kind: walk once,
+  // clear duplicates, then walk again to refill cleared slots with ids
+  // that avoid every survivor. Footnotes stash their body as
+  // `attrs.content` (they're inline atoms), and citations inside that
+  // body must also be visited — recurse into any attrs.content array.
+  function dedupInlineId(typeName: string, attrName: string) {
+    const survivors = new Set<string>();
+    const localSeen = new Set<string>();
+    const walkChildren = (node: JSONContent, fn: (n: JSONContent) => void) => {
+      node.content?.forEach(fn);
+      // Inline atoms (footnote, note) stash their body on `attrs.content`,
+      // shaped as either a JSONContent doc node or a raw children array
+      // (see normalizeRichContent's four shapes). Descend into both.
+      const attrContent = node.attrs?.content;
+      if (Array.isArray(attrContent)) {
+        for (const child of attrContent as JSONContent[]) fn(child);
+      } else if (attrContent && typeof attrContent === "object") {
+        fn(attrContent as JSONContent);
+      }
+    };
+    const dedupWalk = (node: JSONContent) => {
+      if (node.type === typeName) {
+        const id = node.attrs?.[attrName] as string | undefined;
+        if (id) {
+          if (localSeen.has(id)) {
+            // Duplicate — clear so the fill walk regenerates it.
+            (node.attrs as Record<string, unknown>)[attrName] = "";
+          } else {
+            localSeen.add(id);
+            survivors.add(id);
+          }
+        }
+      }
+      walkChildren(node, dedupWalk);
+    };
+    dedupWalk(doc);
+
+    const fillWalk = (node: JSONContent) => {
+      if (node.type === typeName) {
+        const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+        if (!attrs[attrName]) {
+          const fresh = generateShortId(survivors);
+          survivors.add(fresh);
+          attrs[attrName] = fresh;
+          node.attrs = attrs;
+        }
+      }
+      walkChildren(node, fillWalk);
+    };
+    fillWalk(doc);
+  }
+
+  dedupInlineId("citation", "citationId");
+  dedupInlineId("footnote", "footnoteId");
 }
 
 /** Recursively extract plain text from a JSONContent subtree. */
@@ -628,7 +718,6 @@ function extractPlainText(node: JSONContent): string {
   if (node.type === "hardBreak") return " ";
   if (node.type === "displayMath") return node.attrs?.latex || "";
   if (node.type === "latexComment") return node.attrs?.text || "";
-  if (node.type === "archiveMarker") return "";
   if (node.type === "aiRequestMarker") return "";
   if (!node.content) return "";
   const sep = node.type === "bulletList" || node.type === "orderedList" ? "; " : "";
@@ -716,7 +805,11 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
     }
     // Atom-like block nodes
     if (
-      (node.type === "displayMath" || node.type === "latexComment" || node.type === "codeBlock") &&
+      (node.type === "displayMath" ||
+        node.type === "latexComment" ||
+        node.type === "codeBlock" ||
+        node.type === "figureBlock" ||
+        node.type === "graphicsBlock") &&
       !node.attrs?.uuid
     ) {
       const fp = computeFingerprint(node);

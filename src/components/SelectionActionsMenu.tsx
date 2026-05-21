@@ -23,6 +23,10 @@ import { NodeSelection } from "@tiptap/pm/state";
 import { isAnchorableNode } from "@/lib/marginalia";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
+import {
+  useEditorViewportCache,
+  type EditorViewportCache,
+} from "@/hooks/useEditorViewportCache";
 
 const VIEWPORT_MARGIN = 8;
 const RIGHT_GAP = 6;
@@ -48,32 +52,24 @@ interface Placement {
   mode: "selection" | "cursor";
 }
 
-function findScrollParent(el: HTMLElement | null): HTMLElement | null {
-  let cur = el?.parentElement ?? null;
-  while (cur) {
-    const cs = window.getComputedStyle(cur);
-    const ov = cs.overflowY;
-    if ((ov === "auto" || ov === "scroll") && cur.scrollHeight > cur.clientHeight) {
-      return cur;
-    }
-    cur = cur.parentElement;
-  }
-  return null;
-}
-
 /**
  * Single placement rule: far-right gutter at the line containing the
  * selection head. Stable under tiny selection changes because the X
  * comes from the editor box (not per-line geometry) and the Y is the
  * head line's top.
+ *
+ * Per-keystroke cost: one `coordsAtPos(head)` + arithmetic on cached
+ * editor metrics. The `cache` object holds editorRight, scrollTop,
+ * scrollBottom — values that only change on resize / layout shift.
  */
-function computePlacement(editor: Editor): Placement {
+function computePlacement(editor: Editor, cache: EditorViewportCache): Placement {
   const sel = editor.state.selection;
   if (sel instanceof NodeSelection) return INVISIBLE_PLACEMENT;
   // Cursor-only mode is gated on focus so the button doesn't materialize
   // at the document's default cursor position on first paint, before the
   // user has ever clicked into the prose.
   if (sel.empty && !editor.isFocused) return INVISIBLE_PLACEMENT;
+  if (!cache.editorEl) return INVISIBLE_PLACEMENT;
 
   const { from, to, head } = sel;
   let paragraphUuid: string | null = null;
@@ -93,16 +89,11 @@ function computePlacement(editor: Editor): Placement {
     return INVISIBLE_PLACEMENT;
   }
 
-  const editorEl = editor.view.dom as HTMLElement;
-  const editorRect = editorEl.getBoundingClientRect();
-  const padRight = parseFloat(window.getComputedStyle(editorEl).paddingRight) || 0;
-  const textRight = editorRect.right - padRight;
-  const scrollParent = findScrollParent(editorEl);
-  const scrollRect = scrollParent
-    ? scrollParent.getBoundingClientRect()
-    : { top: 0, bottom: window.innerHeight };
+  const textRight = cache.editorRight;
+  const scrollTop = cache.scrollTop;
+  const scrollBottom = cache.scrollBottom;
 
-  if (headCoords.bottom < scrollRect.top || headCoords.top > scrollRect.bottom) {
+  if (headCoords.bottom < scrollTop || headCoords.top > scrollBottom) {
     return {
       visible: false,
       left: 0,
@@ -119,7 +110,7 @@ function computePlacement(editor: Editor): Placement {
   if (left + BUTTON_SIZE > vw - VIEWPORT_MARGIN) {
     left = Math.max(VIEWPORT_MARGIN, vw - BUTTON_SIZE - VIEWPORT_MARGIN);
   }
-  let top = Math.max(headCoords.top, scrollRect.top, VIEWPORT_MARGIN);
+  let top = Math.max(headCoords.top, scrollTop, VIEWPORT_MARGIN);
   if (top + BUTTON_SIZE > vh - VIEWPORT_MARGIN) {
     top = Math.max(VIEWPORT_MARGIN, vh - BUTTON_SIZE - VIEWPORT_MARGIN);
   }
@@ -134,6 +125,18 @@ function computePlacement(editor: Editor): Placement {
   };
 }
 
+function placementsEqual(a: Placement, b: Placement): boolean {
+  return (
+    a.visible === b.visible &&
+    a.left === b.left &&
+    a.top === b.top &&
+    a.paragraphUuid === b.paragraphUuid &&
+    a.mode === b.mode &&
+    (a.range?.from ?? null) === (b.range?.from ?? null) &&
+    (a.range?.to ?? null) === (b.range?.to ?? null)
+  );
+}
+
 export function SelectionActionsMenu({
   editorRef,
 }: {
@@ -143,23 +146,86 @@ export function SelectionActionsMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
+  // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
+  // are read here per placement compute instead of being re-measured per
+  // RAF. The cache refreshes only on resize / ResizeObserver-detected
+  // layout changes. `version` participates in the effect deps so the
+  // compute re-runs when the cache changes (e.g., sidebar toggle).
+  const { cacheRef, version: cacheVersion } = useEditorViewportCache(
+    editorRef.current,
+  );
+
   // Single RAF-coalesced compute on every event that could move or hide
-  // the button. No candidate/applyVisibility/freeze indirection — the
-  // button is small and tracks the cursor's head line smoothly.
+  // the button. The button is small and tracks the cursor's head line
+  // smoothly.
+  //
+  // Suppression: while the user is mid-drag (left mousedown started inside
+  // the editor prose) or actively scrolling, the placement math is gated
+  // off entirely. PM `selectionUpdate` etc. still fire, but they hit
+  // `isSuppressed()` and return before scheduling RAF — no `coordsAtPos`,
+  // no setState. This keeps the button from flickering frame-by-frame
+  // while the head line is in motion.
+  //
+  // Equality: `setPlacement` short-circuits via `placementsEqual` when
+  // the new placement is structurally identical to the old. Typing
+  // within a single visual line keeps headCoords.top constant, so most
+  // keystrokes hit the bail-out and don't trigger a React re-render of
+  // the portaled button.
   useEffect(() => {
     let rafId = 0;
     let readyRaf = 0;
     let subscribed: Editor | null = null;
+    let mouseDownInEditor = false;
+    let scrollIdleTimer: number | null = null;
+    const SCROLL_IDLE_MS = 120;
+    const isSuppressed = () => mouseDownInEditor || scrollIdleTimer !== null;
     const run = () => {
       const ed = editorRef.current;
-      setPlacement(ed && !ed.isDestroyed ? computePlacement(ed) : INVISIBLE_PLACEMENT);
+      const next = ed && !ed.isDestroyed
+        ? computePlacement(ed, cacheRef.current)
+        : INVISIBLE_PLACEMENT;
+      setPlacement((prev) => (placementsEqual(prev, next) ? prev : next));
     };
     const update = () => {
+      if (isSuppressed()) return;
       if (rafId) return;
       rafId = requestAnimationFrame(() => {
         rafId = 0;
         run();
       });
+    };
+    const suppress = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      setPlacement(INVISIBLE_PLACEMENT);
+    };
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button !== 0) return;
+      const ed = editorRef.current;
+      if (!ed) return;
+      const t = e.target as Node | null;
+      if (t && ed.view.dom.contains(t)) {
+        mouseDownInEditor = true;
+        suppress();
+      }
+    };
+    const onMouseUp = () => {
+      if (!mouseDownInEditor) return;
+      mouseDownInEditor = false;
+      if (!isSuppressed()) update();
+    };
+    const onScroll = () => {
+      if (scrollIdleTimer === null) {
+        suppress();
+      } else {
+        window.clearTimeout(scrollIdleTimer);
+      }
+      scrollIdleTimer = window.setTimeout(() => {
+        scrollIdleTimer = null;
+        if (!isSuppressed()) update();
+      }, SCROLL_IDLE_MS);
     };
     const subscribe = (ed: Editor) => {
       subscribed = ed;
@@ -186,16 +252,23 @@ export function SelectionActionsMenu({
       readyRaf = requestAnimationFrame(waitForEditor);
     };
     waitForEditor();
-    window.addEventListener("scroll", update, true);
+    window.addEventListener("mousedown", onMouseDown, true);
+    window.addEventListener("mouseup", onMouseUp, true);
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", update);
     return () => {
       if (rafId) cancelAnimationFrame(rafId);
       if (readyRaf) cancelAnimationFrame(readyRaf);
+      if (scrollIdleTimer !== null) window.clearTimeout(scrollIdleTimer);
       unsubscribe();
-      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("mousedown", onMouseDown, true);
+      window.removeEventListener("mouseup", onMouseUp, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", update);
     };
-  }, [editorRef]);
+    // cacheVersion re-runs the effect when the cache changes (e.g.,
+    // sidebar toggle changes editorRight). cacheRef itself is stable.
+  }, [editorRef, cacheRef, cacheVersion]);
 
   // Close the menu on logical changes only — selection moved, paragraph
   // changed, mode flipped, visibility dropped. `left/top` excluded so

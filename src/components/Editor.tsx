@@ -14,7 +14,7 @@ import Highlight from "@tiptap/extension-highlight";
 import { useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from "react";
 import { NodeSelection, Plugin, PluginKey } from "@tiptap/pm/state";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock } from "@/lib/tiptap-extensions";
+import { InlineMath, DisplayMath, Footnote, LatexComment, Citation, LabelRef, LatexCommandMark, SlashPopupExtension, LabelHandler, TitleField, MaketitleMarker, EmptyParagraphTitleCleaner, AiRequestMarker, MarginaliaAnchorGuard, LinkedAnchor, LinkedAnchorGuard, ExampleBlock, ExampleItemList, ExampleItem, ExampleGloss, AlignedGlossRow, ProseGlossRow, GlossCell, ExpexNumbering, SmartQuotes, TabIndent, PgMarkChip, TextColor, TexBlock, FigureBlock, GraphicsBlock } from "@/lib/tiptap-extensions";
 import {
   collectLinksFromEditor,
   jumpToLink,
@@ -221,6 +221,10 @@ interface EditorProps {
   onLiftTexBlock?: (uuid: string, rect: { x: number; y: number; width: number; height: number }) => void;
   /** Same as paragraphIsPoppedRef, but for texBlock atoms. */
   texBlockIsPoppedRef?: React.RefObject<(uuid: string) => boolean>;
+  /** Doc id, passed into the FigureBlock / GraphicsBlock extensions so
+   *  their NodeViews can resolve `\includegraphics` paths against the
+   *  active paper folder. `null` is fine — figures just won't render. */
+  docId?: string | null;
   /**
    * Callback invoked when the user clicks (without dragging) a
    * paragraph or heading drag grip. Opens the passage-action menu
@@ -467,7 +471,7 @@ function findTextRange(editor: Editor, searchText: string): { from: number; to: 
 }
 
 const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor(
-  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true },
+  { initialContent, onUpdate, highlightText, highlightRange, onAddComment, onArchive, onEditorReady, onCitationDrop, onConfirmFootnoteMove, onConfirmLabelRename, isLabelTaken, anchoredUuidsRef, activeAnchorId, activeAnchorColor, onToggleParagraphPopout, onLiftParagraph, paragraphIsPoppedRef, onToggleHeadingPopout, onLiftHeading, headingIsPoppedRef, onLiftList, listIsPoppedRef, onToggleExamplePopout, exampleIsPoppedRef, onLiftTexBlock, texBlockIsPoppedRef, onDragHandleClick, onOpenHeadingTypeMenu, onConfirmHeadingDelete, documentClass, editable = true, docId = null },
   ref
 ) {
   const highlightTextRef = useRef(highlightText);
@@ -543,6 +547,11 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onLiftTexBlockRef.current = onLiftTexBlock;
   const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
   texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
+  // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
+  // `extension.options.docIdRef.current` to resolve `\includegraphics`
+  // paths against the active paper folder.
+  const docIdRef = useRef<string | null>(docId);
+  docIdRef.current = docId;
   // Mirror onConfirmFootnoteMove into a ref so the ProseMirror handleDrop
   // closure always sees the current value without needing to reattach.
   const onConfirmFootnoteMoveRef = useRef(onConfirmFootnoteMove);
@@ -2122,6 +2131,8 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         onLiftRef: onLiftTexBlockRef,
         isPoppedRef: texBlockIsPoppedPredicateRef,
       }),
+      FigureBlock.configure({ docIdRef }),
+      GraphicsBlock.configure({ docIdRef }),
       Placeholder.configure({
         placeholder: "Start writing...",
       }),

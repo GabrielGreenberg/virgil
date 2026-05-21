@@ -148,7 +148,6 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
           pointerEvents: "none",
           zIndex: "20",
           borderRadius: "1px",
-          transition: "top 0.08s ease, height 0.08s ease",
         });
         scrollEl.appendChild(indicator);
       }
