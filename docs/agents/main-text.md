@@ -1,4 +1,4 @@
-<!-- last-verified: 6ad177f 2026-05-20 -->
+<!-- last-verified: cffd4d7 2026-05-21 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -126,8 +126,8 @@ Per-card integration is one line: `const ac = useAnchoredCard({ kind, id }); ret
 - [src/links/_shared/usePlacement.ts](../../src/links/_shared/usePlacement.ts) — card → text alignment: when `cardStore.selection` changes via a user gesture, scroll the editor so the closest anchor aligns with the selected card's vertical position. (Text/marginalia → card alignment is the inverse and still flows through `openForCard`.)
 - [src/links/_shared/entity-hover.ts](../../src/links/_shared/entity-hover.ts) — `EntityKind` union (`note`/`cut`/`revision`/`todo`/`archive`/`quotation`/`footnote`/`citation`) and generic resolvers (`findEntity`, `cardKeyForEntity`, `entityToAnchorId`).
 - [src/links/_shared/useLinkHighlight.ts](../../src/links/_shared/useLinkHighlight.ts) — paints `data-link-highlight="hover" | "active"` on `.linked-anchor` spans (Mode B text ranges).
-- [src/links/_shared/useCardHoverHighlight.ts](../../src/links/_shared/useCardHoverHighlight.ts) — paints `data-card-hovered` on resolved anchor elements *and* on matching panel cards (via `data-card-key`).
-- [src/links/_shared/useCardSelectionHighlight.ts](../../src/links/_shared/useCardSelectionHighlight.ts) — selection counterpart, paints `data-card-selected`.
+- [src/links/_shared/useAnchorHighlightReconciler.ts](../../src/links/_shared/useAnchorHighlightReconciler.ts) — single idempotent reconciler that paints both `data-card-hovered` and `data-card-selected` on resolved anchor elements (gutter markers) *and* on matching panel cards (via `data-card-key`) in one pass. 930b9f6 unified the two previously-separate hover/selection hooks here so the two states share lookup and never desync.
+- [src/links/_shared/useLinkedAnchorReconciler.ts](../../src/links/_shared/useLinkedAnchorReconciler.ts) — thin sibling reconciler for Mode B text ranges (the `.linked-anchor` spans inside the editor).
 - [src/links/_shared/useTextHoverBridge.ts](../../src/links/_shared/useTextHoverBridge.ts) — single delegated `mouseover`/`mouseout`/`click` listener on `editor.view.dom`. Resolves linkedAnchor spans, citation atoms (`[data-citation-id]`), footnote atoms (`[data-footnote-id]`); on Mode B click, dispatches `virgil-linked-anchor-click` for the bridge in `event-bridges/marker-clicks.ts` to route via `openForCard`.
 - [src/links/_shared/usePanelCardHoverBridge.ts](../../src/links/_shared/usePanelCardHoverBridge.ts) — single document-level listener that reads `data-card-key` to translate panel card hovers into entity hovers.
 

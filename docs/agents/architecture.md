@@ -1,4 +1,4 @@
-<!-- last-verified: 6ad177f 2026-05-20 -->
+<!-- last-verified: cffd4d7 2026-05-21 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -35,8 +35,9 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useCutter` | Cut items |
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
-| `useLinkHighlight` / `useCardHoverHighlight` / `useCardSelectionHighlight` | Three-surface hover/selection coupling (text, margin icon, panel card). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
-| `useViewPrefs` | Panel visibility, layout state, placements, all user-layout prefs |
+| `useLinkHighlight` / `useAnchorHighlightReconciler` / `useLinkedAnchorReconciler` | Three-surface hover/selection coupling (text, margin icon, panel card). 930b9f6 collapsed the previous `useCardHoverHighlight` + `useCardSelectionHighlight` pair into one idempotent reconciler (`useAnchorHighlightReconciler`) that paints both `data-card-hovered` and `data-card-selected` in a single pass. Mode B `.linked-anchor` spans get their own thin reconciler (`useLinkedAnchorReconciler`). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
+| `useViewPrefs` | Panel visibility, layout state, placements, and (since b706812) the per-view editor-decoration prefs that previously lived as EditorLayout local state — marginalia visibility (`showMarginalia`, `hiddenMarginaliaTypes`), section indicator / heading labels, divider levels + width, omni-view categories + per-side hide-all. Sourced via the centralized [src/lib/dev-prefs-registry.ts](../../src/lib/dev-prefs-registry.ts) (single source consumed by both the cross-window mirror and the personal-prefs promotion script) |
+| `useFloatingMenuPosition` | Shared viewport-clamping placement helper (f7461e2). Action menu / Highlights submenu / DragHandleMenu route through it so popovers never bleed off-screen. RAF-batched + recomputed on scroll/resize |
 | `usePersistentState` | IndexedDB persistence abstraction. `update()` debounces `persist()` ~300ms (2dc963d) with flush-on-unmount + flush-on-docId-change so safety isn't traded for the keystroke-cascade savings |
 | `useInTextPositions` | Omni-view positioning |
 | `usePristineCardManager` | Tracks freshly-created cards so they auto-discard if closed without edits; exposed via the `pristine-cards` context |
