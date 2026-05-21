@@ -46,6 +46,7 @@ import { themeFromAccent, DEFAULT_PANEL_COLORS, type CardTheme } from "@/lib/pan
 import { useCardClaim, useCollabContext } from "@/hooks/useCollab";
 import CollabClaimPill from "./CollabClaimPill";
 import CollabPresenceDots from "./CollabPresenceDots";
+import { omniPinStore } from "./editor-layout/omni-pin-store";
 
 /* ── Per-card claim context ─────────────────────────────────────────
  *  EditableCard publishes its (panelKind, cardId) here so deeply-nested
@@ -1612,6 +1613,18 @@ export const PanelCard = forwardRef<HTMLDivElement, PanelCardProps>(function Pan
         // The legacy `toggleAtAnchor` will run computeSpawnPosition over
         // it, which won't be cursor-perfect but is at least close.
         onTogglePopout(new DOMRect(spawn.x, spawn.y, spawn.width, spawn.height));
+      }
+      // Clear any Omni pin held on this card — the wrapper's mousedown-
+      // capture handler may have pinned it at the gesture's start, and
+      // the lift unmounts the wrapper from the cascade. Leaving the pin
+      // would be a dead reference (resolveCascade skips it harmlessly,
+      // but no reason to dangle stale state).
+      const sideEl = cardEl.closest(
+        "[data-panel-column-side]",
+      ) as HTMLElement | null;
+      const side = sideEl?.dataset.panelColumnSide;
+      if (side === "left" || side === "right") {
+        omniPinStore.clearPin(side, cardKey);
       }
       // Schedule the highlight's fade-out — a brief pulse on lift-off.
       window.setTimeout(() => setCardLiftTarget(null), 150);

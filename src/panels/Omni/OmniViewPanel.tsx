@@ -12,6 +12,7 @@ import type { CardKind, OmniItem, PanelKind } from "@/panels/_shared/types";
 import { OmniProvider } from "@/components/editor-layout/contexts/omni";
 import { CardDisplayProvider } from "@/components/editor-layout/contexts/card-display";
 import {
+  omniPinStore,
   usePinRequest,
   type PinSide,
 } from "@/components/editor-layout/omni-pin-store";
@@ -397,6 +398,34 @@ function OmniViewPanel({
                 top: 0,
                 transform: `translateY(${top}px)`,
                 zIndex: isPinned ? 10 : undefined,
+              }}
+              // Pin-on-touch: any user mousedown on a card publishes a pin
+              // at the card's current viewport Y *before* the click triggers
+              // selection toggle and the cascade recomputes. The pin keeps
+              // the card's top fixed through the collapse/expand height
+              // change. Matches the marker-click → pin pattern; the card-
+              // body click was the one entry point still missing it.
+              // Capture phase so it runs before any descendant onMouseDown
+              // (notably PanelCard's lift-threshold watcher).
+              onMouseDownCapture={(e) => {
+                // Skip clicks on interactive controls that don't change
+                // layout (header buttons, dropdowns, trash, drag handles).
+                // Mirrors the lift blocker at panel-primitives.tsx:1552.
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest(
+                    "button, input, textarea, select, a, [contenteditable='true'], [draggable='true'], [data-no-window-drag]",
+                  )
+                ) {
+                  return;
+                }
+                const wrapper = e.currentTarget;
+                const pod = wrapper.parentElement;
+                if (!pod) return;
+                const pinTop =
+                  wrapper.getBoundingClientRect().top -
+                  pod.getBoundingClientRect().top;
+                omniPinStore.requestPin(side as PinSide, item.id, pinTop);
               }}
             >
               {item.content}
