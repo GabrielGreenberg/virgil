@@ -85,5 +85,15 @@
   "bottomGutter": 0,
   "editorLeftMargin": 88,
   "editorRightMargin": 72,
-  "topbarRightCollapsed": false
+  "topbarRightCollapsed": false,
+  "showMarginalia": true,
+  "hiddenMarginaliaTypes": [],
+  "showSectionIndicator": true,
+  "showHeadingLabels": true,
+  "dividerLevels": [],
+  "dividerWidth": "full",
+  "omniHideAllCards": {
+    "left": false,
+    "right": false
+  }
 }

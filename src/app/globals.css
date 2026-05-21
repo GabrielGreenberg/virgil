@@ -244,8 +244,8 @@
   --math-prefix-color: #a090c0;
   --comment-color: #93c5fd;
   --latex-comment-color: #7191b0;
-  --citation-color: #555;
-  --citation-border-color: #a8c4de;
+  --citation-color: #6b6245;
+  --citation-border-color: #e0d5a8;
   --note-color: #15803d;
   --note-marker-border: #86efac;
   --ai-marker-text: #92400e;
@@ -876,7 +876,8 @@ textarea,
   background: rgba(0, 0, 0, 0.06);
   border-radius: 3px;
 }
-.tex-block-drag-handle:active {
+.tex-block-drag-handle:active,
+.tex-block-drag-handle.is-pressed {
   cursor: grabbing;
   color: var(--ink, #3a362f);
   background: rgba(0, 0, 0, 0.08);
