@@ -19,6 +19,13 @@ export interface TexBlockOptions {
     | undefined
   > | null;
   isPoppedRef: RefObject<RefObject<(uuid: string) => boolean> | undefined> | null;
+  // Mirrors the paragraph/heading drag-handle pattern: a click on the
+  // grip (mouseup within the LIFT_THRESHOLD) opens the passage-action
+  // menu anchored to the handle's rect.
+  onDragHandleClickRef: RefObject<
+    | ((uuid: string, anchorRect: DOMRect) => void)
+    | undefined
+  > | null;
 }
 
 // `texBlock` — a raw LaTeX passthrough block. Contents are stored in the
@@ -39,6 +46,7 @@ export const TexBlock = Node.create<TexBlockOptions>({
     return {
       onLiftRef: null,
       isPoppedRef: null,
+      onDragHandleClickRef: null,
     };
   },
 

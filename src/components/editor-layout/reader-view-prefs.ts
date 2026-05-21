@@ -27,6 +27,7 @@ import {
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { DEFAULT_PRINT_OPTIONS } from "@/lib/print";
 import {
+  DEFAULT_OMNI_CATEGORIES,
   PANEL_TO_CATEGORY,
   type OmniCategory,
 } from "@/panels/Omni/OmniViewPanel";
@@ -201,6 +202,16 @@ export function useReaderViewPrefs(): EditorPaneViewPrefs {
       editorRightMargin: 72,
       printOptions: DEFAULT_PRINT_OPTIONS,
       topbarRightCollapsed: false,
+      // Reader exposes the same decoration schema as the editor, but
+      // hard-coded to the reader-appropriate defaults (no persistence).
+      showMarginalia: true,
+      hiddenMarginaliaTypes: [],
+      showSectionIndicator: true,
+      showHeadingLabels: true,
+      dividerLevels: [],
+      dividerWidth: "full",
+      omniCategories: DEFAULT_OMNI_CATEGORIES,
+      omniHideAllCards: { left: false, right: false },
     };
   }, [
     persistentPlacements,

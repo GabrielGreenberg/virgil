@@ -1,16 +1,29 @@
 #!/usr/bin/env bash
-# Periodic wrapper around tools/promote-defaults.mjs.
+# Wrapper around tools/promote-defaults.mjs.
 #
-# Run by ~/Library/LaunchAgents/com.virgil.promote-defaults.plist every
-# ~48h. Reads tools/personal-snapshot.json (mirrored from the dev preview's
-# localStorage), folds the changes into the *.defaults.json sidecars +
-# globals.css managed block, sanity-checks TS, and commits + pushes if
-# the diff is real.
+# Default mode: read tools/personal-snapshot.json (mirrored from the dev
+# preview's localStorage), fold the changes into the *.defaults.json
+# sidecars + globals.css managed block, sanity-check JSON, then commit +
+# push if the diff is real.
+#
+# --check mode: run the promoter, then exit non-zero (without committing)
+# if any of the target files differ from HEAD. Used by `/cleanup-virgil`
+# and CI to catch drift between snapshot and shipped defaults.
+#
+# Triggered by:
+#   - ~/Library/LaunchAgents/com.virgil.promote-defaults.plist (Tue/Fri 11:00)
+#   - `npm run promote-defaults` (one-shot manual)
+#   - `/cleanup-virgil` release pipeline
 #
 # Idempotent. No-ops cleanly if there's no snapshot, no diff, or no
 # remote.
 
 set -euo pipefail
+
+MODE="commit"
+if [ "${1:-}" = "--check" ]; then
+  MODE="check"
+fi
 
 REPO="/Users/gabriel/Programming/virgil"
 cd "$REPO"
@@ -58,6 +71,16 @@ node -e '
     "src/lib/print.defaults.json",
   ]) JSON.parse(fs.readFileSync(f, "utf-8"));
 '
+
+# Summary line, printed in both modes — shows up in the launchd log
+# and on the developer's terminal.
+DIFF_FILES=$(git diff --name-only -- "${TARGETS[@]}" | wc -l | tr -d ' ')
+echo "[$(date)] drift detected in $DIFF_FILES file(s)"
+
+if [ "$MODE" = "check" ]; then
+  echo "[$(date)] --check mode: exiting non-zero without committing"
+  exit 1
+fi
 
 git add -- "${TARGETS[@]}"
 git commit -m "Promote personal prefs to shipped defaults ($(date +%Y-%m-%d))"

@@ -22,6 +22,7 @@
 
 import { useCallback, type RefObject } from "react";
 import type { Editor } from "@tiptap/react";
+import { NodeSelection } from "@tiptap/pm/state";
 import type { CardCreationApi } from "./card-creation";
 import type { EditorHandle } from "../../Editor";
 import type { ViewPrefs, PanelId } from "@/hooks/useViewPrefs";
@@ -32,7 +33,7 @@ import {
 } from "@/links/links";
 import { getSectionRangeByUuid } from "@/lib/section-range";
 import type { ArchivedSnippet } from "@/lib/types";
-import { isAnchorableNode } from "@/lib/marginalia";
+import { isAnchorableAtom, isAnchorableNode } from "@/lib/marginalia";
 import { generateShortId } from "@/lib/uuid";
 import { focusNewCard } from "@/lib/focus-new-card";
 import type { DragHandleAction } from "@/components/DragHandleMenu";
@@ -40,7 +41,12 @@ import type { DragHandleAction } from "@/components/DragHandleMenu";
 export type DragHandlePassage =
   | { kind: "paragraph"; paragraphId: string }
   | { kind: "selection"; paragraphId: string; from: number; to: number }
-  | { kind: "heading"; paragraphId: string };
+  | { kind: "heading"; paragraphId: string }
+  // Any block-level atom node (texBlock, figureBlock, graphicsBlock,
+  // aiRequest, …) referenced by its anchor uuid. Routed to a NodeSelection
+  // so atom-aware downstream code (archive, copy, etc.) sees the right
+  // selection type instead of a TextSelection collapsed across the atom.
+  | { kind: "atomBlock"; paragraphId: string };
 
 export interface DragHandleActionsDeps {
   editorRef: RefObject<EditorHandle | null>;
@@ -56,10 +62,17 @@ export interface DragHandleActionsDeps {
   clearBlankIfSet: () => void;
 }
 
-interface ResolvedRange {
-  from: number;
-  to: number;
-}
+/**
+ * Resolved view of a passage in the doc. `selectionKind` tells the
+ * dispatcher whether to plant a TextSelection over `{from, to}` (text-
+ * bearing blocks, ranges, sections) or a NodeSelection at `pos` (block
+ * atoms). `from`/`to` remain meaningful in both variants — atom-aware
+ * call sites use `pos`, while text probes (e.g. `textBetween` for the
+ * highlight no-op guard) still get a usable range.
+ */
+type ResolvedPassage =
+  | { selectionKind: "text"; from: number; to: number }
+  | { selectionKind: "node"; pos: number; from: number; to: number };
 
 export function useDragHandleActions(deps: DragHandleActionsDeps) {
   const {
@@ -106,17 +119,29 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
       const ed = handle?.getEditor();
       if (!handle || !ed) return;
 
-      const range = resolvePassageRange(ed, passage);
-      if (!range) return;
+      const resolved = resolvePassageRange(ed, passage);
+      if (!resolved) return;
 
-      // Plant the main editor's selection over the passage so anchor /
-      // footnote / archive paths operate on the right text.
+      // Plant the main editor's selection so anchor / footnote / archive
+      // paths operate on the right region. Atom passages plant a
+      // NodeSelection on the block itself (which atom-aware paths like
+      // `archiveSelection` detect); text-bearing passages plant a
+      // TextSelection over the range, as before.
       try {
-        ed.commands.setTextSelection(range);
+        if (resolved.selectionKind === "node") {
+          ed.view.dispatch(
+            ed.state.tr.setSelection(
+              NodeSelection.create(ed.state.doc, resolved.pos),
+            ),
+          );
+        } else {
+          ed.commands.setTextSelection({ from: resolved.from, to: resolved.to });
+        }
       } catch {
         return;
       }
 
+      const range = { from: resolved.from, to: resolved.to };
       const text = ed.state.doc.textBetween(range.from, range.to, " ").trim();
       const paragraphId = passage.paragraphId;
       // For paragraph/heading the action is "scoped to the block": no
@@ -263,11 +288,12 @@ export function useDragHandleActions(deps: DragHandleActionsDeps) {
           break;
         }
         case "archive": {
-          // archiveSelection needs a non-empty selection (which we've set
-          // above). Behaves correctly for paragraph (whole-paragraph
-          // selection collapses to a paragraph delete), selection
-          // (subrange delete), and heading (multi-block section delete).
-          if (!text) break;
+          // archiveSelection slices the current selection into JSON, so the
+          // passage's selection-kind is sufficient — atom NodeSelections
+          // archive the atom node itself, text selections archive their
+          // range. The `text` guard only protects against zero-content text
+          // ranges; atom passages always have a meaningful slice.
+          if (resolved.selectionKind === "text" && !text) break;
           const snippet = archiveContent(text);
           const result = handle.archiveSelection(snippet.id);
           if (result) {
@@ -319,35 +345,69 @@ function createAnchor(ed: Editor, kind: LinkedAnchorKind) {
 }
 
 /**
- * Resolve a Passage to a {from, to} range in the main editor's doc.
- * - "selection" passes through.
- * - "paragraph" locates the paragraph node by uuid and returns the range
- *   of its content (start..end, inside the node).
- * - "heading" returns the section range (heading + body), which is
- *   suitable for archive (multi-block delete) and for anchoring cards
- *   to "the whole section."
+ * Resolve a Passage to a ResolvedPassage in the main editor's doc.
+ * - "selection" passes through as a text range.
+ * - "paragraph" locates the paragraph (or other text-bearing anchorable
+ *   node) by uuid and returns its content range as text.
+ * - "heading" returns the section range (heading + body) as text — suits
+ *   archive (multi-block delete) and section-scoped card anchoring.
+ * - "atomBlock" locates a block-level atom node by uuid and returns
+ *   `selectionKind: "node"` with its position, so the dispatcher plants a
+ *   NodeSelection. Used for any block atom that exposes a drag handle
+ *   (texBlock today; figureBlock / graphicsBlock / aiRequest when wired).
  */
 function resolvePassageRange(
   ed: Editor,
   passage: DragHandlePassage,
-): ResolvedRange | null {
+): ResolvedPassage | null {
   if (passage.kind === "selection") {
     const docSize = ed.state.doc.content.size;
     const from = Math.max(0, Math.min(passage.from, docSize));
     const to = Math.max(0, Math.min(passage.to, docSize));
     if (to <= from) return null;
-    return { from, to };
+    return { selectionKind: "text", from, to };
   }
 
   if (passage.kind === "paragraph") {
-    let result: ResolvedRange | null = null;
+    let result: ResolvedPassage | null = null;
     ed.state.doc.descendants((node, pos) => {
       if (result) return false;
       if (
         isAnchorableNode(node.type) &&
         (node.attrs?.uuid as string | null) === passage.paragraphId
       ) {
-        result = { from: pos + 1, to: pos + node.nodeSize - 1 };
+        result = {
+          selectionKind: "text",
+          from: pos + 1,
+          to: pos + node.nodeSize - 1,
+        };
+        return false;
+      }
+      return true;
+    });
+    return result;
+  }
+
+  if (passage.kind === "atomBlock") {
+    // Find any block atom carrying this uuid. The dispatcher then plants
+    // a NodeSelection at `pos` so atom-aware paths (archiveSelection,
+    // getSelectedText, copy, etc.) see the right selection type. `from`/
+    // `to` span the node itself, sufficient for `textBetween`-based
+    // probes used elsewhere (e.g. highlight's no-op guard).
+    let result: ResolvedPassage | null = null;
+    ed.state.doc.descendants((node, pos) => {
+      if (result) return false;
+      if (
+        isAnchorableAtom(node.type) &&
+        node.type.isBlock &&
+        (node.attrs?.uuid as string | null) === passage.paragraphId
+      ) {
+        result = {
+          selectionKind: "node",
+          pos,
+          from: pos,
+          to: pos + node.nodeSize,
+        };
         return false;
       }
       return true;
@@ -357,5 +417,5 @@ function resolvePassageRange(
 
   const section = getSectionRangeByUuid(ed.state.doc, passage.paragraphId);
   if (!section) return null;
-  return { from: section.start, to: section.end };
+  return { selectionKind: "text", from: section.start, to: section.end };
 }

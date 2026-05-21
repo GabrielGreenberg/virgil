@@ -65,20 +65,24 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
   const opts = extension.options as TexBlockOptions;
   const onLiftRef = opts.onLiftRef;
   const isPoppedRef = opts.isPoppedRef;
+  const onDragHandleClickRef = opts.onDragHandleClickRef;
   const isPopped = !!(uuid && isPoppedRef?.current?.current?.(uuid));
 
   // Mousedown gesture handler on the grab handle: track distance, past
   // LIFT_THRESHOLD spawn the float via the global card-lift handoff +
-  // the per-block-type lift callback. Matches paragraph behavior at
-  // Editor.tsx:660-785.
+  // the per-block-type lift callback. If mouseup fires within the
+  // threshold (a plain click), open the passage-action menu instead.
+  // Matches paragraph/heading behavior at Editor.tsx:660-785 / 1561-1591.
   const handleGripMouseDown = useCallback((downEv: React.MouseEvent) => {
     if (downEv.button !== 0) return;
     if (!uuid) return;
     if (isPoppedRef?.current?.current?.(uuid)) return;
     downEv.preventDefault();
+    const handleEl = downEv.currentTarget as HTMLElement;
     const startX = downEv.clientX;
     const startY = downEv.clientY;
     let triggered = false;
+    handleEl.classList.add("is-pressed");
     const onMove = (mv: MouseEvent) => {
       if (triggered) return;
       const dx = mv.clientX - startX;
@@ -110,14 +114,24 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
       onLiftRef?.current?.(uuid, spawn);
       cleanup();
     };
-    const onUp = () => cleanup();
+    const onUp = () => {
+      if (!triggered) {
+        const open = onDragHandleClickRef?.current;
+        if (open) {
+          const rect = handleEl.getBoundingClientRect();
+          open(uuid, rect);
+        }
+      }
+      cleanup();
+    };
     const cleanup = () => {
+      handleEl.classList.remove("is-pressed");
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
-  }, [uuid, isPoppedRef, onLiftRef]);
+  }, [uuid, isPoppedRef, onLiftRef, onDragHandleClickRef]);
 
   const handleCodeChange = useCallback(
     (val: string) => {
@@ -278,7 +292,7 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
           className="tex-block-drag-handle"
           contentEditable={false}
           onMouseDown={handleGripMouseDown}
-          title={isPopped ? "Block is open in a floating card" : "Drag to pop out"}
+          title={isPopped ? "Block is open in a floating card" : "Click for actions, drag to pop out"}
         >
           <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
             <circle cx="3" cy="2" r="1.2" />

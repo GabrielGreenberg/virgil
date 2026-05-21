@@ -4,11 +4,12 @@
  * tools/personal-snapshot.json by the dev server) into the shipped
  * defaults under src/.
  *
- * Reads the snapshot, takes the whitelisted subset of each prefs blob,
- * deep-merges it onto the existing default JSON sidecar, and writes
- * back. Also regenerates the marker-comment block inside
- * src/app/globals.css so first-paint CSS stays in sync with the JS
- * defaults.
+ * Reads the snapshot and iterates the registry at
+ * src/lib/dev-prefs-registry.json — the same file the browser mirror
+ * imports. Per-entry strategy decides how the source merges onto the
+ * existing default JSON sidecar. Also regenerates the marker-comment
+ * block inside src/app/globals.css so first-paint CSS stays in sync
+ * with the JS defaults.
  *
  * Idempotent. Safe to run any time. No deps.
  */
@@ -19,82 +20,11 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SNAPSHOT_PATH = path.join(REPO_ROOT, "tools", "personal-snapshot.json");
-
-const VIEW_PREFS_JSON = path.join(REPO_ROOT, "src", "hooks", "useViewPrefs.defaults.json");
-const EDITOR_PREFS_JSON = path.join(REPO_ROOT, "src", "hooks", "usePreferences.defaults.json");
-const PANEL_THEME_JSON = path.join(REPO_ROOT, "src", "lib", "panel-theme.defaults.json");
-const PRINT_JSON = path.join(REPO_ROOT, "src", "lib", "print.defaults.json");
+const REGISTRY_PATH = path.join(REPO_ROOT, "src", "lib", "dev-prefs-registry.json");
 const GLOBALS_CSS = path.join(REPO_ROOT, "src", "app", "globals.css");
 
-// Whitelist of ViewPrefs keys treated as "stable defaults" worth
-// promoting. The rest of ViewPrefs is per-window noise (dock state,
-// active panels, float positions) and stays at its shipped value.
-const VIEW_PREFS_WHITELIST = new Set([
-  "placements",
-  "showHighlights",
-  "hiddenHighlightTypes",
-  "pageWidth",
-  "editorLeftMargin",
-  "editorRightMargin",
-  "topGutter",
-  "bottomGutter",
-]);
-
-// CSS variables that mirror EditorPreferences/ViewPrefs scalar values.
-// Regenerated into the PROMOTE-DEFAULTS block so the first paint matches
-// the JS defaults before the prefs hook hydrates.
-const CSS_VAR_MAP = [
-  ["--background",                "editor.backgroundColor"],
-  ["--foreground",                "editor.foreground"],
-  ["--surface",                   "editor.surfaceColor"],
-  ["--border",                    "editor.borderColor"],
-  ["--border-light",              "editor.borderLight"],
-  ["--muted",                     "editor.mutedColor"],
-  ["--muted-light",               "editor.mutedLight"],
-  ["--accent",                    "editor.accentColor"],
-  ["--topbar-bg",                 "editor.topbarBackground"],
-  ["--topbar-bg-bottom",          "editor.topbarBackgroundBottom"],
-  ["--topbar-border",             "editor.topbarBorder"],
-  ["--tab-bg",                    "editor.tabBg"],
-  ["--library-bg",                "editor.libraryBg"],
-  ["--virgil-bar-text",           "editor.virgilBarText"],
-  ["--pod-panel",                 "editor.podPanel"],
-  ["--pod-toolbar",               "editor.podToolbar"],
-  ["--pod-dark",                  "editor.podDark"],
-  ["--header-bg",                 "editor.headerBg"],
-  ["--panel-admin-text-color",    "editor.panelAdminTextColor"],
-  ["--panel-admin-text-font",     "editor.panelAdminTextFont", { quote: true }],
-  ["--editor-font-size",          "editor.editorFontSize", { unit: "rem" }],
-  ["--editor-line-height",        "editor.editorLineHeight"],
-  ["--editor-text-color",         "editor.editorTextColor"],
-  ["--par-title-size",            "editor.parTitleSize", { unit: "rem" }],
-  ["--par-title-color",           "editor.parTitleColor"],
-  ["--heading-annotation-color",  "editor.headingAnnotationColor"],
-  ["--heading-annotation-border", "editor.headingAnnotationBorder"],
-  ["--blockquote-border",         "editor.blockquoteBorder"],
-  ["--blockquote-text",           "editor.blockquoteText"],
-  ["--code-bg",                   "editor.codeBackground"],
-  ["--code-block-bg",             "editor.codeBlockBackground"],
-  ["--math-color",                "editor.mathColor"],
-  ["--math-prefix-color",         "editor.mathPrefixColor"],
-  ["--comment-color",             "editor.commentColor"],
-  ["--latex-comment-color",       "editor.latexCommentColor"],
-  ["--citation-color",            "editor.citationColor"],
-  ["--citation-border-color",     "editor.citationBorderColor"],
-  ["--note-color",                "editor.noteColor"],
-  ["--note-marker-border",        "editor.noteMarkerBorder"],
-  ["--ai-marker-text",            "editor.aiMarkerText"],
-  ["--ai-marker-bg",              "editor.aiMarkerBg"],
-  ["--ai-marker-border",          "editor.aiMarkerBorder"],
-  ["--mark-bg",                   "editor.markBackground"],
-  ["--mark-border",               "editor.markBorder"],
-  ["--latex-cmd-color",           "editor.latexCmdColor"],
-  ["--drag-highlight",            "editor.dragHighlight"],
-  ["--scrollbar-thumb",           "editor.scrollbarThumb"],
-  ["--panel-font-size",           "editor.panelFontSize", { unit: "px" }],
-  ["--panel-header-size",         "editor.panelHeaderSize", { unit: "px" }],
-  ["--page-preferred",            "view.pageWidth", { unit: "px" }],
-];
+const EDITOR_PREFS_JSON_REL = "src/hooks/usePreferences.defaults.json";
+const VIEW_PREFS_JSON_REL = "src/hooks/useViewPrefs.defaults.json";
 
 /* ── Utilities ──────────────────────────────────────────────────── */
 
@@ -128,6 +58,23 @@ function applyAll(target, source) {
   return next;
 }
 
+/** Deep-merge `printOptions`: replace top-level scalars (e.g.
+ *  `fontSizeRem`), per-section merge `elements` + `panels`. */
+function applyPrintOptions(target, source) {
+  return {
+    ...target,
+    ...source,
+    elements: { ...target.elements, ...(source.elements ?? {}) },
+    panels: { ...target.panels, ...(source.panels ?? {}) },
+  };
+}
+
+/** Pull a possibly-nested sub-value from the parsed snapshot blob. */
+function extractSource(rawValue, subPath) {
+  if (!subPath) return rawValue ?? {};
+  return rawValue?.[subPath] ?? {};
+}
+
 /* ── Main ──────────────────────────────────────────────────────── */
 
 function main() {
@@ -136,54 +83,46 @@ function main() {
     process.exit(0);
   }
   const snapshot = readJson(SNAPSHOT_PATH);
-
-  const viewSrc = snapshot["virgil-view-prefs/global"] ?? {};
-  const editorSrc = snapshot["virgil-editor-prefs"] ?? {};
-  const panelColorsSrc = snapshot["virgil-panel-colors"] ?? {};
-  const printSrc = viewSrc.printOptions ?? {};
+  const registry = readJson(REGISTRY_PATH);
 
   let changedFiles = 0;
+  /** Final shape of each defaults file after promotion, keyed by
+   *  the registry's defaultsFile path. Used downstream to regenerate
+   *  the CSS managed block from authoritative post-merge values. */
+  const finalByPath = {};
 
-  // ViewPrefs: whitelisted keys only.
-  const viewCur = readJson(VIEW_PREFS_JSON);
-  const viewNext = applyWhitelist(viewCur, viewSrc, VIEW_PREFS_WHITELIST);
-  if (writeJson(VIEW_PREFS_JSON, viewNext)) {
-    console.log("Updated", path.relative(REPO_ROOT, VIEW_PREFS_JSON));
-    changedFiles++;
+  for (const entry of registry.promotable) {
+    const target = path.join(REPO_ROOT, entry.defaultsFile);
+    const rawSnap = snapshot[entry.storageKey];
+    const src = extractSource(rawSnap, entry.subPath);
+    const cur = finalByPath[entry.defaultsFile] ?? readJson(target);
+    let next;
+    switch (entry.strategy) {
+      case "whitelist":
+        next = applyWhitelist(cur, src, entry.whitelist ?? []);
+        break;
+      case "replace-all":
+        next = applyAll(cur, src);
+        break;
+      case "print-options":
+        next = applyPrintOptions(cur, src);
+        break;
+      default:
+        throw new Error(`Unknown promotion strategy: ${entry.strategy}`);
+    }
+    finalByPath[entry.defaultsFile] = next;
+    if (writeJson(target, next)) {
+      console.log("Updated", entry.defaultsFile);
+      changedFiles++;
+    }
   }
 
-  // EditorPreferences: replace any key the snapshot provides.
-  const editorCur = readJson(EDITOR_PREFS_JSON);
-  const editorNext = applyAll(editorCur, editorSrc);
-  if (writeJson(EDITOR_PREFS_JSON, editorNext)) {
-    console.log("Updated", path.relative(REPO_ROOT, EDITOR_PREFS_JSON));
-    changedFiles++;
-  }
-
-  // Panel theme overrides: every overridden key wins.
-  const panelCur = readJson(PANEL_THEME_JSON);
-  const panelNext = applyAll(panelCur, panelColorsSrc);
-  if (writeJson(PANEL_THEME_JSON, panelNext)) {
-    console.log("Updated", path.relative(REPO_ROOT, PANEL_THEME_JSON));
-    changedFiles++;
-  }
-
-  // Print options: deep-merge elements + panels sub-objects, replace
-  // the top-level scalar (fontSizeRem).
-  const printCur = readJson(PRINT_JSON);
-  const printNext = {
-    ...printCur,
-    ...printSrc,
-    elements: { ...printCur.elements, ...(printSrc.elements ?? {}) },
-    panels: { ...printCur.panels, ...(printSrc.panels ?? {}) },
-  };
-  if (writeJson(PRINT_JSON, printNext)) {
-    console.log("Updated", path.relative(REPO_ROOT, PRINT_JSON));
-    changedFiles++;
-  }
-
-  // globals.css managed block.
-  if (rewriteCssBlock({ editor: editorNext, view: viewNext })) {
+  // globals.css managed block — sourced from the post-merge values for
+  // the editor + view buckets. The CSS_VAR_MAP entry's `source` field
+  // is `"bucket.key"`, where bucket is one of those two.
+  const editorNext = finalByPath[EDITOR_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, EDITOR_PREFS_JSON_REL));
+  const viewNext = finalByPath[VIEW_PREFS_JSON_REL] ?? readJson(path.join(REPO_ROOT, VIEW_PREFS_JSON_REL));
+  if (rewriteCssBlock(registry.cssVarMap, { editor: editorNext, view: viewNext })) {
     console.log("Updated", path.relative(REPO_ROOT, GLOBALS_CSS));
     changedFiles++;
   }
@@ -191,7 +130,7 @@ function main() {
   console.log(changedFiles === 0 ? "No changes." : `${changedFiles} file(s) updated.`);
 }
 
-function rewriteCssBlock(values) {
+function rewriteCssBlock(cssVarMap, values) {
   const END = "/* PROMOTE-DEFAULTS-END */";
   const cur = fs.readFileSync(GLOBALS_CSS, "utf-8");
   const startMatch = /^([ \t]*)\/\* PROMOTE-DEFAULTS-START[\s\S]*?\*\//m.exec(cur);
@@ -211,16 +150,15 @@ function rewriteCssBlock(values) {
   const after = cur.slice(endIdx + END.length);
 
   const lines = [];
-  for (const entry of CSS_VAR_MAP) {
-    const [cssVar, sourcePath, opts = {}] = entry;
-    const [bucket, key] = sourcePath.split(".");
+  for (const [cssVar, spec] of Object.entries(cssVarMap)) {
+    const [bucket, key] = spec.source.split(".");
     const raw = values[bucket]?.[key];
     if (raw === undefined || raw === null) continue;
     let rendered;
-    if (opts.quote) {
+    if (spec.quote) {
       rendered = `"${String(raw)}"`;
-    } else if (opts.unit) {
-      rendered = `${raw}${opts.unit}`;
+    } else if (spec.unit) {
+      rendered = `${raw}${spec.unit}`;
     } else {
       rendered = String(raw);
     }

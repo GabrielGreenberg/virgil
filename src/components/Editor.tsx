@@ -42,6 +42,7 @@ import {
   MIME_CUT,
   isAnchorDrag,
 } from "@/lib/marginalia";
+import { getAtomText } from "@/lib/atom-text";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { generateShortId } from "@/lib/uuid";
 import { ensureAnchorUuid } from "@/lib/anchor-uuid";
@@ -180,7 +181,10 @@ interface EditorProps {
     passage:
       | { kind: "paragraph"; paragraphId: string }
       | { kind: "heading"; paragraphId: string }
-      | { kind: "texBlock"; paragraphId: string },
+      // Any block atom (texBlock today; figureBlock / graphicsBlock /
+      // aiRequest when their handles are wired) — routed through the
+      // shared `atomBlock` kind so the dispatcher can plant a NodeSelection.
+      | { kind: "atomBlock"; paragraphId: string },
     anchorRect: DOMRect,
   ) => void;
   /**
@@ -492,16 +496,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onLiftTexBlockRef.current = onLiftTexBlock;
   const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
   texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
-  // Adapter ref: TexBlockNodeView receives a tex-block-scoped click
-  // callback `(uuid, rect) => void`; this wraps the broader prop into
-  // that shape so tex-block.ts doesn't have to know the full passage
-  // union.
+  // Adapter ref: block-atom NodeViews receive a `(uuid, rect) => void`
+  // click callback; this wraps the broader prop so individual extensions
+  // (tex-block.ts, future figure/graphics) don't need to know about the
+  // full passage union. The wrap uses `kind: "atomBlock"`, so any block
+  // atom can share this adapter as-is.
   const onTexBlockDragHandleClickRef = useRef<
     ((uuid: string, anchorRect: DOMRect) => void) | undefined
   >(undefined);
   onTexBlockDragHandleClickRef.current = onDragHandleClick
     ? (uuid, rect) =>
-        onDragHandleClick({ kind: "texBlock", paragraphId: uuid }, rect)
+        onDragHandleClick({ kind: "atomBlock", paragraphId: uuid }, rect)
     : undefined;
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
@@ -2671,14 +2676,10 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
     getSelectedText(): string {
       if (!editor) return "";
       const sel = editor.state.selection;
-      // For NodeSelection on atom nodes (e.g. latexComment), get text from attrs
+      // For NodeSelection on atom nodes, route through the central
+      // atom-text registry so adding a new atom only touches that file.
       if (sel instanceof NodeSelection && sel.node.type.spec.atom) {
-        const node = sel.node;
-        if (node.type.name === "latexComment") {
-          return `% ${node.attrs.text || ""}`;
-        }
-        // Other atom nodes: try textContent or return empty
-        return node.textContent || "";
+        return getAtomText(sel.node);
       }
       const { from, to } = sel;
       return editor.state.doc.textBetween(from, to, " ");
@@ -2744,27 +2745,19 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         return newUuid;
       };
 
-      // Handle NodeSelection on block atom nodes (e.g. latexComment)
-      if (sel instanceof NodeSelection && sel.node.type.spec.atom && sel.node.type.isBlock) {
-        const node = sel.node;
-        const text = node.type.name === "latexComment"
-          ? `% ${node.attrs.text || ""}`
-          : node.textContent || "";
-        if (!text.trim()) return null;
-        editor.chain().focus().deleteSelection().run();
-        const paragraphId = resolveAnchor();
-        return {
-          content: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text }] }] },
-          paragraphId,
-        };
-      }
-
+      // Slice the selection to preserve full node structure (paragraphs,
+      // headings, blockquotes, AND block atoms like texBlock/figureBlock/
+      // latexComment). The matching restoreArchive path below feeds the
+      // slice JSON back through `insertContent`, so round-trip works for
+      // any node type without per-atom branching. The text-emptiness
+      // check is intentional only for text selections: an atom slice has
+      // size > 0 but `textBetween` is empty, so the guard would wrongly
+      // reject it; the explicit `slice.size === 0` covers the legitimate
+      // "nothing to archive" case.
       const { from, to } = sel;
       if (from === to) return null;
-      const text = editor.state.doc.textBetween(from, to, " ");
-      if (!text.trim()) return null;
-      // Capture rich content before deleting
       const slice = editor.state.doc.slice(from, to);
+      if (slice.size === 0) return null;
       const richContent = { type: "doc", content: slice.content.toJSON() };
       editor.chain().focus().deleteSelection().run();
       const paragraphId = resolveAnchor();

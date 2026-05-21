@@ -3,17 +3,24 @@
 <!--
   launchd agent for the personal-prefs promotion pipeline.
 
-  Runs tools/sync-defaults.sh every ~48h. The wrapper reads the latest
-  tools/personal-snapshot.json (kept fresh by the dev preview), folds the
-  changes into the *.defaults.json sidecars + globals.css managed block,
-  and commits + pushes if the diff is real.
+  Runs tools/sync-defaults.sh on a fixed Tue/Fri 11:00 schedule. The
+  wrapper reads the latest tools/personal-snapshot.json (kept fresh by
+  the dev preview), folds the changes into the *.defaults.json sidecars
+  + globals.css managed block, and commits + pushes if the diff is real.
 
-  Install:
-    cp tools/com.virgil.promote-defaults.plist ~/Library/LaunchAgents/
+  StartCalendarInterval (rather than StartInterval) so firing is
+  deterministic: launchd waits until the next configured wall-clock
+  moment the machine is awake. StartInterval would coalesce all the
+  missed-while-asleep runs into a single delayed fire that's hard to
+  reason about.
+
+  Install / reload (idempotent):
+    cp tools/com.virgil.promote-defaults.plist ~/Library/LaunchAgents/ && \
+    launchctl unload ~/Library/LaunchAgents/com.virgil.promote-defaults.plist 2>/dev/null; \
     launchctl load ~/Library/LaunchAgents/com.virgil.promote-defaults.plist
 
   Inspect:
-    launchctl list | grep virgil
+    launchctl list | grep virgil    # left column should be a PID
 
   Stop:
     launchctl unload ~/Library/LaunchAgents/com.virgil.promote-defaults.plist
@@ -32,14 +39,32 @@
   <key>WorkingDirectory</key>
   <string>/Users/gabriel/Programming/virgil</string>
 
-  <!-- 48 hours in seconds. launchd will coalesce missed runs while the
-       machine is asleep / offline; the next run fires once the system
-       is awake again. -->
-  <key>StartInterval</key>
-  <integer>172800</integer>
+  <!-- Tuesday + Friday at 11:00 local. Array form: launchd treats each
+       dict as an independent calendar trigger. -->
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Weekday</key>
+      <integer>2</integer>
+      <key>Hour</key>
+      <integer>11</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+    <dict>
+      <key>Weekday</key>
+      <integer>5</integer>
+      <key>Hour</key>
+      <integer>11</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+  </array>
 
+  <!-- Run immediately on (re)load so a fresh install promotes whatever
+       the snapshot already has, instead of waiting up to 72h. -->
   <key>RunAtLoad</key>
-  <false/>
+  <true/>
 
   <key>StandardOutPath</key>
   <string>/Users/gabriel/Library/Logs/virgil-promote-defaults.log</string>

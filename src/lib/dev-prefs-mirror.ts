@@ -14,18 +14,13 @@
 "use client";
 
 import { useEffect } from "react";
+import { MIRRORABLE_STORAGE_KEYS } from "./dev-prefs-registry";
 
 const POLL_INTERVAL_MS = 30_000;
 
-const SOURCE_KEYS = [
-  "virgil-view-prefs/global",
-  "virgil-editor-prefs",
-  "virgil-panel-colors",
-] as const;
-
 function snapshot(): Record<string, unknown> | null {
   const out: Record<string, unknown> = {};
-  for (const key of SOURCE_KEYS) {
+  for (const key of MIRRORABLE_STORAGE_KEYS) {
     const raw = localStorage.getItem(key);
     if (!raw) continue;
     try {

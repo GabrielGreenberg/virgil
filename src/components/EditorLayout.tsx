@@ -7,7 +7,7 @@ import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
 import { readPdf } from "@/lib/storage";
-import { type MarginaliaType, type DividerLevel, type DividerWidth } from "./MenuBar";
+import { type MarginaliaType, type DividerLevel, type DividerWidth } from "@/hooks/useViewPrefs";
 import { Editor } from "@tiptap/react";
 import { type SectionPathEntry, buildPerBlockCounts, sumIncludedWords, extractHeadings } from "@/panels/Outline";
 import { useFiles } from "@/hooks/useFiles";
@@ -94,8 +94,6 @@ import {
 } from "@/panels/Search";
 import {
   type OmniCategory,
-  DEFAULT_OMNI_CATEGORIES,
-  migrateOmniCategories,
   deriveCategorySides,
   OmniFilterMenu,
 } from "@/panels/Omni";
@@ -742,6 +740,15 @@ export default function EditorLayout() {
     setTopGutter,
     setBottomGutter,
     setTopbarRightCollapsed,
+    toggleMarginalia,
+    toggleMarginaliaType,
+    toggleSectionIndicator,
+    toggleHeadingLabels,
+    toggleDividerLevel,
+    setDividerWidth,
+    toggleOmniCategory,
+    resetOmniSide,
+    toggleOmniHideAllCards,
   } = useViewPrefs();
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -974,87 +981,24 @@ export default function EditorLayout() {
   const [showParTitles, setShowParTitles] = useState(true);
   const [showLatexComments, setShowLatexComments] = useState(true);
 
-  // Marginalia visibility — persisted
-  const [showMarginalia, setShowMarginalia] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try { const v = localStorage.getItem("virgil-show-marginalia"); return v !== "false"; } catch { return true; }
-  });
-  const [hiddenMarginaliaTypes, setHiddenMarginaliaTypes] = useState<Set<MarginaliaType>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const raw = localStorage.getItem("virgil-hidden-marginalia-types");
-      return raw ? new Set(JSON.parse(raw) as MarginaliaType[]) : new Set();
-    } catch { return new Set(); }
-  });
-  const toggleMarginalia = useCallback(() => {
-    setShowMarginalia((prev) => {
-      const next = !prev;
-      try { localStorage.setItem("virgil-show-marginalia", String(next)); } catch {}
-      return next;
-    });
-  }, []);
-  const toggleMarginaliaType = useCallback((type: MarginaliaType) => {
-    setHiddenMarginaliaTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(type)) next.delete(type); else next.add(type);
-      try { localStorage.setItem("virgil-hidden-marginalia-types", JSON.stringify([...next])); } catch {}
-      return next;
-    });
-  }, []);
-  // Section indicator lozenge visibility — persisted
-  const [showSectionIndicator, setShowSectionIndicator] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try { const v = localStorage.getItem("virgil-show-section-indicator"); return v !== "false"; } catch { return true; }
-  });
-  const toggleSectionIndicator = useCallback(() => {
-    setShowSectionIndicator((prev) => {
-      const next = !prev;
-      try { localStorage.setItem("virgil-show-section-indicator", String(next)); } catch {}
-      return next;
-    });
-  }, []);
-  // Heading labels visibility — persisted
-  const [showHeadingLabels, setShowHeadingLabels] = useState(() => {
-    if (typeof window === "undefined") return true;
-    try { const v = localStorage.getItem("virgil-show-heading-labels"); return v !== "false"; } catch { return true; }
-  });
-  const toggleHeadingLabels = useCallback(() => {
-    setShowHeadingLabels((prev) => {
-      const next = !prev;
-      try { localStorage.setItem("virgil-show-heading-labels", String(next)); } catch {}
-      return next;
-    });
-  }, []);
-
-  // Heading-divider visibility — persisted per level
-  const [dividerLevels, setDividerLevels] = useState<Set<DividerLevel>>(() => {
-    if (typeof window === "undefined") return new Set();
-    try {
-      const raw = localStorage.getItem("virgil-divider-levels");
-      return raw ? new Set(JSON.parse(raw) as DividerLevel[]) : new Set();
-    } catch { return new Set(); }
-  });
-  const toggleDividerLevel = useCallback((level: DividerLevel) => {
-    setDividerLevels((prev) => {
-      const next = new Set(prev);
-      if (next.has(level)) next.delete(level); else next.add(level);
-      try { localStorage.setItem("virgil-divider-levels", JSON.stringify([...next])); } catch {}
-      return next;
-    });
-  }, []);
-
-  const [dividerWidth, setDividerWidthState] = useState<DividerWidth>(() => {
-    if (typeof window === "undefined") return "full";
-    try {
-      const raw = localStorage.getItem("virgil-divider-width");
-      if (raw === "full" || raw === "mid" || raw === "text") return raw;
-    } catch {}
-    return "full";
-  });
-  const setDividerWidth = useCallback((w: DividerWidth) => {
-    setDividerWidthState(w);
-    try { localStorage.setItem("virgil-divider-width", w); } catch {}
-  }, []);
+  // Marginalia / divider / heading-label visibility — persisted via
+  // ViewPrefs (global, mirrors across windows, rides the personal-prefs
+  // promotion pipeline). The toggles arrive as setters from useViewPrefs
+  // above; we derive the read-side state here so existing usage sites
+  // (props plumbing into MenuBar, EditorPane decoration classes) keep
+  // their current shape.
+  const showMarginalia = prefs.showMarginalia;
+  const hiddenMarginaliaTypes = useMemo(
+    () => new Set(prefs.hiddenMarginaliaTypes),
+    [prefs.hiddenMarginaliaTypes],
+  );
+  const showSectionIndicator = prefs.showSectionIndicator;
+  const showHeadingLabels = prefs.showHeadingLabels;
+  const dividerLevels = useMemo(
+    () => new Set(prefs.dividerLevels),
+    [prefs.dividerLevels],
+  );
+  const dividerWidth = prefs.dividerWidth;
 
   const [preferencesOpen, setPreferencesOpen] = useState(false);
   const [aiWindowOpen, setAiWindowOpen] = useState(false);
@@ -1344,66 +1288,18 @@ export default function EditorLayout() {
     }
   }, [setActiveHalf]);
 
-  // Persisted omni-view category preferences per side. Older builds
-  // stored 2-char prefixes (fn/ci/qu/nt/ar/td); migrateOmniCategories
-  // translates them to the new full prefixes (footnote/citation/…)
-  // and is idempotent.
-  const [omniCategories, setOmniCategories] = useState<Record<"left" | "right", OmniCategory[]>>(() => {
-    if (typeof window === "undefined") return DEFAULT_OMNI_CATEGORIES;
-    try {
-      const raw = localStorage.getItem("virgil-omni-categories");
-      if (!raw) return DEFAULT_OMNI_CATEGORIES;
-      const parsed = JSON.parse(raw);
-      const migrated = {
-        left: migrateOmniCategories(parsed.left) ?? DEFAULT_OMNI_CATEGORIES.left,
-        right: migrateOmniCategories(parsed.right) ?? DEFAULT_OMNI_CATEGORIES.right,
-      };
-      // Persist the migrated form so we don't keep translating.
-      try {
-        localStorage.setItem("virgil-omni-categories", JSON.stringify(migrated));
-      } catch {}
-      return migrated;
-    } catch { return DEFAULT_OMNI_CATEGORIES; }
-  });
-  const getOmniEnabled = useCallback((side: "left" | "right") => new Set(omniCategories[side]), [omniCategories]);
-  const toggleOmniCategory = useCallback((side: "left" | "right", cat: OmniCategory) => {
-    setOmniCategories((prev) => {
-      const list = prev[side];
-      const next = list.includes(cat) ? list.filter((c) => c !== cat) : [...list, cat];
-      const updated = { ...prev, [side]: next };
-      try { localStorage.setItem("virgil-omni-categories", JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-  }, []);
-  const setOmniSideToDefault = useCallback((side: "left" | "right") => {
-    setOmniCategories((prev) => {
-      const updated = { ...prev, [side]: [...DEFAULT_OMNI_CATEGORIES[side]] };
-      try { localStorage.setItem("virgil-omni-categories", JSON.stringify(updated)); } catch {}
-      return updated;
-    });
-  }, []);
-
-  // Per-side "hide all cards in omni-view" mode. Sticky toggle driven by
-  // the dashed-square button in each strip's presentation-tools pod.
-  const [omniHideAllCards, setOmniHideAllCards] = useState<Record<"left" | "right", boolean>>(() => {
-    if (typeof window === "undefined") return { left: false, right: false };
-    try {
-      const raw = localStorage.getItem("virgil-omni-hide-all-cards");
-      if (!raw) return { left: false, right: false };
-      const parsed = JSON.parse(raw);
-      return {
-        left: Boolean(parsed?.left),
-        right: Boolean(parsed?.right),
-      };
-    } catch { return { left: false, right: false }; }
-  });
-  const toggleOmniHideAllCards = useCallback((side: "left" | "right") => {
-    setOmniHideAllCards((prev) => {
-      const next = { ...prev, [side]: !prev[side] };
-      try { localStorage.setItem("virgil-omni-hide-all-cards", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
+  // Omni-view category prefs + per-side hide-all toggle — sourced from
+  // ViewPrefs (global, cross-window, promotable). The toggles arrive as
+  // setters from useViewPrefs; here we just derive the read shape.
+  const omniCategories = prefs.omniCategories;
+  const omniHideAllCards = prefs.omniHideAllCards;
+  const getOmniEnabled = useCallback(
+    (side: "left" | "right") => new Set(omniCategories[side]),
+    [omniCategories],
+  );
+  // Kept as a stable alias for the new useViewPrefs setter so MenuBar's
+  // "reset side" wiring doesn't need touching.
+  const setOmniSideToDefault = resetOmniSide;
   const getOmniHideAll = useCallback(
     (side: "left" | "right") => omniHideAllCards[side],
     [omniHideAllCards],

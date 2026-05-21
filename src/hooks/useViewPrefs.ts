@@ -6,7 +6,15 @@ import { computeColumnSpawnRect } from "@/components/editor-layout/spawn-positio
 import { PANEL_REGISTRY } from "@/panels/panel-registry";
 import { getWindowId } from "@/lib/multi-window/window-id";
 import { publish, subscribe, type BusEvent } from "@/lib/multi-window/bus";
+import { DEFAULT_OMNI_CATEGORIES, migrateOmniCategories, type OmniCategory } from "@/panels/Omni/OmniViewPanel";
 import defaultPrefsJson from "./useViewPrefs.defaults.json";
+
+/** Marginalia card kinds whose visibility is toggled from the View menu. */
+export type MarginaliaType = "quote" | "note" | "archive" | "todo";
+/** Heading depths 0–6, matching LaTeX (part…subparagraph). */
+export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+/** Heading-divider drawing width. */
+export type DividerWidth = "full" | "mid" | "text";
 
 export type PanelId = "notes" | "revisions" | "archive" | "footnotes" | "citations" | "bibliography" | "outline" | "todo" | "cutter" | "quotations" | "examples" | "search" | "wordcount" | "errors" | "blank" | "omni";
 
@@ -144,15 +152,41 @@ export interface ViewPrefs {
    *  Preferences/Help/Print/AI/Style/Code/Compile/PDF/Zen) collapses,
    *  leaving only the chevron toggle. Per-window. */
   topbarRightCollapsed: boolean;
+
+  /* ── Editor decoration prefs (global; promote to defaults) ───────── */
+
+  /** Master switch for marginalia (linked-card halos in the side
+   *  margins). When false, every marginalia kind is suppressed. */
+  showMarginalia: boolean;
+  /** Per-kind suppression for marginalia. Array form (not Set) so it
+   *  round-trips through JSON. */
+  hiddenMarginaliaTypes: MarginaliaType[];
+  /** Show the section-indicator lozenge floating over the document. */
+  showSectionIndicator: boolean;
+  /** Show inline heading-kind labels next to headings (Part / Chapter /
+   *  Section / …). */
+  showHeadingLabels: boolean;
+  /** Heading depths whose dividers (horizontal rules above the heading)
+   *  are drawn. Array form (not Set) so it round-trips through JSON. */
+  dividerLevels: DividerLevel[];
+  /** Width policy for heading dividers. */
+  dividerWidth: DividerWidth;
+  /** Omni-view filter chips: which card categories are enabled on each
+   *  side. */
+  omniCategories: Record<"left" | "right", OmniCategory[]>;
+  /** Sticky "hide all cards in omni-view" toggle per side. */
+  omniHideAllCards: { left: boolean; right: boolean };
 }
 
 // Shipped defaults are loaded from a JSON sidecar so the personal-prefs
 // promotion pipeline can rewrite them without touching TS source.
-// printOptions is filled in from DEFAULT_PRINT_OPTIONS (owned by print.ts)
-// rather than duplicated into the JSON.
+// `printOptions` is filled in from DEFAULT_PRINT_OPTIONS (owned by
+// print.ts) and `omniCategories` from DEFAULT_OMNI_CATEGORIES (derived
+// from the panel registry) rather than duplicated into the JSON.
 const DEFAULT_PREFS: ViewPrefs = {
-  ...(defaultPrefsJson as Omit<ViewPrefs, "printOptions">),
+  ...(defaultPrefsJson as Omit<ViewPrefs, "printOptions" | "omniCategories">),
   printOptions: DEFAULT_PRINT_OPTIONS,
+  omniCategories: DEFAULT_OMNI_CATEGORIES,
 };
 
 const LEGACY_STORAGE_KEY = "virgil-view-prefs";
@@ -161,18 +195,37 @@ const WINDOW_STORAGE_PREFIX = "virgil-view-prefs/window/";
 
 /**
  * Keys whose values are user-level preferences and should mirror across
- * every Virgil window (theme-adjacent: highlights, print options, and
- * strip placements so panel-icon order stays consistent everywhere —
- * editor windows and the Library Reader). Everything not listed here is
- * per-window — dock state, popped cards, panel widths, gutters — so a
- * draft window and a reviewer window on different monitors can have
- * totally different shapes.
+ * every Virgil window (theme-adjacent: highlights, print options, strip
+ * placements so panel-icon order stays consistent everywhere — editor
+ * windows and the Library Reader — plus the page-layout dimensions
+ * users tune once and want consistent everywhere). Everything not
+ * listed here is per-window — dock state, popped cards, panel widths,
+ * etc. — so a draft window and a reviewer window on different monitors
+ * can have totally different shapes.
+ *
+ * Page-layout keys (`pageWidth`, `editorLeftMargin`, `editorRightMargin`,
+ * `topGutter`, `bottomGutter`) are global because they're the values
+ * the personal-prefs promotion pipeline reads to bake into shipped
+ * defaults — see `tools/promote-defaults.mjs`.
  */
 const GLOBAL_PREF_KEYS = [
   "showHighlights",
   "hiddenHighlightTypes",
   "printOptions",
   "placements",
+  "pageWidth",
+  "editorLeftMargin",
+  "editorRightMargin",
+  "topGutter",
+  "bottomGutter",
+  "showMarginalia",
+  "hiddenMarginaliaTypes",
+  "showSectionIndicator",
+  "showHeadingLabels",
+  "dividerLevels",
+  "dividerWidth",
+  "omniCategories",
+  "omniHideAllCards",
 ] as const;
 type GlobalPrefKey = (typeof GLOBAL_PREF_KEYS)[number];
 const GLOBAL_PREF_SET = new Set<string>(GLOBAL_PREF_KEYS);
@@ -203,6 +256,19 @@ function pickGlobal(p: ViewPrefs): Pick<ViewPrefs, GlobalPrefKey> {
     hiddenHighlightTypes: p.hiddenHighlightTypes,
     printOptions: p.printOptions,
     placements: p.placements,
+    pageWidth: p.pageWidth,
+    editorLeftMargin: p.editorLeftMargin,
+    editorRightMargin: p.editorRightMargin,
+    topGutter: p.topGutter,
+    bottomGutter: p.bottomGutter,
+    showMarginalia: p.showMarginalia,
+    hiddenMarginaliaTypes: p.hiddenMarginaliaTypes,
+    showSectionIndicator: p.showSectionIndicator,
+    showHeadingLabels: p.showHeadingLabels,
+    dividerLevels: p.dividerLevels,
+    dividerWidth: p.dividerWidth,
+    omniCategories: p.omniCategories,
+    omniHideAllCards: p.omniHideAllCards,
   };
 }
 
@@ -234,13 +300,107 @@ function loadPrefs(): ViewPrefs {
       }
     }
 
+    // Migration: keys that used to live in their own top-level
+    // localStorage entries (marginalia toggles, divider config, omni
+    // filter, etc.) are now part of the global ViewPrefs blob so they
+    // pick up persistence, cross-window sync, and the personal-prefs
+    // promotion pipeline. Read whatever's there, fold into a shape
+    // matching the new fields, and drop the legacy entries. Idempotent.
+    type LegacyMigration = {
+      key: string;
+      field: GlobalPrefKey;
+      parse: (raw: string) => unknown;
+    };
+    const legacyMigrations: LegacyMigration[] = [
+      { key: "virgil-show-marginalia", field: "showMarginalia", parse: (r) => r !== "false" },
+      {
+        key: "virgil-hidden-marginalia-types",
+        field: "hiddenMarginaliaTypes",
+        parse: (r) => {
+          const arr = JSON.parse(r);
+          return Array.isArray(arr) ? arr : [];
+        },
+      },
+      { key: "virgil-show-section-indicator", field: "showSectionIndicator", parse: (r) => r !== "false" },
+      { key: "virgil-show-heading-labels", field: "showHeadingLabels", parse: (r) => r !== "false" },
+      {
+        key: "virgil-divider-levels",
+        field: "dividerLevels",
+        parse: (r) => {
+          const arr = JSON.parse(r);
+          return Array.isArray(arr) ? arr : [];
+        },
+      },
+      {
+        key: "virgil-divider-width",
+        field: "dividerWidth",
+        parse: (r) => (r === "full" || r === "mid" || r === "text" ? r : "full"),
+      },
+      {
+        key: "virgil-omni-categories",
+        field: "omniCategories",
+        parse: (r) => {
+          const parsed = JSON.parse(r);
+          return {
+            left: migrateOmniCategories(parsed?.left) ?? DEFAULT_OMNI_CATEGORIES.left,
+            right: migrateOmniCategories(parsed?.right) ?? DEFAULT_OMNI_CATEGORIES.right,
+          };
+        },
+      },
+      {
+        key: "virgil-omni-hide-all-cards",
+        field: "omniHideAllCards",
+        parse: (r) => {
+          const parsed = JSON.parse(r);
+          return { left: Boolean(parsed?.left), right: Boolean(parsed?.right) };
+        },
+      },
+    ];
+    const legacyGlobalPatch: Record<string, unknown> = {};
+    let legacyTouched = false;
+    for (const m of legacyMigrations) {
+      const raw = localStorage.getItem(m.key);
+      if (raw == null) continue;
+      try {
+        legacyGlobalPatch[m.field] = m.parse(raw);
+        legacyTouched = true;
+      } catch {
+        // Skip corrupt entries — defaults will fill in.
+      }
+      localStorage.removeItem(m.key);
+    }
+    if (legacyTouched) {
+      const cur = localStorage.getItem(GLOBAL_STORAGE_KEY);
+      const next = cur ? JSON.parse(cur) : {};
+      for (const [k, v] of Object.entries(legacyGlobalPatch)) {
+        if (!(k in next)) next[k] = v;
+      }
+      localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(next));
+    }
+
     const windowRaw = localStorage.getItem(windowStorageKey());
     const globalRaw = localStorage.getItem(GLOBAL_STORAGE_KEY);
     if (!windowRaw && !globalRaw) return DEFAULT_PREFS;
-    const parsed = {
-      ...(windowRaw ? JSON.parse(windowRaw) : {}),
-      ...(globalRaw ? JSON.parse(globalRaw) : {}),
-    };
+    const windowParsed = windowRaw ? JSON.parse(windowRaw) : {};
+    const globalParsed = globalRaw ? JSON.parse(globalRaw) : {};
+
+    // Migration: keys promoted from per-window to global (page-layout
+    // dimensions like margins and pageWidth) should live in the global
+    // blob. Idempotent — no-ops once the window blob is clean.
+    let promotedAny = false;
+    for (const k of Object.keys(windowParsed)) {
+      if (GLOBAL_PREF_SET.has(k)) {
+        if (!(k in globalParsed)) globalParsed[k] = windowParsed[k];
+        delete windowParsed[k];
+        promotedAny = true;
+      }
+    }
+    if (promotedAny) {
+      localStorage.setItem(GLOBAL_STORAGE_KEY, JSON.stringify(globalParsed));
+      localStorage.setItem(windowStorageKey(), JSON.stringify(windowParsed));
+    }
+
+    const parsed = { ...windowParsed, ...globalParsed };
     // Migrate: replace old "references" panel with "citations" + "bibliography"
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let placements: any[] = parsed.placements || [];
@@ -905,6 +1065,73 @@ export function useViewPrefs() {
     });
   }, [update]);
 
+  /* ── Editor decoration setters ──────────────────────────────────── */
+
+  const toggleMarginalia = useCallback(() => {
+    update((p) => ({ ...p, showMarginalia: !p.showMarginalia }));
+  }, [update]);
+
+  const toggleMarginaliaType = useCallback((type: MarginaliaType) => {
+    update((p) => {
+      const has = p.hiddenMarginaliaTypes.includes(type);
+      return {
+        ...p,
+        hiddenMarginaliaTypes: has
+          ? p.hiddenMarginaliaTypes.filter((t) => t !== type)
+          : [...p.hiddenMarginaliaTypes, type],
+      };
+    });
+  }, [update]);
+
+  const toggleSectionIndicator = useCallback(() => {
+    update((p) => ({ ...p, showSectionIndicator: !p.showSectionIndicator }));
+  }, [update]);
+
+  const toggleHeadingLabels = useCallback(() => {
+    update((p) => ({ ...p, showHeadingLabels: !p.showHeadingLabels }));
+  }, [update]);
+
+  const toggleDividerLevel = useCallback((level: DividerLevel) => {
+    update((p) => {
+      const has = p.dividerLevels.includes(level);
+      return {
+        ...p,
+        dividerLevels: has
+          ? p.dividerLevels.filter((l) => l !== level)
+          : [...p.dividerLevels, level],
+      };
+    });
+  }, [update]);
+
+  const setDividerWidth = useCallback((w: DividerWidth) => {
+    update((p) => ({ ...p, dividerWidth: w }));
+  }, [update]);
+
+  const toggleOmniCategory = useCallback(
+    (side: "left" | "right", cat: OmniCategory) => {
+      update((p) => {
+        const list = p.omniCategories[side];
+        const next = list.includes(cat) ? list.filter((c) => c !== cat) : [...list, cat];
+        return { ...p, omniCategories: { ...p.omniCategories, [side]: next } };
+      });
+    },
+    [update],
+  );
+
+  const resetOmniSide = useCallback((side: "left" | "right") => {
+    update((p) => ({
+      ...p,
+      omniCategories: { ...p.omniCategories, [side]: [...DEFAULT_OMNI_CATEGORIES[side]] },
+    }));
+  }, [update]);
+
+  const toggleOmniHideAllCards = useCallback((side: "left" | "right") => {
+    update((p) => ({
+      ...p,
+      omniHideAllCards: { ...p.omniHideAllCards, [side]: !p.omniHideAllCards[side] },
+    }));
+  }, [update]);
+
   const setMenuLocation = useCallback((v: MenuLocation | ((prev: MenuLocation) => MenuLocation)) => {
     update((p) => ({
       ...p,
@@ -1164,6 +1391,15 @@ export function useViewPrefs() {
     setEditorRightMargin,
     setShowHighlights,
     toggleHighlightType,
+    toggleMarginalia,
+    toggleMarginaliaType,
+    toggleSectionIndicator,
+    toggleHeadingLabels,
+    toggleDividerLevel,
+    setDividerWidth,
+    toggleOmniCategory,
+    resetOmniSide,
+    toggleOmniHideAllCards,
     setMenuLocation,
     togglePopout,
     closePopout,

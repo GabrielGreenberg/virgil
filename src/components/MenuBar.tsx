@@ -17,7 +17,7 @@ import {
 } from "./editor-layout/panel-icons";
 import { generateShortId } from "@/lib/uuid";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
-import type { HighlightType } from "@/hooks/useViewPrefs";
+import type { HighlightType, MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 import { TextSelection } from "@tiptap/pm/state";
 import {
   FloatingToolbarShell,
@@ -257,9 +257,9 @@ export function handleExampleMenuPick(
   return true;
 }
 
-export type MarginaliaType = "quote" | "note" | "archive" | "todo";
-export type DividerLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-export type DividerWidth = "full" | "mid" | "text";
+// Types moved to useViewPrefs (the schema home for view-level prefs).
+// Re-exported here for back-compat with existing consumers.
+export type { MarginaliaType, DividerLevel, DividerWidth } from "@/hooks/useViewPrefs";
 
 /** The tilted-star glyph used for every Actions affordance — toolbar
  *  anchor button, collapsed-pod single button, and anywhere else the
