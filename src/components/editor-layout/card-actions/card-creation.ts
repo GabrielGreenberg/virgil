@@ -14,10 +14,7 @@ import type {
 } from "@/lib/types";
 import type { PanelId, ViewPrefs } from "@/hooks/useViewPrefs";
 import { nextCardTitle } from "@/panels/panel-registry";
-import {
-  getTextAnchor,
-  removeLinkedAnchor,
-} from "@/links/links";
+import { getTextAnchor } from "@/links/links";
 import type { EditorHandle } from "../../Editor";
 import type {
   RecentlyAddedKind,
@@ -312,18 +309,13 @@ export function useCardCreation(deps: CardCreationDeps): CardCreationApi {
   );
 
   const deleteHighlightOrNote = useCallback<CardCreationApi["deleteHighlightOrNote"]>(
-    (id) => {
-      const card = notesCards.find((c) => c.id === id);
-      if (card?.kind === "highlight") {
-        // Strip the in-doc tint before dropping the sidecar entry so the
-        // yellow doesn't linger over deleted text.
-        const editor = editorRef.current?.getEditor();
-        const anchorId = getTextAnchor(card)?.anchorId;
-        if (editor && anchorId) removeLinkedAnchor(editor, anchorId);
-      }
-      deleteNote(id);
-    },
-    [notesCards, editorRef, deleteNote],
+    // Mark cleanup is enforced centrally by `useLinkedAnchorReconciler`,
+    // which strips any `linkedAnchor` whose backing card is no longer
+    // alive in {notes, highlights, cutterCards, comments}. So this path
+    // just drops the sidecar entry; the in-doc tint clears on the next
+    // render commit.
+    (id) => { deleteNote(id); },
+    [deleteNote],
   );
 
   const createCutterComment = useCallback<CardCreationApi["createCutterComment"]>(
