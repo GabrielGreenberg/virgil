@@ -37,6 +37,7 @@ import { setCardLiftHandoff } from "./card-lift";
 import { registerSelectionFloat } from "./selection-floats";
 import { generateShortId } from "@/lib/uuid";
 import { isAnchorableNode } from "@/lib/marginalia";
+import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu-context";
 import {
   useEditorViewportCache,
@@ -565,22 +566,27 @@ export function SelectionDragHandle({
       const onUp = () => {
         // No lift — treat as a click and open the passage-action menu
         // anchored to the live-selection handle, scoped to the current
-        // selection range.
+        // selection range. Hydrate the anchor UUID at click time so the
+        // menu works even when the selection starts inside a paragraph
+        // that hasn't been hydrated yet (e.g., a fresh empty paragraph
+        // the user just typed into).
         if (!triggered) {
           const open = dragHandleMenuRef.current?.open;
           const range = lastRangeRef.current;
-          const paragraphId = lastParagraphIdRef.current;
-          if (open && range && paragraphId) {
-            const rect = handleEl.getBoundingClientRect();
-            open(
-              {
-                kind: "selection",
-                paragraphId,
-                from: range.from,
-                to: range.to,
-              },
-              rect,
-            );
+          if (open && range) {
+            const paragraphId = ensureAnchorUuid(editor.view, range.from);
+            if (paragraphId) {
+              const rect = handleEl.getBoundingClientRect();
+              open(
+                {
+                  kind: "selection",
+                  paragraphId,
+                  from: range.from,
+                  to: range.to,
+                },
+                rect,
+              );
+            }
           }
         }
         cleanup();

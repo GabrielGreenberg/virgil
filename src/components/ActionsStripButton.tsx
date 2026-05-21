@@ -15,43 +15,43 @@
 import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { isAnchorableNode } from "@/lib/marginalia";
+import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 
 interface Target {
-  paragraphUuid: string;
+  /** Position of the anchorable container — used as the enabled-state
+   *  identity. UUID hydration happens at click time, not here. */
+  anchorNodePos: number;
   range: { from: number; to: number };
   mode: "selection" | "cursor";
 }
 
-/** Read the cursor's anchorable paragraph + range. Returns null if the
+/** Read the cursor's anchorable container + range. Returns null if the
  *  editor isn't focused (so the strip button stays disabled until first
- *  real interaction) or the cursor isn't in an anchorable node. */
+ *  real interaction) or the cursor isn't in an anchorable node. UUIDs
+ *  are *not* required here — the button enables in any anchorable context
+ *  and hydrates on click. */
 function resolveTarget(editor: Editor): Target | null {
   if (!editor.isFocused) return null;
   const sel = editor.state.selection;
   if (sel instanceof NodeSelection) return null;
-  const $head = editor.state.doc.resolve(sel.head);
-  let paragraphUuid: string | null = null;
-  for (let depth = $head.depth; depth >= 0; depth--) {
-    const node = $head.node(depth);
-    if (isAnchorableNode(node.type)) {
-      paragraphUuid = (node.attrs?.uuid as string | null) ?? null;
-      break;
-    }
-  }
-  if (!paragraphUuid) return null;
+  const anchor = resolveAnchorableNode(editor.view, sel.head);
+  if (!anchor) return null;
   return {
-    paragraphUuid,
+    anchorNodePos: anchor.nodePos,
     range: { from: sel.from, to: sel.to },
     mode: sel.empty ? "cursor" : "selection",
   };
 }
 
 export function ActionsStripButton({ editor }: { editor: Editor | null }) {
-  const [open, setOpen] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const [openState, setOpenState] = useState<{
+    uuid: string;
+    range: { from: number; to: number };
+    mode: "selection" | "cursor";
+    rect: DOMRect;
+  } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
 
   // Re-render on every selection/focus change so the disabled state and
@@ -86,9 +86,15 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
   const disabled = !target;
 
   const onClick = () => {
-    if (disabled || !btnRef.current) return;
-    setAnchorRect(btnRef.current.getBoundingClientRect());
-    setOpen(true);
+    if (!editor || !target || !btnRef.current) return;
+    const uuid = ensureAnchorUuid(editor.view, editor.state.selection.head);
+    if (!uuid) return;
+    setOpenState({
+      uuid,
+      range: target.range,
+      mode: target.mode,
+      rect: btnRef.current.getBoundingClientRect(),
+    });
   };
 
   return (
@@ -107,15 +113,15 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
       >
         <IconZap size={14} muted />
       </button>
-      {open && editor && target && anchorRect && (
+      {openState && editor && (
         <ActionsMenuPanel
           editor={editor}
-          paragraphUuid={target.paragraphUuid}
-          range={target.range}
-          mode={target.mode}
-          anchorLeft={anchorRect.left}
-          anchorTop={anchorRect.bottom + 4}
-          onClose={() => setOpen(false)}
+          paragraphUuid={openState.uuid}
+          range={openState.range}
+          mode={openState.mode}
+          anchorLeft={openState.rect.left}
+          anchorTop={openState.rect.bottom + 4}
+          onClose={() => setOpenState(null)}
         />
       )}
     </>

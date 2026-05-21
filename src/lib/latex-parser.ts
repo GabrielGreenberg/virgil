@@ -1549,15 +1549,30 @@ function splitListItems(content: string): { items: string[]; preamble: string } 
   return { items, preamble };
 }
 
+// Trailing `%!v:xxxx` marker on a list item's body. Captures the UUID
+// after stripping the marker so the inner text isn't polluted.
+const ITEM_TRAILING_UUID_REGEX = /[ \t]*%!v:([0-9a-f]{4})\s*$/;
+
 function parseList(content: string, type: string): JSONContent {
   const items: JSONContent[] = [];
   const { items: itemTexts, preamble } = splitListItems(content);
 
-  for (const itemText of itemTexts) {
+  for (const rawItemText of itemTexts) {
+    // Pull off a trailing `%!v:xxxx` per-item marker if present. Stripped
+    // before parsing so the marker doesn't leak into the rendered text.
+    let itemUuid: string | null = null;
+    let itemText = rawItemText;
+    const m = itemText.match(ITEM_TRAILING_UUID_REGEX);
+    if (m) {
+      itemUuid = m[1];
+      itemText = itemText.slice(0, m.index).trimEnd();
+    }
+
     // Parse the item body as a block sequence so nested itemize/enumerate
     // become real list nodes, not unknown commands. parseBody emits
     // paragraphs for plain text and bulletList/orderedList for nested envs.
     const itemDoc: JSONContent = { type: "listItem", content: [] };
+    if (itemUuid) itemDoc.attrs = { uuid: itemUuid };
     const itemCtx: ParseContext = { pos: 0, src: itemText };
     parseBody(itemCtx, itemDoc);
 

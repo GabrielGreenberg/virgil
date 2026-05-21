@@ -20,7 +20,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { Editor } from "@tiptap/react";
 import { NodeSelection } from "@tiptap/pm/state";
-import { isAnchorableNode } from "@/lib/marginalia";
+import { resolveAnchorableNode, ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { IconZap } from "./editor-layout/panel-icons";
 import { ActionsMenuPanel } from "./ActionsMenuPanel";
 import {
@@ -38,7 +38,7 @@ const INVISIBLE_PLACEMENT: Placement = {
   visible: false,
   left: 0,
   top: 0,
-  paragraphUuid: null,
+  anchorNodePos: null,
   range: null,
   mode: "selection",
 };
@@ -47,7 +47,13 @@ interface Placement {
   visible: boolean;
   left: number;
   top: number;
-  paragraphUuid: string | null;
+  /**
+   * Position of the anchorable container at the head, used as the close-on-
+   * paragraph-change identity. Stable across UUID hydration (setNodeMarkup
+   * doesn't shift positions), so opening the menu — which may hydrate a UUID
+   * — does not collapse the menu it just opened.
+   */
+  anchorNodePos: number | null;
   range: { from: number; to: number } | null;
   mode: "selection" | "cursor";
 }
@@ -72,15 +78,8 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
   if (!cache.editorEl) return INVISIBLE_PLACEMENT;
 
   const { from, to, head } = sel;
-  let paragraphUuid: string | null = null;
-  const $head = editor.state.doc.resolve(head);
-  for (let depth = $head.depth; depth >= 0; depth--) {
-    const node = $head.node(depth);
-    if (isAnchorableNode(node.type)) {
-      paragraphUuid = (node.attrs?.uuid as string | null) ?? null;
-      break;
-    }
-  }
+  const anchor = resolveAnchorableNode(editor.view, head);
+  const anchorNodePos = anchor?.nodePos ?? null;
 
   let headCoords: { left: number; top: number; bottom: number };
   try {
@@ -98,7 +97,7 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
       visible: false,
       left: 0,
       top: 0,
-      paragraphUuid,
+      anchorNodePos,
       range: { from, to },
       mode: sel.empty ? "cursor" : "selection",
     };
@@ -119,7 +118,7 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
     visible: true,
     left,
     top,
-    paragraphUuid,
+    anchorNodePos,
     range: { from, to },
     mode: sel.empty ? "cursor" : "selection",
   };
@@ -130,7 +129,7 @@ function placementsEqual(a: Placement, b: Placement): boolean {
     a.visible === b.visible &&
     a.left === b.left &&
     a.top === b.top &&
-    a.paragraphUuid === b.paragraphUuid &&
+    a.anchorNodePos === b.anchorNodePos &&
     a.mode === b.mode &&
     (a.range?.from ?? null) === (b.range?.from ?? null) &&
     (a.range?.to ?? null) === (b.range?.to ?? null)
@@ -143,7 +142,11 @@ export function SelectionActionsMenu({
   editorRef: RefObject<Editor | null>;
 }) {
   const [placement, setPlacement] = useState<Placement>(INVISIBLE_PLACEMENT);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuTarget, setMenuTarget] = useState<{
+    uuid: string;
+    range: { from: number; to: number };
+    mode: "selection" | "cursor";
+  } | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
 
   // Shared viewport-metrics cache. editorRight, scrollTop, scrollBottom
@@ -273,12 +276,14 @@ export function SelectionActionsMenu({
   // Close the menu on logical changes only — selection moved, paragraph
   // changed, mode flipped, visibility dropped. `left/top` excluded so
   // scroll re-positions the open menu instead of collapsing it.
+  // `anchorNodePos` (not UUID) is the identity key: it's stable across the
+  // `ensureAnchorUuid` setNodeMarkup that fires when the menu opens.
   useEffect(() => {
-    setMenuOpen(false);
+    setMenuTarget(null);
   }, [
     placement.range?.from,
     placement.range?.to,
-    placement.paragraphUuid,
+    placement.anchorNodePos,
     placement.mode,
     placement.visible,
   ]);
@@ -288,6 +293,17 @@ export function SelectionActionsMenu({
 
   const editor = editorRef.current;
   if (!editor) return null;
+
+  const openMenu = () => {
+    if (!placement.range) return;
+    const uuid = ensureAnchorUuid(editor.view, editor.state.selection.head);
+    if (!uuid) return;
+    setMenuTarget({
+      uuid,
+      range: placement.range,
+      mode: placement.mode,
+    });
+  };
 
   // Collapsed-state action button. Same chrome variables as the menu so
   // the two states feel like one component: the menu expands out of the
@@ -301,7 +317,7 @@ export function SelectionActionsMenu({
       // Prevent the mousedown from blurring the editor / clearing the
       // selection before the click registers.
       onMouseDown={(e) => e.preventDefault()}
-      onClick={() => setMenuOpen(true)}
+      onClick={openMenu}
       className="flex items-center justify-center hover-on-light"
       style={{
         position: "fixed",
@@ -323,18 +339,20 @@ export function SelectionActionsMenu({
     document.body,
   );
 
-  if (!menuOpen) return buttonPortal;
-  if (!placement.paragraphUuid || !placement.range) return buttonPortal;
+  if (!menuTarget) return buttonPortal;
 
   return (
-    <ActionsMenuPanel
-      editor={editor}
-      paragraphUuid={placement.paragraphUuid}
-      range={placement.range}
-      mode={placement.mode}
-      anchorLeft={placement.left}
-      anchorTop={placement.top}
-      onClose={() => setMenuOpen(false)}
-    />
+    <>
+      {buttonPortal}
+      <ActionsMenuPanel
+        editor={editor}
+        paragraphUuid={menuTarget.uuid}
+        range={menuTarget.range}
+        mode={menuTarget.mode}
+        anchorLeft={placement.left}
+        anchorTop={placement.top}
+        onClose={() => setMenuTarget(null)}
+      />
+    </>
   );
 }

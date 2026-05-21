@@ -47,6 +47,7 @@ export const ANCHORABLE_NODES = new Set([
   "heading",
   "bulletList",
   "orderedList",
+  "listItem",
   "displayMath",
   "latexComment",
   "titleField",

@@ -16,11 +16,10 @@ import {
   MIME_ARCHIVE_ANCHOR,
   MIME_CUT,
   isAnchorDrag,
-  isAnchorableNode,
   type MarginaliaMarker,
   type PositionedMarker,
 } from "@/lib/marginalia";
-import { generateShortId } from "@/lib/uuid";
+import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { computeMarkerPositions } from "@/lib/marginalia-grid";
 import type { PanelId } from "@/hooks/useViewPrefs";
 import {
@@ -233,40 +232,17 @@ export default function Marginalia({ editor, markers, panelSides }: MarginaliaPr
       let resolvedId = targetId;
       if (!resolvedId) return;
 
-      // For synthetic "_pos:NNN" IDs (nodes without UUIDs), assign a UUID
-      // so all downstream stores get a stable string key.
+      // For synthetic "_pos:NNN" IDs (nodes without UUIDs), hydrate a UUID
+      // via the shared `ensureAnchorUuid` helper so all downstream stores
+      // get a stable string key.
       if (resolvedId.startsWith("_pos:")) {
         const rawPos = parseInt(resolvedId.slice(5), 10);
         if (isNaN(rawPos)) return;
         const doc = editor.state.doc;
         if (rawPos < 0 || rawPos >= doc.content.size) return;
-        const $p = doc.resolve(rawPos);
-        for (let d = $p.depth; d >= 0; d--) {
-          const node = $p.node(d);
-          if (isAnchorableNode(node.type)) {
-            if (node.attrs?.uuid) {
-              resolvedId = node.attrs.uuid;
-            } else {
-              // Collect existing UUIDs to guarantee uniqueness
-              const existing = new Set<string>();
-              doc.descendants((n) => {
-                if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
-              });
-              const nodePos = d === 0 ? 0 : $p.before(d);
-              const newUuid = generateShortId(existing);
-              const tr = editor.state.tr.setNodeMarkup(nodePos, undefined, {
-                ...node.attrs,
-                uuid: newUuid,
-              });
-              tr.setMeta("addToHistory", false);
-              editor.view.dispatch(tr);
-              resolvedId = newUuid;
-            }
-            break;
-          }
-        }
-        // If still synthetic after the walk, bail
-        if (!resolvedId || resolvedId.startsWith("_pos:")) return;
+        const newUuid = ensureAnchorUuid(editor.view, rawPos);
+        if (!newUuid) return;
+        resolvedId = newUuid;
       }
 
       const paragraphId = resolvedId;

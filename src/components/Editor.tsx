@@ -6,6 +6,7 @@ import { Heading } from "@tiptap/extension-heading";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import BulletList from "@tiptap/extension-bullet-list";
 import OrderedList from "@tiptap/extension-ordered-list";
+import ListItem from "@tiptap/extension-list-item";
 import Blockquote from "@tiptap/extension-blockquote";
 import CodeBlock from "@tiptap/extension-code-block";
 import { Extension, mergeAttributes } from "@tiptap/core";
@@ -43,6 +44,7 @@ import {
 } from "@/lib/marginalia";
 import { registerDropTarget } from "@/components/drop-mode/target-registry";
 import { generateShortId } from "@/lib/uuid";
+import { ensureAnchorUuid } from "@/lib/anchor-uuid";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly } from "@/lib/latex-serializer";
 import { autoSizeInput } from "@/lib/autoSizeInput";
@@ -73,65 +75,7 @@ import type { HeadingTypePick } from "./HeadingTypeMenu";
  */
 const exampleLatexCache = new WeakMap<PMNode, string>();
 
-/**
- * Resolve a ProseMirror position to the nearest anchorable node, handling
- * both container nodes (paragraph, heading, list) and atom blocks
- * (displayMath, latexComment) where posAtCoords lands before/after the atom.
- */
-function resolveAnchorableNode(
-  view: import("@tiptap/pm/view").EditorView,
-  pos: number,
-): { node: PMNode; nodePos: number } | null {
-  const $pos = view.state.doc.resolve(pos);
-  // Walk up ancestors (works when cursor is inside an anchorable node)
-  for (let depth = $pos.depth; depth >= 0; depth--) {
-    const node = $pos.node(depth);
-    if (isAnchorableNode(node.type)) {
-      const nodePos = depth === 0 ? 0 : $pos.before(depth);
-      return { node, nodePos };
-    }
-  }
-  // Fallback: check adjacent nodes (e.g. pos 0 is before the first heading)
-  if ($pos.nodeAfter && isAnchorableNode($pos.nodeAfter.type)) {
-    return { node: $pos.nodeAfter, nodePos: pos };
-  }
-  if ($pos.nodeBefore && isAnchorableNode($pos.nodeBefore.type)) {
-    return { node: $pos.nodeBefore, nodePos: pos - $pos.nodeBefore.nodeSize };
-  }
-  return null;
-}
-
-/**
- * Ensure the anchorable node at `pos` has a UUID. Assigns one if missing.
- * Collects all existing UUIDs in the document to avoid collisions.
- * Returns the UUID or null if no anchorable node was found.
- */
-function ensureAnchorUuid(
-  view: import("@tiptap/pm/view").EditorView,
-  pos: number,
-): string | null {
-  const result = resolveAnchorableNode(view, pos);
-  if (!result) return null;
-  const { node, nodePos } = result;
-  if (node.attrs?.uuid) return node.attrs.uuid as string;
-  // Collect existing UUIDs to guarantee uniqueness
-  const existing = new Set<string>();
-  view.state.doc.descendants((n) => {
-    if (n.attrs?.uuid) existing.add(n.attrs.uuid as string);
-  });
-  const newUuid = generateShortId(existing);
-  try {
-    const tr = view.state.tr.setNodeMarkup(nodePos, undefined, {
-      ...node.attrs,
-      uuid: newUuid,
-    });
-    tr.setMeta("addToHistory", false);
-    view.dispatch(tr);
-    return newUuid;
-  } catch {
-    return null;
-  }
-}
+// resolveAnchorableNode + ensureAnchorUuid moved to @/lib/anchor-uuid
 
 interface EditorProps {
   initialContent: JSONContent;
@@ -235,7 +179,8 @@ interface EditorProps {
   onDragHandleClick?: (
     passage:
       | { kind: "paragraph"; paragraphId: string }
-      | { kind: "heading"; paragraphId: string },
+      | { kind: "heading"; paragraphId: string }
+      | { kind: "texBlock"; paragraphId: string },
     anchorRect: DOMRect,
   ) => void;
   /**
@@ -547,6 +492,17 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   onLiftTexBlockRef.current = onLiftTexBlock;
   const texBlockIsPoppedPredicateRef = useRef(texBlockIsPoppedRef);
   texBlockIsPoppedPredicateRef.current = texBlockIsPoppedRef;
+  // Adapter ref: TexBlockNodeView receives a tex-block-scoped click
+  // callback `(uuid, rect) => void`; this wraps the broader prop into
+  // that shape so tex-block.ts doesn't have to know the full passage
+  // union.
+  const onTexBlockDragHandleClickRef = useRef<
+    ((uuid: string, anchorRect: DOMRect) => void) | undefined
+  >(undefined);
+  onTexBlockDragHandleClickRef.current = onDragHandleClick
+    ? (uuid, rect) =>
+        onDragHandleClick({ kind: "texBlock", paragraphId: uuid }, rect)
+    : undefined;
   // docId mirror — FigureBlock / GraphicsBlock NodeViews read it via
   // `extension.options.docIdRef.current` to resolve `\includegraphics`
   // paths against the active paper folder.
@@ -1309,6 +1265,15 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const BlockquoteWithUuid = Blockquote.extend({
+    addAttributes() {
+      return {
+        ...this.parent?.(),
+        uuid: { default: null, rendered: false },
+      };
+    },
+  });
+
+  const ListItemWithUuid = ListItem.extend({
     addAttributes() {
       return {
         ...this.parent?.(),
@@ -2117,6 +2082,7 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
         paragraph: false,
         bulletList: false,
         orderedList: false,
+        listItem: false,
         blockquote: false,
         codeBlock: false,
         dropcursor: { color: "var(--drag-highlight)", width: 2 },
@@ -2125,11 +2091,13 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       HeadingWithLabel,
       BulletListWithTitle,
       OrderedListWithTitle,
+      ListItemWithUuid,
       BlockquoteWithUuid,
       CodeBlockWithUuid,
       TexBlock.configure({
         onLiftRef: onLiftTexBlockRef,
         isPoppedRef: texBlockIsPoppedPredicateRef,
+        onDragHandleClickRef: onTexBlockDragHandleClickRef,
       }),
       FigureBlock.configure({ docIdRef }),
       GraphicsBlock.configure({ docIdRef }),
@@ -2747,47 +2715,27 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
       if (!editor) return null;
       const sel = editor.state.selection;
 
-      // Snapshot every UUID currently in the doc so a fresh one (assigned
-      // below when the deletion lands the cursor outside any UUID-bearing
-      // anchorable node) can't collide.
-      const collectExistingUuids = (): Set<string> => {
-        const set = new Set<string>();
-        editor.state.doc.descendants((n) => {
-          const u = n.attrs?.uuid as string | undefined;
-          if (u) set.add(u);
-          return true;
-        });
-        return set;
-      };
-
-      // After the delete, resolve (or create) an empty-paragraph anchor at
-      // the cursor and return its UUID. Three cases:
+      // After the delete, resolve (or create) an anchor at the cursor and
+      // return its UUID. Three cases:
       //   1. Paragraph-archive: cursor lands inside the now-empty paragraph,
-      //      which still carries its original UUID. No-op.
+      //      which still carries its original UUID. `ensureAnchorUuid`
+      //      returns the existing UUID.
       //   2. Heading- or block-atom-archive: the host block was removed.
       //      The cursor lands inside whatever paragraph survived at the
-      //      join — usually a UUID-less empty paragraph, which we stamp.
+      //      join — usually a UUID-less empty paragraph, which the helper
+      //      stamps.
       //   3. Edge case (e.g. atom was at doc end): no anchorable node at
       //      cursor — insert a fresh empty paragraph with a UUID.
       const resolveAnchor = (): string | null => {
-        const $from = editor.state.selection.$from;
-        for (let depth = $from.depth; depth >= 0; depth--) {
-          const node = $from.node(depth);
-          if (isAnchorableNode(node.type)) {
-            const existing = node.attrs?.uuid as string | null | undefined;
-            if (existing) return existing;
-            const pos = depth === 0 ? 0 : $from.before(depth);
-            const newUuid = generateShortId(collectExistingUuids());
-            const tr = editor.state.tr.setNodeMarkup(pos, null, {
-              ...node.attrs,
-              uuid: newUuid,
-            });
-            editor.view.dispatch(tr);
-            return newUuid;
-          }
-        }
+        const existing = ensureAnchorUuid(editor.view, editor.state.selection.from);
+        if (existing) return existing;
         // Cursor not inside any anchorable node — insert one.
-        const newUuid = generateShortId(collectExistingUuids());
+        const seen = new Set<string>();
+        editor.state.doc.descendants((n) => {
+          const u = n.attrs?.uuid as string | undefined;
+          if (u) seen.add(u);
+        });
+        const newUuid = generateShortId(seen);
         editor
           .chain()
           .focus()

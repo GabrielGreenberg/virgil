@@ -286,15 +286,17 @@ function serializeNode(node: JSONContent, suppressChildUuids = false, listDepth 
         head && head.type === "paragraph"
           ? (head.content || []).map(serializeInline).join("")
           : "";
+      const uuid = node.attrs?.uuid as string | null;
+      const anchor = uuid ? ` %!v:${uuid}` : "";
       // Serialize trailing block children (nested lists, etc.) with bumped depth
       const tailText = tail
         .map((n) => serializeNode(n, false, listDepth + 1))
         .join("")
         .replace(/\n+$/, ""); // strip trailing blank lines from nested blocks
       if (tailText) {
-        return `${indent}\\item ${headText}\n${tailText}\n`;
+        return `${indent}\\item ${headText}${anchor}\n${tailText}\n`;
       }
-      return `${indent}\\item ${headText}\n`;
+      return `${indent}\\item ${headText}${anchor}\n`;
     }
 
     case "horizontalRule":
@@ -605,21 +607,25 @@ export function assignUuids(doc: JSONContent): void {
 
   // Second pass: assign missing UUIDs (skip paragraphs inside containers)
   function assign(node: JSONContent, insideContainer = false) {
-    // Container nodes get a single UUID; inner paragraphs are suppressed
+    // Strip stale UUIDs on paragraphs inside a container (listItem,
+    // blockquote, codeBlock). The container itself or its listItem owns
+    // the anchor identity; inner paragraphs don't.
+    if (insideContainer && node.type === "paragraph" && node.attrs?.uuid) {
+      node.attrs.uuid = null;
+      node.attrs.parTitle = null;
+    }
+    // Container nodes (bulletList / orderedList / blockquote) get a UUID.
     if (CONTAINER_TYPES.has(node.type!)) {
       if (!node.attrs?.uuid) ensureUuid(node);
-      // Clear stale UUIDs on paragraphs inside list items / blockquote children
-      const clearChildren = (children: JSONContent[]) => {
-        for (const child of children) {
-          if (child.type === "paragraph" && child.attrs?.uuid) {
-            child.attrs.uuid = null;
-            child.attrs.parTitle = null;
-          }
-          // For lists, walk into listItem children
-          if (child.type === "listItem" && child.content) clearChildren(child.content);
-        }
-      };
-      if (node.content) clearChildren(node.content);
+      node.content?.forEach((child) => assign(child, true));
+      return;
+    }
+    // List items are per-item anchor targets (so the action button works
+    // inside an item, marginalia can pin to a single line, etc.). Their
+    // inner paragraph stays UUID-less — handled by insideContainer=true.
+    if (node.type === "listItem") {
+      if (!node.attrs?.uuid) ensureUuid(node);
+      node.content?.forEach((child) => assign(child, true));
       return;
     }
     // Headings and titleFields always get a UUID
@@ -784,12 +790,24 @@ export function recoverOrphanedUuids(doc: JSONContent, sidecar: VirgilSidecar): 
 
   // 3. Walk document for UUID-eligible nodes missing a UUID, try to recover
   function recover(node: JSONContent, insideContainer = false) {
-    // Container nodes: recover the container UUID, don't recurse into children
+    // Container nodes (bulletList / orderedList / blockquote): recover
+    // the container UUID, then recurse so listItems can recover too.
     if (CONTAINER_TYPES.has(node.type!)) {
       if (!node.attrs?.uuid) {
         const fp = computeFingerprint(node);
         if (fp) tryRestore(node, fp);
       }
+      node.content?.forEach((child) => recover(child, true));
+      return;
+    }
+    // List items are per-item anchor targets — recover via the item's
+    // content fingerprint, then continue into the inner paragraph(s).
+    if (node.type === "listItem") {
+      if (!node.attrs?.uuid) {
+        const fp = computeFingerprint(node);
+        if (fp) tryRestore(node, fp);
+      }
+      node.content?.forEach((child) => recover(child, true));
       return;
     }
     // Headings and titleFields always recoverable
