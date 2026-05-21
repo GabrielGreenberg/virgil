@@ -635,6 +635,43 @@ export async function readFigureSource(
   return null;
 }
 
+/** Import a figure file that the user picked via `showOpenFilePicker`.
+ *
+ *  - If the picked file is already inside the paper folder, returns the
+ *    relative path joined with `/` (no copy needed).
+ *  - Otherwise, copies the file bytes into `<paper>/<subdir>/<basename>`
+ *    (creating `<subdir>` on demand) and returns `<subdir>/<basename>`.
+ *
+ *  Returns the path that should land in `\includegraphics{...}`. The write
+ *  goes through `enqueueDocWrite` with a `figures/` subkey so it serializes
+ *  with the raster cache.
+ */
+export async function importFigureFile(
+  h: DocWriteHandle,
+  fileHandle: FileSystemFileHandle,
+  subdir: string = "figures",
+): Promise<string> {
+  const docHandle = await requireDocHandle(h.docId);
+  // FSA tells us whether the picked file is under our paper folder.
+  const relative = await docHandle.resolve(fileHandle);
+  if (relative && relative.length > 0) {
+    return relative.join("/");
+  }
+  // Outside the paper folder — copy bytes in.
+  const file = await fileHandle.getFile();
+  const basename = file.name;
+  const destPath = `${subdir}/${basename}`;
+  await enqueueDocWrite(h, `figures/import/${destPath}`, async () => {
+    const dh = await requireDocHandle(h.docId);
+    const subdirHandle = await dh.getDirectoryHandle(subdir, { create: true });
+    const destFh = await subdirHandle.getFileHandle(basename, { create: true });
+    const writable = await destFh.createWritable();
+    await writable.write(await file.arrayBuffer());
+    await writable.close();
+  });
+  return destPath;
+}
+
 /** Helper for callers outside the React tree that need a DocWriteHandle —
  *  e.g. the figure raster cache writes from a non-component hook context.
  *  Returns null when no pipeline is active (read-only viewer, etc). */

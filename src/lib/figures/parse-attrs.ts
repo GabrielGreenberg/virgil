@@ -169,3 +169,121 @@ export function extractGraphicsAttrs(command: string): GraphicsAttrs | null {
     widthPercent: parseWidthSpec(m.options),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Mutators used by the figure block's visual chrome (scale stepper, file
+// picker). They preserve the surrounding `command` / `raw` text byte-for-byte
+// except at the one site that's being changed — `command` / `raw` remain the
+// source of truth for LaTeX round-trip.
+// ---------------------------------------------------------------------------
+
+// Width units we won't touch from visual chrome. If `width=` uses any of
+// these the scale stepper disables itself; users edit absolute widths in
+// code via the popover.
+const ABSOLUTE_WIDTH_RE =
+  /width\s*=\s*[0-9.]+\s*(cm|mm|in|pt|pc|em|ex|bp|sp)\b/i;
+// `\textwidth` / `\linewidth` / `\columnwidth` widths — the ones we own.
+const RELATIVE_WIDTH_RE =
+  /width\s*=\s*[0-9.]+\s*\\(textwidth|linewidth|columnwidth)/;
+
+/** Format a percentage in [10, 100] as a LaTeX fraction string. */
+function formatWidthFraction(percent: number): string {
+  if (percent === 100) return "1.0";
+  // Two decimals max; strip trailing zero (so 50 → "0.5", 35 → "0.35").
+  const fixed = (percent / 100).toFixed(2);
+  return fixed.replace(/0$/, "").replace(/\.$/, "");
+}
+
+/** Update the `width=…` directive in an options string (no surrounding `[]`)
+ *  to express `percent`% of `\textwidth` (or whichever relative unit was
+ *  already in use). Returns `ok: false` if the existing width is in absolute
+ *  units (cm/in/pt/…) — caller should leave it alone. */
+export function setWidthInOptions(
+  options: string,
+  percent: number,
+): { options: string; ok: boolean } {
+  if (ABSOLUTE_WIDTH_RE.test(options)) {
+    return { options, ok: false };
+  }
+  const fracStr = formatWidthFraction(percent);
+  const rel = options.match(RELATIVE_WIDTH_RE);
+  if (rel) {
+    const unitMatch = rel[0].match(/\\(textwidth|linewidth|columnwidth)/);
+    const unit = unitMatch ? unitMatch[0] : "\\textwidth";
+    return {
+      options: options.replace(RELATIVE_WIDTH_RE, `width=${fracStr}${unit}`),
+      ok: true,
+    };
+  }
+  // No width set yet — prepend one. Empty options stays bracket-free; otherwise
+  // splice in front with a comma.
+  const inserted = `width=${fracStr}\\textwidth`;
+  return {
+    options: options.length === 0 ? inserted : `${inserted},${options}`,
+    ok: true,
+  };
+}
+
+/** Determine whether the visual scale stepper can adjust this options string.
+ *  False when width is in absolute units (cm/in/pt/…). */
+export function canEditWidthInOptions(options: string): boolean {
+  return !ABSOLUTE_WIDTH_RE.test(options);
+}
+
+/** Rebuild a `\includegraphics` command from its parts, preserving the
+ *  starred form if the original used it. */
+function rebuildIncludegraphics(
+  originalCommand: string,
+  options: string,
+  path: string,
+): string {
+  const isStarred = originalCommand.startsWith("\\includegraphics*");
+  const head = isStarred ? "\\includegraphics*" : "\\includegraphics";
+  return options.length > 0 ? `${head}[${options}]{${path}}` : `${head}{${path}}`;
+}
+
+/** Splice an updated `\includegraphics` command into a larger text string
+ *  (a graphicsBlock `command` or a figureBlock `raw`). Locates the first
+ *  `\includegraphics` and replaces it with `build(match)`. Returns null
+ *  when no `\includegraphics` is found. */
+function withUpdatedFirstGraphics(
+  text: string,
+  build: (m: {
+    command: string;
+    options: string;
+    path: string;
+  }) => string | null,
+): string | null {
+  const idx = text.indexOf("\\includegraphics");
+  if (idx === -1) return null;
+  const m = matchIncludegraphics(text, idx);
+  if (!m) return null;
+  const rebuilt = build({ command: m.command, options: m.options, path: m.path });
+  if (rebuilt == null) return null;
+  return text.slice(0, idx) + rebuilt + text.slice(idx + m.command.length);
+}
+
+/** Apply a new width percentage to the first `\includegraphics` in `text`.
+ *  Returns null when the text has no `\includegraphics`, or when the existing
+ *  width uses absolute units (signaling the chrome to bail). */
+export function withUpdatedFigureWidth(
+  text: string,
+  percent: number,
+): string | null {
+  return withUpdatedFirstGraphics(text, (m) => {
+    const result = setWidthInOptions(m.options, percent);
+    if (!result.ok) return null;
+    return rebuildIncludegraphics(m.command, result.options, m.path);
+  });
+}
+
+/** Swap the `{path}` argument of the first `\includegraphics` in `text`,
+ *  preserving all options. Returns null when no `\includegraphics` is found. */
+export function withReplacedFigurePath(
+  text: string,
+  newPath: string,
+): string | null {
+  return withUpdatedFirstGraphics(text, (m) =>
+    rebuildIncludegraphics(m.command, m.options, newPath),
+  );
+}

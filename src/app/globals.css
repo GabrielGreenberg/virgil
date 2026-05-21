@@ -1811,16 +1811,60 @@ textarea,
   background: var(--code-bg, #f0eeeb);
   border: 1px dashed var(--border, #d9d3c8);
   border-radius: 0.25rem;
-  padding: 0.5em 0.75em;
-  text-align: left;
+  padding: 1.5em 0.75em;
+  text-align: center;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.figure-block .figure-raw {
-  font-family: var(--font-mono-override, var(--font-mono)), monospace;
-  font-size: 0.85em;
+.figure-block .figure-empty-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+}
+
+.figure-block .figure-empty-cta {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25em;
+  padding: 0.6em 1em;
+  background: var(--panel-bg, #ffffff);
+  border: 1px solid var(--border, #d9d3c8);
+  border-radius: 0.35rem;
+  color: var(--ink, #2a2520);
+  cursor: pointer;
+  font-size: 0.92em;
+  transition: border-color 120ms ease-out, color 120ms ease-out;
+}
+
+.figure-block .figure-empty-cta:hover {
+  border-color: var(--accent, #6b4fa0);
+  color: var(--accent, #6b4fa0);
+}
+
+.figure-block .figure-empty-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.2em;
+}
+
+.figure-block .figure-empty-cta-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.figure-block .figure-empty-cta-label {
+  font-weight: 500;
+}
+
+.figure-block .figure-empty-hint {
+  font-size: 0.78em;
   color: var(--ink-muted, #6b6258);
-  white-space: pre-wrap;
-  margin: 0;
 }
 
 .figure-block .figure-row {
@@ -1876,33 +1920,124 @@ textarea,
   min-width: 200px;
 }
 
-.figure-block .figure-reload {
+/* Figure block chrome — the hover-revealed corner row of controls
+ * (folder picker, scale stepper, refresh, delete). Lives at the wrapper
+ * level so a single refresh button drives all panels in a subfigure block.
+ * The empty placeholder shows a stripped-down row with just the delete
+ * button (the picker is the centered CTA). */
+.figure-block .figure-chrome {
   position: absolute;
   top: 4px;
   right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  pointer-events: none;
+}
+
+.figure-block:hover .figure-chrome,
+.figure-block:focus-within .figure-chrome,
+.figure-block .figure-chrome.figure-chrome-empty {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.figure-block .figure-chrome-btn {
   width: 22px;
   height: 22px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 0.25rem;
-  background: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--border, #d9d3c8);
   color: var(--ink-muted, #6b6258);
   cursor: pointer;
-  font-size: 14px;
+  padding: 0;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 120ms ease-out;
 }
 
-.figure-block:hover .figure-reload {
-  opacity: 1;
-}
-
-.figure-block .figure-reload:hover {
+.figure-block .figure-chrome-btn:hover {
   background: white;
   color: var(--accent, #6b4fa0);
+  border-color: var(--accent, #6b4fa0);
+}
+
+.figure-block .figure-chrome-btn-danger:hover {
+  color: #b8261a;
+  border-color: #b8261a;
+}
+
+/* Scale composite: [ − | 60 | + ] attached, shares the chrome-btn look. */
+.figure-block .figure-scale {
+  display: inline-flex;
+  align-items: stretch;
+  height: 22px;
+  border-radius: 0.25rem;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--border, #d9d3c8);
+}
+
+.figure-block .figure-scale[data-disabled="true"] {
+  opacity: 0.45;
+}
+
+.figure-block .figure-scale-btn {
+  width: 20px;
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+  color: var(--ink-muted, #6b6258);
+  cursor: pointer;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.figure-block .figure-scale-btn:hover:not(:disabled) {
+  color: var(--accent, #6b4fa0);
+  background: var(--code-bg, #f0eeeb);
+}
+
+.figure-block .figure-scale-btn:disabled {
+  color: var(--ink-faint, #b8ad9e);
+  cursor: not-allowed;
+}
+
+.figure-block .figure-scale-input {
+  width: 30px;
+  height: 100%;
+  border: 0;
+  border-left: 1px solid var(--border, #d9d3c8);
+  border-right: 1px solid var(--border, #d9d3c8);
+  background: transparent;
+  text-align: center;
+  font-family: var(--font-mono-override, var(--font-mono)), monospace;
+  font-size: 11px;
+  color: var(--ink, #2a2520);
+  padding: 0;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.figure-block .figure-scale-input::-webkit-outer-spin-button,
+.figure-block .figure-scale-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.figure-block .figure-scale-input:focus {
+  background: white;
+}
+
+.figure-block .figure-scale-input:disabled {
+  cursor: not-allowed;
 }
 
 /* Figure tex-mode popover — same styling family as .math-popover. */
