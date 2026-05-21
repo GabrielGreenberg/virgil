@@ -28,5 +28,16 @@ export { SmartQuotes } from "./smart-quotes";
 export { TabIndent } from "./tab-indent";
 export { TextColor } from "./text-color";
 export { TexBlock, insertTexBlock, collectTexBlockUuids, freshTexBlockAttrs } from "./tex-block";
-export { FigureBlock, type FigureBlockOptions } from "./figure-block";
-export { GraphicsBlock } from "./graphics-block";
+export {
+  FigureBlock,
+  type FigureBlockOptions,
+  insertFigureBlock,
+  collectFigureBlockUuids,
+  freshFigureBlockAttrs,
+} from "./figure-block";
+export {
+  GraphicsBlock,
+  insertGraphicsBlock,
+  collectGraphicsBlockUuids,
+  freshGraphicsBlockAttrs,
+} from "./graphics-block";

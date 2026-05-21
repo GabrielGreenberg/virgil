@@ -22,6 +22,8 @@ import { useDragHandleMenu } from "./editor-layout/card-actions/drag-handle-menu
 import { MENU_ENTRIES } from "./DragHandleMenu";
 import { BlockTypeDropdown, buildExampleTemplate } from "./MenuBar";
 import { insertTexBlock } from "@/lib/tiptap/tex-block";
+import { insertFigureBlock } from "@/lib/tiptap/figure-block";
+import { insertGraphicsBlock } from "@/lib/tiptap/graphics-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
@@ -414,8 +416,24 @@ export function ActionsMenuPanel({
             \tex
           </span>
         </FmtBtn>
-        <div />
-        <div />
+        <FmtBtn
+          title="Insert figure block"
+          onClick={() => insertFigureBlock(editor)}
+        >
+          <span style={{ fontFamily: "var(--font-serif, serif)", fontStyle: "italic", fontSize: 12 }}>
+            fig.
+          </span>
+        </FmtBtn>
+        <FmtBtn
+          title="Insert image"
+          onClick={() => insertGraphicsBlock(editor)}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round">
+            <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+            <circle cx="11" cy="6" r="1.25" fill="currentColor" stroke="none" />
+            <path d="M2.5 12.5 L6 9 L9 11 L11 9.5 L13.5 12" />
+          </svg>
+        </FmtBtn>
         <div />
       </div>
 
