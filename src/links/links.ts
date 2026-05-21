@@ -488,7 +488,7 @@ export function resolveLink(
  *  moving end is centered in the viewport (legacy behavior).
  *
  *  The post-jump visual highlight is handled separately, driven by card
- *  selection state via `useCardSelectionHighlight`. */
+ *  selection state via `useAnchorHighlightReconciler`. */
 export function jumpToLink(
   editor: Editor,
   link: Link,

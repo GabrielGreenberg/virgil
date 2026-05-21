@@ -78,10 +78,9 @@ import PrintAppendices from "./PrintAppendices";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
-import { cardStore, useHover } from "@/links/_shared/anchored-card-store";
+import { cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
-import { useCardSelectionHighlight } from "@/links/_shared/useCardSelectionHighlight";
-import { useCardHoverHighlight } from "@/links/_shared/useCardHoverHighlight";
+import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement } from "@/links/_shared/usePlacement";
@@ -2861,34 +2860,11 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // ── Anchored-card hover/selection bridges + highlight painters ────
   // The whole all-for-one model lives here so reader and editor share
   // identical plumbing (the Library reader mounts EditorPane standalone).
-  // hoveredEntityId/Kind is a thin adapter over cardStore.hover so the
-  // existing per-pair hook signatures keep working through the migration.
-  const _paneHover = useHover();
-  const _hoveredEntityId = _paneHover?.id ?? null;
-  const _hoveredEntityKind = _paneHover?.kind ?? null;
   const _setHoveredEntity = useCallback(
     (id: string | null, kind: EntityKind | null) =>
       cardStore.setHover(id && kind ? { id, kind } : null),
     [],
   );
-
-  useCardSelectionHighlight({
-    editor,
-    selectedNoteId,
-    selectedFootnoteId,
-    selectedCitationId,
-    selectedCutterCardId,
-    selectedCommentId,
-    selectedTodoId,
-    selectedArchiveId,
-    selectedQuotationGroupId,
-    notes: notesHook.notes,
-    cutterCards: cutterHook.cards,
-    archiveSnippets: archiveHook.snippets,
-    quotationGroups: quotationsHook.groups,
-    todos: todosHook.items,
-    comments: revisionsHook.cards,
-  });
 
   // ExampleInfo carries `exampleId`, not `id`; the entity-collections
   // shape uses `id`. Adapt at the boundary so the entity vocabulary
@@ -2897,17 +2873,18 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     () => examples.map((e) => ({ id: e.exampleId })),
     [examples],
   );
-  useCardHoverHighlight({
+
+  useAnchorHighlightReconciler({
     editor,
-    hoveredEntityId: _hoveredEntityId,
-    hoveredEntityKind: _hoveredEntityKind,
-    notes: notesHook.notes,
-    cutterCards: cutterHook.cards,
-    archiveSnippets: archiveHook.snippets,
-    quotationGroups: quotationsHook.groups,
-    todos: todosHook.items,
-    comments: revisionsHook.cards,
-    examples: _examplesAsEntities,
+    collections: {
+      notes: notesHook.notes,
+      cutterCards: cutterHook.cards,
+      archiveSnippets: archiveHook.snippets,
+      quotationGroups: quotationsHook.groups,
+      todos: todosHook.items,
+      comments: revisionsHook.cards,
+      examples: _examplesAsEntities,
+    },
   });
 
   useTextHoverBridge({

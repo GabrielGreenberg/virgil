@@ -11,8 +11,8 @@
  * covers the inverse: card → text alignment. Hover never moves anything.
  *
  * Multi-anchor cards: every anchor of the same card stays highlighted by
- * `useCardSelectionHighlight`; the placement just chooses *which* of those
- * anchors the document scroll aligns to (closest to viewport center;
+ * `useAnchorHighlightReconciler`; the placement just chooses *which* of
+ * those anchors the document scroll aligns to (closest to viewport center;
  * fallback: first in source order).
  */
 
