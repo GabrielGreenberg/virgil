@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { listDir, readTextFile, SUBDIRS } from "@library/lib/library-storage";
 import { parseBibFile } from "@library/lib/bib-parser";
 import type { BibEntry } from "@library/lib/types";
@@ -19,14 +19,23 @@ const UNSORTED_PATH = SUBDIRS.unsorted;
  */
 export function useUnsortedBibEntries(handle: FileSystemDirectoryHandle | null) {
   const [byFile, setByFile] = useState<Map<string, BibEntry[]>>(new Map());
+  // Per-filename cache of last (text, parsed) so the 6s polling tick
+  // skips both the parse and the per-entry array allocation when the
+  // file hasn't changed. Mirrors the `useMasterBib` content cache.
+  // The module-level memo in `parseBibFile` covers identical input
+  // across callers; this is the local skip that avoids even touching
+  // the parser when the file is unchanged.
+  const lastResultsRef = useRef<Map<string, { text: string; entries: BibEntry[] }>>(new Map());
 
   const reload = useCallback(async () => {
     if (!handle) {
+      lastResultsRef.current.clear();
       setByFile((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
     const entries = await listDir(handle, UNSORTED_PATH);
     if (!entries) {
+      lastResultsRef.current.clear();
       setByFile((prev) => (prev.size === 0 ? prev : new Map()));
       return;
     }
@@ -39,11 +48,27 @@ export function useUnsortedBibEntries(handle: FileSystemDirectoryHandle | null) 
       try {
         const text = await readTextFile(handle, `${UNSORTED_PATH}/${name}`);
         if (!text) continue;
-        const parsed = parseBibFile(text);
+        const prior = lastResultsRef.current.get(name);
+        let parsed: BibEntry[];
+        if (prior && prior.text === text) {
+          parsed = prior.entries;
+        } else {
+          parsed = parseBibFile(text);
+          lastResultsRef.current.set(name, { text, entries: parsed });
+        }
         if (parsed.length > 0) next.set(name, parsed);
       } catch (err) {
         // A single broken file shouldn't block the others.
         console.warn(`[library] useUnsortedBibEntries: failed to parse unsorted/${name}`, err);
+      }
+    }
+
+    // Drop ref entries for files that no longer exist in unsorted/ so
+    // the map doesn't grow unbounded across a long session.
+    if (lastResultsRef.current.size > bibNames.length) {
+      const seen = new Set(bibNames);
+      for (const k of [...lastResultsRef.current.keys()]) {
+        if (!seen.has(k)) lastResultsRef.current.delete(k);
       }
     }
 

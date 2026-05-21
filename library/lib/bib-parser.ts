@@ -61,8 +61,35 @@ function cslItemToEntry(
   return { key, type, fields, raw: rawEntries[key.toLowerCase()] || "" };
 }
 
+// Module-level memo: parsing a large .bib via citation-js is slow,
+// especially when one malformed entry forces the per-entry fallback
+// path. Multiple call sites (useMasterBib, useUnsortedBibEntries,
+// LibraryView's bib-picker) ask for the same text repeatedly — cache
+// by content so the cost is paid once per unique file. Returning the
+// same array reference on hit also keeps downstream `useMemo`s that
+// key on identity stable.
+const PARSE_CACHE = new Map<string, BibEntry[]>();
+const PARSE_CACHE_MAX = 4;
+
+// Warn-once-per-citekey across the session. A single broken entry
+// would otherwise log on every cache miss (e.g. after the user edits
+// the file and the text key changes).
+const WARNED_KEYS = new Set<string>();
+
+function rememberParse(bibText: string, entries: BibEntry[]): BibEntry[] {
+  if (PARSE_CACHE.size >= PARSE_CACHE_MAX) {
+    const oldest = PARSE_CACHE.keys().next().value;
+    if (oldest !== undefined) PARSE_CACHE.delete(oldest);
+  }
+  PARSE_CACHE.set(bibText, entries);
+  return entries;
+}
+
 /** Parse a .bib file string into BibEntry objects */
 export function parseBibFile(bibText: string): BibEntry[] {
+  const cached = PARSE_CACHE.get(bibText);
+  if (cached) return cached;
+
   const CiteClass = getCite();
   const entries: BibEntry[] = [];
   const cleaned = stripBibComments(bibText);
@@ -74,7 +101,7 @@ export function parseBibFile(bibText: string): BibEntry[] {
     for (const item of cite.data) {
       entries.push(cslItemToEntry(item, rawEntries));
     }
-    return entries;
+    return rememberParse(bibText, entries);
   } catch {
     // Whole-file parse failed — try each entry individually
   }
@@ -87,12 +114,14 @@ export function parseBibFile(bibText: string): BibEntry[] {
         entries.push(cslItemToEntry(item, rawEntries));
       }
     } catch {
-      // Skip this entry but log it
-      console.warn(`Skipping unparseable bib entry: ${key}`);
+      if (!WARNED_KEYS.has(key)) {
+        WARNED_KEYS.add(key);
+        console.warn(`Skipping unparseable bib entry: ${key}`);
+      }
     }
   }
 
-  return entries;
+  return rememberParse(bibText, entries);
 }
 
 /** Rebuild a .bib file string from BibEntry objects */

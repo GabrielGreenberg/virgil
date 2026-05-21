@@ -27,6 +27,40 @@ const EMPTY: CitationsState = {
   bibPackage: "biblatex",
 };
 
+export type CitationsHook = ReturnType<typeof useCitations>;
+
+/** No-op hook value for paneState-routed consumers (EditorLayout reads
+ *  citationsHook back from EditorPane via `paneState.citationsHook`).
+ *  Safe default while the pane hasn't bubbled state yet — matches the
+ *  COLLAB_INERT precedent. Every action is a no-op; getters return
+ *  sensible empties. */
+const _emptyArr: never[] = [];
+export const CITATIONS_INERT: CitationsHook = {
+  citations: _emptyArr,
+  bibPath: "",
+  citationStyle: "apa",
+  bibPackage: "biblatex",
+  bibEntries: _emptyArr,
+  bibRaw: "",
+  addCitation: (command: string) => ({
+    id: "",
+    command,
+    keys: [],
+    createdAt: new Date(0).toISOString(),
+  }),
+  updateCitation: () => {},
+  deleteCitation: () => {},
+  setStyle: () => {},
+  setBibPackage: () => {},
+  addBibEntry: () => {},
+  updateBibEntry: () => {},
+  updateBibKeyAndType: () => {},
+  getBibEntry: () => undefined,
+  getDisplayText: (command: string) => command,
+  getFormattedBib: () => "",
+  syncFromEditor: () => {},
+};
+
 function migrate(raw: unknown): CitationsState {
   const s = raw as Partial<CitationsState>;
   if (!Array.isArray(s.citations)) return EMPTY;
@@ -316,24 +350,53 @@ export function useCitations(docId: string | null, pristine?: PristineKindApi | 
     [update],
   );
 
-  return {
-    citations: state.citations,
-    bibPath: state.bibPath,
-    citationStyle: state.citationStyle,
-    bibPackage: state.bibPackage || "biblatex",
-    bibEntries,
-    bibRaw,
-    addCitation,
-    updateCitation,
-    deleteCitation,
-    setStyle,
-    setBibPackage,
-    addBibEntry,
-    updateBibEntry,
-    updateBibKeyAndType,
-    getBibEntry,
-    getDisplayText,
-    getFormattedBib,
-    syncFromEditor,
-  };
+  // Memoize the returned hook so EditorLayout (which now reads it via
+  // `paneState.citationsHook`) can hand a stable reference into deps
+  // without triggering a re-render every render. Without this, every
+  // EditorPane render produced a fresh hook object → onPaneStateChange
+  // fires → EditorLayout re-renders → EditorPane re-renders inside it
+  // → fresh hook again → infinite "Maximum update depth" loop. Same
+  // pattern as the COLLAB hook precedent in useCollab.ts.
+  return useMemo(
+    () => ({
+      citations: state.citations,
+      bibPath: state.bibPath,
+      citationStyle: state.citationStyle,
+      bibPackage: state.bibPackage || "biblatex",
+      bibEntries,
+      bibRaw,
+      addCitation,
+      updateCitation,
+      deleteCitation,
+      setStyle,
+      setBibPackage,
+      addBibEntry,
+      updateBibEntry,
+      updateBibKeyAndType,
+      getBibEntry,
+      getDisplayText,
+      getFormattedBib,
+      syncFromEditor,
+    }),
+    [
+      state.citations,
+      state.bibPath,
+      state.citationStyle,
+      state.bibPackage,
+      bibEntries,
+      bibRaw,
+      addCitation,
+      updateCitation,
+      deleteCitation,
+      setStyle,
+      setBibPackage,
+      addBibEntry,
+      updateBibEntry,
+      updateBibKeyAndType,
+      getBibEntry,
+      getDisplayText,
+      getFormattedBib,
+      syncFromEditor,
+    ],
+  );
 }

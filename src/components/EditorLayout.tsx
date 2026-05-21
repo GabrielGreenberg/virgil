@@ -32,7 +32,7 @@ import { useTodos } from "@/hooks/useTodos";
 import { useAiRequests } from "@/hooks/useAiRequests";
 import type { AiRequest } from "@/lib/types";
 import { useArchive } from "@/hooks/useArchive";
-import { useCitations } from "@/hooks/useCitations";
+import { CITATIONS_INERT } from "@/hooks/useCitations";
 import ManageStylesModal from "./ManageStylesModal";
 import { useNotes } from "@/hooks/useNotes";
 import { useCutter } from "@/hooks/useCutter";
@@ -569,7 +569,6 @@ export default function EditorLayout() {
   const cutPristine = useMemo(() => pristineManager.forKind("cut"), [pristineManager]);
   const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
   const quotationPristine = useMemo(() => pristineManager.forKind("quotation"), [pristineManager]);
-  const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
   const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
   const {
     notes,
@@ -646,18 +645,19 @@ export default function EditorLayout() {
     deleteSnippet,
   } = useArchive(docIdForHooks);
 
+  // Citations bubble up from EditorPane — see PaneState in EditorPane.tsx.
+  // Previously both EditorLayout and EditorPane independently called
+  // `useCitations(docId)` for the same doc, causing duplicate
+  // `parseBibFile` runs and duplicate `DOC_BIB_CHANGED_EVENT` listeners.
+  // Falls back to the inert no-op hook until paneState arrives — same
+  // pattern as `collab` below.
+  const citationsHook = paneState?.citationsHook ?? CITATIONS_INERT;
   const {
-    citations,
-    bibPath,
-    citationStyle,
     bibEntries,
     addCitation,
     deleteCitation,
-    setStyle: setCitationStyle,
-    setBibPackage,
-    addBibEntry,
     getDisplayText: getCitationDisplayText,
-  } = useCitations(docIdForHooks, citationPristine);
+  } = citationsHook;
 
   // The live collab hook lives in EditorPane (which mounts inside
   // <DocPipeline> and therefore holds a valid write handle). We read
@@ -2750,10 +2750,10 @@ export default function EditorLayout() {
     () => quotationPristine.registerDiscard((id) => deleteQuotationGroup(id)),
     [quotationPristine, deleteQuotationGroup],
   );
-  useEffect(
-    () => citationPristine.registerDiscard((id) => deleteCitation(id)),
-    [citationPristine, deleteCitation],
-  );
+  // Citation discard is registered inside EditorPane against its own
+  // pristineManager + citationsHook (see EditorPane.tsx). Removed from
+  // here when EditorLayout's duplicate `useCitations` mount was hoisted
+  // up via paneState.
   useEffect(
     () => footnotePristine.registerDiscard((id) => handleDeleteFootnote(id)),
     [footnotePristine, handleDeleteFootnote],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useMemo } from "react";
 
 /**
  * Unified pristine-card tracking across all card kinds.
@@ -112,5 +112,12 @@ export function usePristineCardManager(): PristineCardManager {
     [getSet],
   );
 
-  return { forKind };
+  // Memoize the return so the manager has stable identity across
+  // renders. Consumers (EditorLayout / EditorPane) call
+  // `pristineManager.forKind("citation")` inside a useMemo with
+  // `[pristineManager]` as the dep — a fresh object literal here would
+  // invalidate that memo every render, which in turn invalidates
+  // pristine-bearing callbacks inside `useCitations` and breaks the
+  // memoized citations-hook bubble-up through `paneState`.
+  return useMemo(() => ({ forKind }), [forKind]);
 }

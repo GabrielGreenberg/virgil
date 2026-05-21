@@ -219,6 +219,7 @@ export function useCollab(docId: string | null): CollabHook {
       return;
     }
     let cancelled = false;
+    let lastSerialized = "";
     const load = async () => {
       try {
         const fresh = await readSidecar<CollabSidecar>(
@@ -229,6 +230,15 @@ export function useCollab(docId: string | null): CollabHook {
         if (!cancelled) {
           // Merge: keep our own focus heartbeat if we wrote it more recently.
           const merged = mergeKeepingSelf(fresh, sidecarRef.current, identityRef.current?.name ?? null);
+          // Skip setSidecar when the polled-then-merged content is
+          // byte-identical to what we already have. `mergeKeepingSelf`
+          // returns a fresh object literal every call, so without this
+          // bail-out the 5s polling fires a setState (and a full
+          // EditorPane → paneState → EditorLayout cascade) every tick,
+          // even when nothing on disk has actually changed.
+          const serialized = JSON.stringify(merged);
+          if (serialized === lastSerialized) return;
+          lastSerialized = serialized;
           sidecarRef.current = merged;
           setSidecar(merged);
         }
@@ -245,11 +255,19 @@ export function useCollab(docId: string | null): CollabHook {
   }, [docId]);
 
   /* ── Re-derive labels every second so "idle 4m" updates live ──── */
+  // Only tick when someone actually holds the pen. When the pen is
+  // free, derivePen returns a structurally-stable value (no idleSec /
+  // staleSec to advance), so a re-render every second just churns
+  // every downstream consumer — useCollab → EditorPane → paneState →
+  // EditorLayout — for nothing. The pen-holder gate keeps the live-
+  // updating "idle 4m" → "idle 5m" label working when it matters and
+  // makes the idle case zero-cost.
 
   useEffect(() => {
+    if (!sidecar.pen.holder) return;
     const i = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(i);
-  }, []);
+  }, [sidecar.pen.holder]);
 
   /* ── Heartbeats: pen + claimed card ──────────────────────────── */
 
@@ -555,7 +573,31 @@ export function useCollab(docId: string | null): CollabHook {
 
   /* ── Derived state ─────────────────────────────────────────── */
 
-  const pen = useMemo(() => derivePen(sidecar.pen), [sidecar.pen, tick]);
+  // `tick` bumps every 1s to refresh idle/stale labels. When the pen is
+  // free or the derived values haven't changed (e.g. idleSec rounds to
+  // the same integer), keep the *same* reference so collab → paneState
+  // → EditorLayout doesn't re-render every second. derivePen returns a
+  // fresh object literal on every call (including a fresh empty array
+  // for `requestedBy ?? []`), which used to churn the whole hook
+  // downstream of `tick`.
+  const prevPenRef = useRef<ReturnType<typeof derivePen> | null>(null);
+  const pen = useMemo(() => {
+    const next = derivePen(sidecar.pen);
+    const prev = prevPenRef.current;
+    if (
+      prev &&
+      prev.status === next.status &&
+      prev.holder === next.holder &&
+      prev.idleSec === next.idleSec &&
+      prev.staleSec === next.staleSec &&
+      prev.requestedBy.length === next.requestedBy.length &&
+      prev.requestedBy.every((r, i) => r === next.requestedBy[i])
+    ) {
+      return prev;
+    }
+    prevPenRef.current = next;
+    return next;
+  }, [sidecar.pen, tick]);
   const me = identity?.name ?? null;
   const iHavePen = !!me && sidecar.pen.holder === me;
   const partnerColor = useMemo(() => {

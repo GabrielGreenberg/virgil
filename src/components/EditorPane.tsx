@@ -91,7 +91,7 @@ import { CardCreationProvider } from "./editor-layout/contexts/card-creation";
 import { useCardCreation } from "./editor-layout/card-actions/card-creation";
 import { useCitationActions } from "./editor-layout/card-actions/citations";
 import { isAnchorableNode } from "@/lib/marginalia";
-import { useCitations } from "@/hooks/useCitations";
+import { useCitations, type CitationsHook } from "@/hooks/useCitations";
 import { useAutoAddLibraryEntriesForCitations } from "@/hooks/useAutoAddLibraryEntriesForCitations";
 import { useLibraryMasterBib } from "@/hooks/useLibrary";
 import { useAnnotations } from "@/hooks/useAnnotations";
@@ -474,6 +474,13 @@ export interface PaneState {
   // mutations (enable/disable/etc.) without standing up a second
   // useCollab instance outside the pipeline boundary.
   collab: CollabHook;
+  // Citations bubble up for the same reason as collab: EditorPane is
+  // the canonical per-doc state owner, and previously both EditorPane
+  // and EditorLayout independently mounted `useCitations(docId)` for
+  // the same doc — duplicate `parseBibFile` runs and duplicate
+  // `DOC_BIB_CHANGED_EVENT` listeners. Now EditorLayout reads the live
+  // hook from here.
+  citationsHook: CitationsHook;
 }
 
 export interface EditorPaneProps {
@@ -736,7 +743,6 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   const todoPristine = useMemo(() => pristineManager.forKind("todo"), [pristineManager]);
   const quotationPristine = useMemo(() => pristineManager.forKind("quotation"), [pristineManager]);
   const citationPristine = useMemo(() => pristineManager.forKind("citation"), [pristineManager]);
-  void citationPristine; // wired into citation creation by Step 7.5+
   const footnotePristine = useMemo(() => pristineManager.forKind("footnote"), [pristineManager]);
 
   // ── Per-doc sidecar hooks ────────────────────────────────────────
@@ -744,7 +750,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   // FsaDocMeta for `library-paper:` IDs (and storage-dev.ts's URL
   // routing for the dev preview); for main-app docs they resolve
   // through the regular FsaDocIndex.
-  const citationsHook = useCitations(docId);
+  const citationsHook = useCitations(docId, citationPristine);
   // Only consult the library's master.bib once the doc actually
   // references at least one citation key. Parsing master.bib (citation-
   // js) was firing for every editor session — including empty/scratch
@@ -2831,6 +2837,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
         panelAiRequests: aiRequestsHook.requests,
       }),
       collab,
+      citationsHook,
     });
   }, [
     onPaneStateChange,
@@ -2848,6 +2855,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
     onTogglePdfView,
     onToggleCodeView,
     collab,
+    citationsHook,
   ]);
 
   // ── Anchored-card hover/selection bridges + highlight painters ────
