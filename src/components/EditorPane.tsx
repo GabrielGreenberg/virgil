@@ -81,6 +81,7 @@ import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/c
 import { cardStore } from "@/links/_shared/anchored-card-store";
 import type { EntityKind } from "@/links/_shared/entity-hover";
 import { useAnchorHighlightReconciler } from "@/links/_shared/useAnchorHighlightReconciler";
+import { useLinkedAnchorReconciler } from "@/links/_shared/useLinkedAnchorReconciler";
 import { useTextHoverBridge } from "@/links/_shared/useTextHoverBridge";
 import { usePanelCardHoverBridge } from "@/links/_shared/usePanelCardHoverBridge";
 import { usePlacement } from "@/links/_shared/usePlacement";
@@ -2885,6 +2886,14 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       comments: revisionsHook.cards,
       examples: _examplesAsEntities,
     },
+  });
+
+  useLinkedAnchorReconciler({
+    editor,
+    notes:       notesHook.notes,
+    highlights:  notesHook.highlights,
+    cutterCards: cutterHook.cards,
+    comments:    revisionsHook.cards,
   });
 
   useTextHoverBridge({
