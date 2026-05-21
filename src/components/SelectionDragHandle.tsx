@@ -193,7 +193,7 @@ function computePlacement(editor: Editor, cache: EditorViewportCache): Placement
     blockUuid &&
     blockStartCoords &&
     Math.abs(fromCoords.top - blockStartCoords.top) < FIRST_LINE_EPSILON &&
-    fromCoords.top >= scrollRect.top - FIRST_LINE_EPSILON
+    fromCoords.top >= scrollTop - FIRST_LINE_EPSILON
   ) {
     superseded = true;
   }
