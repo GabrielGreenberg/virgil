@@ -1297,6 +1297,18 @@ const VirgilEditor = forwardRef<EditorHandle, EditorProps>(function VirgilEditor
   });
 
   const HeadingWithLabel = Heading.extend({
+    // TipTap's default markdown-style heading input rules (`#`/`##`/… + space)
+    // are dead surface area in this LaTeX-first editor (slash popup + the
+    // heading type menu cover heading creation). They also produce a real
+    // bug at level 0: with `levels: [0..6]`, the level-0 rule becomes
+    // `^(#{0,0})\s$`, i.e. `^\s$`. TipTap's input-rules plugin reruns rules
+    // on Enter with `text="\n"`, so Enter at parentOffset 0 of any paragraph
+    // matches that rule and `setBlockType`s the paragraph into a \part —
+    // the paragraph's text becomes the heading's title. Disabling the rules
+    // outright kills the bug and the unused markdown shortcuts in one shot.
+    addInputRules() {
+      return [];
+    },
     addAttributes() {
       return {
         ...this.parent?.(),
