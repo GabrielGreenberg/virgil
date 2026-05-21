@@ -75,6 +75,7 @@ import { SectionLozenge } from "./editor-layout/section-lozenge";
 import { EditorScrollbar } from "./editor-layout/editor-scrollbar";
 import { ZenMargin } from "./editor-layout/zen-margin";
 import PrintAppendices from "./PrintAppendices";
+import { LoadingScreen } from "./LoadingScreen";
 import type { PrintPanelKey } from "@/lib/print";
 import { EditorRefProvider } from "./editor-layout/contexts/editor-ref";
 import { SelectionsProvider, useAnchoredSelectionSlots } from "./editor-layout/contexts/selections";
@@ -644,6 +645,10 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   useImperativeHandle(ref, () => innerRef.current as EditorHandle);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [overrideEditor, setOverrideEditor] = useState<Editor | null>(null);
+  // Gates the LoadingScreen curtain over `.editor-pane-pod` — React
+  // batches setReady with the docVersion-bump effect below so markers
+  // land in the same commit as the curtain lifts.
+  const [ready, setReady] = useState(false);
 
   // `docVersion` bumps so memoized panel data (`getExamples`,
   // `getFootnotes`, `getCitations`) refreshes when the live doc
@@ -920,6 +925,12 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
       innerRef.current?.restoreCursorToParagraph(ui.lastParagraphId);
     }
   }, [editor, docHook.content, uiStateHook.loaded, uiStateHook.stateRef]);
+
+  const docContentReady = docHook.content != null;
+  useEffect(() => {
+    if (!docContentReady || !editor) return;
+    setReady(true);
+  }, [docContentReady, editor]);
 
   // Compile state — `pdfBlobUrl`, `lastCompileTime`, `pdfStale` live
   // here so they bubble up via `paneState` for the shell's Virgil bar
@@ -3964,6 +3975,7 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
                   />
                 )}
               </div>
+              {!ready && <LoadingScreen className="absolute inset-0 z-50" />}
             </div>
             {/* Bottom drag gap — 4px grab handle pinned just above the
                 sticky bottom chrome (pod-cap-bottom in main editor;
