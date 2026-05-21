@@ -1,4 +1,4 @@
-<!-- last-verified: 2309137 2026-05-20 -->
+<!-- last-verified: 6ad177f 2026-05-20 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -54,6 +54,8 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useUpdateAvailable` | Service-worker update polling; exposes a "new version available" flag that drives the in-app refresh banner (per-folder skill sync) |
 | `useAutoAddLibraryEntriesForCitations` | Watches new citation keys in the doc and auto-adds matching entries from the user's Virgil Library into the paper's bibliography (after the bibliography-search redesign in 91f253c / 240bfda) |
 | `useEditorUIState` | Per-doc UI state hook factored out of EditorPane — tracks click-time selection / focus-mode / hover state etc. that several sibling hooks consume |
+| `useResolvedFigureUrl` | Resolves a figure block's `source` to a renderable blob URL: looks up the cached raster by source fingerprint, rasterizes the source on miss (PDF → webp via `pdfjs-dist`; PNG/JPEG pass-through), and manages the blob-URL lifecycle |
+| `useEditorViewportCache` | Module-level cache of per-viewport editor metrics (`editorRight`, `scrollTop`, etc.) so `SelectionActionsMenu`, `SelectionDragHandle`, and `LinkConnector` can place themselves without re-reading layout on every keystroke |
 
 ## Editor hot-path conventions (2dc963d)
 
@@ -76,6 +78,7 @@ Files on disk (per paper):
 - `<name>.tex` — the paper (source of truth)
 - `<name>.bib` (optional) — bibliography
 - `virgil/` folder — sidecars (see below)
+- `virgil/figures-cache/<sha>.webp` (optional) — rasterized output cached by source-content sha. PDF sources rasterize on the fly via `pdfjs-dist`; PNG / JPEG / WebP pass through unchanged. Companion `virgil/figures-cache/index.json` tracks `{sourcePath → sha}` so multiple `\includegraphics` with the same source share one raster. Surface: `readFigureSource` / `readFigureRaster` / `writeFigureRaster` / `deleteFigureRaster` / `readFigureIndex` / `writeFigureIndex` on the storage backend.
 
 ### IndexedDB
 
@@ -181,6 +184,8 @@ Implementation: [src/lib/tiptap/tab-indent.ts](../../src/lib/tiptap/tab-indent.t
 ## Preview / dev caveats
 
 From the existing memory: the File System Access folder picker doesn't work inside the preview iframe. For UI verification, load the dev doc (`virgil-data/doc_devtest`) via the helper, not the picker. Worktrees need the symlink present; see `dev_doc_loading.md` in the agent's personal memory.
+
+**Relocating `library-data/`.** The dev-library API route honors `VIRGIL_LIBRARY_PATH` (introduced in 6ad177f). Setting it in `.env.local` (or your shell) repoints `DATA_DIR` from `process.cwd() + "/library-data"` to the resolved path. Recommended fix for Turbopack instability when `library-data/.virgil/models/` (multi-GB ML weights) and `library-data/.virgil/queue/` (churning under skill runs) overwhelm the watcher's startup walk.
 
 ## Where NOT to look for business logic
 

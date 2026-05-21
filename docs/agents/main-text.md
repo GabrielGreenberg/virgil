@@ -1,4 +1,4 @@
-<!-- last-verified: 2309137 2026-05-20 -->
+<!-- last-verified: 6ad177f 2026-05-20 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -44,6 +44,8 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `inlineMath` | atom node | `$…$` (rendered via KaTeX after ef8a8ce; click opens an inline edit popover) | `math.ts` |
 | `displayMath` | atom node | `$$…$$` and `\[…\]` (KaTeX-rendered, click-to-edit) | `math.ts` |
 | `texBlock` | atom block | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` raw LaTeX passthrough | `tex-block.ts` |
+| `figureBlock` | atom block | `\begin{figure}…\end{figure}` — structured attrs (raw, source[], widthPercent, caption, label). Click opens `FigurePopover` for in-place tex-mode editing; on save the popover dispatches `setNodeMarkup`. Round-trip via the figure raster cache (see architecture.md). | `figure-block.ts` |
+| `graphicsBlock` | atom block | bare `\includegraphics[...]{source}` (outside a `figure` env) — same popover + raster cache as `figureBlock` | `graphics-block.ts` |
 | `latexComment` | node | `%…` | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |
 | `labelRef` | node | `\ref{…}` / `\getref{…}` / `\getfullref{…}` (attr `refCommand` selects command; `targetKind` tags heading vs example) | `label.ts` |
@@ -51,7 +53,7 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `latexCommandMark` | mark | raw LaTeX in text | `latex-command.ts` |
 | `textColor` | mark | `\textcolor[HTML]{RRGGBB}{…}` (round-trips through the serializer; `\usepackage{xcolor}` auto-injected into preambles missing it, and `CLASSIC_PREAMBLE` ships it). Driven by the `ActionsMenuPanel` color swatch + `SelectionColorPopover`. | `text-color.ts` |
 | `SlashPopupExtension` | PM plugin | typing `\` in prose opens an inline popup of Virgil's `VIRGIL_COMMANDS` list (declared in `commands.ts`); arrows + Enter inserts. Suppressed inside an unmatched `{` group or up against another `\name`. State lives in module-level `slashPopupStore`. | `slash-popup.ts` |
-| `archiveMarker` | node | invisible anchor for archive links | `archive-marker.ts` |
+| ~~`archiveMarker`~~ | — | **Removed in 6ad177f.** Archive cards still work via the Archive panel; the in-editor invisible-anchor node and its click bridge are gone. | — |
 | `aiRequest` | node | invisible marker | `ai-request.ts` |
 | `exampleBlock` / `exampleItemList` / `exampleItem` / `exampleGloss` / `alignedGlossRow` / `proseGlossRow` / `glossCell` + `ExpexNumbering` plugin | nodes | expex package: `\ex`/`\pex`/`\a`/`\xlist`/`\begingl…\endgl`/`\gla`/`\glb`/`\glft`. `exampleItemList` is a recursive wrapper — nested `\xlist` tiers reuse the same wrapper node so the marker cycle (1 → a → i → A → I) compounds with depth. `exampleBlock` content schema is `(paragraph | exampleGloss | exampleItemList | bulletList | orderedList)*` after 9dd0992 — itemize/enumerate now interleave freely inside an example, with the parser dropping (not fallback-paragraphing) unknown block types so `\vfid{}` / `\vcid{}` markers no longer double on save → reload. | `expex.ts` |
 | Standard marks | bold, italic, underline, code | `\textbf`, `\emph`, `\underline`, `\texttt` | StarterKit + custom |
