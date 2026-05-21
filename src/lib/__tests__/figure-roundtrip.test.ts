@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { JSONContent } from "@tiptap/react";
 import { parseLatex } from "@/lib/latex-parser";
 import { serializeBodyOnly as serializeBody } from "@/lib/latex-serializer";
+import {
+  canEditWidthInOptions,
+  setWidthInOptions,
+  withReplacedFigurePath,
+  withUpdatedFigureWidth,
+} from "@/lib/figures/parse-attrs";
 
 function parseBody(input: string): JSONContent {
   const wrapped = `\\documentclass{article}\\begin{document}\n${input}\n\\end{document}`;
@@ -112,5 +118,159 @@ After.`;
     const json = parseBody(input);
     const out = serializeBody(json);
     expect(out).toContain("\\includegraphics[width=0.5\\textwidth]{figures/foo}");
+  });
+});
+
+describe("setWidthInOptions", () => {
+  it("replaces an existing \\textwidth width", () => {
+    expect(setWidthInOptions("width=0.5\\textwidth", 70)).toEqual({
+      options: "width=0.7\\textwidth",
+      ok: true,
+    });
+  });
+
+  it("inserts a width when none is set", () => {
+    expect(setWidthInOptions("", 60)).toEqual({
+      options: "width=0.6\\textwidth",
+      ok: true,
+    });
+    expect(setWidthInOptions("clip", 60)).toEqual({
+      options: "width=0.6\\textwidth,clip",
+      ok: true,
+    });
+  });
+
+  it("refuses to rewrite absolute-unit widths", () => {
+    expect(setWidthInOptions("width=5cm", 60).ok).toBe(false);
+    expect(setWidthInOptions("width=5cm", 60).options).toBe("width=5cm");
+    expect(setWidthInOptions("width=120pt,clip", 60).ok).toBe(false);
+    expect(setWidthInOptions("width=2.5in", 60).ok).toBe(false);
+  });
+
+  it("preserves \\linewidth and \\columnwidth units", () => {
+    expect(setWidthInOptions("width=0.5\\linewidth", 70).options).toBe(
+      "width=0.7\\linewidth",
+    );
+    expect(setWidthInOptions("width=0.5\\columnwidth", 70).options).toBe(
+      "width=0.7\\columnwidth",
+    );
+  });
+
+  it("preserves other options around the width directive", () => {
+    expect(
+      setWidthInOptions("width=0.5\\textwidth,angle=45,clip", 70).options,
+    ).toBe("width=0.7\\textwidth,angle=45,clip");
+    expect(
+      setWidthInOptions("angle=45,width=0.5\\textwidth,clip", 70).options,
+    ).toBe("angle=45,width=0.7\\textwidth,clip");
+  });
+
+  it("formats fractions with no trailing zeros", () => {
+    expect(setWidthInOptions("width=0.5\\textwidth", 35).options).toBe(
+      "width=0.35\\textwidth",
+    );
+    expect(setWidthInOptions("width=0.5\\textwidth", 100).options).toBe(
+      "width=1.0\\textwidth",
+    );
+  });
+});
+
+describe("canEditWidthInOptions", () => {
+  it("returns true for empty or relative-unit options", () => {
+    expect(canEditWidthInOptions("")).toBe(true);
+    expect(canEditWidthInOptions("clip")).toBe(true);
+    expect(canEditWidthInOptions("width=0.5\\textwidth")).toBe(true);
+  });
+
+  it("returns false for absolute-unit widths", () => {
+    expect(canEditWidthInOptions("width=5cm")).toBe(false);
+    expect(canEditWidthInOptions("width=120pt,clip")).toBe(false);
+  });
+});
+
+describe("withUpdatedFigureWidth", () => {
+  it("rewrites the width inside a graphicsBlock command", () => {
+    expect(
+      withUpdatedFigureWidth(
+        "\\includegraphics[width=0.5\\textwidth]{figures/foo}",
+        80,
+      ),
+    ).toBe("\\includegraphics[width=0.8\\textwidth]{figures/foo}");
+  });
+
+  it("rewrites the first \\includegraphics inside a figureBlock body", () => {
+    const raw =
+      "\n  \\centering\n  \\includegraphics[width=0.6\\textwidth]{figures/sample}\n  \\caption{x}\n";
+    const out = withUpdatedFigureWidth(raw, 90);
+    expect(out).toBe(
+      "\n  \\centering\n  \\includegraphics[width=0.9\\textwidth]{figures/sample}\n  \\caption{x}\n",
+    );
+  });
+
+  it("preserves the starred form", () => {
+    expect(
+      withUpdatedFigureWidth(
+        "\\includegraphics*[width=0.5\\textwidth]{foo}",
+        70,
+      ),
+    ).toBe("\\includegraphics*[width=0.7\\textwidth]{foo}");
+  });
+
+  it("preserves untouched options", () => {
+    expect(
+      withUpdatedFigureWidth(
+        "\\includegraphics[width=0.5\\textwidth,angle=45,clip]{foo}",
+        70,
+      ),
+    ).toBe("\\includegraphics[width=0.7\\textwidth,angle=45,clip]{foo}");
+  });
+
+  it("returns null for absolute-unit widths", () => {
+    expect(
+      withUpdatedFigureWidth("\\includegraphics[width=5cm]{foo}", 70),
+    ).toBeNull();
+  });
+
+  it("returns null when no \\includegraphics is present", () => {
+    expect(withUpdatedFigureWidth("\\caption{just a caption}", 70)).toBeNull();
+  });
+
+  it("inserts a width when the command has no options", () => {
+    expect(withUpdatedFigureWidth("\\includegraphics{foo}", 60)).toBe(
+      "\\includegraphics[width=0.6\\textwidth]{foo}",
+    );
+  });
+});
+
+describe("withReplacedFigurePath", () => {
+  it("swaps the path argument and preserves the options", () => {
+    expect(
+      withReplacedFigurePath(
+        "\\includegraphics[width=0.5\\textwidth,angle=45]{old}",
+        "figures/new",
+      ),
+    ).toBe("\\includegraphics[width=0.5\\textwidth,angle=45]{figures/new}");
+  });
+
+  it("works on an empty-path stub", () => {
+    expect(
+      withReplacedFigurePath(
+        "\\includegraphics[width=0.5\\textwidth]{}",
+        "figures/foo.png",
+      ),
+    ).toBe("\\includegraphics[width=0.5\\textwidth]{figures/foo.png}");
+  });
+
+  it("targets only the first \\includegraphics in a figureBlock raw body", () => {
+    const raw =
+      "\n  \\includegraphics[width=0.3\\textwidth]{first}\n  \\includegraphics[width=0.3\\textwidth]{second}\n";
+    const out = withReplacedFigurePath(raw, "swapped");
+    expect(out).toBe(
+      "\n  \\includegraphics[width=0.3\\textwidth]{swapped}\n  \\includegraphics[width=0.3\\textwidth]{second}\n",
+    );
+  });
+
+  it("returns null when no \\includegraphics is present", () => {
+    expect(withReplacedFigurePath("\\caption{none}", "x")).toBeNull();
   });
 });
