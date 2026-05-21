@@ -67,6 +67,35 @@ export default function TexBlockNodeView({ node, updateAttributes, deleteNode, e
   const isPoppedRef = opts.isPoppedRef;
   const onDragHandleClickRef = opts.onDragHandleClickRef;
   const isPopped = !!(uuid && isPoppedRef?.current?.current?.(uuid));
+  const cardContext = opts.cardContext === true;
+
+  // Card-context preview: rendered inside a RichTextField (archive
+  // card, note, …) or a HeadingFloat. Show a compact static `<pre>`
+  // instead of the full pod with CodeMirror. The schema still
+  // recognizes the node, so JSON round-trips and restoring the snippet
+  // brings the full pod back in the main editor.
+  if (cardContext) {
+    return (
+      <NodeViewWrapper className="tex-block-card-preview my-2">
+        {title && (
+          <div className="text-[11px] text-[var(--ink-muted)] mb-1 font-medium">
+            {title}
+          </div>
+        )}
+        <pre
+          contentEditable={false}
+          className="font-mono text-[12px] leading-snug whitespace-pre-wrap break-words rounded border px-2.5 py-1.5"
+          style={{
+            backgroundColor: "var(--code-block-bg, rgba(124, 94, 60, 0.04))",
+            borderColor: "var(--heading-annotation-border, #a8c4de)",
+            color: "var(--ink-strong)",
+          }}
+        >
+          {code || <span className="text-[var(--ink-muted)] italic">(empty .tex)</span>}
+        </pre>
+      </NodeViewWrapper>
+    );
+  }
 
   // Mousedown gesture handler on the grab handle: track distance, past
   // LIFT_THRESHOLD spawn the float via the global card-lift handoff +

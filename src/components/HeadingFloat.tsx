@@ -51,6 +51,9 @@ import {
   ProseGlossRow,
   GlossCell,
   TabIndent,
+  TexBlock,
+  FigureBlock,
+  GraphicsBlock,
 } from "@/lib/tiptap-extensions";
 
 import { FloatCard } from "./FloatingCards";
@@ -133,6 +136,18 @@ export function HeadingFloat({
       ProseGlossRow,
       GlossCell,
       TabIndent,
+      // Block atoms inside a popped-out section. Sections can contain
+      // `texBlock`, `figureBlock`, or `graphicsBlock` nodes — without
+      // these extensions, those nodes are silently stripped on initial
+      // parse and the bidirectional `useFloatMainSync` write-back loses
+      // them. Use `cardContext: true` (compact static preview) rather
+      // than full pods so we don't need to forward `docIdRef` for
+      // figure-image resolution and so the dead-handle UX of a TexBlock
+      // pod inside a float doesn't appear. The user edits these atoms
+      // in the main doc, not inside the heading float.
+      TexBlock.configure({ cardContext: true }),
+      FigureBlock.configure({ cardContext: true }),
+      GraphicsBlock.configure({ cardContext: true }),
     ],
     content: initial.doc,
     editable: chrome.showHeadingFloatLabelEdit,

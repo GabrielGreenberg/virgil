@@ -24,6 +24,11 @@ import {
   Citation,
   LatexCommandMark,
   TabIndent,
+  DisplayMath,
+  TexBlock,
+  FigureBlock,
+  GraphicsBlock,
+  LatexComment,
 } from "@/lib/tiptap-extensions";
 import { normalizeRichContent } from "@/lib/footnote-content";
 import { generateShortId } from "@/lib/uuid";
@@ -245,6 +250,19 @@ function RichTextFieldImpl({
       LatexCommandMark,
       Placeholder.configure({ placeholder }),
       TabIndent,
+      // Block-atom extensions in card-context mode. These mirror the
+      // main editor's schema so JSONContent with block atoms (texBlock,
+      // figureBlock, graphicsBlock, latexComment, displayMath) round-
+      // trips into and out of cards without being silently stripped on
+      // load. Each NodeView reads the `cardContext` flag and renders a
+      // compact static preview instead of the full main-editor chrome.
+      // If a new block-atom type is added to the main editor, also
+      // register it here (or the same bug class will re-appear).
+      TexBlock.configure({ cardContext: true }),
+      FigureBlock.configure({ cardContext: true }),
+      GraphicsBlock.configure({ cardContext: true }),
+      LatexComment.configure({ cardContext: true }),
+      DisplayMath,
     ],
     content: initialContent,
     editable,

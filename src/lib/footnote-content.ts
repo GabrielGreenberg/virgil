@@ -309,6 +309,39 @@ export function richJsonToLatex(json: JSONContent): string {
     if (node.type === "doc") {
       return (node.content || []).map(walk).join(" ");
     }
+    // Block atoms — these end up here only when card-borne content
+    // (note / footnote body that originated from an archive restore)
+    // is serialized back to inline LaTeX. The main editor's LaTeX
+    // serializer (latex-serializer.ts) handles the full-document path;
+    // this is the inline / footnote-body fallback. Emit a sensible
+    // LaTeX projection so atoms don't silently vanish on save.
+    if (node.type === "texBlock") {
+      return (node.attrs?.code as string) || "";
+    }
+    if (node.type === "latexComment") {
+      return `% ${(node.attrs?.text as string) || ""}`;
+    }
+    if (node.type === "displayMath") {
+      return `$$${(node.attrs?.latex as string) || ""}$$`;
+    }
+    if (node.type === "figureBlock") {
+      // Bare-bones rebuild — the structured caption + sources we'd
+      // need for a full `\begin{figure}` re-emit live in the main
+      // LaTeX serializer. This fallback shouldn't typically fire
+      // (figures don't normally end up inside footnote bodies);
+      // preserve the verbatim env if we have it, otherwise emit a
+      // stub the user can clean up.
+      const raw = (node.attrs?.raw as string) || "";
+      if (raw) return `\\begin{figure}${raw}\\end{figure}`;
+      const source = (node.attrs?.source as string) || "";
+      return source ? `\\includegraphics{${source}}` : "";
+    }
+    if (node.type === "graphicsBlock") {
+      const command = (node.attrs?.command as string) || "";
+      if (command) return command;
+      const source = (node.attrs?.source as string) || "";
+      return source ? `\\includegraphics{${source}}` : "";
+    }
     if (node.content) {
       return node.content.map(walk).join("");
     }
@@ -549,6 +582,33 @@ export function richJsonToPlainText(json: JSONContent | unknown): string {
     }
     if (node.type === "listItem") return (node.content || []).map(walk).join("");
     if (node.type === "doc") return (node.content || []).map(walk).join("\n");
+    // Block atoms — content lives in attrs, not in child text. Without
+    // these cases compressed-card previews, search, drag ghosts, and
+    // tooltips would all show "" for any selection that contains
+    // (only) a block atom. Keep aligned with the schema in
+    // RichTextField.tsx — if a new block atom is added there, add a
+    // case here too.
+    if (node.type === "texBlock") {
+      const title = (node.attrs?.parTitle as string | null) || "";
+      const code = (node.attrs?.code as string) || "";
+      return title ? `${title}\n${code}` : code;
+    }
+    if (node.type === "figureBlock") {
+      const caption = (node.attrs?.caption as string | undefined) || "";
+      const source = (node.attrs?.source as string | null) || "";
+      return caption || source || "[figure]";
+    }
+    if (node.type === "graphicsBlock") {
+      const source = (node.attrs?.source as string | undefined) || "";
+      return source || "[graphic]";
+    }
+    if (node.type === "latexComment") {
+      const text = (node.attrs?.text as string) || "";
+      return `% ${text}`;
+    }
+    if (node.type === "displayMath") {
+      return `$$${(node.attrs?.latex as string) || ""}$$`;
+    }
     if (node.content) return node.content.map(walk).join("");
     return "";
   }

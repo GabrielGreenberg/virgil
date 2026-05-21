@@ -5,10 +5,25 @@ import { editableAtomView } from "./editable-atom-view";
 // Flag: when a LatexComment is created via input rule, auto-focus it
 let _pendingAutoFocusComment = false;
 
-export const LatexComment = Node.create({
+// `cardContext`: when true, the input-rule plugins are suppressed and the
+// NodeView renders a static `% text` row. Set by every card-bearing
+// rich-text surface (RichTextField) so latexComment atoms round-trip
+// without being silently dropped, and so typing `% ` in a note body
+// doesn't get auto-transformed into a latexComment atom.
+export interface LatexCommentOptions {
+  cardContext: boolean;
+}
+
+export const LatexComment = Node.create<LatexCommentOptions>({
   name: "latexComment",
   group: "block",
   atom: true,
+
+  addOptions() {
+    return {
+      cardContext: false,
+    };
+  },
 
   addAttributes() {
     return {
@@ -54,6 +69,11 @@ export const LatexComment = Node.create({
   },
 
   addProseMirrorPlugins() {
+    // Card surfaces shouldn't auto-transform user-typed `% ` into a
+    // latexComment atom — the user might legitimately want a `% `
+    // literal in their note / archive title. The schema still accepts
+    // latexComment for incoming JSONContent so round-tripping works.
+    if (this.options.cardContext) return [];
     const nodeType = this.type;
     return [
       new Plugin({
@@ -109,7 +129,22 @@ export const LatexComment = Node.create({
   },
 
   addNodeView() {
+    const cardContext = this.options.cardContext;
     return ({ node, getPos, editor }) => {
+      // Card-context: static `% text` row in muted gray, no click-to-
+      // edit affordance. The node spec is identical to the main-doc
+      // form so JSON round-trips intact.
+      if (cardContext) {
+        const dom = document.createElement("div");
+        dom.className = "latex-comment latex-comment-card";
+        dom.contentEditable = "false";
+        dom.style.color = "var(--ink-muted)";
+        dom.style.fontFamily = "var(--font-mono), 'SF Mono', 'Fira Code', monospace";
+        dom.style.fontSize = "12px";
+        dom.style.padding = "2px 0";
+        dom.textContent = `% ${(node.attrs.text as string) || ""}`;
+        return { dom };
+      }
       const result = editableAtomView({
         node,
         getPos,

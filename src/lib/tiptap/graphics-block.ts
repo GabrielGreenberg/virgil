@@ -19,6 +19,7 @@ export const GraphicsBlock = Node.create<FigureBlockOptions>({
   addOptions() {
     return {
       docIdRef: null,
+      cardContext: false,
     };
   },
 

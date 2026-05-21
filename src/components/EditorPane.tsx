@@ -2313,19 +2313,20 @@ const EditorPane = forwardRef<EditorHandle, EditorPaneProps>(function EditorPane
   }, [readSelection, cardCreation]);
 
   const handleToolbarArchive = useCallback((anchorRect: DOMRect | null) => {
+    // Call `archiveSelection` first — its slice-based emptiness check
+    // (`slice.size === 0`) is authoritative. Atom-only ranges have
+    // empty plain text (so `readSelection` returns null) but still
+    // produce a non-empty slice. Bypass `readSelection` for archive:
+    // the slice IS the answer, and we no longer create orphan empty
+    // snippets when the selection has no text.
+    if (!innerRef.current) return;
+    const result = innerRef.current.archiveSelection("");
+    if (!result) return;
     const sel = readSelection();
-    if (sel && innerRef.current) {
-      const snippet = archiveHook.archiveContent(sel.text);
-      const result = innerRef.current.archiveSelection(snippet.id);
-      if (result) {
-        if (result.content) archiveHook.updateSnippet(snippet.id, result.content);
-        if (result.paragraphId) archiveHook.addParagraphId(snippet.id, result.paragraphId);
-      }
-      popCardAtAnchor("archive", snippet.id, anchorRect);
-    } else {
-      const snippet = archiveHook.archiveContent("");
-      popCardAtAnchor("archive", snippet.id, anchorRect);
-    }
+    const snippet = archiveHook.archiveContent(result.content ?? sel?.text ?? "");
+    if (result.paragraphId)
+      archiveHook.addParagraphId(snippet.id, result.paragraphId);
+    popCardAtAnchor("archive", snippet.id, anchorRect);
   }, [readSelection, archiveHook, popCardAtAnchor]);
 
   const handleToolbarCreateFootnote = useCallback((anchorRect: DOMRect | null) => {

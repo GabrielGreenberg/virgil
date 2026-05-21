@@ -7,8 +7,14 @@ import FigureBlockNodeView from "@/components/FigureBlockNodeView";
 // Shared between FigureBlock and GraphicsBlock — the NodeView reads
 // `extension.options.docIdRef.current` to know which paper folder to
 // resolve `\includegraphics` paths against. Configured in Editor.tsx.
+//
+// `cardContext`: when true, the NodeView renders a compact pill
+// (caption / source filename) instead of resolving images. Set by every
+// card-bearing rich-text surface so figureBlock/graphicsBlock round-trip
+// without losing content and without needing docIdRef forwarded.
 export interface FigureBlockOptions {
   docIdRef: RefObject<string | null> | null;
+  cardContext: boolean;
 }
 
 // `figureBlock` — represents a `\begin{figure}...\end{figure}` (or
@@ -28,6 +34,7 @@ export const FigureBlock = Node.create<FigureBlockOptions>({
   addOptions() {
     return {
       docIdRef: null,
+      cardContext: false,
     };
   },
 

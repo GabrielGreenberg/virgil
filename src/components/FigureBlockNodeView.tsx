@@ -30,6 +30,39 @@ export default function FigureBlockNodeView({
   const opts = extension.options as FigureBlockOptions;
   const docId = opts.docIdRef?.current ?? null;
   const isFigure = node.type.name === "figureBlock";
+  const cardContext = opts.cardContext === true;
+
+  // Card-context preview: rendered inside a RichTextField or
+  // HeadingFloat. Show a compact "Figure: …" / "Graphic: …" pill
+  // instead of resolving the image — that keeps the node round-tripping
+  // through cards without needing `docIdRef` forwarded into every
+  // subordinate surface.
+  if (cardContext) {
+    const captionText = (node.attrs.caption as string | undefined) || "";
+    const singleSource =
+      (node.attrs.source as string | null | undefined) ||
+      (((node.attrs.sources as FigureSource[] | undefined) || [])[0]?.path ?? "");
+    const labelText = isFigure
+      ? captionText || singleSource || "[figure]"
+      : singleSource || "[graphic]";
+    return (
+      <NodeViewWrapper className="figure-block-card-preview my-2" contentEditable={false}>
+        <div
+          className="inline-flex items-center gap-1.5 rounded border px-2 py-0.5 text-[11px] font-mono"
+          style={{
+            backgroundColor: "var(--surface-muted, rgba(124, 94, 60, 0.04))",
+            borderColor: "var(--edge-subtle)",
+            color: "var(--ink-strong)",
+          }}
+        >
+          <span className="text-[var(--ink-muted)]">
+            {isFigure ? "Figure" : "Graphic"}:
+          </span>
+          <span className="truncate max-w-[28ch]">{labelText}</span>
+        </div>
+      </NodeViewWrapper>
+    );
+  }
 
   const sources = useMemo<FigureSource[]>(() => {
     if (isFigure) {

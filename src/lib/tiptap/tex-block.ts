@@ -26,6 +26,12 @@ export interface TexBlockOptions {
     | ((uuid: string, anchorRect: DOMRect) => void)
     | undefined
   > | null;
+  // When true, the NodeView renders a compact static preview (no
+  // CodeMirror, no grab handle, no edit/delete chrome). Set by every
+  // card-bearing rich-text surface (RichTextField + HeadingFloat) so
+  // block atoms round-trip through archive / note / cut / heading-float
+  // bodies without TipTap silently dropping them as unknown nodes.
+  cardContext: boolean;
 }
 
 // `texBlock` — a raw LaTeX passthrough block. Contents are stored in the
@@ -47,6 +53,7 @@ export const TexBlock = Node.create<TexBlockOptions>({
       onLiftRef: null,
       isPoppedRef: null,
       onDragHandleClickRef: null,
+      cardContext: false,
     };
   },
 
