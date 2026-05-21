@@ -119,8 +119,7 @@ export function ActionsStripButton({ editor }: { editor: Editor | null }) {
           paragraphUuid={openState.uuid}
           range={openState.range}
           mode={openState.mode}
-          anchorLeft={openState.rect.left}
-          anchorTop={openState.rect.bottom + 4}
+          triggerRect={openState.rect}
           onClose={() => setOpenState(null)}
         />
       )}

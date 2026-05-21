@@ -349,8 +349,14 @@ export function SelectionActionsMenu({
         paragraphUuid={menuTarget.uuid}
         range={menuTarget.range}
         mode={menuTarget.mode}
-        anchorLeft={placement.left}
-        anchorTop={placement.top}
+        triggerRect={{
+          left: placement.left,
+          top: placement.top,
+          right: placement.left + BUTTON_SIZE,
+          bottom: placement.top + BUTTON_SIZE,
+          width: BUTTON_SIZE,
+          height: BUTTON_SIZE,
+        }}
         onClose={() => setMenuTarget(null)}
       />
     </>

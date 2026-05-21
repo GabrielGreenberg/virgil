@@ -13,7 +13,7 @@
  * keybindings.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   IconArchive,
@@ -26,6 +26,10 @@ import {
   IconRevisions,
   IconTodo,
 } from "./editor-layout/panel-icons";
+import {
+  useFloatingMenuPosition,
+  type FloatingMenuPlacement,
+} from "@/hooks/useFloatingMenuPosition";
 
 export type DragHandleAction =
   | "footnote"
@@ -63,8 +67,11 @@ export const MENU_ENTRIES: MenuEntry[] = [
 const MENU_W = 220;
 const MENU_PAD_Y = 6;
 const ITEM_H = 30;
-const SEPARATOR_H = 9;
-const VIEWPORT_MARGIN = 8;
+
+const DRAG_HANDLE_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "left-of", align: "center" },
+  { side: "right-of", align: "center" },
+];
 
 interface Props {
   /** Bounding rect of the handle that triggered the menu — used to anchor the popover. */
@@ -75,42 +82,19 @@ interface Props {
 
 export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-
-  const menuHeight = useMemo(() => {
-    const base = MENU_PAD_Y * 2;
-    let h = 0;
-    for (const entry of MENU_ENTRIES) {
-      if (entry.separator) h += SEPARATOR_H;
-      h += ITEM_H;
-    }
-    return base + h;
-  }, []);
-
-  // Position relative to the anchor — left of the handle by default so
-  // the menu doesn't cover the grip or the prose to its right. Flip
-  // right if there isn't room on the left. Vertically center the menu
-  // on the handle so the user's grip lands mid-menu; clamp to the
-  // viewport's top / bottom margins when centering would overflow.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let left = anchorRect.left - MENU_W - 6;
-    if (left < VIEWPORT_MARGIN) {
-      left = anchorRect.right + 6;
-      if (left + MENU_W > vw - VIEWPORT_MARGIN) {
-        left = Math.max(VIEWPORT_MARGIN, vw - MENU_W - VIEWPORT_MARGIN);
-      }
-    }
-    const handleCenter = (anchorRect.top + anchorRect.bottom) / 2;
-    let top = handleCenter - menuHeight / 2;
-    if (top < VIEWPORT_MARGIN) top = VIEWPORT_MARGIN;
-    if (top + menuHeight > vh - VIEWPORT_MARGIN) {
-      top = Math.max(VIEWPORT_MARGIN, vh - menuHeight - VIEWPORT_MARGIN);
-    }
-    setPos({ left, top });
-  }, [anchorRect.left, anchorRect.top, anchorRect.right, anchorRect.bottom, menuHeight]);
+  // Left of the handle by default so the menu doesn't cover the grip or
+  // the prose to its right; flip right if there's no room on the left.
+  // Vertically center on the handle. The hook handles flip + viewport
+  // clamp using the menu's measured size, so adding/removing entries
+  // doesn't drift the placement math out of sync.
+  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
+    anchorRect,
+    placements: DRAG_HANDLE_PLACEMENTS,
+  });
+  const setMenuRef = (el: HTMLDivElement | null) => {
+    menuRef.current = el;
+    positionRef(el);
+  };
 
   // Close on Escape, click-outside, or letter shortcut.
   useEffect(() => {
@@ -147,17 +131,14 @@ export function DragHandleMenu({ anchorRect, onSelect, onClose }: Props) {
   }, [onClose, onSelect]);
 
   if (typeof document === "undefined") return null;
-  if (!pos) return null;
 
   return createPortal(
     <div
-      ref={menuRef}
+      ref={setMenuRef}
       role="menu"
       aria-label="Passage actions"
       style={{
-        position: "fixed",
-        left: pos.left,
-        top: pos.top,
+        ...positionStyle,
         width: MENU_W,
         zIndex: 2000,
         background: "var(--pod-editor)",

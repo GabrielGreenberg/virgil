@@ -25,6 +25,10 @@ import { insertTexBlock } from "@/lib/tiptap/tex-block";
 import { insertFigureBlock } from "@/lib/tiptap/figure-block";
 import { insertGraphicsBlock } from "@/lib/tiptap/graphics-block";
 import { SelectionColorPopover } from "./SelectionColorPopover";
+import {
+  useFloatingMenuPosition,
+  type FloatingMenuPlacement,
+} from "@/hooks/useFloatingMenuPosition";
 
 const COLOR_PALETTE_KEY = "virgil:selection-menu-color-palette";
 const DEFAULT_PALETTE = [
@@ -67,22 +71,43 @@ export interface ActionsMenuPanelProps {
   /** "selection" → dispatch with `kind: "selection"` + range.
    *  "cursor" → dispatch with `kind: "paragraph"` and grey out Highlight. */
   mode: "selection" | "cursor";
-  anchorLeft: number;
-  anchorTop: number;
+  /** The trigger element's bounding rect — the panel computes its own
+   *  placement (below / above flip + viewport clamp) from this. */
+  triggerRect: DOMRect | {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    height: number;
+  };
   onClose: () => void;
 }
+
+const PANEL_PLACEMENTS: FloatingMenuPlacement[] = [
+  { side: "below", align: "start" },
+  { side: "above", align: "start" },
+];
 
 export function ActionsMenuPanel({
   editor,
   paragraphUuid,
   range,
   mode,
-  anchorLeft,
-  anchorTop,
+  triggerRect,
   onClose,
 }: ActionsMenuPanelProps) {
   const dragHandleMenu = useDragHandleMenu();
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const { ref: positionRef, style: positionStyle } = useFloatingMenuPosition({
+    anchorRect: triggerRect,
+    placements: PANEL_PLACEMENTS,
+    gap: 4,
+  });
+  const setMenuRef = (el: HTMLDivElement | null) => {
+    menuRef.current = el;
+    positionRef(el);
+  };
 
   // Color palette state (MRU-first, 7 slots).
   const [palette, setPalette] = useState<string[]>(() => loadPalette());
@@ -245,14 +270,12 @@ export function ActionsMenuPanel({
 
   const menuPortal = createPortal(
     <div
-      ref={menuRef}
+      ref={setMenuRef}
       role="menu"
       aria-label="Selection actions"
       className="selection-actions-menu"
       style={{
-        position: "fixed",
-        left: anchorLeft,
-        top: anchorTop,
+        ...positionStyle,
         width: MENU_W,
         zIndex: 2000,
         background: "var(--pod-editor)",
