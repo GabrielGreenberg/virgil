@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect, useRef, useMemo, type ReactNode } from "react";
 import { JSONContent } from "@tiptap/react";
 import VirgilEditor, { EditorHandle } from "./Editor";
+import { LoadingScreen } from "./LoadingScreen";
 import { VIRGIL_COMMAND_NAMES } from "@/lib/tiptap-extensions";
 import { isLabelTaken as isLabelTakenIn } from "@/lib/labels";
 import { isDevStorage } from "@/lib/storage-mode";
@@ -3649,11 +3650,7 @@ export default function EditorLayout() {
 
   // Loading
   if (filesLoading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[var(--background)] text-[var(--muted)]">
-        Loading...
-      </div>
-    );
+    return <LoadingScreen className="h-screen" />;
   }
 
   const activeLeft = prefs.activeLeft;
