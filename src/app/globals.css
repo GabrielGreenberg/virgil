@@ -1450,11 +1450,15 @@ textarea,
   border-radius: 3px;
 }
 /* Per-level top offsets — match the fold-chevron alignment so all the
-   heading chrome lines up. */
+   heading chrome lines up. h0 uses the parent-class selector because
+   `:has(h0)` is unreliable across browsers (h0 is an unknown element). */
+.heading-wrapper-l0 .heading-drag-handle { top: 0.95em; }
 .heading-wrapper:has(h1) .heading-drag-handle { top: 0.85em; }
 .heading-wrapper:has(h2) .heading-drag-handle { top: 0.75em; }
 .heading-wrapper:has(h3) .heading-drag-handle { top: 0.6em; }
 .heading-wrapper:has(h4) .heading-drag-handle { top: 0.5em; }
+.heading-wrapper:has(h5) .heading-drag-handle { top: 0.5em; }
+.heading-wrapper:has(h6) .heading-drag-handle { top: 0.5em; }
 
 .heading-wrapper:hover .heading-drag-handle {
   opacity: 1;
