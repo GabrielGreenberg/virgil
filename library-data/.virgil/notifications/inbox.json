@@ -1,3 +1,1204 @@
 {
-  "items": []
+  "items": [
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2018content",
+      "at": "2026-05-15T16:29:15Z",
+      "summary": "Authenticated greenberg2018content via openalex (5 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2021semantics",
+      "at": "2026-05-15T16:29:15Z",
+      "summary": "Authenticated greenberg2021semantics via crossref-doi (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "zhuang2021unsupervised",
+      "at": "2026-05-15T16:29:18Z",
+      "summary": "Authenticated zhuang2021unsupervised via crossref,semanticscholar (3 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "grosz2021discourse",
+      "at": "2026-05-15T16:29:20Z",
+      "summary": "Unverified grosz2021discourse via crossref (7 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "berger1972ways",
+      "at": "2026-05-15T16:29:21Z",
+      "summary": "Authenticated berger1972ways via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "fodor1975language",
+      "at": "2026-05-15T16:29:21Z",
+      "summary": "Authenticated fodor1975language via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "hawkins2023visual",
+      "at": "2026-05-15T16:29:24Z",
+      "summary": "Authenticated hawkins2023visual via crossref, semanticscholar (3 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "bertin1983semiology",
+      "at": "2026-05-15T16:29:25Z",
+      "summary": "Authenticated bertin1983semiology via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "bierman1962iconic",
+      "at": "2026-05-15T16:29:25Z",
+      "summary": "Authenticated bierman1962iconic via crossref-doi (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "ittelson1996visual",
+      "at": "2026-05-15T16:29:27Z",
+      "summary": "Authenticated ittelson1996visual via openalex (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "fodor2008language",
+      "at": "2026-05-15T16:29:28Z",
+      "summary": "Authenticated fodor2008language via openlibrary-search,crossref-journal-author-year (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "jakobson1965",
+      "at": "2026-05-15T16:29:29Z",
+      "summary": "Authenticated jakobson1965 via crossref (4 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "frege1997frege",
+      "at": "2026-05-15T16:29:33Z",
+      "summary": "Authenticated frege1997frege via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "jakobson1971word",
+      "at": "2026-05-15T16:29:35Z",
+      "summary": "Canonical jakobson1971word via google-books, openlibrary-search, crossref, openalex, semanticscholar, arxiv (0 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "birdwhistell1952introduction",
+      "at": "2026-05-15T16:29:35Z",
+      "summary": "Authenticated birdwhistell1952introduction via openlibrary-search (1 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "frege:1879",
+      "at": "2026-05-15T16:29:38Z",
+      "summary": "Authenticated frege:1879 via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "block1983mental",
+      "at": "2026-05-15T16:29:38Z",
+      "summary": "Authenticated block1983mental via crossref,openalex (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "fukushima1980neocognitron",
+      "at": "2026-05-15T16:29:43Z",
+      "summary": "Authenticated fukushima1980neocognitron via crossref-doi (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "galantucci2017experimental",
+      "at": "2026-05-15T16:29:43Z",
+      "summary": "Authenticated galantucci2017experimental via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "block2023border",
+      "at": "2026-05-15T16:29:45Z",
+      "summary": "Authenticated block2023border via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "gallistel1990organization",
+      "at": "2026-05-15T16:29:46Z",
+      "summary": "Authenticated gallistel1990organization via openlibrary-isbn (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "garcia2023lying",
+      "at": "2026-05-15T16:29:47Z",
+      "summary": "Authenticated garcia2023lying via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "boole1847mathematical",
+      "at": "2026-05-15T16:29:49Z",
+      "summary": "Authenticated boole1847mathematical via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "goodman1968languages",
+      "at": "2026-05-15T16:29:51Z",
+      "summary": "Canonical goodman1968languages via google-books, openlibrary-search, crossref, openalex, semanticscholar, arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "green2023perception",
+      "at": "2026-05-15T16:29:51Z",
+      "summary": "Authenticated green2023perception via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2018content",
+      "at": "2026-05-15T16:29:52Z",
+      "summary": "Authenticated greenberg2018content via crossref-doi (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2021semantics",
+      "at": "2026-05-15T16:29:52Z",
+      "summary": "Authenticated greenberg2021semantics via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "grosz2021discourse",
+      "at": "2026-05-15T16:29:53Z",
+      "summary": "Authenticated grosz2021discourse via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "hawkins2023visual",
+      "at": "2026-05-15T16:29:53Z",
+      "summary": "Authenticated hawkins2023visual via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "bordwell2008poetics",
+      "at": "2026-05-15T16:29:53Z",
+      "summary": "Authenticated bordwell2008poetics via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "ittelson1996visual",
+      "at": "2026-05-15T16:29:53Z",
+      "summary": "Authenticated ittelson1996visual via crossref-doi (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "jakobson1965",
+      "at": "2026-05-15T16:29:54Z",
+      "summary": "Authenticated jakobson1965 via crossref-doi (0 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "jakobson1971word",
+      "at": "2026-05-15T16:30:05Z",
+      "summary": "Canonical jakobson1971word via google-books, openlibrary-search, crossref, openalex, semanticscholar, arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "broadbent1957mechanical",
+      "at": "2026-05-15T16:30:05Z",
+      "summary": "Authenticated broadbent1957mechanical via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (5 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "buehler2024priority",
+      "at": "2026-05-15T16:30:06Z",
+      "summary": "Authenticated buehler2024priority via crossref-doi (6 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "burge2018iconic",
+      "at": "2026-05-15T16:30:10Z",
+      "summary": "Authenticated burge2018iconic via openalex (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "burge2022perception",
+      "at": "2026-05-15T16:30:26Z",
+      "summary": "Authenticated burge2022perception via openlibrary-search,crossref-journal-author-year (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "camp2007thinking",
+      "at": "2026-05-15T16:30:27Z",
+      "summary": "Authenticated camp2007thinking via crossref-doi (3 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "camp2018maps",
+      "at": "2026-05-15T16:30:42Z",
+      "summary": "Authenticated camp2018maps via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "camp2018whymaps",
+      "at": "2026-05-15T16:30:45Z",
+      "summary": "Authenticated camp2018whymaps via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "carey2009origin",
+      "at": "2026-05-15T16:30:52Z",
+      "summary": "Authenticated carey2009origin via openlibrary-search,crossref-journal-author-year (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "carey2009our",
+      "at": "2026-05-15T16:30:57Z",
+      "summary": "Authenticated carey2009our via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (5 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "casati1999parts",
+      "at": "2026-05-15T16:31:02Z",
+      "summary": "Authenticated casati1999parts via openlibrary-search,semanticscholar (3 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "mikolov2013distributed",
+      "at": "2026-05-15T16:31:12Z",
+      "summary": "Authenticated mikolov2013distributed via crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "casati2013public",
+      "at": "2026-05-15T16:31:14Z",
+      "summary": "Authenticated casati2013public via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "chandler2022semiotics",
+      "at": "2026-05-15T16:31:19Z",
+      "summary": "Authenticated chandler2022semiotics via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "morris1946signs",
+      "at": "2026-05-15T16:31:23Z",
+      "summary": "Authenticated morris1946signs via openlibrary-search,crossref (3 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "chomsky1957syntactic",
+      "at": "2026-05-15T16:31:24Z",
+      "summary": "Authenticated chomsky1957syntactic via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "morris1971writings",
+      "at": "2026-05-15T16:31:33Z",
+      "summary": "Authenticated morris1971writings via openlibrary-search,crossref-journal-author-year (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "moser2008place",
+      "at": "2026-05-15T16:31:38Z",
+      "summary": "Authenticated moser2008place via crossref-doi (3 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "nolle2022experimental",
+      "at": "2026-05-15T16:31:48Z",
+      "summary": "Authenticated nolle2022experimental via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "plato1968republic",
+      "at": "2026-05-15T16:32:03Z",
+      "summary": "Authenticated plato1968republic via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "pylyshyn2003seeing",
+      "at": "2026-05-15T16:32:13Z",
+      "summary": "Authenticated pylyshyn2003seeing via openlibrary-search (1 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "rescorla2009cognitive",
+      "at": "2026-05-15T16:32:19Z",
+      "summary": "Authenticated rescorla2009cognitive via crossref-doi (2 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "saussure1959course",
+      "at": "2026-05-15T16:32:28Z",
+      "summary": "Authenticated saussure1959course via openlibrary-search (1 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2013iconic",
+      "at": "2026-05-15T16:32:36Z",
+      "summary": "Authenticated schlenker2013iconic via openalex (2 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2018gesture",
+      "at": "2026-05-15T16:32:43Z",
+      "summary": "Authenticated schlenker2018gesture via crossref,openalex (3 field changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "jespersen1922",
+      "at": "2026-05-15T16:32:49Z",
+      "summary": "Canonical jespersen1922 via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "johnson2015maps",
+      "at": "2026-05-15T16:32:49Z",
+      "summary": "Authenticated johnson2015maps via crossref,openalex (5 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kafle2018dvqa",
+      "at": "2026-05-15T16:32:49Z",
+      "summary": "Authenticated kafle2018dvqa via crossref (5 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kennedy1974psychology",
+      "at": "2026-05-15T16:32:49Z",
+      "summary": "Authenticated kennedy1974psychology via openlibrary-search,crossref-journal-author-year (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kosslyn1994image",
+      "at": "2026-05-15T16:32:49Z",
+      "summary": "Authenticated kosslyn1994image via openlibrary-search,crossref-journal-author-year (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kosslyn2006case",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Authenticated kosslyn2006case via openlibrary-search,openalex (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "krizhevsky2012imagenet",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Authenticated krizhevsky2012imagenet via crossref-republication (9 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "kulvicki2020modeling",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Unverified kulvicki2020modeling via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "maier2019shifting",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Authenticated maier2019shifting via openalex (3 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "maier2023emojis",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Authenticated maier2023emojis via crossref-doi (4 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "maier2025pictorial",
+      "at": "2026-05-15T16:32:50Z",
+      "summary": "Authenticated maier2025pictorial via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "masry2022chartqa",
+      "at": "2026-05-15T16:32:51Z",
+      "summary": "Authenticated masry2022chartqa via arxiv-id (6 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2018iconic",
+      "at": "2026-05-15T16:32:51Z",
+      "summary": "Authenticated schlenker2018iconic via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (7 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "mcneill1985so",
+      "at": "2026-05-15T16:32:51Z",
+      "summary": "Authenticated mcneill1985so via openalex (4 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "mcneill1992hand",
+      "at": "2026-05-15T16:32:51Z",
+      "summary": "Unverified mcneill1992hand via openlibrary-search (2 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "metz1974film",
+      "at": "2026-05-15T16:32:51Z",
+      "summary": "Unverified metz1974film via openlibrary-search (1 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2024iconological",
+      "at": "2026-05-15T16:33:02Z",
+      "summary": "Authenticated schlenker2024iconological via crossref,openalex (3 field changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "schwarzlose2021brainscapes",
+      "at": "2026-05-15T16:33:17Z",
+      "summary": "Authenticated schwarzlose2021brainscapes via openlibrary-search (1 field changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "sedgwick1980geometry",
+      "at": "2026-05-15T16:33:26Z",
+      "summary": "Authenticated sedgwick1980geometry via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "sep-sign-language-semantics",
+      "at": "2026-05-15T16:33:40Z",
+      "summary": "Authenticated sep-sign-language-semantics via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 field changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "peirce1998description",
+      "at": "2026-05-15T16:36:42Z",
+      "summary": "Sweep-auth peirce1998description: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (7 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "peirce1897logic",
+      "at": "2026-05-15T16:36:46Z",
+      "summary": "Sweep-auth peirce1897logic: authenticated via openalex (4 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "peirce1998what",
+      "at": "2026-05-15T16:36:51Z",
+      "summary": "Sweep-auth peirce1998what: failed via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "peirce1906prolegomena",
+      "at": "2026-05-15T16:36:54Z",
+      "summary": "Sweep-auth peirce1906prolegomena: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (8 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "venn1881symbolic",
+      "at": "2026-05-15T16:36:57Z",
+      "summary": "Sweep-auth venn1881symbolic: authenticated via openlibrary-search,crossref (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "sonesson1989pictorial",
+      "at": "2026-05-15T16:37:13Z",
+      "summary": "Sweep-auth sonesson1989pictorial: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "noth1990handbook",
+      "at": "2026-05-15T16:37:17Z",
+      "summary": "Sweep-auth noth1990handbook: failed via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "tye1991imagery",
+      "at": "2026-05-15T16:37:22Z",
+      "summary": "Sweep-auth tye1991imagery: unverified via openlibrary-search (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "gibson1978ecological",
+      "at": "2026-05-15T16:37:25Z",
+      "summary": "Sweep-auth gibson1978ecological: authenticated via crossref,openalex,semanticscholar (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "deloache2003origins",
+      "at": "2026-05-15T16:37:29Z",
+      "summary": "Sweep-auth deloache2003origins: authenticated via crossref,openalex,semanticscholar (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "shin1995logical",
+      "at": "2026-05-15T16:37:34Z",
+      "summary": "Sweep-auth shin1995logical: authenticated via openlibrary-search,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "leong1994towards",
+      "at": "2026-05-15T16:37:38Z",
+      "summary": "Sweep-auth leong1994towards: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "masaki1997architects",
+      "at": "2026-05-15T16:37:39Z",
+      "summary": "Sweep-auth masaki1997architects: authenticated via crossref-doi (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "wittgenstein1986philosophical",
+      "at": "2026-05-15T16:37:44Z",
+      "summary": "Sweep-auth wittgenstein1986philosophical: authenticated via openlibrary-search,crossref-journal-author-year (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "deloache1979picture",
+      "at": "2026-05-15T16:37:47Z",
+      "summary": "Sweep-auth deloache1979picture: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "witted1980illumination",
+      "at": "2026-05-15T16:37:50Z",
+      "summary": "Sweep-auth witted1980illumination: authenticated via crossref (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "goldstein1971visual",
+      "at": "2026-05-15T16:37:54Z",
+      "summary": "Sweep-auth goldstein1971visual: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (3 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "lande2018parts",
+      "at": "2026-05-15T16:37:57Z",
+      "summary": "Sweep-auth lande2018parts: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kulvicki2015analog",
+      "at": "2026-05-15T16:37:58Z",
+      "summary": "Sweep-auth kulvicki2015analog: authenticated via crossref-doi (2 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "haugeland1991representational",
+      "at": "2026-05-15T16:38:02Z",
+      "summary": "Sweep-auth haugeland1991representational: failed via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "sober1976mental",
+      "at": "2026-05-15T16:38:03Z",
+      "summary": "Sweep-auth sober1976mental: authenticated via crossref-doi (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "tootell1988functional",
+      "at": "2026-05-15T16:38:07Z",
+      "summary": "Sweep-auth tootell1988functional: authenticated via crossref,openalex,semanticscholar (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "daniel1961representation",
+      "at": "2026-05-15T16:38:13Z",
+      "summary": "Sweep-auth daniel1961representation: authenticated via crossref,openalex (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "vanessen1984visual",
+      "at": "2026-05-15T16:38:14Z",
+      "summary": "Sweep-auth vanessen1984visual: authenticated via crossref-doi (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "decarlo2003suggestive",
+      "at": "2026-05-15T16:38:15Z",
+      "summary": "Sweep-auth decarlo2003suggestive: authenticated via crossref-doi (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "winkenbach1994computer",
+      "at": "2026-05-15T16:38:18Z",
+      "summary": "Sweep-auth winkenbach1994computer: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "esipova2021not",
+      "at": "2026-05-15T16:38:21Z",
+      "summary": "Sweep-auth esipova2021not: authenticated via crossref,openalex (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "gooch1998non",
+      "at": "2026-05-15T16:38:24Z",
+      "summary": "Sweep-auth gooch1998non: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "guzman1968decomposition",
+      "at": "2026-05-15T16:38:27Z",
+      "summary": "Sweep-auth guzman1968decomposition: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "huffman1971impossible",
+      "at": "2026-05-15T16:38:31Z",
+      "summary": "Sweep-auth huffman1971impossible: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "cook1986stochastic",
+      "at": "2026-05-15T16:38:35Z",
+      "summary": "Sweep-auth cook1986stochastic: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "cook1984distributed",
+      "at": "2026-05-15T16:38:37Z",
+      "summary": "Sweep-auth cook1984distributed: authenticated via crossref (7 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "sperling1960information",
+      "at": "2026-05-15T16:38:41Z",
+      "summary": "Sweep-auth sperling1960information: authenticated via openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "darwin1972auditory",
+      "at": "2026-05-15T16:38:44Z",
+      "summary": "Sweep-auth darwin1972auditory: authenticated via crossref,openalex (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "dehaene1993development",
+      "at": "2026-05-15T16:38:46Z",
+      "summary": "Sweep-auth dehaene1993development: authenticated via openalex (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "feigenson2004core",
+      "at": "2026-05-15T16:38:50Z",
+      "summary": "Sweep-auth feigenson2004core: authenticated via openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "dehaene1992varieties",
+      "at": "2026-05-15T16:38:54Z",
+      "summary": "Sweep-auth dehaene1992varieties: authenticated via crossref (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "dehaene1993mental",
+      "at": "2026-05-15T16:38:57Z",
+      "summary": "Sweep-auth dehaene1993mental: authenticated via openalex (3 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "neisser1967cognitive",
+      "at": "2026-05-15T16:39:01Z",
+      "summary": "Sweep-auth neisser1967cognitive: unverified via openlibrary-search (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "crowder1969precategorical",
+      "at": "2026-05-15T16:39:04Z",
+      "summary": "Sweep-auth crowder1969precategorical: authenticated via openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "dehaene1990numerical",
+      "at": "2026-05-15T16:39:07Z",
+      "summary": "Sweep-auth dehaene1990numerical: authenticated via openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "pollack1959message",
+      "at": "2026-05-15T16:39:10Z",
+      "summary": "Sweep-auth pollack1959message: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "guttman1963lower",
+      "at": "2026-05-15T16:39:14Z",
+      "summary": "Sweep-auth guttman1963lower: authenticated via crossref,openalex,semanticscholar (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "eriksen1964storage",
+      "at": "2026-05-15T16:39:18Z",
+      "summary": "Sweep-auth eriksen1964storage: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "wood1992power",
+      "at": "2026-05-15T16:39:23Z",
+      "summary": "Sweep-auth wood1992power: authenticated via openlibrary-search,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "shimojima2001graphic",
+      "at": "2026-05-15T16:39:26Z",
+      "summary": "Sweep-auth shimojima2001graphic: authenticated via crossref,openalex (7 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "shimojima2015semantic",
+      "at": "2026-05-15T16:39:31Z",
+      "summary": "Sweep-auth shimojima2015semantic: unverified via openlibrary-search (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "hopkins1998picture",
+      "at": "2026-05-15T16:39:36Z",
+      "summary": "Sweep-auth hopkins1998picture: authenticated via openlibrary-search,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "lopes1996understanding",
+      "at": "2026-05-15T16:39:41Z",
+      "summary": "Sweep-auth lopes1996understanding: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "schier1986deeper",
+      "at": "2026-05-15T16:39:46Z",
+      "summary": "Sweep-auth schier1986deeper: unverified via openlibrary-search (2 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "neander1987pictorial",
+      "at": "2026-05-15T16:39:49Z",
+      "summary": "Sweep-auth neander1987pictorial: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2018super",
+      "at": "2026-05-15T16:39:53Z",
+      "summary": "Sweep-auth schlenker2018super: authenticated via crossref,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "patel2023super",
+      "at": "2026-05-15T16:39:56Z",
+      "summary": "Sweep-auth patel2023super: authenticated via crossref (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2023map",
+      "at": "2026-05-15T16:40:03Z",
+      "summary": "Sweep-auth greenberg2023map: authenticated via crossref,crossref-journal-author-year (5 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "kehler2002coherence",
+      "at": "2026-05-15T16:40:09Z",
+      "summary": "Sweep-auth kehler2002coherence: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "cumming2017conventions",
+      "at": "2026-05-15T16:40:24Z",
+      "summary": "Sweep-auth cumming2017conventions: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lecun1998gradient",
+      "at": "2026-05-15T16:40:40Z",
+      "summary": "Sweep-auth lecun1998gradient: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "haugeland1981analog",
+      "at": "2026-05-15T16:40:43Z",
+      "summary": "Sweep-auth haugeland1981analog: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "hobbs1990literature",
+      "at": "2026-05-15T16:41:00Z",
+      "summary": "Sweep-auth hobbs1990literature: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lascarides2009formal",
+      "at": "2026-05-15T16:41:16Z",
+      "summary": "Sweep-auth lascarides2009formal: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lascarides2009discourse",
+      "at": "2026-05-15T16:41:18Z",
+      "summary": "Sweep-auth lascarides2009discourse: authenticated via crossref,openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "cumming2021showing",
+      "at": "2026-05-15T16:41:21Z",
+      "summary": "Sweep-auth cumming2021showing: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "cohn2013visual",
+      "at": "2026-05-15T16:41:25Z",
+      "summary": "Sweep-auth cohn2013visual: authenticated via openalex (6 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "cohn2020understands",
+      "at": "2026-05-15T16:41:28Z",
+      "summary": "Sweep-auth cohn2020understands: unverified via openlibrary-search (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "mccloud1994understanding",
+      "at": "2026-05-15T16:41:32Z",
+      "summary": "Sweep-auth mccloud1994understanding: unverified via openlibrary-search (5 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "greenberg2019tagging",
+      "at": "2026-05-15T16:41:49Z",
+      "summary": "Sweep-auth greenberg2019tagging: failed via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "maley2011analog",
+      "at": "2026-05-15T16:41:52Z",
+      "summary": "Sweep-auth maley2011analog: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lee2023structure",
+      "at": "2026-05-15T16:41:55Z",
+      "summary": "Sweep-auth lee2023structure: authenticated via openalex (5 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "lucking2024iconic",
+      "at": "2026-05-15T16:42:23Z",
+      "summary": "Sweep-auth lucking2024iconic: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "grosz2023semantics",
+      "at": "2026-05-15T16:42:27Z",
+      "summary": "Sweep-auth grosz2023semantics: authenticated via crossref,openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kaiser2021anaphoricity",
+      "at": "2026-05-15T16:42:41Z",
+      "summary": "Sweep-auth kaiser2021anaphoricity: authenticated via crossref,openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "patel2018coreference",
+      "at": "2026-05-15T16:42:57Z",
+      "summary": "Sweep-auth patel2018coreference: authenticated via crossref,openalex,semanticscholar (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "patel2022steps",
+      "at": "2026-05-15T16:43:16Z",
+      "summary": "Sweep-auth patel2022steps: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "devlin2018bert",
+      "at": "2026-05-15T16:43:41Z",
+      "summary": "Sweep-auth devlin2018bert: unverified via arxiv (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "radford2021learning",
+      "at": "2026-05-15T16:43:51Z",
+      "summary": "Sweep-auth radford2021learning: authenticated via openalex,arxiv (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schloder2023super",
+      "at": "2026-05-15T16:43:51Z",
+      "summary": "Sweep-auth schloder2023super: authenticated via crossref-doi (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "felleman1991distributed",
+      "at": "2026-05-15T16:43:55Z",
+      "summary": "Sweep-auth felleman1991distributed: authenticated via openalex (5 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "pylyshyn2007things",
+      "at": "2026-05-15T16:44:03Z",
+      "summary": "Sweep-auth pylyshyn2007things: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "maceachren2004maps",
+      "at": "2026-05-15T16:44:09Z",
+      "summary": "Sweep-auth maceachren2004maps: failed via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "wandell2007visual",
+      "at": "2026-05-15T16:44:12Z",
+      "summary": "Sweep-auth wandell2007visual: authenticated via crossref,openalex (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "hochberg1962pictorial",
+      "at": "2026-05-15T16:44:15Z",
+      "summary": "Sweep-auth hochberg1962pictorial: authenticated via openalex (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "tversky1995cognitive",
+      "at": "2026-05-15T16:44:19Z",
+      "summary": "Sweep-auth tversky1995cognitive: authenticated via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "hagen1980perception",
+      "at": "2026-05-15T16:44:22Z",
+      "summary": "Sweep-auth hagen1980perception: authenticated via openlibrary-isbn (1 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "hagen1986varieties",
+      "at": "2026-05-15T16:44:26Z",
+      "summary": "Sweep-auth hagen1986varieties: unverified via openlibrary-search (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "gombrich1960art",
+      "at": "2026-05-15T16:44:31Z",
+      "summary": "Sweep-auth gombrich1960art: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "kunene1965ideophone",
+      "at": "2026-05-15T16:44:34Z",
+      "summary": "Sweep-auth kunene1965ideophone: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "nuckolls1999case",
+      "at": "2026-05-15T16:44:34Z",
+      "summary": "Sweep-auth nuckolls1999case: authenticated via crossref-doi (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "stokoe1960sign",
+      "at": "2026-05-15T16:44:38Z",
+      "summary": "Sweep-auth stokoe1960sign: unverified via openlibrary-search (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "haiman1980iconicity",
+      "at": "2026-05-15T16:44:41Z",
+      "summary": "Sweep-auth haiman1980iconicity: authenticated via crossref,openalex (5 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "trager1958paralanguage",
+      "at": "2026-05-15T16:44:44Z",
+      "summary": "Sweep-auth trager1958paralanguage: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kendon1980gesticulation",
+      "at": "2026-05-15T16:44:48Z",
+      "summary": "Sweep-auth kendon1980gesticulation: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "goldin1999role",
+      "at": "2026-05-15T16:44:51Z",
+      "summary": "Sweep-auth goldin1999role: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "canonical",
+      "citekey": "dematteo1977visual",
+      "at": "2026-05-15T16:44:56Z",
+      "summary": "Sweep-auth dematteo1977visual: canonical via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "waugh2000against",
+      "at": "2026-05-15T16:45:00Z",
+      "summary": "Sweep-auth waugh2000against: authenticated via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "liddell2003grammar",
+      "at": "2026-05-15T16:45:05Z",
+      "summary": "Sweep-auth liddell2003grammar: authenticated via openlibrary-search,openalex (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kendon2004gesture",
+      "at": "2026-05-15T16:45:09Z",
+      "summary": "Sweep-auth kendon2004gesture: authenticated via openlibrary-search,openalex (3 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "wollheim1987painting",
+      "at": "2026-05-15T16:45:17Z",
+      "summary": "Sweep-auth wollheim1987painting: unverified via openlibrary-search (4 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "walton1993mimesis",
+      "at": "2026-05-15T16:45:22Z",
+      "summary": "Sweep-auth walton1993mimesis: unverified via openlibrary-search (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kulvicki2006images",
+      "at": "2026-05-15T16:45:31Z",
+      "summary": "Sweep-auth kulvicki2006images: authenticated via openlibrary-search,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "goldin2017gesture",
+      "at": "2026-05-15T16:45:39Z",
+      "summary": "Sweep-auth goldin2017gesture: authenticated via openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "kriegeskorte2015deep",
+      "at": "2026-05-15T16:45:48Z",
+      "summary": "Sweep-auth kriegeskorte2015deep: authenticated via openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "giardino2015introduction",
+      "at": "2026-05-15T16:45:56Z",
+      "summary": "Sweep-auth giardino2015introduction: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "quilty2020perceptual",
+      "at": "2026-05-15T16:46:02Z",
+      "summary": "Sweep-auth quilty2020perceptual: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "noth1997can",
+      "at": "2026-05-15T16:46:11Z",
+      "summary": "Sweep-auth noth1997can: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "unverified",
+      "citekey": "shin1994logical",
+      "at": "2026-05-15T16:46:22Z",
+      "summary": "Sweep-auth shin1994logical: unverified via openlibrary-search (2 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "hammer1995logic",
+      "at": "2026-05-15T16:46:31Z",
+      "summary": "Sweep-auth hammer1995logic: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "greenberg2023iconic",
+      "at": "2026-05-15T16:46:40Z",
+      "summary": "Sweep-auth greenberg2023iconic: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "rescorla2009predication",
+      "at": "2026-05-15T16:46:49Z",
+      "summary": "Sweep-auth rescorla2009predication: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "peacocke2019primacy",
+      "at": "2026-05-15T16:47:01Z",
+      "summary": "Sweep-auth peacocke2019primacy: authenticated via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (3 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "dingemanse2018redrawing",
+      "at": "2026-05-15T16:47:11Z",
+      "summary": "Sweep-auth dingemanse2018redrawing: authenticated via crossref (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "schlenker2018sign",
+      "at": "2026-05-15T16:47:18Z",
+      "summary": "Sweep-auth schlenker2018sign: authenticated via crossref (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "fan2023drawing",
+      "at": "2026-05-15T16:47:21Z",
+      "summary": "Sweep-auth fan2023drawing: authenticated via crossref,openalex (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "fan2018common",
+      "at": "2026-05-15T16:47:25Z",
+      "summary": "Sweep-auth fan2018common: authenticated via crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (6 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "quilty2020iconic",
+      "at": "2026-05-15T16:47:28Z",
+      "summary": "Sweep-auth quilty2020iconic: authenticated via crossref (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lande2018perspectival",
+      "at": "2026-05-15T16:47:31Z",
+      "summary": "Sweep-auth lande2018perspectival: authenticated via crossref,openalex (5 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "swanson2004brain",
+      "at": "2026-05-15T16:47:34Z",
+      "summary": "Sweep-auth swanson2004brain: authenticated via openlibrary-search,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "green2021object",
+      "at": "2026-05-15T16:47:35Z",
+      "summary": "Sweep-auth green2021object: authenticated via crossref-doi (4 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "lewis1969convention",
+      "at": "2026-05-15T16:47:40Z",
+      "summary": "Sweep-auth lewis1969convention: authenticated via google-books,openlibrary-search,crossref,openalex,semanticscholar,arxiv,crossref-journal-author-year (4 changes)"
+    },
+    {
+      "kind": "failed",
+      "citekey": "simons2019natural",
+      "at": "2026-05-15T16:47:43Z",
+      "summary": "Sweep-auth simons2019natural: failed via crossref,openalex,semanticscholar,arxiv (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "gasparri2022notions",
+      "at": "2026-05-15T16:47:43Z",
+      "summary": "Sweep-auth gasparri2022notions: authenticated via crossref-doi (8 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "garrod2007foundations",
+      "at": "2026-05-15T16:47:46Z",
+      "summary": "Sweep-auth garrod2007foundations: authenticated via openalex (5 changes)"
+    },
+    {
+      "kind": "manuscript",
+      "citekey": "davidson2024compositionality",
+      "at": "2026-05-15T16:47:46Z",
+      "summary": "Sweep-auth davidson2024compositionality: manuscript via no-source (0 changes)"
+    },
+    {
+      "kind": "authenticated",
+      "citekey": "genette1997",
+      "at": "2026-05-17T17:07:15Z",
+      "summary": "Collective-auth: merged genette1997 into genette1997 (state=authenticated)"
+    }
+  ]
 }
