@@ -1,4 +1,4 @@
-<!-- last-verified: cffd4d7 2026-05-21 -->
+<!-- last-verified: 7c45771 2026-05-21 -->
 
 # Main Text: Editor, Content Model, Links, Marginalia
 
@@ -44,7 +44,8 @@ TipTap extensions in [src/lib/tiptap/](../../src/lib/tiptap/):
 | `inlineMath` | atom node | `$…$` (rendered via KaTeX after ef8a8ce; click opens an inline edit popover) | `math.ts` |
 | `displayMath` | atom node | `$$…$$` and `\[…\]` (KaTeX-rendered, click-to-edit) | `math.ts` |
 | `texBlock` | atom block | `%!vtex:begin <uuid>` … `%!vtex:end <uuid>` raw LaTeX passthrough | `tex-block.ts` |
-| `figureBlock` | atom block | `\begin{figure}…\end{figure}` — structured attrs (raw, source[], widthPercent, caption, label). Click opens `FigurePopover` for in-place tex-mode editing; on save the popover dispatches `setNodeMarkup`. Round-trip via the figure raster cache (see architecture.md). | `figure-block.ts` |
+| `figureBlock` | non-atom block — schema `content: "figureCaption?"`. Structured attrs: `extras` (the env body sans `\caption`/`\label`, source-of-truth for round-trip), `source[]`, `widthPercent`, `label`. Caption text lives in the `figureCaption` child node (`content: "inline*"`) so citations, footnotes, math, and inline marks work natively; a bold "Figure N:" prefix renders ahead of the caption and re-numbers via the `sectionNumbers` plugin. A blue label lozenge under the caption mirrors the heading annotation (Figure chip, # numbered toggle, label slot with conflict detection, hover-revealed delete). Click anywhere outside the caption opens `FigurePopover` for raw-LaTeX editing of `extras`; on save the popover dispatches `setNodeMarkup`. Round-trip via the figure raster cache (see architecture.md). | `figure-block.ts` |
+| `figureCaption` | child block of `figureBlock` (`content: "inline*"`) | (rendered as the prose after `\caption{…}`; serializer emits it back into the env body) | `figure-caption.ts` |
 | `graphicsBlock` | atom block | bare `\includegraphics[...]{source}` (outside a `figure` env) — same popover + raster cache as `figureBlock` | `graphics-block.ts` |
 | `latexComment` | node | `%…` | `latex-comment.ts` |
 | `label` | mark | `\label{ref}` | `label.ts` |

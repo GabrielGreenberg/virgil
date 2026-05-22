@@ -1,4 +1,4 @@
-<!-- last-verified: cffd4d7 2026-05-21 -->
+<!-- last-verified: 7c45771 2026-05-21 -->
 
 # UI Chrome
 
@@ -246,6 +246,14 @@ Pull-from-stack flow (thumbnail → editor):
 Snapshot stripping: `snapshotSelection` / `snapshotParagraph` / `snapshotHeadingSection` recursively strip `linkedAnchor`, `footnoteRef`, `citationRef` marks (cross-doc-bound), and replace `attrs.uuid` so a fresh uuid is regenerated on pull. Citation / quotation snapshots additionally carry sidecar bib entries (`StackCardSnapshot.bibEntries`) so the destination doc can upsert any missing keys.
 
 Hidden in zen mode (`viewPrefs.zenMode`).
+
+## Reading frame & margins
+
+After d211464 + 69c050d the editor exposes a true viewport-locked **reading rectangle** rather than just left/right page padding. Four-sided margins are now full prefs (`editorLeftMargin`, `editorRightMargin`, `editorTopMargin`, `editorBottomMargin`); the column wrapper publishes them as `--editor-pl/pr/pt/pb` CSS vars. `EditorScrollbar` additionally publishes `--scroll-viewport-h` (the row's `clientHeight`, distinct from `--row-bound-h` = scrollHeight) so the side guides can size against the visible band rather than the full document.
+
+Two persistent sticky **letterbox bands** (`var(--surface)` solid, with an 8px hard fade at the inner edge) sit above and below the reading rectangle and hide content scrolling past — that's the difference between "padding" and a "frame". Bottom band is gated on `ready` (7c45771) to avoid showing during initial load.
+
+**Margin edit mode** ([src/hooks/useMarginEdit.ts](../../src/hooks/useMarginEdit.ts)) is the state machine for dragging the four guide lines. It's keyed on a `Margins = Record<MarginSide, number>` shape with axis-lookup tables (`MARGIN_AXIS`, `MARGIN_OPPOSITE`, `MARGIN_MIN`, `MARGIN_CSS_VAR`) so a single drag handler covers all four sides — the historical L/R-vs-T/B duplication is gone, and a fifth side would be a one-table-entry addition. The four guide lines live inside a single sticky wrapper that fills the visible reading rectangle, so they stay viewport-locked together at any scroll position. A sticky **glowing-blue X / check icon pill** (reusing the symmetry-marker vocabulary) replaces the older text Save/Cancel buttons.
 
 ## Focus view
 

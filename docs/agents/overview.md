@@ -1,4 +1,4 @@
-<!-- last-verified: cffd4d7 2026-05-21 -->
+<!-- last-verified: 7c45771 2026-05-21 -->
 
 # Virgil Overview
 

@@ -1,4 +1,4 @@
-<!-- last-verified: cffd4d7 2026-05-21 -->
+<!-- last-verified: 7c45771 2026-05-21 -->
 
 # Architecture: Registries, Hooks, Persistence, Sidecars
 
@@ -36,7 +36,8 @@ All in `src/hooks/`. Full list (~50 files) is large; these are the ones most oft
 | `useWordCount` | Live word counts by section |
 | `usePoppedCards` | Floating card registry (reads `prefs.poppedOutCards`) |
 | `useLinkHighlight` / `useAnchorHighlightReconciler` / `useLinkedAnchorReconciler` | Three-surface hover/selection coupling (text, margin icon, panel card). 930b9f6 collapsed the previous `useCardHoverHighlight` + `useCardSelectionHighlight` pair into one idempotent reconciler (`useAnchorHighlightReconciler`) that paints both `data-card-hovered` and `data-card-selected` in a single pass. Mode B `.linked-anchor` spans get their own thin reconciler (`useLinkedAnchorReconciler`). All in `src/links/_shared/`; see `main-text.md` → Highlight coupling for the full set including the `useTextHoverBridge` + `usePanelCardHoverBridge` event listeners and the module-level `cardStore` |
-| `useViewPrefs` | Panel visibility, layout state, placements, and (since b706812) the per-view editor-decoration prefs that previously lived as EditorLayout local state — marginalia visibility (`showMarginalia`, `hiddenMarginaliaTypes`), section indicator / heading labels, divider levels + width, omni-view categories + per-side hide-all. Sourced via the centralized [src/lib/dev-prefs-registry.ts](../../src/lib/dev-prefs-registry.ts) (single source consumed by both the cross-window mirror and the personal-prefs promotion script) |
+| `useViewPrefs` | Panel visibility, layout state, placements, and (since b706812) the per-view editor-decoration prefs that previously lived as EditorLayout local state — marginalia visibility (`showMarginalia`, `hiddenMarginaliaTypes`), section indicator / heading labels, divider levels + width, omni-view categories + per-side hide-all, four-sided editor margins (`editorLeftMargin` / `editorRightMargin` / `editorTopMargin` / `editorBottomMargin`; top/bottom added in d211464 so the page padding is fully four-sided). Sourced via the centralized [src/lib/dev-prefs-registry.ts](../../src/lib/dev-prefs-registry.ts) (single source consumed by both the cross-window mirror and the personal-prefs promotion script) |
+| `useMarginEdit` | Margin edit-mode state machine (d211464). Keyed on `Margins = Record<MarginSide, number>` with axis-lookup tables (`MARGIN_AXIS`, `MARGIN_OPPOSITE`, `MARGIN_MIN`, `MARGIN_CSS_VAR`) so one drag handler covers all four sides; adding a fifth side is one table-entry addition. Drives the four guide lines + glowing-blue Save/Cancel pill (see `ui-chrome.md` → Reading frame & margins) |
 | `useFloatingMenuPosition` | Shared viewport-clamping placement helper (f7461e2). Action menu / Highlights submenu / DragHandleMenu route through it so popovers never bleed off-screen. RAF-batched + recomputed on scroll/resize |
 | `usePersistentState` | IndexedDB persistence abstraction. `update()` debounces `persist()` ~300ms (2dc963d) with flush-on-unmount + flush-on-docId-change so safety isn't traded for the keystroke-cascade savings |
 | `useInTextPositions` | Omni-view positioning |
@@ -155,6 +156,15 @@ Two related abstractions, both now mounted inside EditorPane:
 ## System dialog primitive
 
 [src/components/system-dialog.tsx](../../src/components/system-dialog.tsx) + [src/components/system-dialog-host.tsx](../../src/components/system-dialog-host.tsx) provide a shared modal primitive. `ConfirmDialog`, `NewDocumentModal`, `TexFilePickerModal`, and `DocumentClassMismatchDialog` are thin wrappers over it. See [src/STYLE_GUIDE.md](../../src/STYLE_GUIDE.md) for the dialog conventions.
+
+## Unanchored-card safety (21933e0)
+
+Anchored cards (notes, todos, cuts, archives, revisions, quotations) no longer disappear silently when their host paragraph is deleted or their last anchor is dropped. Two coordinated pieces:
+
+- **Unified delete path** — [src/lib/cards/delete-margin-item.ts](../../src/lib/cards/delete-margin-item.ts) (`deleteMarginItem`) is the single entry point every gutter-marker delete and panel-trash delete routes through. If the gesture removes the card's last anchor, it prompts to delete the whole card (using the existing "This item has text" confirm via `hasCardContent` in [src/lib/cards/has-content.ts](../../src/lib/cards/has-content.ts)); if other anchors remain, it just drops this link.
+- **Paragraph-deletion guard** — `MarginaliaAnchorGuard` (TipTap extension in [src/lib/tiptap/linked-anchor.ts](../../src/lib/tiptap/linked-anchor.ts)) reads a ref of currently-anchored UUIDs from EditorPane (populated in `EditorPane.tsx` ~line 1781) and, when a transaction would delete a paragraph carrying an anchor or a `linkedAnchor` mark, re-inserts an empty placeholder at the mapped original position with the same UUID. Covers both gutter-marked paragraphs and Mode-B text-range paragraphs. Configured at [src/components/Editor.tsx](../../src/components/Editor.tsx) ~line 2213.
+
+Together: only explicit user gestures (gutter delete or panel trash) destroy a card; incidental editor edits can't orphan one.
 
 ## Per-panel color overrides
 
